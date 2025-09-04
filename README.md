@@ -4,7 +4,7 @@ This document outlines the plan for migrating the sophisticated Ember data synch
 
 ## Progress Tracking
 
-**Instructions:** As an AI developer, you MUST check off the corresponding checkbox `[ ]` → `[x]` in this README file as you complete each task's RED and GREEN commits.
+**Instructions:** As an AI developer, you MUST check off the corresponding checkbox `[ ]` → `[x]` in this README file BEFORE making each task's RED and GREEN commits.
 
 ### Phase 1: Local-First Development & Framework Integration
 
@@ -153,8 +153,8 @@ This phase focuses on building a robust, performant, and ergonomic local data st
 
 **Feature 4: Memory Management**
 
-- [ ] RED: Write tests for proper cleanup and memory management
-- [ ] GREEN: Implement integration with signals for automatic re-rendering and cleanup
+- [x] RED: Write tests for proper cleanup and memory management
+- [x] GREEN: Implement integration with signals for automatic re-rendering and cleanup
 
 ### 1.4 Framework Adapters - Vue (Test-Then-Implement)
 
@@ -497,14 +497,14 @@ const { data: user, isLoading, error } = useDocument<User>('user', props.userId)
    - **IMPORTANT**: Tests must fail because the functionality doesn't work, NOT because imports are missing
    - Provide minimal stub implementations (empty classes, functions that throw NotImplementedError, etc.) to make imports work
    - Tests should fail with clear error messages about missing behavior
-   - **IMPORTANT** Check off the task in README.md
+   - **IMPORTANT** Check off the task in README.md BEFORE making the commit
    - CI should fail on this commit
    - Commit message format: `test: add failing tests for [feature]`
 
 2. **GREEN Commit**: `feat: implement [feature name] to pass tests`
    - Write minimal implementation to make all tests pass
    - No additional features beyond what tests require
-   - **IMPORTANT** Check off the task in README.md
+   - **IMPORTANT** Check off the task in README.md BEFORE making the commit
    - CI should pass on this commit
    - Commit message format: `feat: implement [feature] to pass tests`
 
