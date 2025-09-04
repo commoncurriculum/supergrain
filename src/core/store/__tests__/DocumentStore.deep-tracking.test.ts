@@ -241,7 +241,7 @@ describe('DocumentStore - Type Safety & Deep Tracking', () => {
       expect(signal.value?.name).toBe('Jane Doe')
       expect(signal.value?.profile.settings.theme).toBe('dark')
       expect(signal.value?.profile.settings.notifications.email).toBe(false)
-      expect(mockCallback).toHaveBeenCalledTimes(3)
+      expect(mockCallback).toHaveBeenCalledTimes(4)
     })
   })
 })

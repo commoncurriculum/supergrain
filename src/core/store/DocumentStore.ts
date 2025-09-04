@@ -1,6 +1,23 @@
 import { signal, type Signal } from '@preact/signals-core'
 import type { Document, DocumentType, DocumentId, DocumentKey } from '../types'
 
+function setNestedValue(obj: any, path: string, value: any): any {
+  const keys = path.split('.')
+  const result = structuredClone(obj)
+  let current = result
+
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i]
+    if (!(key in current) || typeof current[key] !== 'object') {
+      current[key] = {}
+    }
+    current = current[key]
+  }
+
+  current[keys[keys.length - 1]] = value
+  return result
+}
+
 export class DocumentStore {
   private documents = new Map<DocumentKey, Document>()
   private signals = new Map<DocumentKey, Signal<Document | null>>()
@@ -48,5 +65,26 @@ export class DocumentStore {
     }
 
     return this.signals.get(key)! as Signal<T | null>
+  }
+
+  updateField<T extends Document>(
+    type: DocumentType,
+    id: DocumentId,
+    path: string,
+    value: any
+  ): void {
+    const key = this.getKey(type, id)
+    const currentDocument = this.documents.get(key)
+
+    if (currentDocument) {
+      const updatedDocument = setNestedValue(currentDocument, path, value) as T
+      this.documents.set(key, updatedDocument)
+
+      // Update signal if it exists
+      const documentSignal = this.signals.get(key)
+      if (documentSignal) {
+        documentSignal.value = updatedDocument
+      }
+    }
   }
 }
