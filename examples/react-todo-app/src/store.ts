@@ -1,4 +1,4 @@
-import { DocumentStore } from '@commoncurriculum/storable'
+import { DocumentStore, update } from '@commoncurriculum/storable'
 import type { Todo, UserTodoList } from './types'
 
 // Create a global store instance
@@ -45,20 +45,22 @@ export function addTodoToUserList(userId: string, todoText: string) {
   const newTodo = createTodo(todoText)
   const userListSignal = store.getDeepSignal('userTodoList', userId)
   if (userListSignal.value) {
-    userListSignal.$todos.value.push(newTodo)
-    userListSignal.$updatedAt.value = Date.now()
+    update(userListSignal, [
+      { op: '$push', path: 'todos', value: newTodo },
+      { op: '$set', path: 'updatedAt', value: Date.now() },
+    ])
   }
 }
 
 export function removeTodoFromUserList(userId: string, todoId: string) {
   const userListSignal = store.getDeepSignal('userTodoList', userId)
   if (userListSignal.value) {
-    const todoIndex = userListSignal.$todos.value.findIndex(
-      (todo: any) => todo.id === todoId
-    )
-    if (todoIndex !== -1) {
-      userListSignal.$todos.value.splice(todoIndex, 1)
-      userListSignal.$updatedAt.value = Date.now()
+    const todo = userListSignal.value.todos.find(todo => todo.id === todoId)
+    if (todo) {
+      update(userListSignal, [
+        { op: '$pull', path: 'todos', value: todo },
+        { op: '$set', path: 'updatedAt', value: Date.now() },
+      ])
     }
   }
 }
@@ -66,13 +68,21 @@ export function removeTodoFromUserList(userId: string, todoId: string) {
 export function toggleTodoInUserList(userId: string, todoId: string) {
   const userListSignal = store.getDeepSignal('userTodoList', userId)
   if (userListSignal.value) {
-    const todo = userListSignal.$todos.value.find(
-      (todo: any) => todo.id === todoId
+    const todoIndex = userListSignal.value.todos.findIndex(
+      todo => todo.id === todoId
     )
-    if (todo) {
-      todo.completed = !todo.completed
-      todo.updatedAt = Date.now()
-      userListSignal.$updatedAt.value = Date.now()
+    if (todoIndex !== -1) {
+      const todo = userListSignal.value.todos[todoIndex]
+      const now = Date.now()
+      update(userListSignal, [
+        {
+          op: '$set',
+          path: `todos.${todoIndex}.completed`,
+          value: !todo.completed,
+        },
+        { op: '$set', path: `todos.${todoIndex}.updatedAt`, value: now },
+        { op: '$set', path: 'updatedAt', value: now },
+      ])
     }
   }
 }
@@ -84,13 +94,16 @@ export function updateTodoTextInUserList(
 ) {
   const userListSignal = store.getDeepSignal('userTodoList', userId)
   if (userListSignal.value) {
-    const todo = userListSignal.$todos.value.find(
-      (todo: any) => todo.id === todoId
+    const todoIndex = userListSignal.value.todos.findIndex(
+      todo => todo.id === todoId
     )
-    if (todo) {
-      todo.text = newText
-      todo.updatedAt = Date.now()
-      userListSignal.$updatedAt.value = Date.now()
+    if (todoIndex !== -1) {
+      const now = Date.now()
+      update(userListSignal, [
+        { op: '$set', path: `todos.${todoIndex}.text`, value: newText },
+        { op: '$set', path: `todos.${todoIndex}.updatedAt`, value: now },
+        { op: '$set', path: 'updatedAt', value: now },
+      ])
     }
   }
 }
