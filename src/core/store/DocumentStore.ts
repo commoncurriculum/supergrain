@@ -89,6 +89,7 @@ function convertPathToSignalAccess(path: string): string {
 export class DocumentStore {
   private documents = new Map<DocumentKey, Document>()
   private signals = new Map<DocumentKey, any>()
+  private documentSignals = new Map<DocumentKey, DocumentSignal<any>>()
   private subscriberCounts = new Map<DocumentKey, number>()
   private typeListeners = new Map<
     DocumentType,
@@ -161,12 +162,17 @@ export class DocumentStore {
     id: DocumentId
   ): DocumentSignal<T> {
     const key = this.getKey(type, id)
-    const deepSig = this.getDeepSignal<T>(type, id)
 
+    // Return cached DocumentSignal if it exists
+    if (this.documentSignals.has(key)) {
+      return this.documentSignals.get(key)! as DocumentSignal<T>
+    }
+
+    const deepSig = this.getDeepSignal<T>(type, id)
     const callbacks = new Set<(value: T | null) => void>()
     const self = this
 
-    return {
+    const documentSignal: DocumentSignal<T> = {
       get value() {
         // If the signal is marked as empty, return null
         return deepSig._isEmpty ? null : deepSig
@@ -216,6 +222,10 @@ export class DocumentStore {
         }
       },
     }
+
+    // Cache the DocumentSignal
+    this.documentSignals.set(key, documentSignal)
+    return documentSignal
   }
 
   removeDocument(type: DocumentType, id: DocumentId): void {
@@ -231,6 +241,9 @@ export class DocumentStore {
       this.signals.delete(key)
       this.subscriberCounts.delete(key)
     }
+
+    // Clean up cached DocumentSignal
+    this.documentSignals.delete(key)
 
     // Notify type listeners
     this.notifyTypeListeners(type, id, null as any, 'remove')
@@ -416,146 +429,123 @@ export function update(
   id?: DocumentId
 ): void {
   for (const patch of patches) {
-    const accessPath = convertPathToSignalAccess(patch.path)
-
     switch (patch.op) {
       case '$set': {
-        if (!accessPath) {
-          // Setting root
-          signal.value = patch.value
-        } else if (accessPath.includes('.')) {
-          // Nested path
-          const pathParts = accessPath.split('.')
-          let current = signal
-
-          // Navigate to parent
-          for (let i = 0; i < pathParts.length - 1; i++) {
-            current = current[pathParts[i]!]
-            if (!current) break
-          }
-
-          if (current) {
-            const lastPart = pathParts[pathParts.length - 1]!
-            current[lastPart] = patch.value
-          }
-        } else {
-          // Direct property
-          signal[accessPath] = patch.value
-        }
+        // Use direct mutation as recommended by alien-deepsignals
+        setValueAtPath(signal, patch.path, patch.value)
         break
       }
 
       case '$unset': {
-        if (!accessPath) {
-          signal.value = null
-        } else if (accessPath.includes('.')) {
-          // Nested path
-          const pathParts = accessPath.split('.')
-          let current = signal
-
-          // Navigate to parent
-          for (let i = 0; i < pathParts.length - 1; i++) {
-            current = current[pathParts[i]!]
-            if (!current) break
-          }
-
-          if (current) {
-            const lastPart = pathParts[pathParts.length - 1]!
-            delete current[lastPart]
-          }
-        } else {
-          // Direct property
-          delete signal[accessPath]
-        }
+        deleteValueAtPath(signal, patch.path)
         break
       }
 
       case '$push': {
-        if (accessPath) {
-          // Navigate to the array property
-          let current = signal
-          const pathParts = accessPath.split('.')
-
-          for (const part of pathParts) {
-            const key = part.startsWith('$') ? part.substring(1) : part
-            current = current[key]
-            if (!current) break
-          }
-
-          if (pathParts.length === 1) {
-            // Direct property like 'todos'
-            const key = pathParts[0]?.startsWith('$')
-              ? pathParts[0].substring(1)
-              : pathParts[0]
-            const arraySignal = signal[`$${key}`]
-            if (arraySignal && Array.isArray(arraySignal.value)) {
-              arraySignal.value.push(patch.value)
-            }
-          }
-        } else {
-          // Direct array on root - not supported for alien-deepsignals
-          // Use property-based access instead
+        const arrayRef = getValueAtPath(signal, patch.path)
+        if (Array.isArray(arrayRef)) {
+          arrayRef.push(patch.value)
         }
         break
       }
 
       case '$pull': {
-        if (accessPath) {
-          // Navigate to the array property
-          let current = signal
-          const pathParts = accessPath.split('.')
-
-          for (const part of pathParts) {
-            const key = part.startsWith('$') ? part.substring(1) : part
-            current = current[key]
-            if (!current) break
-          }
-
-          if (pathParts.length === 1) {
-            // Direct property like 'todos'
-            const key = pathParts[0]?.startsWith('$')
-              ? pathParts[0].substring(1)
-              : pathParts[0]
-            const arraySignal = signal[`$${key}`]
-            if (arraySignal && Array.isArray(arraySignal.value)) {
-              const currentArray = arraySignal.value
-              for (let i = currentArray.length - 1; i >= 0; i--) {
-                const item = currentArray[i]
-                let shouldRemove = false
-                if (
-                  typeof item === 'object' &&
-                  typeof patch.value === 'object'
-                ) {
-                  if (item.id && patch.value.id) {
-                    shouldRemove = item.id === patch.value.id
-                  } else {
-                    shouldRemove =
-                      JSON.stringify(item) === JSON.stringify(patch.value)
-                  }
-                } else {
-                  shouldRemove = item === patch.value
-                }
-                if (shouldRemove) {
-                  currentArray.splice(i, 1)
-                }
+        const arrayRef = getValueAtPath(signal, patch.path)
+        if (Array.isArray(arrayRef)) {
+          for (let i = arrayRef.length - 1; i >= 0; i--) {
+            const item = arrayRef[i]
+            let shouldRemove = false
+            if (typeof item === 'object' && typeof patch.value === 'object') {
+              if (item.id && patch.value.id) {
+                shouldRemove = item.id === patch.value.id
+              } else {
+                shouldRemove =
+                  JSON.stringify(item) === JSON.stringify(patch.value)
               }
+            } else {
+              shouldRemove = item === patch.value
+            }
+            if (shouldRemove) {
+              arrayRef.splice(i, 1)
             }
           }
-        } else {
-          // Direct array on root - not supported for alien-deepsignals
-          // Use property-based access instead
         }
         break
       }
     }
   }
 
-  // Sync signal changes back to the document store
+  // Sync signal changes back to the document store and trigger callbacks
   if (store && type && id) {
     const key = store['getKey'](type, id)
     const currentDoc = { ...signal }
     // Remove alien-deepsignals internal properties
     delete currentDoc._isEmpty
     store['documents'].set(key, currentDoc)
+
+    // Trigger the DocumentSignal callbacks by setting the signal value
+    const docSignal = store.getDocumentSignal(type, id)
+    docSignal.value = currentDoc
   }
+}
+
+function setValueAtPath(obj: any, path: string, value: any): void {
+  if (!path) {
+    // Cannot set root - alien-deepsignals doesn't support this
+    return
+  }
+
+  const pathParts = path.split('.')
+  let current = obj
+
+  // Navigate to parent
+  for (let i = 0; i < pathParts.length - 1; i++) {
+    const part = pathParts[i]!
+    if (!(part in current)) {
+      current[part] = {}
+    }
+    current = current[part]
+  }
+
+  // Set the final value
+  const lastPart = pathParts[pathParts.length - 1]!
+  current[lastPart] = value
+}
+
+function deleteValueAtPath(obj: any, path: string): void {
+  if (!path) {
+    return
+  }
+
+  const pathParts = path.split('.')
+  let current = obj
+
+  // Navigate to parent
+  for (let i = 0; i < pathParts.length - 1; i++) {
+    const part = pathParts[i]!
+    current = current[part]
+    if (!current) return
+  }
+
+  // Delete the final property
+  const lastPart = pathParts[pathParts.length - 1]!
+  delete current[lastPart]
+}
+
+function getValueAtPath(obj: any, path: string): any {
+  if (!path) {
+    return obj
+  }
+
+  const pathParts = path.split('.')
+  let current = obj
+
+  for (const part of pathParts) {
+    current = current[part]
+    if (current === undefined || current === null) {
+      return undefined
+    }
+  }
+
+  return current
 }

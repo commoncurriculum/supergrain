@@ -108,9 +108,13 @@ describe('DocumentStore - Type Safety & Deep Tracking', () => {
 
       // Update deeply nested field
       const deepSignal = store.getDeepSignal('user', 'user1')
-      update(deepSignal, [
-        { op: '$set', path: 'profile.settings.theme', value: 'dark' },
-      ])
+      update(
+        deepSignal,
+        [{ op: '$set', path: 'profile.settings.theme', value: 'dark' }],
+        store,
+        'user',
+        'user1'
+      )
 
       expect(signal.value?.profile.settings.theme).toBe('dark')
       expect(mockCallback).toHaveBeenCalled()
@@ -139,13 +143,19 @@ describe('DocumentStore - Type Safety & Deep Tracking', () => {
 
       // Update nested notification setting
       const deepSignal = store.getDeepSignal('user', 'user1')
-      update(deepSignal, [
-        {
-          op: '$set',
-          path: 'profile.settings.notifications.push',
-          value: true,
-        },
-      ])
+      update(
+        deepSignal,
+        [
+          {
+            op: '$set',
+            path: 'profile.settings.notifications.push',
+            value: true,
+          },
+        ],
+        store,
+        'user',
+        'user1'
+      )
 
       expect(signal.value?.profile.settings.notifications.push).toBe(true)
       expect(signal.value?.profile.settings.notifications.email).toBe(true) // Should remain unchanged
@@ -174,13 +184,19 @@ describe('DocumentStore - Type Safety & Deep Tracking', () => {
 
       // Update array field
       const deepSignal = store.getDeepSignal('user', 'user1')
-      update(deepSignal, [
-        {
-          op: '$set',
-          path: 'tags',
-          value: ['developer', 'typescript', 'react'],
-        },
-      ])
+      update(
+        deepSignal,
+        [
+          {
+            op: '$set',
+            path: 'tags',
+            value: ['developer', 'typescript', 'react'],
+          },
+        ],
+        store,
+        'user',
+        'user1'
+      )
 
       expect(signal.value?.tags).toEqual(['developer', 'typescript', 'react'])
     })
@@ -208,9 +224,13 @@ describe('DocumentStore - Type Safety & Deep Tracking', () => {
 
       // Update bio field
       const deepSignal = store.getDeepSignal('user', 'user1')
-      update(deepSignal, [
-        { op: '$set', path: 'profile.bio', value: 'Updated bio text' },
-      ])
+      update(
+        deepSignal,
+        [{ op: '$set', path: 'profile.bio', value: 'Updated bio text' }],
+        store,
+        'user',
+        'user1'
+      )
 
       expect(signal.value?.profile.bio).toBe('Updated bio text')
     })
@@ -241,22 +261,40 @@ describe('DocumentStore - Type Safety & Deep Tracking', () => {
 
       // Multiple nested updates should all trigger signals
       const deepSignal = store.getDeepSignal('user', 'user1')
-      update(deepSignal, [{ op: '$set', path: 'name', value: 'Jane Doe' }])
-      update(deepSignal, [
-        { op: '$set', path: 'profile.settings.theme', value: 'dark' },
-      ])
-      update(deepSignal, [
-        {
-          op: '$set',
-          path: 'profile.settings.notifications.email',
-          value: false,
-        },
-      ])
+      update(
+        deepSignal,
+        [{ op: '$set', path: 'name', value: 'Jane Doe' }],
+        store,
+        'user',
+        'user1'
+      )
+
+      update(
+        deepSignal,
+        [{ op: '$set', path: 'profile.settings.theme', value: 'dark' }],
+        store,
+        'user',
+        'user1'
+      )
+
+      update(
+        deepSignal,
+        [
+          {
+            op: '$set',
+            path: 'profile.settings.notifications.email',
+            value: false,
+          },
+        ],
+        store,
+        'user',
+        'user1'
+      )
 
       expect(signal.value?.name).toBe('Jane Doe')
       expect(signal.value?.profile.settings.theme).toBe('dark')
       expect(signal.value?.profile.settings.notifications.email).toBe(false)
-      expect(mockCallback).toHaveBeenCalledTimes(4)
+      expect(mockCallback).toHaveBeenCalledTimes(3)
     })
   })
 })
