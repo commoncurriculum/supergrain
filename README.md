@@ -513,7 +513,9 @@ const { data: user, isLoading, error } = useDocument<User>('user', props.userId)
 
 1. **RED Commit**: `test: add failing tests for [feature name]`
    - Write comprehensive failing tests that describe the desired behavior
-   - Tests should fail with clear error messages
+   - **IMPORTANT**: Tests must fail because the functionality doesn't work, NOT because imports are missing
+   - Provide minimal stub implementations (empty classes, functions that throw NotImplementedError, etc.) to make imports work
+   - Tests should fail with clear error messages about missing behavior
    - CI should fail on this commit
    - Commit message format: `test: add failing tests for [feature]`
 
