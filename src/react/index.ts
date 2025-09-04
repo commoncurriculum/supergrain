@@ -36,10 +36,13 @@ export function useDocuments<T extends Document>(
   type: string,
   ids: string[]
 ): (T | null)[] {
+  // Create stable reference for ids array
+  const stableIds = useMemo(() => ids, [JSON.stringify(ids)])
+
   // Get all signals - use useMemo to ensure stable references
   const signals = useMemo(() => {
-    return ids.map(id => store.getDocumentSignal<T>(type, id))
-  }, [store, type, ids])
+    return stableIds.map(id => store.getDocumentSignal<T>(type, id))
+  }, [store, type, stableIds])
 
   // Use useSyncExternalStore to subscribe to all signals
   const documents = useSyncExternalStore(

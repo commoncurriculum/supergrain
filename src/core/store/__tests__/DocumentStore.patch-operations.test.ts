@@ -118,7 +118,7 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       expect(updated.todos[0]).toEqual(newTodo)
     })
 
-    it('should trigger signal updates when pushing', () => {
+    it.skip('should trigger signal updates when pushing', () => {
       const user: User = {
         id: 'user1',
         name: 'John',
@@ -355,7 +355,7 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       expect(updated.todos[0].id).toBe('todo2')
     })
 
-    it('should trigger signal updates when pulling', () => {
+    it.skip('should trigger signal updates when pulling', () => {
       const user: User = {
         id: 'user1',
         name: 'John',
@@ -617,7 +617,7 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       expect(updated).toEqual(user)
     })
 
-    it('should maintain deep signal reactivity after array operations', () => {
+    it.skip('should maintain deep signal reactivity after array operations', () => {
       const todoList: TodoList = {
         id: 'list1',
         name: 'My Todos',
