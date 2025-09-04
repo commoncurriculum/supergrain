@@ -1,12 +1,8 @@
 import { DocumentStore } from '../core/store'
-import { onUnmounted, ref, watch, unref } from 'vue'
+import { onUnmounted, ref } from 'vue'
+import { effect } from 'alien-deepsignals'
 import type { Ref } from 'vue'
 import type { Document } from '../core/types'
-
-interface DocumentSignal<T> {
-  value: T | null
-  subscribe: (callback: (value: T | null) => void) => () => void
-}
 
 export function useDocument<T extends Document>(
   store: DocumentStore,
@@ -16,20 +12,18 @@ export function useDocument<T extends Document>(
   // Create a Vue ref that will hold the document value
   const documentRef = ref(null as T | null)
 
-  // Get the signal from store
-  const signal: DocumentSignal<T> = store.getDocumentSignal<T>(type, id)
+  // Get the deep signal directly from store
+  const deepSignal = store.getDeepSignal(type, id)
 
-  // Set initial value
-  documentRef.value = signal.value
-
-  // Subscribe to signal changes
-  const unsubscribe = signal.subscribe((newValue: T | null) => {
-    documentRef.value = newValue
+  // Use alien-signals effect to track changes
+  const effectObj = effect(() => {
+    const currentValue = deepSignal._isEmpty ? null : deepSignal
+    documentRef.value = currentValue
   })
 
-  // Clean up subscription when component unmounts
+  // Clean up effect when component unmounts
   onUnmounted(() => {
-    unsubscribe()
+    effectObj.stop()
   })
 
   return documentRef as Ref<T | null>
@@ -43,46 +37,18 @@ export function useDocuments<T extends Document>(
   // Create a Vue ref that will hold the array of documents
   const documentsRef = ref([] as (T | null)[])
 
-  // Track current subscriptions
-  let currentUnsubscribes: (() => void)[] = []
+  // Get all deep signals directly
+  const deepSignals = ids.map(id => store.getDeepSignal(type, id))
 
-  const updateSubscriptions = (newIds: string[]) => {
-    // Clean up previous subscriptions
-    currentUnsubscribes.forEach(unsub => unsub())
-    currentUnsubscribes = []
+  // Use alien-signals effect to track changes to any document
+  const effectObj = effect(() => {
+    const currentDocs = deepSignals.map(sig => (sig._isEmpty ? null : sig))
+    documentsRef.value = currentDocs
+  })
 
-    // Get all signals and initial values
-    const signals = newIds.map(id => store.getDocumentSignal<T>(type, id))
-    const initialValues = signals.map(signal => signal.value)
-    documentsRef.value = initialValues
-
-    // Set up new subscriptions
-    signals.forEach((signal, index) => {
-      const unsubscribe = signal.subscribe((newValue: T | null) => {
-        const newDocs = [...documentsRef.value]
-        newDocs[index] = newValue as any
-        documentsRef.value = newDocs
-      })
-      currentUnsubscribes.push(unsubscribe)
-    })
-  }
-
-  // Set up initial subscriptions
-  updateSubscriptions(unref(ids))
-
-  // Watch for changes to ids array and update subscriptions
-  // Use unref to handle both reactive and non-reactive values
-  watch(
-    () => unref(ids),
-    newIds => {
-      updateSubscriptions(newIds)
-    },
-    { deep: true, immediate: false }
-  )
-
-  // Clean up all subscriptions when component unmounts
+  // Clean up effect when component unmounts
   onUnmounted(() => {
-    currentUnsubscribes.forEach(unsub => unsub())
+    effectObj.stop()
   })
 
   return documentsRef as Ref<(T | null)[]>

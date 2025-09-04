@@ -1,4 +1,5 @@
-import { useSyncExternalStore, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
+import { effect } from 'alien-deepsignals'
 import { DocumentStore } from '../core/store'
 import type { Document } from '../core/types'
 
@@ -7,26 +8,25 @@ export function useDocument<T extends Document>(
   type: string,
   id: string
 ): T | null {
-  // Get the document signal from store - use useMemo to ensure this only happens once per key
-  const signal = useMemo(() => {
-    return store.getDocumentSignal<T>(type, id)
+  // Get the deep signal directly from store
+  const deepSignal = useMemo(() => {
+    return store.getDeepSignal(type, id)
   }, [store, type, id])
 
-  // Use useSyncExternalStore to properly subscribe to the document signal
-  const value = useSyncExternalStore(
-    // Subscribe function
-    (callback: () => void) => {
-      return signal.subscribe(callback)
-    },
-    // Get snapshot function
-    () => {
-      return signal.value
-    },
-    // Get server snapshot function (for SSR)
-    () => {
-      return signal.value
-    }
+  // Use useState for the current value
+  const [value, setValue] = useState<T | null>(() =>
+    deepSignal._isEmpty ? null : deepSignal
   )
+
+  useEffect(() => {
+    // Use alien-signals effect to track changes
+    const effectObj = effect(() => {
+      const currentValue = deepSignal._isEmpty ? null : deepSignal
+      setValue(currentValue)
+    })
+
+    return () => effectObj.stop()
+  }, [deepSignal])
 
   return value
 }
@@ -39,31 +39,25 @@ export function useDocuments<T extends Document>(
   // Create stable reference for ids array
   const stableIds = useMemo(() => ids, [JSON.stringify(ids)])
 
-  // Get all signals - use useMemo to ensure stable references
-  const signals = useMemo(() => {
-    return stableIds.map(id => store.getDocumentSignal<T>(type, id))
+  // Get all deep signals directly
+  const deepSignals = useMemo(() => {
+    return stableIds.map(id => store.getDeepSignal(type, id))
   }, [store, type, stableIds])
 
-  // Use useSyncExternalStore to subscribe to all signals
-  const documents = useSyncExternalStore(
-    // Subscribe function
-    (callback: () => void) => {
-      const unsubscribes = signals.map(signal => signal.subscribe(callback))
+  // Use useState for the current documents array
+  const [documents, setDocuments] = useState<(T | null)[]>(() => {
+    return deepSignals.map(sig => (sig._isEmpty ? null : sig))
+  })
 
-      // Return unsubscribe function
-      return () => {
-        unsubscribes.forEach(unsub => unsub())
-      }
-    },
-    // Get snapshot function
-    () => {
-      return signals.map(signal => signal.value)
-    },
-    // Get server snapshot function (for SSR)
-    () => {
-      return signals.map(signal => signal.value)
-    }
-  )
+  useEffect(() => {
+    // Use alien-signals effect to track changes to any document
+    const effectObj = effect(() => {
+      const currentDocs = deepSignals.map(sig => (sig._isEmpty ? null : sig))
+      setDocuments(currentDocs)
+    })
+
+    return () => effectObj.stop()
+  }, [deepSignals])
 
   return documents
 }

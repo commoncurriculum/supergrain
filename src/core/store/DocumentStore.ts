@@ -1,5 +1,5 @@
 import type { Document, DocumentType, DocumentId, DocumentKey } from '../types'
-import { deepSignal, watch } from 'alien-deepsignals'
+import { deepSignal } from 'alien-deepsignals'
 
 type PatchOperation = '$set' | '$unset' | '$push' | '$pull'
 
@@ -97,24 +97,6 @@ export class DocumentStore {
     return this.signals.size
   }
 
-  // Minimal compatibility layer for React/Vue hooks using alien-signals directly
-  getDocumentSignal<T extends Document>(
-    type: DocumentType,
-    id: DocumentId
-  ): { value: T | null; subscribe: (callback: () => void) => () => void } {
-    const deepSig = this.getDeepSignal(type, id)
-
-    return {
-      get value(): T | null {
-        return deepSig._isEmpty ? null : deepSig
-      },
-      subscribe(callback: () => void) {
-        // Use alien-deepsignals watch function
-        return watch(deepSig, callback)
-      },
-    }
-  }
-
   getMemoryMetrics(): MemoryMetrics {
     return {
       documentCount: this.documents.size,
@@ -179,6 +161,13 @@ export function update(
       }
     }
   }
+
+  // Sync changes back to documents map
+  const key = store.getKey(type, id)
+  const currentDoc = { ...signal }
+  // Remove alien-deepsignals internal properties
+  delete currentDoc._isEmpty
+  store.documents.set(key, currentDoc)
 }
 
 function setValueAtPath(obj: any, path: string, value: any): void {
