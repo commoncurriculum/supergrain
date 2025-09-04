@@ -79,7 +79,7 @@ function convertPathToSignalAccess(path: string): string {
 
   const parts = path.split('.')
   if (parts.length === 1) {
-    return parts[0]!
+    return '$' + parts[0]!
   }
 
   // Convert nested paths: "nested.deep" -> "$nested.value.deep"
@@ -408,7 +408,13 @@ export class DocumentStore {
   }
 }
 
-export function update(signal: any, patches: Patch[]): void {
+export function update(
+  signal: any,
+  patches: Patch[],
+  store?: DocumentStore,
+  type?: DocumentType,
+  id?: DocumentId
+): void {
   for (const patch of patches) {
     const accessPath = convertPathToSignalAccess(patch.path)
 
@@ -465,60 +471,81 @@ export function update(signal: any, patches: Patch[]): void {
       }
 
       case '$push': {
-        if (accessPath.includes('.')) {
-          // Nested array
-          const pathParts = accessPath.split('.')
+        if (accessPath) {
+          // Navigate to the array property
           let current = signal
+          const pathParts = accessPath.split('.')
 
-          // Navigate to array
           for (const part of pathParts) {
-            current = current[part]
+            const key = part.startsWith('$') ? part.substring(1) : part
+            current = current[key]
             if (!current) break
           }
 
-          if (Array.isArray(current.value)) {
-            current.value.push(patch.value)
+          if (pathParts.length === 1) {
+            // Direct property like 'todos'
+            const key = pathParts[0]?.startsWith('$')
+              ? pathParts[0].substring(1)
+              : pathParts[0]
+            if (key && Array.isArray(signal[key])) {
+              signal[key] = [...signal[key], patch.value]
+            }
           }
         } else {
-          // Direct array property
-          const arraySignal = signal['$' + accessPath]
-          if (arraySignal && Array.isArray(arraySignal.value)) {
-            arraySignal.value.push(patch.value)
-          }
+          // Direct array on root - not supported for alien-deepsignals
+          // Use property-based access instead
         }
         break
       }
 
       case '$pull': {
-        if (accessPath.includes('.')) {
-          // Nested array
-          const pathParts = accessPath.split('.')
+        if (accessPath) {
+          // Navigate to the array property
           let current = signal
+          const pathParts = accessPath.split('.')
 
-          // Navigate to array
           for (const part of pathParts) {
-            current = current[part]
+            const key = part.startsWith('$') ? part.substring(1) : part
+            current = current[key]
             if (!current) break
           }
 
-          if (Array.isArray(current.value)) {
-            const index = current.value.indexOf(patch.value)
-            if (index > -1) {
-              current.value.splice(index, 1)
+          if (pathParts.length === 1) {
+            // Direct property like 'todos'
+            const key = pathParts[0]?.startsWith('$')
+              ? pathParts[0].substring(1)
+              : pathParts[0]
+            if (key && Array.isArray(signal[key])) {
+              const newArray = signal[key].filter(item => {
+                if (
+                  typeof item === 'object' &&
+                  typeof patch.value === 'object'
+                ) {
+                  if (item.id && patch.value.id) {
+                    return item.id !== patch.value.id
+                  }
+                  return JSON.stringify(item) !== JSON.stringify(patch.value)
+                }
+                return item !== patch.value
+              })
+              signal[key] = newArray
             }
           }
         } else {
-          // Direct array property
-          const arraySignal = signal['$' + accessPath]
-          if (arraySignal && Array.isArray(arraySignal.value)) {
-            const index = arraySignal.value.indexOf(patch.value)
-            if (index > -1) {
-              arraySignal.value.splice(index, 1)
-            }
-          }
+          // Direct array on root - not supported for alien-deepsignals
+          // Use property-based access instead
         }
         break
       }
     }
+  }
+
+  // Sync signal changes back to the document store
+  if (store && type && id) {
+    const key = store['getKey'](type, id)
+    const currentDoc = { ...signal }
+    // Remove alien-deepsignals internal properties
+    delete currentDoc._isEmpty
+    store['documents'].set(key, currentDoc)
   }
 }
