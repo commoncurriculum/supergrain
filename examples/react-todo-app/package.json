@@ -11,8 +11,6 @@
   },
   "dependencies": {
     "@commoncurriculum/storable": "workspace:*",
-    "@preact/signals-core": "^1.5.0",
-    "@preact/signals-react": "^3.3.0",
     "@tailwindcss/postcss": "^4.1.12",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

@@ -1,4 +1,5 @@
 import type { Document, DocumentType, DocumentId, DocumentKey } from '../types'
+import { deepSignal } from 'alien-deepsignals'
 
 function setNestedValue(obj: any, path: string, value: any): any {
   const keys = path.split('.').filter(Boolean)
@@ -89,7 +90,7 @@ class SubscriptionScope {
 
 export class DocumentStore {
   private documents = new Map<DocumentKey, Document>()
-  private signals = new Map<DocumentKey, DocumentSignal<Document>>()
+  private signals = new Map<DocumentKey, any>()
   private subscriberCounts = new Map<DocumentKey, number>()
   private typeListeners = new Map<
     DocumentType,
@@ -109,9 +110,9 @@ export class DocumentStore {
     this.documents.set(key, document)
 
     // Update signal if it exists
-    const documentSignal = this.signals.get(key)
-    if (documentSignal) {
-      documentSignal.value = document
+    const signal = this.signals.get(key)
+    if (signal) {
+      signal.value = document
     }
 
     // Notify type listeners
@@ -127,54 +128,93 @@ export class DocumentStore {
     return document ? (document as T) : null
   }
 
+  updateDocument<T extends Document>(
+    type: DocumentType,
+    id: DocumentId,
+    updater: (document: T) => T
+  ): void {
+    const key = this.getKey(type, id)
+    const currentDocument = this.documents.get(key) as T
+
+    if (currentDocument) {
+      const updatedDocument = updater(currentDocument)
+      this.documents.set(key, updatedDocument)
+
+      // Update signal if it exists
+      const signal = this.signals.get(key)
+      if (signal) {
+        signal.value = updatedDocument
+      }
+
+      // Notify type listeners
+      this.notifyTypeListeners(type, id, updatedDocument, 'update')
+    }
+  }
+
+  // Get the deep signal directly for atomic updates with alien-deepsignals
+  getDeepSignal<T extends Document>(type: DocumentType, id: DocumentId): any {
+    const key = this.getKey(type, id)
+
+    if (!this.signals.has(key)) {
+      const existingDocument = this.documents.get(key)
+      const initialValue = existingDocument ? (existingDocument as T) : null
+
+      // Create a deep signal using alien-deepsignals
+      const deepSig = deepSignal(initialValue as any)
+      this.signals.set(key, deepSig)
+      this.subscriberCounts.set(key, 0)
+
+      return deepSig
+    }
+
+    return this.signals.get(key)!
+  }
+
   getDocumentSignal<T extends Document>(
     type: DocumentType,
     id: DocumentId
   ): DocumentSignal<T> {
     const key = this.getKey(type, id)
+    const deepSig = this.getDeepSignal<T>(type, id)
 
-    if (!this.signals.has(key)) {
-      const existingDocument = this.documents.get(key)
+    const callbacks = new Set<(value: T | null) => void>()
+    const self = this
 
-      // Create a simple reactive wrapper that mimics the old signal behavior
-      let currentValue: T | null = existingDocument
-        ? (existingDocument as T)
-        : null
-      const callbacks = new Set<(value: T | null) => void>()
+    return {
+      get value() {
+        return deepSig.value
+      },
+      set value(newValue: T | null) {
+        const oldValue = deepSig.value
+        deepSig.value = newValue
 
-      // Create a DocumentSignal compatible object
-      const documentSignal: DocumentSignal<T> = {
-        get value() {
-          return currentValue
-        },
-        set value(newValue: T | null) {
-          if (currentValue !== newValue) {
-            currentValue = newValue
-            // Notify all subscribers
-            callbacks.forEach(callback => callback(currentValue))
-          }
-        },
-        subscribe: (callback: (value: T | null) => void) => {
-          callbacks.add(callback)
+        // Update documents map
+        if (newValue) {
+          self.documents.set(key, newValue)
+        } else {
+          self.documents.delete(key)
+        }
 
-          // Increment subscriber count
-          const currentCount = this.subscriberCounts.get(key) || 0
-          this.subscriberCounts.set(key, currentCount + 1)
+        // Manually trigger callbacks for compatibility
+        if (oldValue !== newValue) {
+          callbacks.forEach(callback => callback(newValue))
+        }
+      },
+      subscribe: (callback: (value: T | null) => void) => {
+        callbacks.add(callback)
 
-          // Return unsubscribe function
-          return () => {
-            callbacks.delete(callback)
-            const count = this.subscriberCounts.get(key) || 0
-            this.subscriberCounts.set(key, Math.max(0, count - 1))
-          }
-        },
-      }
+        // Increment subscriber count
+        const currentCount = self.subscriberCounts.get(key) || 0
+        self.subscriberCounts.set(key, currentCount + 1)
 
-      this.signals.set(key, documentSignal)
-      this.subscriberCounts.set(key, 0)
+        // Return unsubscribe function
+        return () => {
+          callbacks.delete(callback)
+          const count = self.subscriberCounts.get(key) || 0
+          self.subscriberCounts.set(key, Math.max(0, count - 1))
+        }
+      },
     }
-
-    return this.signals.get(key)! as DocumentSignal<T>
   }
 
   updateField<T extends Document>(
@@ -191,9 +231,9 @@ export class DocumentStore {
       this.documents.set(key, updatedDocument)
 
       // Update signal if it exists
-      const documentSignal = this.signals.get(key)
-      if (documentSignal) {
-        documentSignal.value = updatedDocument
+      const signal = this.signals.get(key)
+      if (signal) {
+        signal.value = updatedDocument
       }
     }
   }
@@ -211,6 +251,9 @@ export class DocumentStore {
       this.signals.delete(key)
       this.subscriberCounts.delete(key)
     }
+
+    // Notify type listeners
+    this.notifyTypeListeners(type, id, null as any, 'remove')
   }
 
   cleanup(): void {
