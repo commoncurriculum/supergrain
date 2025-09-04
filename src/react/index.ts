@@ -19,3 +19,11 @@ export function useDocument<T>(
 
   return value.value as T | null
 }
+
+export function useDocuments<T>(
+  store: DocumentStore,
+  type: string,
+  ids: string[]
+): (T | null)[] {
+  throw new Error('Not implemented')
+}

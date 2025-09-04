@@ -1,5 +1,5 @@
 import { DocumentStore } from '../../core/store'
-import { useDocument } from '../'
+import { useDocument, useDocuments } from '../'
 import { renderHook, act } from '@testing-library/react'
 
 describe('useDocument', () => {
@@ -7,5 +7,13 @@ describe('useDocument', () => {
     const store = new DocumentStore()
     const { result } = renderHook(() => useDocument(store, 'user', '1'))
     expect(result.current).toBeNull()
+  })
+})
+
+describe('useDocuments', () => {
+  it('should return an array of nulls for documents that do not exist', () => {
+    const store = new DocumentStore()
+    const { result } = renderHook(() => useDocuments(store, 'user', ['1', '2']))
+    expect(result.current).toEqual([null, null])
   })
 })
