@@ -4,6 +4,8 @@ This document outlines the plan for migrating the sophisticated Ember data synch
 
 ## Progress Tracking
 
+**Instructions:** Check off each checkbox `[ ]` → `[x]` as you complete each feature's 2-commit TDD cycle.
+
 ### Phase 1: Read-Only Data Fetching with Signals
 
 - [x] **1.1 TypeScript Library Setup** - Complete ✅
@@ -97,28 +99,28 @@ This phase focuses SOLELY on fetching data from APIs and making it available to 
 
 **Feature 1: Basic Document Storage**
 
-- RED: Write tests for document storage and retrieval by type and ID
-- GREEN: Implement `DocumentStore` class with basic storage
+- [ ] RED: Write tests for document storage and retrieval by type and ID
+- [ ] GREEN: Implement `DocumentStore` class with basic storage
 
 **Feature 2: Signal Integration**
 
-- RED: Write tests for signal creation and updates when documents change
-- GREEN: Implement signal-based reactive document storage
+- [ ] RED: Write tests for signal creation and updates when documents change
+- [ ] GREEN: Implement signal-based reactive document storage
 
 **Feature 3: Type Safety**
 
-- RED: Write tests for type-safe document access with TypeScript generics
-- GREEN: Implement type-safe storage: `store[type][id]` with signal values
+- [ ] RED: Write tests for type-safe document access with TypeScript generics
+- [ ] GREEN: Implement type-safe storage: `store[type][id]` with signal values
 
 **Feature 4: Memory Management**
 
-- RED: Write tests for memory management and cleanup of unused signals
-- GREEN: Implement cache management and automatic signal cleanup
+- [ ] RED: Write tests for memory management and cleanup of unused signals
+- [ ] GREEN: Implement cache management and automatic signal cleanup
 
 **Feature 5: Signal Utilities**
 
-- RED: Write tests for signal subscription and cleanup utilities
-- GREEN: Implement signal subscription and cleanup utilities
+- [ ] RED: Write tests for signal subscription and cleanup utilities
+- [ ] GREEN: Implement signal subscription and cleanup utilities
 
 **Key Features:**
 
@@ -133,28 +135,28 @@ This phase focuses SOLELY on fetching data from APIs and making it available to 
 
 **Feature 1: Basic HTTP Client**
 
-- RED: Write tests for GET requests with proper serialization
-- GREEN: Implement `HttpClient` class with configurable base URL
+- [ ] RED: Write tests for GET requests with proper serialization
+- [ ] GREEN: Implement `HttpClient` class with configurable base URL
 
 **Feature 2: Error Handling**
 
-- RED: Write tests for error handling with user-friendly messages
-- GREEN: Implement error classification and handling
+- [ ] RED: Write tests for error handling with user-friendly messages
+- [ ] GREEN: Implement error classification and handling
 
 **Feature 3: Retry Logic**
 
-- RED: Write tests for request timeout and retry logic
-- GREEN: Implement retry logic with exponential backoff
+- [ ] RED: Write tests for request timeout and retry logic
+- [ ] GREEN: Implement retry logic with exponential backoff
 
 **Feature 4: Response Caching**
 
-- RED: Write tests for response caching strategies
-- GREEN: Implement response caching with TTL
+- [ ] RED: Write tests for response caching strategies
+- [ ] GREEN: Implement response caching with TTL
 
 **Feature 5: Request Interceptors**
 
-- RED: Write tests for network failure scenarios and interceptors
-- GREEN: Implement request/response interceptors
+- [ ] RED: Write tests for network failure scenarios and interceptors
+- [ ] GREEN: Implement request/response interceptors
 
 ### 1.4 Finder Service (Test-Then-Implement)
 
@@ -162,28 +164,28 @@ This phase focuses SOLELY on fetching data from APIs and making it available to 
 
 **Feature 1: Single Document Fetching**
 
-- RED: Write tests for single document fetching from API
-- GREEN: Implement `FinderService` that fetches documents from API
+- [ ] RED: Write tests for single document fetching from API
+- [ ] GREEN: Implement `FinderService` that fetches documents from API
 
 **Feature 2: Batch Fetching**
 
-- RED: Write tests for batch document fetching with deduplication
-- GREEN: Implement request batching to reduce HTTP calls
+- [ ] RED: Write tests for batch document fetching with deduplication
+- [ ] GREEN: Implement request batching to reduce HTTP calls
 
 **Feature 3: Store Integration**
 
-- RED: Write tests for request queuing and optimization
-- GREEN: Implement integration with DocumentStore to update signals
+- [ ] RED: Write tests for request queuing and optimization
+- [ ] GREEN: Implement integration with DocumentStore to update signals
 
 **Feature 4: Loading States**
 
-- RED: Write tests for loading state management per document type
-- GREEN: Implement loading state signals per document type
+- [ ] RED: Write tests for loading state management per document type
+- [ ] GREEN: Implement loading state signals per document type
 
 **Feature 5: Error Handling**
 
-- RED: Write tests for error handling per document
-- GREEN: Implement error handling with per-document error states
+- [ ] RED: Write tests for error handling per document
+- [ ] GREEN: Implement error handling with per-document error states
 
 **Key Features:**
 
@@ -199,28 +201,28 @@ This phase focuses SOLELY on fetching data from APIs and making it available to 
 
 **Feature 1: Basic useDocument Hook**
 
-- RED: Write tests for `useDocument(type, id)` hook behavior and re-rendering
-- GREEN: Implement `useDocument<T>(type: string, id: string)` hook
+- [ ] RED: Write tests for `useDocument(type, id)` hook behavior and re-rendering
+- [ ] GREEN: Implement `useDocument<T>(type: string, id: string)` hook
 
 **Feature 2: Loading and Error States**
 
-- RED: Write tests for loading state tracking and error state handling
-- GREEN: Implement loading/error state integration with hook
+- [ ] RED: Write tests for loading state tracking and error state handling
+- [ ] GREEN: Implement loading/error state integration with hook
 
 **Feature 3: Multiple Documents Hook**
 
-- RED: Write tests for cleanup on component unmount
-- GREEN: Implement `useDocuments<T>(type: string, ids: string[])` hook
+- [ ] RED: Write tests for cleanup on component unmount
+- [ ] GREEN: Implement `useDocuments<T>(type: string, ids: string[])` hook
 
 **Feature 4: Direct Store Access**
 
-- RED: Write tests for TypeScript integration and type safety
-- GREEN: Implement `useDocumentStore()` for direct store access
+- [ ] RED: Write tests for TypeScript integration and type safety
+- [ ] GREEN: Implement `useDocumentStore()` for direct store access
 
 **Feature 5: Memory Management**
 
-- RED: Write tests for proper cleanup and memory management
-- GREEN: Implement integration with signals for automatic re-rendering and cleanup
+- [ ] RED: Write tests for proper cleanup and memory management
+- [ ] GREEN: Implement integration with signals for automatic re-rendering and cleanup
 
 **Hook Signatures:**
 
@@ -252,28 +254,28 @@ function useDocuments<T>(
 
 **Feature 1: Basic useDocument Composable**
 
-- RED: Write tests for composable reactivity with Vue's reactive system
-- GREEN: Implement `useDocument<T>(type: string, id: string)` composable
+- [ ] RED: Write tests for composable reactivity with Vue's reactive system
+- [ ] GREEN: Implement `useDocument<T>(type: string, id: string)` composable
 
 **Feature 2: Signals Integration**
 
-- RED: Write tests for integration with signals library
-- GREEN: Implement integration between signals and Vue reactivity
+- [ ] RED: Write tests for integration with signals library
+- [ ] GREEN: Implement integration between signals and Vue reactivity
 
 **Feature 3: Multiple Documents Composable**
 
-- RED: Write tests for cleanup on component unmount
-- GREEN: Implement `useDocuments<T>(type: string, ids: string[])` composable
+- [ ] RED: Write tests for cleanup on component unmount
+- [ ] GREEN: Implement `useDocuments<T>(type: string, ids: string[])` composable
 
 **Feature 4: TypeScript Integration**
 
-- RED: Write tests for TypeScript integration and type safety
-- GREEN: Implement proper TypeScript support for composables
+- [ ] RED: Write tests for TypeScript integration and type safety
+- [ ] GREEN: Implement proper TypeScript support for composables
 
 **Feature 5: Performance & Cleanup**
 
-- RED: Write tests for performance with large datasets
-- GREEN: Implement proper cleanup with `onUnmounted` and optimization
+- [ ] RED: Write tests for performance with large datasets
+- [ ] GREEN: Implement proper cleanup with `onUnmounted` and optimization
 
 ### 1.7 Loading States and Error Handling (Test-Then-Implement)
 
@@ -281,28 +283,28 @@ function useDocuments<T>(
 
 **Feature 1: Global Loading States**
 
-- RED: Write tests for global loading states per document type
-- GREEN: Implement loading signals that track fetch operations
+- [ ] RED: Write tests for global loading states per document type
+- [ ] GREEN: Implement loading signals that track fetch operations
 
 **Feature 2: Individual Loading States**
 
-- RED: Write tests for individual document loading states
-- GREEN: Implement per-document loading state tracking
+- [ ] RED: Write tests for individual document loading states
+- [ ] GREEN: Implement per-document loading state tracking
 
 **Feature 3: Error State Management**
 
-- RED: Write tests for error state persistence and clearing
-- GREEN: Implement error signals with structured error information
+- [ ] RED: Write tests for error state persistence and clearing
+- [ ] GREEN: Implement error signals with structured error information
 
 **Feature 4: Loading Transitions**
 
-- RED: Write tests for loading state transitions
-- GREEN: Implement loading state aggregation (e.g., "any loading", "all loading")
+- [ ] RED: Write tests for loading state transitions
+- [ ] GREEN: Implement loading state aggregation (e.g., "any loading", "all loading")
 
 **Feature 5: Concurrent Request Handling**
 
-- RED: Write tests for performance under concurrent requests
-- GREEN: Implement error recovery mechanisms and request deduplication
+- [ ] RED: Write tests for performance under concurrent requests
+- [ ] GREEN: Implement error recovery mechanisms and request deduplication
 
 ## Phase 2: Data Mutations and Optimistic Updates
 
