@@ -1,16 +1,21 @@
 import { DocumentStore } from '../core/store'
-
-export class NotImplementedError extends Error {
-  constructor(message = 'Not implemented') {
-    super(message)
-    this.name = 'NotImplementedError'
-  }
-}
+import { useSignal, useComputed } from '@preact/signals-react'
+import { useEffect } from 'react'
 
 export function useDocument<T>(
   store: DocumentStore,
   type: string,
   id: string
 ): T | null {
-  throw new NotImplementedError()
+  const signal = useComputed(() => store.getDocument<T>(type, id))
+  const value = useSignal(signal.value?.value ?? null)
+
+  useEffect(() => {
+    return signal.value?.subscribe(value => {
+      // @ts-expect-error - value is a signal
+      value.value = value
+    })
+  }, [signal])
+
+  return value.value as T | null
 }
