@@ -6,7 +6,7 @@
     "node": ">=24.0.0"
   },
   "main": "dist/index.js",
-  "module": "dist/index.esm.js",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "files": [
     "dist"
@@ -14,17 +14,17 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.esm.js",
+      "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     },
     "./react": {
       "types": "./dist/react/index.d.ts",
-      "import": "./dist/react/index.esm.js",
+      "import": "./dist/react/index.mjs",
       "require": "./dist/react/index.js"
     },
     "./vue": {
       "types": "./dist/vue/index.d.ts",
-      "import": "./dist/vue/index.esm.js",
+      "import": "./dist/vue/index.mjs",
       "require": "./dist/vue/index.js"
     }
   },
@@ -65,12 +65,13 @@
     }
   },
   "dependencies": {
-    "@preact/signals-core": "^1.5.0",
-    "@preact/signals-react": "^3.3.0"
+    "alien-deepsignals": "^0.1.0"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.0",
     "@types/node": "^24.3.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.2",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vitest/coverage-v8": "^3.2.4",

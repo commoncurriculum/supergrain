@@ -12,7 +12,7 @@ This document outlines the plan for migrating the sophisticated Ember data synch
 - [x] **1.2 Core Store with Signals** - Complete ✅
 - [x] **1.3 Framework Adapters - React** - Complete ✅
 - [x] **1.4 Framework Adapters - Vue** - Complete ✅
-- [ ] **1.5 Example App - React Todo App**
+- [x] **1.5 Example App - React Todo App** - Complete ✅
 - [ ] **1.6 Example App - Vue Todo App**
 - [ ] **1.7 Action System (Local Mutations)**
 - [ ] **1.8 Patch System (Local Mutations)**
@@ -503,6 +503,8 @@ const { data: user, isLoading, error } = useDocument<User>('user', props.userId)
 
 2. **GREEN Commit**: `feat: implement [feature name] to pass tests`
    - Write minimal implementation to make all tests pass
+   - **CRITICAL**: All TypeScript errors must be resolved before committing
+   - Run `npm run typecheck` and ensure it passes with no errors
    - No additional features beyond what tests require
    - **IMPORTANT** Check off the task in README.md BEFORE making the commit
    - CI should pass on this commit

@@ -1,18 +1,23 @@
 import { DocumentStore } from '../core/store'
 import { onUnmounted, ref, watch, unref } from 'vue'
-import type { Signal } from '@preact/signals-core'
 import type { Ref } from 'vue'
+import type { Document } from '../core/types'
 
-export function useDocument<T>(
+interface DocumentSignal<T> {
+  value: T | null
+  subscribe: (callback: (value: T | null) => void) => () => void
+}
+
+export function useDocument<T extends Document>(
   store: DocumentStore,
   type: string,
   id: string
 ): Ref<T | null> {
   // Create a Vue ref that will hold the document value
-  const documentRef = ref<T | null>(null)
+  const documentRef = ref<T | null>(null as T | null)
 
   // Get the signal from store
-  const signal: Signal<T | null> = store.getDocumentSignal<T>(type, id)
+  const signal: DocumentSignal<T> = store.getDocumentSignal<T>(type, id)
 
   // Set initial value
   documentRef.value = signal.value
@@ -30,13 +35,13 @@ export function useDocument<T>(
   return documentRef
 }
 
-export function useDocuments<T>(
+export function useDocuments<T extends Document>(
   store: DocumentStore,
   type: string,
   ids: string[]
 ): Ref<(T | null)[]> {
   // Create a Vue ref that will hold the array of documents
-  const documentsRef = ref<(T | null)[]>([])
+  const documentsRef = ref<(T | null)[]>([] as (T | null)[])
 
   // Track current subscriptions
   let currentUnsubscribes: (() => void)[] = []
@@ -55,7 +60,7 @@ export function useDocuments<T>(
     signals.forEach((signal, index) => {
       const unsubscribe = signal.subscribe((newValue: T | null) => {
         const newDocs = [...documentsRef.value]
-        newDocs[index] = newValue
+        newDocs[index] = newValue as T | null
         documentsRef.value = newDocs
       })
       currentUnsubscribes.push(unsubscribe)

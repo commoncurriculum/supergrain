@@ -1,4 +1,3 @@
-import { signal, type Signal } from '@preact/signals-core'
 import type { Document, DocumentType, DocumentId, DocumentKey } from '../types'
 
 function setNestedValue(obj: any, path: string, value: any): any {
@@ -46,6 +45,11 @@ interface SubscriptionDebugInfo {
   subscriptionsByDocument: Record<string, number>
 }
 
+interface DocumentSignal<T> {
+  value: T | null
+  subscribe: (callback: (value: T | null) => void) => () => void
+}
+
 class SubscriptionManager {
   private unsubscribeFunctions: (() => void)[] = []
 
@@ -85,7 +89,7 @@ class SubscriptionScope {
 
 export class DocumentStore {
   private documents = new Map<DocumentKey, Document>()
-  private signals = new Map<DocumentKey, Signal<Document | null>>()
+  private signals = new Map<DocumentKey, DocumentSignal<Document>>()
   private subscriberCounts = new Map<DocumentKey, number>()
   private typeListeners = new Map<
     DocumentType,
@@ -126,37 +130,51 @@ export class DocumentStore {
   getDocumentSignal<T extends Document>(
     type: DocumentType,
     id: DocumentId
-  ): Signal<T | null> {
+  ): DocumentSignal<T> {
     const key = this.getKey(type, id)
 
     if (!this.signals.has(key)) {
       const existingDocument = this.documents.get(key)
-      const docSignal = signal<T | null>(
-        existingDocument ? (existingDocument as T) : null
-      )
 
-      // Wrap the signal to track subscribers
-      const originalSubscribe = docSignal.subscribe.bind(docSignal)
-      docSignal.subscribe = (fn: (value: T | null) => void) => {
-        // Increment subscriber count
-        const currentCount = this.subscriberCounts.get(key) || 0
-        this.subscriberCounts.set(key, currentCount + 1)
+      // Create a simple reactive wrapper that mimics the old signal behavior
+      let currentValue: T | null = existingDocument
+        ? (existingDocument as T)
+        : null
+      const callbacks = new Set<(value: T | null) => void>()
 
-        const unsubscribe = originalSubscribe(fn)
+      // Create a DocumentSignal compatible object
+      const documentSignal: DocumentSignal<T> = {
+        get value() {
+          return currentValue
+        },
+        set value(newValue: T | null) {
+          if (currentValue !== newValue) {
+            currentValue = newValue
+            // Notify all subscribers
+            callbacks.forEach(callback => callback(currentValue))
+          }
+        },
+        subscribe: (callback: (value: T | null) => void) => {
+          callbacks.add(callback)
 
-        // Return wrapped unsubscribe that decrements count
-        return () => {
-          const count = this.subscriberCounts.get(key) || 0
-          this.subscriberCounts.set(key, Math.max(0, count - 1))
-          unsubscribe()
-        }
+          // Increment subscriber count
+          const currentCount = this.subscriberCounts.get(key) || 0
+          this.subscriberCounts.set(key, currentCount + 1)
+
+          // Return unsubscribe function
+          return () => {
+            callbacks.delete(callback)
+            const count = this.subscriberCounts.get(key) || 0
+            this.subscriberCounts.set(key, Math.max(0, count - 1))
+          }
+        },
       }
 
-      this.signals.set(key, docSignal)
+      this.signals.set(key, documentSignal)
       this.subscriberCounts.set(key, 0)
     }
 
-    return this.signals.get(key)! as Signal<T | null>
+    return this.signals.get(key)! as DocumentSignal<T>
   }
 
   updateField<T extends Document>(

@@ -1,0 +1,28 @@
+{
+  "name": "react-todo-app",
+  "version": "1.0.0",
+  "description": "React Todo App using @commoncurriculum/storable",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@commoncurriculum/storable": "workspace:*",
+    "@preact/signals-core": "^1.5.0",
+    "@preact/signals-react": "^3.3.0",
+    "@tailwindcss/postcss": "^4.1.12",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tailwindcss": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "typescript": "^5.7.2",
+    "vite": "^7.1.4"
+  }
+}

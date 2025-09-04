@@ -1,28 +1,28 @@
+import { useEffect, useState, useMemo } from 'react'
 import { DocumentStore } from '../core/store'
-import { useSignals } from '@preact/signals-react/runtime'
-import { useEffect, useRef, useState } from 'react'
-import type { Signal } from '@preact/signals-core'
+import type { Document } from '../core/types'
 
-export function useDocument<T>(
+interface DocumentSignal<T> {
+  value: T | null
+  subscribe: (callback: (value: T | null) => void) => () => void
+}
+
+export function useDocument<T extends Document>(
   store: DocumentStore,
   type: string,
   id: string
 ): T | null {
-  useSignals()
+  // Get the signal from store - use useMemo to ensure this only happens once per key
+  const signal = useMemo(() => {
+    return store.getDocumentSignal<T>(type, id)
+  }, [store, type, id])
 
-  // Get the signal from store
-  const signalRef = useRef<Signal<T | null>>()
-  const [value, setValue] = useState<T | null>(null)
+  const [value, setValue] = useState<T | null>(() => signal.value)
 
-  if (!signalRef.current) {
-    signalRef.current = store.getDocumentSignal<T>(type, id)
-    setValue(signalRef.current.value)
-  }
-
-  // Subscribe to signal changes and track the subscription
+  // Subscribe to signal changes
   useEffect(() => {
-    const signal = signalRef.current!
-    setValue(signal.value) // Set initial value
+    // Set initial value in case it changed
+    setValue(signal.value)
 
     // Create explicit subscription that will be tracked by DocumentStore
     const unsubscribe = signal.subscribe((newValue: T | null) => {
@@ -30,60 +30,49 @@ export function useDocument<T>(
     })
 
     return unsubscribe
-  }, [type, id, store])
+  }, [signal])
 
   return value
 }
 
-export function useDocuments<T>(
+export function useDocuments<T extends Document>(
   store: DocumentStore,
   type: string,
   ids: string[]
 ): (T | null)[] {
-  useSignals()
+  // Get all signals - use useMemo to ensure stable references
+  const signals = useMemo(() => {
+    return ids.map(id => store.getDocumentSignal<T>(type, id))
+  }, [store, type, ids])
 
-  const [documents, setDocuments] = useState<(T | null)[]>([])
-  const idsStringRef = useRef<string>('')
+  // Initialize state with current signal values
+  const [documents, setDocuments] = useState<(T | null)[]>(() => {
+    return signals.map((signal: DocumentSignal<T>) => signal.value)
+  })
 
-  // Track subscriptions
-  const subscriptionsRef = useRef<(() => void)[]>([])
-
+  // Subscribe to all signals
   useEffect(() => {
-    const idsString = JSON.stringify(ids)
+    // Update with current values
+    setDocuments(signals.map((signal: DocumentSignal<T>) => signal.value))
 
-    // Only update if IDs actually changed
-    if (idsStringRef.current !== idsString) {
-      idsStringRef.current = idsString
-
-      // Clean up previous subscriptions
-      subscriptionsRef.current.forEach(unsub => unsub())
-      subscriptionsRef.current = []
-
-      // Get all signals and initial values
-      const signals = ids.map(id => store.getDocumentSignal<T>(type, id))
-      const initialValues = signals.map(signal => signal.value)
-      setDocuments(initialValues)
-
-      // Set up new subscriptions
-      signals.forEach((signal, index) => {
-        const unsubscribe = signal.subscribe((newValue: T | null) => {
-          setDocuments(prevDocs => {
+    // Set up subscriptions
+    const unsubscribes = signals.map(
+      (signal: DocumentSignal<T>, index: number) => {
+        return signal.subscribe((newValue: T | null) => {
+          setDocuments((prevDocs: (T | null)[]) => {
             const newDocs = [...prevDocs]
             newDocs[index] = newValue
             return newDocs
           })
         })
-        subscriptionsRef.current.push(unsubscribe)
-      })
-    }
-  }, [ids, type, store])
+      }
+    )
 
-  // Cleanup on unmount
-  useEffect(() => {
+    // Cleanup function
     return () => {
-      subscriptionsRef.current.forEach(unsub => unsub())
+      unsubscribes.forEach((unsub: () => void) => unsub())
     }
-  }, [])
+  }, [signals])
 
   return documents
 }
