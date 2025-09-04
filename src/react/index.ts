@@ -29,5 +29,5 @@ export function useDocuments<T>(
 }
 
 export function useDocumentStore(store: DocumentStore): DocumentStore {
-  throw new Error('Not implemented')
+  return store
 }

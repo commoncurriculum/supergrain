@@ -149,7 +149,7 @@ This phase focuses on building a robust, performant, and ergonomic local data st
 **Feature 3: Direct Store Access**
 
 - [x] RED: Write tests for TypeScript integration and type safety
-- [ ] GREEN: Implement `useDocumentStore()` for direct store access
+- [x] GREEN: Implement `useDocumentStore()` for direct store access
 
 **Feature 4: Memory Management**
 
