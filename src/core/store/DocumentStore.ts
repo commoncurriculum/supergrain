@@ -2,19 +2,24 @@ import { signal, type Signal } from '@preact/signals-core'
 import type { Document, DocumentType, DocumentId, DocumentKey } from '../types'
 
 function setNestedValue(obj: any, path: string, value: any): any {
-  const keys = path.split('.')
+  const keys = path.split('.').filter(Boolean)
   const result = structuredClone(obj)
   let current = result
 
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i]
-    if (!(key in current) || typeof current[key] !== 'object') {
+    if (key && (!(key in current) || typeof current[key] !== 'object')) {
       current[key] = {}
     }
-    current = current[key]
+    if (key) {
+      current = current[key]
+    }
   }
 
-  current[keys[keys.length - 1]] = value
+  const lastKey = keys[keys.length - 1]
+  if (lastKey) {
+    current[lastKey] = value
+  }
   return result
 }
 
