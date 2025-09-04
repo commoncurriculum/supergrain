@@ -516,12 +516,14 @@ const { data: user, isLoading, error } = useDocument<User>('user', props.userId)
    - **IMPORTANT**: Tests must fail because the functionality doesn't work, NOT because imports are missing
    - Provide minimal stub implementations (empty classes, functions that throw NotImplementedError, etc.) to make imports work
    - Tests should fail with clear error messages about missing behavior
+   - **IMPORTANT** Check off the task in README.md
    - CI should fail on this commit
    - Commit message format: `test: add failing tests for [feature]`
 
 2. **GREEN Commit**: `feat: implement [feature name] to pass tests`
    - Write minimal implementation to make all tests pass
    - No additional features beyond what tests require
+   - **IMPORTANT** Check off the task in README.md
    - CI should pass on this commit
    - Commit message format: `feat: implement [feature] to pass tests`
 
