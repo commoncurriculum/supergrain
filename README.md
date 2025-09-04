@@ -99,8 +99,8 @@ This phase focuses SOLELY on fetching data from APIs and making it available to 
 
 **Feature 1: Basic Document Storage**
 
-- [ ] RED: Write tests for document storage and retrieval by type and ID
-- [ ] GREEN: Implement `DocumentStore` class with basic storage
+- [x] RED: Write tests for document storage and retrieval by type and ID
+- [x] GREEN: Implement `DocumentStore` class with basic storage
 
 **Feature 2: Signal Integration**
 
