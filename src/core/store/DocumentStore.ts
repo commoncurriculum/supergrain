@@ -487,8 +487,9 @@ export function update(
             const key = pathParts[0]?.startsWith('$')
               ? pathParts[0].substring(1)
               : pathParts[0]
-            if (key && Array.isArray(signal[key])) {
-              signal[key] = [...signal[key], patch.value]
+            const arraySignal = signal[`$${key}`]
+            if (arraySignal && Array.isArray(arraySignal.value)) {
+              arraySignal.value.push(patch.value)
             }
           }
         } else {
@@ -515,20 +516,29 @@ export function update(
             const key = pathParts[0]?.startsWith('$')
               ? pathParts[0].substring(1)
               : pathParts[0]
-            if (key && Array.isArray(signal[key])) {
-              const newArray = signal[key].filter(item => {
+            const arraySignal = signal[`$${key}`]
+            if (arraySignal && Array.isArray(arraySignal.value)) {
+              const currentArray = arraySignal.value
+              for (let i = currentArray.length - 1; i >= 0; i--) {
+                const item = currentArray[i]
+                let shouldRemove = false
                 if (
                   typeof item === 'object' &&
                   typeof patch.value === 'object'
                 ) {
                   if (item.id && patch.value.id) {
-                    return item.id !== patch.value.id
+                    shouldRemove = item.id === patch.value.id
+                  } else {
+                    shouldRemove =
+                      JSON.stringify(item) === JSON.stringify(patch.value)
                   }
-                  return JSON.stringify(item) !== JSON.stringify(patch.value)
+                } else {
+                  shouldRemove = item === patch.value
                 }
-                return item !== patch.value
-              })
-              signal[key] = newArray
+                if (shouldRemove) {
+                  currentArray.splice(i, 1)
+                }
+              }
             }
           }
         } else {
