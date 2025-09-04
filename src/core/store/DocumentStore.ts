@@ -18,9 +18,16 @@ function setNestedValue(obj: any, path: string, value: any): any {
   return result
 }
 
+interface MemoryMetrics {
+  documentCount: number
+  signalCount: number
+  activeSubscriberCount: number
+}
+
 export class DocumentStore {
   private documents = new Map<DocumentKey, Document>()
   private signals = new Map<DocumentKey, Signal<Document | null>>()
+  private subscriberCounts = new Map<DocumentKey, number>()
 
   private getKey(type: DocumentType, id: DocumentId): DocumentKey {
     return `${type}:${id}`
@@ -58,10 +65,29 @@ export class DocumentStore {
 
     if (!this.signals.has(key)) {
       const existingDocument = this.documents.get(key)
-      this.signals.set(
-        key,
-        signal<T | null>(existingDocument ? (existingDocument as T) : null)
+      const docSignal = signal<T | null>(
+        existingDocument ? (existingDocument as T) : null
       )
+
+      // Wrap the signal to track subscribers
+      const originalSubscribe = docSignal.subscribe.bind(docSignal)
+      docSignal.subscribe = (fn: (value: T | null) => void) => {
+        // Increment subscriber count
+        const currentCount = this.subscriberCounts.get(key) || 0
+        this.subscriberCounts.set(key, currentCount + 1)
+
+        const unsubscribe = originalSubscribe(fn)
+
+        // Return wrapped unsubscribe that decrements count
+        return () => {
+          const count = this.subscriberCounts.get(key) || 0
+          this.subscriberCounts.set(key, Math.max(0, count - 1))
+          unsubscribe()
+        }
+      }
+
+      this.signals.set(key, docSignal)
+      this.subscriberCounts.set(key, 0)
     }
 
     return this.signals.get(key)! as Signal<T | null>
@@ -85,6 +111,54 @@ export class DocumentStore {
       if (documentSignal) {
         documentSignal.value = updatedDocument
       }
+    }
+  }
+
+  removeDocument(type: DocumentType, id: DocumentId): void {
+    const key = this.getKey(type, id)
+
+    // Remove document
+    this.documents.delete(key)
+
+    // Set signal value to null and clean up
+    const signal = this.signals.get(key)
+    if (signal) {
+      signal.value = null
+      this.signals.delete(key)
+      this.subscriberCounts.delete(key)
+    }
+  }
+
+  cleanup(): void {
+    // Remove signals with no active subscribers
+    const keysToRemove: DocumentKey[] = []
+
+    for (const [key, count] of this.subscriberCounts.entries()) {
+      if (count === 0) {
+        keysToRemove.push(key)
+      }
+    }
+
+    keysToRemove.forEach(key => {
+      this.signals.delete(key)
+      this.subscriberCounts.delete(key)
+    })
+  }
+
+  getSignalCount(): number {
+    return this.signals.size
+  }
+
+  getMemoryMetrics(): MemoryMetrics {
+    let totalSubscribers = 0
+    for (const count of this.subscriberCounts.values()) {
+      totalSubscribers += count
+    }
+
+    return {
+      documentCount: this.documents.size,
+      signalCount: this.signals.size,
+      activeSubscriberCount: totalSubscribers,
     }
   }
 }
