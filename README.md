@@ -10,8 +10,8 @@ This document outlines the plan for migrating the sophisticated Ember data synch
 
 - [x] **1.1 TypeScript Library Setup** - Complete ✅
 - [x] **1.2 Core Store with Signals** - Complete ✅
-- [ ] **1.3 Framework Adapters - React**
-- [ ] **1.4 Framework Adapters - Vue**
+- [x] **1.3 Framework Adapters - React** - Complete ✅
+- [x] **1.4 Framework Adapters - Vue** - Complete ✅
 - [ ] **1.5 Example App - React Todo App**
 - [ ] **1.6 Example App - Vue Todo App**
 - [ ] **1.7 Action System (Local Mutations)**
@@ -162,28 +162,28 @@ This phase focuses on building a robust, performant, and ergonomic local data st
 
 **Feature 1: Basic useDocument Composable**
 
-- [ ] RED: Write tests for composable reactivity with Vue's reactive system
-- [ ] GREEN: Implement `useDocument<T>(type: string, id: string)` composable
+- [x] RED: Write tests for composable reactivity with Vue's reactive system
+- [x] GREEN: Implement `useDocument<T>(type: string, id: string)` composable
 
 **Feature 2: Signals Integration**
 
-- [ ] RED: Write tests for integration with signals library
-- [ ] GREEN: Implement integration between signals and Vue reactivity
+- [x] RED: Write tests for integration with signals library
+- [x] GREEN: Implement integration between signals and Vue reactivity
 
 **Feature 3: Multiple Documents Composable**
 
-- [ ] RED: Write tests for cleanup on component unmount
-- [ ] GREEN: Implement `useDocuments<T>(type: string, ids: string[])` composable
+- [x] RED: Write tests for cleanup on component unmount
+- [x] GREEN: Implement `useDocuments<T>(type: string, ids: string[])` composable
 
 **Feature 4: TypeScript Integration**
 
-- [ ] RED: Write tests for TypeScript integration and type safety
-- [ ] GREEN: Implement proper TypeScript support for composables
+- [x] RED: Write tests for TypeScript integration and type safety
+- [x] GREEN: Implement proper TypeScript support for composables
 
 **Feature 5: Performance & Cleanup**
 
-- [ ] RED: Write tests for performance with large datasets
-- [ ] GREEN: Implement proper cleanup with `onUnmounted` and optimization
+- [x] RED: Write tests for performance with large datasets
+- [x] GREEN: Implement proper cleanup with `onUnmounted` and optimization
 
 ### 1.5 Example App - React Todo App
 
