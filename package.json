@@ -2,6 +2,9 @@
   "name": "@commoncurriculum/storable",
   "version": "1.0.0",
   "description": "Framework-agnostic reactive data synchronization library for React and Vue",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
@@ -10,19 +13,19 @@
   ],
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.esm.js",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.js"
     },
     "./react": {
+      "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.esm.js",
-      "require": "./dist/react/index.js",
-      "types": "./dist/react/index.d.ts"
+      "require": "./dist/react/index.js"
     },
     "./vue": {
+      "types": "./dist/vue/index.d.ts",
       "import": "./dist/vue/index.esm.js",
-      "require": "./dist/vue/index.js",
-      "types": "./dist/vue/index.d.ts"
+      "require": "./dist/vue/index.js"
     }
   },
   "scripts": {
@@ -65,18 +68,19 @@
     "@preact/signals-core": "^1.5.0"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0",
-    "@vitejs/plugin-react": "^4.2.0",
-    "@vitejs/plugin-vue": "^4.5.0",
-    "@vitest/coverage-v8": "^1.0.0",
-    "@vitest/ui": "^1.0.0",
+    "@types/node": "^24.3.0",
+    "@vitejs/plugin-react": "^5.0.2",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/ui": "^3.2.4",
+    "jsdom": "^26.1.0",
     "oxlint": "^1.14.0",
     "prettier": "^3.1.0",
-    "react": "^18.2.0",
-    "typescript": "^5.3.0",
-    "vite": "^5.0.0",
-    "vite-plugin-dts": "^3.6.0",
-    "vitest": "^1.0.0",
+    "react": "^19.1.1",
+    "typescript": "^5.7.2",
+    "vite": "^7.1.4",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^3.2.4",
     "vue": "^3.3.0"
   }
 }

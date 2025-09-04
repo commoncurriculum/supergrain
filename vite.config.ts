@@ -30,12 +30,7 @@ export default defineConfig({
       formats: ['es', 'cjs'],
     },
     rollupOptions: {
-      external: [
-        'react',
-        'react/jsx-runtime',
-        'vue',
-        '@preact/signals-core',
-      ],
+      external: ['react', 'react/jsx-runtime', 'vue', '@preact/signals-core'],
       output: {
         globals: {
           react: 'React',
@@ -46,7 +41,7 @@ export default defineConfig({
       },
     },
     sourcemap: true,
-    minify: 'terser',
+    minify: 'esbuild',
   },
   test: {
     globals: true,
