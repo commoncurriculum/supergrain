@@ -49,6 +49,12 @@ export function TodoItem({ todo, userId }: TodoItemProps) {
     setIsEditing(false)
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      handleEditCancel()
+    }
+  }
+
   return (
     <div
       className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
@@ -73,12 +79,8 @@ export function TodoItem({ todo, userId }: TodoItemProps) {
               onChange={e => setEditText(e.target.value)}
               className="w-full px-3 py-1 border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               autoFocus
-              onBlur={handleEditCancel}
-              onKeyDown={e => {
-                if (e.key === 'Escape') {
-                  handleEditCancel()
-                }
-              }}
+              onBlur={handleEditSubmit}
+              onKeyDown={handleKeyDown}
             />
           </form>
         ) : (

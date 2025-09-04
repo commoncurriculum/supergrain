@@ -16,10 +16,10 @@ interface MemoryMetrics {
 }
 
 export class DocumentStore {
-  private documents = new Map<DocumentKey, Document>()
+  public documents = new Map<DocumentKey, Document>()
   private signals = new Map<DocumentKey, any>()
 
-  private getKey(type: DocumentType, id: DocumentId): DocumentKey {
+  public getKey(type: DocumentType, id: DocumentId): DocumentKey {
     return `${type}:${id}`
   }
 
@@ -128,12 +128,14 @@ export class DocumentStore {
 }
 
 export function update(
-  signal: any,
-  patches: Patch[],
-  store?: DocumentStore,
-  type?: DocumentType,
-  id?: DocumentId
+  store: DocumentStore,
+  type: DocumentType,
+  id: DocumentId,
+  patches: Patch[]
 ): void {
+  // Get the signal internally instead of receiving it as a parameter
+  const signal = store.getDeepSignal(type, id)
+
   for (const patch of patches) {
     switch (patch.op) {
       case '$set': {
@@ -182,13 +184,11 @@ export function update(
   }
 
   // Sync signal changes back to the document store
-  if (store && type && id) {
-    const key = store['getKey'](type, id)
-    const currentDoc = { ...signal }
-    // Remove alien-deepsignals internal properties
-    delete currentDoc._isEmpty
-    store['documents'].set(key, currentDoc)
-  }
+  const key = store.getKey(type, id)
+  const currentDoc = deepClone(signal)
+  // Remove alien-deepsignals internal properties
+  delete currentDoc._isEmpty
+  store.documents.set(key, currentDoc)
 }
 
 function setValueAtPath(obj: any, path: string, value: any): void {
@@ -250,4 +250,27 @@ function getValueAtPath(obj: any, path: string): any {
   }
 
   return current
+}
+
+function deepClone(obj: any): any {
+  if (obj === null || typeof obj !== 'object') {
+    return obj
+  }
+
+  if (obj instanceof Date) {
+    return new Date(obj.getTime())
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => deepClone(item))
+  }
+
+  const cloned: any = {}
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      cloned[key] = deepClone(obj[key])
+    }
+  }
+
+  return cloned
 }

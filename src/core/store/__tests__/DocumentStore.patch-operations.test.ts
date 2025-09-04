@@ -44,15 +44,10 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [{ op: '$push', path: 'hobbies', value: 'gaming' }],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$push', path: 'hobbies', value: 'gaming' },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.hobbies).toEqual(['reading', 'gaming'])
@@ -67,16 +62,11 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
       const newFriend = { id: 'friend2', name: 'Bob' }
-      update(
-        signal,
-        [{ op: '$push', path: 'friends', value: newFriend }],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$push', path: 'friends', value: newFriend },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.friends).toEqual([
@@ -95,7 +85,6 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('todoList', 'list1', todoList)
-      const signal = store.getDeepSignal('todoList', 'list1')
 
       const newTodo: Todo = {
         id: 'todo1',
@@ -105,13 +94,9 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
         updatedAt: Date.now(),
       }
 
-      update(
-        signal,
-        [{ op: '$push', path: 'todos', value: newTodo }],
-        store,
-        'todoList',
-        'list1'
-      )
+      update(store, 'todoList', 'list1', [
+        { op: '$push', path: 'todos', value: newTodo },
+      ])
 
       const updated = store.getDocument('todoList', 'list1')
       expect(updated.todos).toHaveLength(1)
@@ -134,14 +119,9 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       // Reset to ignore initial subscription call
       callback.mockReset()
 
-      const deepSignal = store.getDeepSignal('user', 'user1')
-      update(
-        deepSignal,
-        [{ op: '$push', path: 'hobbies', value: 'gaming' }],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$push', path: 'hobbies', value: 'gaming' },
+      ])
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -159,15 +139,10 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [{ op: '$push', path: 'hobbies', value: 'first hobby' }],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$push', path: 'hobbies', value: 'first hobby' },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.hobbies).toEqual(['first hobby'])
@@ -182,18 +157,11 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [
-          { op: '$push', path: 'hobbies', value: 'reading' },
-          { op: '$push', path: 'hobbies', value: 'gaming' },
-        ],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$push', path: 'hobbies', value: 'reading' },
+        { op: '$push', path: 'hobbies', value: 'gaming' },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.hobbies).toEqual(['reading', 'gaming'])
@@ -208,18 +176,11 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [
-          { op: '$push', path: 'hobbies', value: null },
-          { op: '$push', path: 'hobbies', value: undefined },
-        ],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$push', path: 'hobbies', value: null },
+        { op: '$push', path: 'hobbies', value: undefined },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.hobbies).toEqual(['reading', null, undefined])
@@ -235,15 +196,10 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
 
       store.setDocument('user', 'user1', user)
       const originalHobbies = store.getDocument('user', 'user1').hobbies
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [{ op: '$push', path: 'hobbies', value: 'gaming' }],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$push', path: 'hobbies', value: 'gaming' },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.hobbies).not.toBe(originalHobbies)
@@ -262,15 +218,10 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [{ op: '$pull', path: 'hobbies', value: 'gaming' }],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$pull', path: 'hobbies', value: 'gaming' },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.hobbies).toEqual(['reading', 'cooking'])
@@ -289,21 +240,14 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [
-          {
-            op: '$pull',
-            path: 'friends',
-            value: { id: 'friend2', name: 'Bob' },
-          },
-        ],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        {
+          op: '$pull',
+          path: 'friends',
+          value: { id: 'friend2', name: 'Bob' },
+        },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.friends).toHaveLength(2)
@@ -339,16 +283,11 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('todoList', 'list1', todoList)
-      const signal = store.getDeepSignal('todoList', 'list1')
       const todoToRemove = todoList.todos[0]
 
-      update(
-        signal,
-        [{ op: '$pull', path: 'todos', value: todoToRemove }],
-        store,
-        'todoList',
-        'list1'
-      )
+      update(store, 'todoList', 'list1', [
+        { op: '$pull', path: 'todos', value: todoToRemove },
+      ])
 
       const updated = store.getDocument('todoList', 'list1')
       expect(updated.todos).toHaveLength(1)
@@ -371,14 +310,9 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       // Reset to ignore initial subscription call
       callback.mockReset()
 
-      const deepSignal = store.getDeepSignal('user', 'user1')
-      update(
-        deepSignal,
-        [{ op: '$pull', path: 'hobbies', value: 'gaming' }],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$pull', path: 'hobbies', value: 'gaming' },
+      ])
 
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -396,15 +330,10 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [{ op: '$pull', path: 'hobbies', value: 'nonexistent' }],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$pull', path: 'hobbies', value: 'nonexistent' },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.hobbies).toEqual(['reading', 'gaming']) // Unchanged
@@ -419,15 +348,10 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [{ op: '$pull', path: 'hobbies', value: 'anything' }],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$pull', path: 'hobbies', value: 'anything' },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.hobbies).toEqual([])
@@ -442,18 +366,11 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [
-          { op: '$pull', path: 'hobbies', value: 'gaming' },
-          { op: '$pull', path: 'hobbies', value: 'swimming' },
-        ],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$pull', path: 'hobbies', value: 'gaming' },
+        { op: '$pull', path: 'hobbies', value: 'swimming' },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.hobbies).toEqual(['reading', 'cooking'])
@@ -469,15 +386,10 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
 
       store.setDocument('user', 'user1', user)
       const originalHobbies = store.getDocument('user', 'user1').hobbies
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [{ op: '$pull', path: 'hobbies', value: 'gaming' }],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$pull', path: 'hobbies', value: 'gaming' },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.hobbies).not.toBe(originalHobbies)
@@ -496,19 +408,12 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
-      update(
-        signal,
-        [
-          { op: '$pull', path: 'hobbies', value: 'gaming' },
-          { op: '$push', path: 'hobbies', value: 'cooking' },
-          { op: '$push', path: 'hobbies', value: 'swimming' },
-        ],
-        store,
-        'user',
-        'user1'
-      )
+      update(store, 'user', 'user1', [
+        { op: '$pull', path: 'hobbies', value: 'gaming' },
+        { op: '$push', path: 'hobbies', value: 'cooking' },
+        { op: '$push', path: 'hobbies', value: 'swimming' },
+      ])
 
       const updated = store.getDocument('user', 'user1')
       expect(updated.hobbies).toEqual(['reading', 'cooking', 'swimming'])
@@ -532,7 +437,6 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('todoList', 'list1', todoList)
-      const signal = store.getDeepSignal('todoList', 'list1')
 
       const newTodo: Todo = {
         id: 'todo2',
@@ -542,17 +446,11 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
         updatedAt: 2000,
       }
 
-      update(
-        signal,
-        [
-          { op: '$push', path: 'todos', value: newTodo },
-          { op: '$push', path: 'tags', value: 'personal' },
-          { op: '$set', path: 'name', value: 'Updated Todos' },
-        ],
-        store,
-        'todoList',
-        'list1'
-      )
+      update(store, 'todoList', 'list1', [
+        { op: '$push', path: 'todos', value: newTodo },
+        { op: '$push', path: 'tags', value: 'personal' },
+        { op: '$set', path: 'name', value: 'Updated Todos' },
+      ])
 
       const updated = store.getDocument('todoList', 'list1')
       expect(updated.name).toBe('Updated Todos')
@@ -572,17 +470,12 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
       // Try to push to a string property - should not crash
       expect(() => {
-        update(
-          signal,
-          [{ op: '$push', path: 'name', value: 'suffix' }],
-          store,
-          'user',
-          'user1'
-        )
+        update(store, 'user', 'user1', [
+          { op: '$push', path: 'name', value: 'suffix' },
+        ])
       }).not.toThrow()
 
       // The document should remain unchanged
@@ -599,17 +492,12 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('user', 'user1', user)
-      const signal = store.getDeepSignal('user', 'user1')
 
       // Try to push to non-existent property - should not crash
       expect(() => {
-        update(
-          signal,
-          [{ op: '$push', path: 'nonExistent', value: 'value' }],
-          store,
-          'user',
-          'user1'
-        )
+        update(store, 'user', 'user1', [
+          { op: '$push', path: 'nonExistent', value: 'value' },
+        ])
       }).not.toThrow()
 
       // The document should remain unchanged
@@ -627,7 +515,6 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('todoList', 'list1', todoList)
-      const signal = store.getDeepSignal('todoList', 'list1')
       const callback = vi.fn()
 
       // Subscribe to the document
@@ -644,16 +531,10 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
         updatedAt: Date.now(),
       }
 
-      update(
-        signal,
-        [
-          { op: '$push', path: 'todos', value: newTodo },
-          { op: '$push', path: 'tags', value: 'test' },
-        ],
-        store,
-        'todoList',
-        'list1'
-      )
+      update(store, 'todoList', 'list1', [
+        { op: '$push', path: 'todos', value: newTodo },
+        { op: '$push', path: 'tags', value: 'test' },
+      ])
 
       // Should trigger exactly once for the combined update
       expect(callback).toHaveBeenCalledTimes(1)
@@ -686,7 +567,6 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('userTodoList', 'user123', todoList)
-      const signal = store.getDeepSignal('userTodoList', 'user123')
 
       // Add a new todo
       const newTodo: Todo = {
@@ -697,16 +577,10 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
         updatedAt: 2000,
       }
 
-      update(
-        signal,
-        [
-          { op: '$push', path: 'todos', value: newTodo },
-          { op: '$set', path: 'updatedAt', value: 2000 },
-        ],
-        store,
-        'userTodoList',
-        'user123'
-      )
+      update(store, 'userTodoList', 'user123', [
+        { op: '$push', path: 'todos', value: newTodo },
+        { op: '$set', path: 'updatedAt', value: 2000 },
+      ])
 
       let updated = store.getDocument('userTodoList', 'user123')
       expect(updated.todos).toHaveLength(2)
@@ -715,16 +589,10 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       const todoToRemove = updated.todos.find(t => t.id === 'todo1')
       expect(todoToRemove).toBeDefined()
 
-      update(
-        signal,
-        [
-          { op: '$pull', path: 'todos', value: todoToRemove },
-          { op: '$set', path: 'updatedAt', value: 3000 },
-        ],
-        store,
-        'userTodoList',
-        'user123'
-      )
+      update(store, 'userTodoList', 'user123', [
+        { op: '$pull', path: 'todos', value: todoToRemove },
+        { op: '$set', path: 'updatedAt', value: 3000 },
+      ])
 
       updated = store.getDocument('userTodoList', 'user123')
       expect(updated.todos).toHaveLength(1)
@@ -741,7 +609,6 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
       }
 
       store.setDocument('todoList', 'list1', todoList)
-      const signal = store.getDeepSignal('todoList', 'list1')
 
       const startTime = performance.now()
 
@@ -755,13 +622,9 @@ describe('DocumentStore - Patch Operations ($push, $pull)', () => {
           updatedAt: Date.now(),
         }
 
-        update(
-          signal,
-          [{ op: '$push', path: 'todos', value: newTodo }],
-          store,
-          'todoList',
-          'list1'
-        )
+        update(store, 'todoList', 'list1', [
+          { op: '$push', path: 'todos', value: newTodo },
+        ])
       }
 
       const updated = store.getDocument('todoList', 'list1')
