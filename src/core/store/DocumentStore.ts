@@ -31,14 +31,9 @@ export class DocumentStore {
     const key = this.getKey(type, id)
     this.documents.set(key, document)
 
-    // Always update/create the signal
-    const signal = this.getDeepSignal(type, id)
-    // Clear existing properties and set new ones
-    Object.keys(signal).forEach(k => {
-      if (k !== '_isEmpty') delete signal[k]
-    })
-    Object.assign(signal, document)
-    delete signal._isEmpty
+    // Always create a fresh signal to preserve alien-deepsignals reactivity
+    const deepSig = deepSignal(JSON.parse(JSON.stringify(document)))
+    this.signals.set(key, deepSig)
   }
 
   getDocument<T extends Document>(
@@ -56,22 +51,18 @@ export class DocumentStore {
     if (!this.signals.has(key)) {
       const existingDocument = this.documents.get(key)
 
-      // alien-deepsignals can't observe null, so we use an empty object
-      // and track existence separately
-      const initialValue = existingDocument
-        ? JSON.parse(JSON.stringify(existingDocument))
-        : {}
-
-      // Create a deep signal using alien-deepsignals
-      const deepSig = deepSignal(initialValue as any)
-
-      // If there's no existing document, mark the signal as empty
-      if (!existingDocument) {
+      if (existingDocument) {
+        // Create signal with existing document
+        const deepSig = deepSignal(JSON.parse(JSON.stringify(existingDocument)))
+        this.signals.set(key, deepSig)
+        return deepSig
+      } else {
+        // Create empty signal marked as empty
+        const deepSig = deepSignal({})
         deepSig._isEmpty = true
+        this.signals.set(key, deepSig)
+        return deepSig
       }
-
-      this.signals.set(key, deepSig)
-      return deepSig
     }
 
     return this.signals.get(key)!

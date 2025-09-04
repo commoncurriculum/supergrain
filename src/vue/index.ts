@@ -1,6 +1,6 @@
 import { DocumentStore } from '../core/store'
 import { onUnmounted, ref } from 'vue'
-import { effect } from 'alien-deepsignals'
+import { watch } from 'alien-deepsignals'
 import type { Ref } from 'vue'
 import type { Document } from '../core/types'
 
@@ -15,15 +15,21 @@ export function useDocument<T extends Document>(
   // Get the deep signal directly from store
   const deepSignal = store.getDeepSignal(type, id)
 
-  // Use alien-signals effect to track changes
-  const effectObj = effect(() => {
-    const currentValue = deepSignal._isEmpty ? null : deepSignal
-    documentRef.value = currentValue
-  })
+  // Use alien-signals watch to track changes
+  const unwatch = watch(
+    deepSignal,
+    currentValue => {
+      documentRef.value = currentValue._isEmpty ? null : currentValue
+    },
+    {
+      deep: true,
+      immediate: true,
+    }
+  )
 
-  // Clean up effect when component unmounts
+  // Clean up watch when component unmounts
   onUnmounted(() => {
-    effectObj.stop()
+    unwatch()
   })
 
   return documentRef as Ref<T | null>
@@ -40,15 +46,24 @@ export function useDocuments<T extends Document>(
   // Get all deep signals directly
   const deepSignals = ids.map(id => store.getDeepSignal(type, id))
 
-  // Use alien-signals effect to track changes to any document
-  const effectObj = effect(() => {
-    const currentDocs = deepSignals.map(sig => (sig._isEmpty ? null : sig))
-    documentsRef.value = currentDocs
-  })
+  // Use alien-signals watch to track changes to any document
+  const unwatchers = deepSignals.map(signal =>
+    watch(
+      signal,
+      () => {
+        const currentDocs = deepSignals.map(sig => (sig._isEmpty ? null : sig))
+        documentsRef.value = currentDocs
+      },
+      {
+        deep: true,
+        immediate: true,
+      }
+    )
+  )
 
-  // Clean up effect when component unmounts
+  // Clean up watches when component unmounts
   onUnmounted(() => {
-    effectObj.stop()
+    unwatchers.forEach(unwatch => unwatch())
   })
 
   return documentsRef as Ref<(T | null)[]>
