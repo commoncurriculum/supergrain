@@ -2,6 +2,30 @@
 
 This document outlines the plan for migrating the sophisticated Ember data synchronization service to React/Vue, based on the comprehensive analysis in `ember-architecture-analysis.md`.
 
+## Progress Tracking
+
+### Phase 1: Read-Only Data Fetching with Signals
+
+- [x] **1.1 TypeScript Library Setup** - Complete ✅
+- [ ] **1.2 Core Store with Signals**
+- [ ] **1.3 HTTP Client**
+- [ ] **1.4 Finder Service**
+- [ ] **1.5 Framework Adapters - React**
+- [ ] **1.6 Framework Adapters - Vue**
+- [ ] **1.7 Loading States and Error Handling**
+
+### Phase 2: Data Mutations and Optimistic Updates
+
+- [ ] **2.1 Action System**
+- [ ] **2.2 Patch System**
+- [ ] **2.3 Optimistic Updates**
+
+### Phase 3: Real-time Synchronization and Advanced Features
+
+- [ ] **3.1 WebSocket Infrastructure**
+- [ ] **3.2 Real-time Patch Processing**
+- [ ] **3.3 Conflict Resolution**
+
 ## Overview
 
 The current Ember system provides:
@@ -167,23 +191,23 @@ _Then implement:_
 ```typescript
 function useDocument<T>(
   type: string,
-  id: string,
+  id: string
 ): {
-  data: T | null;
-  isLoading: boolean;
-  error: Error | null;
-  refetch: () => Promise<void>;
-};
+  data: T | null
+  isLoading: boolean
+  error: Error | null
+  refetch: () => Promise<void>
+}
 
 function useDocuments<T>(
   type: string,
-  ids: string[],
+  ids: string[]
 ): {
-  data: (T | null)[];
-  isLoading: boolean;
-  error: Error | null;
-  refetch: () => Promise<void>;
-};
+  data: (T | null)[]
+  isLoading: boolean
+  error: Error | null
+  refetch: () => Promise<void>
+}
 ```
 
 ### 1.6 Framework Adapters - Vue (Test-First)
@@ -363,19 +387,19 @@ DataFetchLibrary
 ```typescript
 // Core store structure
 class DocumentStore {
-  private documents = new Map<string, Signal<Document | null>>();
+  private documents = new Map<string, Signal<Document | null>>()
 
   getDocument<T>(type: string, id: string): Signal<T | null> {
-    const key = `${type}:${id}`;
+    const key = `${type}:${id}`
     if (!this.documents.has(key)) {
-      this.documents.set(key, signal<T | null>(null));
+      this.documents.set(key, signal<T | null>(null))
     }
-    return this.documents.get(key)!;
+    return this.documents.get(key)!
   }
 
   setDocument<T>(type: string, id: string, doc: T): void {
-    const docSignal = this.getDocument<T>(type, id);
-    docSignal.value = doc;
+    const docSignal = this.getDocument<T>(type, id)
+    docSignal.value = doc
   }
 }
 ```
@@ -386,13 +410,13 @@ class DocumentStore {
 
 ```tsx
 function UserProfile({ userId }: { userId: string }) {
-  const { data: user, isLoading, error } = useDocument<User>("user", userId);
+  const { data: user, isLoading, error } = useDocument<User>('user', userId)
 
-  if (isLoading) return <Loading />;
-  if (error) return <Error error={error} />;
-  if (!user) return <NotFound />;
+  if (isLoading) return <Loading />
+  if (error) return <Error error={error} />
+  if (!user) return <NotFound />
 
-  return <div>Hello {user.name}!</div>;
+  return <div>Hello {user.name}!</div>
 }
 ```
 
@@ -400,12 +424,8 @@ function UserProfile({ userId }: { userId: string }) {
 
 ```vue
 <script setup lang="ts">
-const props = defineProps<{ userId: string }>();
-const {
-  data: user,
-  isLoading,
-  error,
-} = useDocument<User>("user", props.userId);
+const props = defineProps<{ userId: string }>()
+const { data: user, isLoading, error } = useDocument<User>('user', props.userId)
 </script>
 
 <template>
@@ -417,6 +437,34 @@ const {
 ```
 
 ## Development Workflow
+
+### TDD Two-Commit Strategy
+
+**Each feature MUST be implemented using exactly two commits:**
+
+1. **RED Commit**: `test: add failing tests for [feature name]`
+   - Write comprehensive failing tests that describe the desired behavior
+   - Tests should fail with clear error messages
+   - CI should fail on this commit
+   - Commit message format: `test: add failing tests for [feature]`
+
+2. **GREEN Commit**: `feat: implement [feature name] to pass tests`
+   - Write minimal implementation to make all tests pass
+   - No additional features beyond what tests require
+   - CI should pass on this commit
+   - Commit message format: `feat: implement [feature] to pass tests`
+
+**Example workflow:**
+
+```bash
+# Step 1: Write failing tests
+git add src/**/*.test.ts
+git commit -m "test: add failing tests for DocumentStore signal management"
+
+# Step 2: Implement feature to pass tests
+git add src/core/store/
+git commit -m "feat: implement DocumentStore signal management to pass tests"
+```
 
 ### TDD Cycle for Each Feature
 
