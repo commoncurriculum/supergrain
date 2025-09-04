@@ -1,4 +1,4 @@
-import { DocumentStore, update } from '../../../src/core/store/DocumentStore'
+import { DocumentStore, update } from '@commoncurriculum/storable'
 import type { Todo, UserTodoList } from './types'
 
 // Create a global store instance

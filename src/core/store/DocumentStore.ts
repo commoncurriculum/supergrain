@@ -31,25 +31,22 @@ export class DocumentStore {
     const key = this.getKey(type, id)
     this.documents.set(key, document)
 
-    // Update signal if it exists
-    const signal = this.signals.get(key)
-    if (signal) {
-      // Clear existing properties and set new ones
-      Object.keys(signal).forEach(k => {
-        if (k !== '_isEmpty') delete signal[k]
-      })
-      Object.assign(signal, document)
-      delete signal._isEmpty
-    }
+    // Always update/create the signal
+    const signal = this.getDeepSignal(type, id)
+    // Clear existing properties and set new ones
+    Object.keys(signal).forEach(k => {
+      if (k !== '_isEmpty') delete signal[k]
+    })
+    Object.assign(signal, document)
+    delete signal._isEmpty
   }
 
   getDocument<T extends Document>(
     type: DocumentType,
     id: DocumentId
   ): T | null {
-    const key = this.getKey(type, id)
-    const document = this.documents.get(key)
-    return document ? (document as T) : null
+    const signal = this.getDeepSignal(type, id)
+    return signal._isEmpty ? null : signal
   }
 
   // Get the deep signal directly for atomic updates with alien-deepsignals
@@ -182,13 +179,6 @@ export function update(
       }
     }
   }
-
-  // Sync signal changes back to the document store
-  const key = store.getKey(type, id)
-  const currentDoc = deepClone(signal)
-  // Remove alien-deepsignals internal properties
-  delete currentDoc._isEmpty
-  store.documents.set(key, currentDoc)
 }
 
 function setValueAtPath(obj: any, path: string, value: any): void {
@@ -250,27 +240,4 @@ function getValueAtPath(obj: any, path: string): any {
   }
 
   return current
-}
-
-function deepClone(obj: any): any {
-  if (obj === null || typeof obj !== 'object') {
-    return obj
-  }
-
-  if (obj instanceof Date) {
-    return new Date(obj.getTime())
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(item => deepClone(item))
-  }
-
-  const cloned: any = {}
-  for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      cloned[key] = deepClone(obj[key])
-    }
-  }
-
-  return cloned
 }
