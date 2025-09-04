@@ -7,6 +7,9 @@ import { TodoListComponent } from './components/TodoList'
 const DEFAULT_USER_ID = 'user-1'
 
 function App() {
+  const defaultUserList = createUserTodoList(DEFAULT_USER_ID, 'Scott', 'AM')
+  store.setDocument('userTodoList', DEFAULT_USER_ID, defaultUserList)
+
   const userTodoList = useDocument<UserTodoList>(
     store,
     'userTodoList',
@@ -14,12 +17,6 @@ function App() {
   )
 
   // Initialize the default user todo list if it doesn't exist
-  useEffect(() => {
-    if (userTodoList === null) {
-      const defaultUserList = createUserTodoList(DEFAULT_USER_ID, 'John', 'Doe')
-      store.setDocument('userTodoList', DEFAULT_USER_ID, defaultUserList)
-    }
-  }, [userTodoList])
 
   if (!userTodoList) {
     return (
