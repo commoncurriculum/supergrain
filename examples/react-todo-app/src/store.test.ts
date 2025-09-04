@@ -18,8 +18,17 @@ describe('Todo Store Functions', () => {
     if (documentStore.documents) {
       documentStore.documents.clear()
     }
-    if (documentStore.deepSignals) {
-      documentStore.deepSignals.clear()
+    if (documentStore.signals) {
+      documentStore.signals.clear()
+    }
+    if (documentStore.documentSignals) {
+      documentStore.documentSignals.clear()
+    }
+    if (documentStore.subscriberCounts) {
+      documentStore.subscriberCounts.clear()
+    }
+    if (documentStore.typeListeners) {
+      documentStore.typeListeners.clear()
     }
   })
 
@@ -129,7 +138,7 @@ describe('Todo Store Functions', () => {
     expect(updatedList.todos.find(todo => todo.id === todoId)).toBeUndefined()
   })
 
-  test('store operations update timestamps correctly', () => {
+  test('store operations update timestamps correctly', async () => {
     // Setup initial user list
     const userTodoList = createUserTodoList(TEST_USER_ID, 'Test', 'User')
     store.setDocument('userTodoList', TEST_USER_ID, userTodoList)
@@ -137,6 +146,7 @@ describe('Todo Store Functions', () => {
     const initialUpdatedAt = userTodoList.updatedAt
 
     // Wait a bit to ensure timestamp difference
+    await new Promise(resolve => setTimeout(resolve, 5))
     const startTime = Date.now()
 
     // Add a new todo

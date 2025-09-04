@@ -74,18 +74,6 @@ class SubscriptionScope {
   }
 }
 
-function convertPathToSignalAccess(path: string): string {
-  if (!path) return ''
-
-  const parts = path.split('.')
-  if (parts.length === 1) {
-    return '$' + parts[0]!
-  }
-
-  // Convert nested paths: "nested.deep" -> "$nested.value.deep"
-  return '$' + parts[0] + '.value.' + parts.slice(1).join('.')
-}
-
 export class DocumentStore {
   private documents = new Map<DocumentKey, Document>()
   private signals = new Map<DocumentKey, any>()
@@ -128,7 +116,7 @@ export class DocumentStore {
   }
 
   // Get the deep signal directly for atomic updates with alien-deepsignals
-  getDeepSignal<T extends Document>(type: DocumentType, id: DocumentId): any {
+  getDeepSignal(type: DocumentType, id: DocumentId): any {
     const key = this.getKey(type, id)
 
     if (!this.signals.has(key)) {
@@ -168,7 +156,7 @@ export class DocumentStore {
       return this.documentSignals.get(key)! as DocumentSignal<T>
     }
 
-    const deepSig = this.getDeepSignal<T>(type, id)
+    const deepSig = this.getDeepSignal(type, id)
     const callbacks = new Set<(value: T | null) => void>()
     const self = this
 
