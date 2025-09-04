@@ -132,7 +132,9 @@ export class DocumentStore {
 
     if (!this.signals.has(key)) {
       const existingDocument = this.documents.get(key)
-      const initialValue = existingDocument ? (existingDocument as T) : null
+      const initialValue = existingDocument
+        ? JSON.parse(JSON.stringify(existingDocument))
+        : null
 
       // Create a deep signal using alien-deepsignals
       const deepSig = deepSignal(initialValue as any)
@@ -157,11 +159,17 @@ export class DocumentStore {
 
     return {
       get value() {
-        return deepSig.value
+        return deepSig
       },
       set value(newValue: T | null) {
-        const oldValue = deepSig.value
-        deepSig.value = newValue
+        const oldValue = deepSig
+        // With alien-deepsignals, we need to update the signal object itself
+        if (newValue) {
+          Object.assign(deepSig, newValue)
+        } else {
+          // Clear the object
+          Object.keys(deepSig).forEach(key => delete deepSig[key])
+        }
 
         // Update documents map
         if (newValue) {
