@@ -91,25 +91,34 @@ This phase focuses SOLELY on fetching data from APIs and making it available to 
 - Create package.json for npm publishing
 - Install and configure signals library (e.g., @preact/signals-core)
 
-### 1.2 Core Store with Signals (Test-First)
+### 1.2 Core Store with Signals (Test-Then-Implement)
 
-**Document Store Development:**
+**Document Store Development (each feature uses 2-commit TDD cycle):**
 
-_First, write tests for:_
+**Feature 1: Basic Document Storage**
 
-- Document storage and retrieval by type and ID
-- Signal creation and updates when documents change
-- Type-safe document access
-- Memory management and cleanup
-- Cache invalidation strategies
+- RED: Write tests for document storage and retrieval by type and ID
+- GREEN: Implement `DocumentStore` class with basic storage
 
-_Then implement:_
+**Feature 2: Signal Integration**
 
-- `DocumentStore` class using signals for reactive document storage
-- Type-safe document storage: `store[type][id]` with signal values
-- Document retrieval with automatic signal creation
-- Cache management and memory cleanup
-- Signal subscription and cleanup utilities
+- RED: Write tests for signal creation and updates when documents change
+- GREEN: Implement signal-based reactive document storage
+
+**Feature 3: Type Safety**
+
+- RED: Write tests for type-safe document access with TypeScript generics
+- GREEN: Implement type-safe storage: `store[type][id]` with signal values
+
+**Feature 4: Memory Management**
+
+- RED: Write tests for memory management and cleanup of unused signals
+- GREEN: Implement cache management and automatic signal cleanup
+
+**Feature 5: Signal Utilities**
+
+- RED: Write tests for signal subscription and cleanup utilities
+- GREEN: Implement signal subscription and cleanup utilities
 
 **Key Features:**
 
@@ -118,45 +127,63 @@ _Then implement:_
 - Type-safe access to documents with proper TypeScript generics
 - Automatic cleanup of unused document signals
 
-### 1.3 HTTP Client (Test-First)
+### 1.3 HTTP Client (Test-Then-Implement)
 
-**API Client Development:**
+**API Client Development (each feature uses 2-commit TDD cycle):**
 
-_First, write tests for:_
+**Feature 1: Basic HTTP Client**
 
-- GET requests with proper serialization
-- Error handling with user-friendly messages
-- Request timeout and retry logic
-- Response caching strategies
-- Network failure scenarios
+- RED: Write tests for GET requests with proper serialization
+- GREEN: Implement `HttpClient` class with configurable base URL
 
-_Then implement:_
+**Feature 2: Error Handling**
 
-- `HttpClient` class with configurable base URL
-- Request/response interceptors
-- Error classification and handling
-- Retry logic with exponential backoff
-- Response caching with TTL
+- RED: Write tests for error handling with user-friendly messages
+- GREEN: Implement error classification and handling
 
-### 1.4 Finder Service (Test-First)
+**Feature 3: Retry Logic**
 
-**Batch Fetching Service:**
+- RED: Write tests for request timeout and retry logic
+- GREEN: Implement retry logic with exponential backoff
 
-_First, write tests for:_
+**Feature 4: Response Caching**
 
-- Single document fetching from API
-- Batch document fetching with deduplication
-- Request queuing and optimization
-- Loading state management
-- Error handling per document
+- RED: Write tests for response caching strategies
+- GREEN: Implement response caching with TTL
 
-_Then implement:_
+**Feature 5: Request Interceptors**
 
-- `FinderService` that fetches documents from API
-- Request batching to reduce HTTP calls
-- Integration with DocumentStore to update signals
-- Loading state signals per document type
-- Error handling with per-document error states
+- RED: Write tests for network failure scenarios and interceptors
+- GREEN: Implement request/response interceptors
+
+### 1.4 Finder Service (Test-Then-Implement)
+
+**Batch Fetching Service (each feature uses 2-commit TDD cycle):**
+
+**Feature 1: Single Document Fetching**
+
+- RED: Write tests for single document fetching from API
+- GREEN: Implement `FinderService` that fetches documents from API
+
+**Feature 2: Batch Fetching**
+
+- RED: Write tests for batch document fetching with deduplication
+- GREEN: Implement request batching to reduce HTTP calls
+
+**Feature 3: Store Integration**
+
+- RED: Write tests for request queuing and optimization
+- GREEN: Implement integration with DocumentStore to update signals
+
+**Feature 4: Loading States**
+
+- RED: Write tests for loading state management per document type
+- GREEN: Implement loading state signals per document type
+
+**Feature 5: Error Handling**
+
+- RED: Write tests for error handling per document
+- GREEN: Implement error handling with per-document error states
 
 **Key Features:**
 
@@ -166,25 +193,34 @@ _Then implement:_
 - Loading signals: `isLoading.value` for each document type
 - Error signals: `error.value` for each document
 
-### 1.5 Framework Adapters - React (Test-First)
+### 1.5 Framework Adapters - React (Test-Then-Implement)
 
-**React Hooks Development:**
+**React Hooks Development (each feature uses 2-commit TDD cycle):**
 
-_First, write tests for:_
+**Feature 1: Basic useDocument Hook**
 
-- `useDocument(type, id)` hook behavior and re-rendering
-- Loading state tracking and updates
-- Error state handling
-- Cleanup on component unmount
-- TypeScript integration and type safety
+- RED: Write tests for `useDocument(type, id)` hook behavior and re-rendering
+- GREEN: Implement `useDocument<T>(type: string, id: string)` hook
 
-_Then implement:_
+**Feature 2: Loading and Error States**
 
-- `useDocument<T>(type: string, id: string)` hook
-- `useDocuments<T>(type: string, ids: string[])` hook
-- `useDocumentStore()` for direct store access
-- Integration with signals for automatic re-rendering
-- Proper cleanup and memory management
+- RED: Write tests for loading state tracking and error state handling
+- GREEN: Implement loading/error state integration with hook
+
+**Feature 3: Multiple Documents Hook**
+
+- RED: Write tests for cleanup on component unmount
+- GREEN: Implement `useDocuments<T>(type: string, ids: string[])` hook
+
+**Feature 4: Direct Store Access**
+
+- RED: Write tests for TypeScript integration and type safety
+- GREEN: Implement `useDocumentStore()` for direct store access
+
+**Feature 5: Memory Management**
+
+- RED: Write tests for proper cleanup and memory management
+- GREEN: Implement integration with signals for automatic re-rendering and cleanup
 
 **Hook Signatures:**
 
@@ -210,43 +246,63 @@ function useDocuments<T>(
 }
 ```
 
-### 1.6 Framework Adapters - Vue (Test-First)
+### 1.6 Framework Adapters - Vue (Test-Then-Implement)
 
-**Vue Composables Development:**
+**Vue Composables Development (each feature uses 2-commit TDD cycle):**
 
-_First, write tests for:_
+**Feature 1: Basic useDocument Composable**
 
-- Composable reactivity with Vue's reactive system
-- Integration with signals library
-- Cleanup on component unmount
-- TypeScript integration
-- Performance with large datasets
+- RED: Write tests for composable reactivity with Vue's reactive system
+- GREEN: Implement `useDocument<T>(type: string, id: string)` composable
 
-_Then implement:_
+**Feature 2: Signals Integration**
 
-- `useDocument<T>(type: string, id: string)` composable
-- `useDocuments<T>(type: string, ids: string[])` composable
-- Integration between signals and Vue reactivity
-- Proper cleanup with `onUnmounted`
+- RED: Write tests for integration with signals library
+- GREEN: Implement integration between signals and Vue reactivity
 
-### 1.7 Loading States and Error Handling (Test-First)
+**Feature 3: Multiple Documents Composable**
 
-**Loading State Management:**
+- RED: Write tests for cleanup on component unmount
+- GREEN: Implement `useDocuments<T>(type: string, ids: string[])` composable
 
-_First, write tests for:_
+**Feature 4: TypeScript Integration**
 
-- Global loading states per document type
-- Individual document loading states
-- Error state persistence and clearing
-- Loading state transitions
-- Performance under concurrent requests
+- RED: Write tests for TypeScript integration and type safety
+- GREEN: Implement proper TypeScript support for composables
 
-_Then implement:_
+**Feature 5: Performance & Cleanup**
 
-- Loading signals that track fetch operations
-- Error signals with structured error information
-- Loading state aggregation (e.g., "any loading", "all loading")
-- Error recovery mechanisms
+- RED: Write tests for performance with large datasets
+- GREEN: Implement proper cleanup with `onUnmounted` and optimization
+
+### 1.7 Loading States and Error Handling (Test-Then-Implement)
+
+**Loading State Management (each feature uses 2-commit TDD cycle):**
+
+**Feature 1: Global Loading States**
+
+- RED: Write tests for global loading states per document type
+- GREEN: Implement loading signals that track fetch operations
+
+**Feature 2: Individual Loading States**
+
+- RED: Write tests for individual document loading states
+- GREEN: Implement per-document loading state tracking
+
+**Feature 3: Error State Management**
+
+- RED: Write tests for error state persistence and clearing
+- GREEN: Implement error signals with structured error information
+
+**Feature 4: Loading Transitions**
+
+- RED: Write tests for loading state transitions
+- GREEN: Implement loading state aggregation (e.g., "any loading", "all loading")
+
+**Feature 5: Concurrent Request Handling**
+
+- RED: Write tests for performance under concurrent requests
+- GREEN: Implement error recovery mechanisms and request deduplication
 
 ## Phase 2: Data Mutations and Optimistic Updates
 
