@@ -24,10 +24,68 @@ interface MemoryMetrics {
   activeSubscriberCount: number
 }
 
+interface DocumentReference {
+  type: DocumentType
+  id: DocumentId
+}
+
+interface SubscriptionEvent<T = any> {
+  type: DocumentType
+  id: DocumentId
+  document: T
+  action?: 'set' | 'update' | 'remove'
+}
+
+interface SubscriptionDebugInfo {
+  totalSubscriptions: number
+  subscriptionsByDocument: Record<string, number>
+}
+
+class SubscriptionManager {
+  private unsubscribeFunctions: (() => void)[] = []
+
+  add(unsubscribe: () => void): void {
+    this.unsubscribeFunctions.push(unsubscribe)
+  }
+
+  unsubscribeAll(): void {
+    this.unsubscribeFunctions.forEach(unsub => unsub())
+    this.unsubscribeFunctions = []
+  }
+}
+
+class SubscriptionScope {
+  private store: DocumentStore
+  private unsubscribeFunctions: (() => void)[] = []
+
+  constructor(store: DocumentStore) {
+    this.store = store
+  }
+
+  subscribe<T extends Document>(
+    type: DocumentType,
+    id: DocumentId,
+    callback: (document: T | null) => void
+  ): void {
+    const signal = this.store.getDocumentSignal<T>(type, id)
+    const unsubscribe = signal.subscribe(callback)
+    this.unsubscribeFunctions.push(unsubscribe)
+  }
+
+  dispose(): void {
+    this.unsubscribeFunctions.forEach(unsub => unsub())
+    this.unsubscribeFunctions = []
+  }
+}
+
 export class DocumentStore {
   private documents = new Map<DocumentKey, Document>()
   private signals = new Map<DocumentKey, Signal<Document | null>>()
   private subscriberCounts = new Map<DocumentKey, number>()
+  private typeListeners = new Map<
+    DocumentType,
+    ((event: SubscriptionEvent) => void)[]
+  >()
 
   private getKey(type: DocumentType, id: DocumentId): DocumentKey {
     return `${type}:${id}`
@@ -46,6 +104,9 @@ export class DocumentStore {
     if (documentSignal) {
       documentSignal.value = document
     }
+
+    // Notify type listeners
+    this.notifyTypeListeners(type, id, document, 'set')
   }
 
   getDocument<T extends Document>(
@@ -150,15 +211,153 @@ export class DocumentStore {
   }
 
   getMemoryMetrics(): MemoryMetrics {
-    let totalSubscribers = 0
+    let totalSubscriptions = 0
     for (const count of this.subscriberCounts.values()) {
-      totalSubscribers += count
+      totalSubscriptions += count
     }
 
     return {
       documentCount: this.documents.size,
       signalCount: this.signals.size,
-      activeSubscriberCount: totalSubscribers,
+      activeSubscriberCount: totalSubscriptions,
+    }
+  }
+
+  private notifyTypeListeners<T extends Document>(
+    type: DocumentType,
+    id: DocumentId,
+    document: T,
+    action: 'set' | 'update' | 'remove'
+  ): void {
+    const listeners = this.typeListeners.get(type)
+    if (listeners) {
+      const event: SubscriptionEvent<T> = { type, id, document, action }
+      listeners.forEach(listener => listener(event))
+    }
+  }
+
+  // Signal Utility Methods
+
+  subscribeToMultiple<T extends Document>(
+    references: DocumentReference[],
+    callback: (event: SubscriptionEvent<T>) => void
+  ): () => void {
+    const unsubscribeFunctions: (() => void)[] = []
+
+    references.forEach(ref => {
+      const signal = this.getDocumentSignal<T>(ref.type, ref.id)
+      const unsubscribe = signal.subscribe(document => {
+        if (document) {
+          callback({
+            type: ref.type,
+            id: ref.id,
+            document,
+            action: 'update',
+          })
+        }
+      })
+      unsubscribeFunctions.push(unsubscribe)
+    })
+
+    return () => {
+      unsubscribeFunctions.forEach(unsub => unsub())
+    }
+  }
+
+  createSubscriptionManager(): SubscriptionManager {
+    return new SubscriptionManager()
+  }
+
+  createSubscriptionScope(): SubscriptionScope {
+    return new SubscriptionScope(this)
+  }
+
+  subscribeConditional<T extends Document>(
+    type: DocumentType,
+    id: DocumentId,
+    condition: (document: T | null) => boolean,
+    callback: (document: T | null) => void
+  ): () => void {
+    const signal = this.getDocumentSignal<T>(type, id)
+    return signal.subscribe(document => {
+      if (condition(document)) {
+        callback(document)
+      }
+    })
+  }
+
+  subscribeDebounced<T extends Document>(
+    type: DocumentType,
+    id: DocumentId,
+    callback: (document: T | null) => void,
+    delay: number
+  ): () => void {
+    let timeoutId: NodeJS.Timeout | null = null
+
+    const signal = this.getDocumentSignal<T>(type, id)
+    return signal.subscribe(document => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+
+      timeoutId = setTimeout(() => {
+        callback(document)
+        timeoutId = null
+      }, delay)
+    })
+  }
+
+  subscribeOnce<T extends Document>(
+    type: DocumentType,
+    id: DocumentId,
+    callback: (document: T | null) => void
+  ): void {
+    const signal = this.getDocumentSignal<T>(type, id)
+    let hasTriggered = false
+
+    let unsubscribe: () => void
+
+    unsubscribe = signal.subscribe(document => {
+      if (!hasTriggered && unsubscribe) {
+        hasTriggered = true
+        callback(document)
+        setTimeout(() => unsubscribe(), 0)
+      }
+    })
+  }
+
+  getSubscriptionDebugInfo(): SubscriptionDebugInfo {
+    const subscriptionsByDocument: Record<string, number> = {}
+    let totalSubscriptions = 0
+
+    for (const [key, count] of this.subscriberCounts.entries()) {
+      subscriptionsByDocument[key] = count
+      totalSubscriptions += count
+    }
+
+    return {
+      totalSubscriptions,
+      subscriptionsByDocument,
+    }
+  }
+
+  subscribeToDocumentType<T extends Document>(
+    type: DocumentType,
+    callback: (event: SubscriptionEvent<T>) => void
+  ): () => void {
+    const listeners = this.typeListeners.get(type) || []
+    listeners.push(callback)
+    this.typeListeners.set(type, listeners)
+
+    return () => {
+      const currentListeners = this.typeListeners.get(type) || []
+      const index = currentListeners.indexOf(callback)
+      if (index >= 0) {
+        currentListeners.splice(index, 1)
+        if (currentListeners.length === 0) {
+          this.typeListeners.delete(type)
+        }
+      }
     }
   }
 }

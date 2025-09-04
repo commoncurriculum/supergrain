@@ -49,12 +49,16 @@ describe('DocumentStore - Signal Utilities', () => {
 
       expect(typeof unsubscribe).toBe('function')
 
+      // Reset callback to ignore initial subscription calls
+      callback.mockReset()
+
       // Update one document should trigger callback
       store.updateField('user', 'user1', 'name', 'John Updated')
       expect(callback).toHaveBeenCalledWith({
         type: 'user',
         id: 'user1',
         document: expect.objectContaining({ name: 'John Updated' }),
+        action: 'update',
       })
 
       unsubscribe()
@@ -185,7 +189,7 @@ describe('DocumentStore - Signal Utilities', () => {
       vi.useRealTimers()
     })
 
-    it('should provide once subscription utility that auto-unsubscribes', () => {
+    it('should provide once subscription utility that auto-unsubscribes', async () => {
       const user: TestUser = {
         id: 'user1',
         name: 'John Doe',
@@ -203,6 +207,9 @@ describe('DocumentStore - Signal Utilities', () => {
       // First update should trigger callback and auto-unsubscribe
       store.updateField('user', 'user1', 'name', 'John Updated')
       expect(callback).toHaveBeenCalledTimes(1)
+
+      // Wait for async unsubscribe to complete
+      await new Promise(resolve => setTimeout(resolve, 10))
       expect(store.getMemoryMetrics().activeSubscriberCount).toBe(0)
 
       // Second update should not trigger callback
