@@ -1,26 +1,12 @@
 import type { Document, DocumentType, DocumentId, DocumentKey } from '../types'
 import { deepSignal } from 'alien-deepsignals'
 
-function setNestedValue(obj: any, path: string, value: any): any {
-  const keys = path.split('.').filter(Boolean)
-  const result = structuredClone(obj)
-  let current = result
+type PatchOperation = '$set' | '$unset' | '$push' | '$pull'
 
-  for (let i = 0; i < keys.length - 1; i++) {
-    const key = keys[i]
-    if (key && (!(key in current) || typeof current[key] !== 'object')) {
-      current[key] = {}
-    }
-    if (key) {
-      current = current[key]
-    }
-  }
-
-  const lastKey = keys[keys.length - 1]
-  if (lastKey) {
-    current[lastKey] = value
-  }
-  return result
+export interface Patch {
+  op: PatchOperation
+  path: string
+  value?: any
 }
 
 interface MemoryMetrics {
@@ -88,6 +74,18 @@ class SubscriptionScope {
   }
 }
 
+function convertPathToSignalAccess(path: string): string {
+  if (!path) return ''
+
+  const parts = path.split('.')
+  if (parts.length === 1) {
+    return parts[0]
+  }
+
+  // Convert nested paths: "nested.deep" -> "$nested.value.deep"
+  return '$' + parts[0] + '.value.' + parts.slice(1).join('.')
+}
+
 export class DocumentStore {
   private documents = new Map<DocumentKey, Document>()
   private signals = new Map<DocumentKey, any>()
@@ -126,29 +124,6 @@ export class DocumentStore {
     const key = this.getKey(type, id)
     const document = this.documents.get(key)
     return document ? (document as T) : null
-  }
-
-  updateDocument<T extends Document>(
-    type: DocumentType,
-    id: DocumentId,
-    updater: (document: T) => T
-  ): void {
-    const key = this.getKey(type, id)
-    const currentDocument = this.documents.get(key) as T
-
-    if (currentDocument) {
-      const updatedDocument = updater(currentDocument)
-      this.documents.set(key, updatedDocument)
-
-      // Update signal if it exists
-      const signal = this.signals.get(key)
-      if (signal) {
-        signal.value = updatedDocument
-      }
-
-      // Notify type listeners
-      this.notifyTypeListeners(type, id, updatedDocument, 'update')
-    }
   }
 
   // Get the deep signal directly for atomic updates with alien-deepsignals
@@ -214,27 +189,6 @@ export class DocumentStore {
           self.subscriberCounts.set(key, Math.max(0, count - 1))
         }
       },
-    }
-  }
-
-  updateField<T extends Document>(
-    type: DocumentType,
-    id: DocumentId,
-    path: string,
-    value: any
-  ): void {
-    const key = this.getKey(type, id)
-    const currentDocument = this.documents.get(key)
-
-    if (currentDocument) {
-      const updatedDocument = setNestedValue(currentDocument, path, value) as T
-      this.documents.set(key, updatedDocument)
-
-      // Update signal if it exists
-      const signal = this.signals.get(key)
-      if (signal) {
-        signal.value = updatedDocument
-      }
     }
   }
 
@@ -423,6 +377,124 @@ export class DocumentStore {
         if (currentListeners.length === 0) {
           this.typeListeners.delete(type)
         }
+      }
+    }
+  }
+}
+
+export function update<T extends Document>(
+  signal: any,
+  patches: Patch[]
+): void {
+  for (const patch of patches) {
+    const accessPath = convertPathToSignalAccess(patch.path)
+
+    switch (patch.op) {
+      case '$set': {
+        if (!accessPath) {
+          // Setting root
+          signal.value = patch.value
+        } else if (accessPath.includes('.')) {
+          // Nested path
+          const pathParts = accessPath.split('.')
+          let current = signal
+
+          // Navigate to parent
+          for (let i = 0; i < pathParts.length - 1; i++) {
+            current = current[pathParts[i]]
+            if (!current) break
+          }
+
+          if (current) {
+            const lastPart = pathParts[pathParts.length - 1]
+            current[lastPart] = patch.value
+          }
+        } else {
+          // Direct property
+          signal[accessPath] = patch.value
+        }
+        break
+      }
+
+      case '$unset': {
+        if (!accessPath) {
+          signal.value = null
+        } else if (accessPath.includes('.')) {
+          // Nested path
+          const pathParts = accessPath.split('.')
+          let current = signal
+
+          // Navigate to parent
+          for (let i = 0; i < pathParts.length - 1; i++) {
+            current = current[pathParts[i]]
+            if (!current) break
+          }
+
+          if (current) {
+            const lastPart = pathParts[pathParts.length - 1]
+            delete current[lastPart]
+          }
+        } else {
+          // Direct property
+          delete signal[accessPath]
+        }
+        break
+      }
+
+      case '$push': {
+        if (accessPath.includes('.')) {
+          // Nested array
+          const pathParts = accessPath.split('.')
+          let current = signal
+
+          // Navigate to array
+          for (const part of pathParts) {
+            current = current[part]
+            if (!current) break
+          }
+
+          if (Array.isArray(current.value)) {
+            current.value.push(patch.value)
+          }
+        } else {
+          // Direct array property
+          const arraySignal = signal['$' + accessPath]
+          if (arraySignal && Array.isArray(arraySignal.value)) {
+            arraySignal.value.push(patch.value)
+          }
+        }
+        break
+      }
+
+      case '$pull': {
+        if (accessPath.includes('.')) {
+          // Nested array
+          const pathParts = accessPath.split('.')
+          let current = signal
+
+          // Navigate to array
+          for (const part of pathParts) {
+            current = current[part]
+            if (!current) break
+          }
+
+          if (Array.isArray(current.value)) {
+            const index = current.value.indexOf(patch.value)
+            if (index > -1) {
+              current.value.splice(index, 1)
+            }
+          }
+        } else {
+          // Direct array property
+          const arraySignal = signal['$' + accessPath]
+          if (arraySignal && Array.isArray(arraySignal.value)) {
+            const index = arraySignal.value.indexOf(patch.value)
+            if (index > -1) {
+              arraySignal.value.splice(index, 1)
+            }
+          }
+        }
+        break
       }
     }
   }
