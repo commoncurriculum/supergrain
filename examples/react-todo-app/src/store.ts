@@ -1,8 +1,9 @@
 import { DocumentStore, update } from '@commoncurriculum/storable'
 import type { Todo, UserTodoList } from './types'
 
-// Create a global store instance
-export const store = new DocumentStore()
+// Create a single global store instance to ensure it's a singleton,
+// even if the module is evaluated multiple times in some environments (e.g., tests).
+export const store = ((globalThis as any).store ??= new DocumentStore())
 
 // Utility functions for managing todos
 export function createTodo(text: string): Todo {

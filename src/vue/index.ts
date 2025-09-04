@@ -1,6 +1,5 @@
 import { DocumentStore } from '../core/store'
 import { onUnmounted, ref } from 'vue'
-import { watch } from 'alien-deepsignals'
 import type { Ref } from 'vue'
 import type { Document } from '../core/types'
 
@@ -9,30 +8,23 @@ export function useDocument<T extends Document>(
   type: string,
   id: string
 ): Ref<T | null> {
-  // Create a Vue ref that will hold the document value
-  const documentRef = ref(null as T | null)
+  // Use a Vue ref to hold the reactive document state.
+  const documentRef = ref(
+    store.getDocumentSnapshot<T>(type, id)
+  ) as Ref<T | null>
 
-  // Get the deep signal directly from store
-  const deepSignal = store.getDeepSignal(type, id)
-
-  // Use alien-signals watch to track changes
-  const unwatch = watch(
-    deepSignal,
-    currentValue => {
-      documentRef.value = currentValue._isEmpty ? null : currentValue
-    },
-    {
-      deep: true,
-      immediate: true,
-    }
-  )
-
-  // Clean up watch when component unmounts
-  onUnmounted(() => {
-    unwatch()
+  // Subscribe to changes in the document.
+  const unsubscribe = store.subscribe(type, id, () => {
+    // When the document changes, update the ref with a new snapshot.
+    documentRef.value = store.getDocumentSnapshot<T>(type, id)
   })
 
-  return documentRef as Ref<T | null>
+  // Clean up the subscription when the component unmounts.
+  onUnmounted(() => {
+    unsubscribe()
+  })
+
+  return documentRef
 }
 
 export function useDocuments<T extends Document>(
@@ -40,33 +32,25 @@ export function useDocuments<T extends Document>(
   type: string,
   ids: string[]
 ): Ref<(T | null)[]> {
-  // Create a Vue ref that will hold the array of documents
-  const documentsRef = ref([] as (T | null)[])
+  // Use a Vue ref to hold the reactive array of documents.
+  const getSnapshots = () =>
+    ids.map(id => store.getDocumentSnapshot<T>(type, id))
+  const documentsRef = ref(getSnapshots()) as Ref<(T | null)[]>
 
-  // Get all deep signals directly
-  const deepSignals = ids.map(id => store.getDeepSignal(type, id))
-
-  // Use alien-signals watch to track changes to any document
-  const unwatchers = deepSignals.map(signal =>
-    watch(
-      signal,
-      () => {
-        const currentDocs = deepSignals.map(sig => (sig._isEmpty ? null : sig))
-        documentsRef.value = currentDocs
-      },
-      {
-        deep: true,
-        immediate: true,
-      }
-    )
+  // Subscribe to all documents.
+  const unsubscribers = ids.map(id =>
+    store.subscribe(type, id, () => {
+      // When any document changes, update the ref with new snapshots for all documents.
+      documentsRef.value = getSnapshots()
+    })
   )
 
-  // Clean up watches when component unmounts
+  // Clean up all subscriptions when the component unmounts.
   onUnmounted(() => {
-    unwatchers.forEach(unwatch => unwatch())
+    unsubscribers.forEach(unsubscribe => unsubscribe())
   })
 
-  return documentsRef as Ref<(T | null)[]>
+  return documentsRef
 }
 
 export function useDocumentStore(store: DocumentStore): DocumentStore {

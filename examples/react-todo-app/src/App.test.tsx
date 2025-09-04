@@ -10,8 +10,8 @@ describe('Todo App', () => {
     if (documentStore.documents) {
       documentStore.documents.clear()
     }
-    if (documentStore.deepSignals) {
-      documentStore.deepSignals.clear()
+    if (documentStore.signals) {
+      documentStore.signals.clear()
     }
   })
 

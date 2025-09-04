@@ -1,5 +1,5 @@
 import type { Document, DocumentType, DocumentId, DocumentKey } from '../types'
-import { deepSignal } from 'alien-deepsignals'
+import { createDeepProxy, Subscriber } from '../createDeepProxy'
 
 type PatchOperation = '$set' | '$unset' | '$push' | '$pull'
 
@@ -11,13 +11,17 @@ export interface Patch {
 
 interface MemoryMetrics {
   documentCount: number
-  signalCount: number
+  proxyCount: number
   activeSubscriberCount: number
 }
 
 export class DocumentStore {
-  public documents = new Map<DocumentKey, Document>()
-  private signals = new Map<DocumentKey, any>()
+  // Stores the plain, non-reactive document data for snapshots.
+  private documents = new Map<DocumentKey, Document>()
+  // Caches the reactive proxies to maintain object identity.
+  private proxies = new Map<DocumentKey, any>()
+  // Stores subscribers for each document.
+  private subscribers = new Map<DocumentKey, Set<Subscriber>>()
 
   public getKey(type: DocumentType, id: DocumentId): DocumentKey {
     return `${type}:${id}`
@@ -29,70 +33,103 @@ export class DocumentStore {
     document: T
   ): void {
     const key = this.getKey(type, id)
-    this.documents.set(key, document)
-
-    // Always create a fresh signal to preserve alien-deepsignals reactivity
-    const deepSig = deepSignal(JSON.parse(JSON.stringify(document)))
-    this.signals.set(key, deepSig)
+    // Store a deep copy to prevent mutations from outside the store.
+    this.documents.set(key, JSON.parse(JSON.stringify(document)))
+    // Invalidate any existing proxy for this document.
+    this.proxies.delete(key)
+    // Notify subscribers about the change.
+    this._notify(key)
   }
 
+  /**
+   * Returns a reactive proxy of a document. Mutations to this object will trigger
+   * subscribers. The proxy is cached to ensure object identity is preserved.
+   */
   getDocument<T extends Document>(
     type: DocumentType,
     id: DocumentId
   ): T | null {
-    const signal = this.getDeepSignal(type, id)
-    return signal._isEmpty ? null : signal
-  }
-
-  // Get the deep signal directly for atomic updates with alien-deepsignals
-  getDeepSignal(type: DocumentType, id: DocumentId): any {
     const key = this.getKey(type, id)
 
-    if (!this.signals.has(key)) {
-      const existingDocument = this.documents.get(key)
-
-      if (existingDocument) {
-        // Create signal with existing document
-        const deepSig = deepSignal(JSON.parse(JSON.stringify(existingDocument)))
-        this.signals.set(key, deepSig)
-        return deepSig
-      } else {
-        // Create empty signal marked as empty
-        const deepSig = deepSignal({})
-        deepSig._isEmpty = true
-        this.signals.set(key, deepSig)
-        return deepSig
-      }
+    if (this.proxies.has(key)) {
+      return this.proxies.get(key)
     }
 
-    return this.signals.get(key)!
+    const doc = this.documents.get(key)
+    if (!doc) {
+      return null
+    }
+
+    // Create a new proxy that notifies subscribers on change.
+    const proxy = createDeepProxy(doc, () => {
+      // When the proxy is mutated, update the snapshot and notify subscribers.
+      // A new deep copy is created for the snapshot.
+      this.documents.set(key, JSON.parse(JSON.stringify(proxy)))
+      this._notify(key)
+    })
+
+    this.proxies.set(key, proxy)
+    return proxy as T
+  }
+
+  /**
+   * Returns a non-reactive snapshot of a document for use with useSyncExternalStore.
+   */
+  getDocumentSnapshot<T extends Document>(
+    type: DocumentType,
+    id: DocumentId
+  ): T | null {
+    const key = this.getKey(type, id)
+    return (this.documents.get(key) as T) ?? null
   }
 
   removeDocument(type: DocumentType, id: DocumentId): void {
     const key = this.getKey(type, id)
-
-    // Remove document
     this.documents.delete(key)
-
-    // Set signal as empty
-    const signal = this.signals.get(key)
-    if (signal) {
-      Object.keys(signal).forEach(k => {
-        if (k !== '_isEmpty') delete signal[k]
-      })
-      signal._isEmpty = true
-    }
-  }
-
-  getSignalCount(): number {
-    return this.signals.size
+    this.proxies.delete(key)
+    this._notify(key)
+    // Also remove subscribers to prevent memory leaks
+    this.subscribers.delete(key)
   }
 
   getMemoryMetrics(): MemoryMetrics {
+    let subscriberCount = 0
+    this.subscribers.forEach(subSet => (subscriberCount += subSet.size))
     return {
       documentCount: this.documents.size,
-      signalCount: this.signals.size,
-      activeSubscriberCount: 0, // alien-signals handles this internally
+      proxyCount: this.proxies.size, // Represents reactive proxies
+      activeSubscriberCount: subscriberCount,
+    }
+  }
+
+  subscribe(
+    type: DocumentType,
+    id: DocumentId,
+    callback: Subscriber
+  ): () => void {
+    const key = this.getKey(type, id)
+    if (!this.subscribers.has(key)) {
+      this.subscribers.set(key, new Set())
+    }
+    const subSet = this.subscribers.get(key)!
+    subSet.add(callback)
+
+    // Return the unsubscribe function.
+    return () => {
+      subSet.delete(callback)
+      // Clean up the Set if it becomes empty to prevent memory leaks.
+      if (subSet.size === 0) {
+        this.subscribers.delete(key)
+      }
+    }
+  }
+
+  /**
+   * Notifies all subscribers for a given document key that a change has occurred.
+   */
+  private _notify(key: DocumentKey): void {
+    if (this.subscribers.has(key)) {
+      this.subscribers.get(key)!.forEach(callback => callback())
     }
   }
 }
@@ -103,62 +140,56 @@ export function update(
   id: DocumentId,
   patches: Patch[]
 ): void {
-  // Get the signal internally instead of receiving it as a parameter
-  const signal = store.getDeepSignal(type, id)
+  const docProxy = store.getDocument(type, id)
+  if (!docProxy) {
+    console.warn(`Document with type '${type}' and id '${id}' not found.`)
+    return
+  }
 
+  // The proxy will automatically notify subscribers upon mutation.
   for (const patch of patches) {
     switch (patch.op) {
       case '$set': {
-        // Use direct mutation as recommended by alien-deepsignals
-        setValueAtPath(signal, patch.path, patch.value)
+        setValueAtPath(docProxy, patch.path, patch.value)
         break
       }
-
       case '$unset': {
-        deleteValueAtPath(signal, patch.path)
+        deleteValueAtPath(docProxy, patch.path)
         break
       }
-
       case '$push': {
-        const arrayRef = getValueAtPath(signal, patch.path)
+        const arrayRef = getValueAtPath(docProxy, patch.path)
         if (Array.isArray(arrayRef)) {
-          arrayRef.push(patch.value)
+          // Create a new array to ensure immutability for snapshot-based systems.
+          setValueAtPath(docProxy, patch.path, [...arrayRef, patch.value])
         }
         break
       }
-
       case '$pull': {
-        const arrayRef = getValueAtPath(signal, patch.path)
+        const arrayRef = getValueAtPath(docProxy, patch.path)
         if (Array.isArray(arrayRef)) {
-          for (let i = arrayRef.length - 1; i >= 0; i--) {
-            const item = arrayRef[i]
-            let shouldRemove = false
-            if (typeof item === 'object' && typeof patch.value === 'object') {
+          // Use filter to create a new array, ensuring immutability.
+          const newArray = arrayRef.filter(item => {
+            if (
+              patch.value &&
+              typeof item === 'object' &&
+              item !== null &&
+              typeof patch.value === 'object'
+            ) {
               if (item.id && patch.value.id) {
-                shouldRemove = item.id === patch.value.id
-              } else {
-                shouldRemove =
-                  JSON.stringify(item) === JSON.stringify(patch.value)
+                return item.id !== patch.value.id
               }
-            } else {
-              shouldRemove = item === patch.value
+              // Fallback to deep equality for objects without IDs.
+              return JSON.stringify(item) !== JSON.stringify(patch.value)
             }
-            if (shouldRemove) {
-              arrayRef.splice(i, 1)
-            }
-          }
+            return item !== patch.value
+          })
+          setValueAtPath(docProxy, patch.path, newArray)
         }
         break
       }
     }
   }
-
-  // Sync changes back to documents map
-  const key = store.getKey(type, id)
-  const currentDoc = { ...signal }
-  // Remove alien-deepsignals internal properties
-  delete currentDoc._isEmpty
-  store.documents.set(key, currentDoc)
 }
 
 function setValueAtPath(obj: any, path: string, value: any): void {

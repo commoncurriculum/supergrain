@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { watch } from 'alien-deepsignals'
+
 import { DocumentStore } from '../core/store'
 import type { Document } from '../core/types'
 
@@ -8,35 +8,20 @@ export function useDocument<T extends Document>(
   type: string,
   id: string
 ): T | null {
-  return useSyncExternalStore(
-    callback => {
-      // Subscribe function - set up watch and return unsubscribe
-      const deepSignal = store.getDeepSignal(type, id)
+  // The subscribe function must be stable and not re-created on every render.
+  // It registers the component's callback with the store for a specific document.
+  const subscribe = (callback: () => void) => {
+    return store.subscribe(type, id, callback)
+  }
 
-      try {
-        const unwatch = watch(
-          deepSignal,
-          () => {
-            // Notify React of changes
-            callback()
-          },
-          {
-            deep: true,
-          }
-        )
-        return unwatch
-      } catch (error) {
-        console.error('Failed to watch deep signal:', error)
-        // Return a no-op unsubscribe function if watch fails
-        return () => {}
-      }
-    },
-    () => {
-      // Get current value function
-      const deepSignal = store.getDeepSignal(type, id)
-      return deepSignal._isEmpty ? null : (deepSignal as T)
-    }
-  )
+  // The getSnapshot function should return a cached or immutable version of the data.
+  // This function is called by React to get the current state.
+  const getSnapshot = () => {
+    return store.getDocumentSnapshot<T>(type, id)
+  }
+
+  // useSyncExternalStore handles the subscription and re-rendering logic.
+  return useSyncExternalStore(subscribe, getSnapshot)
 }
 
 export function useDocuments<T extends Document>(
@@ -44,39 +29,20 @@ export function useDocuments<T extends Document>(
   type: string,
   ids: string[]
 ): (T | null)[] {
-  return useSyncExternalStore(
-    callback => {
-      // Subscribe function - set up watches for all documents
-      const unwatchers = ids.map(id => {
-        try {
-          const deepSignal = store.getDeepSignal(type, id)
-          return watch(
-            deepSignal,
-            () => {
-              callback()
-            },
-            {
-              deep: true,
-            }
-          )
-        } catch (error) {
-          console.error('Failed to watch deep signal for id', id, error)
-          return () => {}
-        }
-      })
-
-      return () => {
-        unwatchers.forEach(unwatch => unwatch())
-      }
-    },
-    () => {
-      // Get current value function
-      return ids.map(id => {
-        const deepSignal = store.getDeepSignal(type, id)
-        return deepSignal._isEmpty ? null : (deepSignal as T)
-      })
+  // Subscribe to all documents and return a single unsubscribe function.
+  const subscribe = (callback: () => void) => {
+    const unsubscribers = ids.map(id => store.subscribe(type, id, callback))
+    return () => {
+      unsubscribers.forEach(unsubscribe => unsubscribe())
     }
-  )
+  }
+
+  // Get snapshots for all requested documents.
+  const getSnapshot = () => {
+    return ids.map(id => store.getDocumentSnapshot<T>(type, id))
+  }
+
+  return useSyncExternalStore(subscribe, getSnapshot)
 }
 
 export function useDocumentStore(store: DocumentStore): DocumentStore {
