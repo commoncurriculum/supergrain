@@ -132,12 +132,21 @@ export class DocumentStore {
 
     if (!this.signals.has(key)) {
       const existingDocument = this.documents.get(key)
+
+      // alien-deepsignals can't observe null, so we use an empty object
+      // and track existence separately
       const initialValue = existingDocument
         ? JSON.parse(JSON.stringify(existingDocument))
-        : null
+        : {}
 
       // Create a deep signal using alien-deepsignals
       const deepSig = deepSignal(initialValue as any)
+
+      // If there's no existing document, mark the signal as empty
+      if (!existingDocument) {
+        deepSig._isEmpty = true
+      }
+
       this.signals.set(key, deepSig)
       this.subscriberCounts.set(key, 0)
 
@@ -159,16 +168,25 @@ export class DocumentStore {
 
     return {
       get value() {
-        return deepSig
+        // If the signal is marked as empty, return null
+        return deepSig._isEmpty ? null : deepSig
       },
       set value(newValue: T | null) {
-        const oldValue = deepSig
-        // With alien-deepsignals, we need to update the signal object itself
-        if (newValue) {
-          Object.assign(deepSig, newValue)
+        const oldValue = deepSig._isEmpty ? null : deepSig
+
+        if (newValue === null) {
+          // Clear the signal and mark it as empty
+          Object.keys(deepSig).forEach(key => {
+            if (key !== '_isEmpty') delete deepSig[key]
+          })
+          deepSig._isEmpty = true
         } else {
-          // Clear the object
-          Object.keys(deepSig).forEach(key => delete deepSig[key])
+          // Set new value and remove empty flag
+          Object.keys(deepSig).forEach(key => {
+            if (key !== '_isEmpty') delete deepSig[key]
+          })
+          Object.assign(deepSig, newValue)
+          delete deepSig._isEmpty
         }
 
         // Update documents map
