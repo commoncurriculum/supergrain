@@ -25,5 +25,5 @@ export function useDocuments<T>(
   type: string,
   ids: string[]
 ): (T | null)[] {
-  throw new Error('Not implemented')
+  return ids.map(id => useDocument(store, type, id))
 }

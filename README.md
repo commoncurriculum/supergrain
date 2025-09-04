@@ -144,7 +144,7 @@ This phase focuses on building a robust, performant, and ergonomic local data st
 **Feature 2: Multiple Documents Hook**
 
 - [x] RED: Write tests for cleanup on component unmount
-- [ ] GREEN: Implement `useDocuments<T>(type: string, ids: string[])` hook
+- [x] GREEN: Implement `useDocuments<T>(type: string, ids: string[])` hook
 
 **Feature 3: Direct Store Access**
 
