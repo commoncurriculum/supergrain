@@ -107,10 +107,10 @@ This phase focuses SOLELY on fetching data from APIs and making it available to 
 - [ ] RED: Write tests for signal creation and updates when documents change
 - [ ] GREEN: Implement signal-based reactive document storage
 
-**Feature 3: Type Safety**
+**Feature 3: Type Safety & Deep Tracking**
 
-- [ ] RED: Write tests for type-safe document access with TypeScript generics
-- [ ] GREEN: Implement type-safe storage: `store[type][id]` with signal values
+- [ ] RED: Write tests for type-safe document access and deep nested field change detection
+- [ ] GREEN: Implement type-safe storage with deep tracking: `store[type][id]` with signal values that detect nested changes
 
 **Feature 4: Memory Management**
 
@@ -125,7 +125,8 @@ This phase focuses SOLELY on fetching data from APIs and making it available to 
 **Key Features:**
 
 - Each document is stored as a signal: `signal<Document | null>`
-- Components automatically re-render when document signals change
+- **Deep tracking**: Signals must detect changes to deeply nested fields (e.g., `user.profile.settings.theme`) and trigger granular updates
+- Components automatically re-render when document signals change at any nesting level
 - Type-safe access to documents with proper TypeScript generics
 - Automatic cleanup of unused document signals
 
@@ -443,7 +444,7 @@ DataFetchLibrary
 ### Signals Integration
 
 ```typescript
-// Core store structure
+// Core store structure with deep tracking
 class DocumentStore {
   private documents = new Map<string, Signal<Document | null>>()
 
@@ -457,7 +458,17 @@ class DocumentStore {
 
   setDocument<T>(type: string, id: string, doc: T): void {
     const docSignal = this.getDocument<T>(type, id)
+    // Deep tracking: Signal detects nested changes like user.profile.settings.theme
     docSignal.value = doc
+  }
+
+  // Update nested field and trigger signal reactivity
+  updateField<T>(type: string, id: string, path: string, value: any): void {
+    const docSignal = this.getDocument<T>(type, id)
+    if (docSignal.value) {
+      // Immutable update that triggers signal change detection
+      docSignal.value = setNestedValue(docSignal.value, path, value)
+    }
   }
 }
 ```
