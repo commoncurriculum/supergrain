@@ -1,5 +1,5 @@
 import { DocumentStore } from '../../core/store'
-import { useDocument, useDocuments } from '../'
+import { useDocument, useDocuments, useDocumentStore } from '../'
 import { renderHook, act } from '@testing-library/react'
 
 describe('useDocument', () => {
@@ -15,5 +15,13 @@ describe('useDocuments', () => {
     const store = new DocumentStore()
     const { result } = renderHook(() => useDocuments(store, 'user', ['1', '2']))
     expect(result.current).toEqual([null, null])
+  })
+})
+
+describe('useDocumentStore', () => {
+  it('should return the document store', () => {
+    const store = new DocumentStore()
+    const { result } = renderHook(() => useDocumentStore(store))
+    expect(result.current).toBe(store)
   })
 })

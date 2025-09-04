@@ -27,3 +27,7 @@ export function useDocuments<T>(
 ): (T | null)[] {
   return ids.map(id => useDocument(store, type, id))
 }
+
+export function useDocumentStore(store: DocumentStore): DocumentStore {
+  throw new Error('Not implemented')
+}
