@@ -193,36 +193,48 @@ Create a classic Todo application using the React framework adapters to validate
 
 Create a classic Todo application using the Vue framework adapters to validate ergonomics and performance.
 
-### 1.7 Action System (Local Mutations) (Test-First)
+### 1.7 Action System (Local Mutations) (Test-Then-Implement)
 
-**Action Definition and Dispatching:**
+**Action System Development (each feature uses 2-commit TDD cycle):**
 
-_First, write tests for:_
+**Feature 1: Action Validation and Structure**
 
-- Action validation and structure
-- Patch application to signals for local state changes
+- [ ] RED: Write tests for action validation and structure
+- [ ] GREEN: Implement `ActionService` and basic action structure
 
-_Then implement:_
+**Feature 2: Local Patch Application**
 
-- `ActionService` for dispatching mutations
-- Action structure with patches
+- [ ] RED: Write tests for applying patches to document signals for local state changes
+- [ ] GREEN: Implement patch application within the `ActionService`
 
-### 1.8 Patch System (Local Mutations) (Test-First)
+### 1.8 Patch System (Local Mutations) (Test-Then-Implement)
 
-**MongoDB-style Operations:**
+**Patch System Development (each feature uses 2-commit TDD cycle):**
 
-_First, write tests for:_
+**Feature 1: Basic Patch Operations (set, unset)**
 
-- Patch operations (set, unset, inc, push, pull, etc.)
-- Patch application to document signals
-- Path creation for nested objects
-- Type safety for patch operations
+- [ ] RED: Write tests for `set` and `unset` patch operations
+- [ ] GREEN: Implement the patch application engine for `set` and `unset`
 
-_Then implement:_
+**Feature 2: Numeric Patch Operations (inc)**
 
-- Patch application engine
-- Path utilities for nested operations
-- Type-safe patch definitions
+- [ ] RED: Write tests for `inc` patch operation
+- [ ] GREEN: Add `inc` support to the patch engine
+
+**Feature 3: Array Patch Operations (push, pull)**
+
+- [ ] RED: Write tests for `push` and `pull` array operations
+- [ ] GREEN: Add array manipulation support to the patch engine
+
+**Feature 4: Nested Path Operations**
+
+- [ ] RED: Write tests for applying patches to nested object paths
+- [ ] GREEN: Implement path utilities for nested operations
+
+**Feature 5: Type Safety**
+
+- [ ] RED: Write tests to ensure type safety for all patch operations
+- [ ] GREEN: Implement type-safe patch definitions and application
 
 ## Phase 2: Network Fetching and Optimistic Updates
 
@@ -285,85 +297,120 @@ This phase adds the ability to fetch data from a server and modify it with optim
 - [ ] RED: Write tests for error state persistence and clearing
 - [ ] GREEN: Implement error signals with structured error information
 
-### 2.4 Optimistic Updates (Test-First)
+### 2.4 Optimistic Updates (Test-Then-Implement)
 
-**Optimistic Queue Management:**
+**Optimistic Update Development (each feature uses 2-commit TDD cycle):**
 
-_First, write tests for:_
+**Feature 1: Optimistic Queue**
 
-- Optimistic queue per document
-- Server confirmation and queue cleanup
-- Rollback on server rejection
-- Queue persistence during failures
-- Memory management
+- [ ] RED: Write tests for creating and managing an optimistic update queue for a document
+- [ ] GREEN: Implement optimistic update tracking and queue management per document
 
-_Then implement:_
+**Feature 2: Server Confirmation**
 
-- Optimistic update tracking
-- Queue management per document
-- Automatic rollback mechanisms
-- Server reconciliation without conflicts
+- [ ] RED: Write tests for server confirmation and queue cleanup
+- [ ] GREEN: Implement logic to handle successful server responses and clean the queue
+
+**Feature 3: Server Rejection and Rollback**
+
+- [ ] RED: Write tests for rolling back changes on server rejection
+- [ ] GREEN: Implement automatic rollback mechanisms
+
+**Feature 4: Queue Persistence**
+
+- [ ] RED: Write tests for queue persistence during network failures
+- [ ] GREEN: Implement mechanisms to persist the queue (e.g., to localStorage)
+
+**Feature 5: Memory Management**
+
+- [ ] RED: Write tests for memory management of the optimistic queue
+- [ ] GREEN: Implement cleanup for old, confirmed actions
 
 ## Phase 3: Real-time Synchronization and Advanced Features
 
 This phase adds WebSocket support, real-time updates, and conflict resolution.
 
-### 3.1 WebSocket Infrastructure (Test-First)
+### 3.1 WebSocket Infrastructure (Test-Then-Implement)
 
-**Socket Service:**
+**Socket Service Development (each feature uses 2-commit TDD cycle):**
 
-_First, write tests for:_
+**Feature 1: Connection Management**
 
-- WebSocket connection management
-- Long-polling fallback
-- Connection lifecycle
-- Heartbeat system
-- Activity-based connection management
+- [ ] RED: Write tests for basic WebSocket connection and lifecycle events (connect, disconnect, error)
+- [ ] GREEN: Implement `SocketService` with connection state management
 
-_Then implement:_
+**Feature 2: Automatic Reconnection**
 
-- `SocketService` with multi-transport support
-- Connection state management
-- Automatic reconnection
-- Activity monitoring
+- [ ] RED: Write tests for automatic reconnection logic with backoff
+- [ ] GREEN: Implement automatic reconnection in `SocketService`
 
-### 3.2 Real-time Patch Processing (Test-First)
+**Feature 3: Heartbeat System**
 
-**Incoming Update Handling:**
+- [ ] RED: Write tests for the heartbeat (ping/pong) system to keep connections alive
+- [ ] GREEN: Implement the heartbeat mechanism
 
-_First, write tests for:_
+**Feature 4: Activity-Based Connection**
 
-- Sequence number validation
-- Patch application to signals
-- Missing patch recovery
-- Document staleness detection
-- Subscription management
+- [ ] RED: Write tests for activity-based connection management (e.g., disconnect after inactivity)
+- [ ] GREEN: Implement activity monitoring to manage the socket connection
 
-_Then implement:_
+**Feature 5: Long-Polling Fallback**
 
-- Real-time patch processing
-- Document subscriptions
-- Automatic signal updates
-- Conflict detection
+- [ ] RED: Write tests for long-polling fallback when WebSockets are unavailable
+- [ ] GREEN: Implement multi-transport support in `SocketService`
 
-### 3.3 Conflict Resolution (Test-First)
+### 3.2 Real-time Patch Processing (Test-Then-Implement)
 
-**Server Reconciliation:**
+**Real-time Update Handling (each feature uses 2-commit TDD cycle):**
 
-_First, write tests for:_
+**Feature 1: Document Subscription**
 
-- Three-stage reconciliation process
-- Optimistic queue replay
-- Conflict detection accuracy
-- Data consistency guarantees
-- User notification of conflicts
+- [ ] RED: Write tests for subscribing and unsubscribing to document updates via the socket
+- [ ] GREEN: Implement document subscription management
 
-_Then implement:_
+**Feature 2: Incoming Patch Application**
 
-- Conflict resolution algorithms
-- Automatic reconciliation
-- User-friendly conflict handling
-- Data integrity validation
+- [ ] RED: Write tests for applying incoming patches to the correct document signals
+- [ ] GREEN: Implement real-time patch processing and automatic signal updates
+
+**Feature 3: Sequence Number Validation**
+
+- [ ] RED: Write tests for sequence number validation to ensure patch order
+- [ ] GREEN: Implement sequence handling in the patch processor
+
+**Feature 4: Missing Patch Recovery**
+
+- [ ] RED: Write tests for detecting and recovering from missing patches
+- [ ] GREEN: Implement a mechanism to fetch missing updates
+
+**Feature 5: Document Staleness**
+
+- [ ] RED: Write tests for detecting if a local document is stale compared to the server
+- [ ] GREEN: Implement staleness detection and refetching logic
+
+### 3.3 Conflict Resolution (Test-Then-Implement)
+
+**Conflict Resolution Development (each feature uses 2-commit TDD cycle):**
+
+**Feature 1: Conflict Detection**
+
+- [ ] RED: Write tests for accurately detecting conflicts between local optimistic updates and incoming server patches
+- [ ] GREEN: Implement conflict detection logic based on document versions or timestamps
+
+**Feature 2: Optimistic Queue Replay**
+
+- [ ] RED: Write tests for the three-stage reconciliation process (rewind, apply server patch, replay queue)
+- [ ] GREEN: Implement the core reconciliation algorithm with optimistic queue replay
+
+**Feature 3: Data Consistency**
+
+- [ ] RED: Write tests to guarantee data consistency after conflict resolution
+- [ ] GREEN: Implement data integrity validation checks post-reconciliation
+
+**Feature 4: User Notification**
+
+- [ ] RED: Write tests for notifying the user when a conflict cannot be resolved automatically
+- [ ] GREEN: Implement a user-friendly conflict handling and notification system
 
 ## Technical Architecture
 
