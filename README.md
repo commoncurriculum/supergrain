@@ -138,7 +138,7 @@ This phase focuses on building a robust, performant, and ergonomic local data st
 
 **Feature 1: Basic useDocument Hook**
 
-- [ ] RED: Write tests for `useDocument(type, id)` hook behavior and re-rendering
+- [x] RED: Write tests for `useDocument(type, id)` hook behavior and re-rendering
 - [ ] GREEN: Implement `useDocument<T>(type: string, id: string)` hook
 
 **Feature 2: Multiple Documents Hook**

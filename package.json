@@ -68,6 +68,7 @@
     "@preact/signals-core": "^1.5.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.0",
     "@types/node": "^24.3.0",
     "@vitejs/plugin-react": "^5.0.2",
     "@vitejs/plugin-vue": "^6.0.1",
