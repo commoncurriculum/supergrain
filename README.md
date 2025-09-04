@@ -9,7 +9,7 @@ This document outlines the plan for migrating the sophisticated Ember data synch
 ### Phase 1: Read-Only Data Fetching with Signals
 
 - [x] **1.1 TypeScript Library Setup** - Complete ✅
-- [ ] **1.2 Core Store with Signals**
+- [x] **1.2 Core Store with Signals** - Complete ✅
 - [ ] **1.3 HTTP Client**
 - [ ] **1.4 Finder Service**
 - [ ] **1.5 Framework Adapters - React**
@@ -104,23 +104,23 @@ This phase focuses SOLELY on fetching data from APIs and making it available to 
 
 **Feature 2: Signal Integration**
 
-- [ ] RED: Write tests for signal creation and updates when documents change
-- [ ] GREEN: Implement signal-based reactive document storage
+- [x] RED: Write tests for signal creation and updates when documents change
+- [x] GREEN: Implement signal-based reactive document storage
 
 **Feature 3: Type Safety & Deep Tracking**
 
-- [ ] RED: Write tests for type-safe document access and deep nested field change detection
-- [ ] GREEN: Implement type-safe storage with deep tracking: `store[type][id]` with signal values that detect nested changes
+- [x] RED: Write tests for type-safe document access and deep nested field change detection
+- [x] GREEN: Implement type-safe storage with deep tracking: `store[type][id]` with signal values that detect nested changes
 
 **Feature 4: Memory Management**
 
-- [ ] RED: Write tests for memory management and cleanup of unused signals
-- [ ] GREEN: Implement cache management and automatic signal cleanup
+- [x] RED: Write tests for memory management and cleanup of unused signals
+- [x] GREEN: Implement cache management and automatic signal cleanup
 
 **Feature 5: Signal Utilities**
 
-- [ ] RED: Write tests for signal subscription and cleanup utilities
-- [ ] GREEN: Implement signal subscription and cleanup utilities
+- [x] RED: Write tests for signal subscription and cleanup utilities
+- [x] GREEN: Implement signal subscription and cleanup utilities
 
 **Key Features:**
 
