@@ -4,23 +4,25 @@ This document outlines the plan for migrating the sophisticated Ember data synch
 
 ## Progress Tracking
 
-**Instructions:** Check off each checkbox `[ ]` → `[x]` as you complete each feature's 2-commit TDD cycle.
+**Instructions:** As an AI developer, you MUST check off the corresponding checkbox `[ ]` → `[x]` in this README file as you complete each task's RED and GREEN commits.
 
-### Phase 1: Read-Only Data Fetching with Signals
+### Phase 1: Local-First Development & Framework Integration
 
 - [x] **1.1 TypeScript Library Setup** - Complete ✅
 - [x] **1.2 Core Store with Signals** - Complete ✅
-- [ ] **1.3 HTTP Client**
-- [ ] **1.4 Finder Service**
-- [ ] **1.5 Framework Adapters - React**
-- [ ] **1.6 Framework Adapters - Vue**
-- [ ] **1.7 Loading States and Error Handling**
+- [ ] **1.3 Framework Adapters - React**
+- [ ] **1.4 Framework Adapters - Vue**
+- [ ] **1.5 Example App - React Todo App**
+- [ ] **1.6 Example App - Vue Todo App**
+- [ ] **1.7 Action System (Local Mutations)**
+- [ ] **1.8 Patch System (Local Mutations)**
 
-### Phase 2: Data Mutations and Optimistic Updates
+### Phase 2: Network Fetching and Optimistic Updates
 
-- [ ] **2.1 Action System**
-- [ ] **2.2 Patch System**
-- [ ] **2.3 Optimistic Updates**
+- [ ] **2.1 HTTP Client**
+- [ ] **2.2 Finder Service**
+- [ ] **2.3 Loading States and Error Handling**
+- [ ] **2.4 Optimistic Updates**
 
 ### Phase 3: Real-time Synchronization and Advanced Features
 
@@ -40,9 +42,9 @@ The current Ember system provides:
 
 **Migration will be split into distinct phases:**
 
-- **Phase 1**: Read-only data fetching with signals-based reactivity
-- **Phase 2**: Data mutations and optimistic updates
-- **Phase 3**: Real-time synchronization and conflict resolution
+- **Phase 1**: Local-first development with framework integration. Focus on ergonomics and performance with sample React and Vue Todo apps before introducing network complexities.
+- **Phase 2**: Network fetching and optimistic updates.
+- **Phase 3**: Real-time synchronization and conflict resolution.
 
 ## Project Structure
 
@@ -74,12 +76,12 @@ All development will follow Test-Driven Development (TDD) principles:
 - **Unit Tests**: Test individual functions and classes in isolation
 - **Integration Tests**: Test service interactions and data flow
 - **Contract Tests**: Ensure framework adapters maintain consistent APIs
-- **End-to-End Tests**: Test complete user workflows
-- **Performance Tests**: Validate memory usage and response times
+- **End-to-End Tests**: Test complete user workflows in the example apps.
+- **Performance Tests**: Validate memory usage and response times.
 
-## Phase 1: Read-Only Data Fetching with Signals
+## Phase 1: Local-First Development & Framework Integration
 
-This phase focuses SOLELY on fetching data from APIs and making it available to components through reactive signals. No mutations, no WebSockets, no optimistic updates.
+This phase focuses on building a robust, performant, and ergonomic local data store with framework adapters for React and Vue. We will build classic "Todo" apps for both frameworks to validate the design before adding any networking.
 
 ### 1.1 TypeScript Library Setup
 
@@ -130,73 +132,7 @@ This phase focuses SOLELY on fetching data from APIs and making it available to 
 - Type-safe access to documents with proper TypeScript generics
 - Automatic cleanup of unused document signals
 
-### 1.3 HTTP Client (Test-Then-Implement)
-
-**API Client Development (each feature uses 2-commit TDD cycle):**
-
-**Feature 1: Basic HTTP Client**
-
-- [ ] RED: Write tests for GET requests with proper serialization
-- [ ] GREEN: Implement `HttpClient` class with configurable base URL
-
-**Feature 2: Error Handling**
-
-- [ ] RED: Write tests for error handling with user-friendly messages
-- [ ] GREEN: Implement error classification and handling
-
-**Feature 3: Retry Logic**
-
-- [ ] RED: Write tests for request timeout and retry logic
-- [ ] GREEN: Implement retry logic with exponential backoff
-
-**Feature 4: Response Caching**
-
-- [ ] RED: Write tests for response caching strategies
-- [ ] GREEN: Implement response caching with TTL
-
-**Feature 5: Request Interceptors**
-
-- [ ] RED: Write tests for network failure scenarios and interceptors
-- [ ] GREEN: Implement request/response interceptors
-
-### 1.4 Finder Service (Test-Then-Implement)
-
-**Batch Fetching Service (each feature uses 2-commit TDD cycle):**
-
-**Feature 1: Single Document Fetching**
-
-- [ ] RED: Write tests for single document fetching from API
-- [ ] GREEN: Implement `FinderService` that fetches documents from API
-
-**Feature 2: Batch Fetching**
-
-- [ ] RED: Write tests for batch document fetching with deduplication
-- [ ] GREEN: Implement request batching to reduce HTTP calls
-
-**Feature 3: Store Integration**
-
-- [ ] RED: Write tests for request queuing and optimization
-- [ ] GREEN: Implement integration with DocumentStore to update signals
-
-**Feature 4: Loading States**
-
-- [ ] RED: Write tests for loading state management per document type
-- [ ] GREEN: Implement loading state signals per document type
-
-**Feature 5: Error Handling**
-
-- [ ] RED: Write tests for error handling per document
-- [ ] GREEN: Implement error handling with per-document error states
-
-**Key Features:**
-
-- `finder.findOne(type, id)` - fetches single document, updates store signal
-- `finder.findMany(type, ids)` - batches requests, updates multiple signals
-- Automatic deduplication of simultaneous requests
-- Loading signals: `isLoading.value` for each document type
-- Error signals: `error.value` for each document
-
-### 1.5 Framework Adapters - React (Test-Then-Implement)
+### 1.3 Framework Adapters - React (Test-Then-Implement)
 
 **React Hooks Development (each feature uses 2-commit TDD cycle):**
 
@@ -205,51 +141,22 @@ This phase focuses SOLELY on fetching data from APIs and making it available to 
 - [ ] RED: Write tests for `useDocument(type, id)` hook behavior and re-rendering
 - [ ] GREEN: Implement `useDocument<T>(type: string, id: string)` hook
 
-**Feature 2: Loading and Error States**
-
-- [ ] RED: Write tests for loading state tracking and error state handling
-- [ ] GREEN: Implement loading/error state integration with hook
-
-**Feature 3: Multiple Documents Hook**
+**Feature 2: Multiple Documents Hook**
 
 - [ ] RED: Write tests for cleanup on component unmount
 - [ ] GREEN: Implement `useDocuments<T>(type: string, ids: string[])` hook
 
-**Feature 4: Direct Store Access**
+**Feature 3: Direct Store Access**
 
 - [ ] RED: Write tests for TypeScript integration and type safety
 - [ ] GREEN: Implement `useDocumentStore()` for direct store access
 
-**Feature 5: Memory Management**
+**Feature 4: Memory Management**
 
 - [ ] RED: Write tests for proper cleanup and memory management
 - [ ] GREEN: Implement integration with signals for automatic re-rendering and cleanup
 
-**Hook Signatures:**
-
-```typescript
-function useDocument<T>(
-  type: string,
-  id: string
-): {
-  data: T | null
-  isLoading: boolean
-  error: Error | null
-  refetch: () => Promise<void>
-}
-
-function useDocuments<T>(
-  type: string,
-  ids: string[]
-): {
-  data: (T | null)[]
-  isLoading: boolean
-  error: Error | null
-  refetch: () => Promise<void>
-}
-```
-
-### 1.6 Framework Adapters - Vue (Test-Then-Implement)
+### 1.4 Framework Adapters - Vue (Test-Then-Implement)
 
 **Vue Composables Development (each feature uses 2-commit TDD cycle):**
 
@@ -278,7 +185,88 @@ function useDocuments<T>(
 - [ ] RED: Write tests for performance with large datasets
 - [ ] GREEN: Implement proper cleanup with `onUnmounted` and optimization
 
-### 1.7 Loading States and Error Handling (Test-Then-Implement)
+### 1.5 Example App - React Todo App
+
+Create a classic Todo application using the React framework adapters to validate ergonomics and performance.
+
+### 1.6 Example App - Vue Todo App
+
+Create a classic Todo application using the Vue framework adapters to validate ergonomics and performance.
+
+### 1.7 Action System (Local Mutations) (Test-First)
+
+**Action Definition and Dispatching:**
+
+_First, write tests for:_
+
+- Action validation and structure
+- Patch application to signals for local state changes
+
+_Then implement:_
+
+- `ActionService` for dispatching mutations
+- Action structure with patches
+
+### 1.8 Patch System (Local Mutations) (Test-First)
+
+**MongoDB-style Operations:**
+
+_First, write tests for:_
+
+- Patch operations (set, unset, inc, push, pull, etc.)
+- Patch application to document signals
+- Path creation for nested objects
+- Type safety for patch operations
+
+_Then implement:_
+
+- Patch application engine
+- Path utilities for nested operations
+- Type-safe patch definitions
+
+## Phase 2: Network Fetching and Optimistic Updates
+
+This phase adds the ability to fetch data from a server and modify it with optimistic updates.
+
+### 2.1 HTTP Client (Test-Then-Implement)
+
+**API Client Development (each feature uses 2-commit TDD cycle):**
+
+**Feature 1: Basic HTTP Client**
+
+- [ ] RED: Write tests for GET requests with proper serialization
+- [ ] GREEN: Implement `HttpClient` class with configurable base URL
+
+**Feature 2: Error Handling**
+
+- [ ] RED: Write tests for error handling with user-friendly messages
+- [ ] GREEN: Implement error classification and handling
+
+**Feature 3: Retry Logic**
+
+- [ ] RED: Write tests for request timeout and retry logic
+- [ ] GREEN: Implement retry logic with exponential backoff
+
+### 2.2 Finder Service (Test-Then-Implement)
+
+**Batch Fetching Service (each feature uses 2-commit TDD cycle):**
+
+**Feature 1: Single Document Fetching**
+
+- [ ] RED: Write tests for single document fetching from API
+- [ ] GREEN: Implement `FinderService` that fetches documents from API
+
+**Feature 2: Batch Fetching**
+
+- [ ] RED: Write tests for batch document fetching with deduplication
+- [ ] GREEN: Implement request batching to reduce HTTP calls
+
+**Feature 3: Store Integration**
+
+- [ ] RED: Write tests for request queuing and optimization
+- [ ] GREEN: Implement integration with DocumentStore to update signals
+
+### 2.3 Loading States and Error Handling (Test-Then-Implement)
 
 **Loading State Management (each feature uses 2-commit TDD cycle):**
 
@@ -297,59 +285,7 @@ function useDocuments<T>(
 - [ ] RED: Write tests for error state persistence and clearing
 - [ ] GREEN: Implement error signals with structured error information
 
-**Feature 4: Loading Transitions**
-
-- [ ] RED: Write tests for loading state transitions
-- [ ] GREEN: Implement loading state aggregation (e.g., "any loading", "all loading")
-
-**Feature 5: Concurrent Request Handling**
-
-- [ ] RED: Write tests for performance under concurrent requests
-- [ ] GREEN: Implement error recovery mechanisms and request deduplication
-
-## Phase 2: Data Mutations and Optimistic Updates
-
-This phase adds the ability to modify data with optimistic updates, but still no real-time synchronization.
-
-### 2.1 Action System (Test-First)
-
-**Action Definition and Dispatching:**
-
-_First, write tests for:_
-
-- Action validation and structure
-- Optimistic patch application to signals
-- Undo patch generation
-- Action queuing per document
-- Server submission and response handling
-
-_Then implement:_
-
-- `ActionService` for dispatching mutations
-- Action structure with patches and undo patches
-- Optimistic application to document signals
-- Server submission with rollback on failure
-
-### 2.2 Patch System (Test-First)
-
-**MongoDB-style Operations:**
-
-_First, write tests for:_
-
-- Patch operations (set, unset, inc, push, pull, etc.)
-- Patch application to document signals
-- Undo patch generation accuracy
-- Path creation for nested objects
-- Type safety for patch operations
-
-_Then implement:_
-
-- Patch application engine
-- Rewind function generation
-- Path utilities for nested operations
-- Type-safe patch definitions
-
-### 2.3 Optimistic Updates (Test-First)
+### 2.4 Optimistic Updates (Test-First)
 
 **Optimistic Queue Management:**
 
@@ -436,8 +372,6 @@ _Then implement:_
 ```
 DataFetchLibrary
 ├── DocumentStore (signals-based document storage)
-├── HttpClient (API communication)
-├── FinderService (document fetching)
 └── Framework Adapters (React hooks / Vue composables)
 ```
 
@@ -548,15 +482,14 @@ git commit -m "feat: implement DocumentStore signal management to pass tests"
 
 ### Phase 1 Success Criteria
 
-- [ ] Documents can be fetched from API endpoints
-- [ ] Document signals automatically update components
-- [ ] React hooks provide proper loading/error states
-- [ ] Vue composables integrate with Vue reactivity
-- [ ] Batch fetching reduces HTTP requests
-- [ ] Memory usage is optimized with signal cleanup
-- [ ] TypeScript provides full type safety
-- [ ] 100% test coverage for all Phase 1 features
-- [ ] No mutations, WebSockets, or real-time features (read-only)
+- [ ] `DocumentStore` provides a robust and performant local data cache.
+- [ ] Document signals automatically update components in React and Vue.
+- [ ] React hooks and Vue composables provide an ergonomic developer experience.
+- [ ] Example Todo apps for React and Vue are fully functional for local data management.
+- [ ] Memory usage is optimized with signal cleanup.
+- [ ] TypeScript provides full type safety.
+- [ ] 100% test coverage for all Phase 1 features.
+- [ ] No network requests, WebSockets, or real-time features.
 
 ### Code Quality Standards
 
@@ -570,10 +503,11 @@ git commit -m "feat: implement DocumentStore signal management to pass tests"
 
 **Phase 1:**
 
-- **TypeScript Core Library**: Document store with signals, HTTP client, finder service
-- **React Package**: `useDocument` and `useDocuments` hooks
-- **Vue Package**: Equivalent composables with Vue integration
-- **Test Suite**: Comprehensive test coverage for read-only functionality
-- **Documentation**: API docs and usage examples for data fetching
+- **TypeScript Core Library**: Document store with signals, local action/patch system.
+- **React Package**: `useDocument` and `useDocuments` hooks.
+- **Vue Package**: Equivalent composables with Vue integration.
+- **Example Apps**: Fully functional local-only Todo apps for React and Vue.
+- **Test Suite**: Comprehensive test coverage for local-only functionality.
+- **Documentation**: API docs and usage examples for local data management.
 
-This restructured plan focuses Phase 1 purely on read-only data fetching with signals-based reactivity, leaving all mutation and real-time features for later phases.
+This restructured plan focuses Phase 1 purely on local-first development and framework integration, leaving all network and real-time features for later phases.
