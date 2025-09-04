@@ -79,7 +79,7 @@ function convertPathToSignalAccess(path: string): string {
 
   const parts = path.split('.')
   if (parts.length === 1) {
-    return parts[0]
+    return parts[0]!
   }
 
   // Convert nested paths: "nested.deep" -> "$nested.value.deep"
@@ -382,10 +382,7 @@ export class DocumentStore {
   }
 }
 
-export function update<T extends Document>(
-  signal: any,
-  patches: Patch[]
-): void {
+export function update(signal: any, patches: Patch[]): void {
   for (const patch of patches) {
     const accessPath = convertPathToSignalAccess(patch.path)
 
@@ -401,12 +398,12 @@ export function update<T extends Document>(
 
           // Navigate to parent
           for (let i = 0; i < pathParts.length - 1; i++) {
-            current = current[pathParts[i]]
+            current = current[pathParts[i]!]
             if (!current) break
           }
 
           if (current) {
-            const lastPart = pathParts[pathParts.length - 1]
+            const lastPart = pathParts[pathParts.length - 1]!
             current[lastPart] = patch.value
           }
         } else {
@@ -426,12 +423,12 @@ export function update<T extends Document>(
 
           // Navigate to parent
           for (let i = 0; i < pathParts.length - 1; i++) {
-            current = current[pathParts[i]]
+            current = current[pathParts[i]!]
             if (!current) break
           }
 
           if (current) {
-            const lastPart = pathParts[pathParts.length - 1]
+            const lastPart = pathParts[pathParts.length - 1]!
             delete current[lastPart]
           }
         } else {

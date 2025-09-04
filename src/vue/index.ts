@@ -14,7 +14,7 @@ export function useDocument<T extends Document>(
   id: string
 ): Ref<T | null> {
   // Create a Vue ref that will hold the document value
-  const documentRef = ref<T | null>(null as T | null)
+  const documentRef = ref(null as T | null)
 
   // Get the signal from store
   const signal: DocumentSignal<T> = store.getDocumentSignal<T>(type, id)
@@ -32,7 +32,7 @@ export function useDocument<T extends Document>(
     unsubscribe()
   })
 
-  return documentRef
+  return documentRef as Ref<T | null>
 }
 
 export function useDocuments<T extends Document>(
@@ -41,7 +41,7 @@ export function useDocuments<T extends Document>(
   ids: string[]
 ): Ref<(T | null)[]> {
   // Create a Vue ref that will hold the array of documents
-  const documentsRef = ref<(T | null)[]>([] as (T | null)[])
+  const documentsRef = ref([] as (T | null)[])
 
   // Track current subscriptions
   let currentUnsubscribes: (() => void)[] = []
@@ -60,7 +60,7 @@ export function useDocuments<T extends Document>(
     signals.forEach((signal, index) => {
       const unsubscribe = signal.subscribe((newValue: T | null) => {
         const newDocs = [...documentsRef.value]
-        newDocs[index] = newValue as T | null
+        newDocs[index] = newValue as any
         documentsRef.value = newDocs
       })
       currentUnsubscribes.push(unsubscribe)
@@ -85,7 +85,7 @@ export function useDocuments<T extends Document>(
     currentUnsubscribes.forEach(unsub => unsub())
   })
 
-  return documentsRef
+  return documentsRef as Ref<(T | null)[]>
 }
 
 export function useDocumentStore(store: DocumentStore): DocumentStore {

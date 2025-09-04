@@ -1,4 +1,4 @@
-import { DocumentStore } from '../../core/store'
+import { DocumentStore, update } from '../../core/store'
 import { useDocument, useDocuments, useDocumentStore } from '../'
 import { renderHook, act } from '@testing-library/react'
 
@@ -225,7 +225,8 @@ describe('React Hooks Memory Management', () => {
 
       // Update document and expect re-render
       act(() => {
-        store.updateField('user', '1', 'name', 'Jane')
+        const signal = store.getDeepSignal('user', '1')
+        update(signal, [{ op: '$set', path: 'name', value: 'Jane' }])
       })
 
       expect(result.current).toEqual({

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { DocumentStore } from '../DocumentStore'
+import { DocumentStore, update } from '../DocumentStore'
 import type { Document } from '../../types'
 
 interface TestUser extends Document {
@@ -53,7 +53,8 @@ describe('DocumentStore - Signal Utilities', () => {
       callback.mockReset()
 
       // Update one document should trigger callback
-      store.updateField('user', 'user1', 'name', 'John Updated')
+      const signal = store.getDeepSignal('user', 'user1')
+      update(signal, [{ op: '$set', path: 'name', value: 'John Updated' }])
       expect(callback).toHaveBeenCalledWith({
         type: 'user',
         id: 'user1',
@@ -108,7 +109,8 @@ describe('DocumentStore - Signal Utilities', () => {
       expect(store.getMemoryMetrics().activeSubscriberCount).toBe(2)
 
       // Update should trigger both callbacks
-      store.updateField('user', 'user1', 'name', 'John Updated')
+      const signal = store.getDeepSignal('user', 'user1')
+      update(signal, [{ op: '$set', path: 'name', value: 'John Updated' }])
       expect(callback1).toHaveBeenCalled()
       expect(callback2).toHaveBeenCalled()
 
@@ -136,11 +138,13 @@ describe('DocumentStore - Signal Utilities', () => {
       )
 
       // This update shouldn't trigger callback (condition not met)
-      store.updateField('user', 'user1', 'name', 'John Updated')
+      const signal = store.getDeepSignal('user', 'user1')
+      update(signal, [{ op: '$set', path: 'name', value: 'John Updated' }])
       expect(callback).not.toHaveBeenCalled()
 
       // This update should trigger callback (condition met)
-      store.updateField('user', 'user1', 'name', 'Jane Doe')
+      const signal2 = store.getDeepSignal('user', 'user1')
+      update(signal2, [{ op: '$set', path: 'name', value: 'Jane Doe' }])
       expect(callback).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'Jane Doe' })
       )
@@ -169,9 +173,10 @@ describe('DocumentStore - Signal Utilities', () => {
       )
 
       // Rapid updates should be debounced
-      store.updateField('user', 'user1', 'name', 'John 1')
-      store.updateField('user', 'user1', 'name', 'John 2')
-      store.updateField('user', 'user1', 'name', 'John 3')
+      const signal = store.getDeepSignal('user', 'user1')
+      update(signal, [{ op: '$set', path: 'name', value: 'John 1' }])
+      update(signal, [{ op: '$set', path: 'name', value: 'John 2' }])
+      update(signal, [{ op: '$set', path: 'name', value: 'John 3' }])
 
       // Should not have been called yet
       expect(callback).not.toHaveBeenCalled()
@@ -205,7 +210,8 @@ describe('DocumentStore - Signal Utilities', () => {
       expect(store.getMemoryMetrics().activeSubscriberCount).toBe(1)
 
       // First update should trigger callback and auto-unsubscribe
-      store.updateField('user', 'user1', 'name', 'John Updated')
+      const signal = store.getDeepSignal('user', 'user1')
+      update(signal, [{ op: '$set', path: 'name', value: 'John Updated' }])
       expect(callback).toHaveBeenCalledTimes(1)
 
       // Wait for async unsubscribe to complete
@@ -213,7 +219,8 @@ describe('DocumentStore - Signal Utilities', () => {
       expect(store.getMemoryMetrics().activeSubscriberCount).toBe(0)
 
       // Second update should not trigger callback
-      store.updateField('user', 'user1', 'name', 'John Again')
+      const signal2 = store.getDeepSignal('user', 'user1')
+      update(signal2, [{ op: '$set', path: 'name', value: 'John Again' }])
       expect(callback).toHaveBeenCalledTimes(1)
     })
 

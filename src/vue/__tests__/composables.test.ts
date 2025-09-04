@@ -1,4 +1,4 @@
-import { DocumentStore } from '../../core/store'
+import { DocumentStore, update } from '../../core/store'
 import { useDocument, useDocuments, useDocumentStore } from '../'
 import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
@@ -80,7 +80,8 @@ describe('useDocument', () => {
     expect(wrapper.text()).toBe('John')
 
     // Update document name
-    store.updateField('user', '1', 'name', 'Jane')
+    const signal = store.getDeepSignal('user', '1')
+    update(signal, [{ op: '$set', path: 'name', value: 'Jane' }])
 
     await nextTick()
     expect(wrapper.text()).toBe('Jane')
@@ -151,7 +152,8 @@ describe('useDocuments', () => {
     expect(wrapper.text()).toBe('John,Jane')
 
     // Update first document
-    store.updateField('user', '1', 'name', 'Johnny')
+    const signal = store.getDeepSignal('user', '1')
+    update(signal, [{ op: '$set', path: 'name', value: 'Johnny' }])
 
     await nextTick()
     expect(wrapper.text()).toBe('Johnny,Jane')
@@ -400,7 +402,8 @@ describe('Vue Composables Memory Management', () => {
       expect(wrapper.text()).toBe('John')
 
       // Update document and expect re-render
-      store.updateField('user', '1', 'name', 'Jane')
+      const signal = store.getDeepSignal('user', '1')
+      update(signal, [{ op: '$set', path: 'name', value: 'Jane' }])
 
       await nextTick()
       expect(wrapper.text()).toBe('Jane')
