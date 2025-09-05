@@ -2,7 +2,7 @@ import { bench, describe } from 'vitest'
 import { createStore } from '../src/store'
 import { effect } from 'alien-signals'
 import { createStore as createSolidStore } from 'solid-js/store'
-import { createEffect, createRoot } from 'solid-js'
+import { createComputed, createRoot } from 'solid-js'
 
 describe('Reactive Property Access Performance', () => {
   bench('@storable/core (optimized): setup effect with 10k reads', () => {
@@ -38,7 +38,7 @@ describe('Reactive Property Access Performance', () => {
       })
 
       let sum = 0
-      createEffect(() => {
+      createComputed(() => {
         for (let i = 0; i < 10000; i++) {
           sum += store.user.age
         }
@@ -70,7 +70,7 @@ describe('Reactive Property Updates', () => {
       const [store, setStore] = createSolidStore({ counter: 0 })
 
       let value = 0
-      createEffect(() => {
+      createComputed(() => {
         value = store.counter
       })
 
@@ -125,7 +125,7 @@ describe('Deep Reactive Access', () => {
       })
 
       let result = 0
-      createEffect(() => {
+      createComputed(() => {
         for (let i = 0; i < 1000; i++) {
           result = store.level1.level2.level3.level4.level5.value
         }
@@ -157,7 +157,7 @@ describe('Array Reactive Operations', () => {
       const [store, setStore] = createSolidStore({ items: [] as number[] })
 
       let length = 0
-      createEffect(() => {
+      createComputed(() => {
         length = store.items.length
       })
 
@@ -197,7 +197,7 @@ describe('Multiple Reactive Dependencies', () => {
       })
 
       let sum = 0
-      createEffect(() => {
+      createComputed(() => {
         for (let i = 0; i < 1000; i++) {
           sum = store.a + store.b + store.c
         }

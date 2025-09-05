@@ -1,6 +1,6 @@
 import { bench, describe } from 'vitest'
 import { createStore as createSolidStore } from 'solid-js/store'
-import { createEffect as createSolidEffect, createRoot } from 'solid-js'
+import { createComputed, createRoot } from 'solid-js'
 import { createStore } from '../src/store'
 import { effect } from 'alien-signals'
 
@@ -20,7 +20,7 @@ describe('Critical Performance: Reactive Property Reads', () => {
     createRoot(dispose => {
       const [store] = createSolidStore({ user: { name: 'John', age: 30 } })
       let total = 0
-      createSolidEffect(() => {
+      createComputed(() => {
         for (let i = 0; i < 10000; i++) {
           total += store.user.age
         }
@@ -52,39 +52,47 @@ describe('Critical Performance: Non-Reactive Property Reads', () => {
   })
 
   bench('plain object: 100k reads (baseline)', () => {
-    const store = {
+    const obj = {
       user: { name: 'John', age: 30, email: 'john@example.com' },
     }
     let total = 0
     for (let i = 0; i < 100000; i++) {
-      total += store.user.age
+      total += obj.user.age
     }
   })
 })
 
 describe('Critical Performance: Property Updates', () => {
   bench('@storable/core: 1k updates with effect', () => {
-    const [store, setStore] = createStore({ counter: 0 })
-    let value = 0
+    const [store, setStore] = createStore({ count: 0 })
+    let effectRuns = 0
+
     const dispose = effect(() => {
-      value = store.counter
+      const _ = store.count
+      effectRuns++
     })
+
     for (let i = 0; i < 1000; i++) {
-      setStore('counter', i)
+      setStore('count', i)
     }
+
     dispose()
   })
 
   bench('solid-js: 1k updates with effect', () => {
     createRoot(dispose => {
-      const [store, setStore] = createSolidStore({ counter: 0 })
-      let value = 0
-      createSolidEffect(() => {
-        value = store.counter
+      const [store, setStore] = createSolidStore({ count: 0 })
+      let effectRuns = 0
+
+      createComputed(() => {
+        const _ = store.count
+        effectRuns++
       })
+
       for (let i = 0; i < 1000; i++) {
-        setStore('counter', i)
+        setStore('count', i)
       }
+
       dispose()
     })
   })
@@ -92,175 +100,224 @@ describe('Critical Performance: Property Updates', () => {
 
 describe('Critical Performance: Array Operations', () => {
   bench('@storable/core: splice 500 items', () => {
-    const items = Array.from({ length: 1000 }, (_, i) => ({
-      id: i,
-      value: i * 2,
-    }))
-    const [store] = createStore({ items })
+    const [store] = createStore({
+      items: Array.from({ length: 1000 }, (_, i) => i),
+    })
 
-    // Remove first 500 items using splice
-    store.items.splice(0, 500)
+    for (let i = 0; i < 500; i++) {
+      store.items.splice(0, 1)
+    }
   })
 
   bench('solid-js: remove 500 items', () => {
-    const items = Array.from({ length: 1000 }, (_, i) => ({
-      id: i,
-      value: i * 2,
-    }))
-    const [store, setStore] = createSolidStore({ items })
+    createRoot(dispose => {
+      const [store, setStore] = createSolidStore({
+        items: Array.from({ length: 1000 }, (_, i) => i),
+      })
 
-    // Remove first 500 items (immutable)
-    setStore('items', items => items.slice(500))
+      for (let i = 0; i < 500; i++) {
+        setStore('items', items => items.slice(1))
+      }
+
+      dispose()
+    })
   })
 
   bench('plain array: splice 500 items (baseline)', () => {
-    const items = Array.from({ length: 1000 }, (_, i) => ({
-      id: i,
-      value: i * 2,
-    }))
-    const store = { items }
+    const items = Array.from({ length: 1000 }, (_, i) => i)
 
-    // Remove first 500 items using splice
-    store.items.splice(0, 500)
+    for (let i = 0; i < 500; i++) {
+      items.splice(0, 1)
+    }
   })
 })
 
 describe('Critical Performance: Deep Object Access', () => {
   bench('@storable/core: 10k deep reads', () => {
     const [store] = createStore({
-      level1: {
-        level2: {
-          level3: {
-            level4: {
-              level5: {
-                value: 42,
-              },
-            },
-          },
-        },
-      },
+      a: { b: { c: { d: { e: { value: 42 } } } } },
     })
-
     let total = 0
+
     for (let i = 0; i < 10000; i++) {
-      total += store.level1.level2.level3.level4.level5.value
+      total += store.a.b.c.d.e.value
     }
   })
 
   bench('solid-js: 10k deep reads', () => {
     const [store] = createSolidStore({
-      level1: {
-        level2: {
-          level3: {
-            level4: {
-              level5: {
-                value: 42,
-              },
-            },
-          },
-        },
-      },
+      a: { b: { c: { d: { e: { value: 42 } } } } },
     })
-
     let total = 0
+
     for (let i = 0; i < 10000; i++) {
-      total += store.level1.level2.level3.level4.level5.value
+      total += store.a.b.c.d.e.value
     }
   })
 
   bench('plain object: 10k deep reads (baseline)', () => {
-    const store = {
-      level1: {
-        level2: {
-          level3: {
-            level4: {
-              level5: {
-                value: 42,
-              },
-            },
-          },
-        },
-      },
+    const obj = {
+      a: { b: { c: { d: { e: { value: 42 } } } } },
     }
-
     let total = 0
+
     for (let i = 0; i < 10000; i++) {
-      total += store.level1.level2.level3.level4.level5.value
+      total += obj.a.b.c.d.e.value
     }
   })
 })
 
 describe('Critical Performance: Store Creation', () => {
   bench('@storable/core: create 1k stores', () => {
+    const stores = []
     for (let i = 0; i < 1000; i++) {
-      const [store, setStore] = createStore({
-        id: i,
-        name: `Store ${i}`,
-        data: { value: i * 2 },
-      })
+      stores.push(createStore({ id: i, value: i * 2 }))
     }
   })
 
   bench('solid-js: create 1k stores', () => {
-    for (let i = 0; i < 1000; i++) {
-      const [store, setStore] = createSolidStore({
-        id: i,
-        name: `Store ${i}`,
-        data: { value: i * 2 },
-      })
-    }
+    createRoot(dispose => {
+      const stores = []
+      for (let i = 0; i < 1000; i++) {
+        stores.push(createSolidStore({ id: i, value: i * 2 }))
+      }
+      dispose()
+    })
   })
 })
 
 describe('Critical Performance: Batch Updates', () => {
   bench('@storable/core: batch 100 property updates', () => {
-    const [store] = createStore({
-      values: Array.from({ length: 100 }, (_, i) => ({ id: i, value: 0 })),
-    })
-
-    // All updates are automatically batched
+    const obj: any = {}
     for (let i = 0; i < 100; i++) {
-      store.values[i].value = i * 2
+      obj[`prop${i}`] = 0
     }
+    const [store, setStore] = createStore(obj)
+
+    const updates: any = {}
+    for (let i = 0; i < 100; i++) {
+      updates[`prop${i}`] = i
+    }
+    setStore(updates)
   })
 
   bench('solid-js: batch 100 property updates', () => {
-    const [store, setStore] = createSolidStore({
-      values: Array.from({ length: 100 }, (_, i) => ({ id: i, value: 0 })),
-    })
+    createRoot(dispose => {
+      const obj: any = {}
+      for (let i = 0; i < 100; i++) {
+        obj[`prop${i}`] = 0
+      }
+      const [store, setStore] = createSolidStore(obj)
 
-    // Batch updates
-    for (let i = 0; i < 100; i++) {
-      setStore('values', i, 'value', i * 2)
-    }
+      const updates: any = {}
+      for (let i = 0; i < 100; i++) {
+        updates[`prop${i}`] = i
+      }
+      setStore(updates)
+
+      dispose()
+    })
   })
 })
 
 describe('Critical Performance: Memory Patterns', () => {
   bench('@storable/core: create and dispose 100 effects', () => {
-    const [store] = createStore({ value: 0 })
-    const disposers: (() => void)[] = []
+    const [store] = createStore({ count: 0 })
+    const disposers = []
 
     for (let i = 0; i < 100; i++) {
       disposers.push(
         effect(() => {
-          const _ = store.value
+          const _ = store.count
         })
       )
     }
 
-    // Clean up
-    disposers.forEach(d => d())
+    for (const dispose of disposers) {
+      dispose()
+    }
   })
 
   bench('solid-js: create and dispose 100 effects', () => {
     createRoot(dispose => {
-      const [store] = createSolidStore({ value: 0 })
+      const [store] = createSolidStore({ count: 0 })
+      const disposers: Array<() => void> = []
 
       for (let i = 0; i < 100; i++) {
-        createSolidEffect(() => {
-          const _ = store.value
+        createComputed(() => {
+          const _ = store.count
         })
+      }
+
+      dispose()
+    })
+  })
+})
+
+describe('Critical Performance: Real-World Todo App', () => {
+  interface Todo {
+    id: number
+    text: string
+    completed: boolean
+  }
+
+  bench('@storable/core: todo app operations', () => {
+    const [store, setStore] = createStore<{ todos: Todo[] }>({ todos: [] })
+
+    // Add 50 todos
+    for (let i = 0; i < 50; i++) {
+      store.todos.push({
+        id: i,
+        text: `Todo ${i}`,
+        completed: false,
+      })
+    }
+
+    // Toggle half as completed
+    for (let i = 0; i < 25; i++) {
+      store.todos[i].completed = true
+    }
+
+    // Filter completed
+    const active = store.todos.filter(t => !t.completed)
+
+    // Update text of first 10
+    for (let i = 0; i < 10; i++) {
+      if (store.todos[i]) {
+        store.todos[i].text = `Updated: ${store.todos[i].text}`
+      }
+    }
+  })
+
+  bench('solid-js: todo app operations', () => {
+    createRoot(dispose => {
+      const [store, setStore] = createSolidStore<{ todos: Todo[] }>({
+        todos: [],
+      })
+
+      // Add 50 todos
+      for (let i = 0; i < 50; i++) {
+        setStore('todos', todos => [
+          ...todos,
+          {
+            id: i,
+            text: `Todo ${i}`,
+            completed: false,
+          },
+        ])
+      }
+
+      // Toggle half as completed
+      for (let i = 0; i < 25; i++) {
+        setStore('todos', i, 'completed', true)
+      }
+
+      // Filter completed (just access, don't mutate)
+      const active = store.todos.filter(t => !t.completed)
+
+      // Update text of first 10
+      for (let i = 0; i < 10; i++) {
+        setStore('todos', i, 'text', (text: string) => `Updated: ${text}`)
       }
 
       dispose()
