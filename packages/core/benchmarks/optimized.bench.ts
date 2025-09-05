@@ -1,7 +1,7 @@
 import { bench, describe } from 'vitest'
 import { createStore as createSolidStore } from 'solid-js/store'
 import { createEffect as createSolidEffect, createRoot } from 'solid-js'
-import { ReactiveStore, createStore, effect } from '../src/store-optimized'
+import { ReactiveStore, createStore, effect } from '../src/store'
 import { ReactiveStore as ReactiveStoreLegacy } from '../src/store'
 import { effect as effectLegacy } from '../src/isTracking'
 

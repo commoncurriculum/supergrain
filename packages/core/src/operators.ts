@@ -52,19 +52,20 @@ function resolvePath(obj: any, path: string): PathResolution {
   // Navigate to the parent of the final key
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i]
+    if (!part) continue // Skip empty parts
 
     // Create intermediate objects if they don't exist
     if (current[part] === undefined || current[part] === null) {
       // Check if next part is a number (array index)
       const nextPart = parts[i + 1]
-      const isArrayIndex = /^\d+$/.test(nextPart)
+      const isArrayIndex = nextPart ? /^\d+$/.test(nextPart) : false
       current[part] = isArrayIndex ? [] : {}
     }
 
     current = current[part]
   }
 
-  const key = parts[parts.length - 1]
+  const key = parts[parts.length - 1] || ''
   return {
     parent: current,
     key,
@@ -321,13 +322,13 @@ const operators: Record<string, (target: any, value: any) => void> = {
       if (value && typeof value === 'object' && '$each' in value) {
         const items = value.$each || []
         for (const item of items) {
-          if (!arr.some(existing => isEqual(existing, item))) {
+          if (!arr.some((existing: any) => isEqual(existing, item))) {
             arr.push(item)
           }
         }
       } else {
         // Single value
-        if (!arr.some(existing => isEqual(existing, value))) {
+        if (!arr.some((existing: any) => isEqual(existing, value))) {
           arr.push(value)
         }
       }
