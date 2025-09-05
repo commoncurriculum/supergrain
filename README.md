@@ -83,6 +83,39 @@ Mutate data directly without special syntax:
 4. **Consider Performance**: But don't optimize prematurely
 5. **Document Decisions**: Update NOTES.md with important findings
 
+## MongoDB-Style Update Operators
+
+Storable includes MongoDB-style update operators for complex mutations with automatic batching:
+
+```typescript
+import { update } from '@storable/core'
+
+const post = store.get('posts').get('1')
+
+// Multiple operations in a single transaction
+update(post, {
+  $set: { title: 'New Title', 'meta.updated': Date.now() },
+  $inc: { viewCount: 1 },
+  $push: { tags: { $each: ['featured', 'trending'] } },
+  $pull: { categories: 'deprecated' },
+})
+```
+
+### Available Operators
+
+- **$set** - Set field values
+- **$unset** - Remove fields
+- **$inc** - Increment numeric values
+- **$mul** - Multiply numeric values
+- **$push** - Add elements to arrays (supports $each, $position, $slice, $sort)
+- **$pull** - Remove matching elements from arrays
+- **$pop** - Remove first/last array element
+- **$addToSet** - Add unique elements to arrays
+- **$rename** - Rename fields
+- **$min/$max** - Conditional updates based on comparison
+
+All operators support dot notation for nested paths and maintain full reactivity.
+
 ## Development Setup
 
 ```bash

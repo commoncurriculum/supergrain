@@ -8,46 +8,46 @@
 
 #### Phase 1: Core Setup
 
-- [ ] Create `packages/core/src/operators.ts` file
-- [ ] Implement path resolution utilities (`resolvePath`, `setPath`, `deletePath`)
-- [ ] Create the main `update()` function with batching support
-- [ ] Add proper TypeScript types for `UpdateOperations`
+- [x] Create `packages/core/src/operators.ts` file
+- [x] Implement path resolution utilities (`resolvePath`, `setPath`, `deletePath`)
+- [x] Create the main `update()` function with batching support
+- [x] Add proper TypeScript types for `UpdateOperations`
 
 #### Phase 2: Basic Operators
 
-- [ ] Implement `$set` operator
-- [ ] Implement `$unset` operator
-- [ ] Implement `$inc` operator
-- [ ] Implement `$push` operator (basic version)
-- [ ] Implement `$pull` operator
+- [x] Implement `$set` operator
+- [x] Implement `$unset` operator
+- [x] Implement `$inc` operator
+- [x] Implement `$push` operator (basic version)
+- [x] Implement `$pull` operator
 
 #### Phase 3: Extended Operators
 
-- [ ] Implement `$mul` operator
-- [ ] Implement `$pop` operator
-- [ ] Implement `$addToSet` operator
-- [ ] Implement `$rename` operator
-- [ ] Implement `$min` and `$max` operators
+- [x] Implement `$mul` operator
+- [x] Implement `$pop` operator
+- [x] Implement `$addToSet` operator
+- [x] Implement `$rename` operator
+- [x] Implement `$min` and `$max` operators
 
 #### Phase 4: Advanced Array Features
 
-- [ ] Add `$each` modifier support for `$push` and `$addToSet`
-- [ ] Add `$position` modifier for `$push`
-- [ ] Add `$slice` modifier for `$push`
-- [ ] Add `$sort` modifier for `$push`
+- [x] Add `$each` modifier support for `$push` and `$addToSet`
+- [x] Add `$position` modifier for `$push`
+- [x] Add `$slice` modifier for `$push`
+- [x] Add `$sort` modifier for `$push`
 
 #### Phase 5: Testing & Integration
 
-- [ ] Create test file `packages/core/src/operators.test.ts`
-- [ ] Write unit tests for each operator
-- [ ] Test with reactive proxies from `createStore`
-- [ ] Verify signal triggering and batching
-- [ ] Add performance benchmarks
+- [x] Create test file `packages/core/tests/operators.test.ts`
+- [x] Write unit tests for each operator
+- [x] Test with reactive proxies from `createStore`
+- [x] Verify signal triggering and batching
+- [x] Add performance benchmarks
 
 #### Phase 6: Documentation
 
-- [ ] Add JSDoc comments to all exported functions
-- [ ] Update main README with usage examples
+- [x] Add JSDoc comments to all exported functions
+- [x] Update main README with usage examples
 - [ ] Create TypeScript type utilities for better type inference
 
 ### Key Requirements
