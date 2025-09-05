@@ -3,7 +3,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import dts from 'vite-plugin-dts'
-import react from '@vitejs/plugin-react'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({

@@ -5,14 +5,11 @@ import { store } from './store'
 
 describe('Todo App', () => {
   beforeEach(() => {
-    // Clear the store before each test
+    // Clear the store before each test to ensure test isolation
     const documentStore = store as any
-    if (documentStore.documents) {
-      documentStore.documents.clear()
-    }
-    if (documentStore.signals) {
-      documentStore.signals.clear()
-    }
+    documentStore.documents?.clear()
+    documentStore.proxies?.clear()
+    documentStore.subscribers?.clear()
   })
 
   test('renders todo app with default todos', async () => {
