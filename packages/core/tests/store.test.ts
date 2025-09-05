@@ -166,3 +166,81 @@ describe('Proxy System', () => {
     expect(ageEffect).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('Object Handling', () => {
+  let store: ReactiveStore
+
+  beforeEach(() => {
+    store = new ReactiveStore()
+  })
+
+  it('should track property addition', () => {
+    const user = { name: 'John' }
+    store.set('users', '1', user)
+    const userProxy = store.find('users', '1')!.value
+
+    let keys: string[] = []
+    const effectFn = vi.fn(() => {
+      keys = Object.keys(userProxy)
+    })
+    effect(effectFn)
+
+    expect(keys).toEqual(['name'])
+    expect(effectFn).toHaveBeenCalledTimes(1)
+
+    // Add a property
+    userProxy.age = 30
+    expect(keys).toEqual(['name', 'age'])
+    expect(effectFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('should track property deletion', () => {
+    const user = { name: 'John', age: 30 }
+    store.set('users', '1', user)
+    const userProxy = store.find('users', '1')!.value
+
+    let keys: string[] = []
+    const effectFn = vi.fn(() => {
+      keys = Object.keys(userProxy)
+    })
+    effect(effectFn)
+
+    expect(keys).toEqual(['name', 'age'])
+    expect(effectFn).toHaveBeenCalledTimes(1)
+
+    // Delete a property
+    delete userProxy.age
+    expect(keys).toEqual(['name'])
+    expect(effectFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('should make Object.keys reactive', () => {
+    const userData = { a: 1, b: 2 }
+    store.set('data', '1', userData)
+    const dataProxy = store.find('data', '1')!.value
+
+    let keys: string[] = []
+    const keysEffect = vi.fn(() => {
+      keys = Object.keys(dataProxy)
+    })
+
+    effect(keysEffect)
+
+    expect(keys).toEqual(['a', 'b'])
+    expect(keysEffect).toHaveBeenCalledTimes(1)
+
+    // Update existing property, should not trigger keysEffect
+    dataProxy.a = 11
+    expect(keysEffect).toHaveBeenCalledTimes(1)
+
+    // Add a new property, should trigger keysEffect
+    dataProxy.c = 3
+    expect(keys).toEqual(['a', 'b', 'c'])
+    expect(keysEffect).toHaveBeenCalledTimes(2)
+
+    // Delete a property, should trigger keysEffect
+    delete dataProxy.b
+    expect(keys).toEqual(['a', 'c'])
+    expect(keysEffect).toHaveBeenCalledTimes(3)
+  })
+})
