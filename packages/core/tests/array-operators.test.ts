@@ -103,11 +103,9 @@ describe('Array Operations with Operators', () => {
 
   it('should handle array replacement for sort', () => {
     const [state, update] = createStore({ items: [3, 1, 2] })
-    let firstItem = 0
+    let firstItem: number | undefined
     effect(() => {
-      if (state.items.length > 0) {
-        firstItem = state.items[0]
-      }
+      firstItem = state.items[0]
     })
     expect(firstItem).toBe(3)
     const sorted = [...state.items].sort()
