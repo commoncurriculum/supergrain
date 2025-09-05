@@ -65,7 +65,7 @@ describe('Core: Store Creation', () => {
   })
 })
 
-describe('Core: Property Access', () => {
+describe('Core: Property Access: Non-reactive', () => {
   bench('@storable/core: 100k non-reactive reads', () => {
     const [store] = createStore({
       user: { name: 'John', age: 30 },
@@ -85,7 +85,9 @@ describe('Core: Property Access', () => {
       total += store.user.age
     }
   })
+})
 
+describe('Core: Property Access: Reactive', () => {
   bench('@storable/core: 10k reactive reads in effect', () => {
     const [store, setStore] = createStore({ value: 42 })
     let total = 0
@@ -203,7 +205,9 @@ describe('Core: Property Updates', () => {
       dispose()
     })
   })
+})
 
+describe('Core: Bacth Updates', () => {
   bench('@storable/core: batch update 10 properties', () => {
     const [store, setStore] = createStore({
       a: 0,
@@ -263,36 +267,9 @@ describe('Core: Property Updates', () => {
       dispose()
     })
   })
-
-  bench('@storable/core: direct property mutations', () => {
-    const [store] = createStore({
-      a: 0,
-      b: 0,
-      c: 0,
-      d: 0,
-      e: 0,
-      f: 0,
-      g: 0,
-      h: 0,
-      i: 0,
-      j: 0,
-    })
-
-    // Direct mutations (unique to @storable/core)
-    store.a = 1
-    store.b = 2
-    store.c = 3
-    store.d = 4
-    store.e = 5
-    store.f = 6
-    store.g = 7
-    store.h = 8
-    store.i = 9
-    store.j = 10
-  })
 })
 
-describe('Core: Array Operations', () => {
+describe('Core: Array Operations: push', () => {
   bench('@storable/core: push 500 items', () => {
     const [store] = createStore({ items: [] as number[] })
     for (let i = 0; i < 500; i++) {
@@ -306,7 +283,9 @@ describe('Core: Array Operations', () => {
       setStore('items', items => [...items, i])
     }
   })
+})
 
+describe('Core: Array Operations: Splice', () => {
   bench('@storable/core: splice 500 from 1000 items', () => {
     const [store] = createStore({
       items: Array.from({ length: 1000 }, (_, i) => i),
@@ -320,7 +299,9 @@ describe('Core: Array Operations', () => {
     })
     setStore('items', items => items.slice(500))
   })
+})
 
+describe('Core: Array Operations: Array Length tracking', () => {
   bench('@storable/core: reactive array length tracking', () => {
     const [store] = createStore<{ items: number[] }>({ items: [] })
     let lengthChecks = 0
@@ -436,7 +417,9 @@ describe('Core: Deep Nesting', () => {
       dispose()
     })
   })
+})
 
+describe('Core: Deep Update', () => {
   bench('@storable/core: deep update', () => {
     const [store, setStore] = createStore({
       l1: { l2: { l3: { l4: { l5: { value: 0 } } } } },
@@ -639,7 +622,9 @@ describe('Core: Effect Management', () => {
       dispose()
     })
   })
+})
 
+describe('Core: Effect Tracking 1 property', () => {
   bench('@storable/core: 100 effects tracking 1 property', () => {
     const [store] = createStore({ value: 0 })
     const disposers: (() => void)[] = []
@@ -668,7 +653,9 @@ describe('Core: Effect Management', () => {
       dispose()
     })
   })
+})
 
+describe('Core: Effect Tracking 3 property', () => {
   bench('@storable/core: 3 dependencies tracked', () => {
     const [store, setStore] = createStore({ a: 1, b: 2, c: 3 })
     let sum = 0
