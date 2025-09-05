@@ -1,0 +1,43 @@
+{
+  "name": "@storable/react",
+  "version": "0.0.1",
+  "private": true,
+  "description": "React adapter for Storable.",
+  "keywords": [
+    "storable",
+    "react",
+    "reactive",
+    "store",
+    "signals",
+    "hooks"
+  ],
+  "license": "MIT",
+  "author": "Scott Messinger",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.es.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.es.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "lint": "oxlint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@storable/core": "workspace:*",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0"
+  }
+}

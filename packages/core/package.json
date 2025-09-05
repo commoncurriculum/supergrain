@@ -1,0 +1,38 @@
+{
+  "name": "@storable/core",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Core reactive store implementation for Storable.",
+  "keywords": [
+    "storable",
+    "core",
+    "reactive",
+    "store",
+    "signals"
+  ],
+  "license": "MIT",
+  "author": "Scott Messinger",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.es.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.es.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "lint": "oxlint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "alien-signals": "^2.0.7"
+  }
+}
