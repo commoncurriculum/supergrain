@@ -109,4 +109,65 @@ describe('Array Support', () => {
     expect(firstItemTitle).toBe('Post 2')
     expect(effectFn).toHaveBeenCalledTimes(2)
   })
+
+  it('should track dependencies inside forEach', () => {
+    const postsProxy = store.find('posts', 'all')!.value
+    let titleLengthSum = 0
+    const effectFn = vi.fn(() => {
+      titleLengthSum = 0
+      postsProxy.items.forEach(post => {
+        titleLengthSum += post.title.length
+      })
+    })
+
+    effect(effectFn)
+
+    expect(titleLengthSum).toBe(12) // "Post 1".length + "Post 2".length = 6 + 6
+    expect(effectFn).toHaveBeenCalledTimes(1)
+
+    postsProxy.items[0].title = 'A'
+
+    expect(titleLengthSum).toBe(7) // "A".length + "Post 2".length = 1 + 6
+    expect(effectFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('should track dependencies inside filter', () => {
+    const postsProxy = store.find('posts', 'all')!.value
+    let filtered: any[] = []
+    const effectFn = vi.fn(() => {
+      filtered = postsProxy.items.filter(post => post.title.includes('1'))
+    })
+
+    effect(effectFn)
+
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0].title).toBe('Post 1')
+    expect(effectFn).toHaveBeenCalledTimes(1)
+
+    postsProxy.items[1].title = 'Post 1 Again'
+    expect(filtered).toHaveLength(2)
+    expect(effectFn).toHaveBeenCalledTimes(2)
+
+    postsProxy.items[0].title = 'Post X'
+    expect(filtered).toHaveLength(1)
+    expect(filtered[0].title).toBe('Post 1 Again')
+    expect(effectFn).toHaveBeenCalledTimes(3)
+  })
+
+  it('should track dependencies inside map', () => {
+    const postsProxy = store.find('posts', 'all')!.value
+    let titles: string[] = []
+    const effectFn = vi.fn(() => {
+      titles = postsProxy.items.map(post => post.title)
+    })
+
+    effect(effectFn)
+
+    expect(titles).toEqual(['Post 1', 'Post 2'])
+    expect(effectFn).toHaveBeenCalledTimes(1)
+
+    postsProxy.items[0].title = 'Updated Post'
+    expect(titles).toEqual(['Updated Post', 'Post 2'])
+    expect(effectFn).toHaveBeenCalledTimes(2)
+  })
 })
