@@ -4,6 +4,48 @@ type EntityId = string | number
 type Entity = Record<string, any>
 type Collection = Map<EntityId, Signal<Entity>>
 
+const proxyCache = new WeakMap<object, object>()
+
+function createReactiveProxy<T extends object>(target: T): T {
+  if (proxyCache.has(target)) {
+    return proxyCache.get(target) as T
+  }
+
+  // Store signals for each property of the object.
+  const signals = new Map<PropertyKey, Signal<any>>()
+
+  const getSignal = (key: PropertyKey) => {
+    if (!signals.has(key)) {
+      signals.set(key, signal(Reflect.get(target, key)))
+    }
+    return signals.get(key)!
+  }
+
+  const handler: ProxyHandler<T> = {
+    get(target, key, receiver) {
+      // Accessing a property subscribes to its signal.
+      const value = getSignal(key).value
+
+      // If the property is an object, wrap it in a proxy as well.
+      if (value !== null && typeof value === 'object') {
+        return createReactiveProxy(value)
+      }
+
+      return value
+    },
+    set(target, key, newValue, receiver) {
+      // Setting a property updates its signal, triggering effects.
+      getSignal(key).value = newValue
+      // Also update the underlying cloned object.
+      return Reflect.set(target, key, newValue, receiver)
+    },
+  }
+
+  const proxy = new Proxy(target, handler)
+  proxyCache.set(target, proxy)
+  return proxy
+}
+
 /**
  * A reactive store for managing collections of data.
  */
@@ -34,11 +76,14 @@ export class ReactiveStore {
   set(type: string, id: EntityId, data: Entity): void {
     const collection = this.collection(type)
     const existingSignal = collection.get(id)
+    // Use structuredClone for a deep copy to prevent mutating the original object.
+    const clonedData = structuredClone(data)
+    const reactiveData = createReactiveProxy(clonedData)
 
     if (existingSignal) {
-      existingSignal.value = data
+      existingSignal.value = reactiveData
     } else {
-      collection.set(id, signal(data))
+      collection.set(id, signal(reactiveData))
     }
   }
 
