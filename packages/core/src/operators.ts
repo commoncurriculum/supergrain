@@ -1,17 +1,9 @@
-import { startBatch, endBatch } from 'alien-signals'
+import { setProperty } from './store'
 
-// --- Helper Functions ---
-
-/**
- * Checks if a value is a non-null object (and not an array).
- */
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-/**
- * Simple deep equality check for objects and arrays.
- */
 export function isEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
   if (
@@ -38,19 +30,15 @@ export function isEqual(a: unknown, b: unknown): boolean {
   return true
 }
 
-/**
- * Traverses a path string (e.g., 'user.profile.name') to get the final
- * parent object and the key. Returns null if the path is invalid.
- */
-export function resolvePath(
+function resolvePath(
   target: object,
   path: string
 ): { parent: any; key: string } | null {
   const parts = path.split('.')
   let current: any = target
   for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i]
-    if (!part || (!isObject(current) && !Array.isArray(current))) {
+    const part = parts[i]!
+    if (!isObject(current) && !Array.isArray(current)) {
       return null
     }
     current = (current as any)[part]
@@ -58,70 +46,57 @@ export function resolvePath(
   if (!isObject(current) && !Array.isArray(current)) {
     return null
   }
-  const key = parts[parts.length - 1]
-  if (key === undefined) {
-    return null
-  }
+  const key = parts[parts.length - 1]!
   return { parent: current, key }
 }
 
-/**
- * Traverses a path string and sets the value at the end of the path.
- * Creates nested objects if they don't exist.
- */
-export function setPath(target: object, path: string, value: unknown): void {
+function setPathValue(target: object, path: string, value: unknown): void {
   const parts = path.split('.')
   let current: any = target
   for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i]
-    if (!part) continue
-    if (
-      (current as any)[part] === undefined ||
-      !isObject((current as any)[part])
-    ) {
-      ;(current as any)[part] = {}
+    const part = parts[i]!
+    if (current[part] === undefined || !isObject(current[part])) {
+      setProperty(current, part, {})
     }
-    current = (current as any)[part]
+    current = current[part]
   }
-  const key = parts[parts.length - 1]
-  if (key) {
-    ;(current as any)[key] = value
-  }
+  const key = parts[parts.length - 1]!
+  setProperty(current, key, value)
 }
 
-export function deletePath(target: object, path: string): void {
-  const parts = path.split('.')
-  let current: any = target
-  for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i]
-    if (!part || (!isObject(current) && !Array.isArray(current))) {
-      return
-    }
-    current = (current as any)[part]
-  }
-  const key = parts[parts.length - 1]
-  if (key && (isObject(current) || Array.isArray(current))) {
-    delete (current as any)[key]
+function deletePath(target: object, path: string): void {
+  const result = resolvePath(target, path)
+  if (
+    result &&
+    Object.prototype.hasOwnProperty.call(result.parent, result.key)
+  ) {
+    setProperty(result.parent, result.key, undefined, true)
   }
 }
-
-// --- Operator Implementations ---
 
 function $set(target: object, operations: Record<string, unknown>): void {
   for (const path in operations) {
-    setPath(target, path, operations[path])
+    setPathValue(target, path, operations[path])
+  }
+}
+
+function $unset(target: object, operations: Record<string, unknown>): void {
+  for (const path in operations) {
+    deletePath(target, path)
   }
 }
 
 function $inc(target: object, operations: Record<string, number>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
-    if (
-      result &&
-      typeof result.parent[result.key] === 'number' &&
-      typeof operations[path] === 'number'
-    ) {
-      result.parent[result.key] += operations[path]
+    if (result) {
+      const currentValue = result.parent[result.key]
+      const incValue = operations[path]!
+      if (typeof currentValue === 'number') {
+        setProperty(result.parent, result.key, currentValue + incValue)
+      } else if (typeof currentValue === 'undefined') {
+        setPathValue(target, path, incValue)
+      }
     }
   }
 }
@@ -132,15 +107,12 @@ function $push(target: object, operations: Record<string, any>): void {
     const arr = result?.parent[result.key]
     if (result && Array.isArray(arr)) {
       const value = operations[path]
-      if (
-        isObject(value) &&
-        '$each' in value &&
-        Array.isArray(value['$each'])
-      ) {
-        arr.push(...value['$each'])
-      } else {
-        arr.push(value)
-      }
+      const itemsToAdd =
+        isObject(value) && '$each' in value && Array.isArray(value['$each'])
+          ? value['$each']
+          : [value]
+      const newArr = [...arr, ...itemsToAdd]
+      setProperty(result.parent, result.key, newArr)
     }
   }
 }
@@ -151,9 +123,10 @@ function $pull(target: object, operations: Record<string, any>): void {
     const arr = result?.parent[result.key]
     if (result && Array.isArray(arr)) {
       const condition = operations[path]
-      result.parent[result.key] = arr.filter(
-        (item: any) => !isEqual(item, condition)
-      )
+      const newArr = arr.filter((item: any) => !isEqual(item, condition))
+      if (newArr.length < arr.length) {
+        setProperty(result.parent, result.key, newArr)
+      }
     }
   }
 }
@@ -168,35 +141,48 @@ function $addToSet(target: object, operations: Record<string, any>): void {
         isObject(value) && '$each' in value && Array.isArray(value['$each'])
           ? value['$each']
           : [value]
-      for (const item of itemsToAdd) {
-        if (!arr.some((existing: any) => isEqual(existing, item))) {
-          arr.push(item)
-        }
+
+      const newItems = itemsToAdd.filter(
+        item => !arr.some(existing => isEqual(existing, item))
+      )
+
+      if (newItems.length > 0) {
+        setProperty(result.parent, result.key, [...arr, ...newItems])
       }
     }
   }
 }
 
 function $rename(target: object, operations: Record<string, string>): void {
+  const renames: Array<{ oldPath: string; newPath: string; value: any }> = []
+
   for (const oldPath in operations) {
-    const newPath = operations[oldPath]
-    if (!newPath) continue
+    const newPath = operations[oldPath]!
     const oldResult = resolvePath(target, oldPath)
-    if (oldResult && oldResult.key in oldResult.parent) {
-      const value = oldResult.parent[oldResult.key]
-      delete oldResult.parent[oldResult.key]
-      setPath(target, newPath, value)
+    if (
+      oldResult &&
+      Object.prototype.hasOwnProperty.call(oldResult.parent, oldResult.key)
+    ) {
+      renames.push({ oldPath, newPath, value: oldResult.parent[oldResult.key] })
     }
+  }
+
+  for (const { oldPath, newPath, value } of renames) {
+    deletePath(target, oldPath)
+    setPathValue(target, newPath, value)
   }
 }
 
 function $min(target: object, operations: Record<string, number>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
-    if (result && typeof result.parent[result.key] === 'number') {
-      const value = operations[path]
-      if (value !== undefined && value < result.parent[result.key]) {
-        result.parent[result.key] = value
+    if (result) {
+      const currentValue = result.parent[result.key]
+      const newValue = operations[path]!
+      if (typeof currentValue === 'number' && newValue < currentValue) {
+        setProperty(result.parent, result.key, newValue)
+      } else if (typeof currentValue === 'undefined') {
+        setPathValue(target, path, newValue)
       }
     }
   }
@@ -205,17 +191,33 @@ function $min(target: object, operations: Record<string, number>): void {
 function $max(target: object, operations: Record<string, number>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
-    if (result && typeof result.parent[result.key] === 'number') {
-      const value = operations[path]
-      if (value !== undefined && value > result.parent[result.key]) {
-        result.parent[result.key] = value
+    if (result) {
+      const currentValue = result.parent[result.key]
+      const newValue = operations[path]!
+      if (typeof currentValue === 'number' && newValue > currentValue) {
+        setProperty(result.parent, result.key, newValue)
+      } else if (typeof currentValue === 'undefined') {
+        setPathValue(target, path, newValue)
       }
     }
   }
 }
 
+const operatorList = [
+  '$set',
+  '$unset',
+  '$rename',
+  '$inc',
+  '$min',
+  '$max',
+  '$push',
+  '$pull',
+  '$addToSet',
+]
+
 const operators: Record<string, (target: object, operations: any) => void> = {
   $set,
+  $unset,
   $inc,
   $push,
   $pull,
@@ -225,47 +227,31 @@ const operators: Record<string, (target: object, operations: any) => void> = {
   $max,
 }
 
-// --- Public API ---
-
 export type ArrayModifiers<T> = {
   $each: T[]
 }
 
 export type UpdateOperations<T> = Partial<{
-  $set: Partial<T>
-  $inc: { [P in keyof T]?: T[P] extends number ? number : never }
-  $push: {
-    [P in keyof T]?: T[P] extends (infer E)[] ? E | ArrayModifiers<E> : never
-  }
-  $pull: { [P in keyof T]?: T[P] extends (infer E)[] ? Partial<E> : never }
-  $addToSet: {
-    [P in keyof T]?: T[P] extends (infer E)[] ? E | ArrayModifiers<E> : never
-  }
-  $rename: { [P in keyof T]?: string }
-  $min: { [P in keyof T]?: T[P] extends number ? number : never }
-  $max: { [P in keyof T]?: T[P] extends number ? number : never }
+  $set: Record<string, any>
+  $unset: Record<string, true | 1>
+  $inc: Record<string, number>
+  $push: Record<string, any>
+  $pull: Record<string, any>
+  $addToSet: Record<string, any>
+  $rename: Record<string, string>
+  $min: Record<string, number>
+  $max: Record<string, number>
 }>
 
-/**
- * Applies MongoDB-like update operators to a state object.
- * All operations are batched for performance.
- */
 export function update<T extends object>(
   target: T,
   operations: UpdateOperations<T>
 ): void {
-  startBatch()
-  try {
-    for (const op in operations) {
-      // Ensure we are only dealing with valid operator keys
-      if (op in operators) {
-        const operator = operators[op as keyof typeof operators]
-        const opArgs = (operations as any)[op]
-        // The check above ensures operator is not undefined
-        operator?.(target, opArgs)
-      }
+  for (const op of operatorList) {
+    if (op in operations) {
+      const operator = operators[op]
+      const opArgs = (operations as any)[op]
+      operator?.(target, opArgs)
     }
-  } finally {
-    endBatch()
   }
 }
