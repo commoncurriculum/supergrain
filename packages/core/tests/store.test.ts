@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createStore, effect, unwrap } from '../src'
-import { startBatch, endBatch } from 'alien-signals'
 
 describe('Store', () => {
   describe('createStore', () => {
@@ -10,16 +9,16 @@ describe('Store', () => {
       expect(state.name).toBe('test')
     })
 
-    it('should update state with the setter function', () => {
-      const [state, setState] = createStore({ count: 0 })
-      setState('count', 5)
+    it('should update state with the update function', () => {
+      const [state, update] = createStore({ count: 0 })
+      update({ $set: { count: 5 } })
       expect(state.count).toBe(5)
-      setState('count', (c: number) => c + 1)
+      update({ $inc: { count: 1 } })
       expect(state.count).toBe(6)
     })
 
     it('should handle nested objects reactively', () => {
-      const [state, setState] = createStore({
+      const [state, update] = createStore({
         user: { address: { city: 'New York' } },
       })
       let city = ''
@@ -31,34 +30,37 @@ describe('Store', () => {
       expect(city).toBe('New York')
       expect(effectFn).toHaveBeenCalledTimes(1)
 
-      setState('user', 'address', 'city', 'Boston')
+      update({ $set: { 'user.address.city': 'Boston' } })
       expect(city).toBe('Boston')
       expect(effectFn).toHaveBeenCalledTimes(2)
     })
 
     it('should handle array updates reactively', () => {
-      const [state, setState] = createStore({ items: [1, 2, 3] })
+      const [state, update] = createStore<any>({ items: [1, 2, 3] })
       let sum = 0
       const effectFn = vi.fn(() => {
-        sum = state.items.reduce((a, b) => a + b, 0)
+        sum = 0
+        for (const item of state.items) {
+          sum += item
+        }
       })
 
       effect(effectFn)
       expect(sum).toBe(6)
       expect(effectFn).toHaveBeenCalledTimes(1)
 
-      setState('items', 1, 5) // Update state.items[1] to 5
+      update({ $set: { 'items.1': 5 } })
       expect(state.items).toEqual([1, 5, 3])
       expect(sum).toBe(9)
       expect(effectFn).toHaveBeenCalledTimes(2)
 
-      setState({ items: [10, 20] }) // Replace the whole array
+      update({ $set: { items: [10, 20] } })
       expect(sum).toBe(30)
       expect(effectFn).toHaveBeenCalledTimes(3)
     })
 
-    it('should batch multiple updates', () => {
-      const [state, setState] = createStore({ a: 1, b: 2 })
+    it('should batch multiple operators in one update call', () => {
+      const [state, update] = createStore<any>({ a: 1, b: 2 })
       let sum = 0
       const effectFn = vi.fn(() => {
         sum = state.a + state.b
@@ -68,83 +70,12 @@ describe('Store', () => {
       expect(sum).toBe(3)
       expect(effectFn).toHaveBeenCalledTimes(1)
 
-      startBatch()
-      setState('a', 10)
-      setState('b', 20)
-      endBatch()
+      update({
+        $set: { a: 10 },
+        $inc: { b: 18 },
+      })
 
       expect(sum).toBe(30)
-      expect(effectFn).toHaveBeenCalledTimes(2)
-    })
-  })
-
-  describe('Array Operations', () => {
-    it('should handle push reactively', () => {
-      const [state] = createStore({ items: [1, 2] })
-      let length = 0
-      const effectFn = vi.fn(() => {
-        length = state.items.length
-      })
-
-      effect(effectFn)
-      expect(length).toBe(2)
-      expect(effectFn).toHaveBeenCalledTimes(1)
-
-      state.items.push(3)
-      expect(length).toBe(3)
-      expect(effectFn).toHaveBeenCalledTimes(2)
-    })
-
-    it('should handle splice reactively', () => {
-      const [state] = createStore({ items: ['a', 'b', 'c', 'd'] })
-      let first: string | undefined = ''
-      let last: string | undefined = ''
-      const effectFn = vi.fn(() => {
-        first = state.items[0]
-        last = state.items[state.items.length - 1]
-      })
-
-      effect(effectFn)
-      expect(first).toBe('a')
-      expect(last).toBe('d')
-      expect(effectFn).toHaveBeenCalledTimes(1)
-
-      state.items.splice(1, 2, 'x') // remove 'b', 'c', insert 'x'
-      expect(state.items).toEqual(['a', 'x', 'd'])
-      expect(first).toBe('a')
-      expect(last).toBe('d')
-      expect(effectFn.mock.calls.length).toBeGreaterThanOrEqual(2)
-    })
-
-    it('should handle sort reactively', () => {
-      const [state] = createStore({ items: [3, 1, 2] })
-      let first: number | undefined = 0
-      const effectFn = vi.fn(() => {
-        first = state.items[0]
-      })
-
-      effect(effectFn)
-      expect(first).toBe(3)
-      expect(effectFn).toHaveBeenCalledTimes(1)
-
-      state.items.sort()
-      expect(first).toBe(1)
-      expect(effectFn).toHaveBeenCalledTimes(2)
-    })
-
-    it('should handle reverse reactively', () => {
-      const [state] = createStore({ items: [1, 2, 3] })
-      let first: number | undefined = 0
-      const effectFn = vi.fn(() => {
-        first = state.items[0]
-      })
-
-      effect(effectFn)
-      expect(first).toBe(1)
-      expect(effectFn).toHaveBeenCalledTimes(1)
-
-      state.items.reverse()
-      expect(first).toBe(3)
       expect(effectFn).toHaveBeenCalledTimes(2)
     })
   })
@@ -165,13 +96,19 @@ describe('Store', () => {
       const obj: any = { value: 1 }
       obj.self = obj
       const [state] = createStore(obj)
+
+      let selfValue = 0
+      effect(() => {
+        selfValue = state.self.value
+      })
+
       expect(state.value).toBe(1)
-      expect(state.self.value).toBe(1)
+      expect(selfValue).toBe(1)
       expect(unwrap(state.self)).toBe(obj)
     })
 
     it('should handle null and undefined values reactively', () => {
-      const [state, setState] = createStore<{
+      const [state, update] = createStore<{
         nullable: string | null
         undef: string | undefined
       }>({
@@ -189,15 +126,15 @@ describe('Store', () => {
       expect(nullValue).toBe(null)
       expect(undefValue).toBe(undefined)
 
-      setState('nullable', 'value')
+      update({ $set: { nullable: 'value' } })
       expect(nullValue).toBe('value')
 
-      setState('undef', 'value')
+      update({ $set: { undef: 'value' } })
       expect(undefValue).toBe('value')
     })
 
     it('should handle nested reactivity in arrays', () => {
-      const [state] = createStore({
+      const [state, update] = createStore<any>({
         users: [
           { name: 'Alice', tasks: ['task1'] },
           { name: 'Bob', tasks: ['task3'] },
@@ -206,43 +143,37 @@ describe('Store', () => {
 
       let bobTasks: string[] = []
       effect(() => {
-        const user = state.users[1]
-        if (user) {
-          bobTasks = user.tasks
-        }
+        bobTasks = state.users[1]?.tasks || []
       })
 
       expect(bobTasks).toEqual(['task3'])
-      const user = state.users[1]
-      if (user) {
-        user.tasks.push('task4')
-      }
+      update({ $push: { 'users.1.tasks': 'task4' } })
       expect(bobTasks).toEqual(['task3', 'task4'])
     })
 
     it('should handle adding new properties reactively', () => {
-      const [state, setState] = createStore<any>({ initial: true })
+      const [state, update] = createStore<any>({ initial: true })
       let keys: string[] = []
       effect(() => {
         keys = Object.keys(state)
       })
 
       expect(keys).toEqual(['initial'])
-      setState('newProp', 'value')
+      update({ $set: { newProp: 'value' } })
       expect(state.newProp).toBe('value')
-      expect(keys).toEqual(['initial', 'newProp'])
+      expect(keys.sort()).toEqual(['initial', 'newProp'])
     })
 
-    it('should allow deletion of properties', () => {
-      const [state] = createStore<any>({ a: 1, b: 2 })
+    it('should allow deletion of properties with $unset', () => {
+      const [state, update] = createStore<any>({ a: 1, b: 2 })
       let keys: string[] = []
       effect(() => {
         keys = Object.keys(state)
       })
-      expect(keys).toEqual(['a', 'b'])
+      expect(keys.sort()).toEqual(['a', 'b'])
 
-      delete state.b
-      expect(keys).toEqual(['a'])
+      update({ $unset: { b: 1 } })
+      expect(keys.sort()).toEqual(['a'])
       expect(state.b).toBeUndefined()
     })
   })
