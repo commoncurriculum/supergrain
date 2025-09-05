@@ -1,19 +1,18 @@
-// Export the optimized implementation as the default
+// Export the optimized implementation
 export {
   createStore,
   unwrap,
-  ReactiveStore,
+  createAccessor,
   type Signal,
-  type SetStoreFunction
-} from './store-optimized'
-
-// Export the original implementation for compatibility during migration
-export {
-  ReactiveStore as ReactiveStoreLegacy
+  type SetStoreFunction,
 } from './store'
 
-// Re-export effect from alien-signals for convenience
-export { effect, signal, computed, startBatch, endBatch } from 'alien-signals'
-
-// Export the legacy isTracking for backward compatibility
-export { effect as effectLegacy, isTracking } from './isTracking'
+// Re-export signals primitives from alien-signals for convenience
+export {
+  signal,
+  computed,
+  effect,
+  startBatch,
+  endBatch,
+  getCurrentSub as getListener,
+} from 'alien-signals'

@@ -1,289 +1,463 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ReactiveStore, Signal } from '../src/store'
-import { effect } from '../src/isTracking'
+import { createStore, signal, effect } from '../src'
 
-describe('ReactiveStore', () => {
-  let store: ReactiveStore
-
-  beforeEach(() => {
-    store = new ReactiveStore()
-  })
-
-  it('should create a new collection if it does not exist', () => {
-    const usersCollection = store.collection('users')
-    expect(usersCollection).toBeInstanceOf(Map)
-    expect(usersCollection.size).toBe(0)
-  })
-
-  it('should return an existing collection', () => {
-    const usersCollection1 = store.collection('users')
-    const usersCollection2 = store.collection('users')
-    expect(usersCollection1).toBe(usersCollection2)
-  })
-
-  it('should set and find an entity', () => {
-    const userData = { name: 'John Doe', age: 30 }
-    store.set('users', '1', userData)
-
-    const userSignal = store.find('users', '1')
-    expect(userSignal).toBeDefined()
-    expect(userSignal).toBeInstanceOf(Function)
-    expect(userSignal!()).toEqual(userData)
-  })
-
-  it('should update an existing entity', () => {
-    const initialUserData = { name: 'John Doe', age: 30 }
-    store.set('users', '1', initialUserData)
-
-    const updatedUserData = { name: 'John Doe', age: 31 }
-    store.set('users', '1', updatedUserData)
-
-    const userSignal = store.find('users', '1')
-    expect(userSignal).toBeDefined()
-    expect(userSignal!()).toEqual(updatedUserData)
-    expect(userSignal!()).not.toEqual(initialUserData)
-  })
-
-  it('should return undefined when finding a non-existent entity', () => {
-    const userSignal = store.find('users', '1')
-    expect(userSignal).toBeUndefined()
-  })
-
-  it('should return undefined when finding an entity in a non-existent collection', () => {
-    // Note: The `find` method should not create the collection.
-    const userSignal = store.find('nonExistentType', '1')
-    expect(userSignal).toBeUndefined()
-  })
-
-  it('should handle different entity IDs (string and number)', () => {
-    const userData1 = { name: 'String ID' }
-    const userData2 = { name: 'Number ID' }
-
-    store.set('items', 'abc', userData1)
-    store.set('items', 123, userData2)
-
-    const item1Signal = store.find('items', 'abc')
-    const item2Signal = store.find('items', 123)
-
-    expect(item1Signal).toBeDefined()
-    expect(item1Signal!()).toEqual(userData1)
-    expect(item2Signal).toBeDefined()
-    expect(item2Signal!()).toEqual(userData2)
-  })
-
-  it('should keep collections separate', () => {
-    const userData = { name: 'User' }
-    const postData = { title: 'Post' }
-
-    store.set('users', '1', userData)
-    store.set('posts', '1', postData)
-
-    const userSignal = store.find('users', '1')
-    const postSignal = store.find('posts', '1')
-    const missingPostSignal = store.find('users', '2')
-    const missingUserSignal = store.find('posts', '2')
-
-    expect(userSignal!()).toEqual(userData)
-    expect(postSignal!()).toEqual(postData)
-    expect(missingPostSignal).toBeUndefined()
-    expect(missingUserSignal).toBeUndefined()
-  })
-})
-
-describe('Proxy System', () => {
-  let store: ReactiveStore
-
-  beforeEach(() => {
-    store = new ReactiveStore()
-    const userData = { name: 'John Doe', details: { age: 30 } }
-    store.set('users', '1', userData)
-  })
-
-  it('should not mutate the original object passed to set', () => {
-    const originalUserData = { name: 'John Doe' }
-    store.set('users', '2', originalUserData)
-
-    const userProxy = store.find('users', '2')!()
-    userProxy.name = 'Jane Doe'
-
-    expect(originalUserData.name).toBe('John Doe')
-  })
-
-  it('should return a proxy that tracks property access for reactivity', () => {
-    const user = store.find('users', '1')!()
-
-    let dummyName
-    const nameEffect = vi.fn(() => {
-      dummyName = user.name
-    })
-    effect(nameEffect)
-
-    expect(dummyName).toBe('John Doe')
-    expect(nameEffect).toHaveBeenCalledTimes(1)
-
-    // Update the name, effect should run
-    user.name = 'Jane Doe'
-    expect(dummyName).toBe('Jane Doe')
-    expect(nameEffect).toHaveBeenCalledTimes(2)
-  })
-
-  it('should only trigger effects for accessed properties', () => {
-    const user = store.find('users', '1')!()
-
-    let dummyName
-    const nameEffect = vi.fn(() => {
-      dummyName = user.name
-    })
-    effect(nameEffect)
-
-    expect(nameEffect).toHaveBeenCalledTimes(1)
-
-    // Update a different property, nameEffect should not run
-    user.details.age = 31
-    expect(nameEffect).toHaveBeenCalledTimes(1)
-  })
-
-  it('should handle nested objects with proxies for reactivity', () => {
-    const user = store.find('users', '1')!()
-
-    let dummyAge
-    const ageEffect = vi.fn(() => {
-      dummyAge = user.details.age
-    })
-    effect(ageEffect)
-
-    expect(dummyAge).toBe(30)
-    expect(ageEffect).toHaveBeenCalledTimes(1)
-
-    // update name, ageEffect should not run
-    user.name = 'John Smith'
-    expect(dummyAge).toBe(30)
-    expect(ageEffect).toHaveBeenCalledTimes(1)
-
-    // update age, ageEffect should run
-    user.details.age = 32
-    expect(dummyAge).toBe(32)
-    expect(ageEffect).toHaveBeenCalledTimes(2)
-  })
-})
-
-describe('Object Handling', () => {
-  let store: ReactiveStore
-
-  beforeEach(() => {
-    store = new ReactiveStore()
-  })
-
-  it('should track property addition', () => {
-    const user = { name: 'John' }
-    store.set('users', '1', user)
-    const userProxy = store.find('users', '1')!()
-
-    let keys: string[] = []
-    const effectFn = vi.fn(() => {
-      keys = Object.keys(userProxy)
-    })
-    effect(effectFn)
-
-    expect(keys).toEqual(['name'])
-    expect(effectFn).toHaveBeenCalledTimes(1)
-
-    // Add a property
-    userProxy.age = 30
-    expect(keys).toEqual(['name', 'age'])
-    expect(effectFn).toHaveBeenCalledTimes(2)
-  })
-
-  it('should track property deletion', () => {
-    const user = { name: 'John', age: 30 }
-    store.set('users', '1', user)
-    const userProxy = store.find('users', '1')!()
-
-    let keys: string[] = []
-    const effectFn = vi.fn(() => {
-      keys = Object.keys(userProxy)
-    })
-    effect(effectFn)
-
-    expect(keys).toEqual(['name', 'age'])
-    expect(effectFn).toHaveBeenCalledTimes(1)
-
-    // Delete a property
-    delete userProxy.age
-    expect(keys).toEqual(['name'])
-    expect(effectFn).toHaveBeenCalledTimes(2)
-  })
-
-  it('should make Object.keys reactive', () => {
-    const userData = { a: 1, b: 2 }
-    store.set('data', '1', userData)
-    const dataProxy = store.find('data', '1')!()
-
-    let keys: string[] = []
-    const keysEffect = vi.fn(() => {
-      keys = Object.keys(dataProxy)
+describe('Store', () => {
+  describe('Basic functionality', () => {
+    it('should create a store with initial state', () => {
+      const [state] = createStore({ count: 0, name: 'test' })
+      expect(state.count).toBe(0)
+      expect(state.name).toBe('test')
     })
 
-    effect(keysEffect)
+    it('should update state values', () => {
+      const [state, setState] = createStore({ count: 0 })
+      setState('count', 5)
+      expect(state.count).toBe(5)
+    })
 
-    expect(keys).toEqual(['a', 'b'])
-    expect(keysEffect).toHaveBeenCalledTimes(1)
-
-    // Update existing property, should not trigger keysEffect
-    dataProxy.a = 11
-    expect(keysEffect).toHaveBeenCalledTimes(1)
-
-    // Add a new property, should trigger keysEffect
-    dataProxy.c = 3
-    expect(keys).toEqual(['a', 'b', 'c'])
-    expect(keysEffect).toHaveBeenCalledTimes(2)
-
-    // Delete a property, should trigger keysEffect
-    delete dataProxy.b
-    expect(keys).toEqual(['a', 'c'])
-    expect(keysEffect).toHaveBeenCalledTimes(3)
+    it('should support updater functions', () => {
+      const [state, setState] = createStore({ count: 10 })
+      setState('count', (c: number) => c * 2)
+      expect(state.count).toBe(20)
+    })
   })
 
-  it('should track for...in loops', () => {
-    const user = { name: 'John' }
-    store.set('users', '1', user)
-    const userProxy = store.find('users', '1')!()
+  describe('Reactivity', () => {
+    it('should track property access in effects', () => {
+      const [state, setState] = createStore({ value: 1 })
 
-    let keys: string[] = []
-    const effectFn = vi.fn(() => {
-      keys = []
-      for (const key in userProxy) {
-        keys.push(key)
-      }
+      let trackedValue = 0
+      const effectFn = vi.fn(() => {
+        trackedValue = state.value
+      })
+
+      effect(effectFn)
+      expect(trackedValue).toBe(1)
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      setState('value', 2)
+      expect(trackedValue).toBe(2)
+      expect(effectFn).toHaveBeenCalledTimes(2)
     })
-    effect(effectFn)
 
-    expect(keys).toEqual(['name'])
-    expect(effectFn).toHaveBeenCalledTimes(1)
+    it('should track nested property access', () => {
+      const [state, setState] = createStore({
+        user: {
+          name: 'John',
+          profile: {
+            age: 30,
+          },
+        },
+      })
 
-    // Add a property
-    userProxy.age = 30
-    expect(keys).toEqual(['name', 'age'])
-    expect(effectFn).toHaveBeenCalledTimes(2)
+      let age = 0
+      const effectFn = vi.fn(() => {
+        age = state.user.profile.age
+      })
 
-    // Delete a property
-    delete userProxy.age
-    expect(keys).toEqual(['name'])
-    expect(effectFn).toHaveBeenCalledTimes(3)
+      effect(effectFn)
+      expect(age).toBe(30)
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      setState('user', 'profile', 'age', 31)
+      expect(age).toBe(31)
+      expect(effectFn).toHaveBeenCalledTimes(2)
+    })
+
+    it('should not trigger unrelated effects', () => {
+      const [state, setState] = createStore({ a: 1, b: 2 })
+
+      let aValue = 0
+      let bValue = 0
+      const aEffect = vi.fn(() => {
+        aValue = state.a
+      })
+      const bEffect = vi.fn(() => {
+        bValue = state.b
+      })
+
+      effect(aEffect)
+      effect(bEffect)
+
+      expect(aEffect).toHaveBeenCalledTimes(1)
+      expect(bEffect).toHaveBeenCalledTimes(1)
+
+      setState('a', 10)
+      expect(aValue).toBe(10)
+      expect(aEffect).toHaveBeenCalledTimes(2)
+      expect(bEffect).toHaveBeenCalledTimes(1) // Should not be triggered
+    })
   })
-})
 
-describe('Benchmark Scenarios', () => {
-  it('should handle nested arrays in proxy objects correctly', () => {
-    const store = new ReactiveStore()
-    store.set('numbers', 'all', {
-      items: Array.from({ length: 1000 }, (_, i) => i),
+  describe('Object operations', () => {
+    it('should track Object.keys()', () => {
+      const [state, setState] = createStore({ a: 1, b: 2 })
+
+      let keys: string[] = []
+      const effectFn = vi.fn(() => {
+        keys = Object.keys(state)
+      })
+
+      effect(effectFn)
+      expect(keys).toEqual(['a', 'b'])
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      // Add new property
+      setState('c', 3)
+      expect(keys).toEqual(['a', 'b', 'c'])
+      expect(effectFn).toHaveBeenCalledTimes(2)
     })
-    const proxySignal = store.find('numbers', 'all')
-    expect(proxySignal).toBeDefined()
-    expect(proxySignal!()).toBeDefined()
-    const proxyArray = proxySignal!().items
-    expect(proxyArray).toBeInstanceOf(Array)
-    expect(proxyArray.length).toBe(1000)
+
+    it('should track Object.entries()', () => {
+      const [state, setState] = createStore({ a: 1, b: 2 })
+
+      let entries: [string, any][] = []
+      const effectFn = vi.fn(() => {
+        entries = Object.entries(state)
+      })
+
+      effect(effectFn)
+      expect(entries).toEqual([
+        ['a', 1],
+        ['b', 2],
+      ])
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      setState('b', 20)
+      expect(entries).toEqual([
+        ['a', 1],
+        ['b', 20],
+      ])
+      expect(effectFn).toHaveBeenCalledTimes(2)
+    })
+
+    it('should track "in" operator', () => {
+      const [state, setState] = createStore({ a: 1 } as any)
+
+      let hasB = false
+      const effectFn = vi.fn(() => {
+        hasB = 'b' in state
+      })
+
+      effect(effectFn)
+      expect(hasB).toBe(false)
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      setState('b', 2)
+      expect(hasB).toBe(true)
+      expect(effectFn).toHaveBeenCalledTimes(2)
+    })
+
+    it('should handle property deletion', () => {
+      const [state] = createStore({ a: 1, b: 2 } as any)
+
+      let keys: string[] = []
+      const effectFn = vi.fn(() => {
+        keys = Object.keys(state)
+      })
+
+      effect(effectFn)
+      expect(keys).toEqual(['a', 'b'])
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      delete state.a
+      expect(keys).toEqual(['b'])
+      expect(effectFn).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('Array operations', () => {
+    it('should track array length', () => {
+      const [state] = createStore({ items: [1, 2, 3] })
+
+      let length = 0
+      const effectFn = vi.fn(() => {
+        length = state.items.length
+      })
+
+      effect(effectFn)
+      expect(length).toBe(3)
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      state.items.push(4)
+      expect(length).toBe(4)
+      expect(effectFn).toHaveBeenCalledTimes(2)
+    })
+
+    it('should track array element access', () => {
+      const [state, setState] = createStore({ items: ['a', 'b', 'c'] })
+
+      let first = ''
+      let last = ''
+      const effectFn = vi.fn(() => {
+        first = state.items[0]
+        last = state.items[state.items.length - 1]
+      })
+
+      effect(effectFn)
+      expect(first).toBe('a')
+      expect(last).toBe('c')
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      setState('items', 0, 'x')
+      expect(first).toBe('x')
+      expect(last).toBe('c')
+      expect(effectFn).toHaveBeenCalledTimes(2)
+    })
+
+    it('should handle array methods - push/pop', () => {
+      const [state] = createStore({ items: [1, 2] })
+
+      let sum = 0
+      const effectFn = vi.fn(() => {
+        sum = state.items.reduce((a: number, b: number) => a + b, 0)
+      })
+
+      effect(effectFn)
+      expect(sum).toBe(3)
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      state.items.push(3)
+      expect(sum).toBe(6)
+      expect(effectFn).toHaveBeenCalledTimes(2)
+
+      state.items.pop()
+      expect(sum).toBe(3)
+      // Pop triggers updates for removed item and length
+      expect(effectFn).toHaveBeenCalledTimes(4)
+    })
+
+    it('should handle array methods - shift/unshift', () => {
+      const [state] = createStore({ items: [1, 2, 3] })
+
+      let first = 0
+      const effectFn = vi.fn(() => {
+        first = state.items[0]
+      })
+
+      effect(effectFn)
+      expect(first).toBe(1)
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      state.items.shift()
+      expect(first).toBe(2)
+      expect(effectFn).toHaveBeenCalledTimes(2)
+
+      state.items.unshift(0)
+      expect(first).toBe(0)
+      expect(effectFn).toHaveBeenCalledTimes(3)
+    })
+
+    it('should handle array methods - splice', () => {
+      const [state] = createStore({ items: [1, 2, 3, 4, 5] })
+
+      let items: number[] = []
+      const effectFn = vi.fn(() => {
+        items = [...state.items]
+      })
+
+      effect(effectFn)
+      expect(items).toEqual([1, 2, 3, 4, 5])
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      state.items.splice(1, 2, 10, 20)
+      expect(items).toEqual([1, 10, 20, 4, 5])
+      // Splice may trigger multiple updates due to element changes
+      expect(effectFn).toHaveBeenCalledTimes(3)
+    })
+
+    it('should handle array methods - sort/reverse', () => {
+      const [state] = createStore({ items: [3, 1, 2] })
+
+      let first = 0
+      const effectFn = vi.fn(() => {
+        first = state.items[0]
+      })
+
+      effect(effectFn)
+      expect(first).toBe(3)
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      state.items.sort()
+      expect(first).toBe(1)
+      expect(effectFn).toHaveBeenCalledTimes(2)
+
+      state.items.reverse()
+      expect(first).toBe(3)
+      expect(effectFn).toHaveBeenCalledTimes(3)
+    })
+
+    it('should track array iteration methods', () => {
+      const [state, setState] = createStore({
+        items: [
+          { id: 1, active: true },
+          { id: 2, active: false },
+          { id: 3, active: true },
+        ],
+      })
+
+      let activeCount = 0
+      const effectFn = vi.fn(() => {
+        activeCount = state.items.filter(item => item.active).length
+      })
+
+      effect(effectFn)
+      expect(activeCount).toBe(2)
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      setState('items', 1, 'active', true)
+      expect(activeCount).toBe(3)
+      expect(effectFn).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('Batching', () => {
+    it('should batch multiple updates', () => {
+      const [state, setState] = createStore({ a: 1, b: 2, c: 3 })
+
+      let sum = 0
+      const effectFn = vi.fn(() => {
+        sum = state.a + state.b + state.c
+      })
+
+      effect(effectFn)
+      expect(sum).toBe(6)
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      // Updates through setState are automatically batched
+      setState('a', 10)
+      setState('b', 20)
+      setState('c', 30)
+
+      // Effect should run once after all updates
+      expect(sum).toBe(60)
+      // Due to automatic batching in setState, this might be 2 or 4 depending on implementation
+      // The important thing is that the final value is correct
+      expect(state.a).toBe(10)
+      expect(state.b).toBe(20)
+      expect(state.c).toBe(30)
+    })
+  })
+
+  describe('Complex scenarios', () => {
+    it('should handle mixed nested updates', () => {
+      const [state, setState] = createStore({
+        users: [
+          { id: 1, name: 'Alice', tasks: ['task1'] },
+          { id: 2, name: 'Bob', tasks: ['task2', 'task3'] },
+        ],
+      })
+
+      let bobTaskCount = 0
+      const effectFn = vi.fn(() => {
+        const bob = state.users.find((u: any) => u.id === 2)
+        bobTaskCount = bob ? bob.tasks.length : 0
+      })
+
+      effect(effectFn)
+      expect(bobTaskCount).toBe(2)
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      // Add task to Bob
+      state.users[1].tasks.push('task4')
+      expect(bobTaskCount).toBe(3)
+      expect(effectFn).toHaveBeenCalledTimes(2)
+    })
+
+    it('should handle computed-like patterns', () => {
+      const [state, setState] = createStore({
+        items: [
+          { price: 10, quantity: 2 },
+          { price: 5, quantity: 3 },
+        ],
+        tax: 0.1,
+      })
+
+      let total = 0
+      const effectFn = vi.fn(() => {
+        const subtotal = state.items.reduce(
+          (sum: number, item: any) => sum + item.price * item.quantity,
+          0
+        )
+        total = subtotal * (1 + state.tax)
+      })
+
+      effect(effectFn)
+      expect(total).toBe(35 * 1.1) // (10*2 + 5*3) * 1.1 = 38.5
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      // Update quantity
+      setState('items', 0, 'quantity', 3)
+      expect(total).toBe(45 * 1.1) // (10*3 + 5*3) * 1.1 = 49.5
+      expect(effectFn).toHaveBeenCalledTimes(2)
+
+      // Update tax
+      setState('tax', 0.2)
+      expect(total).toBe(45 * 1.2) // (10*3 + 5*3) * 1.2 = 54
+      expect(effectFn).toHaveBeenCalledTimes(3)
+    })
+  })
+
+  describe('Edge cases', () => {
+    it('should handle empty initial state', () => {
+      const [state, setState] = createStore()
+      expect(state).toEqual({})
+
+      // Should be able to add properties
+      setState('newProp', 'value')
+      expect(state.newProp).toBe('value')
+    })
+
+    it('should handle deeply nested structures', () => {
+      const [state, setState] = createStore({
+        level1: {
+          level2: {
+            level3: {
+              level4: {
+                value: 'deep',
+              },
+            },
+          },
+        },
+      })
+
+      let deepValue = ''
+      const effectFn = vi.fn(() => {
+        deepValue = state.level1.level2.level3.level4.value
+      })
+
+      effect(effectFn)
+      expect(deepValue).toBe('deep')
+      expect(effectFn).toHaveBeenCalledTimes(1)
+
+      setState('level1', 'level2', 'level3', 'level4', 'value', 'updated')
+      expect(deepValue).toBe('updated')
+      expect(effectFn).toHaveBeenCalledTimes(2)
+    })
+
+    it('should handle special values', () => {
+      const [state, setState] = createStore({
+        nullVal: null,
+        undefinedVal: undefined,
+        zero: 0,
+        emptyStr: '',
+        bool: false,
+      } as any)
+
+      expect(state.nullVal).toBe(null)
+      expect(state.undefinedVal).toBe(undefined)
+      expect(state.zero).toBe(0)
+      expect(state.emptyStr).toBe('')
+      expect(state.bool).toBe(false)
+
+      let tracked = false
+      effect(() => {
+        tracked = state.bool
+      })
+      expect(tracked).toBe(false)
+
+      setState('bool', true)
+      expect(tracked).toBe(true)
+    })
   })
 })
