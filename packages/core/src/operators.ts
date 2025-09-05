@@ -55,7 +55,8 @@ function setPathValue(target: object, path: string, value: unknown): void {
   let current: any = target
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i]!
-    if (current[part] === undefined || !isObject(current[part])) {
+    const value = current[part]
+    if (value === undefined || (!isObject(value) && !Array.isArray(value))) {
       setProperty(current, part, {})
     }
     current = current[part]
@@ -117,13 +118,30 @@ function $push(target: object, operations: Record<string, any>): void {
   }
 }
 
+function isObjectMatch(obj: any, condition: any): boolean {
+  if (!isObject(obj) || !isObject(condition)) {
+    return isEqual(obj, condition)
+  }
+
+  for (const key of Object.keys(condition)) {
+    if (
+      !Object.prototype.hasOwnProperty.call(obj, key) ||
+      !isEqual(obj[key], condition[key])
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
 function $pull(target: object, operations: Record<string, any>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
     const arr = result?.parent[result.key]
     if (result && Array.isArray(arr)) {
       const condition = operations[path]
-      const newArr = arr.filter((item: any) => !isEqual(item, condition))
+      const newArr = arr.filter((item: any) => !isObjectMatch(item, condition))
       if (newArr.length < arr.length) {
         setProperty(result.parent, result.key, newArr)
       }
