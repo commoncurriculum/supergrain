@@ -113,10 +113,8 @@ function $push(target: object, operations: Record<string, any>): void {
           ? value['$each']
           : [value]
 
-      const startingIndex = arr.length
-      for (let i = 0; i < itemsToAdd.length; i++) {
-        setProperty(arr, startingIndex + i, itemsToAdd[i]!)
-      }
+      const newArr = [...arr, ...itemsToAdd]
+      setProperty(result.parent, result.key, newArr)
     }
   }
 }
