@@ -1,9 +1,14 @@
-import { signal, getCurrentSub, startBatch, endBatch } from 'alien-signals'
+import {
+  signal,
+  getCurrentSub,
+  startBatch,
+  endBatch,
+  effect,
+} from 'alien-signals'
 
 export type Signal<T> = {
   (): T
   (value: T): void
-  $?: (value: T) => void // Writer stored on reader for Solid compatibility
 }
 
 // Symbols for internal property storage
@@ -87,12 +92,7 @@ function getNode(
   const existing = nodes[property]
   if (existing) return existing
 
-  // Create signal with no equality checking for maximum speed
-  const [read, write] = [signal(value), null] as any
-  const sig = signal(value, { equals: false }) as Signal<any>
-
-  // Store writer on reader for Solid.js compatibility pattern
-  sig.$ = (v: any) => sig(v)
+  const sig = signal(value)
 
   nodes[property] = sig
   return sig
@@ -131,7 +131,6 @@ function setProperty(
   deleteProperty = false
 ): void {
   const hadKey = property in target
-  const oldValue = target[property]
 
   if (deleteProperty) {
     delete target[property]
@@ -142,13 +141,16 @@ function setProperty(
   // Update the signal if value changed (no equality check, always update)
   const nodes = (target as any)[$NODE]
   if (nodes?.[property]) {
-    nodes[property](deleteProperty ? undefined : value)
+    // The signal exists, update it
+    const sig = nodes[property]
+    // Call the signal setter to update the value
+    sig(deleteProperty ? undefined : value)
   }
 
   // Handle array length changes
   if (Array.isArray(target) && property !== 'length') {
-    if (nodes?.length) {
-      nodes.length(target.length)
+    if (nodes?.['length']) {
+      nodes['length'](target.length)
     }
   }
 
@@ -185,8 +187,8 @@ const arrayMethodHandler = {
   ) {
     const oldLength = target.length
     const result = method.apply(target, args)
-    if (nodes.length && target.length !== oldLength) {
-      nodes.length(target.length)
+    if (nodes['length'] && target.length !== oldLength) {
+      nodes['length'](target.length)
     }
     const ownKeysSignal = nodes[Symbol.for('ownKeys')]
     if (ownKeysSignal) ownKeysSignal(ownKeysSignal() + 1)
@@ -201,8 +203,8 @@ const arrayMethodHandler = {
   ) {
     const oldLength = target.length
     const result = method.apply(target, args)
-    if (nodes.length && target.length !== oldLength) {
-      nodes.length(target.length)
+    if (nodes['length'] && target.length !== oldLength) {
+      nodes['length'](target.length)
     }
     const ownKeysSignal = nodes[Symbol.for('ownKeys')]
     if (ownKeysSignal) ownKeysSignal(ownKeysSignal() + 1)
@@ -218,9 +220,10 @@ const arrayMethodHandler = {
     const result = method.apply(target, args)
     // Update all indices since they all shift
     for (let i = 0; i < target.length; i++) {
-      if (nodes[i]) nodes[i](target[i])
+      const sig = nodes[i]
+      if (sig) sig(target[i])
     }
-    if (nodes.length) nodes.length(target.length)
+    if (nodes['length']) nodes['length'](target.length)
     const ownKeysSignal = nodes[Symbol.for('ownKeys')]
     if (ownKeysSignal) ownKeysSignal(ownKeysSignal() + 1)
     return result
@@ -235,9 +238,10 @@ const arrayMethodHandler = {
     const result = method.apply(target, args)
     // Update all indices since they all shift
     for (let i = 0; i < target.length; i++) {
-      if (nodes[i]) nodes[i](target[i])
+      const sig = nodes[i]
+      if (sig) sig(target[i])
     }
-    if (nodes.length) nodes.length(target.length)
+    if (nodes['length']) nodes['length'](target.length)
     const ownKeysSignal = nodes[Symbol.for('ownKeys')]
     if (ownKeysSignal) ownKeysSignal(ownKeysSignal() + 1)
     return result
@@ -259,18 +263,20 @@ const arrayMethodHandler = {
       // Update modified indices only if needed
       const updateEnd = Math.min(start + args.length - 2, newLength)
       for (let i = start; i < updateEnd; i++) {
-        if (nodes[i]) nodes[i](target[i])
+        const sig = nodes[i]
+        if (sig) sig(target[i])
       }
 
       // If items were removed, update signals for shifted indices
       if (oldLength > newLength) {
         for (let i = newLength; i < oldLength; i++) {
-          if (nodes[i]) nodes[i](undefined)
+          const sig = nodes[i]
+          if (sig) sig(undefined)
         }
       }
 
-      if (oldLength !== newLength && nodes.length) {
-        nodes.length(newLength)
+      if (oldLength !== newLength && nodes['length']) {
+        nodes['length'](newLength)
       }
 
       const ownKeysSignal = nodes[Symbol.for('ownKeys')]
@@ -289,7 +295,8 @@ const arrayMethodHandler = {
     const result = method.apply(target, args)
     // Update all indices since order changed
     for (let i = 0; i < target.length; i++) {
-      if (nodes[i]) nodes[i](target[i])
+      const sig = nodes[i]
+      if (sig) sig(target[i])
     }
     return result
   },
@@ -303,7 +310,8 @@ const arrayMethodHandler = {
     const result = method.apply(target, args)
     // Update all indices since order changed
     for (let i = 0; i < target.length; i++) {
-      if (nodes[i]) nodes[i](target[i])
+      const sig = nodes[i]
+      if (sig) sig(target[i])
     }
     return result
   },
@@ -376,7 +384,7 @@ const handler: ProxyHandler<object> = {
     const value = target[property as keyof typeof target]
 
     // Only create signal if we have a listener and it's a trackable property
-    if (listener && typeof value !== 'function') {
+    if (typeof value !== 'function') {
       const desc = getCachedDescriptor(target, property)
       if (!desc?.get) {
         // Create signal for this property
@@ -489,8 +497,11 @@ function updateArray(current: any[], next: any[]): void {
   for (; i < len; i++) {
     if (current[i] !== next[i]) {
       current[i] = next[i]
-      if (nodes?.[i]) {
-        nodes[i](next[i])
+      if (nodes) {
+        const sig = nodes[i]
+        if (sig) {
+          sig(next[i])
+        }
       }
     }
   }
@@ -500,14 +511,17 @@ function updateArray(current: any[], next: any[]): void {
     // Remove extra elements
     for (let j = len; j < current.length; j++) {
       delete current[j]
-      if (nodes?.[j]) {
-        nodes[j](undefined)
+      if (nodes) {
+        const sig = nodes[j]
+        if (sig) {
+          sig(undefined)
+        }
       }
     }
 
     current.length = len
-    if (nodes?.length) {
-      nodes.length(len)
+    if (nodes?.['length']) {
+      nodes['length'](len)
     }
 
     // Trigger shape change
@@ -515,6 +529,26 @@ function updateArray(current: any[], next: any[]): void {
     if (ownKeysSignal) {
       ownKeysSignal(ownKeysSignal() + 1)
     }
+  }
+}
+
+/**
+ * Recursively traverses the state to trigger signal creation.
+ */
+function primeReactivity(target: any, visited = new Set()): void {
+  if (!isWrappable(target) || visited.has(target)) return
+  visited.add(target)
+
+  for (const key in target) {
+    if (Object.prototype.hasOwnProperty.call(target, key)) {
+      const value = target[key as keyof typeof target] // Access property to trigger proxy `get`
+      primeReactivity(value, visited)
+    }
+  }
+
+  if (Array.isArray(target)) {
+    // Access length to trigger proxy `get`
+    const _ = target.length
   }
 }
 
@@ -570,6 +604,10 @@ export function createStore<T extends object>(
   const unwrapped = unwrap(initialState || ({} as T))
   const wrapped = createReactiveProxy(unwrapped)
 
+  // Prime reactivity by accessing all properties within an effect
+  const dispose = effect(() => primeReactivity(wrapped))
+  dispose()
+
   function setStore(...args: any[]) {
     startBatch()
     try {
@@ -598,7 +636,7 @@ export function createAccessor<T extends object, K extends keyof T>(
   target: T,
   property: K
 ): { get: () => T[K]; set: (value: T[K]) => void } {
-  const proxy = createReactiveProxy(target)
+  createReactiveProxy(target)
   const nodes = getNodes(target)
   const node = getNode(nodes, property as PropertyKey, target[property])
 
