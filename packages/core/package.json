@@ -31,6 +31,9 @@
     "lint": "oxlint .",
     "test": "vitest run",
     "bench": "vitest bench",
+    "bench:core": "vitest bench benchmarks/core-comparison.bench.ts",
+    "bench:all": "vitest bench benchmarks/*.bench.ts",
+    "bench:additional": "vitest bench benchmarks/additional.bench.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
