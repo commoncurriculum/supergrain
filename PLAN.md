@@ -20,11 +20,11 @@ This document outlines the phased implementation plan for the Storable library -
 
 ### 1.2 Basic Store Implementation
 
-- [ ] Create `ReactiveStore` class with collection management
-- [ ] Implement `collection(name)` method
-- [ ] Implement `set(type, id, data)` method
-- [ ] Implement `find(type, id)` method
-- [ ] Basic signal creation for entities
+- [x] Create `ReactiveStore` class with collection management
+- [x] Implement `collection(name)` method
+- [x] Implement `set(type, id, data)` method
+- [x] Implement `find(type, id)` method
+- [x] Basic signal creation for entities
 
 ### 1.3 Proxy System
 

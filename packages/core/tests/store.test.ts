@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ReactiveStore } from '../src/store'
-import { Signal } from '@preact/signals-core'
+import { Signal, effect } from '@preact/signals-core'
 
 describe('ReactiveStore', () => {
   let store: ReactiveStore
@@ -87,5 +87,82 @@ describe('ReactiveStore', () => {
     expect(postSignal!.value).toEqual(postData)
     expect(missingPostSignal).toBeUndefined()
     expect(missingUserSignal).toBeUndefined()
+  })
+})
+
+describe('Proxy System', () => {
+  let store: ReactiveStore
+
+  beforeEach(() => {
+    store = new ReactiveStore()
+    const userData = { name: 'John Doe', details: { age: 30 } }
+    store.set('users', '1', userData)
+  })
+
+  it('should not mutate the original object passed to set', () => {
+    const originalUserData = { name: 'John Doe' }
+    store.set('users', '2', originalUserData)
+
+    const userProxy = store.find('users', '2')!.value
+    userProxy.name = 'Jane Doe'
+
+    expect(originalUserData.name).toBe('John Doe')
+  })
+
+  it('should return a proxy that tracks property access for reactivity', () => {
+    const user = store.find('users', '1')!.value
+
+    let dummyName
+    const nameEffect = vi.fn(() => {
+      dummyName = user.name
+    })
+    effect(nameEffect)
+
+    expect(dummyName).toBe('John Doe')
+    expect(nameEffect).toHaveBeenCalledTimes(1)
+
+    // Update the name, effect should run
+    user.name = 'Jane Doe'
+    expect(dummyName).toBe('Jane Doe')
+    expect(nameEffect).toHaveBeenCalledTimes(2)
+  })
+
+  it('should only trigger effects for accessed properties', () => {
+    const user = store.find('users', '1')!.value
+
+    let dummyName
+    const nameEffect = vi.fn(() => {
+      dummyName = user.name
+    })
+    effect(nameEffect)
+
+    expect(nameEffect).toHaveBeenCalledTimes(1)
+
+    // Update a different property, nameEffect should not run
+    user.details.age = 31
+    expect(nameEffect).toHaveBeenCalledTimes(1)
+  })
+
+  it('should handle nested objects with proxies for reactivity', () => {
+    const user = store.find('users', '1')!.value
+
+    let dummyAge
+    const ageEffect = vi.fn(() => {
+      dummyAge = user.details.age
+    })
+    effect(ageEffect)
+
+    expect(dummyAge).toBe(30)
+    expect(ageEffect).toHaveBeenCalledTimes(1)
+
+    // update name, ageEffect should not run
+    user.name = 'John Smith'
+    expect(dummyAge).toBe(30)
+    expect(ageEffect).toHaveBeenCalledTimes(1)
+
+    // update age, ageEffect should run
+    user.details.age = 32
+    expect(dummyAge).toBe(32)
+    expect(ageEffect).toHaveBeenCalledTimes(2)
   })
 })
