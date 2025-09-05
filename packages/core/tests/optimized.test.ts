@@ -59,17 +59,22 @@ describe('Optimized Store', () => {
 
   describe('Performance optimizations', () => {
     it('should not create signals for untracked properties', () => {
-      const [state] = createStore<any>({ a: { b: 1 } })
+      const [state, update] = createStore<any>({ a: { b: 1 } })
       const rawA = unwrap(state.a)
-      expect((rawA as any).$NODE).toBeUndefined()
+      expect(Object.getOwnPropertySymbols(rawA).length).toBe(0)
 
       let b = 0
-      effect(() => {
+      const effectFn = vi.fn(() => {
         b = state.a.b
       })
+      effect(effectFn)
       expect(b).toBe(1)
+      expect(effectFn).toHaveBeenCalledTimes(1)
 
-      expect((state.a as any).$NODE).toBeDefined()
+      // A signal should have been created, and it should be reactive
+      update({ $set: { 'a.b': 2 } })
+      expect(b).toBe(2)
+      expect(effectFn).toHaveBeenCalledTimes(2)
     })
 
     it('should cache proxy references', () => {
