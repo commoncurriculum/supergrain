@@ -5,7 +5,7 @@ import { effect } from 'alien-signals'
 // Helper to verify we're in a reactive context before running benchmarks
 function verifyReactiveContext(storeName: string) {
   let tracked = false
-  const [testStore] = createStore({ value: 1 })
+  const [testStore, updateTestStore] = createStore({ value: 1 })
 
   const dispose = effect(() => {
     testStore.value // Access value to track
@@ -20,7 +20,7 @@ function verifyReactiveContext(storeName: string) {
   }
 
   tracked = false
-  testStore.value = 2 // Update should trigger effect
+  updateTestStore({ $set: { value: 2 } }) // Update should trigger effect
 
   if (!tracked) {
     dispose()
@@ -174,16 +174,16 @@ describe('Additional: Batched vs Unbatched Updates', () => {
         store.j
     })
 
-    setStore('a', 1)
-    setStore('b', 2)
-    setStore('c', 3)
-    setStore('d', 4)
-    setStore('e', 5)
-    setStore('f', 6)
-    setStore('g', 7)
-    setStore('h', 8)
-    setStore('i', 9)
-    setStore('j', 10)
+    setStore({ $set: { a: 1 } })
+    setStore({ $set: { b: 2 } })
+    setStore({ $set: { c: 3 } })
+    setStore({ $set: { d: 4 } })
+    setStore({ $set: { e: 5 } })
+    setStore({ $set: { f: 6 } })
+    setStore({ $set: { g: 7 } })
+    setStore({ $set: { h: 8 } })
+    setStore({ $set: { i: 9 } })
+    setStore({ $set: { j: 10 } })
 
     void total
     void effectRan
@@ -413,9 +413,11 @@ describe('Additional: Complex Scenarios', () => {
     })
 
     // Sort by value
-    setGrid('rows', (rows: Row[]) =>
-      [...rows].sort((a, b) => (a.value > b.value ? 1 : -1))
-    )
+    setGrid({
+      $set: {
+        rows: [...grid.rows].sort((a, b) => (a.value > b.value ? 1 : -1)),
+      },
+    })
 
     // Filter by category
     const categoryToFilter = 'Category 5'
@@ -500,10 +502,10 @@ describe('Additional: Complex Scenarios', () => {
     }
 
     // Apply global discount
-    setCart('globalDiscount', 0.05) // 5% off everything
+    setCart({ $set: { globalDiscount: 0.05 } }) // 5% off everything
 
     // Remove some items
-    setCart('items', (items: CartItem[]) => items.slice(0, 40))
+    setCart({ $set: { items: cart.items.slice(0, 40) } })
   })
 
   interface TreeNode {
@@ -576,7 +578,7 @@ describe('Additional: Mixed Read/Write Loads', () => {
     })
 
     for (let i = 0; i < 100; i++) {
-      setStore('count', i)
+      setStore({ $set: { count: i } })
       store.count // Read after write
     }
 
@@ -620,22 +622,16 @@ describe('Additional: Complex Object Structures', () => {
     })
 
     // Update nested property
-    setStore('profile', 'settings', 'theme', 'dark')
+    setStore({ $set: { 'profile.settings.theme': 'dark' } })
 
     // Add a new post
-    setStore('posts', (posts: User['posts']) => [
-      ...posts,
-      { id: 3, title: 'Third Post', likes: 5 },
-    ])
+    setStore({ $push: { posts: { id: 3, title: 'Third Post', likes: 5 } } })
 
     // Update an item in the array
-    setStore('posts', 0, 'likes', (l: number) => l + 1)
+    setStore({ $inc: { 'posts.0.likes': 1 } })
 
     // Replace a nested object
-    setStore('user', 'profile', (profile: User['profile']) => ({
-      ...profile,
-      age: 31,
-    }))
+    setStore({ $set: { 'user.profile.age': 31 } })
     void totalLikes
   })
 })

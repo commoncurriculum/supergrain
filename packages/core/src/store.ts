@@ -74,8 +74,10 @@ export function setProperty(
   const nodes = (target as any)[$NODE] as DataNodes | undefined
   if (nodes) {
     const node = nodes[property]
-    if (node && unwrap(oldValue) !== unwrap(value)) {
-      node(isDelete ? undefined : value)
+    if (node) {
+      if (unwrap(oldValue) !== unwrap(value)) {
+        node(isDelete ? undefined : value)
+      }
     }
 
     if (Array.isArray(target) && property !== 'length') {

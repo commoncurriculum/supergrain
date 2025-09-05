@@ -1,136 +1,85 @@
-import { describe, it, expect } from 'vitest'
-import { createStore, update } from '../src'
-import { effect } from 'alien-signals'
+import { describe, it, expect, vi } from 'vitest'
+import { createStore, effect } from '../src'
 
 describe('MongoDB Style Operators', () => {
   it('$set: should set top-level and nested properties', () => {
-    const [state] = createStore({
-      user: { name: 'John', profile: { age: 30 } },
-      status: 'active',
+    const [state, update] = createStore({
+      user: { name: 'John', address: { city: 'New York' } },
     })
-
-    update(state, {
-      $set: {
-        status: 'inactive',
-        'user.profile.age': 31,
-      } as any,
+    update({
+      $set: { 'user.name': 'Jane', 'user.address.city': 'Boston' },
     })
+    expect(state.user.name).toBe('Jane')
+    expect(state.user.address.city).toBe('Boston')
+  })
 
-    expect(state.status).toBe('inactive')
-    expect(state.user.profile.age).toBe(31)
+  it('$unset: should remove a property', () => {
+    const [state, update] = createStore({
+      user: { name: 'John', email: 'john@doe.com' },
+    })
+    update({ $unset: { 'user.email': 1 } })
+    expect(state.user.name).toBe('John')
+    expect((state.user as any).email).toBeUndefined()
   })
 
   it('$inc: should increment numeric values', () => {
-    const [state] = createStore({
+    const [state, update] = createStore({
       stats: { views: 100, likes: 50 },
     })
-
-    update(state, {
-      $inc: {
-        'stats.views': 10,
-        'stats.likes': 1,
-      } as any,
-    })
-
-    expect(state.stats.views).toBe(110)
-    expect(state.stats.likes).toBe(51)
+    update({ $inc: { 'stats.views': 1, 'stats.likes': -5 } })
+    expect(state.stats.views).toBe(101)
+    expect(state.stats.likes).toBe(45)
   })
 
-  it('$push: should add elements to an array', () => {
-    const [state] = createStore({
-      tags: ['alpha'],
-    })
-
-    update(state, {
-      $push: { tags: 'beta' },
-    })
-
-    expect(state.tags).toEqual(['alpha', 'beta'])
+  it('$push: should add an element to an array', () => {
+    const [state, update] = createStore({ tags: ['a', 'b'] })
+    update({ $push: { tags: 'c' } })
+    expect(state.tags).toEqual(['a', 'b', 'c'])
   })
 
   it('$push: should add multiple elements with $each', () => {
-    const [state] = createStore({
-      scores: [10],
-    })
-
-    update(state, {
-      $push: { scores: { $each: [20, 30] } },
-    })
-
-    expect(state.scores).toEqual([10, 20, 30])
+    const [state, update] = createStore({ tags: ['a', 'b'] })
+    update({ $push: { tags: { $each: ['c', 'd'] } } })
+    expect(state.tags).toEqual(['a', 'b', 'c', 'd'])
   })
 
-  it('$pull: should remove elements from an array', () => {
-    const [state] = createStore({
-      tags: ['alpha', 'beta', 'gamma', 'beta'],
-    })
-
-    update(state, {
-      $pull: { tags: 'beta' },
-    })
-
-    expect(state.tags).toEqual(['alpha', 'gamma'])
+  it('$pull: should remove elements from an array by value', () => {
+    const [state, update] = createStore({ scores: [1, 2, 3, 2, 4] })
+    update({ $pull: { scores: 2 } })
+    expect(state.scores).toEqual([1, 3, 4])
   })
 
   it('$pull: should remove elements matching an object', () => {
-    const [state] = createStore({
-      items: [
-        { id: 1, value: 10 },
-        { id: 2, value: 20 },
-        { id: 1, value: 10 },
+    const [state, update] = createStore({
+      users: [
+        { id: 1, name: 'A' },
+        { id: 2, name: 'B' },
       ],
     })
-
-    update(state, {
-      $pull: { items: { id: 1, value: 10 } },
-    })
-
-    expect(state.items).toEqual([{ id: 2, value: 20 }])
+    update({ $pull: { users: { id: 1, name: 'A' } } })
+    expect(state.users).toEqual([{ id: 2, name: 'B' }])
   })
 
   it('$addToSet: should add unique elements to an array', () => {
-    const [state] = createStore({
-      tags: ['alpha', 'beta'],
-    })
-
-    update(state, {
-      $addToSet: { tags: 'beta' }, // should not be added
-    })
-    expect(state.tags).toEqual(['alpha', 'beta'])
-
-    update(state, {
-      $addToSet: { tags: 'gamma' }, // should be added
-    })
-    expect(state.tags).toEqual(['alpha', 'beta', 'gamma'])
+    const [state, update] = createStore({ tags: ['a', 'b'] })
+    update({ $addToSet: { tags: 'c' } })
+    expect(state.tags).toEqual(['a', 'b', 'c'])
+    update({ $addToSet: { tags: 'a' } }) // Try adding a duplicate
+    expect(state.tags).toEqual(['a', 'b', 'c'])
   })
 
   it('$addToSet: should handle $each modifier', () => {
-    const [state] = createStore({
-      tags: ['alpha', 'beta'],
-    })
-
-    update(state, {
-      $addToSet: { tags: { $each: ['beta', 'gamma', 'delta'] } },
-    })
-
-    expect(state.tags).toEqual(['alpha', 'beta', 'gamma', 'delta'])
+    const [state, update] = createStore({ tags: ['a', 'b'] })
+    update({ $addToSet: { tags: { $each: ['c', 'a', 'd'] } } })
+    expect(state.tags).toEqual(['a', 'b', 'c', 'd'])
   })
 
   it('$rename: should rename fields', () => {
-    const [state] = createStore({
-      user: {
-        name: 'John',
-        address: { street: '123 Main St' },
-      },
+    const [state, update] = createStore<any>({
+      user: { name: 'John', address: { street: '123 Main St' } },
     })
-
-    update(state, {
-      $rename: {
-        'user.name': 'user.fullName',
-        'user.address': 'user.location',
-      } as any,
-    })
-
+    update({ $rename: { 'user.name': 'user.fullName' } })
+    update({ $rename: { 'user.address': 'user.location' } })
     expect((state.user as any).name).toBeUndefined()
     expect((state.user as any).fullName).toBe('John')
     expect((state.user as any).address).toBeUndefined()
@@ -138,91 +87,68 @@ describe('MongoDB Style Operators', () => {
   })
 
   it('$min: should update if value is smaller', () => {
-    const [state] = createStore({ score: 100 })
-
-    update(state, { $min: { score: 150 } })
-    expect(state.score).toBe(100) // not changed
-
-    update(state, { $min: { score: 50 } })
-    expect(state.score).toBe(50) // changed
+    const [state, update] = createStore({ score: 100 })
+    update({ $min: { score: 150 } })
+    expect(state.score).toBe(100)
+    update({ $min: { score: 50 } })
+    expect(state.score).toBe(50)
   })
 
   it('$max: should update if value is larger', () => {
-    const [state] = createStore({ score: 100 })
-
-    update(state, { $max: { score: 50 } })
-    expect(state.score).toBe(100) // not changed
-
-    update(state, { $max: { score: 150 } })
-    expect(state.score).toBe(150) // changed
+    const [state, update] = createStore({ score: 100 })
+    update({ $max: { score: 50 } })
+    expect(state.score).toBe(100)
+    update({ $max: { score: 150 } })
+    expect(state.score).toBe(150)
   })
 
   it('should handle reactivity correctly', () => {
-    const [state] = createStore({ count: 0 })
-    let effectRuns = 0
-
-    const dispose = effect(() => {
-      state.count
-      effectRuns++
+    const [state, update] = createStore({ count: 0 })
+    let currentCount = 0
+    const effectFn = vi.fn(() => {
+      currentCount = state.count
     })
-
-    update(state, { $inc: { count: 1 } })
-    expect(state.count).toBe(1)
-    expect(effectRuns).toBe(2) // 1 initial + 1 for update
-
-    dispose()
+    effect(effectFn)
+    expect(currentCount).toBe(0)
+    expect(effectFn).toHaveBeenCalledTimes(1)
+    update({ $inc: { count: 1 } })
+    expect(currentCount).toBe(1)
+    expect(effectFn).toHaveBeenCalledTimes(2)
   })
 
   it('should handle a complex combination of operators', () => {
-    const [state] = createStore({
+    const [state, update] = createStore<any>({
       users: [
-        {
-          id: 1,
-          name: 'Alice',
-          profile: {
-            email: 'alice@example.com',
-            bio: 'Original bio',
-            stats: { posts: 10, likes: 100 },
-          },
-          tags: ['user', 'admin'],
-        },
+        { id: 1, name: 'Alice', profile: { views: 10, bio: 'Old bio' } },
+        { id: 2, name: 'Bob', profile: { views: 20 } },
       ],
-      posts: [{ id: 101, title: 'Post 1', likes: 5 }],
+      meta: {
+        lastUpdated: 0,
+      },
     })
 
-    update(state, {
+    update({
       $set: {
         'users.0.profile.bio': 'Updated bio',
-      } as any,
-      $inc: {
-        'users.0.profile.stats.posts': 1,
-        'users.0.profile.stats.likes': 10,
-        'posts.0.likes': 5,
-      } as any,
-      $push: {
-        'users.0.tags': 'verified',
-      } as any,
-      $rename: {
-        'users.0.name': 'users.0.fullName',
-      } as any,
+        'users.0.profile.email': 'alice@example.com',
+        'meta.lastUpdated': 12345,
+      },
+      $inc: { 'users.0.profile.views': 5 },
+      $rename: { 'users.0.name': 'users.0.fullName' },
+      $unset: { 'users.1.profile': 1 },
     })
 
     const firstUser = state.users[0]
-    expect(firstUser).toBeDefined()
-    if (!firstUser) return
-
     expect((firstUser as any).name).toBeUndefined()
     expect((firstUser as any).fullName).toBe('Alice')
     expect(firstUser.profile.bio).toBe('Updated bio')
     expect(firstUser.profile.email).toBe('alice@example.com')
-    expect(firstUser.profile.stats.posts).toBe(11)
-    expect(firstUser.profile.stats.likes).toBe(110)
-    expect(firstUser.tags).toEqual(['user', 'admin', 'verified'])
+    expect(firstUser.profile.views).toBe(15)
 
-    const firstPost = state.posts[0]
-    expect(firstPost).toBeDefined()
-    if (!firstPost) return
+    const secondUser = state.users[1]
+    expect(secondUser.name).toBe('Bob')
+    expect((secondUser as any).profile).toBeUndefined()
 
-    expect(firstPost.likes).toBe(10)
+    expect(state.meta.lastUpdated).toBe(12345)
   })
 })
