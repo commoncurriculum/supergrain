@@ -36,9 +36,9 @@ This document outlines the phased implementation plan for the Storable library -
 
 ### 1.4 Object Handling
 
-- [ ] Implement property addition/deletion tracking
-- [ ] Add shape change signals for dynamic properties
-- [ ] Handle Object.keys/values/entries enumeration
+- [x] Implement property addition/deletion tracking
+- [x] Add shape change signals for dynamic properties
+- [x] Handle Object.keys/values/entries enumeration
 - [ ] Implement proper handling for Object.defineProperty
 - [ ] Add support for getter/setter preservation
 - [ ] Handle Symbol properties
