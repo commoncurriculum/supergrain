@@ -46,14 +46,14 @@ This document outlines the phased implementation plan for the Storable library -
 ### 2.1 Array Signal Implementation
 
 - [ ] Create `ArraySignal` class extending Array
-- [ ] Implement index-level signals
-- [ ] Add length signal tracking
+- [x] Implement index-level signals
+- [x] Add length signal tracking
 - [ ] Add version signal for structural changes
 
 ### 2.2 Array Method Overrides
 
-- [ ] Override `push`, `pop`, `shift`, `unshift`
-- [ ] Override `splice` with signal remapping
+- [x] Override `push`, `pop`, `shift`, `unshift`
+- [x] Override `splice` with signal remapping
 - [ ] Override `sort` and `reverse`
 - [ ] Implement iteration tracking for `map`, `filter`, `forEach`
 - [ ] Add fine-grained array change notifications
@@ -61,8 +61,8 @@ This document outlines the phased implementation plan for the Storable library -
 ### 2.3 Array Proxy Integration
 
 - [ ] Integrate ArraySignal with main proxy system
-- [ ] Handle numeric index access
-- [ ] Track array method calls
+- [x] Handle numeric index access
+- [x] Track array method calls
 - [ ] Optimize signal creation/cleanup
 
 ## Phase 3: React Adapter
