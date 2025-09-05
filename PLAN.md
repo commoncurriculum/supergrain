@@ -56,7 +56,7 @@ This document outlines the phased implementation plan for the Storable library -
 - [x] Override `splice` with signal remapping
 - [x] Override `sort` and `reverse`
 - [x] Implement iteration tracking for `map`, `filter`, `forEach`
-- [ ] Add fine-grained array change notifications
+- [x] Add fine-grained array change notifications
 
 ### 2.3 Array Proxy Integration
 
