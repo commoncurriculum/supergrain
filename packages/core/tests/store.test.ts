@@ -243,4 +243,32 @@ describe('Object Handling', () => {
     expect(keys).toEqual(['a', 'c'])
     expect(keysEffect).toHaveBeenCalledTimes(3)
   })
+
+  it('should track for...in loops', () => {
+    const user = { name: 'John' }
+    store.set('users', '1', user)
+    const userProxy = store.find('users', '1')!.value
+
+    let keys: string[] = []
+    const effectFn = vi.fn(() => {
+      keys = []
+      for (const key in userProxy) {
+        keys.push(key)
+      }
+    })
+    effect(effectFn)
+
+    expect(keys).toEqual(['name'])
+    expect(effectFn).toHaveBeenCalledTimes(1)
+
+    // Add a property
+    userProxy.age = 30
+    expect(keys).toEqual(['name', 'age'])
+    expect(effectFn).toHaveBeenCalledTimes(2)
+
+    // Delete a property
+    delete userProxy.age
+    expect(keys).toEqual(['name'])
+    expect(effectFn).toHaveBeenCalledTimes(3)
+  })
 })
