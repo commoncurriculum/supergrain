@@ -170,4 +170,23 @@ describe('Array Support', () => {
     expect(titles).toEqual(['Updated Post', 'Post 2'])
     expect(effectFn).toHaveBeenCalledTimes(2)
   })
+
+  it('should not trigger value effects when length changes', () => {
+    const postsProxy = store.find('posts', 'all')!.value
+    let postTitle = ''
+    const titleEffect = vi.fn(() => {
+      postTitle = postsProxy.items[0].title
+    })
+
+    effect(titleEffect)
+
+    expect(postTitle).toBe('Post 1')
+    expect(titleEffect).toHaveBeenCalledTimes(1)
+
+    // Add a new item. This should not re-run the effect above.
+    postsProxy.items.push({ id: 3, title: 'Post 3' })
+
+    expect(postTitle).toBe('Post 1') // Should still be the same
+    expect(titleEffect).toHaveBeenCalledTimes(1) // Should NOT have been called again
+  })
 })

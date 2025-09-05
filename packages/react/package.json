@@ -1,43 +1,34 @@
 {
   "name": "@storable/react",
-  "version": "0.0.1",
-  "private": true,
-  "description": "React adapter for Storable.",
-  "keywords": [
-    "storable",
-    "react",
-    "reactive",
-    "store",
-    "signals",
-    "hooks"
-  ],
-  "license": "MIT",
-  "author": "Scott Messinger",
-  "type": "module",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.es.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.es.js",
-      "require": "./dist/index.cjs"
-    }
-  },
+  "version": "1.0.0",
+  "description": "React adapter for Storable",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "vite build",
-    "dev": "vite build --watch",
-    "lint": "oxlint .",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "test": "vitest"
   },
   "peerDependencies": {
-    "@storable/core": "workspace:*",
-    "react": "^18.2.0"
+    "react": ">=16.8.0"
+  },
+  "dependencies": {
+    "@storable/core": "workspace:^"
   },
   "devDependencies": {
-    "@types/react": "^18.2.0"
-  }
+    "@types/react": "^18.3.3",
+    "react": "^18.3.1",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  },
+  "keywords": [
+    "storable",
+    "react",
+    "state-management",
+    "reactive"
+  ],
+  "author": "",
+  "license": "ISC"
 }
