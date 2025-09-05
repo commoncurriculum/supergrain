@@ -39,7 +39,7 @@ This document outlines the phased implementation plan for the Storable library -
 - [x] Implement property addition/deletion tracking
 - [x] Add shape change signals for dynamic properties
 - [x] Handle Object.keys/values/entries enumeration
-- [ ] Add for...in loop tracking
+- [x] Add for...in loop tracking
 
 ## Phase 2: Array Support
 
