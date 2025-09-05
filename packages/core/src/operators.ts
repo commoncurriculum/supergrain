@@ -95,7 +95,7 @@ function $inc(target: object, operations: Record<string, number>): void {
       const incValue = operations[path]!
       if (typeof currentValue === 'number') {
         setProperty(result.parent, result.key, currentValue + incValue)
-      } else if (typeof currentValue === 'undefined') {
+      } else if (currentValue == null) {
         setPathValue(target, path, incValue)
       }
     }
