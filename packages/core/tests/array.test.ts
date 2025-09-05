@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ReactiveStore } from '../src/store'
-import { effect } from 'alien-signals'
+import { effect } from '../src/isTracking'
 
 describe('Array Support', () => {
   let store: ReactiveStore
