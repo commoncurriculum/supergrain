@@ -13,6 +13,8 @@ function createReactiveProxy<T extends object>(target: T): T {
 
   // Store signals for each property of the object.
   const signals = new Map<PropertyKey, Signal<any>>()
+  // Signal for tracking object shape changes (add/delete properties).
+  const shapeSignal = signal(0)
 
   const getSignal = (key: PropertyKey) => {
     if (!signals.has(key)) {
@@ -34,10 +36,33 @@ function createReactiveProxy<T extends object>(target: T): T {
       return value
     },
     set(target, key, newValue, receiver) {
-      // Setting a property updates its signal, triggering effects.
-      getSignal(key).value = newValue
-      // Also update the underlying cloned object.
-      return Reflect.set(target, key, newValue, receiver)
+      const hadKey = Reflect.has(target, key)
+      const result = Reflect.set(target, key, newValue, receiver)
+      if (result) {
+        // Update the signal, creating it if it doesn't exist.
+        getSignal(key).value = newValue
+        // If a new property was added, trigger shape signal.
+        if (!hadKey) {
+          shapeSignal.value++
+        }
+      }
+      return result
+    },
+    deleteProperty(target, key) {
+      const hadKey = Reflect.has(target, key)
+      const result = Reflect.deleteProperty(target, key)
+      if (hadKey && result) {
+        if (signals.has(key)) {
+          signals.delete(key)
+        }
+        shapeSignal.value++
+      }
+      return result
+    },
+    ownKeys(target) {
+      // Depend on shape changes for methods like Object.keys().
+      shapeSignal.value
+      return Reflect.ownKeys(target)
     },
   }
 
