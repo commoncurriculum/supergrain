@@ -112,8 +112,11 @@ function $push(target: object, operations: Record<string, any>): void {
         isObject(value) && '$each' in value && Array.isArray(value['$each'])
           ? value['$each']
           : [value]
-      const newArr = [...arr, ...itemsToAdd]
-      setProperty(result.parent, result.key, newArr)
+
+      const startingIndex = arr.length
+      for (let i = 0; i < itemsToAdd.length; i++) {
+        setProperty(arr, startingIndex + i, itemsToAdd[i]!)
+      }
     }
   }
 }
