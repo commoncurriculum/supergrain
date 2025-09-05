@@ -61,7 +61,13 @@ describe('Optimized Store', () => {
     it('should not create signals for untracked properties', () => {
       const [state, update] = createStore<any>({ a: { b: 1 } })
       const rawA = unwrap(state.a)
-      expect(Object.getOwnPropertySymbols(rawA).length).toBe(0)
+
+      const hasStoreNode = (obj: any) =>
+        Object.getOwnPropertySymbols(obj).some(
+          s => s.description === 'store-node'
+        )
+
+      expect(hasStoreNode(rawA)).toBe(false)
 
       let b = 0
       const effectFn = vi.fn(() => {
@@ -70,6 +76,8 @@ describe('Optimized Store', () => {
       effect(effectFn)
       expect(b).toBe(1)
       expect(effectFn).toHaveBeenCalledTimes(1)
+
+      expect(hasStoreNode(rawA)).toBe(true)
 
       // A signal should have been created, and it should be reactive
       update({ $set: { 'a.b': 2 } })
