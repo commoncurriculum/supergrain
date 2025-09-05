@@ -1,6 +1,8 @@
 # Storable Implementation Plan
 
 > **Note for AI Assistants:** Before committing any changes, please update this `PLAN.md` file by checking off the completed tasks (`- [x]`).
+>
+> **TDD Approach:** For each new feature, please commit tests _before_ implementing the feature itself.
 
 ## Overview
 
