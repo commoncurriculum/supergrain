@@ -1,82 +1,108 @@
 import { bench, describe } from 'vitest'
-import { ReactiveStore } from '../src/store'
+import { createStore } from '../src/store'
 
-describe('Proxy vs. Plain Object Overhead', () => {
-  // --- Property Access & Mutation Benchmarks ---
+describe('Proxy Overhead Benchmarks', () => {
   describe('Object Property Access', () => {
     const plainObject = { name: 'John Doe' }
-    const store = new ReactiveStore()
-    store.set('users', '1', { name: 'John Doe' })
-    const proxyObject = store.find('users', '1')!()
+    const [proxyObject] = createStore({ name: 'John Doe' })
 
-    bench('Plain Object: 10,000 property reads', () => {
-      for (let i = 0; i < 10000; i++) {
-        const name = plainObject.name
+    bench('plain object: property read', () => {
+      let value
+      for (let i = 0; i < 100000; i++) {
+        value = plainObject.name
       }
     })
 
-    bench('Proxy Object: 10,000 property reads', () => {
-      for (let i = 0; i < 10000; i++) {
-        const name = proxyObject.name
-      }
-    })
-  })
-
-  describe('Object Property Mutation', () => {
-    const plainObject = { age: 0 }
-    const store = new ReactiveStore()
-    store.set('users', '1', { age: 0 })
-    const proxyObject = store.find('users', '1')!()
-
-    bench('Plain Object: 10,000 property writes', () => {
-      for (let i = 0; i < 10000; i++) {
-        plainObject.age = i
-      }
-    })
-
-    bench('Proxy Object: 10,000 property writes', () => {
-      for (let i = 0; i < 10000; i++) {
-        proxyObject.age = i
+    bench('proxy object: property read', () => {
+      let value
+      for (let i = 0; i < 100000; i++) {
+        value = proxyObject.name
       }
     })
   })
 
-  // --- Array Operation Benchmarks ---
-  describe('Array Index Access', () => {
-    const plainArray = Array.from({ length: 1000 }, (_, i) => i)
-    const store = new ReactiveStore()
-    store.set('numbers', 'all', {
-      items: Array.from({ length: 1000 }, (_, i) => i),
-    })
-    const proxyArray = store.find('numbers', 'all')!().items
-
-    bench('Plain Array: 10,000 index reads', () => {
-      for (let i = 0; i < 10000; i++) {
-        const item = plainArray[i % 1000]
+  describe('Object Property Write', () => {
+    bench('plain object: property write', () => {
+      const obj = { count: 0 }
+      for (let i = 0; i < 100000; i++) {
+        obj.count = i
       }
     })
 
-    bench('Proxy Array: 10,000 index reads', () => {
-      for (let i = 0; i < 10000; i++) {
-        const item = proxyArray[i % 1000]
+    bench('proxy object: property write', () => {
+      const [obj] = createStore({ count: 0 })
+      for (let i = 0; i < 100000; i++) {
+        obj.count = i
       }
     })
   })
 
-  describe('Array Push', () => {
-    bench('Plain Array: pushing 1,000 items', () => {
-      const arr: number[] = []
+  describe('Array Operations', () => {
+    bench('plain array: push operation', () => {
+      const plainArray = Array.from({ length: 1000 }, (_, i) => i)
       for (let i = 0; i < 1000; i++) {
-        arr.push(i)
+        plainArray.push(i)
       }
     })
 
-    bench('Proxy Array: pushing 1,000 items', () => {
-      const store = new ReactiveStore()
-      store.set('items', 'all', { list: [] })
-      const proxyArr = store.find('items', 'all')!().list
+    bench('proxy array: push operation', () => {
+      const [store] = createStore({
+        items: Array.from({ length: 1000 }, (_, i) => i),
+      })
       for (let i = 0; i < 1000; i++) {
-        proxyArr.push(i)
+        store.items.push(i)
+      }
+    })
+
+    bench('plain array: splice operation', () => {
+      const plainArray = Array.from({ length: 1000 }, (_, i) => i)
+      for (let i = 0; i < 100; i++) {
+        plainArray.splice(0, 1)
+      }
+    })
+
+    bench('proxy array: splice operation', () => {
+      const [store] = createStore({
+        items: Array.from({ length: 1000 }, (_, i) => i),
+      })
+      for (let i = 0; i < 100; i++) {
+        store.items.splice(0, 1)
+      }
+    })
+  })
+
+  describe('Deep Object Access', () => {
+    const plainDeep = {
+      level1: {
+        level2: {
+          level3: {
+            value: 42,
+          },
+        },
+      },
+    }
+
+    const [proxyDeep] = createStore({
+      level1: {
+        level2: {
+          level3: {
+            value: 42,
+          },
+        },
+      },
+    })
+
+    bench('plain object: deep property read', () => {
+      let value
+      for (let i = 0; i < 100000; i++) {
+        value = plainDeep.level1.level2.level3.value
+      }
+    })
+
+    bench('proxy object: deep property read', () => {
+      let value
+      for (let i = 0; i < 100000; i++) {
+        value = proxyDeep.level1.level2.level3.value
       }
     })
   })

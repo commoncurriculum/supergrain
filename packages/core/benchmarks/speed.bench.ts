@@ -1,174 +1,199 @@
 import { bench, describe } from 'vitest'
+import { createStore } from '../src/store'
+import { effect } from 'alien-signals'
 import { createStore as createSolidStore } from 'solid-js/store'
-import { createEffect as createSolidEffect, createRoot } from 'solid-js'
-import { ReactiveStore } from '../src/store'
-import { effect as storableEffect } from 'alien-signals'
+import { createEffect, createRoot } from 'solid-js'
 
 interface Entity {
   id: number
   name: string
+  email: string
   profile: {
-    email: string
+    age: number
+    city: string
   }
 }
 
-describe('Store Operations: creating 1,000 entities', () => {
-  bench('@storable/core', () => {
-    const store = new ReactiveStore()
-    for (let i = 0; i < 1000; i++) {
-      const entity: Entity = {
-        id: i,
-        name: `Entity ${i}`,
-        profile: { email: `entity${i}@test.com` },
-      }
-      store.set('entities', i, entity)
-    }
-  })
-
-  bench('solid-js/store', () => {
-    const [, setStore] = createSolidStore<{ entities: Record<number, Entity> }>(
-      {
-        entities: {},
-      }
-    )
-    for (let i = 0; i < 1000; i++) {
-      const entity: Entity = {
-        id: i,
-        name: `Entity ${i}`,
-        profile: { email: `entity${i}@test.com` },
-      }
-      setStore('entities', i, entity)
-    }
-  })
-})
-
-describe('Store Operations: retrieving 1,000 entities', () => {
-  bench('@storable/core', () => {
-    const store = new ReactiveStore()
-    for (let i = 0; i < 1000; i++) {
-      store.set('entities', i, {
-        id: i,
-        name: `Entity ${i}`,
-        profile: { email: `entity${i}@test.com` },
-      })
-    }
-    for (let i = 0; i < 1000; i++) {
-      store.find('entities', i)
-    }
-  })
-
-  bench('solid-js/store', () => {
-    const initialEntities: Record<number, Entity> = {}
-    for (let i = 0; i < 1000; i++) {
-      initialEntities[i] = {
-        id: i,
-        name: `Entity ${i}`,
-        profile: { email: `entity${i}@test.com` },
-      }
-    }
-    const [store] = createSolidStore<{ entities: Record<number, Entity> }>({
-      entities: initialEntities,
-    })
-    for (let i = 0; i < 1000; i++) {
-      const _entity = store.entities[i]
-    }
-  })
-})
-
-describe('Proxy Reactivity: property access', () => {
-  bench('@storable/core: 10,000 reads', () => {
-    const store = new ReactiveStore()
-    store.set('user', 'current', { name: 'John Doe' })
-    const user = store.find('user', 'current')!()
-    let dummy
-    storableEffect(() => {
-      for (let i = 0; i < 10000; i++) {
-        dummy = user.name
-      }
-    })
-  })
-
-  bench('solid-js/store: 10,000 reads (reactive)', () => {
-    let dummy
-    createRoot(() => {
-      const [store] = createSolidStore<{ user: { name: string } }>({
-        user: { name: 'John Doe' },
-      })
-      createSolidEffect(() => {
-        for (let i = 0; i < 10000; i++) {
-          dummy = store.user.name
-        }
-      })
-    })
-  })
-})
-
-describe('Proxy Reactivity: property mutation', () => {
-  bench('@storable/core: 1,000 updates triggering an effect', () => {
-    const store = new ReactiveStore()
-    store.set('user', 'current', { name: 'John Doe' })
-    const user = store.find('user', 'current')!()
-    let dummy
-    storableEffect(() => {
-      dummy = user.name
-    })
-    for (let i = 0; i < 1000; i++) {
-      user.name = `John Doe ${i}`
-    }
-  })
-
-  bench('solid-js/store: 1,000 updates triggering an effect', () => {
-    createRoot(() => {
-      const [store, setStore] = createSolidStore<{ user: { name: string } }>({
-        user: { name: 'John Doe' },
-      })
-      let dummy
-      createSolidEffect(() => {
-        dummy = store.user.name
-      })
+describe('Store Operations', () => {
+  describe('creating 1,000 entities', () => {
+    bench('@storable/core', () => {
+      const entities: any[] = []
       for (let i = 0; i < 1000; i++) {
-        setStore('user', 'name', `John Doe ${i}`)
+        const [store] = createStore<Entity>({
+          id: i,
+          name: `Entity ${i}`,
+          email: `entity${i}@test.com`,
+          profile: {
+            age: 20 + (i % 50),
+            city: `City ${i % 10}`,
+          },
+        })
+        entities.push(store)
+      }
+    })
+
+    bench('solid-js/store', () => {
+      const entities: any[] = []
+      for (let i = 0; i < 1000; i++) {
+        const [store] = createSolidStore<Entity>({
+          id: i,
+          name: `Entity ${i}`,
+          email: `entity${i}@test.com`,
+          profile: {
+            age: 20 + (i % 50),
+            city: `City ${i % 10}`,
+          },
+        })
+        entities.push(store)
+      }
+    })
+  })
+
+  describe('retrieving 1,000 entities', () => {
+    bench('@storable/core', () => {
+      // Create entities first
+      const entities: Entity[] = []
+      for (let i = 0; i < 1000; i++) {
+        const [store] = createStore<Entity>({
+          id: i,
+          name: `Entity ${i}`,
+          email: `entity${i}@test.com`,
+          profile: {
+            age: 20 + (i % 50),
+            city: `City ${i % 10}`,
+          },
+        })
+        entities.push(store)
+      }
+
+      // Access them
+      let sum = 0
+      for (const entity of entities) {
+        sum += entity.profile.age
+      }
+    })
+
+    bench('solid-js/store', () => {
+      // Create entities first
+      const entities: Entity[] = []
+      for (let i = 0; i < 1000; i++) {
+        const [store] = createSolidStore<Entity>({
+          id: i,
+          name: `Entity ${i}`,
+          email: `entity${i}@test.com`,
+          profile: {
+            age: 20 + (i % 50),
+            city: `City ${i % 10}`,
+          },
+        })
+        entities.push(store)
+      }
+
+      // Access them
+      let sum = 0
+      for (const entity of entities) {
+        sum += entity.profile.age
       }
     })
   })
 })
 
-describe('Array Reactivity: adding 1,000 items', () => {
-  bench('@storable/core', () => {
-    const store = new ReactiveStore()
-    store.set('items', 'all', { data: [] })
-    const items = store.find('items', 'all')!().data
-    for (let i = 0; i < 1000; i++) {
-      items.push(i)
-    }
+describe('Proxy Reactivity', () => {
+  describe('property access', () => {
+    bench('@storable/core: 10,000 reads', () => {
+      const [store] = createStore({
+        user: { name: 'John Doe', age: 30 },
+      })
+
+      let sum = 0
+      for (let i = 0; i < 10000; i++) {
+        sum += store.user.age
+      }
+    })
+
+    bench('solid-js/store: 10,000 reads', () => {
+      const [store] = createSolidStore({
+        user: { name: 'John Doe', age: 30 },
+      })
+
+      let sum = 0
+      for (let i = 0; i < 10000; i++) {
+        sum += store.user.age
+      }
+    })
   })
 
-  bench('solid-js/store', () => {
-    const [, setStore] = createSolidStore<{ items: number[] }>({ items: [] })
-    for (let i = 0; i < 1000; i++) {
-      setStore('items', items => [...items, i])
-    }
+  describe('property mutation', () => {
+    bench('@storable/core: 1,000 updates triggering an effect', () => {
+      const [store] = createStore({ count: 0 })
+
+      let value = 0
+      const dispose = effect(() => {
+        value = store.count
+      })
+
+      for (let i = 0; i < 1000; i++) {
+        store.count = i
+      }
+
+      dispose()
+    })
+
+    bench('solid-js/store: 1,000 updates triggering an effect', () => {
+      createRoot(dispose => {
+        const [store, setStore] = createSolidStore({ count: 0 })
+
+        let value = 0
+        createEffect(() => {
+          value = store.count
+        })
+
+        for (let i = 0; i < 1000; i++) {
+          setStore('count', i)
+        }
+
+        dispose()
+      })
+    })
   })
 })
 
-describe('Array Reactivity: removing 1,000 items', () => {
-  bench('@storable/core', () => {
-    const initialItems = Array.from({ length: 1000 }, (_, i) => i)
-    const store = new ReactiveStore()
-    store.set('items', 'all', { data: initialItems })
-    const items = store.find('items', 'all')!().data
-    for (let i = 0; i < 1000; i++) {
-      items.splice(0, 1)
-    }
+describe('Array Reactivity', () => {
+  describe('adding 1,000 items', () => {
+    bench('@storable/core', () => {
+      const [store] = createStore({ items: [] as number[] })
+
+      for (let i = 0; i < 1000; i++) {
+        store.items.push(i)
+      }
+    })
+
+    bench('solid-js/store', () => {
+      const [store, setStore] = createSolidStore({ items: [] as number[] })
+
+      for (let i = 0; i < 1000; i++) {
+        setStore('items', items => [...items, i])
+      }
+    })
   })
 
-  bench('solid-js/store', () => {
-    const initialItems = Array.from({ length: 1000 }, (_, i) => i)
-    const [, setStore] = createSolidStore<{ items: number[] }>({
-      items: initialItems,
+  describe('removing 1,000 items', () => {
+    bench('@storable/core', () => {
+      const initialItems = Array.from({ length: 1000 }, (_, i) => i)
+      const [store] = createStore({ items: initialItems })
+
+      for (let i = 0; i < 1000; i++) {
+        store.items.pop()
+      }
     })
-    for (let i = 0; i < 1000; i++) {
-      setStore('items', items => items.slice(1))
-    }
+
+    bench('solid-js/store', () => {
+      const initialItems = Array.from({ length: 1000 }, (_, i) => i)
+      const [store, setStore] = createSolidStore({ items: initialItems })
+
+      for (let i = 0; i < 1000; i++) {
+        setStore('items', items => items.slice(0, -1))
+      }
+    })
   })
 })
