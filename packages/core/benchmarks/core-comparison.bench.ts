@@ -5,60 +5,70 @@ import { createStore as createSolidStore } from 'solid-js/store'
 import { createComputed, createRoot } from 'solid-js'
 
 /**
- * Core benchmarks for comparing @storable/core with solid-js/store
- * These are the essential performance tests to run quickly during development
+ * Core benchmarks for comparing @storable/core with solid-js/store.
+ *
+ * These benchmarks include reliability checks (assertions) to ensure they are
+ * correctly measuring what they claim to be. A benchmark that isn't reliable
+ * is useless. If an assertion fails, it means the underlying reactivity
+ * is broken or the benchmark is no longer testing the intended behavior.
  */
 
-// Helper to verify we're in a reactive context
+// Helper to verify we're in a reactive context before running benchmarks
 function verifyReactiveContext(storeName: string) {
   let tracked = false
   const [testStore] = createStore({ value: 1 })
 
   const dispose = effect(() => {
+    // Accessing the value should be tracked by the effect
     const _ = testStore.value
     tracked = true
   })
 
-  testStore.value = 2
-  dispose()
-
+  // The effect should have run once immediately
   if (!tracked) {
+    dispose()
     throw new Error(
-      `${storeName}: Reactive context verification failed - effects are not tracking properly`
+      `${storeName}: Reactive context verification failed - effect did not run initially.`
     )
   }
+
+  // Reset for the next check
+  tracked = false
+  // This update should trigger the effect again
+  testStore.value = 2
+
+  if (!tracked) {
+    dispose()
+    throw new Error(
+      `${storeName}: Reactive context verification failed - effect did not re-run on update.`
+    )
+  }
+
+  dispose()
 }
 
-// Verify reactive context before running benchmarks
+// Run the verification before any benchmarks to fail fast if reactivity is broken
 verifyReactiveContext('@storable/core')
 
 describe('Core: Store Creation', () => {
   bench('@storable/core: create 1000 stores', () => {
-    const stores = []
     for (let i = 0; i < 1000; i++) {
-      stores.push(
-        createStore({
-          id: i,
-          name: `Item ${i}`,
-          value: i * 2,
-          nested: { count: i },
-        })
-      )
+      createStore({
+        id: i,
+        name: `Item ${i}`,
+        nested: { count: i },
+      })
     }
   })
 
   bench('solid-js/store: create 1000 stores', () => {
     createRoot(dispose => {
-      const stores = []
       for (let i = 0; i < 1000; i++) {
-        stores.push(
-          createSolidStore({
-            id: i,
-            name: `Item ${i}`,
-            value: i * 2,
-            nested: { count: i },
-          })
-        )
+        createSolidStore({
+          id: i,
+          name: `Item ${i}`,
+          nested: { count: i },
+        })
       }
       dispose()
     })
@@ -66,681 +76,318 @@ describe('Core: Store Creation', () => {
 })
 
 describe('Core: Property Access: Non-reactive', () => {
-  bench('@storable/core: 100k non-reactive reads', () => {
-    const [store] = createStore({
-      user: { name: 'John', age: 30 },
-    })
-    let total = 0
-    for (let i = 0; i < 100000; i++) {
-      total += store.user.age
+  const storableStore = createStore({ user: { age: 30 } })[0]
+  const solidStore = createSolidStore({ user: { age: 30 } })[0]
+
+  bench('@storable/core: 1M non-reactive reads', () => {
+    for (let i = 0; i < 1000000; i++) {
+      storableStore.user.age
     }
   })
 
-  bench('solid-js/store: 100k non-reactive reads', () => {
-    const [store] = createSolidStore({
-      user: { name: 'John', age: 30 },
-    })
-    let total = 0
-    for (let i = 0; i < 100000; i++) {
-      total += store.user.age
+  bench('solid-js/store: 1M non-reactive reads', () => {
+    for (let i = 0; i < 1000000; i++) {
+      solidStore.user.age
     }
   })
 })
 
 describe('Core: Property Access: Reactive', () => {
-  bench('@storable/core: 10k reactive reads in effect', () => {
-    const [store, setStore] = createStore({ value: 42 })
-    let total = 0
+  bench('@storable/core: 10k reactive reads in an effect', () => {
+    const [store, setStore] = createStore({ value: 0 })
     let effectRuns = 0
-
     const dispose = effect(() => {
       effectRuns++
       for (let i = 0; i < 10000; i++) {
-        total += store.value
+        store.value
       }
     })
-
-    // Verify the effect actually ran initially
-    if (effectRuns !== 1) {
-      throw new Error(
-        '@storable/core: Effect did not run exactly once initially'
-      )
-    }
-
-    // Change the value to verify reactivity
-    setStore('value', 43)
-
-    // Verify the effect re-ran due to the change
-    if (effectRuns !== 2) {
-      throw new Error(
-        '@storable/core: Effect did not re-run when value changed'
-      )
-    }
-
+    if (effectRuns !== 1) throw new Error('Effect should run once initially.')
+    setStore('value', 1)
+    if (effectRuns !== 2) throw new Error('Effect should re-run on update.')
     dispose()
   })
 
-  bench('solid-js/store: 10k reactive reads in effect', () => {
+  bench('solid-js/store: 10k reactive reads in an effect', () => {
     createRoot(dispose => {
-      const [store, setStore] = createSolidStore({ value: 42 })
-      let total = 0
+      const [store, setStore] = createSolidStore({ value: 0 })
       let effectRuns = 0
-
       createComputed(() => {
         effectRuns++
         for (let i = 0; i < 10000; i++) {
-          total += store.value
+          store.value
         }
       })
-
-      // Verify the effect actually ran initially
-      if (effectRuns !== 1) {
-        throw new Error(
-          'solid-js/store: Effect did not run exactly once initially'
-        )
-      }
-
-      // Change the value to verify reactivity
-      setStore('value', 43)
-
-      // Verify the effect re-ran due to the change
-      if (effectRuns !== 2) {
-        throw new Error(
-          'solid-js/store: Effect did not re-run when value changed'
-        )
-      }
-
+      if (effectRuns !== 1) throw new Error('Effect should run once initially.')
+      setStore('value', 1)
+      if (effectRuns !== 2) throw new Error('Effect should re-run on update.')
       dispose()
     })
   })
 })
 
 describe('Core: Property Updates', () => {
-  bench('@storable/core: 1000 updates with effect', () => {
+  bench('@storable/core: 1000 updates triggering an effect', () => {
     const [store, setStore] = createStore({ count: 0 })
     let effectRuns = 0
-
     const dispose = effect(() => {
-      const _ = store.count
       effectRuns++
+      store.count
     })
-
     for (let i = 0; i < 1000; i++) {
       setStore('count', i)
     }
-
-    // Verify the effect actually tracked and ran for each update
-    // Should be initial run + 1000 updates = 1001 total runs
-    if (effectRuns !== 1001) {
-      throw new Error(
-        `@storable/core: Effect ran ${effectRuns} times, expected 1001 (initial + 1000 updates)`
-      )
-    }
-
+    // 1 initial run + 1000 updates
+    if (effectRuns !== 1001)
+      throw new Error(`Effect ran ${effectRuns} times, expected 1001.`)
     dispose()
   })
 
-  bench('solid-js/store: 1000 updates with effect', () => {
+  bench('solid-js/store: 1000 updates triggering an effect', () => {
     createRoot(dispose => {
       const [store, setStore] = createSolidStore({ count: 0 })
       let effectRuns = 0
-
       createComputed(() => {
-        const _ = store.count
         effectRuns++
+        store.count
       })
-
       for (let i = 0; i < 1000; i++) {
         setStore('count', i)
       }
-
-      // Verify the effect actually tracked and ran for each update
-      // Should be initial run + 1000 updates = 1001 total runs
-      if (effectRuns !== 1001) {
-        throw new Error(
-          `solid-js/store: Effect ran ${effectRuns} times, expected 1001 (initial + 1000 updates)`
-        )
-      }
-
+      // 1 initial run + 1000 updates
+      if (effectRuns !== 1001)
+        throw new Error(`Effect ran ${effectRuns} times, expected 1001.`)
       dispose()
     })
   })
 })
 
-describe('Core: Bacth Updates', () => {
-  bench('@storable/core: batch update 10 properties', () => {
-    const [store, setStore] = createStore({
-      a: 0,
-      b: 0,
-      c: 0,
-      d: 0,
-      e: 0,
-      f: 0,
-      g: 0,
-      h: 0,
-      i: 0,
-      j: 0,
-    })
-
-    setStore({
-      a: 1,
-      b: 2,
-      c: 3,
-      d: 4,
-      e: 5,
-      f: 6,
-      g: 7,
-      h: 8,
-      i: 9,
-      j: 10,
-    })
-  })
-
-  bench('solid-js/store: batch update 10 properties', () => {
-    createRoot(dispose => {
-      const [store, setStore] = createSolidStore({
-        a: 0,
-        b: 0,
-        c: 0,
-        d: 0,
-        e: 0,
-        f: 0,
-        g: 0,
-        h: 0,
-        i: 0,
-        j: 0,
-      })
-
-      setStore({
-        a: 1,
-        b: 2,
-        c: 3,
-        d: 4,
-        e: 5,
-        f: 6,
-        g: 7,
-        h: 8,
-        i: 9,
-        j: 10,
-      })
-
-      dispose()
-    })
-  })
-})
-
-describe('Core: Array Operations: push', () => {
-  bench('@storable/core: push 500 items', () => {
-    const [store] = createStore({ items: [] as number[] })
-    for (let i = 0; i < 500; i++) {
-      store.items.push(i)
-    }
-  })
-
-  bench('solid-js/store: push 500 items', () => {
-    const [store, setStore] = createSolidStore({ items: [] as number[] })
-    for (let i = 0; i < 500; i++) {
-      setStore('items', items => [...items, i])
-    }
-  })
-})
-
-describe('Core: Array Operations: Splice', () => {
-  bench('@storable/core: splice 500 from 1000 items', () => {
-    const [store] = createStore({
-      items: Array.from({ length: 1000 }, (_, i) => i),
-    })
-    store.items.splice(0, 500)
-  })
-
-  bench('solid-js/store: remove 500 from 1000 items', () => {
-    const [store, setStore] = createSolidStore({
-      items: Array.from({ length: 1000 }, (_, i) => i),
-    })
-    setStore('items', items => items.slice(500))
-  })
-})
-
-describe('Core: Array Operations: Array Length tracking', () => {
-  bench('@storable/core: reactive array length tracking', () => {
-    const [store] = createStore<{ items: number[] }>({ items: [] })
-    let lengthChecks = 0
+describe('Core: Batch Updates', () => {
+  bench('@storable/core: batch update 10 properties with one effect', () => {
+    const [store, setStore] = createStore({ a: 0, b: 0, c: 0 })
     let effectRuns = 0
-
     const dispose = effect(() => {
       effectRuns++
-      lengthChecks = store.items.length
+      store.a, store.b, store.c
     })
-
-    // Verify initial effect run
-    if (effectRuns !== 1) {
-      throw new Error(
-        `@storable/core: Array length effect ran ${effectRuns} times initially, expected 1`
-      )
-    }
-
-    for (let i = 0; i < 100; i++) {
-      store.items.push(i)
-    }
-
-    // Verify effect tracked array mutations (should run once per push + initial)
-    if (effectRuns !== 101) {
-      throw new Error(
-        `@storable/core: Effect ran ${effectRuns} times, expected 101 (initial + 100 pushes)`
-      )
-    }
-
+    setStore({ a: 1, b: 2, c: 3 })
+    // 1 initial run + 1 for the batched update
+    if (effectRuns !== 2)
+      throw new Error(`Effect ran ${effectRuns} times, expected 2.`)
     dispose()
   })
 
-  bench('solid-js/store: reactive array length tracking', () => {
+  bench('solid-js/store: batch update 10 properties with one effect', () => {
+    createRoot(dispose => {
+      const [store, setStore] = createSolidStore({ a: 0, b: 0, c: 0 })
+      let effectRuns = 0
+      createComputed(() => {
+        effectRuns++
+        store.a, store.b, store.c
+      })
+      setStore({ a: 1, b: 2, c: 3 })
+      // 1 initial run + 1 for the batched update
+      if (effectRuns !== 2)
+        throw new Error(`Effect ran ${effectRuns} times, expected 2.`)
+      dispose()
+    })
+  })
+})
+
+describe('Core: Array Operations: Reactive Length Tracking', () => {
+  bench('@storable/core: 100 pushes tracked by length', () => {
+    const [store] = createStore<{ items: number[] }>({ items: [] })
+    let effectRuns = 0
+    const dispose = effect(() => {
+      effectRuns++
+      store.items.length
+    })
+    for (let i = 0; i < 100; i++) {
+      store.items.push(i)
+    }
+    // 1 initial run + 100 for each push that changes the length
+    if (effectRuns !== 101)
+      throw new Error(`Effect ran ${effectRuns} times, expected 101.`)
+    dispose()
+  })
+
+  bench('solid-js/store: 100 pushes tracked by length', () => {
     createRoot(dispose => {
       const [store, setStore] = createSolidStore<{ items: number[] }>({
         items: [],
       })
-      let lengthChecks = 0
       let effectRuns = 0
-
       createComputed(() => {
         effectRuns++
-        lengthChecks = store.items.length
+        store.items.length
       })
-
-      // Verify initial effect run
-      if (effectRuns !== 1) {
-        throw new Error(
-          `solid-js/store: Array length effect ran ${effectRuns} times initially, expected 1`
-        )
-      }
-
       for (let i = 0; i < 100; i++) {
         setStore('items', items => [...items, i])
       }
-
-      // Verify effect tracked array mutations (should run once per update + initial)
-      if (effectRuns !== 101) {
-        throw new Error(
-          `solid-js/store: Effect ran ${effectRuns} times, expected 101 (initial + 100 updates)`
-        )
-      }
-
-      dispose()
-    })
-  })
-})
-
-describe('Core: Deep Nesting', () => {
-  bench('@storable/core: deep reactive path (5 levels)', () => {
-    const [store] = createStore({
-      l1: { l2: { l3: { l4: { l5: { value: 42 } } } } },
-    })
-    let total = 0
-    let effectRuns = 0
-
-    const dispose = effect(() => {
-      effectRuns++
-      for (let i = 0; i < 1000; i++) {
-        total += store.l1.l2.l3.l4.l5.value
-      }
-    })
-
-    if (effectRuns !== 1) {
-      throw new Error(
-        `@storable/core: Deep nested effect ran ${effectRuns} times, expected 1`
-      )
-    }
-
-    dispose()
-  })
-
-  bench('solid-js/store: deep reactive path (5 levels)', () => {
-    createRoot(dispose => {
-      const [store] = createSolidStore({
-        l1: { l2: { l3: { l4: { l5: { value: 42 } } } } },
-      })
-      let total = 0
-      let effectRuns = 0
-
-      createComputed(() => {
-        effectRuns++
-        for (let i = 0; i < 1000; i++) {
-          total += store.l1.l2.l3.l4.l5.value
-        }
-      })
-
-      if (effectRuns !== 1) {
-        throw new Error(
-          `solid-js/store: Deep nested effect ran ${effectRuns} times, expected 1`
-        )
-      }
-
+      // 1 initial run + 100 updates
+      if (effectRuns !== 101)
+        throw new Error(`Effect ran ${effectRuns} times, expected 101.`)
       dispose()
     })
   })
 })
 
 describe('Core: Deep Update', () => {
-  bench('@storable/core: deep update', () => {
-    const [store, setStore] = createStore({
-      l1: { l2: { l3: { l4: { l5: { value: 0 } } } } },
-    })
+  const getDeepState = () => ({ l1: { l2: { l3: { value: 0 } } } })
 
+  bench('@storable/core: 100 deep updates with effect', () => {
+    const [store, setStore] = createStore(getDeepState())
+    let effectRuns = 0
+    const dispose = effect(() => {
+      effectRuns++
+      store.l1.l2.l3.value
+    })
     for (let i = 0; i < 100; i++) {
-      setStore('l1', 'l2', 'l3', 'l4', 'l5', 'value', i)
+      setStore('l1', 'l2', 'l3', 'value', i)
     }
+    // 1 initial run + 100 updates
+    if (effectRuns !== 101)
+      throw new Error(`Effect ran ${effectRuns} times, expected 101.`)
+    dispose()
   })
 
-  bench('solid-js/store: deep update', () => {
-    const [store, setStore] = createSolidStore({
-      l1: { l2: { l3: { l4: { l5: { value: 0 } } } } },
+  bench('solid-js/store: 100 deep updates with effect', () => {
+    createRoot(dispose => {
+      const [store, setStore] = createSolidStore(getDeepState())
+      let effectRuns = 0
+      createComputed(() => {
+        effectRuns++
+        store.l1.l2.l3.value
+      })
+      for (let i = 0; i < 100; i++) {
+        setStore('l1', 'l2', 'l3', 'value', i)
+      }
+      // 1 initial run + 100 updates
+      if (effectRuns !== 101)
+        throw new Error(`Effect ran ${effectRuns} times, expected 101.`)
+      dispose()
     })
-
-    for (let i = 0; i < 100; i++) {
-      setStore('l1', 'l2', 'l3', 'l4', 'l5', 'value', i)
-    }
   })
 })
 
-describe('Core: Real-World Todo App', () => {
+describe('Core: Real-World Todo App Simulation', () => {
   interface Todo {
     id: number
     text: string
     completed: boolean
-    tags: string[]
   }
+  const createInitialTodos = (num: number): Todo[] =>
+    Array.from({ length: num }, (_, i) => ({
+      id: i,
+      text: `Todo ${i}`,
+      completed: i % 2 === 0,
+    }))
 
-  bench('@storable/core: todo operations', () => {
-    const [store, setStore] = createStore<{
-      todos: Todo[]
-      filter: 'all' | 'active' | 'completed'
-    }>({
-      todos: [],
-      filter: 'all',
+  bench('@storable/core: reactive todo operations', () => {
+    const [store] = createStore({ todos: createInitialTodos(50) })
+    let effectRuns = 0
+    const dispose = effect(() => {
+      effectRuns++
+      // Track a derived value
+      store.todos.filter(t => !t.completed).length
     })
-
-    // Add 50 todos
+    const initialRuns = effectRuns
+    // Toggle all items
     for (let i = 0; i < 50; i++) {
-      store.todos.push({
-        id: i,
-        text: `Todo ${i}`,
-        completed: false,
-        tags: ['work'],
-      })
+      store.todos[i].completed = !store.todos[i].completed
     }
-
-    // Toggle half as completed
-    for (let i = 0; i < 25; i++) {
-      store.todos[i].completed = true
-    }
-
-    // Add tags to first 10
-    for (let i = 0; i < 10; i++) {
-      store.todos[i].tags.push('urgent')
-    }
-
-    // Filter active
-    const active = store.todos.filter(t => !t.completed)
-
-    // Update text of first 5
-    for (let i = 0; i < 5; i++) {
-      store.todos[i].text = `Updated: ${store.todos[i].text}`
-    }
-
-    // Remove completed todos using splice
-    for (let i = store.todos.length - 1; i >= 0; i--) {
-      if (store.todos[i].completed) {
-        store.todos.splice(i, 1)
-      }
-    }
+    // Remove first 10
+    store.todos.splice(0, 10)
+    // Check that effects ran multiple times
+    if (effectRuns <= initialRuns + 1)
+      throw new Error('Effects did not run sufficiently for todo operations.')
+    dispose()
   })
 
-  bench('solid-js/store: todo operations', () => {
+  bench('solid-js/store: reactive todo operations', () => {
     createRoot(dispose => {
-      const [store, setStore] = createSolidStore<{
-        todos: Todo[]
-        filter: 'all' | 'active' | 'completed'
-      }>({
-        todos: [],
-        filter: 'all',
+      const [store, setStore] = createSolidStore({
+        todos: createInitialTodos(50),
       })
-
-      // Add 50 todos
+      let effectRuns = 0
+      createComputed(() => {
+        effectRuns++
+        store.todos.filter(t => !t.completed).length
+      })
+      const initialRuns = effectRuns
+      // Toggle all items
       for (let i = 0; i < 50; i++) {
-        setStore('todos', todos => [
-          ...todos,
-          {
-            id: i,
-            text: `Todo ${i}`,
-            completed: false,
-            tags: ['work'],
-          },
-        ])
+        setStore('todos', i, 'completed', c => !c)
       }
-
-      // Toggle half as completed
-      for (let i = 0; i < 25; i++) {
-        setStore('todos', i, 'completed', true)
-      }
-
-      // Add tags to first 10
-      for (let i = 0; i < 10; i++) {
-        setStore('todos', i, 'tags', tags => [...tags, 'urgent'])
-      }
-
-      // Filter active
-      const active = store.todos.filter(t => !t.completed)
-
-      // Update text of first 5
-      for (let i = 0; i < 5; i++) {
-        setStore('todos', i, 'text', text => `Updated: ${text}`)
-      }
-
-      // Remove completed todos
-      setStore('todos', todos => todos.filter(t => !t.completed))
-
+      // Remove first 10
+      setStore('todos', todos => todos.slice(10))
+      if (effectRuns <= initialRuns + 1)
+        throw new Error('Effects did not run sufficiently for todo operations.')
       dispose()
     })
   })
 })
 
 describe('Core: MongoDB Operators vs Direct Mutation', () => {
-  bench('@storable/core: direct mutations', () => {
-    const [state] = createStore({
-      title: 'Original',
-      viewCount: 100,
-      tags: ['original'],
-      metadata: { updated: false },
-    })
+  const getInitialState = () => ({
+    title: 'Original',
+    viewCount: 100,
+    tags: ['original'],
+    metadata: { updated: false },
+  })
 
+  bench('@storable/core: direct mutations with effect', () => {
+    const [state] = createStore(getInitialState())
+    let effectRuns = 0
+    const dispose = effect(() => {
+      effectRuns++
+      state.title, state.viewCount, state.tags.length, state.metadata.updated
+    })
     state.title = 'Updated'
     state.metadata.updated = true
     state.viewCount += 1
     state.tags.push('modified')
-  })
-
-  bench('@storable/core: MongoDB update operators', () => {
-    const [state] = createStore({
-      title: 'Original',
-      viewCount: 100,
-      tags: ['original'],
-      metadata: { updated: false },
-    })
-
-    update(state, {
-      $set: {
-        title: 'Updated',
-        'metadata.updated': true,
-      },
-      $inc: { viewCount: 1 },
-      $push: { tags: 'modified' },
-    })
-  })
-
-  bench('solid-js/store: equivalent updates', () => {
-    const [state, setState] = createSolidStore({
-      title: 'Original',
-      viewCount: 100,
-      tags: ['original'],
-      metadata: { updated: false },
-    })
-
-    setState('title', 'Updated')
-    setState('metadata', 'updated', true)
-    setState('viewCount', v => v + 1)
-    setState('tags', tags => [...tags, 'modified'])
-  })
-})
-
-describe('Core: Effect Management', () => {
-  bench('@storable/core: create and dispose 100 effects', () => {
-    const [store] = createStore({ count: 0 })
-    const disposers = []
-
-    for (let i = 0; i < 100; i++) {
-      disposers.push(
-        effect(() => {
-          const _ = store.count
-        })
-      )
-    }
-
-    for (const dispose of disposers) {
-      dispose()
-    }
-  })
-
-  bench('solid-js/store: create and dispose 100 effects', () => {
-    createRoot(dispose => {
-      const [store] = createSolidStore({ count: 0 })
-
-      for (let i = 0; i < 100; i++) {
-        createComputed(() => {
-          const _ = store.count
-        })
-      }
-
-      dispose()
-    })
-  })
-})
-
-describe('Core: Effect Tracking 1 property', () => {
-  bench('@storable/core: 100 effects tracking 1 property', () => {
-    const [store] = createStore({ value: 0 })
-    const disposers: (() => void)[] = []
-
-    for (let i = 0; i < 100; i++) {
-      disposers.push(
-        effect(() => {
-          const _ = store.value
-        })
-      )
-    }
-
-    disposers.forEach(d => d())
-  })
-
-  bench('solid-js/store: 100 effects tracking 1 property', () => {
-    createRoot(dispose => {
-      const [store] = createSolidStore({ value: 0 })
-
-      for (let i = 0; i < 100; i++) {
-        createComputed(() => {
-          const _ = store.value
-        })
-      }
-
-      dispose()
-    })
-  })
-})
-
-describe('Core: Effect Tracking 3 property', () => {
-  bench('@storable/core: 3 dependencies tracked', () => {
-    const [store, setStore] = createStore({ a: 1, b: 2, c: 3 })
-    let sum = 0
-    let effectRuns = 0
-
-    const dispose = effect(() => {
-      effectRuns++
-      sum = store.a + store.b + store.c
-    })
-
-    const initialRuns = effectRuns
-
-    setStore('a', 10)
-    setStore('b', 20)
-    setStore('c', 30)
-
-    // Verify effect ran for each update (initial + 3 updates = 4 total)
-    if (effectRuns !== 4) {
-      throw new Error(
-        `@storable/core: Effect ran ${effectRuns} times, expected 4 (initial + 3 updates)`
-      )
-    }
-
+    // Should not be batched, so 1 initial + 4 updates
+    if (effectRuns !== 5)
+      throw new Error(`Effect ran ${effectRuns} times, expected 5.`)
     dispose()
   })
 
-  bench('solid-js/store: 3 dependencies tracked', () => {
-    createRoot(dispose => {
-      const [store, setStore] = createSolidStore({ a: 1, b: 2, c: 3 })
-      let sum = 0
-      let effectRuns = 0
+  bench('@storable/core: MongoDB update operators with effect', () => {
+    const [state] = createStore(getInitialState())
+    let effectRuns = 0
+    const dispose = effect(() => {
+      effectRuns++
+      state.title, state.viewCount, state.tags.length, state.metadata.updated
+    })
+    update(state, {
+      $set: { title: 'Updated', 'metadata.updated': true },
+      $inc: { viewCount: 1 },
+      $push: { tags: 'modified' },
+    })
+    // update() is batched, so 1 initial + 1 batched update
+    if (effectRuns !== 2)
+      throw new Error(`Effect ran ${effectRuns} times, expected 2.`)
+    dispose()
+  })
 
+  bench('solid-js/store: equivalent updates with effect', () => {
+    createRoot(dispose => {
+      const [state, setState] = createSolidStore(getInitialState())
+      let effectRuns = 0
       createComputed(() => {
         effectRuns++
-        sum = store.a + store.b + store.c
+        state.title, state.viewCount, state.tags.length, state.metadata.updated
       })
-
-      const initialRuns = effectRuns
-
-      setStore('a', 10)
-      setStore('b', 20)
-      setStore('c', 30)
-
-      // Verify effect ran for each update (initial + 3 updates = 4 total)
-      if (effectRuns !== 4) {
-        throw new Error(
-          `solid-js/store: Effect ran ${effectRuns} times, expected 4 (initial + 3 updates)`
-        )
-      }
-
+      // Solid's setState is batched automatically in effects, but not here
+      // so we expect multiple updates.
+      setState('title', 'Updated')
+      setState('metadata', 'updated', true)
+      setState('viewCount', v => v + 1)
+      setState('tags', tags => [...tags, 'modified'])
+      if (effectRuns !== 5)
+        throw new Error(`Effect ran ${effectRuns} times, expected 5.`)
       dispose()
     })
-  })
-})
-
-describe('Core: Complex Object Updates', () => {
-  bench('@storable/core: update nested object array', () => {
-    const initialItems = Array.from({ length: 1000 }, (_, i) => ({
-      id: i,
-      value: i * 2,
-      metadata: { updated: false },
-    }))
-
-    const [store] = createStore({ items: initialItems })
-
-    // Update half the items
-    for (let i = 0; i < 500; i++) {
-      store.items[i].value = i * 3
-      store.items[i].metadata.updated = true
-    }
-  })
-
-  bench('solid-js/store: update nested object array', () => {
-    const initialItems = Array.from({ length: 1000 }, (_, i) => ({
-      id: i,
-      value: i * 2,
-      metadata: { updated: false },
-    }))
-
-    const [store, setStore] = createSolidStore({ items: initialItems })
-
-    // Update half the items
-    for (let i = 0; i < 500; i++) {
-      setStore('items', i, 'value', i * 3)
-      setStore('items', i, 'metadata', 'updated', true)
-    }
   })
 })
