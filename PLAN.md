@@ -8,7 +8,7 @@ This document outlines the phased implementation plan for the Storable library -
 ### 1.1 Project Setup
 - [ ] Initialize monorepo with npm workspaces
 - [ ] Configure TypeScript for all packages
-- [ ] Set up build tooling (tsup or vite)
+- [ ] Set up build tooling (vite)
 - [ ] Configure testing framework (vitest)
 - [ ] Add alien-signals dependency
 
