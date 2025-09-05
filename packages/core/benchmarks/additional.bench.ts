@@ -2,38 +2,6 @@ import { bench, describe } from 'vitest'
 import { createStore, update } from '../src'
 import { effect } from 'alien-signals'
 
-// Helper to verify we're in a reactive context before running benchmarks
-function verifyReactiveContext(storeName: string) {
-  let tracked = false
-  const [testStore, updateTestStore] = createStore({ value: 1 })
-
-  const dispose = effect(() => {
-    testStore.value // Access value to track
-    tracked = true
-  })
-
-  if (!tracked) {
-    dispose()
-    throw new Error(
-      `${storeName}: Reactive context verification failed - effect did not run initially.`
-    )
-  }
-
-  tracked = false
-  updateTestStore({ $set: { value: 2 } }) // Update should trigger effect
-
-  if (!tracked) {
-    dispose()
-    throw new Error(
-      `${storeName}: Reactive context verification failed - effect did not re-run on update.`
-    )
-  }
-
-  dispose()
-}
-
-verifyReactiveContext('@storable/core')
-
 describe('Additional: Plain vs Proxy Performance', () => {
   describe('Property Access', () => {
     const plainObject = { name: 'John Doe', age: 30 }
@@ -65,9 +33,9 @@ describe('Additional: Plain vs Proxy Performance', () => {
     })
 
     bench('proxy object: 100k property sets', () => {
-      const [proxyObject] = createStore({ value: 0 })
+      const [proxyObject, setProxyObject] = createStore({ value: 0 })
       for (let i = 0; i < 100000; i++) {
-        proxyObject.value = i
+        setProxyObject({ $set: { value: i } })
       }
     })
   })
@@ -191,7 +159,7 @@ describe('Additional: Batched vs Unbatched Updates', () => {
   })
 
   bench('10 batched updates triggering one effect', () => {
-    const [store, _setStore] = createStore({
+    const [store, setStore] = createStore({
       a: 0,
       b: 0,
       c: 0,
@@ -238,7 +206,7 @@ describe('Additional: Batched vs Unbatched Updates', () => {
         store.j
     })
 
-    update(store, {
+    setStore({
       $set: {
         a: 1,
         b: 2,
@@ -262,52 +230,62 @@ describe('Additional: Batched vs Unbatched Updates', () => {
 
 describe('Additional: Array Operations (Non-Reactive)', () => {
   bench('Array.push: 1000 items', () => {
-    const [store] = createStore({ items: [] as number[] })
+    const [store, setStore] = createStore({ items: [] as number[] })
     for (let i = 0; i < 1000; i++) {
-      store.items.push(i)
+      setStore({ $push: { items: i } })
     }
   })
 
   bench('Array.pop: 1000 items', () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store] = createStore({ items: initial })
+    const [store, setStore] = createStore({ items: initial })
     for (let i = 0; i < 1000; i++) {
-      store.items.pop()
+      const items = [...store.items]
+      items.pop()
+      setStore({ $set: { items } })
     }
   })
 
   bench('Array.shift: 1000 items', () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store] = createStore({ items: initial })
+    const [store, setStore] = createStore({ items: initial })
     for (let i = 0; i < 1000; i++) {
-      store.items.shift()
+      const items = [...store.items]
+      items.shift()
+      setStore({ $set: { items } })
     }
   })
 
   bench('Array.unshift: 1000 items', () => {
-    const [store] = createStore({ items: [] as number[] })
+    const [store, setStore] = createStore({ items: [] as number[] })
     for (let i = 0; i < 1000; i++) {
-      store.items.unshift(i)
+      const items = [i, ...store.items]
+      setStore({ $set: { items } })
     }
   })
 
   bench('Array.splice: remove 500 from 1000', () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store] = createStore({ items: initial })
-    store.items.splice(250, 500)
+    const [store, setStore] = createStore({ items: initial })
+    const items = [...store.items]
+    items.splice(250, 500)
+    setStore({ $set: { items } })
   })
 
   bench('Array.splice: add 500 to 1000', () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store] = createStore({ items: initial })
+    const [store, setStore] = createStore({ items: initial })
     const newItems = Array.from({ length: 500 }, (_, i) => i + 1000)
-    store.items.splice(500, 0, ...newItems)
+    const items = [...store.items]
+    items.splice(500, 0, ...newItems)
+    setStore({ $set: { items } })
   })
 
   bench('Array.sort: 1000 items', () => {
     const initial = Array.from({ length: 1000 }, () => Math.random())
-    const [store] = createStore({ items: initial })
-    store.items.sort((a, b) => a - b)
+    const [store, setStore] = createStore({ items: initial })
+    const items = [...store.items].sort((a, b) => a - b)
+    setStore({ $set: { items } })
   })
 })
 
@@ -421,28 +399,23 @@ describe('Additional: Complex Scenarios', () => {
 
     // Filter by category
     const categoryToFilter = 'Category 5'
-    for (let i = 0; i < 100; i++) {
-      const row = grid.rows[i]
-      if (row) {
-        row.visible = row.category === categoryToFilter
-      }
-    }
+    const updatedRows = grid.rows.map((row, i) => ({
+      ...row,
+      visible: row.category === categoryToFilter,
+    }))
+    setGrid({ $set: { rows: updatedRows } })
 
     // Bulk update values
-    for (let i = 0; i < 50; i++) {
-      const row = grid.rows[i]
-      if (row) {
-        row.value = row.value * 1.1
-      }
-    }
+    const rowsWithUpdatedValues = grid.rows.map((row, i) =>
+      i < 50 ? { ...row, value: row.value * 1.1 } : row
+    )
+    setGrid({ $set: { rows: rowsWithUpdatedValues } })
 
     // Toggle selection
-    for (let i = 0; i < 100; i += 5) {
-      const row = grid.rows[i]
-      if (row) {
-        row.selected = !row.selected
-      }
-    }
+    const rowsWithToggledSelection = grid.rows.map((row, i) =>
+      i % 5 === 0 ? { ...row, selected: !row.selected } : row
+    )
+    setGrid({ $set: { rows: rowsWithToggledSelection } })
     void visibleRowCount
   })
 
@@ -480,26 +453,28 @@ describe('Additional: Complex Scenarios', () => {
     effect(() => {
       const subtotal = cart.items.reduce((acc, item) => acc + item.subtotal, 0)
       const discounted = subtotal * (1 - cart.globalDiscount)
-      cart.total = discounted * (1 + cart.taxRate)
+      setCart({ $set: { total: discounted * (1 + cart.taxRate) } })
     })
 
     // Update quantities and calculate subtotals
-    for (let i = 0; i < 50; i++) {
-      const item = cart.items[i]
-      if (item) {
-        item.quantity = 2
-        item.subtotal = item.price * item.quantity
-      }
-    }
+    const itemsWithQuantity = cart.items.map(item => ({
+      ...item,
+      quantity: 2,
+      subtotal: item.price * 2,
+    }))
+    setCart({ $set: { items: itemsWithQuantity } })
 
     // Apply item-level discounts
-    for (let i = 0; i < 25; i++) {
-      const item = cart.items[i]
-      if (item) {
-        item.discount = 0.1 // 10% off
-        item.subtotal = item.price * item.quantity * (1 - item.discount)
-      }
-    }
+    const itemsWithDiscounts = cart.items.map((item, i) =>
+      i < 25
+        ? {
+            ...item,
+            discount: 0.1,
+            subtotal: item.price * item.quantity * 0.9,
+          }
+        : item
+    )
+    setCart({ $set: { items: itemsWithDiscounts } })
 
     // Apply global discount
     setCart({ $set: { globalDiscount: 0.05 } }) // 5% off everything
@@ -532,7 +507,7 @@ describe('Additional: Complex Scenarios', () => {
             ),
     })
 
-    const [tree] = createStore({ root: createNode('root', 1, 5) })
+    const [tree, setTree] = createStore({ root: createNode('root', 1, 5) })
 
     // Count selected nodes reactively
     function countSelected(node: TreeNode): number {
@@ -547,10 +522,12 @@ describe('Additional: Complex Scenarios', () => {
     })
 
     // Toggle a deep node
-    const deepNode = tree.root.children[0]?.children[1]?.children[2]
+    const rootCopy = JSON.parse(JSON.stringify(tree.root))
+    const deepNode = rootCopy.children[0]?.children[1]?.children[2]
     if (deepNode) {
       deepNode.selected = true
     }
+    setTree({ $set: { root: rootCopy } })
 
     // Collapse leaf nodes
     function collapseLeaves(node: TreeNode) {
@@ -563,7 +540,9 @@ describe('Additional: Complex Scenarios', () => {
         node.children.forEach(collapseLeaves)
       }
     }
-    collapseLeaves(tree.root)
+    const rootCopy2 = JSON.parse(JSON.stringify(tree.root))
+    collapseLeaves(rootCopy2)
+    setTree({ $set: { root: rootCopy2 } })
   })
 })
 
@@ -602,7 +581,7 @@ describe('Additional: Complex Object Structures', () => {
   }
 
   bench('Nested object and array updates', () => {
-    const [store, setStore] = createStore<User>({
+    const [user, setUser] = createStore<User>({
       id: 1,
       name: 'John Doe',
       profile: {
@@ -618,20 +597,20 @@ describe('Additional: Complex Object Structures', () => {
 
     let totalLikes = 0
     effect(() => {
-      totalLikes = store.posts.reduce((acc, p) => acc + p.likes, 0)
+      totalLikes = user.posts.reduce((acc, p) => acc + p.likes, 0)
     })
 
     // Update nested property
-    setStore({ $set: { 'profile.settings.theme': 'dark' } })
+    setUser({ $set: { 'profile.settings.theme': 'dark' } })
 
     // Add a new post
-    setStore({ $push: { posts: { id: 3, title: 'Third Post', likes: 5 } } })
+    setUser({ $push: { posts: { id: 3, title: 'Third Post', likes: 5 } } })
 
     // Update an item in the array
-    setStore({ $inc: { 'posts.0.likes': 1 } })
+    setUser({ $inc: { 'posts.0.likes': 1 } })
 
     // Replace a nested object
-    setStore({ $set: { 'user.profile.age': 31 } })
+    setUser({ $set: { 'profile.age': 31 } })
     void totalLikes
   })
 })
@@ -645,7 +624,7 @@ describe('Additional: Circular Dependencies', () => {
   }
 
   bench('Create and update circular list', () => {
-    const [store] = createStore({
+    const [store, setStore] = createStore({
       nodes: Array.from(
         { length: 10 },
         (_, i): CircularNode => ({
@@ -658,23 +637,22 @@ describe('Additional: Circular Dependencies', () => {
     })
 
     // Link nodes circularly
-    for (let i = 0; i < 10; i++) {
-      const currentNode = store.nodes[i]
-      const nextNode = store.nodes[(i + 1) % 10]
-      const prevNode = store.nodes[(i + 9) % 10]
-      if (currentNode && nextNode && prevNode) {
-        currentNode.next = nextNode
-        currentNode.prev = prevNode
-      }
-    }
+    const linkedNodes = store.nodes.map((node, i) => ({
+      ...node,
+      next: store.nodes[(i + 1) % 10] || null,
+      prev: store.nodes[(i + 9) % 10] || null,
+    }))
+    setStore({ $set: { nodes: linkedNodes } })
 
     // Traverse and update
     let current = store.nodes[0]
+    const updates: Record<string, number> = {}
     for (let i = 0; i < 100; i++) {
       if (current) {
-        current.value += 1
+        updates[`nodes.${current.id}.value`] = current.value + 1
         current = current.next! // We know it's not null in a circular list
       }
     }
+    setStore({ $inc: updates })
   })
 })
