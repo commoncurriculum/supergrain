@@ -1,5 +1,5 @@
 import { bench, describe } from 'vitest'
-import { createStore, update } from '../src'
+import { createStore } from '../src'
 import { effect } from 'alien-signals'
 import { createStore as createSolidStore } from 'solid-js/store'
 import { createComputed, createRoot } from 'solid-js'
