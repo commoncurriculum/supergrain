@@ -1,4 +1,4 @@
-import { bench, describe, afterAll } from 'vitest'
+import { bench, describe } from 'vitest'
 import { createStore } from '../src'
 import { effect } from 'alien-signals'
 import { createStore as createSolidStore, reconcile } from 'solid-js/store'
@@ -61,70 +61,71 @@ describe('Core: Property Access: Non-reactive', () => {
 describe('Core: Reactive Effect Creation', () => {
   bench('@storable/core: create effect with 10k property reads', () => {
     const [store] = createStore({ value: 0 })
+    let runs = 0
     const dispose = effect(() => {
+      runs++
       for (let i = 0; i < 10000; i++) {
         store.value
       }
     })
+    // Verify effect ran
+    if (runs !== 1) throw new Error('Effect did not run')
     dispose()
   })
 
   bench('solid-js/store: create effect with 10k property reads', () => {
     createRoot(dispose => {
       const [store] = createSolidStore({ value: 0 })
+      let runs = 0
       createEffect(() => {
+        runs++
         for (let i = 0; i < 10000; i++) {
           store.value
         }
       })
+      // Verify effect ran
+      if (runs !== 1) throw new Error('Effect did not run')
       dispose()
     })
   })
 })
 
-describe('Core: Reactive Updates', () => {
-  // Pre-create stores outside benchmarks to measure just the update cost
-  const [storableStore, setStorableStore] = createStore({ counter: 0 })
-  let storableCounter = 0
-  effect(() => {
-    storableCounter = storableStore.counter
-  })
-
-  let solidStore: any, setSolidStore: any
-  let solidCounter = 0
-  createRoot(() => {
-    ;[solidStore, setSolidStore] = createSolidStore({ counter: 0 })
-    createEffect(() => {
-      solidCounter = solidStore.counter
-    })
-  })
-
-  bench('@storable/core: trigger reactive update', () => {
-    setStorableStore({ $set: { counter: Math.random() } })
-  })
-
-  bench('solid-js/store: trigger reactive update', () => {
-    setSolidStore('counter', Math.random())
-  })
-})
-
-describe('Core: Property Updates', () => {
+describe('Core: Property Updates with Effects', () => {
   bench('@storable/core: 1000 sequential updates', () => {
     const [store, setStore] = createStore({ count: 0 })
+    let runs = 0
+    const dispose = effect(() => {
+      runs++
+      store.count
+    })
+    // Verify initial effect
+    if (runs !== 1) throw new Error('Initial effect did not run')
+
     for (let i = 0; i < 1000; i++) {
       setStore({ $set: { count: i + 1 } })
     }
+    dispose()
   })
 
   bench('solid-js/store: 1000 batched updates', () => {
-    let store: any, setStore: any
-    createRoot(() => {
-      ;[store, setStore] = createSolidStore({ count: 0 })
-    })
-    batch(() => {
-      for (let i = 0; i < 1000; i++) {
-        setStore('count', i + 1)
-      }
+    createRoot(dispose => {
+      const [store, setStore] = createSolidStore({ count: 0 })
+      let runs = 0
+      createEffect(() => {
+        runs++
+        store.count
+      })
+      // Verify initial effect
+      if (runs !== 1) throw new Error('Initial effect did not run')
+
+      batch(() => {
+        for (let i = 0; i < 1000; i++) {
+          setStore('count', i + 1)
+        }
+      })
+      // Verify batch worked (should only run once more)
+      if (runs !== 2) throw new Error(`Expected 2 runs, got ${runs}`)
+      dispose()
     })
   })
 })
@@ -132,37 +133,70 @@ describe('Core: Property Updates', () => {
 describe('Core: Batch Updates', () => {
   bench('@storable/core: batch update 3 properties', () => {
     const [store, setStore] = createStore({ a: 0, b: 0, c: 0 })
+    let runs = 0
+    const dispose = effect(() => {
+      runs++
+      store.a + store.b + store.c
+    })
+    if (runs !== 1) throw new Error('Effect did not run')
+
     setStore({ $set: { a: 1, b: 2, c: 3 } })
+    dispose()
   })
 
   bench('solid-js/store: batch update 3 properties', () => {
-    let store: any, setStore: any
-    createRoot(() => {
-      ;[store, setStore] = createSolidStore({ a: 0, b: 0, c: 0 })
+    createRoot(dispose => {
+      const [store, setStore] = createSolidStore({ a: 0, b: 0, c: 0 })
+      let runs = 0
+      createEffect(() => {
+        runs++
+        store.a + store.b + store.c
+      })
+      if (runs !== 1) throw new Error('Effect did not run')
+
+      setStore({ a: 1, b: 2, c: 3 })
+      // Verify synchronous update
+      if (runs !== 2) throw new Error('Update did not trigger effect')
+      dispose()
     })
-    setStore({ a: 1, b: 2, c: 3 })
   })
 })
 
 describe('Core: Array Operations', () => {
   bench('@storable/core: 100 array pushes', () => {
     const [store, update] = createStore<{ items: number[] }>({ items: [] })
+    let runs = 0
+    const dispose = effect(() => {
+      runs++
+      store.items.length
+    })
+    if (runs !== 1) throw new Error('Effect did not run')
+
     for (let i = 0; i < 100; i++) {
       update({ $push: { items: i } })
     }
+    dispose()
   })
 
   bench('solid-js/store: 100 array pushes', () => {
-    let store: any, setStore: any
-    createRoot(() => {
-      ;[store, setStore] = createSolidStore<{ items: number[] }>({
+    createRoot(dispose => {
+      const [store, setStore] = createSolidStore<{ items: number[] }>({
         items: [],
       })
-    })
-    batch(() => {
-      for (let i = 0; i < 100; i++) {
-        setStore('items', items => [...items, i])
-      }
+      let runs = 0
+      createEffect(() => {
+        runs++
+        store.items.length
+      })
+      if (runs !== 1) throw new Error('Effect did not run')
+
+      batch(() => {
+        for (let i = 0; i < 100; i++) {
+          setStore('items', items => [...items, i])
+        }
+      })
+      if (runs !== 2) throw new Error('Batch did not work')
+      dispose()
     })
   })
 })
@@ -172,20 +206,36 @@ describe('Core: Deep Updates', () => {
 
   bench('@storable/core: 100 deep updates', () => {
     const [store, setStore] = createStore(getDeepState())
+    let runs = 0
+    const dispose = effect(() => {
+      runs++
+      store.l1.l2.l3.value
+    })
+    if (runs !== 1) throw new Error('Effect did not run')
+
     for (let i = 0; i < 100; i++) {
       setStore({ $set: { 'l1.l2.l3.value': i + 1 } })
     }
+    dispose()
   })
 
   bench('solid-js/store: 100 deep updates', () => {
-    let store: any, setStore: any
-    createRoot(() => {
-      ;[store, setStore] = createSolidStore(getDeepState())
-    })
-    batch(() => {
-      for (let i = 0; i < 100; i++) {
-        setStore('l1', 'l2', 'l3', 'value', i + 1)
-      }
+    createRoot(dispose => {
+      const [store, setStore] = createSolidStore(getDeepState())
+      let runs = 0
+      createEffect(() => {
+        runs++
+        store.l1.l2.l3.value
+      })
+      if (runs !== 1) throw new Error('Effect did not run')
+
+      batch(() => {
+        for (let i = 0; i < 100; i++) {
+          setStore('l1', 'l2', 'l3', 'value', i + 1)
+        }
+      })
+      if (runs !== 2) throw new Error('Batch did not work')
+      dispose()
     })
   })
 })
@@ -205,22 +255,38 @@ describe('Core: Real-World Todo App Simulation', () => {
 
   bench('@storable/core: toggle 50 todos', () => {
     const [store, update] = createStore({ todos: createInitialTodos(50) })
+    let runs = 0
+    const dispose = effect(() => {
+      runs++
+      store.todos.filter(t => !t.completed).length
+    })
+    if (runs !== 1) throw new Error('Effect did not run')
+
     for (let i = 0; i < 50; i++) {
       update({ $set: { [`todos.${i}.completed`]: !store.todos[i].completed } })
     }
+    dispose()
   })
 
   bench('solid-js/store: toggle 50 todos', () => {
-    let store: any, setStore: any
-    createRoot(() => {
-      ;[store, setStore] = createSolidStore({
+    createRoot(dispose => {
+      const [store, setStore] = createSolidStore({
         todos: createInitialTodos(50),
       })
-    })
-    batch(() => {
-      for (let i = 0; i < 50; i++) {
-        setStore('todos', i, 'completed', c => !c)
-      }
+      let runs = 0
+      createEffect(() => {
+        runs++
+        store.todos.filter((t: Todo) => !t.completed).length
+      })
+      if (runs !== 1) throw new Error('Effect did not run')
+
+      batch(() => {
+        for (let i = 0; i < 50; i++) {
+          setStore('todos', i, 'completed', c => !c)
+        }
+      })
+      if (runs !== 2) throw new Error('Batch did not work')
+      dispose()
     })
   })
 })
@@ -235,72 +301,60 @@ describe('Core: MongoDB Operators vs Direct Mutation', () => {
 
   bench('@storable/core: individual updates', () => {
     const [state, update] = createStore(getInitialState())
+    let runs = 0
+    const dispose = effect(() => {
+      runs++
+      state.title + state.viewCount + state.tags.length + state.metadata.updated
+    })
+    if (runs !== 1) throw new Error('Effect did not run')
+
     update({ $set: { title: 'Updated' } })
     update({ $set: { 'metadata.updated': true } })
     update({ $inc: { viewCount: 1 } })
     update({ $push: { tags: 'modified' } })
+    dispose()
   })
 
   bench('@storable/core: MongoDB batch operators', () => {
     const [state, update] = createStore(getInitialState())
+    let runs = 0
+    const dispose = effect(() => {
+      runs++
+      state.title + state.viewCount + state.tags.length + state.metadata.updated
+    })
+    if (runs !== 1) throw new Error('Effect did not run')
+
     update({
       $set: { title: 'Updated', 'metadata.updated': true },
       $inc: { viewCount: 1 },
       $push: { tags: 'modified' },
     })
+    dispose()
   })
 
   bench('solid-js/store: equivalent updates', () => {
-    let state: any, setState: any
-    createRoot(() => {
-      ;[state, setState] = createSolidStore(getInitialState())
-    })
-    batch(() => {
-      setState('title', 'Updated')
-      setState('metadata', 'updated', true)
-      setState('viewCount', v => v + 1)
-      setState('tags', tags => [...tags, 'modified'])
+    createRoot(dispose => {
+      const [state, setState] = createSolidStore(getInitialState())
+      let runs = 0
+      createEffect(() => {
+        runs++
+        state.title +
+          state.viewCount +
+          state.tags.length +
+          state.metadata.updated
+      })
+      if (runs !== 1) throw new Error('Effect did not run')
+
+      batch(() => {
+        setState('title', 'Updated')
+        setState('metadata', 'updated', true)
+        setState('viewCount', v => v + 1)
+        setState('tags', tags => [...tags, 'modified'])
+      })
+      if (runs !== 2) throw new Error('Batch did not work')
+      dispose()
     })
   })
-})
-
-describe('Core: Effect Tracking Performance', () => {
-  // Test how efficiently effects track dependencies
-  bench(
-    '@storable/core: create store with 100 properties and track one',
-    () => {
-      const data: any = {}
-      for (let i = 0; i < 100; i++) {
-        data[`prop${i}`] = i
-      }
-      const [store, setStore] = createStore(data)
-      let value = 0
-      const dispose = effect(() => {
-        value = store.prop50
-      })
-      setStore({ $set: { prop50: 999 } })
-      dispose()
-    }
-  )
-
-  bench(
-    'solid-js/store: create store with 100 properties and track one',
-    () => {
-      createRoot(dispose => {
-        const data: any = {}
-        for (let i = 0; i < 100; i++) {
-          data[`prop${i}`] = i
-        }
-        const [store, setStore] = createSolidStore(data)
-        let value = 0
-        createEffect(() => {
-          value = store.prop50
-        })
-        setStore('prop50', 999)
-        dispose()
-      })
-    }
-  )
 })
 
 describe('Core: Granular Reactivity', () => {
@@ -315,13 +369,16 @@ describe('Core: Granular Reactivity', () => {
 
       // Create 10 effects, each tracking one property
       const disposers: (() => void)[] = []
+      let initialRuns = 0
       for (let i = 0; i < 10; i++) {
         disposers.push(
           effect(() => {
+            initialRuns++
             store[`prop${i}`].nested
           })
         )
       }
+      if (initialRuns !== 10) throw new Error('Not all effects ran')
 
       // Update only one property
       setStore({ $set: { 'prop5.nested': 999 } })
@@ -342,15 +399,70 @@ describe('Core: Granular Reactivity', () => {
         const [store, setStore] = createSolidStore(data)
 
         // Create 10 effects, each tracking one property
+        let initialRuns = 0
+        let updateRuns = 0
         for (let i = 0; i < 10; i++) {
           createEffect(() => {
+            if (initialRuns < 10) initialRuns++
+            else updateRuns++
             store[`prop${i}`].nested
           })
         }
+        if (initialRuns !== 10) throw new Error('Not all effects ran')
 
-        // Update only one property
+        // Update only one property - should trigger only one effect
         setStore('prop5', 'nested', 999)
 
+        // Verify granular reactivity
+        if (updateRuns !== 1)
+          throw new Error(`Expected 1 update, got ${updateRuns}`)
+
+        dispose()
+      })
+    }
+  )
+})
+
+describe('Core: Effect Tracking Performance', () => {
+  bench(
+    '@storable/core: create store with 100 properties and track one',
+    () => {
+      const data: any = {}
+      for (let i = 0; i < 100; i++) {
+        data[`prop${i}`] = i
+      }
+      const [store, setStore] = createStore(data)
+      let runs = 0
+      const dispose = effect(() => {
+        runs++
+        store.prop50
+      })
+      if (runs !== 1) throw new Error('Effect did not run')
+
+      setStore({ $set: { prop50: 999 } })
+      dispose()
+    }
+  )
+
+  bench(
+    'solid-js/store: create store with 100 properties and track one',
+    () => {
+      createRoot(dispose => {
+        const data: any = {}
+        for (let i = 0; i < 100; i++) {
+          data[`prop${i}`] = i
+        }
+        const [store, setStore] = createSolidStore(data)
+        let runs = 0
+        createEffect(() => {
+          runs++
+          store.prop50
+        })
+        if (runs !== 1) throw new Error('Effect did not run')
+
+        setStore('prop50', 999)
+        // Verify effect ran
+        if (runs !== 2) throw new Error('Update did not trigger effect')
         dispose()
       })
     }
