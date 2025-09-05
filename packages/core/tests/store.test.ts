@@ -243,4 +243,89 @@ describe('Object Handling', () => {
     expect(keys).toEqual(['a', 'c'])
     expect(keysEffect).toHaveBeenCalledTimes(3)
   })
+
+  it('should preserve and track getters/setters', () => {
+    const user = {
+      _firstName: 'John',
+      _lastName: 'Doe',
+      get fullName() {
+        return `${this._firstName} ${this._lastName}`
+      },
+      set fullName(value: string) {
+        ;[this._firstName, this._lastName] = value.split(' ')
+      },
+    }
+    store.set('users', '1', user)
+    const userProxy = store.find('users', '1')!.value
+
+    let fullNameValue = ''
+    const effectFn = vi.fn(() => {
+      fullNameValue = userProxy.fullName
+    })
+    effect(effectFn)
+
+    expect(fullNameValue).toBe('John Doe')
+    expect(effectFn).toHaveBeenCalledTimes(1)
+
+    // Trigger setter, which changes underlying properties
+    userProxy.fullName = 'Jane Smith'
+    expect(userProxy._firstName).toBe('Jane')
+    expect(userProxy._lastName).toBe('Smith')
+    expect(fullNameValue).toBe('Jane Smith')
+    expect(effectFn).toHaveBeenCalledTimes(2)
+
+    // Change an underlying property directly
+    userProxy._firstName = 'John'
+    expect(fullNameValue).toBe('John Smith')
+    expect(effectFn).toHaveBeenCalledTimes(3)
+  })
+
+  it('should handle Symbol properties', () => {
+    const sym = Symbol('id')
+    const user = { [sym]: '123' }
+    store.set('users', '1', user)
+    const userProxy = store.find('users', '1')!.value
+
+    let symbolValue: string | undefined
+    const effectFn = vi.fn(() => {
+      symbolValue = userProxy[sym]
+    })
+    effect(effectFn)
+
+    expect(symbolValue).toBe('123')
+    expect(effectFn).toHaveBeenCalledTimes(1)
+
+    userProxy[sym] = '456'
+    expect(symbolValue).toBe('456')
+    expect(effectFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('should handle Object.defineProperty correctly', () => {
+    const data: { name?: string } = {}
+    store.set('data', '1', data)
+    const dataProxy = store.find('data', '1')!.value
+
+    let nameValue: string | undefined
+    const nameEffect = vi.fn(() => {
+      nameValue = dataProxy.name
+    })
+
+    // This should trigger a shape change if we were tracking it properly
+    Object.defineProperty(dataProxy, 'name', {
+      value: 'Initial',
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    })
+
+    effect(nameEffect)
+
+    expect(nameValue).toBe('Initial')
+    expect(nameEffect).toHaveBeenCalledTimes(1)
+
+    // Update the property, should be reactive
+    dataProxy.name = 'Updated'
+    expect(nameValue).toBe('Updated')
+    expect(nameEffect).toHaveBeenCalledTimes(2)
+  })
 })
