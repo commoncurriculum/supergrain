@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@preact/signals-core':
+        specifier: ^1.12.1
+        version: 1.12.1
     devDependencies:
       oxlint:
         specifier: ^1.14.0
@@ -218,6 +222,9 @@ packages:
     resolution: {integrity: sha512-iRYy2rhTQKFztyx0jtNMRBnFpzsRwFdjWQ7sKKzJpmbijA3Tw3DCqlGT7QRgoVRF0+X/ccNGvvsrgMohPVfLeQ==}
     cpu: [x64]
     os: [win32]
+
+  '@preact/signals-core@1.12.1':
+    resolution: {integrity: sha512-BwbTXpj+9QutoZLQvbttRg5x3l5468qaV2kufh+51yha1c53ep5dY4kTuZR35+3pAZxpfQerGJiQqg34ZNZ6uA==}
 
   '@rollup/rollup-android-arm-eabi@4.50.0':
     resolution: {integrity: sha512-lVgpeQyy4fWN5QYebtW4buT/4kn4p4IJ+kDNB4uYNT5b8c8DLJDg6titg20NIg7E8RWwdWZORW6vUFfrLyG3KQ==}
@@ -691,6 +698,8 @@ snapshots:
 
   '@oxlint/win32-x64@1.14.0':
     optional: true
+
+  '@preact/signals-core@1.12.1': {}
 
   '@rollup/rollup-android-arm-eabi@4.50.0':
     optional: true
