@@ -16,7 +16,7 @@ import { createComputed, createRoot } from 'solid-js'
 // Helper to verify we're in a reactive context before running benchmarks
 function verifyReactiveContext(storeName: string) {
   let tracked = false
-  const [testStore] = createStore({ value: 1 })
+  const [testStore, updateTestStore] = createStore({ value: 1 })
 
   const dispose = effect(() => {
     // Accessing the value should be tracked by the effect
@@ -35,7 +35,7 @@ function verifyReactiveContext(storeName: string) {
   // Reset for the next check
   tracked = false
   // This update should trigger the effect again
-  testStore.value = 2
+  updateTestStore({ $set: { value: 2 } })
 
   if (!tracked) {
     dispose()
@@ -103,7 +103,7 @@ describe('Core: Property Access: Reactive', () => {
       }
     })
     if (effectRuns !== 1) throw new Error('Effect should run once initially.')
-    setStore('value', 1)
+    setStore({ $set: { value: 1 } })
     if ((effectRuns as number) !== 2)
       throw new Error('Effect should re-run on update.')
     dispose()
@@ -137,7 +137,7 @@ describe('Core: Property Updates', () => {
       store.count
     })
     for (let i = 0; i < 1000; i++) {
-      setStore('count', i)
+      setStore({ $set: { count: i } })
     }
     // 1 initial run + 1000 updates
     if (effectRuns !== 1001)
@@ -173,7 +173,7 @@ describe('Core: Batch Updates', () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       store.a, store.b, store.c
     })
-    setStore({ a: 1, b: 2, c: 3 })
+    setStore({ $set: { a: 1, b: 2, c: 3 } })
     // 1 initial run + 1 for the batched update
     if (effectRuns !== 2)
       throw new Error(`Effect ran ${effectRuns} times, expected 2.`)
@@ -200,14 +200,14 @@ describe('Core: Batch Updates', () => {
 
 describe('Core: Array Operations: Reactive Length Tracking', () => {
   bench('@storable/core: 100 pushes tracked by length', () => {
-    const [store] = createStore<{ items: number[] }>({ items: [] })
+    const [store, update] = createStore<{ items: number[] }>({ items: [] })
     let effectRuns = 0
     const dispose = effect(() => {
       effectRuns++
       store.items.length
     })
     for (let i = 0; i < 100; i++) {
-      store.items.push(i)
+      update({ $push: { items: i } })
     }
     // 1 initial run + 100 for each push that changes the length
     if (effectRuns !== 101)
@@ -247,7 +247,7 @@ describe('Core: Deep Update', () => {
       store.l1.l2.l3.value
     })
     for (let i = 0; i < 100; i++) {
-      setStore('l1', 'l2', 'l3', 'value', i)
+      setStore({ $set: { 'l1.l2.l3.value': i } })
     }
     // 1 initial run + 100 updates
     if (effectRuns !== 101)
@@ -288,7 +288,7 @@ describe('Core: Real-World Todo App Simulation', () => {
     }))
 
   bench('@storable/core: reactive todo operations', () => {
-    const [store] = createStore({ todos: createInitialTodos(50) })
+    const [store, update] = createStore({ todos: createInitialTodos(50) })
     let effectRuns = 0
     const dispose = effect(() => {
       effectRuns++
@@ -300,11 +300,11 @@ describe('Core: Real-World Todo App Simulation', () => {
     for (let i = 0; i < 50; i++) {
       const todo = store.todos[i]
       if (todo) {
-        todo.completed = !todo.completed
+        update({ $set: { [`todos.${i}.completed`]: !todo.completed } })
       }
     }
     // Remove first 10
-    store.todos.splice(0, 10)
+    update({ $set: { todos: store.todos.slice(10) } })
     // Check that effects ran multiple times
     if (effectRuns <= initialRuns + 1)
       throw new Error('Effects did not run sufficiently for todo operations.')
@@ -343,7 +343,7 @@ describe('Core: MongoDB Operators vs Direct Mutation', () => {
     metadata: { updated: false },
   })
 
-  bench('@storable/core: direct mutations with effect', () => {
+  bench('@storable/core: individual updates with effect', () => {
     const [state] = createStore(getInitialState())
     let effectRuns = 0
     const dispose = effect(() => {
@@ -351,10 +351,10 @@ describe('Core: MongoDB Operators vs Direct Mutation', () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       state.title, state.viewCount, state.tags.length, state.metadata.updated
     })
-    state.title = 'Updated'
-    state.metadata.updated = true
-    state.viewCount += 1
-    state.tags.push('modified')
+    update({ $set: { title: 'Updated' } })
+    update({ $set: { 'metadata.updated': true } })
+    update({ $inc: { viewCount: 1 } })
+    update({ $push: { tags: 'modified' } })
     // Should not be batched, so 1 initial + 4 updates
     if (effectRuns !== 5)
       throw new Error(`Effect ran ${effectRuns} times, expected 5.`)
@@ -362,7 +362,7 @@ describe('Core: MongoDB Operators vs Direct Mutation', () => {
   })
 
   bench('@storable/core: MongoDB update operators with effect', () => {
-    const [state] = createStore(getInitialState())
+    const [state, update] = createStore(getInitialState())
     let effectRuns = 0
     const dispose = effect(() => {
       effectRuns++
