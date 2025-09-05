@@ -196,7 +196,7 @@ function createReactiveProxy<T extends object>(target: T): T {
   return proxy as T
 }
 
-export type SetStoreFunction<T> = (operations: UpdateOperations) => void
+export type SetStoreFunction = (operations: UpdateOperations) => void
 
 function reconcile(raw: any, visited: Set<any>) {
   if (!isWrappable(raw) || visited.has(raw)) {
@@ -224,7 +224,7 @@ function reconcile(raw: any, visited: Set<any>) {
 
 export function createStore<T extends object>(
   initialState: T
-): [T, SetStoreFunction<T>] {
+): [T, SetStoreFunction] {
   const unwrappedState = unwrap(initialState || ({} as T))
   const state = createReactiveProxy(unwrappedState)
 
