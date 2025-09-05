@@ -1,5 +1,5 @@
 import { bench, describe } from 'vitest'
-import { createStore } from '../src/store-optimized'
+import { createStore } from '../src/store'
 import { ReactiveStore as ReactiveStoreLegacy } from '../src/store'
 import { effect } from 'alien-signals'
 import { effect as effectLegacy } from '../src/isTracking'

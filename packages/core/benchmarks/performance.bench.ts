@@ -1,7 +1,7 @@
 import { bench, describe } from 'vitest'
 import { createStore as createSolidStore } from 'solid-js/store'
 import { createEffect as createSolidEffect, createRoot } from 'solid-js'
-import { createStore, effect } from '../src/store
+import { createStore, effect } from '../src/store'
 
 describe('Critical Performance: Reactive Property Reads', () => {
   bench(
