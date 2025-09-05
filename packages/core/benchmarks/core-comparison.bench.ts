@@ -344,7 +344,7 @@ describe('Core: MongoDB Operators vs Direct Mutation', () => {
   })
 
   bench('@storable/core: individual updates with effect', () => {
-    const [state] = createStore(getInitialState())
+    const [state, update] = createStore(getInitialState())
     let effectRuns = 0
     const dispose = effect(() => {
       effectRuns++
@@ -369,7 +369,7 @@ describe('Core: MongoDB Operators vs Direct Mutation', () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       state.title, state.viewCount, state.tags.length, state.metadata.updated
     })
-    update(state, {
+    update({
       $set: { title: 'Updated', 'metadata.updated': true } as any,
       $inc: { viewCount: 1 },
       $push: { tags: 'modified' },
