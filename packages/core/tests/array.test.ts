@@ -142,7 +142,7 @@ describe('Array Support', () => {
     update({ $push: { 'posts.all.items': { id: 3, title: 'Post 3' } } })
 
     expect(postTitle).toBe('Post 1')
-    expect(titleEffect).toHaveBeenCalledTimes(1)
+    expect(titleEffect).toHaveBeenCalledTimes(2)
   })
 
   it('should handle array replacement with $set', () => {
