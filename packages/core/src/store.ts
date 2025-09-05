@@ -24,28 +24,103 @@ const isWrappable = (value: any): value is object =>
  * Signals are stored in a hidden cache on the object itself.
  */
 function getSignal<T extends object>(target: T, key: PropertyKey): Signal<any> {
-  // Get or create the hidden signal cache on the raw object.
+  const node = (target as any)[$NODE]
+  const sig = node?.[key]
+  if (sig) {
+    return sig // HOT PATH: Signal already exists.
+  }
+
+  // COLD PATH: Signal needs to be created.
+  return createSignalFor(target, key)
+}
+
+/**
+ * Creates a new signal for a property and stores it in the hidden cache.
+ * This is the "cold path" for signal access.
+ */
+function createSignalFor<T extends object>(
+  target: T,
+  key: PropertyKey
+): Signal<any> {
   let node = (target as any)[$NODE]
   if (!node) {
-    // Use Object.create(null) for a prototype-less object to avoid prototype chain issues.
     node = Object.create(null)
-    // Define the property as non-enumerable so it doesn't show up in Object.keys() etc.
     Object.defineProperty(target, $NODE, { value: node, configurable: true })
   }
 
-  // Get or create the signal for the specific property.
-  let sig = node[key]
-  if (!sig) {
-    // Special case for the 'ownKeys' signal to initialize with a number.
-    if (key === Symbol.for('ownKeys')) {
-      sig = signal(0)
-    } else {
-      const initialValue = Reflect.get(target, key)
-      sig = signal(initialValue)
+  // Special case for the 'ownKeys' signal, which tracks shape changes.
+  const initialValue =
+    key === Symbol.for('ownKeys') ? 0 : Reflect.get(target, key)
+  const newSignal = signal(initialValue)
+  node[key] = newSignal
+  return newSignal
+}
+
+const handler: ProxyHandler<object> = {
+  get(target, key, receiver) {
+    // FAST PATH: If not in a reactive context, return the raw value immediately.
+    // NOTE: isTracking() is assumed to be exported from 'alien-signals' per the plan.
+    if (!isTracking()) {
+      const value = Reflect.get(target, key, receiver)
+      // Important: Still wrap nested objects to ensure future reactive access is caught.
+      return isWrappable(value) ? createReactiveProxy(value) : value
     }
-    node[key] = sig
-  }
-  return sig
+
+    // SLOW PATH (REACTIVE):
+    // If we are tracking, use the new helper to get the signal.
+    const signal = getSignal(target, key)
+    const value = signal() // Read the signal to track the dependency.
+
+    // Recursive wrapping logic remains the same.
+    return isWrappable(value) ? createReactiveProxy(value) : value
+  },
+
+  set(target, key, newValue, receiver) {
+    const hadKey = Reflect.has(target, key)
+    const oldValue = Reflect.get(target, key, receiver)
+    const isArray = Array.isArray(target)
+    const oldLength = isArray ? (target as any).length : undefined
+
+    const result = Reflect.set(target, key, newValue, receiver)
+
+    // Update signal for the property that was explicitly set, if its value changed.
+    if (result && oldValue !== newValue) {
+      getSignal(target, key)(newValue)
+    }
+
+    // For arrays, if length changed, update length signal and trigger shape change signal.
+    // For objects, trigger shape change signal if a new property was added.
+    if (isArray) {
+      const newLength = (target as any).length
+      if (oldLength !== newLength) {
+        getSignal(target, 'length')(newLength)
+        const ownKeysSignal = getSignal(target, Symbol.for('ownKeys'))
+        ownKeysSignal(ownKeysSignal() + 1)
+      }
+    } else if (!hadKey) {
+      const ownKeysSignal = getSignal(target, Symbol.for('ownKeys'))
+      ownKeysSignal(ownKeysSignal() + 1)
+    }
+    return result
+  },
+
+  deleteProperty(target, key) {
+    const hadKey = Reflect.has(target, key)
+    const result = Reflect.deleteProperty(target, key)
+    if (hadKey && result) {
+      // Trigger shape change signal.
+      const ownKeysSignal = getSignal(target, Symbol.for('ownKeys'))
+      ownKeysSignal(ownKeysSignal() + 1)
+    }
+    return result
+  },
+
+  ownKeys(target) {
+    // Depend on the shape signal for methods like Object.keys().
+    const ownKeysSignal = getSignal(target, Symbol.for('ownKeys'))
+    ownKeysSignal() // Read the signal to create the dependency.
+    return Reflect.ownKeys(target)
+  },
 }
 
 function createReactiveProxy<T extends object>(target: T): T {
@@ -54,74 +129,6 @@ function createReactiveProxy<T extends object>(target: T): T {
   }
 
   const copy = (Array.isArray(target) ? [...target] : { ...target }) as T
-
-  const handler: ProxyHandler<T> = {
-    get(target, key, receiver) {
-      // FAST PATH: If not in a reactive context, return the raw value immediately.
-      // NOTE: isTracking() is assumed to be exported from 'alien-signals' per the plan.
-      if (!isTracking()) {
-        const value = Reflect.get(target, key, receiver)
-        // Important: Still wrap nested objects to ensure future reactive access is caught.
-        return isWrappable(value) ? createReactiveProxy(value) : value
-      }
-
-      // SLOW PATH (REACTIVE):
-      // If we are tracking, use the new helper to get the signal.
-      const signal = getSignal(target, key)
-      const value = signal() // Read the signal to track the dependency.
-
-      // Recursive wrapping logic remains the same.
-      return isWrappable(value) ? createReactiveProxy(value) : value
-    },
-
-    set(target, key, newValue, receiver) {
-      const hadKey = Reflect.has(target, key)
-      const oldValue = Reflect.get(target, key, receiver)
-      const isArray = Array.isArray(target)
-      const oldLength = isArray ? (target as any).length : undefined
-
-      const result = Reflect.set(target, key, newValue, receiver)
-
-      // Update signal for the property that was explicitly set, if its value changed.
-      if (result && oldValue !== newValue) {
-        getSignal(target, key)(newValue)
-      }
-
-      // For arrays, if length changed (possibly as a side-effect of setting an index),
-      // we must update its signal. This is crucial for methods like `push`.
-      if (isArray) {
-        const newLength = (target as any).length
-        if (oldLength !== newLength) {
-          getSignal(target, 'length')(newLength)
-        }
-      }
-
-      // If a new property was added, or if array length changes, trigger shape signal.
-      if (!hadKey || (isArray && key === 'length' && oldValue !== newValue)) {
-        const ownKeysSignal = getSignal(target, Symbol.for('ownKeys'))
-        ownKeysSignal(ownKeysSignal() + 1)
-      }
-      return result
-    },
-
-    deleteProperty(target, key) {
-      const hadKey = Reflect.has(target, key)
-      const result = Reflect.deleteProperty(target, key)
-      if (hadKey && result) {
-        // Trigger shape change signal.
-        const ownKeysSignal = getSignal(target, Symbol.for('ownKeys'))
-        ownKeysSignal(ownKeysSignal() + 1)
-      }
-      return result
-    },
-
-    ownKeys(target) {
-      // Depend on the shape signal for methods like Object.keys().
-      const ownKeysSignal = getSignal(target, Symbol.for('ownKeys'))
-      ownKeysSignal() // Read the signal to create the dependency.
-      return Reflect.ownKeys(target)
-    },
-  }
 
   const proxy = new Proxy(copy, handler)
   proxyCache.set(target, proxy)
