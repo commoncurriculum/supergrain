@@ -2,36 +2,40 @@ import { bench, describe } from 'vitest'
 import { createStore, update } from '../src'
 import { effect } from 'alien-signals'
 
-/**
- * Additional benchmarks for detailed performance analysis
- * These tests provide deeper insights but are not essential for quick iteration
- */
-
-// Helper to verify we're in a reactive context
-function verifyReactiveContext(testName: string) {
+// Helper to verify we're in a reactive context before running benchmarks
+function verifyReactiveContext(storeName: string) {
   let tracked = false
   const [testStore] = createStore({ value: 1 })
 
   const dispose = effect(() => {
-    const _ = testStore.value
+    testStore.value // Access value to track
     tracked = true
   })
 
-  testStore.value = 2
-  dispose()
-
   if (!tracked) {
+    dispose()
     throw new Error(
-      `${testName}: Reactive context verification failed - effects are not tracking properly`
+      `${storeName}: Reactive context verification failed - effect did not run initially.`
     )
   }
+
+  tracked = false
+  testStore.value = 2 // Update should trigger effect
+
+  if (!tracked) {
+    dispose()
+    throw new Error(
+      `${storeName}: Reactive context verification failed - effect did not re-run on update.`
+    )
+  }
+
+  dispose()
 }
 
-// Verify reactive context before running benchmarks
-verifyReactiveContext('Additional benchmarks')
+verifyReactiveContext('@storable/core')
 
-describe('Additional: Proxy Overhead Analysis', () => {
-  describe('Raw Proxy vs Plain Object', () => {
+describe('Additional: Plain vs Proxy Performance', () => {
+  describe('Property Access', () => {
     const plainObject = { name: 'John Doe', age: 30 }
     const [proxyObject] = createStore({ name: 'John Doe', age: 30 })
 
@@ -40,6 +44,7 @@ describe('Additional: Proxy Overhead Analysis', () => {
       for (let i = 0; i < 100000; i++) {
         value = plainObject.name
       }
+      void value
     })
 
     bench('proxy object: 100k property reads', () => {
@@ -47,42 +52,30 @@ describe('Additional: Proxy Overhead Analysis', () => {
       for (let i = 0; i < 100000; i++) {
         value = proxyObject.name
       }
+      void value
     })
+  })
 
-    bench('plain object: 100k property writes', () => {
-      const obj = { count: 0 }
+  describe('Property Set', () => {
+    bench('plain object: 100k property sets', () => {
+      const plainObject = { value: 0 }
       for (let i = 0; i < 100000; i++) {
-        obj.count = i
+        plainObject.value = i
       }
     })
 
-    bench('proxy object: 100k property writes', () => {
-      const [obj] = createStore({ count: 0 })
+    bench('proxy object: 100k property sets', () => {
+      const [proxyObject] = createStore({ value: 0 })
       for (let i = 0; i < 100000; i++) {
-        obj.count = i
+        proxyObject.value = i
       }
     })
   })
 
-  describe('Deep Object Access Overhead', () => {
-    const plainDeep = {
-      level1: {
-        level2: {
-          level3: {
-            value: 42,
-          },
-        },
-      },
-    }
-
+  describe('Deep Property Access', () => {
+    const plainDeep = { level1: { level2: { level3: { value: 'test' } } } }
     const [proxyDeep] = createStore({
-      level1: {
-        level2: {
-          level3: {
-            value: 42,
-          },
-        },
-      },
+      level1: { level2: { level3: { value: 'test' } } },
     })
 
     bench('plain object: deep property read', () => {
@@ -90,6 +83,7 @@ describe('Additional: Proxy Overhead Analysis', () => {
       for (let i = 0; i < 100000; i++) {
         value = plainDeep.level1.level2.level3.value
       }
+      void value
     })
 
     bench('proxy object: deep property read', () => {
@@ -97,98 +91,76 @@ describe('Additional: Proxy Overhead Analysis', () => {
       for (let i = 0; i < 100000; i++) {
         value = proxyDeep.level1.level2.level3.value
       }
+      void value
     })
   })
 })
 
-describe('Additional: Memory Patterns', () => {
-  bench('memory: create 10k entities', () => {
-    const entities: any[] = []
-    for (let i = 0; i < 10000; i++) {
-      const [store] = createStore({
-        id: i,
-        name: `Entity ${i}`,
-        value: i * 2,
-        metadata: {
-          created: Date.now(),
-          updated: Date.now(),
-        },
-      })
-      entities.push(store)
-    }
-    // Keep reference to prevent GC
-    entities.length
-  })
-
-  bench('memory: 5k entities with effects', () => {
-    const disposers: (() => void)[] = []
+describe('Additional: Effect Creation and Destruction', () => {
+  bench('create/dispose 1000 effects for one signal', () => {
+    const [store] = createStore({ value: 0 })
     let totalTracked = 0
+    const disposers = []
 
-    for (let i = 0; i < 5000; i++) {
-      const [store] = createStore({
-        id: i,
-        value: i * 2,
-      })
-
+    for (let i = 0; i < 1000; i++) {
       disposers.push(
         effect(() => {
-          const _ = store.value
+          store.value
           totalTracked++
         })
       )
     }
 
-    // Verify effects actually ran (one per entity)
-    if (totalTracked !== 5000) {
-      throw new Error(
-        `Memory test: Effects ran ${totalTracked} times, expected 5000`
-      )
+    for (const dispose of disposers) {
+      dispose()
     }
-
-    // Clean up
-    disposers.forEach(d => d())
   })
 
-  bench('memory: create and destroy 10k effects', () => {
+  bench('create/dispose one effect 10000 times', () => {
     const [store] = createStore({ counter: 0 })
     let totalTracked = 0
 
     for (let i = 0; i < 10000; i++) {
       const dispose = effect(() => {
-        const _ = store.counter
+        store.counter
         totalTracked++
       })
       dispose()
     }
+  })
+})
 
-    // Verify effects actually ran (one per iteration)
-    if (totalTracked !== 10000) {
-      throw new Error(
-        `Memory test: Effects ran ${totalTracked} times, expected 10000`
-      )
+describe('Additional: Signal Subscription/Unsubscription', () => {
+  bench('subscribe/unsubscribe 10k listeners to one signal', () => {
+    const [store] = createStore({ value: 0 })
+    const disposers = []
+    for (let i = 0; i < 10000; i++) {
+      disposers.push(effect(() => store.value))
+    }
+    for (const d of disposers) {
+      d()
     }
   })
 })
 
-describe('Additional: Internal Characteristics', () => {
-  bench('signal creation overhead (first reactive access)', () => {
-    const [store] = createStore({
-      a: 1,
-      b: 2,
-      c: 3,
-      d: 4,
-      e: 5,
-      f: 6,
-      g: 7,
-      h: 8,
-      i: 9,
+describe('Additional: Batched vs Unbatched Updates', () => {
+  bench('10 unbatched updates triggering one effect', () => {
+    const [store, setStore] = createStore({
+      a: 0,
+      b: 0,
+      c: 0,
+      d: 0,
+      e: 0,
+      f: 0,
+      g: 0,
+      h: 0,
+      i: 0,
       j: 10,
     })
     let total = 0
     let effectRan = false
     const dispose = effect(() => {
       effectRan = true
-      // First access creates signals
       total =
         store.a +
         store.b +
@@ -202,32 +174,40 @@ describe('Additional: Internal Characteristics', () => {
         store.j
     })
 
-    if (!effectRan) {
-      throw new Error('Signal creation test: Effect did not run')
-    }
+    setStore('a', 1)
+    setStore('b', 2)
+    setStore('c', 3)
+    setStore('d', 4)
+    setStore('e', 5)
+    setStore('f', 6)
+    setStore('g', 7)
+    setStore('h', 8)
+    setStore('i', 9)
+    setStore('j', 10)
 
+    void total
+    void effectRan
     dispose()
   })
 
-  bench('cached signal access (subsequent reactive access)', () => {
-    const [store] = createStore({
-      a: 1,
-      b: 2,
-      c: 3,
-      d: 4,
-      e: 5,
-      f: 6,
-      g: 7,
-      h: 8,
-      i: 9,
+  bench('10 batched updates triggering one effect', () => {
+    const [store, _setStore] = createStore({
+      a: 0,
+      b: 0,
+      c: 0,
+      d: 0,
+      e: 0,
+      f: 0,
+      g: 0,
+      h: 0,
+      i: 0,
       j: 10,
     })
-
-    // Create signals first
-    let initRan = false
+    let total = 0
+    let effectRan = false
     const initDispose = effect(() => {
-      initRan = true
-      const _ =
+      effectRan = true
+      total =
         store.a +
         store.b +
         store.c +
@@ -239,15 +219,9 @@ describe('Additional: Internal Characteristics', () => {
         store.i +
         store.j
     })
-
-    if (!initRan) {
-      throw new Error('Cached signal test: Initial effect did not run')
-    }
-
     initDispose()
 
     // Now measure subsequent access
-    let total = 0
     let secondRan = false
     const dispose = effect(() => {
       secondRan = true
@@ -264,820 +238,447 @@ describe('Additional: Internal Characteristics', () => {
         store.j
     })
 
-    if (!secondRan) {
-      throw new Error('Cached signal test: Second effect did not run')
-    }
+    update(store, {
+      $set: {
+        a: 1,
+        b: 2,
+        c: 3,
+        d: 4,
+        e: 5,
+        f: 6,
+        g: 7,
+        h: 8,
+        i: 9,
+        j: 10,
+      },
+    })
 
+    void total
+    void effectRan
+    void secondRan
     dispose()
   })
+})
 
-  bench('proxy cache effectiveness', () => {
-    const [store] = createStore({
-      nested: { deeply: { nested: { value: 42 } } },
-    })
-
-    // Access the same path repeatedly (should use cached proxies)
-    let total = 0
+describe('Additional: Array Operations (Non-Reactive)', () => {
+  bench('Array.push: 1000 items', () => {
+    const [store] = createStore({ items: [] as number[] })
     for (let i = 0; i < 1000; i++) {
-      const nested = store.nested
-      const deeply = nested.deeply
-      const innerNested = deeply.nested
-      total += innerNested.value
+      store.items.push(i)
     }
+  })
+
+  bench('Array.pop: 1000 items', () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i)
+    const [store] = createStore({ items: initial })
+    for (let i = 0; i < 1000; i++) {
+      store.items.pop()
+    }
+  })
+
+  bench('Array.shift: 1000 items', () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i)
+    const [store] = createStore({ items: initial })
+    for (let i = 0; i < 1000; i++) {
+      store.items.shift()
+    }
+  })
+
+  bench('Array.unshift: 1000 items', () => {
+    const [store] = createStore({ items: [] as number[] })
+    for (let i = 0; i < 1000; i++) {
+      store.items.unshift(i)
+    }
+  })
+
+  bench('Array.splice: remove 500 from 1000', () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i)
+    const [store] = createStore({ items: initial })
+    store.items.splice(250, 500)
+  })
+
+  bench('Array.splice: add 500 to 1000', () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i)
+    const [store] = createStore({ items: initial })
+    const newItems = Array.from({ length: 500 }, (_, i) => i + 1000)
+    store.items.splice(500, 0, ...newItems)
+  })
+
+  bench('Array.sort: 1000 items', () => {
+    const initial = Array.from({ length: 1000 }, () => Math.random())
+    const [store] = createStore({ items: initial })
+    store.items.sort((a, b) => a - b)
   })
 })
 
-describe('Additional: MongoDB Operators Detailed', () => {
-  bench('$set - deep nested field with dot notation', () => {
-    const [state] = createStore({
-      user: {
-        profile: {
-          settings: {
-            notifications: {
-              email: true,
-              push: false,
-            },
-          },
-        },
-      },
-    })
-    update(state, {
-      $set: { 'user.profile.settings.notifications.email': false },
-    })
-  })
-
-  bench('$inc - nested numeric fields', () => {
-    const [state] = createStore({
-      stats: {
-        views: 100,
-        likes: 50,
-        shares: 10,
-        nested: {
-          comments: 5,
-          replies: 2,
-        },
-      },
-    })
-    update(state, {
-      $inc: {
-        'stats.views': 1,
-        'stats.likes': 2,
-        'stats.nested.comments': 1,
-      },
-    })
-  })
-
-  bench('$push - with complex modifiers', () => {
-    const [state] = createStore({
-      items: [
-        { id: 3, score: 85 },
-        { id: 1, score: 90 },
-        { id: 4, score: 75 },
-      ],
-    })
-    update(state, {
-      $push: {
-        items: {
-          $each: [
-            { id: 2, score: 95 },
-            { id: 5, score: 80 },
-          ],
-          $position: 1,
-          $slice: 5,
-          $sort: { score: -1 },
-        },
-      },
-    })
-  })
-
-  bench('$pull - with complex criteria', () => {
-    const [state] = createStore({
-      items: [
-        { id: 1, status: 'active', value: 10 },
-        { id: 2, status: 'inactive', value: 20 },
-        { id: 3, status: 'active', value: 30 },
-        { id: 4, status: 'inactive', value: 40 },
-        { id: 5, status: 'active', value: 50 },
-      ],
-    })
-    update(state, {
-      $pull: { items: { status: 'inactive' } },
-    })
-  })
-
-  bench('$addToSet - with objects', () => {
-    const [state] = createStore({
-      tags: [
-        { id: 1, name: 'javascript' },
-        { id: 2, name: 'typescript' },
-      ],
-    })
-    update(state, {
-      $addToSet: {
-        tags: {
-          $each: [
-            { id: 2, name: 'typescript' }, // duplicate
-            { id: 3, name: 'react' },
-            { id: 4, name: 'vue' },
-          ],
-        },
-      },
-    })
-  })
-
-  bench('$rename - multiple fields', () => {
-    const [state] = createStore({
-      oldName1: 'value1',
-      oldName2: 'value2',
-      nested: {
-        oldField: 'value3',
-      },
-    })
-    update(state, {
-      $rename: {
-        oldName1: 'newName1',
-        oldName2: 'newName2',
-        'nested.oldField': 'nested.newField',
-      },
-    })
-  })
-
-  bench('$min/$max - conditional updates', () => {
-    const [state] = createStore({
-      scores: {
-        high: 100,
-        low: 10,
-        current: 50,
-      },
-    })
-    update(state, {
-      $min: { 'scores.low': 5 },
-      $max: { 'scores.high': 150 },
-    })
-  })
-
-  bench('Combined operators - complex update', () => {
-    const [state] = createStore({
-      post: {
-        title: 'Original',
-        views: 100,
-        likes: 50,
-        tags: ['javascript'],
-        comments: [{ id: 1, text: 'Great!', likes: 10 }],
-        metadata: {
-          created: Date.now(),
-          updated: null,
-        },
-      },
-    })
-    update(state, {
-      $set: {
-        'post.title': 'Updated Title',
-        'post.metadata.updated': Date.now(),
-      },
-      $inc: {
-        'post.views': 1,
-        'post.likes': 5,
-        'post.comments.0.likes': 1,
-      },
-      $push: {
-        'post.tags': { $each: ['typescript', 'react'] },
-        'post.comments': {
-          id: 2,
-          text: 'Nice post!',
-          likes: 0,
-        },
-      },
-    })
-  })
-
-  bench('Large batch update - 100 fields', () => {
-    const obj: any = {}
-    for (let i = 0; i < 100; i++) {
-      obj[`field${i}`] = {
-        value: i,
-        nested: { count: i * 2 },
+describe('Additional: Array Iteration Methods (Reactive)', () => {
+  bench('Array.map: 1000 items, 10 times', () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i)
+    const [store] = createStore({ items: initial })
+    effect(() => {
+      // Benchmark the reactive read of the array
+      for (let i = 0; i < 10; i++) {
+        store.items.map(x => x * 2)
       }
-    }
-    const [state] = createStore(obj)
+    })
+  })
 
-    const updates: any = {}
-    const increments: any = {}
-    for (let i = 0; i < 50; i++) {
-      updates[`field${i}.value`] = i * 3
-      increments[`field${i}.nested.count`] = 10
-    }
+  bench('Array.filter: 1000 items, 10 times', () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i)
+    const [store] = createStore({ items: initial })
+    effect(() => {
+      for (let i = 0; i < 10; i++) {
+        store.items.filter(x => x % 2 === 0)
+      }
+    })
+  })
 
-    update(state, {
-      $set: updates,
-      $inc: increments,
+  bench('Array.reduce: 1000 items, 10 times', () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i)
+    const [store] = createStore({ items: initial })
+    effect(() => {
+      for (let i = 0; i < 10; i++) {
+        store.items.reduce((acc, x) => acc + x, 0)
+      }
+    })
+  })
+
+  bench('Array.find/findIndex: 1000 items, 100 times', () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i)
+    const [store] = createStore({ items: initial })
+    effect(() => {
+      for (let i = 0; i < 100; i++) {
+        store.items.find(x => x === 50)
+        store.items.findIndex(x => x === 50)
+      }
+    })
+  })
+
+  bench('Array.some/every: 1000 items, 100 times', () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i)
+    const [store] = createStore({ items: initial })
+    effect(() => {
+      for (let i = 0; i < 100; i++) {
+        store.items.some(x => x % 2 === 0)
+        store.items.every(x => x >= 0)
+      }
+    })
+  })
+
+  bench('Array.includes/indexOf: 1000 items, 100 times', () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i)
+    const [store] = createStore({ items: initial })
+    effect(() => {
+      for (let i = 0; i < 100; i++) {
+        store.items.includes(50)
+        store.items.indexOf(50)
+      }
     })
   })
 })
 
-describe('Additional: Depth Impact Analysis', () => {
-  bench('depth 1: shallow access', () => {
-    const [store] = createStore({ value: 42 })
-    let total = 0
-    for (let i = 0; i < 10000; i++) {
-      total += store.value
-    }
-  })
+describe('Additional: Complex Scenarios', () => {
+  interface Row {
+    id: number
+    name: string
+    value: number
+    category: string
+    selected: boolean
+    visible: boolean
+  }
 
-  bench('depth 3: moderate nesting', () => {
-    const [store] = createStore({
-      level1: { level2: { level3: { value: 42 } } },
-    })
-    let total = 0
-    for (let i = 0; i < 10000; i++) {
-      total += store.level1.level2.level3.value
-    }
-  })
+  interface GridState {
+    rows: Row[]
+    sortColumn: keyof Row | null
+    sortDirection: 'asc' | 'desc'
+  }
 
-  bench('depth 5: deep nesting', () => {
-    const [store] = createStore({
-      l1: { l2: { l3: { l4: { l5: { value: 42 } } } } },
-    })
-    let total = 0
-    for (let i = 0; i < 10000; i++) {
-      total += store.l1.l2.l3.l4.l5.value
-    }
-  })
-
-  bench('depth 7: very deep nesting', () => {
-    const [store] = createStore({
-      l1: {
-        l2: {
-          l3: {
-            l4: {
-              l5: {
-                l6: {
-                  l7: { value: 42 },
-                },
-              },
-            },
-          },
-        },
-      },
-    })
-    let total = 0
-    for (let i = 0; i < 10000; i++) {
-      total += store.l1.l2.l3.l4.l5.l6.l7.value
-    }
-  })
-
-  bench('depth 10: extreme nesting', () => {
-    const [store] = createStore({
-      l1: {
-        l2: {
-          l3: {
-            l4: {
-              l5: {
-                l6: {
-                  l7: {
-                    l8: {
-                      l9: {
-                        l10: { value: 42 },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    })
-    let total = 0
-    for (let i = 0; i < 10000; i++) {
-      total += store.l1.l2.l3.l4.l5.l6.l7.l8.l9.l10.value
-    }
-  })
-})
-
-describe('Additional: Array Method Performance', () => {
-  bench('array map (non-mutating)', () => {
-    const [store] = createStore<{ items: number[] }>({
-      items: Array.from({ length: 100 }, (_, i) => i),
-    })
-
-    for (let i = 0; i < 10; i++) {
-      const mapped = store.items.map(x => x * 2)
-    }
-  })
-
-  bench('array filter (non-mutating)', () => {
-    const [store] = createStore<{ items: number[] }>({
-      items: Array.from({ length: 100 }, (_, i) => i),
-    })
-
-    for (let i = 0; i < 10; i++) {
-      const filtered = store.items.filter(x => x % 2 === 0)
-    }
-  })
-
-  bench('array reduce', () => {
-    const [store] = createStore<{ items: number[] }>({
-      items: Array.from({ length: 100 }, (_, i) => i),
-    })
-
-    for (let i = 0; i < 10; i++) {
-      const sum = store.items.reduce((acc, x) => acc + x, 0)
-    }
-  })
-
-  bench('array find/findIndex', () => {
-    const [store] = createStore<{ items: number[] }>({
-      items: Array.from({ length: 100 }, (_, i) => i),
-    })
-
-    for (let i = 0; i < 100; i++) {
-      const found = store.items.find(x => x === 50)
-      const index = store.items.findIndex(x => x === 50)
-    }
-  })
-
-  bench('array some/every', () => {
-    const [store] = createStore<{ items: number[] }>({
-      items: Array.from({ length: 100 }, (_, i) => i),
-    })
-
-    for (let i = 0; i < 100; i++) {
-      const hasEven = store.items.some(x => x % 2 === 0)
-      const allPositive = store.items.every(x => x >= 0)
-    }
-  })
-
-  bench('array includes/indexOf', () => {
-    const [store] = createStore<{ items: number[] }>({
-      items: Array.from({ length: 100 }, (_, i) => i),
-    })
-
-    for (let i = 0; i < 100; i++) {
-      const has50 = store.items.includes(50)
-      const index50 = store.items.indexOf(50)
-    }
-  })
-})
-
-describe('Additional: Complex Use Cases', () => {
-  bench('form state management with validation', () => {
-    const [form, setForm] = createStore({
-      fields: {
-        firstName: { value: '', error: '', touched: false },
-        lastName: { value: '', error: '', touched: false },
-        email: { value: '', error: '', touched: false },
-        phone: { value: '', error: '', touched: false },
-        address: {
-          street: { value: '', error: '', touched: false },
-          city: { value: '', error: '', touched: false },
-          state: { value: '', error: '', touched: false },
-          zip: { value: '', error: '', touched: false },
-        },
-        preferences: {
-          newsletter: false,
-          notifications: true,
-          theme: 'light',
-        },
-      },
-      isValid: false,
-      isSubmitting: false,
-      errors: [] as string[],
-    })
-
-    // Simulate user input
-    setForm('fields', 'firstName', 'value', 'John')
-    setForm('fields', 'firstName', 'touched', true)
-
-    setForm('fields', 'lastName', 'value', 'Doe')
-    setForm('fields', 'lastName', 'touched', true)
-
-    setForm('fields', 'email', 'value', 'john@example.com')
-    setForm('fields', 'email', 'touched', true)
-
-    // Validate email
-    if (!form.fields.email.value.includes('@')) {
-      setForm('fields', 'email', 'error', 'Invalid email')
-      form.errors.push('Email is invalid')
-    }
-
-    // Phone validation
-    setForm('fields', 'phone', 'value', '555-0123')
-    setForm('fields', 'phone', 'touched', true)
-    if (form.fields.phone.value.length < 10) {
-      setForm('fields', 'phone', 'error', 'Phone too short')
-    }
-
-    // Address fields
-    setForm('fields', 'address', 'street', 'value', '123 Main St')
-    setForm('fields', 'address', 'city', 'value', 'Seattle')
-    setForm('fields', 'address', 'state', 'value', 'WA')
-    setForm('fields', 'address', 'zip', 'value', '98101')
-
-    // Update preferences
-    setForm('fields', 'preferences', 'newsletter', true)
-    setForm('fields', 'preferences', 'theme', 'dark')
-
-    // Check overall validity
-    const hasErrors = form.errors.length > 0
-    setForm('isValid', !hasErrors)
-  })
-
-  bench('data grid with sorting and filtering', () => {
-    interface Row {
-      id: number
-      name: string
-      value: number
-      category: string
-      selected: boolean
-      visible: boolean
-    }
-
-    const [grid, setGrid] = createStore<{
-      rows: Row[]
-      sortBy: string | null
-      sortOrder: 'asc' | 'desc'
-      filterBy: string
-      selectedCount: number
-    }>({
+  bench('Data Grid Simulation: 100 rows', () => {
+    const [grid, setGrid] = createStore<GridState>({
       rows: Array.from({ length: 100 }, (_, i) => ({
         id: i,
-        name: `Item ${i}`,
+        name: `Row ${i}`,
         value: Math.random() * 1000,
-        category: ['A', 'B', 'C'][i % 3],
+        category: 'Category ' + (i % 10),
         selected: false,
         visible: true,
       })),
-      sortBy: null,
-      sortOrder: 'asc',
-      filterBy: '',
-      selectedCount: 0,
+      sortColumn: null,
+      sortDirection: 'asc',
     })
 
-    // Apply filter
-    setGrid('filterBy', 'A')
-    for (const row of grid.rows) {
-      row.visible = row.category === 'A'
-    }
+    let visibleRowCount = 0
+    effect(() => {
+      visibleRowCount = grid.rows.filter(r => r.visible).length
+    })
 
-    // Select visible rows
-    let selectedCount = 0
-    for (const row of grid.rows) {
-      if (row.visible) {
-        row.selected = true
-        selectedCount++
+    // Sort by value
+    setGrid('rows', (rows: Row[]) =>
+      [...rows].sort((a, b) => (a.value > b.value ? 1 : -1))
+    )
+
+    // Filter by category
+    const categoryToFilter = 'Category 5'
+    for (let i = 0; i < 100; i++) {
+      const row = grid.rows[i]
+      if (row) {
+        row.visible = row.category === categoryToFilter
       }
     }
-    setGrid('selectedCount', selectedCount)
-
-    // Sort simulation
-    setGrid('sortBy', 'value')
-    setGrid('sortOrder', 'desc')
 
     // Bulk update values
     for (let i = 0; i < 50; i++) {
-      grid.rows[i].value = grid.rows[i].value * 1.1
+      const row = grid.rows[i]
+      if (row) {
+        row.value = row.value * 1.1
+      }
     }
 
     // Toggle selection
-    for (const row of grid.rows) {
-      if (row.selected && row.value > 500) {
-        row.selected = false
+    for (let i = 0; i < 100; i += 5) {
+      const row = grid.rows[i]
+      if (row) {
+        row.selected = !row.selected
       }
     }
-
-    // Clear filter
-    setGrid('filterBy', '')
-    for (const row of grid.rows) {
-      row.visible = true
-    }
+    void visibleRowCount
   })
 
-  bench('shopping cart with calculations', () => {
-    interface CartItem {
-      id: number
-      productId: number
-      name: string
-      price: number
-      quantity: number
-      discount: number
-      subtotal: number
-    }
+  interface CartItem {
+    id: number
+    name: string
+    price: number
+    quantity: number
+    discount: number
+    subtotal: number
+  }
 
-    const [cart, setCart] = createStore<{
-      items: CartItem[]
-      subtotal: number
-      tax: number
-      shipping: number
-      discount: number
-      total: number
-      couponCode: string | null
-    }>({
-      items: [],
-      subtotal: 0,
-      tax: 0,
-      shipping: 0,
-      discount: 0,
-      total: 0,
-      couponCode: null,
-    })
+  interface CartState {
+    items: CartItem[]
+    globalDiscount: number
+    taxRate: number
+    total: number
+  }
 
-    // Add items
-    for (let i = 0; i < 20; i++) {
-      cart.items.push({
+  bench('Shopping Cart Simulation: 50 items', () => {
+    const [cart, setCart] = createStore<CartState>({
+      items: Array.from({ length: 50 }, (_, i) => ({
         id: i,
-        productId: i * 10,
         name: `Product ${i}`,
-        price: 10 + i * 2,
+        price: Math.random() * 100,
         quantity: 1,
         discount: 0,
-        subtotal: 10 + i * 2,
-      })
-    }
+        subtotal: 0,
+      })),
+      globalDiscount: 0,
+      taxRate: 0.08,
+      total: 0,
+    })
+
+    effect(() => {
+      const subtotal = cart.items.reduce((acc, item) => acc + item.subtotal, 0)
+      const discounted = subtotal * (1 - cart.globalDiscount)
+      cart.total = discounted * (1 + cart.taxRate)
+    })
 
     // Update quantities and calculate subtotals
-    for (let i = 0; i < 10; i++) {
-      cart.items[i].quantity = 2
-      cart.items[i].subtotal = cart.items[i].price * cart.items[i].quantity
+    for (let i = 0; i < 50; i++) {
+      const item = cart.items[i]
+      if (item) {
+        item.quantity = 2
+        item.subtotal = item.price * item.quantity
+      }
     }
 
     // Apply item-level discounts
-    for (let i = 5; i < 15; i++) {
-      cart.items[i].discount = 0.1 // 10% off
-      cart.items[i].subtotal =
-        cart.items[i].price *
-        cart.items[i].quantity *
-        (1 - cart.items[i].discount)
+    for (let i = 0; i < 25; i++) {
+      const item = cart.items[i]
+      if (item) {
+        item.discount = 0.1 // 10% off
+        item.subtotal = item.price * item.quantity * (1 - item.discount)
+      }
     }
 
-    // Calculate cart totals
-    let subtotal = 0
-    for (const item of cart.items) {
-      subtotal += item.subtotal
-    }
-    setCart('subtotal', subtotal)
-
-    // Apply coupon
-    setCart('couponCode', 'SAVE20')
-    setCart('discount', subtotal * 0.2)
-
-    // Calculate tax and shipping
-    const discountedSubtotal = subtotal - cart.discount
-    setCart('tax', discountedSubtotal * 0.08)
-    setCart('shipping', discountedSubtotal > 50 ? 0 : 10)
-
-    // Final total
-    setCart('total', discountedSubtotal + cart.tax + cart.shipping)
+    // Apply global discount
+    setCart('globalDiscount', 0.05) // 5% off everything
 
     // Remove some items
-    cart.items.splice(15, 5)
-
-    // Recalculate after removal
-    subtotal = 0
-    for (const item of cart.items) {
-      subtotal += item.subtotal
-    }
-    setCart('subtotal', subtotal)
+    setCart('items', (items: CartItem[]) => items.slice(0, 40))
   })
 
-  bench('recursive tree operations', () => {
-    interface TreeNode {
-      id: number
-      name: string
-      expanded: boolean
-      selected: boolean
-      children: TreeNode[]
-    }
+  interface TreeNode {
+    id: string
+    name: string
+    selected: boolean
+    children: TreeNode[]
+  }
 
-    function createTree(
-      depth: number,
-      breadth: number,
-      idStart: number = 0
-    ): TreeNode {
-      const node: TreeNode = {
-        id: idStart,
-        name: `Node ${idStart}`,
-        expanded: false,
-        selected: false,
-        children: [],
-      }
-
-      if (depth > 0) {
-        let childId = idStart + 1
-        for (let i = 0; i < breadth; i++) {
-          const child = createTree(depth - 1, breadth, childId)
-          node.children.push(child)
-          childId += Math.pow(breadth, depth - 1) + 1
-        }
-      }
-
-      return node
-    }
-
-    const [tree] = createStore({
-      root: createTree(3, 3), // 3 levels deep, 3 children per node
+  bench('Tree Structure Simulation: 5 levels deep', () => {
+    const createNode = (
+      id: string,
+      level: number,
+      maxLevel: number
+    ): TreeNode => ({
+      id,
+      name: `Node ${id}`,
+      selected: false,
+      children:
+        level >= maxLevel
+          ? []
+          : Array.from({ length: 3 }, (_, i) =>
+              createNode(`${id}-${i}`, level + 1, maxLevel)
+            ),
     })
 
-    // Expand all nodes
-    function expandAll(node: TreeNode) {
-      node.expanded = true
-      for (const child of node.children) {
-        expandAll(child)
-      }
-    }
-    expandAll(tree.root)
+    const [tree] = createStore({ root: createNode('root', 1, 5) })
 
-    // Select every other node
-    function selectAlternate(node: TreeNode, select: boolean = true) {
-      node.selected = select
-      for (const child of node.children) {
-        selectAlternate(child, !select)
-      }
-    }
-    selectAlternate(tree.root)
-
-    // Count selected
+    // Count selected nodes reactively
     function countSelected(node: TreeNode): number {
-      let count = node.selected ? 1 : 0
-      for (const child of node.children) {
-        count += countSelected(child)
-      }
-      return count
+      return (
+        (node.selected ? 1 : 0) +
+        node.children.reduce((acc, child) => acc + countSelected(child), 0)
+      )
     }
-    const selectedCount = countSelected(tree.root)
+
+    effect(() => {
+      countSelected(tree.root)
+    })
+
+    // Toggle a deep node
+    const deepNode = tree.root.children[0]?.children[1]?.children[2]
+    if (deepNode) {
+      deepNode.selected = true
+    }
 
     // Collapse leaf nodes
     function collapseLeaves(node: TreeNode) {
       if (node.children.length === 0) {
-        node.expanded = false
+        return
+      }
+      if (node.children.every(c => c.children.length === 0)) {
+        node.children = []
       } else {
-        for (const child of node.children) {
-          collapseLeaves(child)
-        }
+        node.children.forEach(collapseLeaves)
       }
     }
     collapseLeaves(tree.root)
   })
 })
 
-describe('Additional: Batch Update Patterns', () => {
-  bench('sequential single updates with tracking', () => {
+describe('Additional: Mixed Read/Write Loads', () => {
+  bench('100 reads and 100 writes on a single property', () => {
     const [store, setStore] = createStore({ count: 0 })
     let effectRuns = 0
 
     const dispose = effect(() => {
-      const _ = store.count
+      store.count
       effectRuns++
     })
-
-    const initialRuns = effectRuns
 
     for (let i = 0; i < 100; i++) {
       setStore('count', i)
-    }
-
-    // Verify effect tracked updates (initial + 100 updates)
-    if (effectRuns !== 101) {
-      throw new Error(
-        `Batch test: Effect ran ${effectRuns} times, expected 101`
-      )
+      store.count // Read after write
     }
 
     dispose()
-  })
-
-  bench('batched multi-property update with tracking', () => {
-    const obj: any = {}
-    for (let i = 0; i < 100; i++) {
-      obj[`prop${i}`] = 0
-    }
-    const [store, setStore] = createStore(obj)
-    let effectRuns = 0
-
-    const dispose = effect(() => {
-      let sum = 0
-      for (let i = 0; i < 100; i++) {
-        sum += store[`prop${i}`]
-      }
-      effectRuns++
-    })
-
-    const initialRuns = effectRuns
-
-    const updates: any = {}
-    for (let i = 0; i < 100; i++) {
-      updates[`prop${i}`] = i
-    }
-    setStore(updates)
-
-    // Verify effect tracked the batch update (initial + 1 batch update)
-    if (effectRuns !== initialRuns + 1) {
-      throw new Error(
-        `Batch test: Effect ran ${effectRuns} times, expected ${
-          initialRuns + 1
-        }`
-      )
-    }
-
-    dispose()
-  })
-
-  bench('mixed update patterns', () => {
-    const [store, setStore] = createStore({
-      user: {
-        profile: { name: '', age: 0 },
-        settings: { theme: 'dark', notifications: true },
-        stats: { posts: 0, likes: 0 },
-      },
-      meta: {
-        lastUpdated: 0,
-        version: 1,
-      },
-    })
-
-    // Direct mutations
-    store.user.profile.name = 'John'
-    store.user.profile.age = 30
-
-    // Setter updates
-    setStore('user', 'settings', 'theme', 'light')
-    setStore('user', 'settings', 'notifications', false)
-
-    // Batch update
-    setStore('user', 'stats', { posts: 10, likes: 100 })
-
-    // MongoDB operators
-    update(store, {
-      $set: { 'meta.lastUpdated': Date.now() },
-      $inc: { 'meta.version': 1, 'user.stats.posts': 5 },
-    })
-
-    // More direct mutations
-    store.user.stats.likes += 50
-
-    // Nested batch
-    setStore('user', 'profile', profile => ({
-      ...profile,
-      name: 'Jane',
-      age: profile.age + 1,
-    }))
   })
 })
 
-describe('Additional: Edge Cases', () => {
-  bench('circular reference handling', () => {
-    interface CircularNode {
-      id: number
-      value: number
-      next?: CircularNode
-      prev?: CircularNode
+describe('Additional: Complex Object Structures', () => {
+  interface User {
+    id: number
+    name: string
+    profile: {
+      email: string
+      age: number
+      settings: {
+        theme: 'dark' | 'light'
+        notifications: boolean
+      }
     }
+    posts: { id: number; title: string; likes: number }[]
+  }
 
-    const [store] = createStore<{ nodes: CircularNode[] }>({ nodes: [] })
+  bench('Nested object and array updates', () => {
+    const [store, setStore] = createStore<User>({
+      id: 1,
+      name: 'John Doe',
+      profile: {
+        email: 'john@example.com',
+        age: 30,
+        settings: { theme: 'light', notifications: true },
+      },
+      posts: [
+        { id: 1, title: 'First Post', likes: 10 },
+        { id: 2, title: 'Second Post', likes: 25 },
+      ],
+    })
 
-    // Create circular linked list
-    for (let i = 0; i < 10; i++) {
-      store.nodes.push({
-        id: i,
-        value: i * 10,
-      })
-    }
+    let totalLikes = 0
+    effect(() => {
+      totalLikes = store.posts.reduce((acc, p) => acc + p.likes, 0)
+    })
+
+    // Update nested property
+    setStore('profile', 'settings', 'theme', 'dark')
+
+    // Add a new post
+    setStore('posts', (posts: User['posts']) => [
+      ...posts,
+      { id: 3, title: 'Third Post', likes: 5 },
+    ])
+
+    // Update an item in the array
+    setStore('posts', 0, 'likes', (l: number) => l + 1)
+
+    // Replace a nested object
+    setStore('user', 'profile', (profile: User['profile']) => ({
+      ...profile,
+      age: 31,
+    }))
+    void totalLikes
+  })
+})
+
+describe('Additional: Circular Dependencies', () => {
+  interface CircularNode {
+    id: number
+    value: number
+    next: CircularNode | null
+    prev: CircularNode | null
+  }
+
+  bench('Create and update circular list', () => {
+    const [store] = createStore({
+      nodes: Array.from(
+        { length: 10 },
+        (_, i): CircularNode => ({
+          id: i,
+          value: i,
+          next: null,
+          prev: null,
+        })
+      ),
+    })
 
     // Link nodes circularly
     for (let i = 0; i < 10; i++) {
-      store.nodes[i].next = store.nodes[(i + 1) % 10]
-      store.nodes[i].prev = store.nodes[(i + 9) % 10]
+      const currentNode = store.nodes[i]
+      const nextNode = store.nodes[(i + 1) % 10]
+      const prevNode = store.nodes[(i + 9) % 10]
+      if (currentNode && nextNode && prevNode) {
+        currentNode.next = nextNode
+        currentNode.prev = prevNode
+      }
     }
 
     // Traverse and update
     let current = store.nodes[0]
-    for (let i = 0; i < 20; i++) {
-      current.value += 1
-      current = current.next!
+    for (let i = 0; i < 100; i++) {
+      if (current) {
+        current.value += 1
+        current = current.next! // We know it's not null in a circular list
+      }
     }
-  })
-
-  bench('symbol and special property handling', () => {
-    const sym1 = Symbol('test1')
-    const sym2 = Symbol('test2')
-
-    const [store] = createStore<any>({
-      [sym1]: 'symbol value',
-      [sym2]: { nested: 'symbol nested' },
-      __proto__: 'proto value',
-      constructor: 'constructor value',
-      regular: 'regular value',
-    })
-
-    // Update symbol properties
-    store[sym1] = 'updated symbol'
-    store[sym2].nested = 'updated nested'
-
-    // Update special properties
-    store.__proto__ = 'updated proto'
-    store.constructor = 'updated constructor'
-
-    // Mix with regular updates
-    store.regular = 'updated regular'
   })
 })

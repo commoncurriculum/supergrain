@@ -20,7 +20,7 @@ function verifyReactiveContext(storeName: string) {
 
   const dispose = effect(() => {
     // Accessing the value should be tracked by the effect
-    const _ = testStore.value
+    testStore.value
     tracked = true
   })
 
@@ -104,7 +104,8 @@ describe('Core: Property Access: Reactive', () => {
     })
     if (effectRuns !== 1) throw new Error('Effect should run once initially.')
     setStore('value', 1)
-    if (effectRuns !== 2) throw new Error('Effect should re-run on update.')
+    if ((effectRuns as number) !== 2)
+      throw new Error('Effect should re-run on update.')
     dispose()
   })
 
@@ -120,7 +121,8 @@ describe('Core: Property Access: Reactive', () => {
       })
       if (effectRuns !== 1) throw new Error('Effect should run once initially.')
       setStore('value', 1)
-      if (effectRuns !== 2) throw new Error('Effect should re-run on update.')
+      if ((effectRuns as number) !== 2)
+        throw new Error('Effect should re-run on update.')
       dispose()
     })
   })
@@ -168,6 +170,7 @@ describe('Core: Batch Updates', () => {
     let effectRuns = 0
     const dispose = effect(() => {
       effectRuns++
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       store.a, store.b, store.c
     })
     setStore({ a: 1, b: 2, c: 3 })
@@ -183,6 +186,7 @@ describe('Core: Batch Updates', () => {
       let effectRuns = 0
       createComputed(() => {
         effectRuns++
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         store.a, store.b, store.c
       })
       setStore({ a: 1, b: 2, c: 3 })
@@ -294,7 +298,10 @@ describe('Core: Real-World Todo App Simulation', () => {
     const initialRuns = effectRuns
     // Toggle all items
     for (let i = 0; i < 50; i++) {
-      store.todos[i].completed = !store.todos[i].completed
+      const todo = store.todos[i]
+      if (todo) {
+        todo.completed = !todo.completed
+      }
     }
     // Remove first 10
     store.todos.splice(0, 10)
@@ -341,6 +348,7 @@ describe('Core: MongoDB Operators vs Direct Mutation', () => {
     let effectRuns = 0
     const dispose = effect(() => {
       effectRuns++
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       state.title, state.viewCount, state.tags.length, state.metadata.updated
     })
     state.title = 'Updated'
@@ -358,10 +366,11 @@ describe('Core: MongoDB Operators vs Direct Mutation', () => {
     let effectRuns = 0
     const dispose = effect(() => {
       effectRuns++
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       state.title, state.viewCount, state.tags.length, state.metadata.updated
     })
     update(state, {
-      $set: { title: 'Updated', 'metadata.updated': true },
+      $set: { title: 'Updated', 'metadata.updated': true } as any,
       $inc: { viewCount: 1 },
       $push: { tags: 'modified' },
     })
@@ -377,6 +386,7 @@ describe('Core: MongoDB Operators vs Direct Mutation', () => {
       let effectRuns = 0
       createComputed(() => {
         effectRuns++
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         state.title, state.viewCount, state.tags.length, state.metadata.updated
       })
       // Solid's setState is batched automatically in effects, but not here
