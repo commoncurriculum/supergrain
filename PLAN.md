@@ -1,4 +1,4 @@
-# Storable Implementation Plan
+#t' Storable Implementation Plan
 
 > **Note for AI Assistants:** Before committing any changes, please update this `PLAN.md` file by checking off the completed tasks (`- [x]`).
 >
@@ -65,46 +65,62 @@ This document outlines the phased implementation plan for the Storable library -
 - [x] Track array method calls
 - [x] Optimize signal creation/cleanup
 
-## Phase 3: React Adapter
+## Phase 3: Benchmarking
 
-### 3.1 Core React Hook
+### 3.1 Speed Benchmarks
+
+- [ ] Implement benchmark for `set()` method
+- [ ] Implement benchmark for `find()` method
+- [ ] Implement benchmark for property access
+- [ ] Implement benchmark for property mutation
+- [ ] Implement benchmark for array mutations
+
+### 3.2 Memory Benchmarks
+
+- [ ] Implement memory benchmark for store creation
+- [ ] Implement memory benchmark for entity creation
+- [ ] Implement memory benchmark for subscriptions
+
+## Phase 4: React Adapter
+
+### 4.1 Core React Hook
 
 - [ ] Implement `useFind(store, type, id)` hook
 - [ ] Add automatic effect cleanup
 - [ ] Implement dependency tracking per component
 - [ ] Handle component unmounting
 
-### 3.2 Additional React Utilities
+### 4.2 Additional React Utilities
 
 - [ ] Implement `useStore()` for multiple entities
 - [ ] Add `useFindWhere()` for queries
 - [ ] Add `useFindAll()` for collections
 - [ ] Implement `batch()` for grouped updates
 
-### 3.3 React Performance Optimizations
+### 4.3 React Performance Optimizations
 
 - [ ] Add React.memo integration
 - [ ] Implement subscription deduplication
 - [ ] Add development mode warnings
 - [ ] Create React DevTools integration
 
-## Phase 4: Vue Adapter
+## Phase 5: Vue Adapter
 
-### 4.1 Core Vue Composable
+### 5.1 Core Vue Composable
 
 - [ ] Implement `useFind()` composable
 - [ ] Bridge alien-signals with Vue reactivity
 - [ ] Handle Vue lifecycle integration
 - [ ] Add TypeScript support
 
-### 4.2 Vue-Specific Features
+### 5.2 Vue-Specific Features
 
 - [ ] Add template ref support
 - [ ] Implement computed property integration
 - [ ] Add watch/watchEffect compatibility
 - [ ] Handle Vue 3 suspense
 
-### 4.3 Vue Performance
+### 5.3 Vue Performance
 
 - [ ] Optimize reactive conversions
 - [ ] Add shallowRef optimizations

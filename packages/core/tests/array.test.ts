@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ReactiveStore } from '../src/store'
-import { effect } from '@preact/signals-core'
+import { effect } from 'alien-signals'
 
 describe('Array Support', () => {
   let store: ReactiveStore
@@ -15,7 +15,7 @@ describe('Array Support', () => {
   })
 
   it('should track access to array elements by index', () => {
-    const postsProxy = store.find('posts', 'all')!.value
+    const postsProxy = store.find('posts', 'all')!()
     let postTitle = ''
     const titleEffect = vi.fn(() => {
       postTitle = postsProxy.items[0].title
@@ -33,7 +33,7 @@ describe('Array Support', () => {
   })
 
   it('should be reactive when using push', () => {
-    const postsProxy = store.find('posts', 'all')!.value
+    const postsProxy = store.find('posts', 'all')!()
     let postsLength = 0
     const lengthEffect = vi.fn(() => {
       postsLength = postsProxy.items.length
@@ -51,7 +51,7 @@ describe('Array Support', () => {
   })
 
   it('should be reactive when using splice', () => {
-    const postsProxy = store.find('posts', 'all')!.value
+    const postsProxy = store.find('posts', 'all')!()
     let postsLength = 0
     const lengthEffect = vi.fn(() => {
       postsLength = postsProxy.items.length
@@ -75,7 +75,7 @@ describe('Array Support', () => {
         { id: 1, title: 'A' },
       ],
     })
-    const postsProxy = store.find('posts', 'all')!.value
+    const postsProxy = store.find('posts', 'all')!()
     let firstItemTitle = ''
     const effectFn = vi.fn(() => {
       firstItemTitle = postsProxy.items[0].title
@@ -93,7 +93,7 @@ describe('Array Support', () => {
   })
 
   it('should be reactive when using reverse', () => {
-    const postsProxy = store.find('posts', 'all')!.value
+    const postsProxy = store.find('posts', 'all')!()
     let firstItemTitle = ''
     const effectFn = vi.fn(() => {
       firstItemTitle = postsProxy.items[0].title
@@ -111,7 +111,7 @@ describe('Array Support', () => {
   })
 
   it('should track dependencies inside forEach', () => {
-    const postsProxy = store.find('posts', 'all')!.value
+    const postsProxy = store.find('posts', 'all')!()
     let titleLengthSum = 0
     const effectFn = vi.fn(() => {
       titleLengthSum = 0
@@ -132,7 +132,7 @@ describe('Array Support', () => {
   })
 
   it('should track dependencies inside filter', () => {
-    const postsProxy = store.find('posts', 'all')!.value
+    const postsProxy = store.find('posts', 'all')!()
     let filtered: any[] = []
     const effectFn = vi.fn(() => {
       filtered = postsProxy.items.filter(post => post.title.includes('1'))
@@ -155,7 +155,7 @@ describe('Array Support', () => {
   })
 
   it('should track dependencies inside map', () => {
-    const postsProxy = store.find('posts', 'all')!.value
+    const postsProxy = store.find('posts', 'all')!()
     let titles: string[] = []
     const effectFn = vi.fn(() => {
       titles = postsProxy.items.map(post => post.title)
@@ -172,7 +172,7 @@ describe('Array Support', () => {
   })
 
   it('should not trigger value effects when length changes', () => {
-    const postsProxy = store.find('posts', 'all')!.value
+    const postsProxy = store.find('posts', 'all')!()
     let postTitle = ''
     const titleEffect = vi.fn(() => {
       postTitle = postsProxy.items[0].title

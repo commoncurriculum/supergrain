@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "vitest"
+    "test": "vitest",
+    "bench:core": "vitest bench --root packages/core"
   },
   "keywords": [],
   "author": "",
@@ -13,9 +14,10 @@
   "devDependencies": {
     "oxlint": "^1.14.0",
     "vite": "^7.1.4",
+    "vite-plugin-dts": "^3.7.2",
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@preact/signals-core": "^1.12.1"
+    "alien-signals": "^2.0.7"
   }
 }

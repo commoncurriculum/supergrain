@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ReactiveStore } from '../src/store'
-import { Signal, effect } from '@preact/signals-core'
+import { ReactiveStore, Signal } from '../src/store'
+import { effect } from 'alien-signals'
 
 describe('ReactiveStore', () => {
   let store: ReactiveStore
@@ -27,8 +27,8 @@ describe('ReactiveStore', () => {
 
     const userSignal = store.find('users', '1')
     expect(userSignal).toBeDefined()
-    expect(userSignal).toBeInstanceOf(Signal)
-    expect(userSignal!.value).toEqual(userData)
+    expect(userSignal).toBeInstanceOf(Function)
+    expect(userSignal!()).toEqual(userData)
   })
 
   it('should update an existing entity', () => {
@@ -40,8 +40,8 @@ describe('ReactiveStore', () => {
 
     const userSignal = store.find('users', '1')
     expect(userSignal).toBeDefined()
-    expect(userSignal!.value).toEqual(updatedUserData)
-    expect(userSignal!.value).not.toEqual(initialUserData)
+    expect(userSignal!()).toEqual(updatedUserData)
+    expect(userSignal!()).not.toEqual(initialUserData)
   })
 
   it('should return undefined when finding a non-existent entity', () => {
@@ -66,9 +66,9 @@ describe('ReactiveStore', () => {
     const item2Signal = store.find('items', 123)
 
     expect(item1Signal).toBeDefined()
-    expect(item1Signal!.value).toEqual(userData1)
+    expect(item1Signal!()).toEqual(userData1)
     expect(item2Signal).toBeDefined()
-    expect(item2Signal!.value).toEqual(userData2)
+    expect(item2Signal!()).toEqual(userData2)
   })
 
   it('should keep collections separate', () => {
@@ -83,8 +83,8 @@ describe('ReactiveStore', () => {
     const missingPostSignal = store.find('users', '2')
     const missingUserSignal = store.find('posts', '2')
 
-    expect(userSignal!.value).toEqual(userData)
-    expect(postSignal!.value).toEqual(postData)
+    expect(userSignal!()).toEqual(userData)
+    expect(postSignal!()).toEqual(postData)
     expect(missingPostSignal).toBeUndefined()
     expect(missingUserSignal).toBeUndefined()
   })
@@ -103,14 +103,14 @@ describe('Proxy System', () => {
     const originalUserData = { name: 'John Doe' }
     store.set('users', '2', originalUserData)
 
-    const userProxy = store.find('users', '2')!.value
+    const userProxy = store.find('users', '2')!()
     userProxy.name = 'Jane Doe'
 
     expect(originalUserData.name).toBe('John Doe')
   })
 
   it('should return a proxy that tracks property access for reactivity', () => {
-    const user = store.find('users', '1')!.value
+    const user = store.find('users', '1')!()
 
     let dummyName
     const nameEffect = vi.fn(() => {
@@ -128,7 +128,7 @@ describe('Proxy System', () => {
   })
 
   it('should only trigger effects for accessed properties', () => {
-    const user = store.find('users', '1')!.value
+    const user = store.find('users', '1')!()
 
     let dummyName
     const nameEffect = vi.fn(() => {
@@ -144,7 +144,7 @@ describe('Proxy System', () => {
   })
 
   it('should handle nested objects with proxies for reactivity', () => {
-    const user = store.find('users', '1')!.value
+    const user = store.find('users', '1')!()
 
     let dummyAge
     const ageEffect = vi.fn(() => {
@@ -177,7 +177,7 @@ describe('Object Handling', () => {
   it('should track property addition', () => {
     const user = { name: 'John' }
     store.set('users', '1', user)
-    const userProxy = store.find('users', '1')!.value
+    const userProxy = store.find('users', '1')!()
 
     let keys: string[] = []
     const effectFn = vi.fn(() => {
@@ -197,7 +197,7 @@ describe('Object Handling', () => {
   it('should track property deletion', () => {
     const user = { name: 'John', age: 30 }
     store.set('users', '1', user)
-    const userProxy = store.find('users', '1')!.value
+    const userProxy = store.find('users', '1')!()
 
     let keys: string[] = []
     const effectFn = vi.fn(() => {
@@ -217,7 +217,7 @@ describe('Object Handling', () => {
   it('should make Object.keys reactive', () => {
     const userData = { a: 1, b: 2 }
     store.set('data', '1', userData)
-    const dataProxy = store.find('data', '1')!.value
+    const dataProxy = store.find('data', '1')!()
 
     let keys: string[] = []
     const keysEffect = vi.fn(() => {
@@ -247,7 +247,7 @@ describe('Object Handling', () => {
   it('should track for...in loops', () => {
     const user = { name: 'John' }
     store.set('users', '1', user)
-    const userProxy = store.find('users', '1')!.value
+    const userProxy = store.find('users', '1')!()
 
     let keys: string[] = []
     const effectFn = vi.fn(() => {
@@ -270,5 +270,20 @@ describe('Object Handling', () => {
     delete userProxy.age
     expect(keys).toEqual(['name'])
     expect(effectFn).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('Benchmark Scenarios', () => {
+  it('should handle nested arrays in proxy objects correctly', () => {
+    const store = new ReactiveStore()
+    store.set('numbers', 'all', {
+      items: Array.from({ length: 1000 }, (_, i) => i),
+    })
+    const proxySignal = store.find('numbers', 'all')
+    expect(proxySignal).toBeDefined()
+    expect(proxySignal!()).toBeDefined()
+    const proxyArray = proxySignal!().items
+    expect(proxyArray).toBeInstanceOf(Array)
+    expect(proxyArray.length).toBe(1000)
   })
 })

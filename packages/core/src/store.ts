@@ -1,4 +1,9 @@
-import { signal, Signal } from '@preact/signals-core'
+import { signal } from 'alien-signals'
+
+export type Signal<T> = {
+  (): T
+  (value: T): void
+}
 
 type EntityId = string | number
 type Entity = Record<string, any>
@@ -11,6 +16,8 @@ function createReactiveProxy<T extends object>(target: T): T {
     return proxyCache.get(target) as T
   }
 
+  const copy = (Array.isArray(target) ? [...target] : { ...target }) as T
+
   // Store signals for each property of the object.
   const signals = new Map<PropertyKey, Signal<any>>()
   // Signal for tracking object shape changes (add/delete properties).
@@ -18,15 +25,15 @@ function createReactiveProxy<T extends object>(target: T): T {
 
   const getSignal = (key: PropertyKey) => {
     if (!signals.has(key)) {
-      signals.set(key, signal(Reflect.get(target, key)))
+      signals.set(key, signal(Reflect.get(copy, key)))
     }
     return signals.get(key)!
   }
 
   const handler: ProxyHandler<T> = {
-    get(target, key, receiver) {
+    get(_target, key, _receiver) {
       // Accessing a property subscribes to its signal.
-      const value = getSignal(key).value
+      const value = getSignal(key)()
 
       // If the property is an object, wrap it in a proxy as well.
       if (value !== null && typeof value === 'object') {
@@ -40,10 +47,10 @@ function createReactiveProxy<T extends object>(target: T): T {
       const result = Reflect.set(target, key, newValue, receiver)
       if (result) {
         // Update the signal, creating it if it doesn't exist.
-        getSignal(key).value = newValue
+        getSignal(key)(newValue)
         // If a new property was added, trigger shape signal.
         if (!hadKey) {
-          shapeSignal.value++
+          shapeSignal(shapeSignal() + 1)
         }
       }
       return result
@@ -55,18 +62,18 @@ function createReactiveProxy<T extends object>(target: T): T {
         if (signals.has(key)) {
           signals.delete(key)
         }
-        shapeSignal.value++
+        shapeSignal(shapeSignal() + 1)
       }
       return result
     },
     ownKeys(target) {
       // Depend on shape changes for methods like Object.keys().
-      shapeSignal.value
+      shapeSignal()
       return Reflect.ownKeys(target)
     },
   }
 
-  const proxy = new Proxy(target, handler)
+  const proxy = new Proxy(copy, handler)
   proxyCache.set(target, proxy)
   return proxy
 }
@@ -101,12 +108,10 @@ export class ReactiveStore {
   set(type: string, id: EntityId, data: Entity): void {
     const collection = this.collection(type)
     const existingSignal = collection.get(id)
-    // Use structuredClone for a deep copy to prevent mutating the original object.
-    const clonedData = structuredClone(data)
-    const reactiveData = createReactiveProxy(clonedData)
+    const reactiveData = createReactiveProxy(data)
 
     if (existingSignal) {
-      existingSignal.value = reactiveData
+      existingSignal(reactiveData)
     } else {
       collection.set(id, signal(reactiveData))
     }
