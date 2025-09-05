@@ -138,9 +138,11 @@ describe('Additional: Memory Patterns', () => {
       )
     }
 
-    // Verify effects actually ran
-    if (totalTracked === 0) {
-      throw new Error('Memory test: Effects did not track values')
+    // Verify effects actually ran (one per entity)
+    if (totalTracked !== 5000) {
+      throw new Error(
+        `Memory test: Effects ran ${totalTracked} times, expected 5000`
+      )
     }
 
     // Clean up
@@ -159,9 +161,11 @@ describe('Additional: Memory Patterns', () => {
       dispose()
     }
 
-    // Verify effects actually ran
-    if (totalTracked === 0) {
-      throw new Error('Memory test: Effects did not run')
+    // Verify effects actually ran (one per iteration)
+    if (totalTracked !== 10000) {
+      throw new Error(
+        `Memory test: Effects ran ${totalTracked} times, expected 10000`
+      )
     }
   })
 })
@@ -932,9 +936,11 @@ describe('Additional: Batch Update Patterns', () => {
       setStore('count', i)
     }
 
-    // Verify effect tracked updates
-    if (effectRuns === initialRuns) {
-      throw new Error('Batch test: Effect did not track sequential updates')
+    // Verify effect tracked updates (initial + 100 updates)
+    if (effectRuns !== 101) {
+      throw new Error(
+        `Batch test: Effect ran ${effectRuns} times, expected 101`
+      )
     }
 
     dispose()
@@ -964,9 +970,13 @@ describe('Additional: Batch Update Patterns', () => {
     }
     setStore(updates)
 
-    // Verify effect tracked the batch update
-    if (effectRuns === initialRuns) {
-      throw new Error('Batch test: Effect did not track batched update')
+    // Verify effect tracked the batch update (initial + 1 batch update)
+    if (effectRuns !== initialRuns + 1) {
+      throw new Error(
+        `Batch test: Effect ran ${effectRuns} times, expected ${
+          initialRuns + 1
+        }`
+      )
     }
 
     dispose()

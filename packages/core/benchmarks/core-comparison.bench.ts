@@ -87,7 +87,7 @@ describe('Core: Property Access', () => {
   })
 
   bench('@storable/core: 10k reactive reads in effect', () => {
-    const [store] = createStore({ value: 42 })
+    const [store, setStore] = createStore({ value: 42 })
     let total = 0
     let effectRuns = 0
 
@@ -98,10 +98,20 @@ describe('Core: Property Access', () => {
       }
     })
 
-    // Verify the effect actually ran
-    if (effectRuns === 0) {
+    // Verify the effect actually ran initially
+    if (effectRuns !== 1) {
       throw new Error(
-        '@storable/core: Effect did not run during reactive reads benchmark'
+        '@storable/core: Effect did not run exactly once initially'
+      )
+    }
+
+    // Change the value to verify reactivity
+    setStore('value', 43)
+
+    // Verify the effect re-ran due to the change
+    if (effectRuns !== 2) {
+      throw new Error(
+        '@storable/core: Effect did not re-run when value changed'
       )
     }
 
@@ -110,7 +120,7 @@ describe('Core: Property Access', () => {
 
   bench('solid-js/store: 10k reactive reads in effect', () => {
     createRoot(dispose => {
-      const [store] = createSolidStore({ value: 42 })
+      const [store, setStore] = createSolidStore({ value: 42 })
       let total = 0
       let effectRuns = 0
 
@@ -121,10 +131,20 @@ describe('Core: Property Access', () => {
         }
       })
 
-      // Verify the effect actually ran
-      if (effectRuns === 0) {
+      // Verify the effect actually ran initially
+      if (effectRuns !== 1) {
         throw new Error(
-          'solid-js/store: Effect did not run during reactive reads benchmark'
+          'solid-js/store: Effect did not run exactly once initially'
+        )
+      }
+
+      // Change the value to verify reactivity
+      setStore('value', 43)
+
+      // Verify the effect re-ran due to the change
+      if (effectRuns !== 2) {
+        throw new Error(
+          'solid-js/store: Effect did not re-run when value changed'
         )
       }
 
@@ -147,9 +167,12 @@ describe('Core: Property Updates', () => {
       setStore('count', i)
     }
 
-    // Verify the effect actually tracked and ran
-    if (effectRuns === 0) {
-      throw new Error('@storable/core: Effect did not track updates')
+    // Verify the effect actually tracked and ran for each update
+    // Should be initial run + 1000 updates = 1001 total runs
+    if (effectRuns !== 1001) {
+      throw new Error(
+        `@storable/core: Effect ran ${effectRuns} times, expected 1001 (initial + 1000 updates)`
+      )
     }
 
     dispose()
@@ -169,9 +192,12 @@ describe('Core: Property Updates', () => {
         setStore('count', i)
       }
 
-      // Verify the effect actually tracked and ran
-      if (effectRuns === 0) {
-        throw new Error('solid-js/store: Effect did not track updates')
+      // Verify the effect actually tracked and ran for each update
+      // Should be initial run + 1000 updates = 1001 total runs
+      if (effectRuns !== 1001) {
+        throw new Error(
+          `solid-js/store: Effect ran ${effectRuns} times, expected 1001 (initial + 1000 updates)`
+        )
       }
 
       dispose()
@@ -306,9 +332,9 @@ describe('Core: Array Operations', () => {
     })
 
     // Verify initial effect run
-    if (effectRuns === 0) {
+    if (effectRuns !== 1) {
       throw new Error(
-        '@storable/core: Array length effect did not run initially'
+        `@storable/core: Array length effect ran ${effectRuns} times initially, expected 1`
       )
     }
 
@@ -316,10 +342,10 @@ describe('Core: Array Operations', () => {
       store.items.push(i)
     }
 
-    // Verify effect tracked array mutations
-    if (effectRuns === 1) {
+    // Verify effect tracked array mutations (should run once per push + initial)
+    if (effectRuns !== 101) {
       throw new Error(
-        '@storable/core: Array mutations were not tracked by effect'
+        `@storable/core: Effect ran ${effectRuns} times, expected 101 (initial + 100 pushes)`
       )
     }
 
@@ -340,9 +366,9 @@ describe('Core: Array Operations', () => {
       })
 
       // Verify initial effect run
-      if (effectRuns === 0) {
+      if (effectRuns !== 1) {
         throw new Error(
-          'solid-js/store: Array length effect did not run initially'
+          `solid-js/store: Array length effect ran ${effectRuns} times initially, expected 1`
         )
       }
 
@@ -350,10 +376,10 @@ describe('Core: Array Operations', () => {
         setStore('items', items => [...items, i])
       }
 
-      // Verify effect tracked array mutations
-      if (effectRuns === 1) {
+      // Verify effect tracked array mutations (should run once per update + initial)
+      if (effectRuns !== 101) {
         throw new Error(
-          'solid-js/store: Array mutations were not tracked by effect'
+          `solid-js/store: Effect ran ${effectRuns} times, expected 101 (initial + 100 updates)`
         )
       }
 
@@ -377,8 +403,10 @@ describe('Core: Deep Nesting', () => {
       }
     })
 
-    if (effectRuns === 0) {
-      throw new Error('@storable/core: Deep nested effect did not run')
+    if (effectRuns !== 1) {
+      throw new Error(
+        `@storable/core: Deep nested effect ran ${effectRuns} times, expected 1`
+      )
     }
 
     dispose()
@@ -399,8 +427,10 @@ describe('Core: Deep Nesting', () => {
         }
       })
 
-      if (effectRuns === 0) {
-        throw new Error('solid-js/store: Deep nested effect did not run')
+      if (effectRuns !== 1) {
+        throw new Error(
+          `solid-js/store: Deep nested effect ran ${effectRuns} times, expected 1`
+        )
       }
 
       dispose()
@@ -655,10 +685,10 @@ describe('Core: Effect Management', () => {
     setStore('b', 20)
     setStore('c', 30)
 
-    // Verify effect ran for each update
-    if (effectRuns === initialRuns) {
+    // Verify effect ran for each update (initial + 3 updates = 4 total)
+    if (effectRuns !== 4) {
       throw new Error(
-        '@storable/core: Effect did not track multiple dependencies'
+        `@storable/core: Effect ran ${effectRuns} times, expected 4 (initial + 3 updates)`
       )
     }
 
@@ -682,10 +712,10 @@ describe('Core: Effect Management', () => {
       setStore('b', 20)
       setStore('c', 30)
 
-      // Verify effect ran for each update
-      if (effectRuns === initialRuns) {
+      // Verify effect ran for each update (initial + 3 updates = 4 total)
+      if (effectRuns !== 4) {
         throw new Error(
-          'solid-js/store: Effect did not track multiple dependencies'
+          `solid-js/store: Effect ran ${effectRuns} times, expected 4 (initial + 3 updates)`
         )
       }
 
