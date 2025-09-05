@@ -54,7 +54,7 @@ This document outlines the phased implementation plan for the Storable library -
 
 - [x] Override `push`, `pop`, `shift`, `unshift`
 - [x] Override `splice` with signal remapping
-- [ ] Override `sort` and `reverse`
+- [x] Override `sort` and `reverse`
 - [ ] Implement iteration tracking for `map`, `filter`, `forEach`
 - [ ] Add fine-grained array change notifications
 
