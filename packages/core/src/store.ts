@@ -130,7 +130,7 @@ function createReactiveProxy<T extends object>(target: T): T {
 
   const copy = (Array.isArray(target) ? [...target] : { ...target }) as T
 
-  const proxy = new Proxy(copy, handler)
+  const proxy = new Proxy(copy, handler) as T
   proxyCache.set(target, proxy)
   return proxy
 }
