@@ -231,7 +231,7 @@ export type ArrayModifiers<T> = {
   $each: T[]
 }
 
-export type UpdateOperations<T> = Partial<{
+export type UpdateOperations = Partial<{
   $set: Record<string, any>
   $unset: Record<string, true | 1>
   $inc: Record<string, number>
@@ -245,7 +245,7 @@ export type UpdateOperations<T> = Partial<{
 
 export function update<T extends object>(
   target: T,
-  operations: UpdateOperations<T>
+  operations: UpdateOperations
 ): void {
   for (const op of operatorList) {
     if (op in operations) {
