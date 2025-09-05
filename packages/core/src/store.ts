@@ -1,41 +1,38 @@
-import {
-  signal,
-  getCurrentSub,
-  startBatch,
-  endBatch,
-  effect,
-} from 'alien-signals'
+import { signal, getCurrentSub, startBatch, endBatch } from 'alien-signals'
 
+// A reactive signal type, compatible with alien-signals but with an
+// optional writer property for SolidJS compatibility.
 export type Signal<T> = {
   (): T
   (value: T): void
+  $?: (value: T) => void // Writer for SolidJS compatibility
 }
 
-// Symbols for internal property storage
-const $NODE = Symbol('store-node')
-const $PROXY = Symbol('store-proxy')
-const $TRACK = Symbol('store-track')
+// Internal symbols to store metadata on reactive objects without polluting them.
+const $NODE = Symbol('store-node') // Holds the signals for each property.
+const $PROXY = Symbol('store-proxy') // Points from the original object to its proxy.
+const $TRACK = Symbol('store-track') // A symbol to trigger tracking of the whole object.
 
-// WeakMap for external references (fallback when object is frozen)
-const proxyCache = new WeakMap<object, object>()
-
-// Descriptor cache for property descriptors
+// Caches for performance optimization.
+const proxyCache = new WeakMap<object, object>() // Caches proxies for given objects.
 const descriptorCache = new WeakMap<
   object,
   Map<PropertyKey, PropertyDescriptor | null>
->()
+>() // Caches property descriptors.
 
-// Helper to check if a value is a plain object or array that can be proxied
-const isWrappable = (value: any): value is object =>
+/**
+ * Checks if a value is a plain object or array that can be wrapped in a proxy.
+ */
+const isWrappable = (value: unknown): value is object =>
   value !== null &&
   typeof value === 'object' &&
   (value.constructor === Object || value.constructor === Array)
 
-// Data nodes storage type
+// Type for the internal signal storage object.
 type DataNodes = Record<PropertyKey, Signal<any>>
 
 /**
- * Gets cached property descriptor for optimal property access
+ * Retrieves a cached property descriptor to avoid repeated lookups.
  */
 function getCachedDescriptor(
   target: object,
@@ -57,105 +54,96 @@ function getCachedDescriptor(
 }
 
 /**
- * Gets or creates the nodes object for storing signals on a target
- * Optimized for minimal overhead
+ * Gets or creates the storage object for signals on a target object.
  */
 function getNodes(target: object): DataNodes {
   let nodes = (target as any)[$NODE]
   if (!nodes) {
     nodes = Object.create(null)
     try {
-      Object.defineProperty(target, $NODE, {
-        value: nodes,
-        configurable: true,
-        writable: false,
-        enumerable: false,
-      })
+      Object.defineProperty(target, $NODE, { value: nodes, enumerable: false })
     } catch {
-      // Object might be frozen or sealed, store in WeakMap instead
-      // For frozen objects, we can't store signals directly on them
-      return nodes
+      // Object might be frozen. The WeakMap cache will still work.
     }
   }
   return nodes
 }
 
 /**
- * Gets or creates a signal for a property with no equality checking
- * for maximum performance
+ * Gets or creates a signal for a specific property on a nodes object.
  */
 function getNode(
   nodes: DataNodes,
   property: PropertyKey,
   value?: any
 ): Signal<any> {
-  const existing = nodes[property]
-  if (existing) return existing
+  if (nodes[property]) {
+    return nodes[property]
+  }
 
-  const sig = signal(value)
-
-  nodes[property] = sig
-  return sig
+  const newSignal = signal(value) as Signal<any>
+  // SolidJS compatibility: store writer on the reader signal.
+  newSignal.$ = (v: any) => newSignal(v)
+  nodes[property] = newSignal
+  return newSignal
 }
 
 /**
- * Wraps a value in a reactive proxy if needed
+ * Wraps a value in a reactive proxy if it's wrappable.
  */
 function wrap<T>(value: T): T {
   return isWrappable(value) ? createReactiveProxy(value) : value
 }
 
 /**
- * Unwraps a proxy to get the original target
+ * Unwraps a proxy to return the original, raw object.
  */
 export function unwrap<T>(value: T): T {
-  if (!isWrappable(value)) return value
-  // Check if this is a proxy by looking for the $PROXY symbol
-  // The $PROXY symbol points to the proxy itself, not the target
-  // So we shouldn't recursively unwrap it
-  const proxySymbol = (value as any)[$PROXY]
-  // If it has the symbol and it points to itself, it's a proxy, return the value
-  if (proxySymbol === value) return value
-  // Otherwise, return the original value
-  return value
+  if (!isWrappable(value)) {
+    return value
+  }
+  const unwrapped = (value as any)[$PROXY] ? (value as any).value : value
+  return unwrapped
 }
 
 /**
- * Sets a property value and updates its signal
- * Optimized for minimal overhead in hot path
+ * Sets a property on the target, updating the corresponding signal.
  */
 function setProperty(
   target: any,
   property: PropertyKey,
   value: any,
-  deleteProperty = false
+  isDelete = false
 ): void {
-  const hadKey = property in target
+  const hadKey = Object.prototype.hasOwnProperty.call(target, property)
+  const oldValue = target[property]
 
-  if (deleteProperty) {
+  if (isDelete) {
     delete target[property]
   } else {
     target[property] = value
   }
 
-  // Update the signal if value changed (no equality check, always update)
-  const nodes = (target as any)[$NODE]
-  if (nodes?.[property]) {
-    // The signal exists, update it
-    const sig = nodes[property]
-    // Call the signal setter to update the value
-    sig(deleteProperty ? undefined : value)
-  }
+  const nodes = (target as any)[$NODE] as DataNodes | undefined
+  if (nodes) {
+    const node = nodes[property]
+    if (node && oldValue !== value) {
+      node(isDelete ? undefined : value)
+    }
 
-  // Handle array length changes
-  if (Array.isArray(target) && property !== 'length') {
-    if (nodes?.['length']) {
-      nodes['length'](target.length)
+    // If an array's length changes, update its signal.
+    if (Array.isArray(target) && property !== 'length') {
+      const lengthNode = nodes['length']
+      if (lengthNode && target.length !== (oldValue as any)?.length) {
+        lengthNode(target.length)
+      }
     }
   }
 
-  // Trigger shape change for new/deleted properties
-  if (!hadKey || deleteProperty) {
+  // If a key was added or removed, trigger ownKeys signal for shape changes.
+  const wasAdded = !hadKey && !isDelete
+  const wasDeleted = hadKey && isDelete
+  if (wasAdded || wasDeleted) {
     const ownKeysSignal = nodes?.[Symbol.for('ownKeys')]
     if (ownKeysSignal) {
       ownKeysSignal(ownKeysSignal() + 1)
@@ -164,162 +152,109 @@ function setProperty(
 }
 
 /**
- * Tracks the target object itself (for operations like Object.keys)
+ * Creates a dependency on the object's shape (e.g., for Object.keys).
  */
 function trackSelf(target: object): void {
-  const listener = getCurrentSub()
-  if (!listener) return
-
+  if (!getCurrentSub()) return
   const nodes = getNodes(target)
   const ownKeysSignal = getNode(nodes, Symbol.for('ownKeys'), 0)
-  ownKeysSignal() // Read to create dependency
+  ownKeysSignal() // Read to subscribe.
 }
 
 /**
- * Optimized handler for array methods
+ * A specialized handler for array mutation methods to ensure reactivity.
  */
-const arrayMethodHandler = {
-  push: function (
-    target: any[],
-    nodes: DataNodes,
-    method: Function,
-    args: any[]
-  ) {
+const arrayMethodHandler: Record<
+  string,
+  (target: any[], nodes: DataNodes, method: Function, args: any[]) => any
+> = {
+  // Methods that change length and values
+  push(target, nodes, method, args) {
+    const result = method.apply(target, args)
+    if (nodes['length']) (nodes['length'] as Signal<number>)(target.length)
+    const ownKeysSignal = nodes[Symbol.for('ownKeys')]
+    if (ownKeysSignal) (ownKeysSignal as Signal<number>)(ownKeysSignal() + 1)
+    return result
+  },
+  pop(target, nodes, method, args) {
     const oldLength = target.length
     const result = method.apply(target, args)
     if (nodes['length'] && target.length !== oldLength) {
-      nodes['length'](target.length)
+      ;(nodes['length'] as Signal<number>)(target.length)
     }
     const ownKeysSignal = nodes[Symbol.for('ownKeys')]
-    if (ownKeysSignal) ownKeysSignal(ownKeysSignal() + 1)
+    if (ownKeysSignal) (ownKeysSignal as Signal<number>)(ownKeysSignal() + 1)
     return result
   },
-
-  pop: function (
-    target: any[],
-    nodes: DataNodes,
-    method: Function,
-    args: any[]
-  ) {
+  shift(target, nodes, method, args) {
     const oldLength = target.length
     const result = method.apply(target, args)
-    if (nodes['length'] && target.length !== oldLength) {
-      nodes['length'](target.length)
-    }
-    const ownKeysSignal = nodes[Symbol.for('ownKeys')]
-    if (ownKeysSignal) ownKeysSignal(ownKeysSignal() + 1)
-    return result
-  },
-
-  shift: function (
-    target: any[],
-    nodes: DataNodes,
-    method: Function,
-    args: any[]
-  ) {
-    const result = method.apply(target, args)
-    // Update all indices since they all shift
-    for (let i = 0; i < target.length; i++) {
-      const sig = nodes[i]
-      if (sig) sig(target[i])
-    }
-    if (nodes['length']) nodes['length'](target.length)
-    const ownKeysSignal = nodes[Symbol.for('ownKeys')]
-    if (ownKeysSignal) ownKeysSignal(ownKeysSignal() + 1)
-    return result
-  },
-
-  unshift: function (
-    target: any[],
-    nodes: DataNodes,
-    method: Function,
-    args: any[]
-  ) {
-    const result = method.apply(target, args)
-    // Update all indices since they all shift
-    for (let i = 0; i < target.length; i++) {
-      const sig = nodes[i]
-      if (sig) sig(target[i])
-    }
-    if (nodes['length']) nodes['length'](target.length)
-    const ownKeysSignal = nodes[Symbol.for('ownKeys')]
-    if (ownKeysSignal) ownKeysSignal(ownKeysSignal() + 1)
-    return result
-  },
-
-  splice: function (
-    target: any[],
-    nodes: DataNodes,
-    method: Function,
-    args: any[]
-  ) {
-    const start = args[0] ?? 0
-    const oldLength = target.length
-    const result = method.apply(target, args)
-    const newLength = target.length
-
-    // Only update signals for indices that actually changed
     if (nodes) {
-      // Update modified indices only if needed
-      const updateEnd = Math.min(start + args.length - 2, newLength)
-      for (let i = start; i < updateEnd; i++) {
-        const sig = nodes[i]
-        if (sig) sig(target[i])
+      for (let i = 0; i < oldLength; i++) {
+        if (nodes[i]) nodes[i]?.(target[i])
       }
-
-      // If items were removed, update signals for shifted indices
-      if (oldLength > newLength) {
-        for (let i = newLength; i < oldLength; i++) {
-          const sig = nodes[i]
-          if (sig) sig(undefined)
-        }
-      }
-
-      if (oldLength !== newLength && nodes['length']) {
-        nodes['length'](newLength)
-      }
-
-      const ownKeysSignal = nodes[Symbol.for('ownKeys')]
-      if (ownKeysSignal) ownKeysSignal(ownKeysSignal() + 1)
+      if (nodes['length']) (nodes['length'] as Signal<number>)(target.length)
     }
-
+    const ownKeysSignal = nodes[Symbol.for('ownKeys')]
+    if (ownKeysSignal) (ownKeysSignal as Signal<number>)(ownKeysSignal() + 1)
     return result
   },
-
-  sort: function (
-    target: any[],
-    nodes: DataNodes,
-    method: Function,
-    args: any[]
-  ) {
+  unshift(target, nodes, method, args) {
+    const oldLength = target.length
+    method.apply(target, args)
+    if (nodes) {
+      for (let i = 0; i < target.length; i++) {
+        if (nodes[i]) nodes[i]?.(target[i])
+      }
+      if (nodes['length'] && target.length !== oldLength) {
+        ;(nodes['length'] as Signal<number>)(target.length)
+      }
+    }
+    const ownKeysSignal = nodes[Symbol.for('ownKeys')]
+    if (ownKeysSignal) (ownKeysSignal as Signal<number>)(ownKeysSignal() + 1)
+    return target.length
+  },
+  splice(target, nodes, method, args) {
+    const oldLength = target.length
     const result = method.apply(target, args)
-    // Update all indices since order changed
+    if (nodes) {
+      const newLength = target.length
+      const maxLength = Math.max(oldLength, newLength)
+      for (let i = 0; i < maxLength; i++) {
+        if (nodes[i]) nodes[i]?.(target[i])
+      }
+      if (nodes['length'] && oldLength !== newLength) {
+        ;(nodes['length'] as Signal<number>)(newLength)
+      }
+    }
+    const ownKeysSignal = nodes[Symbol.for('ownKeys')]
+    if (ownKeysSignal) (ownKeysSignal as Signal<number>)(ownKeysSignal() + 1)
+    return result
+  },
+  // Methods that only reorder values
+  sort(target, nodes, method, args) {
+    const result = method.apply(target, args)
     for (let i = 0; i < target.length; i++) {
-      const sig = nodes[i]
-      if (sig) sig(target[i])
+      const node = nodes[i]
+      if (node) node?.(target[i])
     }
     return result
   },
-
-  reverse: function (
-    target: any[],
-    nodes: DataNodes,
-    method: Function,
-    args: any[]
-  ) {
+  reverse(target, nodes, method, args) {
     const result = method.apply(target, args)
-    // Update all indices since order changed
     for (let i = 0; i < target.length; i++) {
-      const sig = nodes[i]
-      if (sig) sig(target[i])
+      const node = nodes[i]
+      if (node) node?.(target[i])
     }
     return result
   },
 }
 
+/**
+ * The core Proxy handler that intercepts property access and mutations.
+ */
 const handler: ProxyHandler<object> = {
   get(target, property, receiver) {
-    // Special symbols fast path
     if (property === $PROXY) return receiver
     if (property === $TRACK) {
       trackSelf(target)
@@ -327,29 +262,20 @@ const handler: ProxyHandler<object> = {
     }
     if (property === $NODE) return (target as any)[$NODE]
 
-    // Non-reactive fast path - check listener first
-    const listener = getCurrentSub()
-    if (!listener) {
-      const value = target[property as keyof typeof target]
-      return wrap(value)
+    if (!getCurrentSub()) {
+      const value = Reflect.get(target, property, receiver)
+      return isWrappable(value) ? wrap(value) : value
     }
 
-    // Optimized array method handling
-    if (
-      Array.isArray(target) &&
-      typeof property === 'string' &&
-      property in arrayMethodHandler
-    ) {
-      const methodHandler = (arrayMethodHandler as any)[property]
+    if (Array.isArray(target) && property in arrayMethodHandler) {
       const method = Array.prototype[property as keyof typeof Array.prototype]
-      return function (this: any, ...args: any[]) {
-        let result: any
+      const handlerFn = arrayMethodHandler[property as string]
+      return function (...args: any[]) {
+        let result
         startBatch()
         try {
-          const nodes = (target as any)[$NODE] as DataNodes | undefined
-          result = nodes
-            ? methodHandler(target, nodes, method, args)
-            : (method as Function).apply(target, args)
+          const nodes = (target as any)[$NODE]
+          result = handlerFn!(target, nodes, method as Function, args)
         } finally {
           endBatch()
         }
@@ -357,47 +283,25 @@ const handler: ProxyHandler<object> = {
       }
     }
 
-    // Check for other array methods
-    if (
-      Array.isArray(target) &&
-      typeof property === 'string' &&
-      property in Array.prototype
-    ) {
-      const method = Array.prototype[property as keyof typeof Array.prototype]
-      if (typeof method === 'function') {
-        // Non-mutating methods can be called directly
-        return function (this: any, ...args: any[]) {
-          return (method as Function).apply(receiver, args)
-        }
-      }
-    }
-
-    // Hot path: Check for existing signal first
     const nodes = (target as any)[$NODE] as DataNodes | undefined
-    if (nodes?.[property]) {
-      // Signal exists - read it directly (inlined for performance)
-      const value = nodes[property]()
+    const nodeSignal = nodes?.[property]
+    if (nodeSignal) {
+      const value = nodeSignal()
       return wrap(value)
     }
 
-    // Cold path: No signal exists yet
-    const value = target[property as keyof typeof target]
+    const value = Reflect.get(target, property, receiver)
 
-    // Only create signal if we have a listener and it's a trackable property
-    if (typeof value !== 'function') {
-      const desc = getCachedDescriptor(target, property)
-      if (!desc?.get) {
-        // Create signal for this property
-        try {
-          const signalNodes = getNodes(target)
-          const sig = getNode(signalNodes, property, value)
-          const trackedValue = sig()
-          return wrap(trackedValue)
-        } catch {
-          // If we can't create nodes (frozen object), just return the value
-          return wrap(value)
-        }
-      }
+    if (typeof value === 'function') {
+      return value
+    }
+
+    const desc = getCachedDescriptor(target, property)
+    if (!desc || (!desc.get && desc.writable)) {
+      const nodes = getNodes(target)
+      const newSignal = getNode(nodes, property, value)
+      const trackedValue = newSignal()
+      return wrap(trackedValue)
     }
 
     return wrap(value)
@@ -430,193 +334,130 @@ const handler: ProxyHandler<object> = {
 
   has(target, property) {
     trackSelf(target)
-    return property in target
+    return Reflect.has(target, property)
   },
 
   getOwnPropertyDescriptor(target, property) {
-    trackSelf(target)
     return Reflect.getOwnPropertyDescriptor(target, property)
   },
 }
 
 /**
- * Creates a reactive proxy for an object without copying it
- * Optimized with dual caching strategy
+ * Creates a reactive proxy for a target object.
  */
 function createReactiveProxy<T extends object>(target: T): T {
-  // Check if already proxied via symbol (fastest)
-  let p = (target as any)[$PROXY]
-  if (p) return p
+  let proxy = (target as any)[$PROXY]
+  if (proxy) return proxy
 
-  // Check WeakMap cache (for external references)
-  p = proxyCache.get(target)
-  if (p) {
-    // Store on object for faster access next time
-    try {
-      Object.defineProperty(target, $PROXY, {
-        value: p,
-        configurable: true,
-        writable: false,
-        enumerable: false,
-      })
-    } catch {
-      // Object might be frozen or sealed, continue with WeakMap only
-    }
-    return p
-  }
+  proxy = proxyCache.get(target)
+  if (proxy) return proxy as T
 
-  // Create proxy for ORIGINAL object, not a copy
-  p = new Proxy(target, handler)
+  proxy = new Proxy(target, handler)
+  proxyCache.set(target, proxy)
 
-  // Dual caching strategy for maximum performance
-  proxyCache.set(target, p)
   try {
-    Object.defineProperty(target, $PROXY, {
-      value: p,
-      configurable: true,
-      writable: false,
-      enumerable: false,
-    })
+    Object.defineProperty(target, $PROXY, { value: proxy, enumerable: false })
   } catch {
-    // Object might be frozen or sealed, WeakMap cache is sufficient
+    // Frozen object, cache is enough.
   }
 
-  return p
+  primeReactivity(proxy)
+  return proxy as T
 }
 
 /**
- * Updates an array efficiently with minimal signal updates
- * Uses Solid.js reconciliation strategy
- */
-function updateArray(current: any[], next: any[]): void {
-  let i = 0
-  const len = next.length
-  const nodes = (current as any)[$NODE] as DataNodes | undefined
-
-  // Update existing indices only if values differ
-  for (; i < len; i++) {
-    if (current[i] !== next[i]) {
-      current[i] = next[i]
-      if (nodes) {
-        const sig = nodes[i]
-        if (sig) {
-          sig(next[i])
-        }
-      }
-    }
-  }
-
-  // Only update length if it changed
-  if (current.length !== len) {
-    // Remove extra elements
-    for (let j = len; j < current.length; j++) {
-      delete current[j]
-      if (nodes) {
-        const sig = nodes[j]
-        if (sig) {
-          sig(undefined)
-        }
-      }
-    }
-
-    current.length = len
-    if (nodes?.['length']) {
-      nodes['length'](len)
-    }
-
-    // Trigger shape change
-    const ownKeysSignal = nodes?.[Symbol.for('ownKeys')]
-    if (ownKeysSignal) {
-      ownKeysSignal(ownKeysSignal() + 1)
-    }
-  }
-}
-
-/**
- * Recursively traverses the state to trigger signal creation.
+ * Recursively traverses the state to pre-emptively create signals for all properties.
+ * This can improve initial read performance at the cost of slightly higher setup time.
  */
 function primeReactivity(target: any, visited = new Set()): void {
   if (!isWrappable(target) || visited.has(target)) return
   visited.add(target)
 
-  for (const key in target) {
-    if (Object.prototype.hasOwnProperty.call(target, key)) {
-      const value = target[key as keyof typeof target] // Access property to trigger proxy `get`
-      primeReactivity(value, visited)
-    }
+  const keys = Array.isArray(target)
+    ? Object.keys(target)
+    : Reflect.ownKeys(target)
+
+  for (const key of keys) {
+    const value = (target as any)[key]
+    primeReactivity(value, visited)
   }
 
   if (Array.isArray(target)) {
-    // Access length to trigger proxy `get`
-    const _ = target.length
+    void target.length
   }
 }
 
 /**
- * Updates a path in the store
+ * Updates a path in the store, following Solid's reconciliation style.
  */
 function updatePath(target: any, path: any[]): void {
-  if (path.length === 0) return
-
-  if (path.length === 1) {
-    // Direct value assignment
-    if (Array.isArray(target) && Array.isArray(path[0])) {
-      updateArray(target, path[0])
-    } else if (typeof path[0] === 'object') {
-      // Merge object
-      for (const key in path[0]) {
-        setProperty(target, key, path[0][key])
-      }
-    }
-    return
-  }
-
-  // Navigate to the target property
   let current = target
-  for (let i = 0; i < path.length - 2; i++) {
+  for (let i = 0; i < path.length - 1; i++) {
     const key = path[i]
-    current = current[key]
-    if (!current) return
+    if (current && typeof current === 'object' && key in current) {
+      current = current[key]
+    } else {
+      return
+    }
   }
 
-  const lastKey = path[path.length - 2]
-  const value = path[path.length - 1]
-
-  if (typeof value === 'function') {
-    // Updater function
-    setProperty(current, lastKey, value(current[lastKey]))
+  const finalKey = path[path.length - 1]
+  if (typeof finalKey === 'function') {
+    const parentKey = path[path.length - 2]
+    let parent = target
+    for (let i = 0; i < path.length - 2; i++) {
+      parent = parent[path[i]]
+    }
+    parent[parentKey] = finalKey(parent[parentKey])
+  } else if (isWrappable(current) && typeof finalKey === 'object') {
+    for (const key in finalKey) {
+      ;(current as any)[key] = (finalKey as any)[key]
+    }
   } else {
-    setProperty(current, lastKey, value)
+    const value = finalKey
+    const property = path[path.length - 2]
+    let parent = target
+    for (let i = 0; i < path.length - 2; i++) {
+      parent = parent[path[i]]
+    }
+    parent[property] = value
   }
 }
 
-export type SetStoreFunction<T> = {
-  (...args: any[]): void
+export type SetStoreFunction = (...args: any[]) => void
+
+/**
+ * Creates a getter for a property on a store object.
+ * This is useful for interoperability with libraries that need accessor functions.
+ */
+export function createAccessor<T extends object>(store: T) {
+  return <K extends keyof T>(key: K): (() => T[K]) => {
+    return () => store[key]
+  }
 }
 
 /**
- * Creates a reactive store with Solid.js-like API
- * Optimized for maximum performance
+ * Creates a new reactive store.
  */
 export function createStore<T extends object>(
-  initialState?: T
-): [T, SetStoreFunction<T>] {
+  initialState: T
+): [T, SetStoreFunction] {
   const unwrapped = unwrap(initialState || ({} as T))
   const wrapped = createReactiveProxy(unwrapped)
 
-  // Prime reactivity by accessing all properties within an effect
-  const dispose = effect(() => primeReactivity(wrapped))
-  dispose()
-
-  function setStore(...args: any[]) {
+  function setStore(...args: any): void {
     startBatch()
     try {
-      if (
-        Array.isArray(unwrapped) &&
-        args.length === 1 &&
-        Array.isArray(args[0])
-      ) {
-        updateArray(unwrapped, args[0])
+      if (args.length === 1 && isWrappable(args[0])) {
+        const newState = args[0]
+        for (const key in unwrapped) {
+          if (!(key in newState)) {
+            delete (unwrapped as any)[key]
+          }
+        }
+        for (const key in newState) {
+          ;(unwrapped as any)[key] = (newState as any)[key]
+        }
       } else {
         updatePath(unwrapped, args)
       }
@@ -625,34 +466,5 @@ export function createStore<T extends object>(
     }
   }
 
-  return [wrapped, setStore as SetStoreFunction<T>]
-}
-
-/**
- * Creates an optimized accessor for a specific property
- * Use this for extremely hot paths where every nanosecond counts
- */
-export function createAccessor<T extends object, K extends keyof T>(
-  target: T,
-  property: K
-): { get: () => T[K]; set: (value: T[K]) => void } {
-  createReactiveProxy(target)
-  const nodes = getNodes(target)
-  const node = getNode(nodes, property as PropertyKey, target[property])
-
-  return {
-    get: () => {
-      const value = node()
-      return wrap(value) as T[K]
-    },
-    set: (value: T[K]) => {
-      startBatch()
-      try {
-        node(unwrap(value))
-        target[property] = unwrap(value) as any
-      } finally {
-        endBatch()
-      }
-    },
-  }
+  return [wrapped, setStore]
 }
