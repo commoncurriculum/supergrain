@@ -67,4 +67,46 @@ describe('Array Support', () => {
     expect(postsLength).toBe(1)
     expect(lengthEffect).toHaveBeenCalledTimes(2)
   })
+
+  it('should be reactive when using sort', () => {
+    store.set('posts', 'all', {
+      items: [
+        { id: 2, title: 'B' },
+        { id: 1, title: 'A' },
+      ],
+    })
+    const postsProxy = store.find('posts', 'all')!.value
+    let firstItemTitle = ''
+    const effectFn = vi.fn(() => {
+      firstItemTitle = postsProxy.items[0].title
+    })
+
+    effect(effectFn)
+
+    expect(firstItemTitle).toBe('B')
+    expect(effectFn).toHaveBeenCalledTimes(1)
+
+    postsProxy.items.sort((a, b) => a.title.localeCompare(b.title))
+
+    expect(firstItemTitle).toBe('A')
+    expect(effectFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('should be reactive when using reverse', () => {
+    const postsProxy = store.find('posts', 'all')!.value
+    let firstItemTitle = ''
+    const effectFn = vi.fn(() => {
+      firstItemTitle = postsProxy.items[0].title
+    })
+
+    effect(effectFn)
+
+    expect(firstItemTitle).toBe('Post 1')
+    expect(effectFn).toHaveBeenCalledTimes(1)
+
+    postsProxy.items.reverse()
+
+    expect(firstItemTitle).toBe('Post 2')
+    expect(effectFn).toHaveBeenCalledTimes(2)
+  })
 })
