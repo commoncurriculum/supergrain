@@ -119,6 +119,7 @@ export function useTrackedStore<T extends object>(store: T): T {
         isFirstRun = false
         return
       }
+
       forceUpdate()
     })
 
