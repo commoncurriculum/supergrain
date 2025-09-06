@@ -224,22 +224,6 @@ function reconcile(raw: any, visited: Set<any>) {
   }
 }
 
-let batchDepth = 0
-let scheduledEndBatch: (() => void) | null = null
-
-function scheduleEndBatch() {
-  if (!scheduledEndBatch && batchDepth > 0) {
-    scheduledEndBatch = () => {
-      scheduledEndBatch = null
-      while (batchDepth > 0) {
-        batchDepth--
-        endBatch()
-      }
-    }
-    queueMicrotask(scheduledEndBatch)
-  }
-}
-
 export function createStore<T extends object>(
   initialState: T
 ): [T, SetStoreFunction] {
@@ -247,16 +231,12 @@ export function createStore<T extends object>(
   const state = createReactiveProxy(unwrappedState)
 
   function updateStore(operations: UpdateOperations): void {
-    // Start a batch and increment depth
     startBatch()
-    batchDepth++
-
     try {
       applyUpdate(unwrappedState, operations)
       reconcile(unwrappedState, new Set())
     } finally {
-      // Schedule batch end for the next microtask
-      scheduleEndBatch()
+      endBatch()
     }
   }
 
