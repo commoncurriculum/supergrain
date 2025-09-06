@@ -44,4 +44,29 @@ describe('Todo App Core Tests', () => {
     expect(state.userTaskList.tasks.length).toBe(1)
     expect(state.userTaskList.tasks[0]).toEqual(newTask)
   })
+
+  it('should remove a todo from the tasks array using $pull', () => {
+    const initialTasks: Task[] = [
+      { id: 'task-1', isCompleted: false, text: 'Write tests' },
+      { id: 'task-2', isCompleted: true, text: 'Implement feature' },
+    ]
+    const initialState: AppState = {
+      userTaskList: {
+        id: 'user-1',
+        firstName: 'John',
+        tasks: initialTasks,
+      },
+    }
+
+    const [state, update] = createStore(initialState)
+
+    update({
+      $pull: {
+        'userTaskList.tasks': { id: 'task-1' },
+      },
+    })
+
+    expect(state.userTaskList.tasks.length).toBe(1)
+    expect(state.userTaskList.tasks[0].id).toBe('task-2')
+  })
 })
