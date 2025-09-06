@@ -95,4 +95,29 @@ describe('Todo App Core Tests', () => {
     expect(state.userTaskList.tasks[0].text).toBe(newText)
     expect(state.userTaskList.tasks[1].text).toBe('Another task')
   })
+
+  it('should mark a todo as completed using $set', () => {
+    const initialTasks: Task[] = [
+      { id: 'task-1', isCompleted: false, text: 'Do something' },
+    ]
+    const initialState: AppState = {
+      userTaskList: {
+        id: 'user-1',
+        firstName: 'John',
+        tasks: initialTasks,
+      },
+    }
+
+    const [state, update] = createStore(initialState)
+
+    expect(state.userTaskList.tasks[0].isCompleted).toBe(false)
+
+    update({
+      $set: {
+        'userTaskList.tasks.0.isCompleted': true,
+      },
+    })
+
+    expect(state.userTaskList.tasks[0].isCompleted).toBe(true)
+  })
 })
