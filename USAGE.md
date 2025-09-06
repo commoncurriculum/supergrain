@@ -1,295 +1,561 @@
 # Storable Usage Guide
 
-A reactive store library with fine-grained reactivity powered by alien-signals.
+A comprehensive guide to using Storable for building reactive applications with fine-grained reactivity.
 
-## Basic Setup
+## Table of Contents
 
-```typescript
-import { createStore } from '@storable/core';
-import { useFind, useStore } from '@storable/react';
-// or
-import { useFind, useStore } from '@storable/vue';
+- [Installation](#installation)
+- [Core Concepts](#core-concepts)
+- [Creating Stores](#creating-stores)
+- [Reading State](#reading-state)
+- [Updating State](#updating-state)
+- [React Integration](#react-integration)
+- [MongoDB-Style Operators](#mongodb-style-operators)
+- [Effects and Computed Values](#effects-and-computed-values)
+- [Building a TODO App](#building-a-todo-app)
+- [TypeScript](#typescript)
+- [Performance Tips](#performance-tips)
 
-// Create a store instance
-const store = createStore();
+## Installation
 
-// Define collections
-store.collection('posts');
-store.collection('users');
-store.collection('comments');
+```bash
+npm install @storable/core @storable/react
+# or
+pnpm add @storable/core @storable/react
 ```
 
-## Adding Data
+## Core Concepts
+
+### What is Storable?
+
+Storable is a reactive state management library that:
+
+- Creates reactive stores with JavaScript Proxy objects
+- Tracks property access for fine-grained reactivity
+- Updates state ONLY through MongoDB-style operators
+- Integrates seamlessly with React
+
+### Key Principles
+
+1. **Read-only state**: The state proxy is read-only; direct mutations throw errors
+2. **Operator-based updates**: All changes use MongoDB-style operators via the `update` function
+3. **Fine-grained reactivity**: Components only re-render when accessed properties change
+4. **Automatic batching**: Multiple updates in one call are batched
+
+## Creating Stores
 
 ```typescript
-// Add a single entity
-store.set('posts', '1', {
-  id: '1',
-  title: 'Hello World',
-  content: 'This is my first post',
-  tags: ['introduction', 'hello'],
-  author: {
-    id: 'user-1',
-    name: 'Scott'
+import { createStore } from '@storable/core'
+
+// Simple store
+const [state, update] = createStore({
+  count: 0,
+  name: 'John',
+})
+
+// With nested objects
+const [state, update] = createStore({
+  user: {
+    name: 'Alice',
+    address: {
+      city: 'New York',
+      zip: '10001',
+    },
   },
-  publishedAt: '2024-01-01'
-});
-
-// Add multiple entities
-store.setMany('users', [
-  { id: 'user-1', name: 'Scott', email: 'scott@example.com' },
-  { id: 'user-2', name: 'Alice', email: 'alice@example.com' }
-]);
+  todos: [],
+})
 ```
 
-## React Usage
+## Reading State
 
-### Finding Single Entities
+The state object is a reactive proxy that tracks property access:
 
 ```typescript
-function PostView({ postId }: { postId: string }) {
-  const post = useFind(store, 'posts', postId);
+const [state, update] = createStore({ count: 0, name: 'John' })
 
-  if (!post) return <div>Post not found</div>;
+// You can read properties normally
+console.log(state.count) // 0
+console.log(state.name) // 'John'
 
-  // Component only re-renders when accessed properties change
-  return (
-    <article>
-      <h1>{post.title}</h1>
-      <p>{post.content}</p>
-      <AuthorInfo author={post.author} />
-      <TagList tags={post.tags} />
-    </article>
-  );
-}
-
-// This component has its own fine-grained subscriptions
-function AuthorInfo({ author }: { author: { id: string; name: string } }) {
-  // Only re-renders when author.name changes
-  return <div>By {author.name}</div>;
-}
-
-function TagList({ tags }: { tags: string[] }) {
-  // Only re-renders when tags array changes
-  return (
-    <ul>
-      {tags.map((tag, i) => (
-        <li key={i}>{tag}</li>
-      ))}
-    </ul>
-  );
-}
+// But you CANNOT mutate them directly
+state.count = 5 // ❌ Throws: "Direct mutation of store state is not allowed"
+state.name = 'Jane' // ❌ Throws: "Direct mutation of store state is not allowed"
+delete state.name // ❌ Throws: "Direct deletion of store state is not allowed"
 ```
 
+## Updating State
 
-### Direct Mutations
+All state updates MUST use the `update` function with MongoDB-style operators:
 
 ```typescript
-function PostEditor({ postId }: { postId: string }) {
-  const post = useFind(store, 'posts', postId);
+const [state, update] = createStore({
+  count: 0,
+  user: { name: 'John', age: 30 },
+  items: ['a', 'b', 'c'],
+})
 
-  if (!post) return null;
+// Set values
+update({ $set: { count: 5 } })
+update({ $set: { 'user.name': 'Jane' } }) // Dot notation for nested
 
-  // Direct property mutation
-  const updateTitle = (newTitle: string) => {
-    post.title = newTitle; // ✓ This works!
-  };
+// Increment numbers
+update({ $inc: { count: 1 } })
+update({ $inc: { 'user.age': 5 } })
 
-  // Array mutations
-  const addTag = (tag: string) => {
-    post.tags.push(tag); // ✓ This works!
-  };
+// Array operations
+update({ $push: { items: 'd' } })
+update({ $pull: { items: 'b' } })
 
-  const removeTag = (index: number) => {
-    post.tags.splice(index, 1); // ✓ This works!
-  };
+// Multiple operations in one call (batched)
+update({
+  $set: { 'user.name': 'Bob' },
+  $inc: { count: 2 },
+  $push: { items: 'e' },
+})
+```
 
-  // Nested object mutations
-  const updateAuthorName = (name: string) => {
-    post.author.name = name; // ✓ This works!
-  };
+## React Integration
+
+### useTrackedStore Hook
+
+The primary way to use stores in React:
+
+```typescript
+import { useTrackedStore } from '@storable/react'
+
+function Counter() {
+  const state = useTrackedStore(store)
 
   return (
     <div>
-      <input
-        value={post.title}
-        onChange={(e) => updateTitle(e.target.value)}
-      />
-      {/* ... */}
+      <p>Count: {state.count}</p>
+      <button onClick={() => update({ $inc: { count: 1 } })}>
+        Increment
+      </button>
     </div>
-  );
+  )
 }
 ```
 
-## Vue Usage
+### useStore Hook
 
-### Composition API
+Alternative hook that must be called first in the component:
 
-```vue
-<script setup lang="ts">
-import { useFind } from '@storable/vue';
+```typescript
+import { useStore } from '@storable/react'
 
-const props = defineProps<{ postId: string }>();
-const post = useFind(store, 'posts', props.postId);
+function Counter() {
+  useStore() // Must be called first!
 
-// Direct mutations work in Vue too!
-const addTag = (tag: string) => {
-  post.value?.tags.push(tag);
-};
-</script>
-
-<template>
-  <article v-if="post">
-    <h1>{{ post.title }}</h1>
-    <p>{{ post.content }}</p>
-    <ul>
-      <li v-for="(tag, i) in post.tags" :key="i">
-        {{ tag }}
-      </li>
-    </ul>
-  </article>
-</template>
+  return (
+    <div>
+      <p>Count: {store.count}</p>
+      <button onClick={() => update({ $inc: { count: 1 } })}>
+        Increment
+      </button>
+    </div>
+  )
+}
 ```
 
-## Advanced Patterns
+### Fine-grained Reactivity
+
+Components only re-render when properties they access change:
+
+```typescript
+const [state, update] = createStore({
+  x: 1,
+  y: 2,
+  z: 3
+})
+
+function ComponentA() {
+  const state = useTrackedStore(store)
+  // Only re-renders when 'x' changes
+  return <div>X: {state.x}</div>
+}
+
+function ComponentB() {
+  const state = useTrackedStore(store)
+  // Only re-renders when 'y' changes
+  return <div>Y: {state.y}</div>
+}
+
+// Updating 'z' won't re-render ComponentA or ComponentB
+update({ $set: { z: 10 } })
+```
+
+## MongoDB-Style Operators
+
+### $set - Set field values
+
+```typescript
+update({ $set: { count: 10 } })
+update({ $set: { 'user.name': 'Alice' } }) // Nested with dot notation
+update({
+  $set: {
+    'user.name': 'Bob',
+    'user.age': 25,
+    'settings.theme': 'dark',
+  },
+})
+```
+
+### $unset - Remove fields
+
+```typescript
+update({ $unset: { temporaryField: 1 } })
+update({ $unset: { 'user.middleName': 1 } })
+```
+
+### $inc - Increment numeric values
+
+```typescript
+update({ $inc: { count: 1 } })
+update({ $inc: { count: -5 } }) // Decrement
+update({ $inc: { 'stats.views': 10 } })
+```
+
+### $push - Add to arrays
+
+```typescript
+update({ $push: { items: 'newItem' } })
+
+// Add multiple items with $each
+update({
+  $push: {
+    items: { $each: ['item1', 'item2', 'item3'] },
+  },
+})
+```
+
+### $pull - Remove from arrays
+
+```typescript
+// Remove by value
+update({ $pull: { items: 'itemToRemove' } })
+
+// Remove objects by matching properties
+update({
+  $pull: {
+    users: { id: 123, name: 'John' },
+  },
+})
+```
+
+### $addToSet - Add unique elements to arrays
+
+```typescript
+update({ $addToSet: { tags: 'newTag' } }) // Won't add if already exists
+
+// Add multiple unique items
+update({
+  $addToSet: {
+    tags: { $each: ['tag1', 'tag2', 'tag3'] },
+  },
+})
+```
+
+### $rename - Rename fields
+
+```typescript
+update({ $rename: { oldFieldName: 'newFieldName' } })
+update({ $rename: { 'user.firstName': 'user.name' } })
+```
+
+### $min/$max - Conditional updates
+
+```typescript
+// Only updates if new value is smaller
+update({ $min: { lowestScore: 50 } })
+
+// Only updates if new value is larger
+update({ $max: { highestScore: 100 } })
+```
+
+## Effects and Computed Values
+
+### Effects
+
+React to state changes with `effect`:
+
+```typescript
+import { effect } from '@storable/core'
+
+const [state, update] = createStore({ count: 0 })
+
+// This runs whenever count changes
+effect(() => {
+  console.log('Count changed to:', state.count)
+})
+
+// Save to localStorage on change
+effect(() => {
+  localStorage.setItem('count', String(state.count))
+})
+```
 
 ### Computed Values
 
+Derive values that update automatically:
+
 ```typescript
-function PostStats({ postId }: { postId: string }) {
-  const post = useFind(store, 'posts', postId);
+import { computed } from '@storable/core'
 
-  // This computation only runs when tags change
-  const tagCount = computed(() => post?.tags.length ?? 0);
+const [state, update] = createStore({
+  todos: [
+    { id: 1, text: 'Task 1', completed: false },
+    { id: 2, text: 'Task 2', completed: true },
+  ],
+})
 
-  return <div>Tags: {tagCount.value}</div>;
-}
+const completedCount = computed(
+  () => state.todos.filter(t => t.completed).length
+)
+
+console.log(completedCount()) // 1
+
+// Updates automatically when todos change
+update({
+  $set: { 'todos.0.completed': true },
+})
+
+console.log(completedCount()) // 2
 ```
 
-### Queries and Filtering
+## Building a TODO App
+
+Here's a complete TODO app example using the actual API:
 
 ```typescript
-function ActivePosts() {
-  const { findWhere } = useStore(store);
+import { createStore } from '@storable/core'
+import { useTrackedStore } from '@storable/react'
+import { useState } from 'react'
 
-  // Find all published posts
-  const activePosts = findWhere('posts', post =>
-    post.status === 'published' &&
-    new Date(post.publishedAt) <= new Date()
-  );
+// Types
+interface Todo {
+  id: number
+  text: string
+  completed: boolean
+}
+
+interface AppState {
+  todos: Todo[]
+  filter: 'all' | 'active' | 'completed'
+}
+
+// Create store
+const [todoStore, updateTodos] = createStore<AppState>({
+  todos: [],
+  filter: 'all'
+})
+
+// Main component
+function TodoApp() {
+  const state = useTrackedStore(todoStore)
+  const [inputText, setInputText] = useState('')
+
+  const addTodo = () => {
+    if (!inputText.trim()) return
+
+    updateTodos({
+      $push: {
+        todos: {
+          id: Date.now(),
+          text: inputText,
+          completed: false
+        }
+      }
+    })
+
+    setInputText('')
+  }
+
+  const toggleTodo = (id: number) => {
+    const index = state.todos.findIndex(t => t.id === id)
+    if (index !== -1) {
+      updateTodos({
+        $set: {
+          [`todos.${index}.completed`]: !state.todos[index].completed
+        }
+      })
+    }
+  }
+
+  const deleteTodo = (id: number) => {
+    updateTodos({
+      $pull: { todos: { id } }
+    })
+  }
+
+  const clearCompleted = () => {
+    const activeTodos = state.todos.filter(t => !t.completed)
+    updateTodos({
+      $set: { todos: activeTodos }
+    })
+  }
+
+  // Filter todos
+  const filteredTodos = state.todos.filter(todo => {
+    if (state.filter === 'active') return !todo.completed
+    if (state.filter === 'completed') return todo.completed
+    return true
+  })
 
   return (
     <div>
-      {activePosts.map(post => (
-        <PostCard key={post.id} post={post} />
-      ))}
+      <h1>TODO App</h1>
+
+      {/* Add todo */}
+      <div>
+        <input
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && addTodo()}
+          placeholder="What needs to be done?"
+        />
+        <button onClick={addTodo}>Add</button>
+      </div>
+
+      {/* Filters */}
+      <div>
+        {(['all', 'active', 'completed'] as const).map(filterType => (
+          <button
+            key={filterType}
+            className={state.filter === filterType ? 'active' : ''}
+            onClick={() => updateTodos({ $set: { filter: filterType } })}
+          >
+            {filterType}
+          </button>
+        ))}
+      </div>
+
+      {/* Todo list */}
+      <ul>
+        {filteredTodos.map(todo => (
+          <li key={todo.id}>
+            <input
+              type="checkbox"
+              checked={todo.completed}
+              onChange={() => toggleTodo(todo.id)}
+            />
+            <span style={{
+              textDecoration: todo.completed ? 'line-through' : 'none'
+            }}>
+              {todo.text}
+            </span>
+            <button onClick={() => deleteTodo(todo.id)}>Delete</button>
+          </li>
+        ))}
+      </ul>
+
+      {/* Clear completed */}
+      {state.todos.some(t => t.completed) && (
+        <button onClick={clearCompleted}>
+          Clear Completed
+        </button>
+      )}
     </div>
-  );
+  )
 }
 ```
 
-### Relationships
+## TypeScript
+
+Storable has full TypeScript support:
 
 ```typescript
-function PostWithComments({ postId }: { postId: string }) {
-  const post = useFind(store, 'posts', postId);
-  const { findWhere } = useStore(store);
-
-  // Find related comments
-  const comments = findWhere('comments', c => c.postId === postId);
-
-  return (
-    <article>
-      <h1>{post?.title}</h1>
-      <CommentList comments={comments} />
-    </article>
-  );
-}
-```
-
-
-### TypeScript Support
-
-```typescript
-// Define your entity types
-interface Post {
-  id: string;
-  title: string;
-  content: string;
-  tags: string[];
-  author: {
-    id: string;
-    name: string;
-  };
-  status: 'draft' | 'published' | 'archived';
-  publishedAt?: string;
-}
-
 interface User {
-  id: string;
-  name: string;
-  email: string;
+  name: string
+  age: number
+  email?: string
 }
 
-// Create typed store
-const store = createStore<{
-  posts: Post;
-  users: User;
-}>();
-
-// Full type safety
-const post = useFind<Post>(store, 'posts', '1');
-if (post) {
-  post.title = 'New Title'; // ✓ Type-safe
-  post.status = 'published'; // ✓ Type-safe
-  post.invalid = 'value'; // ✗ TypeScript error
+interface AppState {
+  user: User
+  todos: Array<{ id: number; text: string }>
 }
+
+const [state, update] = createStore<AppState>({
+  user: { name: 'John', age: 30 },
+  todos: [],
+})
+
+// Type-safe updates
+update({ $set: { 'user.name': 'Jane' } }) // ✅ OK
+update({ $set: { 'user.invalid': 'value' } }) // ❌ Type error
+
+// Type-safe array operations
+update({
+  $push: {
+    todos: { id: 1, text: 'Task' }, // ✅ OK
+  },
+})
+
+update({
+  $push: {
+    todos: { text: 'Task' }, // ❌ Type error: missing 'id'
+  },
+})
 ```
 
 ## Performance Tips
 
-1. **Component Splitting**: Split components by the data they access for finest granularity
-   ```typescript
-   // ❌ Less optimal - entire component re-renders on any change
-   function Post({ id }) {
-     const post = useFind(store, 'posts', id);
-     return (
-       <div>
-         <h1>{post.title}</h1>
-         <p>{post.content}</p>
-         <ul>{post.tags.map(tag => <li>{tag}</li>)}</ul>
-       </div>
-     );
-   }
+### 1. Split Components by Data Access
 
-   // ✓ Better - components re-render independently
-   function Post({ id }) {
-     const post = useFind(store, 'posts', id);
-     return (
-       <div>
-         <PostTitle title={post.title} />
-         <PostContent content={post.content} />
-         <PostTags tags={post.tags} />
-       </div>
-     );
-   }
-   ```
+Components only re-render for data they access:
 
-2. **Avoid Spreading**: Don't spread objects as it accesses all properties
-   ```typescript
-   // ❌ Subscribes to all post properties
-   <PostComponent {...post} />
+```typescript
+// Parent only re-renders when todos array changes
+function TodoList() {
+  const state = useTrackedStore(store)
+  return (
+    <ul>
+      {state.todos.map(todo => (
+        <TodoItem key={todo.id} todo={todo} />
+      ))}
+    </ul>
+  )
+}
 
-   // ✓ Only subscribes to used properties
-   <PostComponent post={post} />
-   ```
+// Child only re-renders when its specific todo changes
+function TodoItem({ todo }) {
+  return <li>{todo.text}</li>
+}
+```
 
-3. **Use Specific Finds**: Access only the data you need
-   ```typescript
-   // ❌ Loads entire collection
-   const posts = findAll('posts');
-   const published = posts.filter(p => p.status === 'published');
+### 2. Avoid Unnecessary Property Access
 
-   // ✓ Only loads matching entities
-   const published = findWhere('posts', p => p.status === 'published');
-   ```
+```typescript
+// ❌ Bad: Accesses all properties
+const { x, y, z } = state // Component re-renders on any change
+
+// ✅ Good: Access only what you need
+const x = state.x // Component only re-renders when x changes
+```
+
+### 3. Batch Updates
+
+Multiple operations in one update call are automatically batched:
+
+```typescript
+// ✅ Good: Single re-render
+update({
+  $set: { 'user.name': 'Jane' },
+  $inc: { count: 1 },
+  $push: { items: 'new' },
+})
+
+// ❌ Less efficient: Multiple re-renders
+update({ $set: { 'user.name': 'Jane' } })
+update({ $inc: { count: 1 } })
+update({ $push: { items: 'new' } })
+```
+
+## Key Takeaways
+
+1. **State is read-only** - Never try to mutate the state directly
+2. **Use update function** - All changes must go through MongoDB-style operators
+3. **Fine-grained reactivity** - Components only re-render for accessed properties
+4. **Automatic batching** - Multiple operations in one update are batched
+5. **TypeScript friendly** - Full type safety and inference
