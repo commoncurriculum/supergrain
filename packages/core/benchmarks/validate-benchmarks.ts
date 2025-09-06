@@ -6,13 +6,11 @@ import {
   createSignal,
   batch,
 } from 'solid-js/dist/solid.js'
-import {
-  createStore as createSolidStore,
-  SetStoreFunction,
-} from 'solid-js/store/dist/store.js'
+import { createStore as createSolidStore } from 'solid-js/store/dist/store.js'
 
 // Helper to wait for microtasks to resolve
-const nextTick = () => new Promise(resolve => queueMicrotask(resolve))
+const nextTick = () =>
+  new Promise<void>(resolve => queueMicrotask(() => resolve()))
 
 async function validatePropertyUpdates() {
   console.log('--- Validating: Property Updates with Effects ---')
@@ -37,7 +35,7 @@ async function validatePropertyUpdates() {
   storableDispose()
 
   // solid-js
-  await createRoot(async dispose => {
+  await createRoot(async (dispose: () => void) => {
     const [signal, setSignal] = createSignal(0)
     let solidRuns = 0
     createEffect(() => {
@@ -90,7 +88,7 @@ async function validateDeepUpdates() {
   storableDispose()
 
   // solid-js/store (more comparable than a signal)
-  await createRoot(async dispose => {
+  await createRoot(async (dispose: () => void) => {
     const [solidStore, setSolidStore] = createSolidStore(getDeepState())
     let solidRuns = 0
     createEffect(() => {
@@ -107,6 +105,11 @@ async function validateDeepUpdates() {
     // Solid's batching is implicit for store updates within the same sync task
     for (let i = 0; i < 100; i++) {
       setSolidStore('l1', 'l2', 'l3', 'value', v => v + 1)
+    }
+    await nextTick()
+
+    for (let i = 0; i < 100; i++) {
+      setSolidStore('l1', 'l2', 'l3', 'value', (v: number) => v + 1)
     }
     await nextTick()
 
@@ -128,7 +131,7 @@ async function validateDeepUpdates() {
 
     batch(() => {
       for (let i = 0; i < 100; i++) {
-        setSolidStore2('l1', 'l2', 'l3', 'value', v => v + 1)
+        setSolidStore2('l1', 'l2', 'l3', 'value', (v: number) => v + 1)
       }
     })
     await nextTick()
@@ -179,7 +182,7 @@ async function validateGranularReactivity() {
   storableDisposers.forEach(d => d())
 
   // solid-js/store
-  await createRoot(async dispose => {
+  await createRoot(async (dispose: () => void) => {
     const [solidStore, setSolidStore] = createSolidStore(getInitialData())
     const solidRuns = Array(10).fill(0)
 

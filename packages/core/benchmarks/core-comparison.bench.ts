@@ -2,16 +2,8 @@ import { bench, describe } from 'vitest'
 import { createStore } from '../src'
 import { effect } from 'alien-signals'
 // Import browser builds explicitly to enable reactivity in Node.js
-import {
-  createRoot,
-  createEffect,
-  createSignal,
-  batch,
-} from 'solid-js/dist/solid.js'
-import {
-  createStore as createSolidStore,
-  SetStoreFunction,
-} from 'solid-js/store/dist/store.js'
+import { createRoot, createEffect, batch } from 'solid-js/dist/solid.js'
+import { createStore as createSolidStore } from 'solid-js/store/dist/store.js'
 import { testEffect } from '@solidjs/testing-library'
 
 function validationError(message: string) {
@@ -44,7 +36,7 @@ describe('Core: Store Creation', () => {
   })
 
   bench('solid-js/store: create 1000 stores', () => {
-    createRoot(dispose => {
+    createRoot((dispose: () => void) => {
       for (let i = 0; i < 1000; i++) {
         createSolidStore({
           id: i,
@@ -60,7 +52,7 @@ describe('Core: Store Creation', () => {
 describe('Core: Property Access (Non-reactive)', () => {
   const [storableStore] = createStore({ user: { age: 30 } })
   let solidStore: any
-  createRoot(dispose => {
+  createRoot((dispose: () => void) => {
     ;[solidStore] = createSolidStore({ user: { age: 30 } })
     dispose()
   })
@@ -128,7 +120,7 @@ describe('Core: Property Updates with Effects', () => {
       setStore({ $set: { count: i + 1 } })
     }
 
-    await new Promise(resolve => queueMicrotask(resolve))
+    await new Promise<void>(resolve => queueMicrotask(() => resolve()))
 
     if (runs !== 2) {
       validationError(
@@ -179,7 +171,7 @@ describe('Core: Batch Updates', () => {
 
     setStore({ $set: { a: 1, b: 2, c: 3 } })
 
-    await new Promise(resolve => queueMicrotask(resolve))
+    await new Promise<void>(resolve => queueMicrotask(() => resolve()))
 
     if (runs !== 2) {
       validationError(`[@storable/core] Expected 2 runs, got ${runs}`)
@@ -227,7 +219,7 @@ describe('Core: Array Operations', () => {
       update({ $push: { items: i } })
     }
 
-    await new Promise(resolve => queueMicrotask(resolve))
+    await new Promise<void>(resolve => queueMicrotask(() => resolve()))
 
     if (runs !== 2) {
       validationError(`[@storable/core] Expected 2 runs, got ${runs}`)
@@ -249,7 +241,7 @@ describe('Core: Array Operations', () => {
         if (runs === 1) {
           batch(() => {
             for (let i = 0; i < 100; i++) {
-              setStore('items', items => [...items, i])
+              setStore('items', (items: number[]) => [...items, i])
             }
           })
         } else if (runs === 2) {
@@ -278,7 +270,7 @@ describe('Core: Deep Updates', () => {
       setStore({ $set: { 'l1.l2.l3.value': i + 1 } })
     }
 
-    await new Promise(resolve => queueMicrotask(resolve))
+    await new Promise<void>(resolve => queueMicrotask(() => resolve()))
 
     if (runs !== 2) {
       validationError(`[@storable/core] Expected 2 runs, got ${runs}`)
@@ -341,7 +333,7 @@ describe('Core: Granular Reactivity', () => {
 
       setStore({ $set: { 'prop5.nested': 999 } })
 
-      await new Promise(resolve => queueMicrotask(resolve))
+      await new Promise<void>(resolve => queueMicrotask(() => resolve()))
 
       const passed = runs[5] === 2 && runs.every((r, i) => i === 5 || r === 1)
       if (!passed) {
@@ -393,15 +385,15 @@ describe('Core: Granular Reactivity', () => {
  */
 describe('Core: Non-reactive Store Operations', () => {
   bench('@storable/core: 1000 non-reactive updates', () => {
-    const [store, setStore] = createStore({ count: 0 })
+    const [_store, setStore] = createStore({ count: 0 })
     for (let i = 0; i < 1000; i++) {
       setStore({ $set: { count: i + 1 } })
     }
   })
 
   bench('solid-js/store: 1000 non-reactive updates', () => {
-    createRoot(dispose => {
-      const [store, setStore] = createSolidStore({ count: 0 })
+    createRoot((dispose: () => void) => {
+      const [_store, setStore] = createSolidStore({ count: 0 })
       for (let i = 0; i < 1000; i++) {
         setStore('count', i + 1)
       }

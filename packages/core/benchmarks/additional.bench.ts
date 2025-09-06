@@ -1,5 +1,5 @@
 import { bench, describe } from 'vitest'
-import { createStore, update } from '../src'
+import { createStore } from '../src'
 import { effect } from 'alien-signals'
 
 describe('Additional: Plain vs Proxy Performance', () => {
@@ -33,7 +33,7 @@ describe('Additional: Plain vs Proxy Performance', () => {
     })
 
     bench('proxy object: 100k property sets', () => {
-      const [proxyObject, setProxyObject] = createStore({ value: 0 })
+      const [_proxyObject, setProxyObject] = createStore({ value: 0 })
       for (let i = 0; i < 100000; i++) {
         setProxyObject({ $set: { value: i } })
       }
@@ -230,7 +230,7 @@ describe('Additional: Batched vs Unbatched Updates', () => {
 
 describe('Additional: Array Operations (Non-Reactive)', () => {
   bench('Array.push: 1000 items', () => {
-    const [store, setStore] = createStore({ items: [] as number[] })
+    const [_store, setStore] = createStore({ items: [] as number[] })
     for (let i = 0; i < 1000; i++) {
       setStore({ $push: { items: i } })
     }
@@ -399,7 +399,7 @@ describe('Additional: Complex Scenarios', () => {
 
     // Filter by category
     const categoryToFilter = 'Category 5'
-    const updatedRows = grid.rows.map((row, i) => ({
+    const updatedRows = grid.rows.map((row, _i) => ({
       ...row,
       visible: row.category === categoryToFilter,
     }))
