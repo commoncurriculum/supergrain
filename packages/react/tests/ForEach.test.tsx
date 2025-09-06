@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import React, { act } from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { useStore, ForEach } from '@storable/react'
+import { useStore, ForEach } from '../src'
 
 describe.skip('ForEach', () => {
   beforeEach(() => {

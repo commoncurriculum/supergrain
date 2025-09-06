@@ -8,7 +8,7 @@ import {
   useStoreEffect,
   createStore,
   useStoreValue,
-} from '@storable/react'
+} from '../src'
 
 describe.skip('useDerived / useComputed', () => {
   beforeEach(() => {

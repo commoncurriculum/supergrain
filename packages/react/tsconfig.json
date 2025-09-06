@@ -6,6 +6,6 @@
     "types": ["node"],
     "esModuleInterop": true
   },
-  "include": ["src"],
+  "include": ["src", "tests"],
   "references": [{ "path": "../core" }]
 }

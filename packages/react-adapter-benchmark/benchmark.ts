@@ -1,4 +1,4 @@
-import { createStore, effect, signal, computed, unwrap } from '../../core/src'
+import { createStore, effect, signal, computed, unwrap } from '../core/src'
 import { performance } from 'perf_hooks'
 
 // Types for tracking metrics
