@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, memo } from 'react'
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { createStore, effect, signal, computed } from '../src'
+import React, { memo } from 'react'
+import { describe, it, expect } from 'vitest'
+import { render } from '@testing-library/react'
+import { createStore } from '../src'
 import { ForEach, SimpleForEach } from './foreach-optimized'
 
 describe('ForEach Performance Benchmark', () => {
@@ -179,7 +179,7 @@ describe('ForEach Performance Benchmark', () => {
       renderCounter.reset()
       const regularStart = performance.now()
       update({ $set: { filter: 'active' } })
-      const { rerender } = render(<RegularMapComponent />)
+      render(<RegularMapComponent />)
       const regularUpdateTime = performance.now() - regularStart
       const regularUpdateRenders = renderCounter.total()
 
@@ -243,7 +243,7 @@ describe('ForEach Performance Benchmark', () => {
       const ExpensiveComment = memo(({ comment }: any) => {
         renderCounter.increment(comment.id)
         // Simulate expensive computation
-        const hash = comment.text.split('').reduce((a, b) => {
+        const hash = comment.text.split('').reduce((a: number, b: string) => {
           return (a << 5) - a + b.charCodeAt(0)
         }, 0)
 

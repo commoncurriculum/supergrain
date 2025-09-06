@@ -1,4 +1,4 @@
-import React, { memo, useRef, useEffect, useState, useMemo } from 'react'
+import React, { memo, useEffect, useState, useMemo } from 'react'
 import { effect } from 'alien-signals'
 
 // Symbol used by the store to access internal nodes
@@ -11,10 +11,7 @@ function unwrap(value: any): any {
 }
 
 // Extract the existing signal for a specific property from the store
-function getExistingSignal(
-  target: any,
-  property: string | number
-): Signal<any> | null {
+function getExistingSignal(target: any, property: string | number): any {
   const unwrappedTarget = unwrap(target)
   const nodes = unwrappedTarget?.[$NODE]
   return nodes?.[property] || null
@@ -22,7 +19,7 @@ function getExistingSignal(
 
 // Hook to subscribe to a signal and trigger re-renders
 function useSignal<T>(signal: () => T): T {
-  const [version, setVersion] = useState(0)
+  const [, setVersion] = useState(0)
 
   useEffect(() => {
     // Subscribe to the signal
@@ -53,15 +50,16 @@ export function ForEach<T>({ each, children, fallback }: ForEachProps<T>) {
   }
 
   // Pre-access all items to ensure signals are created
-  each.forEach((item, index) => {
-    const _ = each[index] // This triggers signal creation in the proxy
+  each.forEach((_item, index) => {
+    // This triggers signal creation in the proxy
+    void each[index]
   })
 
   return (
     <>
       {each.map((_, index) => (
         <ForEachItem key={index} array={each} index={index}>
-          {children}
+          {children as any}
         </ForEachItem>
       ))}
     </>
@@ -115,7 +113,7 @@ export function KeyedForEach<T>({
   }
 
   // Track items by key for stability
-  const keyToIndex = useMemo(() => {
+  useMemo(() => {
     const map = new Map<string | number, number>()
     each.forEach((item, index) => {
       map.set(keyBy(item), index)
@@ -129,7 +127,7 @@ export function KeyedForEach<T>({
         const key = keyBy(item)
         return (
           <KeyedForEachItem key={key} array={each} index={index} itemKey={key}>
-            {children}
+            {children as any}
           </KeyedForEachItem>
         )
       })}
@@ -140,7 +138,7 @@ export function KeyedForEach<T>({
 const KeyedForEachItem = memo(function KeyedForEachItem<T>({
   array,
   index,
-  itemKey,
+  itemKey: _itemKey,
   children,
 }: {
   array: T[]
@@ -179,7 +177,7 @@ export function SimpleForEach<T>({
     <>
       {each.map((_, index) => (
         <SimpleForEachItem key={index} array={each} index={index}>
-          {children}
+          {children as any}
         </SimpleForEachItem>
       ))}
     </>
@@ -206,7 +204,7 @@ const SimpleForEachItem = memo(function SimpleForEachItem<T>({
   }, [])
 
   // Subscribe to changes
-  const [version, setVersion] = useState(0)
+  const [, setVersion] = useState(0)
 
   useEffect(() => {
     const dispose = effect(() => {

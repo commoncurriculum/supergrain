@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { createStore, effect, signal, computed } from '../src'
 
 describe('Performance Comparison: Proxy vs Direct Signals', () => {
@@ -40,15 +40,15 @@ describe('Performance Comparison: Proxy vs Direct Signals', () => {
       console.log('\n=== Simple Property Access ===')
 
       const proxyOps = measureOps('Proxy Access', () => {
-        const a = proxyState.count
-        const b = proxyState.value
-        const c = proxyState.text
+        void proxyState.count
+        void proxyState.value
+        void proxyState.text
       })
 
       const signalOps = measureOps('Signal Access', () => {
-        const a = countSignal()
-        const b = valueSignal()
-        const c = textSignal()
+        void countSignal()
+        void valueSignal()
+        void textSignal()
       })
 
       const speedup = signalOps / proxyOps
@@ -91,14 +91,14 @@ describe('Performance Comparison: Proxy vs Direct Signals', () => {
       console.log('\n=== Nested Object Access ===')
 
       const proxyOps = measureOps('Proxy Nested', () => {
-        const name = proxyState.user.profile.name
-        const city = proxyState.user.profile.address.city
+        void proxyState.user.profile.name
+        void proxyState.user.profile.address.city
       })
 
       const signalOps = measureOps('Signal Nested', () => {
         const user = userSignal()
-        const name = user.profile.name
-        const city = user.profile.address.city
+        void user.profile.name
+        void user.profile.address.city
       })
 
       const speedup = signalOps / proxyOps
@@ -162,7 +162,7 @@ describe('Performance Comparison: Proxy vs Direct Signals', () => {
       const [proxyState, updateProxy] = createStore({ count: 0 })
       let proxyEffectRuns = 0
       const proxyDispose = effect(() => {
-        const _ = proxyState.count
+        void proxyState.count
         proxyEffectRuns++
       })
 
@@ -170,7 +170,7 @@ describe('Performance Comparison: Proxy vs Direct Signals', () => {
       const countSignal = signal(0)
       let signalEffectRuns = 0
       const signalDispose = effect(() => {
-        const _ = countSignal()
+        void countSignal()
         signalEffectRuns++
       })
 
@@ -232,11 +232,11 @@ describe('Performance Comparison: Proxy vs Direct Signals', () => {
       console.log('\n=== Computed Values ===')
 
       const proxyOps = measureOps('Proxy Computed', () => {
-        const _ = proxyComputed()
+        void proxyComputed()
       })
 
       const signalOps = measureOps('Signal Computed', () => {
-        const _ = signalComputed()
+        void signalComputed()
       })
 
       const speedup = signalOps / proxyOps
@@ -270,7 +270,8 @@ describe('Performance Comparison: Proxy vs Direct Signals', () => {
         const userIndex = i % userCount
         const dispose = effect(() => {
           // Simulate component accessing specific user
-          const _ = proxyState.users[userIndex].name
+          const user = proxyState.users[userIndex]
+          if (user) void user.name
         })
         proxyEffects.push(dispose)
       }
@@ -294,7 +295,8 @@ describe('Performance Comparison: Proxy vs Direct Signals', () => {
         const dispose = effect(() => {
           // Simulate component accessing specific user
           const users = usersSignal()
-          const _ = users[userIndex].name
+          const user = users[userIndex]
+          if (user) void user.name
         })
         signalEffects.push(dispose)
       }
