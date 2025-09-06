@@ -1,11 +1,17 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import React from 'react'
-import { createStore, effect, getCurrentSub } from '@storable/core'
+import {
+  createStore,
+  effect,
+  getCurrentSub,
+  setCurrentSub,
+} from '@storable/core'
 import { useStore } from '../src/use-store'
+import { flushMicrotasks } from './test-utils'
 
 describe('Minimal Reactivity Tests', () => {
-  it('should verify basic effect tracking works', () => {
+  it('should verify basic effect tracking works', async () => {
     const [store, update] = createStore({ count: 0 })
     let effectCount = 0
 
@@ -20,12 +26,13 @@ describe('Minimal Reactivity Tests', () => {
 
     // Update should trigger effect
     update({ $set: { count: 5 } })
+    await flushMicrotasks()
     expect(effectCount).toBe(2) // Effect should run again
 
     cleanup()
   })
 
-  it('should debug what happens during useStore', () => {
+  it('should debug what happens during useStore', async () => {
     const [store, update] = createStore({ count: 10 })
     let renderCount = 0
 
@@ -56,8 +63,9 @@ describe('Minimal Reactivity Tests', () => {
 
     // Update the store
     console.log('\n--- Updating store ---')
-    act(() => {
+    await act(async () => {
       update({ $set: { count: 20 } })
+      await flushMicrotasks()
     })
 
     console.log('\n--- After update ---')
@@ -137,7 +145,7 @@ describe('Minimal Reactivity Tests', () => {
     }
   })
 
-  it('should test if store proxy is reactive', () => {
+  it('should test if store proxy is reactive', async () => {
     const [store, update] = createStore({ num: 100 })
 
     // Test that the store is actually a proxy

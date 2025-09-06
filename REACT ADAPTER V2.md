@@ -295,6 +295,15 @@ useLayoutEffect(() => {
 
 ## Implementation Details
 
+### Phase 0: Handle alien-signals Dependency Tracking
+
+Before implementing the core hooks, we must solve the dependency tracking limitation:
+
+1. **Create a tracking proxy**: Wrap the store to record accessed properties
+2. **Maintain effect state**: Keep track of the effect node and accessed paths
+3. **Re-establish dependencies**: Re-access tracked properties inside the effect callback on each update
+4. **Optimize re-access**: Only re-access properties that were actually used in the last render
+
 ### Phase 1: Core Hook Implementation
 
 1. Create `useStore` hook that:
@@ -536,6 +545,115 @@ export function StoreProvider({ store, children })
 // Auto-tracking wrapper
 export function Observer({ children })
 ```
+
+## Critical Discovery: alien-signals Dependency Tracking Limitation
+
+### The Problem
+
+Through extensive testing, we discovered a fundamental limitation when using alien-signals' `effect()` with React components:
+
+1. **alien-signals requires signal access inside effect callbacks**: Dependencies are only established when signals/stores are accessed INSIDE the effect's callback function
+2. **React components access stores outside effect callbacks**: Component render happens outside our effect's callback
+3. **Empty callbacks create no dependencies**: Our effect has an empty callback, so it never establishes dependencies on the store properties the component accesses
+
+### Why This Happens
+
+```typescript
+// This DOESN'T work - effect has no dependencies
+const cleanup = effect(() => {
+  // Empty callback - no store access here
+})
+setCurrentSub(effectInstance)
+const value = store.property // Component accesses store OUTSIDE effect callback
+setCurrentSub(prevSub)
+// Effect is never notified when store.property changes!
+
+// This WORKS - effect tracks dependencies
+const cleanup = effect(() => {
+  const value = store.property // Store accessed INSIDE effect callback
+})
+// Effect runs again when store.property changes
+```
+
+### The Solution: Tracked Property Access Pattern
+
+Since we can't modify alien-signals to support external dependency tracking, we need to ensure our effect accesses the same properties the component uses:
+
+1. **Track accessed properties during render**: Use a proxy or wrapper to record which store properties the component accesses
+2. **Re-run effect with tracked properties**: Make the effect callback access those same properties to establish dependencies
+3. **Maintain property list**: Keep track of accessed properties across renders
+
+### Implementation Strategy
+
+```typescript
+interface TrackedEffect {
+  effect: (() => void) | null
+  effectNode: any
+  accessedPaths: Set<string>
+  version: number
+  onStoreChange: (() => void) | null
+}
+
+function createTrackedEffect(store: any): TrackedEffect {
+  const tracked: TrackedEffect = {
+    effect: null,
+    effectNode: null,
+    accessedPaths: new Set(),
+    version: 0,
+    onStoreChange: null,
+  }
+
+  // Create a proxy to track property access
+  const trackedStore = new Proxy(store, {
+    get(target, prop) {
+      // Record this property access
+      tracked.accessedPaths.add(String(prop))
+
+      // If we have an active effect, ensure it's tracking
+      if (tracked.effectNode) {
+        const prevSub = setCurrentSub(tracked.effectNode)
+        const value = Reflect.get(target, prop)
+        setCurrentSub(prevSub)
+        return value
+      }
+
+      return Reflect.get(target, prop)
+    },
+  })
+
+  // Create effect that will re-access tracked properties
+  tracked.effect = effect(() => {
+    if (!tracked.effectNode) {
+      tracked.effectNode = getCurrentSub()
+    }
+
+    // Re-access all tracked properties to maintain dependencies
+    if (tracked.accessedPaths.size > 0) {
+      const prevSub = setCurrentSub(tracked.effectNode)
+      for (const path of tracked.accessedPaths) {
+        // Access each property to establish dependency
+        const value = store[path]
+      }
+      setCurrentSub(prevSub)
+    }
+
+    // Notify React on updates
+    if (tracked.onStoreChange) {
+      tracked.version = (tracked.version + 1) | 0
+      tracked.onStoreChange()
+    }
+  })
+
+  return tracked
+}
+```
+
+### Alternative Approaches Considered
+
+1. **Modify alien-signals**: Add support for manual dependency linking - not feasible as it's an external library
+2. **Use Preact's custom effect**: Implement `_start()` and `_callback()` pattern - requires deeper integration with signals internals
+3. **Babel transform**: Wrap component renders in tracking context - adds build complexity
+4. **Manual property declaration**: Require users to specify tracked properties - poor developer experience
 
 ## Conclusion
 

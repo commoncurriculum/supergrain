@@ -3,6 +3,7 @@ import { render, screen, act, cleanup } from '@testing-library/react'
 import React, { useState } from 'react'
 import { createStore, signal } from '@storable/core'
 import { useStore } from '../src/use-store'
+import { flushMicrotasks } from './test-utils'
 
 describe('Basic Store Tests', () => {
   afterEach(() => {
@@ -35,6 +36,7 @@ describe('Basic Store Tests', () => {
     // Update the store value
     await act(async () => {
       update({ $set: { count: 10 } })
+      await flushMicrotasks()
     })
 
     expect(screen.getByTestId('count').textContent).toBe('10')
@@ -57,6 +59,7 @@ describe('Basic Store Tests', () => {
     // Update store should trigger re-render
     await act(async () => {
       update({ $set: { value: 'updated' } })
+      await flushMicrotasks()
     })
 
     expect(renderCount).toBe(2)
@@ -85,6 +88,7 @@ describe('Basic Store Tests', () => {
 
     await act(async () => {
       update({ $set: { 'user.age': 31 } })
+      await flushMicrotasks()
     })
 
     expect(screen.getByTestId('name').textContent).toBe('John')
@@ -106,6 +110,7 @@ describe('Basic Store Tests', () => {
 
     await act(async () => {
       count.value = 5
+      await flushMicrotasks()
     })
 
     expect(screen.getByTestId('count').textContent).toBe('5')
@@ -149,12 +154,14 @@ describe('Basic Store Tests', () => {
 
     await act(async () => {
       update({ $set: { show: false } })
+      await flushMicrotasks()
     })
 
     expect(screen.queryByTestId('message')).toBeNull()
 
     await act(async () => {
       update({ $set: { show: true, message: 'World' } })
+      await flushMicrotasks()
     })
 
     expect(screen.getByTestId('message').textContent).toBe('World')
@@ -178,6 +185,7 @@ describe('Basic Store Tests', () => {
       update({ $set: { counter: 3 } })
       update({ $set: { counter: 4 } })
       update({ $set: { counter: 5 } })
+      await flushMicrotasks()
     })
 
     // Should show the final value
@@ -212,6 +220,7 @@ describe('Basic Store Tests', () => {
     // Update store
     await act(async () => {
       update({ $set: { multiplier: 3 } })
+      await flushMicrotasks()
     })
     expect(screen.getByTestId('result').textContent).toBe('33')
   })

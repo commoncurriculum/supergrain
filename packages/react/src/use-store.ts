@@ -67,20 +67,15 @@ export function useStore<T extends object>(
   // This activates the effect and begins tracking any signal access
   effectStore._start()
 
-  // For unmanaged mode, schedule cleanup after render
-  if (usage === UNMANAGED) {
-    useIsomorphicLayoutEffect(() => {
-      // Clean up trailing store after render
-      return () => {
-        effectStore.finish()
-      }
-    })
-  }
+  // For unmanaged mode, we do NOT call finish() here
+  // The tracking needs to remain active for the component's lifetime
+  // so the effect can be notified when dependencies change
 
   // Clean up when component unmounts
   useLayoutEffect(() => {
     return () => {
-      effectStore.dispose()
+      effectStore.finish()  // Stop tracking
+      effectStore.dispose()  // Clean up the effect
     }
   }, [])
 

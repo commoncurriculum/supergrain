@@ -5,9 +5,10 @@ import {
   getCurrentSub,
   setCurrentSub,
 } from '@storable/core'
+import { flushMicrotasks } from './test-utils'
 
 describe('Verify Tracking Mechanism', () => {
-  it('should verify basic effect tracking works with store', () => {
+  it('should verify basic effect tracking works with store', async () => {
     const [store, update] = createStore({ count: 0 })
     let effectRuns = 0
 
@@ -23,6 +24,7 @@ describe('Verify Tracking Mechanism', () => {
 
     // Update should trigger the effect
     update({ $set: { count: 5 } })
+    await flushMicrotasks()
     expect(effectRuns).toBe(2)
 
     cleanup()
@@ -55,7 +57,7 @@ describe('Verify Tracking Mechanism', () => {
     cleanup()
   })
 
-  it('should verify store tracks access when subscriber is active', () => {
+  it('should verify store tracks access when subscriber is active', async () => {
     const [store, update] = createStore({ value: 'test' })
     let trackingWorked = false
 
@@ -71,6 +73,7 @@ describe('Verify Tracking Mechanism', () => {
 
     // Now update the store - effect shouldn't run because it didn't track store.value
     update({ $set: { value: 'changed' } })
+    await flushMicrotasks()
     expect(trackingWorked).toBe(false) // Should still be false
 
     // Now create an effect that DOES access the store
@@ -82,13 +85,14 @@ describe('Verify Tracking Mechanism', () => {
 
     trackingWorked = false
     update({ $set: { value: 'changed again' } })
+    await flushMicrotasks()
     expect(trackingWorked).toBe(true) // Should be true now
 
     cleanup()
     cleanup2()
   })
 
-  it('should test manual subscriber setting during store access', () => {
+  it('should test manual subscriber setting during store access', async () => {
     const [store, update] = createStore({ num: 100 })
     let manualEffectRuns = 0
 
@@ -111,6 +115,7 @@ describe('Verify Tracking Mechanism', () => {
 
     // Now update - the effect should run
     update({ $set: { num: 200 } })
+    await flushMicrotasks()
     expect(manualEffectRuns).toBe(1) // Should have run once from the update
 
     cleanup()

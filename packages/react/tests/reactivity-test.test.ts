@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { createStore, signal, effect } from '@storable/core'
+import { flushMicrotasks } from './test-utils'
 
 describe('Store Reactivity Tests', () => {
   it('should test if signals work directly', () => {
@@ -100,7 +101,7 @@ describe('Store Reactivity Tests', () => {
     cleanup()
   })
 
-  it('should test store updates with the same store instance', () => {
+  it('should test store updates with the same store instance', async () => {
     const [store, update] = createStore({ counter: 0 })
     let effectRuns = 0
     let lastValue = null
@@ -119,6 +120,9 @@ describe('Store Reactivity Tests', () => {
     // Update using the update function
     update({ $set: { counter: 5 } })
 
+    // Flush microtasks to ensure batched effects run
+    await flushMicrotasks()
+
     console.log('After update, effectRuns:', effectRuns)
     console.log('After update, store.counter:', store.counter)
     console.log('After update, lastValue:', lastValue)
@@ -134,7 +138,6 @@ describe('Store Reactivity Tests', () => {
     }
 
     expect(store.counter).toBe(5) // Value should be updated
-    // This will likely fail:
     expect(effectRuns).toBe(2) // Effect should have run twice
 
     cleanup()
