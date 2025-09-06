@@ -68,4 +68,36 @@ describe('useTrackedStore Hook for Todo App', () => {
     // After the update, the new task should be rendered
     expect(screen.getByText('Learn TDD')).not.toBeNull()
   })
+
+  it('should re-render and remove a todo when using $pull', () => {
+    const initialTasks: Task[] = [
+      { id: 'task-1', isCompleted: false, text: 'First task' },
+      { id: 'task-2', isCompleted: false, text: 'Second task' },
+    ]
+    const initialState: UserTaskList = {
+      id: 'user-1',
+      firstName: 'Jane',
+      tasks: initialTasks,
+    }
+    const [store, update] = createStore(initialState)
+
+    render(<TodoListComponent store={store} />)
+
+    // Both tasks should be visible initially
+    expect(screen.getByText('First task')).not.toBeNull()
+    expect(screen.getByText('Second task')).not.toBeNull()
+
+    // Remove the first task
+    act(() => {
+      update({
+        $pull: {
+          tasks: { id: 'task-1' },
+        },
+      })
+    })
+
+    // The first task should be gone, the second should remain
+    expect(screen.queryByText('First task')).toBeNull()
+    expect(screen.getByText('Second task')).not.toBeNull()
+  })
 })
