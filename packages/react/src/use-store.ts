@@ -74,8 +74,8 @@ export function useStore<T extends object>(
   // Clean up when component unmounts
   useLayoutEffect(() => {
     return () => {
-      effectStore.finish()  // Stop tracking
-      effectStore.dispose()  // Clean up the effect
+      effectStore.finish() // Stop tracking
+      effectStore.dispose() // Clean up the effect
     }
   }, [])
 

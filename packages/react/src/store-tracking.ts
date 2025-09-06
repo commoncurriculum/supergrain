@@ -1,4 +1,9 @@
-import { effect, getCurrentSub, setCurrentSub, type EffectSubscriber } from '@storable/core'
+import {
+  effect,
+  getCurrentSub,
+  setCurrentSub,
+  type EffectSubscriber,
+} from '@storable/core'
 
 /**
  * Usage modes for effect stores, following Preact's pattern
@@ -83,7 +88,10 @@ export function createEffectStore(_usage: EffectStoreUsage): EffectStore {
         // Rotate version on unsubscribe to ensure re-render when subscribing again
         // This handles React StrictMode where components may keep stale snapshots
         version = (version + 1) | 0
-        console.log('[EffectStore.unsubscribe] Clearing React notify, new version:', version)
+        console.log(
+          '[EffectStore.unsubscribe] Clearing React notify, new version:',
+          version
+        )
         onChangeNotifyReact = undefined
       }
     },
@@ -134,16 +142,34 @@ export function createEffectStore(_usage: EffectStoreUsage): EffectStore {
 
     finish() {
       console.log('[EffectStore.finish] Called')
-      console.log('[EffectStore.finish] Effect deps before cleanup:', (effectInstance as any)?.deps)
+      console.log(
+        '[EffectStore.finish] Effect deps before cleanup:',
+        (effectInstance as any)?.deps
+      )
       console.log('[EffectStore.finish] Effect still exists?', !!effectInstance)
-      console.log('[EffectStore.finish] Effect flags:', (effectInstance as any)?.flags)
+      console.log(
+        '[EffectStore.finish] Effect flags:',
+        (effectInstance as any)?.flags
+      )
       const end = endEffect
       endEffect = undefined
       end?.()
-      console.log('[EffectStore.finish] Effect deps after cleanup:', (effectInstance as any)?.deps)
-      console.log('[EffectStore.finish] Effect still exists after cleanup?', !!effectInstance)
-      console.log('[EffectStore.finish] Effect flags after cleanup:', (effectInstance as any)?.flags)
-      console.log('[EffectStore.finish] Current subscriber after cleanup:', getCurrentSub())
+      console.log(
+        '[EffectStore.finish] Effect deps after cleanup:',
+        (effectInstance as any)?.deps
+      )
+      console.log(
+        '[EffectStore.finish] Effect still exists after cleanup?',
+        !!effectInstance
+      )
+      console.log(
+        '[EffectStore.finish] Effect flags after cleanup:',
+        (effectInstance as any)?.flags
+      )
+      console.log(
+        '[EffectStore.finish] Current subscriber after cleanup:',
+        getCurrentSub()
+      )
     },
 
     dispose() {
@@ -182,7 +208,10 @@ export function createEffectStore(_usage: EffectStoreUsage): EffectStore {
       if (!isFirstRun) {
         // Increment version using bitwise OR for 32-bit integer optimization
         version = (version + 1) | 0
-        console.log('[Effect callback] Dependency changed! New version:', version)
+        console.log(
+          '[Effect callback] Dependency changed! New version:',
+          version
+        )
         // Notify React that the store changed
         if (onChangeNotifyReact) {
           console.log('[Effect callback] Notifying React of change')
@@ -201,14 +230,20 @@ export function createEffectStore(_usage: EffectStoreUsage): EffectStore {
     store._effect = effectInstance
 
     console.log('[startComponentEffect] Effect created, node:', effectInstance)
-    console.log('[startComponentEffect] Effect deps initially:', (effectInstance as any).deps)
+    console.log(
+      '[startComponentEffect] Effect deps initially:',
+      (effectInstance as any).deps
+    )
 
     // Now set our effect as the current subscriber
     // This is the key: component render will happen with our effect as the current subscriber
     // Any store access during render will be tracked by our effect
     setCurrentSub(effectInstance)
     console.log('[startComponentEffect] Set current subscriber to effect')
-    console.log('[startComponentEffect] Verifying getCurrentSub():', getCurrentSub())
+    console.log(
+      '[startComponentEffect] Verifying getCurrentSub():',
+      getCurrentSub()
+    )
 
     // Set as current store
     currentStore = nextStore
@@ -216,12 +251,24 @@ export function createEffectStore(_usage: EffectStoreUsage): EffectStore {
     // Return function to restore previous subscriber and store
     return () => {
       console.log('[startComponentEffect.cleanup] Called')
-      console.log('[startComponentEffect.cleanup] Effect deps before restore:', (effectInstance as any).deps)
-      console.log('[startComponentEffect.cleanup] Current subscriber before restore:', getCurrentSub())
+      console.log(
+        '[startComponentEffect.cleanup] Effect deps before restore:',
+        (effectInstance as any).deps
+      )
+      console.log(
+        '[startComponentEffect.cleanup] Current subscriber before restore:',
+        getCurrentSub()
+      )
       setCurrentSub(prevSub)
       currentStore = prevStore
-      console.log('[startComponentEffect.cleanup] Effect deps after restore:', (effectInstance as any).deps)
-      console.log('[startComponentEffect.cleanup] Current subscriber after restore:', getCurrentSub())
+      console.log(
+        '[startComponentEffect.cleanup] Effect deps after restore:',
+        (effectInstance as any).deps
+      )
+      console.log(
+        '[startComponentEffect.cleanup] Current subscriber after restore:',
+        getCurrentSub()
+      )
     }
   }
 

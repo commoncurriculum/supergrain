@@ -1,9 +1,12 @@
 // Main entry point for @storable/react
 
-// Export the primary hooks
+// Export the working hooks with proxy-based isolation
+export { useStore, useTrackedStore } from './use-store-simple'
+
+// Export other implementations for reference/testing
 export {
   useSignals,
-  useStore,
+  useStore as useStoreSignals,
   useReactiveStore,
   observer,
 } from './use-signals'
