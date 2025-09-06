@@ -1,9 +1,9 @@
 {
-  "name": "js-krauset",
+  "name": "storable",
   "version": "1.0.0",
   "private": true,
   "js-framework-benchmark": {
-    "frameworkVersionFromPackage": "react:@storable/core",
+    "frameworkVersionFromPackage": "react",
     "frameworkHomeURL": "https://reactjs.org/"
   },
   "scripts": {
@@ -12,14 +12,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@storable/core": "workspace:*",
-    "@storable/react": "workspace:*",
-    "react": "18.2.0",
-    "react-dom": "18.2.0"
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
   },
   "devDependencies": {
-    "@types/react": "18.2.17",
-    "@types/react-dom": "18.2.7",
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0",
     "@vitejs/plugin-react": "4.2.1",
     "typescript": "5.2.2",
     "vite": "4.4.11"
