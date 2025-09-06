@@ -20,7 +20,15 @@ interface UserTaskList {
 
 const TodoItem = ({ task }: { task: Task }) => {
   const trackedTask = useTrackedStore(task)
-  return <li>{trackedTask.text}</li>
+  return (
+    <li
+      style={{
+        textDecoration: trackedTask.isCompleted ? 'line-through' : 'none',
+      }}
+    >
+      {trackedTask.text}
+    </li>
+  )
 }
 
 const TodoListComponent = ({ store }: { store: UserTaskList }) => {
@@ -138,5 +146,33 @@ describe('useTrackedStore Hook for Todo App', () => {
     expect(screen.getByText(newText)).not.toBeNull()
     // The other task should be unaffected
     expect(screen.getByText('Another item')).not.toBeNull()
+  })
+
+  it('should mark a todo as completed and update the style', () => {
+    const initialTasks: Task[] = [
+      { id: 'task-1', isCompleted: false, text: 'Incomplete Task' },
+    ]
+    const initialState: UserTaskList = {
+      id: 'user-1',
+      firstName: 'Jane',
+      tasks: initialTasks,
+    }
+    const [store, update] = createStore(initialState)
+
+    render(<TodoListComponent store={store} />)
+
+    const taskElement = screen.getByText('Incomplete Task')
+    expect(taskElement.style.textDecoration).toBe('none')
+
+    // Mark the task as completed
+    act(() => {
+      update({
+        $set: {
+          'tasks.0.isCompleted': true,
+        },
+      })
+    })
+
+    expect(taskElement.style.textDecoration).toBe('line-through')
   })
 })
