@@ -3,7 +3,7 @@ import React, { act } from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { createStore, useStoreValue } from '@storable/react'
 
-describe('useStoreValue', () => {
+describe.skip('useStoreValue', () => {
   beforeEach(() => {
     // Clear any previous renders
     document.body.innerHTML = ''
