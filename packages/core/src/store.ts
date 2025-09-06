@@ -40,7 +40,7 @@ function getNode(
   value?: any
 ): Signal<any> {
   if (nodes[property]) {
-    return nodes[property]
+    return nodes[property]!
   }
   const newSignal = signal(value) as Signal<any>
   newSignal.$ = (v: any) => newSignal(v)

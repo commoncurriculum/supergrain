@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect, useLayoutEffect } from 'react'
+import React, { useRef, useMemo, useEffect, useLayoutEffect } from 'react'
 import { useSyncExternalStore } from 'use-sync-external-store/shim'
 import {
   createStore as createStorableStore,
@@ -295,10 +295,10 @@ export function ForEach<T>({ each, children }: ForEachProps<T>) {
   }, [version, effectStore, each])
 
   // Render children with items
-  return (
-    <>
-      {each.map((item, index) => children(item, index))}
-    </>
+  return React.createElement(
+    React.Fragment,
+    null,
+    each.map((item, index) => children(item, index))
   )
 }
 

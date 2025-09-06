@@ -4,6 +4,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "target": "ES2022",
+    "jsx": "react",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
