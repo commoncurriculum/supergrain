@@ -1,7 +1,7 @@
 // Main entry point for @storable/react
 
 // Export the working hooks with proxy-based isolation
-export { useStore, useTrackedStore } from './use-store-simple'
+export { useStore, useTrackedStore } from './use-store'
 
 // Re-export core functionality that users might need
 export {
@@ -13,6 +13,8 @@ export {
   startBatch,
   endBatch,
   update,
+  getCurrentSub,
+  setCurrentSub,
   type Signal,
   type SetStoreFunction,
   type UpdateOperations,

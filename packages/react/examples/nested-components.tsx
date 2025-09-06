@@ -1,6 +1,6 @@
 import React from 'react'
-import { createStore } from '@storable/core'
-import { useTrackedStore } from '@storable/react'
+import { createStore } from '../../core/src/index'
+import { useTrackedStore } from '../src/index'
 
 // Create a store with separate properties for different component levels
 const [store, update] = createStore({

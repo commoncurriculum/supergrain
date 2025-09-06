@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import React from 'react'
 import { createStore } from '@storable/core'
-import { useStore, useTrackedStore } from '../src/use-store-simple'
+import { useStore, useTrackedStore } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
 describe('Simple useStore Hook', () => {

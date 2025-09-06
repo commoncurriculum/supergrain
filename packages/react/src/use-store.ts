@@ -30,7 +30,7 @@ export function useStore(): void {
     cleanup: (() => void) | null
     effectNode: any
     prevSub: any
-  }>()
+  } | null>(null)
 
   // Initialize on first render
   if (!stateRef.current) {
@@ -105,7 +105,7 @@ export function useTrackedStore<T extends object>(store: T): T {
     cleanup: (() => void) | null
     effectNode: any
     proxy: T | null
-  }>()
+  } | null>(null)
 
   // Initialize on first render
   if (!stateRef.current) {
