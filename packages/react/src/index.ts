@@ -67,9 +67,9 @@ function createEffectStore(): EffectStore {
 // Core hook: useStore
 export function useStore<T extends object>(
   initialState: T
-): [T, SetStoreFunction<T>] {
+): [T, SetStoreFunction] {
   // Create store only once
-  const storeRef = useRef<[T, SetStoreFunction<T>] | null>(null)
+  const storeRef = useRef<[T, SetStoreFunction] | null>(null)
   if (!storeRef.current) {
     storeRef.current = createStorableStore(initialState)
   }
@@ -117,7 +117,7 @@ export function useStoreValue<T extends object, R = T>(
   const effectStore = useMemo(() => createEffectStore(), [])
 
   // Track what we access
-  const valueRef = useRef<R>()
+  const valueRef = useRef<R | undefined>(undefined)
   const accessedRef = useRef<() => R>(() => {
     return selector ? selector(state) : (state as unknown as R)
   })
@@ -169,11 +169,11 @@ export function useDerived<T>(fn: () => T): T {
   )
 
   // Track the computed value
-  const valueRef = useRef<T>(computedRef.current.value)
+  const valueRef = useRef<T>(computedRef.current())
 
   useLayoutEffect(() => {
     effectStore.trackAccess(() => {
-      valueRef.current = computedRef.current!.value
+      valueRef.current = computedRef.current!()
     })
 
     return () => {
@@ -181,7 +181,7 @@ export function useDerived<T>(fn: () => T): T {
     }
   }, [version, effectStore])
 
-  return computedRef.current.value
+  return computedRef.current()
 }
 
 // Alias for consistency with naming
@@ -226,11 +226,11 @@ export function useSignalValue<T>(sig: Signal<T>): T {
     effectStore.getSnapshot
   )
 
-  const valueRef = useRef<T>(sig.value)
+  const valueRef = useRef<T>(sig())
 
   useLayoutEffect(() => {
     effectStore.trackAccess(() => {
-      valueRef.current = sig.value
+      valueRef.current = sig()
     })
 
     return () => {
@@ -238,7 +238,7 @@ export function useSignalValue<T>(sig: Signal<T>): T {
     }
   }, [version, effectStore, sig])
 
-  return sig.value
+  return sig()
 }
 
 // Utility to get signal from a proxied state path
