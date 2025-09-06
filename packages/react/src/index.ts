@@ -2,25 +2,11 @@
 
 // Export the primary hooks
 export {
+  useSignals,
   useStore,
   useReactiveStore,
-  useStoreInHook,
-  useObserver,
-} from './use-store'
-
-// Export store tracking utilities for advanced use cases
-export {
-  createEffectStore,
-  createEmptyEffectStore,
-  getCurrentStore,
-  setCurrentStore,
-  ensureFinalCleanup,
-  UNMANAGED,
-  MANAGED_COMPONENT,
-  MANAGED_HOOK,
-  type EffectStore,
-  type EffectStoreUsage,
-} from './store-tracking'
+  observer,
+} from './use-signals'
 
 // Re-export core functionality that users might need
 export {

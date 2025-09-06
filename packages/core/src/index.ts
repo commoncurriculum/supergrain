@@ -19,5 +19,7 @@ export {
   effect,
   startBatch,
   endBatch,
+  getCurrentSub,
   getCurrentSub as getListener,
+  setCurrentSub,
 } from 'alien-signals'
