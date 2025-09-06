@@ -409,22 +409,31 @@ The key insight was recognizing that we needed to control the subscriber context
 
 ### Preact's Different Architecture
 
-Preact Signals takes a fundamentally different approach that avoids the nested component problem entirely:
+Preact Signals takes a fundamentally different approach that avoids the nested component problem entirely. They support two modes:
 
-1. **Global Store Management**: Preact uses a global `currentStore` variable to track which component is rendering
+1. **UNMANAGED Mode (No Babel Required)**: Works without build configuration but has limitations
 
    ```javascript
-   // From Preact's actual implementation
-   let currentStore: EffectStore | undefined;
-
-   function startComponentEffect(prevStore, nextStore) {
-     const endEffect = nextStore.effect._start();
-     currentStore = nextStore; // Set global current store
-     return finishComponentEffect.bind(nextStore, prevStore, endEffect);
+   // Direct usage without Babel transform
+   function Component() {
+     useSignals() // Sets global current store
+     return <div>{signal.value}</div>
+     // Effect auto-closes after microtask or next useSignals call
    }
    ```
 
-2. **Try/Finally Wrapping**: Preact uses a Babel transform to wrap component renders in try/finally blocks
+   How it handles nested components:
+
+   ```javascript
+   // From Preact's source - UNMANAGED (0) transitions
+   if (prevUsage == UNMANAGED && thisUsage == UNMANAGED) {
+     // Finish previous effect before starting new one
+     currentStore.f()
+     endEffect = startComponentEffect(undefined, this)
+   }
+   ```
+
+2. **MANAGED Mode (With Babel Transform)**: Provides precise tracking with try/finally blocks
 
    ```javascript
    // What Preact's Babel transform generates
@@ -470,17 +479,18 @@ Preact Signals takes a fundamentally different approach that avoids the nested c
 
 ### Why We Can't Use Preact's Approach
 
-1. **Requires Babel Transform**: Preact's approach needs a build step to wrap components:
-   - Every component must be wrapped in try/finally
-   - Adds complexity to build pipeline
-   - Not viable for runtime-only usage
-   - Can miss render props and dynamically created components
+1. **UNMANAGED Mode Issues**: While Preact works without Babel, their UNMANAGED mode has problems:
+   - Relies on microtasks to clean up effects (timing issues)
+   - Can accidentally track signals from other components
+   - Signals in useLayoutEffect get incorrectly tracked
+   - No guarantee when effect closes
+   - From their own comments: "signals accessed in other code before the effect is closed"
 
 2. **Different Signal System**:
-   - Preact signals are designed for this pattern from the ground up
+   - Preact signals use getter properties that check global `currentStore`
    - Alien-signals requires the effect to be current during property access
    - Storable uses proxies for tracking, not getter/setter properties
-   - Would need to redesign core tracking mechanism
+   - Preact can check "who's rendering" globally, we can't without similar infrastructure
 
 3. **Global State Management Issues**:
    - Managing a global `currentStore` is complex
@@ -490,15 +500,16 @@ Preact Signals takes a fundamentally different approach that avoids the nested c
 
 ### Trade-offs Comparison
 
-| Aspect                  | Preact Signals            | Our Proxy Solution         |
-| ----------------------- | ------------------------- | -------------------------- |
-| **Setup Complexity**    | Zero-config               | Requires `useTrackedStore` |
-| **React Patching**      | Yes (fragile)             | No (stable)                |
-| **Performance**         | Slightly better           | Slightly worse             |
-| **Nested Components**   | Handled automatically     | Handled via proxy          |
-| **React Compatibility** | May break with updates    | Always compatible          |
-| **Bundle Size**         | Larger (includes patches) | Smaller (just proxy)       |
-| **Mental Model**        | "Magic" tracking          | Explicit tracking          |
+| Aspect                  | Preact (UNMANAGED)   | Preact (MANAGED)    | Our Proxy Solution         |
+| ----------------------- | -------------------- | ------------------- | -------------------------- |
+| **Setup Complexity**    | Zero-config          | Requires Babel      | Requires `useTrackedStore` |
+| **Build Step**          | None                 | Required            | None                       |
+| **Performance**         | Good                 | Best                | Good                       |
+| **Nested Components**   | Timing issues        | Perfect             | Perfect via proxy          |
+| **Accidental Tracking** | Can happen           | Prevented           | Prevented                  |
+| **React Compatibility** | Stable               | Stable              | Stable                     |
+| **Bundle Size**         | Small                | Medium (transform)  | Small                      |
+| **Mental Model**        | "Magic" with gotchas | Explicit boundaries | Explicit per-access        |
 
 ### Could We Adopt Preact's Approach?
 
@@ -542,6 +553,11 @@ Technically yes, but it would require:
 
 ### Conclusion on Approach Differences
 
-Preact's approach requires build-time transformation - it works seamlessly once configured but needs a Babel plugin and careful management of global state. Our proxy approach is "explicit" - it requires using a specific hook but works without any build configuration and provides more predictable behavior.
+Preact offers two modes:
 
-The proxy solution is ultimately more maintainable and predictable, even if it requires slightly more explicit code. This aligns with React's philosophy of "explicit is better than implicit" and ensures long-term stability.
+- **UNMANAGED**: Works without Babel but has timing issues and can accidentally track wrong signals
+- **MANAGED**: Requires Babel transform but provides perfect tracking
+
+Our proxy approach sits between these - it doesn't require a build step like MANAGED mode, but provides the same precision by wrapping each property access. While Preact's UNMANAGED mode seems simpler, it has subtle bugs that are hard to debug. Our explicit proxy approach makes the tracking boundaries clear and predictable.
+
+The key difference is philosophical: Preact tries to make tracking invisible (with varying success), while we make it explicit but reliable. This aligns with React's philosophy of "explicit is better than implicit" and ensures predictable behavior without build-time magic.
