@@ -67,7 +67,7 @@ describe('Todo App Core Tests', () => {
     })
 
     expect(state.userTaskList.tasks.length).toBe(1)
-    expect(state.userTaskList.tasks[0].id).toBe('task-2')
+    expect(state.userTaskList.tasks[0]!.id).toBe('task-2')
   })
 
   it('should update the text of a todo using $set', () => {
@@ -92,8 +92,8 @@ describe('Todo App Core Tests', () => {
       },
     })
 
-    expect(state.userTaskList.tasks[0].text).toBe(newText)
-    expect(state.userTaskList.tasks[1].text).toBe('Another task')
+    expect(state.userTaskList.tasks[0]!.text).toBe(newText)
+    expect(state.userTaskList.tasks[1]!.text).toBe('Another task')
   })
 
   it('should mark a todo as completed using $set', () => {
@@ -110,7 +110,7 @@ describe('Todo App Core Tests', () => {
 
     const [state, update] = createStore(initialState)
 
-    expect(state.userTaskList.tasks[0].isCompleted).toBe(false)
+    expect(state.userTaskList.tasks[0]!.isCompleted).toBe(false)
 
     update({
       $set: {
@@ -118,6 +118,6 @@ describe('Todo App Core Tests', () => {
       },
     })
 
-    expect(state.userTaskList.tasks[0].isCompleted).toBe(true)
+    expect(state.userTaskList.tasks[0]!.isCompleted).toBe(true)
   })
 })

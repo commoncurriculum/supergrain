@@ -256,7 +256,7 @@ describe('Simple useStore Hook', () => {
       renders++
       return (
         <ul data-testid="list">
-          {store.items.map((item, i) => (
+          {store.items.map((item: any, i: number) => (
             <li key={i}>{item}</li>
           ))}
         </ul>

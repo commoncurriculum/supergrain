@@ -125,40 +125,60 @@ export function useTrackedStore<T extends object>(store: T): T {
 
     // Create a proxy that ensures our effect is current during property access
     // This is the key to proper nested component isolation
-    const proxy = new Proxy(store, {
-      get(target, prop, receiver) {
-        // Save the current subscriber (might be another component's effect)
-        const prevSub = getCurrentSub()
+    const proxyCache = new WeakMap<object, object>()
 
-        // Set our effect as current for this property access
-        // This ensures the dependency is tracked by the right component
-        setCurrentSub(effectNode)
+    const createDeepProxy = <U extends object>(target: U): U => {
+      if (proxyCache.has(target)) {
+        return proxyCache.get(target) as U
+      }
 
-        try {
-          // Access the property (this will establish the dependency)
-          return Reflect.get(target, prop, receiver)
-        } finally {
-          // Restore the previous subscriber
-          // This is crucial for nested components
-          setCurrentSub(prevSub)
-        }
-      },
-      set(target, prop, value, receiver) {
-        return Reflect.set(target, prop, value, receiver)
-      },
-      has(target, prop) {
-        return Reflect.has(target, prop)
-      },
-      deleteProperty(target, prop) {
-        return Reflect.deleteProperty(target, prop)
-      },
-      ownKeys(target) {
-        return Reflect.ownKeys(target)
-      },
-      getOwnPropertyDescriptor(target, prop) {
-        return Reflect.getOwnPropertyDescriptor(target, prop)
-      },
-    }) as T
+      const proxy = new Proxy(target, {
+        get(target, prop, receiver) {
+          // Save the current subscriber (might be another component's effect)
+          const prevSub = getCurrentSub()
+
+          // Set our effect as current for this property access
+          // This ensures the dependency is tracked by the right component
+          setCurrentSub(effectNode)
+
+          try {
+            // Access the property (this will establish the dependency)
+            const value = Reflect.get(target, prop, receiver)
+
+            // If the value is an object, wrap it in a proxy as well
+            if (value !== null && typeof value === 'object') {
+              return createDeepProxy(value)
+            }
+
+            return value
+          } finally {
+            // Restore the previous subscriber
+            // This is crucial for nested components
+            setCurrentSub(prevSub)
+          }
+        },
+        set(target, prop, value, receiver) {
+          return Reflect.set(target, prop, value, receiver)
+        },
+        has(target, prop) {
+          return Reflect.has(target, prop)
+        },
+        deleteProperty(target, prop) {
+          return Reflect.deleteProperty(target, prop)
+        },
+        ownKeys(target) {
+          return Reflect.ownKeys(target)
+        },
+        getOwnPropertyDescriptor(target, prop) {
+          return Reflect.getOwnPropertyDescriptor(target, prop)
+        },
+      }) as U
+
+      proxyCache.set(target, proxy)
+      return proxy
+    }
+
+    const proxy = createDeepProxy(store)
 
     stateRef.current = {
       cleanup,
