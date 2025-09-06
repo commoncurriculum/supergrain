@@ -95,6 +95,7 @@ function Child() {
 ### Approach 1: Basic useStore with Global Subscriber (FAILED)
 
 **Implementation:**
+
 ```typescript
 function useStore(): void {
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
@@ -122,6 +123,7 @@ function useStore(): void {
 ```
 
 **Why It Failed:**
+
 - Parent sets its effect as current subscriber
 - Child component renders and overwrites with its effect
 - Parent continues rendering with child's effect still active
@@ -131,6 +133,7 @@ function useStore(): void {
 ### Approach 2: Immediate Context Restoration (FAILED)
 
 **Implementation:**
+
 ```typescript
 function useStore(): void {
   // ... create effect ...
@@ -146,6 +149,7 @@ function useStore(): void {
 ```
 
 **Why It Failed:**
+
 - Restoration happens after microtask, but React renders synchronously
 - Child components still render with wrong context
 - Timing issues with React's render cycle
@@ -153,6 +157,7 @@ function useStore(): void {
 ### Approach 3: Stack-Based Subscriber Management (PARTIALLY WORKED)
 
 **Implementation:**
+
 ```typescript
 const subscriberStack: any[] = []
 
@@ -177,6 +182,7 @@ function useStore(): void {
 ```
 
 **Why It Had Issues:**
+
 - Stack operations needed perfect timing with React's lifecycle
 - Concurrent mode could break stack ordering
 - Error boundaries could leave stack in inconsistent state
@@ -185,6 +191,7 @@ function useStore(): void {
 ### Approach 4: React Context for Isolation (ATTEMPTED)
 
 **Implementation:**
+
 ```typescript
 const SubscriberContext = createContext<any>(null)
 
@@ -212,6 +219,7 @@ function TrackedComponent({ children }) {
 ```
 
 **Why It Had Issues:**
+
 - Required wrapper components or automatic wrapping
 - React Context adds overhead
 - Still had timing issues with when context is read vs when subscriber is set
@@ -220,6 +228,7 @@ function TrackedComponent({ children }) {
 ### Approach 5: Manual Property Tracking (WORKED BUT POOR DX)
 
 **Implementation:**
+
 ```typescript
 function useStore(): void {
   const track = (fn: () => any) => {
@@ -243,6 +252,7 @@ function Component() {
 ```
 
 **Why It Wasn't Chosen:**
+
 - Poor developer experience
 - Verbose syntax for every property access
 - Easy to forget to wrap accesses
@@ -251,12 +261,13 @@ function Component() {
 ### Approach 6: Finish/Restore Pattern (FAILED)
 
 **Implementation:**
+
 ```typescript
 function useStore(): void {
   // ... create effect ...
 
   const originalFinish = state.effectNode.finish
-  state.effectNode.finish = function() {
+  state.effectNode.finish = function () {
     const result = originalFinish.call(this)
     setCurrentSub(state.prevSub)
     return result
@@ -267,6 +278,7 @@ function useStore(): void {
 ```
 
 **Why It Failed:**
+
 - `finish()` isn't called at the right time in render cycle
 - Monkey-patching internal methods is fragile
 - Broke with alien-signals updates
@@ -274,6 +286,7 @@ function useStore(): void {
 ### Approach 7: Effect with Tracked Callback (FAILED)
 
 **Implementation:**
+
 ```typescript
 function useStore(): void {
   const cleanup = effect(() => {
@@ -283,7 +296,7 @@ function useStore(): void {
       get(target, prop) {
         trackedProps.add(prop)
         return target[prop]
-      }
+      },
     })
 
     // Manually access tracked properties
@@ -293,6 +306,7 @@ function useStore(): void {
 ```
 
 **Why It Failed:**
+
 - Can't know which properties component will access before render
 - Effect callback runs at wrong time
 - Dependencies must be accessed INSIDE effect callback
@@ -300,6 +314,7 @@ function useStore(): void {
 ### Approach 8: Multiple Effects Per Property (INEFFICIENT)
 
 **Implementation:**
+
 ```typescript
 function useStore(): void {
   const effects = useRef(new Map())
@@ -315,12 +330,13 @@ function useStore(): void {
 
       // Somehow track this specific property...
       return target[prop]
-    }
+    },
   })
 }
 ```
 
 **Why It Wasn't Chosen:**
+
 - Creating an effect per property is wasteful
 - Complex cleanup logic
 - Still had the core timing problem
@@ -388,3 +404,114 @@ The proxy-based solution elegantly solves the nested component tracking problem 
 - **Maintainability**: Simple implementation without framework modifications
 
 The key insight was recognizing that we needed to control the subscriber context at the moment of property access, not at the component level. The proxy pattern was the only approach that could provide this granular control without modifying the core storable library.
+
+## Why Preact Signals Doesn't Need This Approach
+
+### Preact's Different Architecture
+
+Preact Signals takes a fundamentally different approach that avoids the nested component problem entirely:
+
+1. **React Runtime Patching**: Preact patches React's internals at runtime to intercept component renders
+
+   ```javascript
+   // Preact actually modifies React's dispatcher
+   ReactCurrentDispatcher.current = {
+     ...originalDispatcher,
+     useReducer: patchedUseReducer,
+     useState: patchedUseState,
+     // ... other hooks
+   }
+   ```
+
+2. **Component-Level Tracking**: Instead of tracking individual property access, Preact tracks at the component level
+
+   ```javascript
+   // Preact's approach (simplified)
+   function Component() {
+     // Preact knows this ENTIRE component is rendering
+     startTrackingForComponent()
+
+     const result = originalRender()
+
+     // All signals accessed during render are tracked
+     finishTrackingForComponent()
+
+     return result
+   }
+   ```
+
+3. **Signal Access Detection**: Preact signals have a different mechanism
+
+   ```javascript
+   // Preact signal
+   signal.value // getter that knows which component is rendering
+
+   // vs our approach with storable
+   store.value // proxy that needs to know which effect is active
+   ```
+
+### Why We Can't Use Preact's Approach
+
+1. **No React Patching**: We chose not to patch React internals because:
+   - It's fragile and breaks with React updates
+   - It violates React's stability guarantees
+   - It requires deep knowledge of React internals
+   - It doesn't work with React Native or other renderers
+
+2. **Different Signal System**: Alien-signals uses effect-based tracking:
+   - Requires active effect during property access
+   - Dependencies tracked through global subscriber
+   - Can't detect "which component is rendering" without React patches
+
+3. **Library Philosophy**: Storable aims to be:
+   - Framework agnostic (works outside React)
+   - Non-invasive (no runtime patching)
+   - Predictable (no magic)
+
+### Trade-offs Comparison
+
+| Aspect                  | Preact Signals            | Our Proxy Solution         |
+| ----------------------- | ------------------------- | -------------------------- |
+| **Setup Complexity**    | Zero-config               | Requires `useTrackedStore` |
+| **React Patching**      | Yes (fragile)             | No (stable)                |
+| **Performance**         | Slightly better           | Slightly worse             |
+| **Nested Components**   | Handled automatically     | Handled via proxy          |
+| **React Compatibility** | May break with updates    | Always compatible          |
+| **Bundle Size**         | Larger (includes patches) | Smaller (just proxy)       |
+| **Mental Model**        | "Magic" tracking          | Explicit tracking          |
+
+### Could We Adopt Preact's Approach?
+
+Technically yes, but it would require:
+
+1. **Runtime Patching Module**:
+
+   ```javascript
+   // Would need to add React internals patching
+   import { patchReactForTracking } from '@storable/react-patch'
+   patchReactForTracking() // Called once at app start
+   ```
+
+2. **Component Wrapping**:
+
+   ```javascript
+   // Would need to wrap every component
+   function tracked(Component) {
+     return function TrackedComponent(props) {
+       startComponentTracking()
+       try {
+         return Component(props)
+       } finally {
+         endComponentTracking()
+       }
+     }
+   }
+   ```
+
+3. **Signal Protocol Change**: Would need to modify how alien-signals tracks dependencies
+
+### Conclusion on Approach Differences
+
+Preact's approach is "magical" - it works without any code changes but relies on React internals that could break. Our proxy approach is "explicit" - it requires using a specific hook but is guaranteed to work with any React version.
+
+The proxy solution is ultimately more maintainable and predictable, even if it requires slightly more explicit code. This aligns with React's philosophy of "explicit is better than implicit" and ensures long-term stability.
