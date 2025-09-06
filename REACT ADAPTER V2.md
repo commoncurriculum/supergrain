@@ -51,6 +51,87 @@ The adapter should use an Effect Store that:
 - Provides version-based change detection using 32-bit integers
 - Handles cleanup on unmount
 
+#### Critical Implementation Insight from Preact
+
+Preact's implementation creates an effect that runs **during the render phase itself**, not in a useEffect. The key pattern is:
+
+1. **Global Current Store**: Maintains a global `currentStore` variable to track the active effect
+2. **Effect Callback**: The effect's callback is what increments the version and notifies React
+3. **Usage Modes**: Tracks whether the store is used in a component body vs hook body:
+   - `UNMANAGED`: Direct useSignals call without try/finally
+   - `MANAGED_COMPONENT`: Component wrapped with try/finally (babel transform)
+   - `MANAGED_HOOK`: Hook wrapped with try/finally
+4. **Nested Store Handling**: Properly captures and restores parent stores for nested scenarios
+5. **Microtask Cleanup**: Uses Promise.resolve().then() to clean up trailing stores
+
+```typescript
+// Preact's pattern:
+function createEffectStore() {
+  let effectInstance: Effect
+  let version = 0
+  let onChangeNotifyReact: (() => void) | undefined
+
+  // Create effect that will track dependencies
+  let unsubscribe = effect(function (this: Effect) {
+    effectInstance = this
+  })
+
+  // This callback runs when tracked signals change
+  effectInstance._callback = function () {
+    version = (version + 1) | 0
+    if (onChangeNotifyReact) onChangeNotifyReact()
+  }
+
+  return {
+    subscribe(onStoreChange) {
+      onChangeNotifyReact = onStoreChange
+      return () => {
+        version = (version + 1) | 0 // Rotate version on unsubscribe
+        onChangeNotifyReact = undefined
+        unsubscribe()
+      }
+    },
+    getSnapshot() {
+      return version
+    },
+  }
+}
+```
+
+</text>
+
+<old_text line=137>
+
+#### Primary Hook: `useStore`
+
+```typescript
+function useStore<T>(store: T): T {
+  // Create or reuse effect store for this component
+  const effectStore = useEffectStore()
+
+  // Subscribe to changes via useSyncExternalStore
+  // getSnapshot returns a 32-bit integer version for optimal performance
+  useSyncExternalStore(
+    effectStore.subscribe,
+    effectStore.getSnapshot, // Returns (version | 0) for 32-bit int
+    effectStore.getSnapshot
+  )
+
+  // Start tracking before render
+  effectStore.startTracking()
+
+  // Component will access store properties here
+  // Those accesses will be automatically tracked
+
+  // End tracking after render (in finally block)
+  try {
+    return store
+  } finally {
+    effectStore.endTracking()
+  }
+}
+```
+
 #### 32-bit Integer Version Optimization (Critical Preact Pattern)
 
 Preact uses a clever optimization with 32-bit integers for version tracking:
@@ -115,27 +196,31 @@ function useStore<T>(store: T): T {
   const effectStore = useEffectStore()
 
   // Subscribe to changes via useSyncExternalStore
-  // getSnapshot returns a 32-bit integer version for optimal performance
   useSyncExternalStore(
     effectStore.subscribe,
-    effectStore.getSnapshot, // Returns (version | 0) for 32-bit int
+    effectStore.getSnapshot,
     effectStore.getSnapshot
   )
 
-  // Start tracking before render
-  effectStore.startTracking()
+  // Start tracking - this activates the effect
+  effectStore.start()
 
-  // Component will access store properties here
-  // Those accesses will be automatically tracked
-
-  // End tracking after render (in finally block)
+  // In managed mode (with babel transform):
   try {
+    // Component accesses store properties here
+    // Dependencies are automatically tracked
     return store
   } finally {
-    effectStore.endTracking()
+    // End tracking after render
+    effectStore.finish()
   }
+
+  // In unmanaged mode (without babel transform):
+  // Cleanup happens via microtask after render
 }
 ```
+
+**Note**: The actual implementation needs to handle both managed (with try/finally) and unmanaged (without) modes. The babel transform automatically wraps components in try/finally blocks for optimal tracking.
 
 #### Auto-tracking Wrapper Component
 
@@ -216,11 +301,13 @@ useLayoutEffect(() => {
    - Creates an effect store per component
    - Integrates with useSyncExternalStore
    - Manages tracking lifecycle
+   - **Important**: Track dependencies during render phase, not in useEffect
 
 2. Implement tracking context:
-   - Global current effect tracking
-   - Property access interception
-   - Dependency linking
+   - Global current effect tracking (like Preact's `currentStore`)
+   - Property access interception via alien-signals' effect system
+   - Dependency linking happens automatically through signal access
+   - Handle nested tracking contexts for hooks calling other hooks
 
 ### Phase 2: Optimization Features
 
@@ -288,9 +375,74 @@ function useStoreEffect(effectFn: () => void | (() => void)): void {
 
 **Rationale**: Isolates tracking context per component, preventing cross-component pollution and enabling fine-grained subscriptions.
 
+**Implementation Note**: Preact maintains a global `currentStore` to track the active effect during render. This allows nested components and hooks to properly capture and restore their parent's tracking context. The pattern is:
+
+1. Save current store
+2. Set new store as current
+3. Run component/hook code (which accesses signals)
+4. Restore previous store
+
+This enables proper tracking even in complex scenarios like hooks calling other hooks or components using `renderToStaticMarkup`.
+
 ### 5. Automatic Tracking via Proxy Access
 
 **Rationale**: Provides the best developer experience - no need to manually specify dependencies or use special syntax.
+
+## Implementation Guidance: Lessons Learned
+
+### Critical Insights from Implementation Attempts
+
+1. **Effect Must Run During Render Phase**
+   - The effect that tracks dependencies must be active **during** the component render, not in a useEffect
+   - This is why Preact calls `effect._start()` before the component body runs
+   - Dependencies are captured as the component accesses store properties
+
+2. **Avoid Double Tracking**
+   - When creating an effect with alien-signals, it runs immediately to establish dependencies
+   - Use a flag to distinguish the initial run from subsequent reactive updates
+   - Only increment version and notify React on subsequent runs
+
+3. **Store Access Patterns**
+   - Direct property access on reactive stores triggers dependency tracking
+   - No need for proxies if the store is already reactive (via alien-signals)
+   - The challenge is coordinating React's render cycle with alien-signals' effect system
+
+4. **Key Implementation Pattern**
+
+```typescript
+// Simplified working pattern:
+function useStore<T>(store: T): T {
+  const [version, setVersion] = useState(0)
+
+  useLayoutEffect(() => {
+    // Create effect that tracks store access
+    const cleanup = effect(() => {
+      // Access store properties to establish tracking
+      // This happens automatically when component renders
+
+      // On changes, increment version to trigger re-render
+      setVersion(v => (v + 1) | 0)
+    })
+
+    return cleanup
+  }, [store])
+
+  return store
+}
+```
+
+5. **Common Pitfalls to Avoid**
+   - Don't try to track property access with proxies if store is already reactive
+   - Don't create effects in render phase (causes "Cannot update component while rendering" errors)
+   - Don't forget to handle the initial effect run vs subsequent updates
+   - Remember that alien-signals effects run synchronously on creation
+
+6. **Proper Integration Steps**
+   1. Create stable effect store per component instance
+   2. Use `useSyncExternalStore` for React integration
+   3. Start effect tracking **before** component accesses store
+   4. Let alien-signals handle dependency tracking automatically
+   5. Clean up effects on unmount
 
 ## Performance Considerations
 

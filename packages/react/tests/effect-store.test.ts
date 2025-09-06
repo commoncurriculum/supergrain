@@ -28,50 +28,49 @@ describe('EffectStore', () => {
     // (we can't directly test this without exposing internals)
   })
 
-  it('should track when startTracking/endTracking are called', () => {
+  it('should track dependencies via tracked function', () => {
     const store = new EffectStore()
+    const listener = vi.fn()
+    const sig = signal(0)
 
-    expect(store.isTracking).toBe(false)
+    store.subscribe(listener)
 
-    store.startTracking()
-    expect(store.isTracking).toBe(true)
+    // Set a tracked function that accesses the signal
+    const trackedFn = vi.fn(() => {
+      // Access the signal value to establish dependency
+      sig.value
+    })
 
-    store.endTracking()
-    expect(store.isTracking).toBe(false)
-  })
+    store.setTrackedFunction(trackedFn)
 
-  it('should warn when tracking methods are called incorrectly', () => {
-    const store = new EffectStore()
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // The tracked function should be called immediately
+    expect(trackedFn).toHaveBeenCalledTimes(1)
 
-    // Calling endTracking without startTracking
-    store.endTracking()
-    expect(warnSpy).toHaveBeenCalledWith(
-      'EffectStore: endTracking called while not tracking'
-    )
+    // Changing the signal should trigger the listener
+    sig.value = 1
 
-    // Calling startTracking twice
-    store.startTracking()
-    store.startTracking()
-    expect(warnSpy).toHaveBeenCalledWith(
-      'EffectStore: startTracking called while already tracking'
-    )
-
-    warnSpy.mockRestore()
+    // The listener should be notified of the change
+    expect(listener).toHaveBeenCalled()
   })
 
   it('should clean up on dispose', () => {
     const store = new EffectStore()
     const listener = vi.fn()
+    const sig = signal(0)
 
     store.subscribe(listener)
-    store.startTracking()
+
+    const trackedFn = () => {
+      sig.value
+    }
+    store.setTrackedFunction(trackedFn)
 
     // Dispose should clean everything up
     store.dispose()
 
-    // After dispose, tracking should be false
-    expect(store.isTracking).toBe(false)
+    // After dispose, changing the signal should not trigger listener
+    sig.value = 1
+    expect(listener).not.toHaveBeenCalled()
   })
 
   it('should maintain 32-bit integer for version', () => {
@@ -81,5 +80,38 @@ describe('EffectStore', () => {
     const version = store.getSnapshot()
     expect(Number.isInteger(version)).toBe(true)
     expect(version).toBe(version | 0) // Should equal itself when coerced to 32-bit
+  })
+
+  it('should replace tracked function when called multiple times', () => {
+    const store = new EffectStore()
+    const sig1 = signal(0)
+    const sig2 = signal(0)
+    const listener = vi.fn()
+
+    store.subscribe(listener)
+
+    // Set first tracked function
+    const trackedFn1 = vi.fn(() => {
+      sig1.value
+    })
+    store.setTrackedFunction(trackedFn1)
+
+    expect(trackedFn1).toHaveBeenCalledTimes(1)
+
+    // Set second tracked function (should replace the first)
+    const trackedFn2 = vi.fn(() => {
+      sig2.value
+    })
+    store.setTrackedFunction(trackedFn2)
+
+    expect(trackedFn2).toHaveBeenCalledTimes(1)
+
+    // Changing sig1 should NOT trigger listener (no longer tracked)
+    sig1.value = 1
+    expect(listener).not.toHaveBeenCalled()
+
+    // Changing sig2 SHOULD trigger listener
+    sig2.value = 1
+    expect(listener).toHaveBeenCalled()
   })
 })

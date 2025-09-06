@@ -13,29 +13,24 @@ export class EffectStore {
   // Version number that increments on any tracked change (32-bit int)
   private version = 0
 
-  // The alien-signals effect that tracks dependencies
-  private trackingEffect: EffectSubscriber | undefined
-
   // Callbacks to notify React when store changes
   private listeners = new Set<() => void>()
 
-  // Flag to track if we're currently in a tracking phase
-  private isTrackingActive = false
+  // The function that will be tracked for dependencies
+  private trackedFn: (() => void) | undefined
 
   // Cleanup function from the current effect
   private cleanupFn: (() => void) | undefined
 
-  /**
-   * Start tracking dependencies for the current render.
-   * This should be called before accessing any store properties.
-   */
-  startTracking(): void {
-    if (this.isTrackingActive) {
-      console.warn('EffectStore: startTracking called while already tracking')
-      return
-    }
+  // Track if this is the initial run of the effect
+  private isInitialRun = true
 
-    this.isTrackingActive = true
+  /**
+   * Set the function to track for dependencies.
+   * This function should access the store properties that need to be tracked.
+   */
+  setTrackedFunction(fn: () => void): void {
+    this.trackedFn = fn
 
     // Clean up any previous effect
     if (this.cleanupFn) {
@@ -43,29 +38,28 @@ export class EffectStore {
       this.cleanupFn = undefined
     }
 
+    // Reset the initial run flag when setting a new tracked function
+    this.isInitialRun = true
+
     // Create a new effect that will track dependencies
+    // The effect will run once immediately to establish dependencies
+    // and then again whenever any tracked dependency changes
     this.cleanupFn = effect(() => {
-      // This function runs when any tracked dependency changes
-      this.incrementVersion()
-      this.notifyListeners()
+      // Run the tracked function to access store properties
+      // This establishes the dependency tracking
+      if (this.trackedFn) {
+        this.trackedFn()
+      }
+
+      // Only increment version and notify on subsequent runs, not the initial run
+      if (!this.isInitialRun) {
+        this.incrementVersion()
+        this.notifyListeners()
+      } else {
+        // Mark that we've completed the initial run
+        this.isInitialRun = false
+      }
     })
-
-    // The effect is now active and will track any signal access
-    this.trackingEffect = this.cleanupFn as unknown as EffectSubscriber
-  }
-
-  /**
-   * End tracking and finalize the dependency list.
-   * This should be called after the component has accessed all store properties.
-   */
-  endTracking(): void {
-    if (!this.isTrackingActive) {
-      console.warn('EffectStore: endTracking called while not tracking')
-      return
-    }
-
-    this.isTrackingActive = false
-    // The effect continues to run and will notify on changes
   }
 
   /**
@@ -104,9 +98,9 @@ export class EffectStore {
       this.cleanupFn()
       this.cleanupFn = undefined
     }
-    this.trackingEffect = undefined
+    this.trackedFn = undefined
     this.listeners.clear()
-    this.isTrackingActive = false
+    this.isInitialRun = true
   }
 
   /**
@@ -122,12 +116,5 @@ export class EffectStore {
    */
   private notifyListeners(): void {
     this.listeners.forEach(listener => listener())
-  }
-
-  /**
-   * Check if this effect store is currently tracking dependencies.
-   */
-  get isTracking(): boolean {
-    return this.isTrackingActive
   }
 }
