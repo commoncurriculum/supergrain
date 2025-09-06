@@ -1,168 +1,77 @@
-#t' Storable Implementation Plan
+# Todo App Feature Testing Plan
 
-> **Note for AI Assistants:** Before committing any changes, please update this `PLAN.md` file by checking off the completed tasks (`- [x]`).
->
-> **TDD Approach:** For each new feature, please commit tests _before_ implementing the feature itself.
+This document outlines the plan for adding tests to the `core` and `react` packages to support the features of a todo application. In total, 8 new tests will be created: 4 for `core` and 4 for `react`.
 
-## Overview
+## Data Structures
 
-This document outlines the phased implementation plan for the Storable library - a reactive store with fine-grained reactivity powered by alien-signals.
+The tests will be based on the following data structures:
 
-## Phase 1: Core Foundation
+```typescript
+interface Task {
+  id: string
+  isCompleted: boolean
+  text: string
+}
 
-### 1.1 Project Setup
+interface UserTaskList {
+  id: string
+  firstName: string
+  tasks: Array<Task>
+}
+```
 
-- [x] Initialize monorepo with pnpm workspaces
-- [x] Configure TypeScript for all packages
-- [x] Set up build tooling (vite)
-- [x] Configure testing framework (vitest)
-- [x] Add alien-signals dependency
+---
 
-### 1.2 Basic Store Implementation
+## 1. Add Todo
 
-- [x] Create `ReactiveStore` class with collection management
-- [x] Implement `collection(name)` method
-- [x] Implement `set(type, id, data)` method
-- [x] Implement `find(type, id)` method
-- [x] Basic signal creation for entities
+### Core Test (`packages/core`)
 
-### 1.3 Proxy System
+- **File:** `tests/array.test.ts` (or a new `tests/todo.test.ts`)
+- **Description:** A test will be written to verify that a new `Task` object can be successfully appended to the `tasks` array within the `UserTaskList` store. This will involve creating a store with an initial `UserTaskList`, applying an "add" operation, and asserting that the `tasks` array contains the newly added task.
 
-- [x] Create proxy handler for automatic signal wrapping
-- [x] Implement property access tracking
-- [x] Implement property mutation handling
-- [x] Add proxy caching with WeakMap
-- [x] Handle nested object proxying
+### React Test (`packages/react`)
 
-### 1.4 Object Handling
+- **File:** `tests/use-store.test.tsx` (or a new `tests/use-store-todo.test.tsx`)
+- **Description:** A test will be created to ensure the `useStore` hook correctly updates the component when a new task is added. This test will render a component that uses the store, trigger an action to add a task, and then assert that the component re-renders with the new task visible.
 
-- [x] Implement property addition/deletion tracking
-- [x] Add shape change signals for dynamic properties
-- [x] Handle Object.keys/values/entries enumeration
-- [x] Add for...in loop tracking
+---
 
-## Phase 2: Array Support
+## 2. Remove Todo
 
-### 2.1 Array Signal Implementation
+### Core Test (`packages/core`)
 
-- [x] Create `ArraySignal` class extending Array
-- [x] Implement index-level signals
-- [x] Add length signal tracking
-- [x] Add version signal for structural changes
+- **File:** `tests/array.test.ts` (or a new `tests/todo.test.ts`)
+- **Description:** This test will ensure that a specific task can be removed from the `tasks` array based on its `id`. It will initialize a store with a list of tasks, perform a "remove" operation, and assert that the task with the specified `id` is no longer present in the `tasks` array.
 
-### 2.2 Array Method Overrides
+### React Test (`packages/react`)
 
-- [x] Override `push`, `pop`, `shift`, `unshift`
-- [x] Override `splice` with signal remapping
-- [x] Override `sort` and `reverse`
-- [x] Implement iteration tracking for `map`, `filter`, `forEach`
-- [x] Add fine-grained array change notifications
+- **File:** `tests/use-store.test.tsx` (or a new `tests/use-store-todo.test.tsx`)
+- **Description:** This test will verify that removing a task from the store triggers a re-render in the component using the `useStore` hook. The test will render a component displaying a list of tasks, simulate a user action to remove one, and assert that the removed task is no longer present in the rendered output.
 
-### 2.3 Array Proxy Integration
+---
 
-- [x] Integrate ArraySignal with main proxy system
-- [x] Handle numeric index access
-- [x] Track array method calls
-- [x] Optimize signal creation/cleanup
+## 3. Update Todo Text
 
-## Phase 3: Benchmarking
+### Core Test (`packages/core`)
 
-### 3.1 Speed Benchmarks
+- **File:** `tests/array.test.ts` (or a new `tests/todo.test.ts`)
+- **Description:** This test will confirm that the `text` property of a specific task can be updated. It will involve finding a task by its `id` within the `tasks` array, applying an "update text" operation, and asserting that the `text` property of that task has been changed to the new value.
 
-- [ ] Implement benchmark for `set()` method
-- [ ] Implement benchmark for `find()` method
-- [ ] Implement benchmark for property access
-- [ ] Implement benchmark for property mutation
-- [ ] Implement benchmark for array mutations
+### React Test (`packages/react`)
 
-### 3.2 Memory Benchmarks
+- **File:** `tests/use-store.test.tsx` (or a new `tests/use-store-todo.test.tsx`)
+- **Description:** This test will check that updating a task's text in the store is reflected in the component. It will render a component, trigger an action to update the text of a task, and assert that the component re-renders to display the updated text.
 
-- [ ] Implement memory benchmark for store creation
-- [ ] Implement memory benchmark for entity creation
-- [ ] Implement memory benchmark for subscriptions
+---
 
-## Phase 4: React Adapter
+## 4. Mark Todo as Completed
 
-### 4.1 Core React Hook
+### Core Test (`packages/core`)
 
-- [ ] Implement `useFind(store, type, id)` hook
-- [ ] Add automatic effect cleanup
-- [ ] Implement dependency tracking per component
-- [ ] Handle component unmounting
+- **File:** `tests/array.test.ts` (or a new `tests/todo.test.ts`)
+- **Description:** This test will verify that the `isCompleted` status of a task can be toggled (e.g., from `false` to `true`). It will initialize a store, find a task by `id`, apply an operation to change its completion status, and assert that the `isCompleted` property has been updated correctly.
 
-### 4.2 Additional React Utilities
+### React Test (`packages/react`)
 
-- [ ] Implement `useStore()` for multiple entities
-- [ ] Add `useFindWhere()` for queries
-- [ ] Add `useFindAll()` for collections
-- [ ] Implement `batch()` for grouped updates
-
-### 4.3 React Performance Optimizations
-
-- [ ] Add React.memo integration
-- [ ] Implement subscription deduplication
-- [ ] Add development mode warnings
-- [ ] Create React DevTools integration
-
-## Phase 5: Vue Adapter
-
-### 5.1 Core Vue Composable
-
-- [ ] Implement `useFind()` composable
-- [ ] Bridge alien-signals with Vue reactivity
-- [ ] Handle Vue lifecycle integration
-- [ ] Add TypeScript support
-
-### 5.2 Vue-Specific Features
-
-- [ ] Add template ref support
-- [ ] Implement computed property integration
-- [ ] Add watch/watchEffect compatibility
-- [ ] Handle Vue 3 suspense
-
-### 5.3 Vue Performance
-
-- [ ] Optimize reactive conversions
-- [ ] Add shallowRef optimizations
-- [ ] Implement Vue
-      DevTools integration
-
-## Success Metrics
-
-### Performance Goals
-
-- Sub-millisecond updates for single property changes
-- Linear performance scaling with number of entities
-- Memory usage proportional to active subscriptions
-- Zero memory leaks in long-running applications
-
-### Developer Experience Goals
-
-- Full TypeScript inference
-- Intuitive API
-
-### Technical Goals
-
-- 100% test coverage for core
-- Compatible with all major bundlers
-- Tree-shakeable exports
-
-## Risk Mitigation
-
-### Technical Risks
-
-1. **Proxy Performance**: Benchmark early and often
-2. **Memory Leaks**: Implement aggressive cleanup testing
-3. **Framework Integration**: Test with real-world applications
-4. **Browser Compatibility**: Test on older browsers
-
-### Adoption Risks
-
-1. **Learning Curve**: Focus on familiar patterns
-2. **Migration Cost**: Provide automated codemods
-3. **Performance Concerns**: Publish benchmarks early
-4. **Documentation**: Invest heavily in examples
-
-## Implementation Summary
-
-This plan can be adjusted based on feedback and priorities. The key is to maintain a working, shippable state after each phase.
+- **File:** `tests/use-store.test.tsx` (or a new `tests/use-store-todo.test.tsx`)
+- **Description:** This final test will ensure that changes to a task's `isCompleted` status are propagated to the UI. It will render a component, simulate an action to mark a task as complete, and assert that the component's output reflects this change (e.g., a "completed" class is added).
