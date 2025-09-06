@@ -18,6 +18,11 @@ interface UserTaskList {
   tasks: Array<Task>
 }
 
+const TodoItem = ({ task }: { task: Task }) => {
+  const trackedTask = useTrackedStore(task)
+  return <li>{trackedTask.text}</li>
+}
+
 const TodoListComponent = ({ store }: { store: UserTaskList }) => {
   const state = useTrackedStore(store)
 
@@ -26,7 +31,7 @@ const TodoListComponent = ({ store }: { store: UserTaskList }) => {
       <h1>{state.firstName}'s Tasks</h1>
       <ul>
         {state.tasks.map(task => (
-          <li key={task.id}>{task.text}</li>
+          <TodoItem key={task.id} task={task} />
         ))}
       </ul>
     </div>
@@ -99,5 +104,39 @@ describe('useTrackedStore Hook for Todo App', () => {
     // The first task should be gone, the second should remain
     expect(screen.queryByText('First task')).toBeNull()
     expect(screen.getByText('Second task')).not.toBeNull()
+  })
+
+  it('should re-render and update a todo text when using $set', () => {
+    const initialTasks: Task[] = [
+      { id: 'task-1', isCompleted: false, text: 'Original text' },
+      { id: 'task-2', isCompleted: false, text: 'Another item' },
+    ]
+    const initialState: UserTaskList = {
+      id: 'user-1',
+      firstName: 'Jane',
+      tasks: initialTasks,
+    }
+    const [store, update] = createStore(initialState)
+
+    render(<TodoListComponent store={store} />)
+
+    // Initial text should be there
+    expect(screen.getByText('Original text')).not.toBeNull()
+
+    const newText = 'This text has been updated'
+    // Update the text of the first task
+    act(() => {
+      update({
+        $set: {
+          'tasks.0.text': newText,
+        },
+      })
+    })
+
+    // The old text should be gone, and the new text should be present
+    expect(screen.queryByText('Original text')).toBeNull()
+    expect(screen.getByText(newText)).not.toBeNull()
+    // The other task should be unaffected
+    expect(screen.getByText('Another item')).not.toBeNull()
   })
 })
