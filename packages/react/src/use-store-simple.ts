@@ -84,6 +84,10 @@ export function useStore(): void {
  * Alternative that returns the store for cleaner usage.
  * This requires passing the store as a parameter.
  *
+ * This implementation uses a proxy to ensure the correct subscriber
+ * is active during each property access, providing perfect isolation
+ * for nested components.
+ *
  * @example
  * ```tsx
  * function Counter() {
@@ -93,7 +97,86 @@ export function useStore(): void {
  * ```
  */
 export function useTrackedStore<T extends object>(store: T): T {
-  useStore()
-  // Storable's proxy will handle tracking when properties are accessed
-  return store
+  // Force re-render when dependencies change
+  const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
+
+  // Store our effect state and proxy
+  const stateRef = useRef<{
+    cleanup: (() => void) | null
+    effectNode: any
+    proxy: T | null
+  }>()
+
+  // Initialize on first render
+  if (!stateRef.current) {
+    let effectNode: any = null
+    let isFirstRun = true
+
+    // Create an effect that will be notified when dependencies change
+    const cleanup = effect(() => {
+      if (isFirstRun) {
+        effectNode = getCurrentSub()
+        isFirstRun = false
+        return
+      }
+      forceUpdate()
+    })
+
+    // Create a proxy that ensures our effect is current during property access
+    // This is the key to proper nested component isolation
+    const proxy = new Proxy(store, {
+      get(target, prop, receiver) {
+        // Save the current subscriber (might be another component's effect)
+        const prevSub = getCurrentSub()
+
+        // Set our effect as current for this property access
+        // This ensures the dependency is tracked by the right component
+        setCurrentSub(effectNode)
+
+        try {
+          // Access the property (this will establish the dependency)
+          return Reflect.get(target, prop, receiver)
+        } finally {
+          // Restore the previous subscriber
+          // This is crucial for nested components
+          setCurrentSub(prevSub)
+        }
+      },
+      set(target, prop, value, receiver) {
+        return Reflect.set(target, prop, value, receiver)
+      },
+      has(target, prop) {
+        return Reflect.has(target, prop)
+      },
+      deleteProperty(target, prop) {
+        return Reflect.deleteProperty(target, prop)
+      },
+      ownKeys(target) {
+        return Reflect.ownKeys(target)
+      },
+      getOwnPropertyDescriptor(target, prop) {
+        return Reflect.getOwnPropertyDescriptor(target, prop)
+      },
+    }) as T
+
+    stateRef.current = {
+      cleanup,
+      effectNode,
+      proxy,
+    }
+  }
+
+  const state = stateRef.current
+
+  // Clean up when component unmounts
+  useEffect(() => {
+    return () => {
+      if (state.cleanup) {
+        state.cleanup()
+        state.cleanup = null
+      }
+    }
+  }, [])
+
+  return state.proxy!
 }

@@ -80,17 +80,17 @@ describe('Simple useStore Hook', () => {
     let childRenders = 0
 
     function Child() {
-      useStore()
+      const state = useTrackedStore(store)
       childRenders++
-      return <span data-testid="child">{store.child}</span>
+      return <span data-testid="child">{state.child}</span>
     }
 
     function Parent() {
-      useStore()
+      const state = useTrackedStore(store)
       parentRenders++
       return (
         <div>
-          <span data-testid="parent">{store.parent}</span>
+          <span data-testid="parent">{state.parent}</span>
           <Child />
         </div>
       )
