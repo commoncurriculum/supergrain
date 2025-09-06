@@ -15,6 +15,9 @@ importers:
         specifier: ^1.5.0
         version: 1.5.0(react@19.1.1)
     devDependencies:
+      '@preact/signals-react':
+        specifier: ^3.3.0
+        version: 3.3.0(react@19.1.1)
       '@testing-library/react':
         specifier: ^16.3.0
         version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.1.9(@types/react@19.1.12))(@types/react@19.1.12)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -486,6 +489,14 @@ packages:
 
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
+
+  '@preact/signals-core@1.12.1':
+    resolution: {integrity: sha512-BwbTXpj+9QutoZLQvbttRg5x3l5468qaV2kufh+51yha1c53ep5dY4kTuZR35+3pAZxpfQerGJiQqg34ZNZ6uA==}
+
+  '@preact/signals-react@3.3.0':
+    resolution: {integrity: sha512-Hxb7jQVuEA5y6EzlENcjpJLoxMf2rwUYU3KdJMHS+nYbA69+8elRbu6upiAOWtleXV4K7GZGQAD3KxB3Wk43KQ==}
+    peerDependencies:
+      react: ^16.14.0 || 17.x || 18.x || 19.x
 
   '@rolldown/pluginutils@1.0.0-beta.27':
     resolution: {integrity: sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA==}
@@ -1823,6 +1834,14 @@ snapshots:
     optional: true
 
   '@polka/url@1.0.0-next.29': {}
+
+  '@preact/signals-core@1.12.1': {}
+
+  '@preact/signals-react@3.3.0(react@19.1.1)':
+    dependencies:
+      '@preact/signals-core': 1.12.1
+      react: 19.1.1
+      use-sync-external-store: 1.5.0(react@19.1.1)
 
   '@rolldown/pluginutils@1.0.0-beta.27': {}
 

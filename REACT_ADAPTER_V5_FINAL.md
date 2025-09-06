@@ -411,62 +411,82 @@ The key insight was recognizing that we needed to control the subscriber context
 
 Preact Signals takes a fundamentally different approach that avoids the nested component problem entirely:
 
-1. **React Runtime Patching**: Preact patches React's internals at runtime to intercept component renders
+1. **Global Store Management**: Preact uses a global `currentStore` variable to track which component is rendering
 
    ```javascript
-   // Preact actually modifies React's dispatcher
-   ReactCurrentDispatcher.current = {
-     ...originalDispatcher,
-     useReducer: patchedUseReducer,
-     useState: patchedUseState,
-     // ... other hooks
+   // From Preact's actual implementation
+   let currentStore: EffectStore | undefined;
+
+   function startComponentEffect(prevStore, nextStore) {
+     const endEffect = nextStore.effect._start();
+     currentStore = nextStore; // Set global current store
+     return finishComponentEffect.bind(nextStore, prevStore, endEffect);
    }
    ```
 
-2. **Component-Level Tracking**: Instead of tracking individual property access, Preact tracks at the component level
+2. **Try/Finally Wrapping**: Preact uses a Babel transform to wrap component renders in try/finally blocks
 
    ```javascript
-   // Preact's approach (simplified)
+   // What Preact's Babel transform generates
    function Component() {
-     // Preact knows this ENTIRE component is rendering
-     startTrackingForComponent()
-
-     const result = originalRender()
-
-     // All signals accessed during render are tracked
-     finishTrackingForComponent()
-
-     return result
+     const store = useSignals(MANAGED_COMPONENT)
+     try {
+       // Component render - signals accessed here are tracked
+       return <div>{signal.value}</div>
+     } finally {
+       store.f() // Finish effect, restore previous store
+     }
    }
    ```
 
-3. **Signal Access Detection**: Preact signals have a different mechanism
+3. **Effect Store per Component**: Each component gets its own effect store that uses `useSyncExternalStore`
 
    ```javascript
-   // Preact signal
-   signal.value // getter that knows which component is rendering
+   function createEffectStore() {
+     let effectInstance
+     let version = 0
 
-   // vs our approach with storable
-   store.value // proxy that needs to know which effect is active
+     // Create effect that tracks signal dependencies
+     effect(function () {
+       effectInstance = this
+     })
+
+     // When signals change, increment version & notify React
+     effectInstance._callback = function () {
+       version = (version + 1) | 0
+       if (onChangeNotifyReact) onChangeNotifyReact()
+     }
+
+     return {
+       subscribe(onStoreChange) {
+         /* ... */
+       },
+       getSnapshot() {
+         return version
+       },
+     }
+   }
    ```
 
 ### Why We Can't Use Preact's Approach
 
-1. **No React Patching**: We chose not to patch React internals because:
-   - It's fragile and breaks with React updates
-   - It violates React's stability guarantees
-   - It requires deep knowledge of React internals
-   - It doesn't work with React Native or other renderers
+1. **Requires Babel Transform**: Preact's approach needs a build step to wrap components:
+   - Every component must be wrapped in try/finally
+   - Adds complexity to build pipeline
+   - Not viable for runtime-only usage
+   - Can miss render props and dynamically created components
 
-2. **Different Signal System**: Alien-signals uses effect-based tracking:
-   - Requires active effect during property access
-   - Dependencies tracked through global subscriber
-   - Can't detect "which component is rendering" without React patches
+2. **Different Signal System**:
+   - Preact signals are designed for this pattern from the ground up
+   - Alien-signals requires the effect to be current during property access
+   - Storable uses proxies for tracking, not getter/setter properties
+   - Would need to redesign core tracking mechanism
 
-3. **Library Philosophy**: Storable aims to be:
-   - Framework agnostic (works outside React)
-   - Non-invasive (no runtime patching)
-   - Predictable (no magic)
+3. **Global State Management Issues**:
+   - Managing a global `currentStore` is complex
+   - Race conditions possible with concurrent React features
+   - Error boundaries can leave store in inconsistent state
+   - Harder to debug when something goes wrong
 
 ### Trade-offs Comparison
 
@@ -484,34 +504,44 @@ Preact Signals takes a fundamentally different approach that avoids the nested c
 
 Technically yes, but it would require:
 
-1. **Runtime Patching Module**:
+1. **Babel Transform Plugin**:
 
    ```javascript
-   // Would need to add React internals patching
-   import { patchReactForTracking } from '@storable/react-patch'
-   patchReactForTracking() // Called once at app start
-   ```
+   // Would need a babel plugin to transform all components
+   // Before:
+   function Component() {
+     const store = useStore()
+     return <div>{store.value}</div>
+   }
 
-2. **Component Wrapping**:
-
-   ```javascript
-   // Would need to wrap every component
-   function tracked(Component) {
-     return function TrackedComponent(props) {
-       startComponentTracking()
-       try {
-         return Component(props)
-       } finally {
-         endComponentTracking()
-       }
+   // After transform:
+   function Component() {
+     const store = useStore()
+     try {
+       return <div>{store.value}</div>
+     } finally {
+       store.finish()
      }
    }
    ```
 
-3. **Signal Protocol Change**: Would need to modify how alien-signals tracks dependencies
+2. **Global Store Management**:
+
+   ```javascript
+   // Would need to manage global current store like Preact
+   let currentStore: EffectStore | undefined;
+
+   // Handle nested component scenarios:
+   // - Component -> Component (capture & restore)
+   // - Component -> Hook (capture & restore)
+   // - Hook -> Component (capture & restore)
+   // - Hook -> Hook (capture & restore)
+   ```
+
+3. **Redesign Core Tracking**: Would need to change how storable tracks dependencies to work with effect stores instead of proxy-based tracking
 
 ### Conclusion on Approach Differences
 
-Preact's approach is "magical" - it works without any code changes but relies on React internals that could break. Our proxy approach is "explicit" - it requires using a specific hook but is guaranteed to work with any React version.
+Preact's approach requires build-time transformation - it works seamlessly once configured but needs a Babel plugin and careful management of global state. Our proxy approach is "explicit" - it requires using a specific hook but works without any build configuration and provides more predictable behavior.
 
 The proxy solution is ultimately more maintainable and predictable, even if it requires slightly more explicit code. This aligns with React's philosophy of "explicit is better than implicit" and ensures long-term stability.
