@@ -1,14 +1,42 @@
-import { useRef, useEffect, useReducer } from 'react'
+import {
+  useRef,
+  useEffect,
+  useReducer,
+  createContext,
+  useContext,
+  ReactNode,
+  useLayoutEffect,
+} from 'react'
 import { effect, getCurrentSub, setCurrentSub } from '@storable/core'
+
+const isServer = typeof window === 'undefined'
+const useIsomorphicLayoutEffect = isServer ? useEffect : useLayoutEffect
+
+/**
+ * Context to track the parent subscriber for proper isolation.
+ * This allows nested components to restore the correct subscriber after rendering.
+ */
+const SubscriberContext = createContext<any>(null)
+
+/**
+ * Provider component that captures the current subscriber.
+ * This is used internally to isolate tracking contexts.
+ */
+export function SubscriberProvider({ children }: { children: ReactNode }) {
+  const currentSub = getCurrentSub()
+  return (
+    <SubscriberContext.Provider value={currentSub}>
+      {children}
+    </SubscriberContext.Provider>
+  )
+}
 
 /**
  * React hook for using storable stores with proper nested component isolation.
  *
- * This implementation uses a proxy to ensure that each component's effect is active
- * during property access, preventing interference between nested components.
- *
- * The key insight is that we need to temporarily set the correct subscriber
- * during each property access to ensure proper dependency tracking.
+ * This implementation uses React Context to ensure that parent and child components
+ * maintain separate tracking contexts, preventing interference between their
+ * dependency tracking.
  *
  * @example
  * ```tsx
@@ -19,6 +47,9 @@ import { effect, getCurrentSub, setCurrentSub } from '@storable/core'
  * ```
  */
 export function useStore(): void {
+  // Get the parent subscriber from context (if any)
+  const parentSub = useContext(SubscriberContext)
+
   // Force re-render when dependencies change
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
 
@@ -26,10 +57,14 @@ export function useStore(): void {
   const stateRef = useRef<{
     cleanup: (() => void) | null
     effectNode: any
+    prevSub: any
   }>()
 
   // Initialize on first render
   if (!stateRef.current) {
+    // Capture whatever subscriber was active before us
+    const prevSub = parentSub ?? getCurrentSub()
+
     let effectNode: any = null
     let isFirstRun = true
 
@@ -49,14 +84,26 @@ export function useStore(): void {
     stateRef.current = {
       cleanup,
       effectNode,
+      prevSub,
     }
   }
 
   const state = stateRef.current
 
+  // Update prevSub if context changed (e.g., parent component re-rendered)
+  if (parentSub !== undefined) {
+    state.prevSub = parentSub
+  }
+
   // Set our effect as the current subscriber for this render
-  // This allows property accesses during render to establish dependencies
+  // Storable's proxy will check getCurrentSub() when properties are accessed
   setCurrentSub(state.effectNode)
+
+  // Restore the previous subscriber after this component renders
+  // This is crucial for nested components
+  useIsomorphicLayoutEffect(() => {
+    setCurrentSub(state.prevSub)
+  })
 
   // Clean up when component unmounts
   useEffect(() => {
@@ -73,8 +120,8 @@ export function useStore(): void {
  * Alternative hook that returns a proxy to the store for cleaner usage.
  * The proxy ensures the correct subscriber is active during property access.
  *
- * This is the recommended approach as it provides perfect isolation between
- * nested components by wrapping each property access.
+ * This approach provides perfect isolation between nested components by
+ * wrapping each property access to temporarily activate the correct effect.
  *
  * @example
  * ```tsx
@@ -167,4 +214,26 @@ export function useTrackedStore<T extends object>(store: T): T {
   }, [])
 
   return state.proxy!
+}
+
+/**
+ * HOC that wraps a component with a SubscriberProvider to isolate tracking contexts.
+ * This can be used to ensure proper isolation in complex component trees.
+ *
+ * @example
+ * ```tsx
+ * const IsolatedComponent = withTrackedIsolation(MyComponent)
+ * ```
+ */
+export function withTrackedIsolation<P extends object>(
+  Component: React.ComponentType<P>
+): React.ComponentType<P> {
+  return function IsolatedComponent(props: P) {
+    const currentSub = getCurrentSub()
+    return (
+      <SubscriberContext.Provider value={currentSub}>
+        <Component {...props} />
+      </SubscriberContext.Provider>
+    )
+  }
 }
