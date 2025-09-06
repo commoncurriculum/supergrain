@@ -69,4 +69,30 @@ describe('Todo App Core Tests', () => {
     expect(state.userTaskList.tasks.length).toBe(1)
     expect(state.userTaskList.tasks[0].id).toBe('task-2')
   })
+
+  it('should update the text of a todo using $set', () => {
+    const initialTasks: Task[] = [
+      { id: 'task-1', isCompleted: false, text: 'Initial text' },
+      { id: 'task-2', isCompleted: true, text: 'Another task' },
+    ]
+    const initialState: AppState = {
+      userTaskList: {
+        id: 'user-1',
+        firstName: 'John',
+        tasks: initialTasks,
+      },
+    }
+
+    const [state, update] = createStore(initialState)
+    const newText = 'Updated task text'
+
+    update({
+      $set: {
+        'userTaskList.tasks.0.text': newText,
+      },
+    })
+
+    expect(state.userTaskList.tasks[0].text).toBe(newText)
+    expect(state.userTaskList.tasks[1].text).toBe('Another task')
+  })
 })
