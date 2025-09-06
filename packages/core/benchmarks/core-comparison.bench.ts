@@ -94,14 +94,14 @@ describe('Core: Reactive Effect Creation', () => {
     dispose()
   })
 
-  bench('solid-js: create effect with 10k signal reads', async () => {
+  bench('solid-js/store: create effect with 10k property reads', async () => {
     await testEffect(done => {
-      const [signal] = createSignal(0)
+      const [store] = createSolidStore({ value: 0 })
       let runs = 0
       createEffect(() => {
         runs++
         for (let i = 0; i < 10000; i++) {
-          signal()
+          store.value
         }
         if (runs === 1) done()
       })
@@ -187,25 +187,21 @@ describe('Core: Batch Updates', () => {
     dispose()
   })
 
-  bench('solid-js: batch update 3 signals', async () => {
+  bench('solid-js/store: batch update 3 properties', async () => {
     await testEffect(done => {
-      const [a, setA] = createSignal(0)
-      const [b, setB] = createSignal(0)
-      const [c, setC] = createSignal(0)
+      const [store, setStore] = createSolidStore({ a: 0, b: 0, c: 0 })
       let runs = 0
 
       createEffect(() => {
         runs++
-        a()
-        b()
-        c()
+        store.a
+        store.b
+        store.c
 
         if (runs === 1) {
           // Initial run complete, perform batch
           batch(() => {
-            setA(1)
-            setB(2)
-            setC(3)
+            setStore({ a: 1, b: 2, c: 3 })
           })
         } else if (runs === 2) {
           // Batch complete
