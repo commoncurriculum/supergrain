@@ -14,6 +14,11 @@ import {
 } from 'solid-js/store/dist/store.js'
 import { testEffect } from '@solidjs/testing-library'
 
+function validationError(message: string) {
+  console.warn(message)
+  throw new Error(message)
+}
+
 /**
  * Core benchmarks for comparing @storable/core with solid-js.
  *
@@ -83,8 +88,9 @@ describe('Core: Reactive Effect Creation', () => {
         store.value
       }
     })
-    if (runs !== 1)
-      console.warn(`[@storable/core] Unexpected initial runs: ${runs}`)
+    if (runs !== 1) {
+      validationError(`[@storable/core] Unexpected initial runs: ${runs}`)
+    }
     dispose()
   })
 
@@ -113,7 +119,9 @@ describe('Core: Property Updates with Effects', () => {
     })
 
     if (runs !== 1) {
-      console.warn(`[@storable/core] Initial effect did not run. Runs: ${runs}`)
+      validationError(
+        `[@storable/core] Initial effect did not run. Runs: ${runs}`
+      )
     }
 
     for (let i = 0; i < 1000; i++) {
@@ -123,7 +131,7 @@ describe('Core: Property Updates with Effects', () => {
     await new Promise(resolve => queueMicrotask(resolve))
 
     if (runs !== 2) {
-      console.warn(
+      validationError(
         `[@storable/core] Expected 2 runs for batched updates, got ${runs}`
       )
     }
@@ -131,38 +139,30 @@ describe('Core: Property Updates with Effects', () => {
   })
 
   bench('solid-js/store: 1000 batched updates', async () => {
-    let dispose: () => void
-    let runs = 0
-    let setStore: SetStoreFunction<{ count: number }>
+    await testEffect(done => {
+      const [store, setStore] = createSolidStore({ count: 0 })
+      let runs = 0
 
-    createRoot(d => {
-      dispose = d
-      const [store, _setStore] = createSolidStore({ count: 0 })
-      setStore = _setStore
       createEffect(() => {
         runs++
         store.count
+
+        if (runs === 1) {
+          // Initial run complete, perform batch updates
+          batch(() => {
+            for (let i = 0; i < 1000; i++) {
+              setStore('count', i + 1)
+            }
+          })
+        } else if (runs === 2) {
+          // Batch complete
+          done()
+        }
       })
+
+      // Fallback timeout
+      setTimeout(() => done(), 100)
     })
-
-    if (runs !== 1) {
-      console.warn(`[solid-js] Initial effect did not run. Runs: ${runs}`)
-    }
-
-    batch(() => {
-      for (let i = 0; i < 1000; i++) {
-        setStore('count', i + 1)
-      }
-    })
-
-    await new Promise(resolve => queueMicrotask(resolve))
-
-    if (runs !== 2) {
-      console.warn(
-        `[solid-js] Expected 2 runs for batched updates, got ${runs}`
-      )
-    }
-    dispose()
   })
 })
 
@@ -182,7 +182,7 @@ describe('Core: Batch Updates', () => {
     await new Promise(resolve => queueMicrotask(resolve))
 
     if (runs !== 2) {
-      console.warn(`[@storable/core] Expected 2 runs, got ${runs}`)
+      validationError(`[@storable/core] Expected 2 runs, got ${runs}`)
     }
     dispose()
   })
@@ -234,46 +234,36 @@ describe('Core: Array Operations', () => {
     await new Promise(resolve => queueMicrotask(resolve))
 
     if (runs !== 2) {
-      console.warn(`[@storable/core] Expected 2 runs, got ${runs}`)
+      validationError(`[@storable/core] Expected 2 runs, got ${runs}`)
     }
     dispose()
   })
 
   bench('solid-js/store: 100 array pushes', async () => {
-    let dispose: () => void
-    let runs = 0
-    let setStore: SetStoreFunction<{ items: number[] }>
-
-    createRoot(d => {
-      dispose = d
-      const [store, _setStore] = createSolidStore<{ items: number[] }>({
+    await testEffect(done => {
+      const [store, setStore] = createSolidStore<{ items: number[] }>({
         items: [],
       })
-      setStore = _setStore
+      let runs = 0
+
       createEffect(() => {
         runs++
         store.items.length
+
+        if (runs === 1) {
+          batch(() => {
+            for (let i = 0; i < 100; i++) {
+              setStore('items', items => [...items, i])
+            }
+          })
+        } else if (runs === 2) {
+          done()
+        }
       })
+
+      // Fallback timeout
+      setTimeout(() => done(), 100)
     })
-
-    if (runs !== 1) {
-      console.warn(`[solid-js] Initial effect did not run. Runs: ${runs}`)
-    }
-
-    batch(() => {
-      for (let i = 0; i < 100; i++) {
-        setStore('items', items => [...items, i])
-      }
-    })
-
-    await new Promise(resolve => queueMicrotask(resolve))
-
-    if (runs !== 2) {
-      console.warn(
-        `[solid-js] Expected 2 runs for batched updates, got ${runs}`
-      )
-    }
-    dispose()
   })
 })
 
@@ -295,44 +285,34 @@ describe('Core: Deep Updates', () => {
     await new Promise(resolve => queueMicrotask(resolve))
 
     if (runs !== 2) {
-      console.warn(`[@storable/core] Expected 2 runs, got ${runs}`)
+      validationError(`[@storable/core] Expected 2 runs, got ${runs}`)
     }
     dispose()
   })
 
   bench('solid-js/store: 100 deep updates', async () => {
-    let dispose: () => void
-    let runs = 0
-    let setStore: SetStoreFunction<ReturnType<typeof getDeepState>>
+    await testEffect(done => {
+      const [store, setStore] = createSolidStore(getDeepState())
+      let runs = 0
 
-    createRoot(d => {
-      dispose = d
-      const [store, _setStore] = createSolidStore(getDeepState())
-      setStore = _setStore
       createEffect(() => {
         runs++
         store.l1.l2.l3.value
+
+        if (runs === 1) {
+          batch(() => {
+            for (let i = 0; i < 100; i++) {
+              setStore('l1', 'l2', 'l3', 'value', i + 1)
+            }
+          })
+        } else if (runs === 2) {
+          done()
+        }
       })
+
+      // Fallback timeout
+      setTimeout(() => done(), 100)
     })
-
-    if (runs !== 1) {
-      console.warn(`[solid-js] Initial effect did not run. Runs: ${runs}`)
-    }
-
-    batch(() => {
-      for (let i = 0; i < 100; i++) {
-        setStore('l1', 'l2', 'l3', 'value', i + 1)
-      }
-    })
-
-    await new Promise(resolve => queueMicrotask(resolve))
-
-    if (runs !== 2) {
-      console.warn(
-        `[solid-js] Expected 2 runs for batched updates, got ${runs}`
-      )
-    }
-    dispose()
   })
 })
 
@@ -343,16 +323,23 @@ describe('Core: Granular Reactivity', () => {
       const data: any = {}
       for (let i = 0; i < 10; i++) data[`prop${i}`] = { nested: i }
       const [store, setStore] = createStore(data)
-
+      const runs = Array(10).fill(0)
       const disposers: (() => void)[] = []
-      let updateRuns = 0
 
       for (let i = 0; i < 10; i++) {
+        const index = i
         disposers.push(
           effect(() => {
-            store[`prop${i}`].nested
-            if (i === 5) updateRuns++
+            store[`prop${index}`].nested
+            runs[index]++
           })
+        )
+      }
+
+      // Effects run once on creation.
+      if (runs.some(r => r !== 1)) {
+        validationError(
+          `[@storable/core] Unexpected initial runs: ${runs.join(', ')}`
         )
       }
 
@@ -360,9 +347,12 @@ describe('Core: Granular Reactivity', () => {
 
       await new Promise(resolve => queueMicrotask(resolve))
 
-      if (updateRuns !== 1) {
-        console.warn(
-          `[@storable/core] Expected 1 update run, got ${updateRuns}`
+      const passed = runs[5] === 2 && runs.every((r, i) => i === 5 || r === 1)
+      if (!passed) {
+        validationError(
+          `[@storable/core] Expected only one effect to run. Runs: ${runs.join(
+            ', '
+          )}`
         )
       }
 
@@ -373,43 +363,30 @@ describe('Core: Granular Reactivity', () => {
   bench(
     'solid-js/store: update one property in object with 10 properties',
     async () => {
-      const data: any = {}
-      for (let i = 0; i < 10; i++) data[`prop${i}`] = { nested: i }
+      await testEffect(done => {
+        const data: any = {}
+        for (let i = 0; i < 10; i++) data[`prop${i}`] = { nested: i }
+        const [store, setStore] = createSolidStore(data)
 
-      let dispose: () => void
-      const runs = Array(10).fill(0)
-      let setStore: SetStoreFunction<typeof data>
+        // The property we will check is prop5
+        createEffect(() => {
+          let runs = 0
+          // Re-run this effect when prop5 is updated
+          store.prop5.nested
+          runs++
 
-      createRoot(d => {
-        dispose = d
-        const [store, _setStore] = createSolidStore(data)
-        setStore = _setStore
+          if (runs === 1) {
+            // All effects have run once. Now update.
+            setStore('prop5', 'nested', 999)
+          } else if (runs === 2) {
+            // The update has propagated and this effect has re-run.
+            // We can now safely finish the benchmark.
+            done()
+          }
+        })
 
-        for (let i = 0; i < 10; i++) {
-          createEffect(() => {
-            store[`prop${i}`].nested
-            runs[i]++
-          })
-        }
+        setTimeout(() => done(), 100)
       })
-
-      // All effects run once initially.
-      if (runs.some(r => r !== 1)) {
-        console.warn(`[solid-js] Unexpected initial runs: ${runs.join(', ')}`)
-      }
-
-      setStore('prop5', 'nested', 999)
-
-      await new Promise(resolve => queueMicrotask(resolve))
-
-      const passed = runs[5] === 2 && runs.every((r, i) => i === 5 || r === 1)
-      if (!passed) {
-        console.warn(
-          `[solid-js] Expected only one effect to run. Runs: ${runs.join(', ')}`
-        )
-      }
-
-      dispose()
     }
   )
 })
