@@ -261,15 +261,10 @@ describe('React Adapter: Row Operations', () => {
         selected: null,
       })
 
-      let container: HTMLElement
-
       // Initial render (not measured)
-      act(() => {
-        const result = render(
-          <BenchmarkComponent store={store} updateStore={updateStore} />
-        )
-        container = result.container
-      })
+      const { container } = render(
+        <BenchmarkComponent store={store} updateStore={updateStore} />
+      )
 
       // The benchmark measurement: select row and re-render entire DOM
       act(() => {
@@ -300,15 +295,10 @@ describe('React Adapter: Row Operations', () => {
         selected: null,
       })
 
-      let container: HTMLElement
-
       // Initial render (not measured)
-      act(() => {
-        const result = render(
-          <BenchmarkComponent store={store} updateStore={updateStore} />
-        )
-        container = result.container
-      })
+      const { container } = render(
+        <BenchmarkComponent store={store} updateStore={updateStore} />
+      )
 
       // The benchmark measurement: direct state update instead of button click
       act(() => {
