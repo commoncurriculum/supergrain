@@ -77,7 +77,6 @@ export function setProperty(
     if (node) {
       if (unwrap(oldValue) !== unwrap(value)) {
         node(isDelete ? undefined : value)
-        reconcileValues(value, oldValue, new Set())
       }
     }
 
@@ -201,27 +200,27 @@ function createReactiveProxy<T extends object>(target: T): T {
 
 export type SetStoreFunction = (operations: UpdateOperations) => void
 
-function reconcileValues(newValue: any, oldValue: any, visited: Set<any>) {
-  if (
-    !isWrappable(oldValue) ||
-    visited.has(oldValue) ||
-    unwrap(newValue) === unwrap(oldValue)
-  ) {
+function reconcile(raw: any, visited: Set<any>) {
+  if (!isWrappable(raw) || visited.has(raw)) {
     return
   }
-  visited.add(oldValue)
+  visited.add(raw)
 
-  const oldNodes = (oldValue as any)[$NODE]
-  if (oldNodes) {
-    for (const key of Object.keys(oldNodes)) {
-      const nodeSignal = oldNodes[key]
-      const nextValueForKey = isWrappable(newValue) ? newValue[key] : undefined
+  const nodes = (raw as any)[$NODE]
+  if (!nodes) return
 
-      if (unwrap(nodeSignal()) !== unwrap(nextValueForKey)) {
-        nodeSignal(nextValueForKey)
-      }
-      reconcileValues(nextValueForKey, unwrap(nodeSignal()), visited)
+  // Update signals for existing keys
+  for (const key of Object.keys(nodes)) {
+    const signal = nodes[key]
+    const newValue = (raw as any)[key]
+    if (signal() !== newValue) {
+      signal(newValue) // trigger update
     }
+  }
+
+  // Recurse into nested objects
+  for (const key of Object.keys(raw)) {
+    reconcile((raw as any)[key], visited)
   }
 }
 
@@ -235,6 +234,7 @@ export function createStore<T extends object>(
     startBatch()
     try {
       applyUpdate(unwrappedState, operations)
+      reconcile(unwrappedState, new Set())
     } finally {
       endBatch()
     }

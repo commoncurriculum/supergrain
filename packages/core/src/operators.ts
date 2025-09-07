@@ -50,12 +50,7 @@ function resolvePath(
   return { parent: current, key }
 }
 
-function setPathValue(
-  target: object,
-  path: string,
-  value: unknown,
-  changedPaths: Set<string>
-): void {
+function setPathValue(target: object, path: string, value: unknown): void {
   const parts = path.split('.')
   let current: any = target
   for (let i = 0; i < parts.length - 1; i++) {
@@ -68,49 +63,31 @@ function setPathValue(
   }
   const key = parts[parts.length - 1]!
   setProperty(current, key, value)
-  changedPaths.add(path)
 }
 
-function deletePath(
-  target: object,
-  path: string,
-  changedPaths: Set<string>
-): void {
+function deletePath(target: object, path: string): void {
   const result = resolvePath(target, path)
   if (
     result &&
     Object.prototype.hasOwnProperty.call(result.parent, result.key)
   ) {
     setProperty(result.parent, result.key, undefined, true)
-    changedPaths.add(path)
   }
 }
 
-function $set(
-  target: object,
-  operations: Record<string, unknown>,
-  changedPaths: Set<string>
-): void {
+function $set(target: object, operations: Record<string, unknown>): void {
   for (const path in operations) {
-    setPathValue(target, path, operations[path], changedPaths)
+    setPathValue(target, path, operations[path])
   }
 }
 
-function $unset(
-  target: object,
-  operations: Record<string, unknown>,
-  changedPaths: Set<string>
-): void {
+function $unset(target: object, operations: Record<string, unknown>): void {
   for (const path in operations) {
-    deletePath(target, path, changedPaths)
+    deletePath(target, path)
   }
 }
 
-function $inc(
-  target: object,
-  operations: Record<string, number>,
-  changedPaths: Set<string>
-): void {
+function $inc(target: object, operations: Record<string, number>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
     if (result) {
@@ -118,19 +95,14 @@ function $inc(
       const incValue = operations[path]!
       if (typeof currentValue === 'number') {
         setProperty(result.parent, result.key, currentValue + incValue)
-        changedPaths.add(path)
       } else if (currentValue == null) {
-        setPathValue(target, path, incValue, changedPaths)
+        setPathValue(target, path, incValue)
       }
     }
   }
 }
 
-function $push(
-  target: object,
-  operations: Record<string, any>,
-  changedPaths: Set<string>
-): void {
+function $push(target: object, operations: Record<string, any>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
     const arr = result?.parent[result.key]
@@ -143,7 +115,6 @@ function $push(
 
       const newArr = [...arr, ...itemsToAdd]
       setProperty(result.parent, result.key, newArr)
-      changedPaths.add(path)
     }
   }
 }
@@ -165,11 +136,7 @@ function isObjectMatch(obj: any, condition: any): boolean {
   return true
 }
 
-function $pull(
-  target: object,
-  operations: Record<string, any>,
-  changedPaths: Set<string>
-): void {
+function $pull(target: object, operations: Record<string, any>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
     const arr = result?.parent[result.key]
@@ -178,17 +145,12 @@ function $pull(
       const newArr = arr.filter((item: any) => !isObjectMatch(item, condition))
       if (newArr.length < arr.length) {
         setProperty(result.parent, result.key, newArr)
-        changedPaths.add(path)
       }
     }
   }
 }
 
-function $addToSet(
-  target: object,
-  operations: Record<string, any>,
-  changedPaths: Set<string>
-): void {
+function $addToSet(target: object, operations: Record<string, any>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
     const arr = result?.parent[result.key]
@@ -205,17 +167,12 @@ function $addToSet(
 
       if (newItems.length > 0) {
         setProperty(result.parent, result.key, [...arr, ...newItems])
-        changedPaths.add(path)
       }
     }
   }
 }
 
-function $rename(
-  target: object,
-  operations: Record<string, string>,
-  changedPaths: Set<string>
-): void {
+function $rename(target: object, operations: Record<string, string>): void {
   const renames: Array<{ oldPath: string; newPath: string; value: any }> = []
 
   for (const oldPath in operations) {
@@ -230,16 +187,12 @@ function $rename(
   }
 
   for (const { oldPath, newPath, value } of renames) {
-    deletePath(target, oldPath, changedPaths)
-    setPathValue(target, newPath, value, changedPaths)
+    deletePath(target, oldPath)
+    setPathValue(target, newPath, value)
   }
 }
 
-function $min(
-  target: object,
-  operations: Record<string, number>,
-  changedPaths: Set<string>
-): void {
+function $min(target: object, operations: Record<string, number>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
     if (result) {
@@ -247,19 +200,14 @@ function $min(
       const newValue = operations[path]!
       if (typeof currentValue === 'number' && newValue < currentValue) {
         setProperty(result.parent, result.key, newValue)
-        changedPaths.add(path)
       } else if (typeof currentValue === 'undefined') {
-        setPathValue(target, path, newValue, changedPaths)
+        setPathValue(target, path, newValue)
       }
     }
   }
 }
 
-function $max(
-  target: object,
-  operations: Record<string, number>,
-  changedPaths: Set<string>
-): void {
+function $max(target: object, operations: Record<string, number>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
     if (result) {
@@ -267,9 +215,8 @@ function $max(
       const newValue = operations[path]!
       if (typeof currentValue === 'number' && newValue > currentValue) {
         setProperty(result.parent, result.key, newValue)
-        changedPaths.add(path)
       } else if (typeof currentValue === 'undefined') {
-        setPathValue(target, path, newValue, changedPaths)
+        setPathValue(target, path, newValue)
       }
     }
   }
@@ -287,10 +234,7 @@ const operatorList = [
   '$addToSet',
 ]
 
-const operators: Record<
-  string,
-  (target: object, operations: any, changedPaths: Set<string>) => void
-> = {
+const operators: Record<string, (target: object, operations: any) => void> = {
   $set,
   $unset,
   $inc,
@@ -321,14 +265,12 @@ export type UpdateOperations = Partial<{
 export function update<T extends object>(
   target: T,
   operations: UpdateOperations
-): Set<string> {
-  const changedPaths = new Set<string>()
+): void {
   for (const op of operatorList) {
     if (op in operations) {
       const operator = operators[op]
       const opArgs = (operations as any)[op]
-      operator?.(target, opArgs, changedPaths)
+      operator?.(target, opArgs)
     }
   }
-  return changedPaths
 }
