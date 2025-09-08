@@ -9,9 +9,5 @@
     "forceConsistentCasingInFileNames": true
   },
   "files": [],
-  "references": [
-    { "path": "packages/core" },
-    { "path": "packages/react" },
-    { "path": "packages/vue" }
-  ]
+  "references": [{ "path": "packages/core" }, { "path": "packages/react" }]
 }
