@@ -31,7 +31,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build packages
-        run: pnpm -r build
+        run: pnpm -r --filter="@storable/core" --filter="@storable/react" build
 
       - name: Run tests
         run: pnpm test
