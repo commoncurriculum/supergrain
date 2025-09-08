@@ -34,7 +34,6 @@ import { useTrackedStore } from '@storable/react'
 const [store, update] = createStore({
   count: 0,
   todos: [],
-  filter: 'all'
 })
 
 // Use in React components
@@ -45,23 +44,9 @@ function TodoApp() {
   const addTodo = (text: string) => {
     update({
       $push: {
-        todos: {
-          id: Date.now(),
-          text,
-          completed: false
-        }
+        todos: { id: Date.now(), text, completed: false }
       }
     })
-  }
-
-  // Toggle a todo's completed status
-  const toggleTodo = (id: number) => {
-    const index = state.todos.findIndex(t => t.id === id)
-    if (index !== -1) {
-      update({
-        $set: { [`todos.${index}.completed`]: !state.todos[index].completed }
-      })
-    }
   }
 
   return (
@@ -70,541 +55,93 @@ function TodoApp() {
       <button onClick={() => update({ $inc: { count: 1 } })}>
         Increment
       </button>
+
+      <input
+        onKeyPress={(e) => e.key === 'Enter' && addTodo(e.target.value)}
+        placeholder="Add todo..."
+      />
+
       {state.todos.map(todo => (
-        <div key={todo.id}>
-          <input
-            type="checkbox"
-            checked={todo.completed}
-            onChange={() => toggleTodo(todo.id)}
-          />
-          {todo.text}
-        </div>
+        <div key={todo.id}>{todo.text}</div>
       ))}
     </div>
   )
 }
 ```
 
-## Core Concepts
+## Key Concepts
 
-### Creating Stores
-
-_Implementation: [store.ts](packages/core/src/store.ts) | Tests: [store.test.ts](packages/core/tests/store.test.ts)_
-
-Stores hold your application state and make it reactive:
+### Read-Only State
 
 ```typescript
-import { createStore } from '@storable/core'
+const [state, update] = createStore({ count: 0 })
 
-// Simple store
-const [state, update] = createStore({
-  count: 0,
-  user: { name: 'John', age: 30 },
-})
+// ✅ Reading is fine
+console.log(state.count)
 
-// The state object is READ-ONLY - you cannot mutate it directly
-// state.count++ // ❌ This will throw an error!
-// state.user.name = 'Jane' // ❌ This will throw an error!
+// ❌ Direct mutation throws an error
+state.count = 5 // Error!
 
-// All updates MUST go through the update function
-update({ $set: { count: 5 } }) // ✅ Correct way
-update({ $set: { 'user.name': 'Jane' } }) // ✅ Correct way
+// ✅ Use update function instead
+update({ $set: { count: 5 } })
 ```
 
-### MongoDB-Style Update Operators
+### MongoDB-Style Operators
 
 _Implementation: [operators.ts](packages/core/src/operators.ts) | Tests: [operators.test.ts](packages/core/tests/operators.test.ts)_
 
-All state changes must use MongoDB-style operators through the `update` function:
-
 ```typescript
 // Set values
-update({
-  $set: { 'user.name': 'Jane', 'settings.theme': 'light' },
-})
+update({ $set: { 'user.name': 'Jane' } })
 
-// Increment numeric values
-update({
-  $inc: { count: 1, 'stats.views': 10 },
-})
+// Increment numbers
+update({ $inc: { count: 1 } })
 
 // Array operations
-update({
-  $push: { todos: newTodo },
-  $pull: { tags: 'deprecated' },
-  $addToSet: { uniqueItems: 'newItem' },
-})
+update({ $push: { items: 'newItem' } })
+update({ $pull: { items: 'oldItem' } })
 
-// Multiple operations in one update (batched automatically)
+// Multiple operations (batched automatically)
 update({
   $set: { title: 'New Title' },
-  $inc: { viewCount: 1 },
-  $push: { history: { timestamp: Date.now(), action: 'view' } },
+  $inc: { views: 1 },
+  $push: { tags: 'featured' },
 })
 ```
 
-Available operators:
+### Fine-Grained Reactivity
 
-- `$set` - Set field values (supports dot notation)
-- `$unset` - Remove fields
-- `$inc` - Increment numeric values
-- `$push` - Add to arrays (supports `$each` modifier)
-- `$pull` - Remove from arrays by value or condition
-- `$addToSet` - Add unique elements to arrays
-- `$rename` - Rename fields
-- `$min/$max` - Update if value is smaller/larger
-
-## React Integration
-
-_Implementation: [use-store.ts](packages/react/src/use-store.ts) | Tests: [use-store.test.tsx](packages/react/tests/use-store.test.tsx) | Example: [nested-components.tsx](packages/react/examples/nested-components.tsx)_
-
-### useTrackedStore Hook
-
-The primary way to use stores in React components:
+_Example: [nested-components.tsx](packages/react/examples/nested-components.tsx) | Tests: [use-store.test.tsx](packages/react/tests/use-store.test.tsx)_
 
 ```typescript
-import { useTrackedStore } from '@storable/react'
-
-function TodoList() {
+function ComponentA() {
   const state = useTrackedStore(store)
-
-  // Component only re-renders when accessed properties change
-  return (
-    <ul>
-      {state.todos.map(todo => (
-        <TodoItem key={todo.id} todo={todo} />
-      ))}
-    </ul>
-  )
+  // Only re-renders when 'x' changes
+  return <div>X: {state.x}</div>
 }
 
-function TodoItem({ todo }) {
-  const trackedTodo = useTrackedStore(todo)
-
-  // This component only re-renders when THIS specific todo changes
-  return (
-    <li>
-      <span>{trackedTodo.text}</span>
-      <button onClick={() => {
-        const index = store.todos.findIndex(t => t.id === todo.id)
-        update({
-          $set: { [`todos.${index}.completed`]: !trackedTodo.completed }
-        })
-      }}>
-        Toggle
-      </button>
-    </li>
-  )
-}
-```
-
-### useStore Hook
-
-Alternative hook that must be called at the beginning of the component:
-
-```typescript
-import { useStore } from '@storable/react'
-
-function Counter() {
-  useStore() // Must be called first!
-
-  return (
-    <div>
-      Count: {store.count}
-      <button onClick={() => update({ $inc: { count: 1 } })}>
-        Increment
-      </button>
-    </div>
-  )
-}
-```
-
-## Complete TODO App Example
-
-_Core Tests: [todo.test.ts](packages/core/tests/todo.test.ts) | React Tests: [use-store-todo.test.tsx](packages/react/tests/use-store-todo.test.tsx)_
-
-Here's a working TODO app demonstrating the key features:
-
-```typescript
-import { createStore } from '@storable/core'
-import { useTrackedStore } from '@storable/react'
-import { useState } from 'react'
-
-// Define types
-interface Todo {
-  id: number
-  text: string
-  completed: boolean
-  tags: string[]
-}
-
-interface TodoState {
-  todos: Todo[]
-  filter: 'all' | 'active' | 'completed'
-}
-
-// Create store
-const [todoStore, updateTodos] = createStore<TodoState>({
-  todos: [],
-  filter: 'all'
-})
-
-// Main App Component
-function TodoApp() {
-  const state = useTrackedStore(todoStore)
-  const [inputText, setInputText] = useState('')
-
-  const addTodo = () => {
-    if (!inputText.trim()) return
-
-    updateTodos({
-      $push: {
-        todos: {
-          id: Date.now(),
-          text: inputText,
-          completed: false,
-          tags: []
-        }
-      }
-    })
-
-    setInputText('')
-  }
-
-  const toggleTodo = (id: number) => {
-    const index = state.todos.findIndex(t => t.id === id)
-    if (index !== -1) {
-      updateTodos({
-        $set: {
-          [`todos.${index}.completed`]: !state.todos[index].completed
-        }
-      })
-    }
-  }
-
-  const deleteTodo = (id: number) => {
-    updateTodos({
-      $pull: { todos: { id } }
-    })
-  }
-
-  const clearCompleted = () => {
-    const activeTodos = state.todos.filter(t => !t.completed)
-    updateTodos({
-      $set: { todos: activeTodos }
-    })
-  }
-
-  const addTag = (todoId: number, tag: string) => {
-    const index = state.todos.findIndex(t => t.id === todoId)
-    if (index !== -1) {
-      updateTodos({
-        $addToSet: { [`todos.${index}.tags`]: tag }
-      })
-    }
-  }
-
-  // Filter todos based on current filter
-  const filteredTodos = state.todos.filter(todo => {
-    if (state.filter === 'active') return !todo.completed
-    if (state.filter === 'completed') return todo.completed
-    return true
-  })
-
-  const stats = {
-    total: state.todos.length,
-    active: state.todos.filter(t => !t.completed).length,
-    completed: state.todos.filter(t => t.completed).length
-  }
-
-  return (
-    <div className="todo-app">
-      <h1>TODOs</h1>
-
-      {/* Add Todo */}
-      <div>
-        <input
-          type="text"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && addTodo()}
-          placeholder="What needs to be done?"
-        />
-        <button onClick={addTodo}>Add</button>
-      </div>
-
-      {/* Filters */}
-      <div>
-        <button
-          className={state.filter === 'all' ? 'active' : ''}
-          onClick={() => updateTodos({ $set: { filter: 'all' } })}
-        >
-          All ({stats.total})
-        </button>
-        <button
-          className={state.filter === 'active' ? 'active' : ''}
-          onClick={() => updateTodos({ $set: { filter: 'active' } })}
-        >
-          Active ({stats.active})
-        </button>
-        <button
-          className={state.filter === 'completed' ? 'active' : ''}
-          onClick={() => updateTodos({ $set: { filter: 'completed' } })}
-        >
-          Completed ({stats.completed})
-        </button>
-      </div>
-
-      {/* Todo List */}
-      <ul>
-        {filteredTodos.map(todo => (
-          <TodoItem
-            key={todo.id}
-            todo={todo}
-            onToggle={toggleTodo}
-            onDelete={deleteTodo}
-            onAddTag={addTag}
-          />
-        ))}
-      </ul>
-
-      {/* Actions */}
-      {stats.completed > 0 && (
-        <button onClick={clearCompleted}>
-          Clear Completed ({stats.completed})
-        </button>
-      )}
-    </div>
-  )
-}
-
-// Todo Item Component
-function TodoItem({ todo, onToggle, onDelete, onAddTag }) {
-  const [tagInput, setTagInput] = useState('')
-
-  return (
-    <li className={todo.completed ? 'completed' : ''}>
-      <input
-        type="checkbox"
-        checked={todo.completed}
-        onChange={() => onToggle(todo.id)}
-      />
-      <span>{todo.text}</span>
-
-      {/* Tags */}
-      <div className="tags">
-        {todo.tags.map(tag => (
-          <span key={tag} className="tag">#{tag}</span>
-        ))}
-        <input
-          type="text"
-          value={tagInput}
-          onChange={(e) => setTagInput(e.target.value)}
-          onKeyPress={(e) => {
-            if (e.key === 'Enter' && tagInput) {
-              onAddTag(todo.id, tagInput)
-              setTagInput('')
-            }
-          }}
-          placeholder="Add tag..."
-        />
-      </div>
-
-      <button onClick={() => onDelete(todo.id)}>Delete</button>
-    </li>
-  )
-}
-```
-
-## Advanced Patterns
-
-### Effects
-
-_Implementation: Re-exported from alien-signals in [index.ts](packages/core/src/index.ts) | Usage Examples: [benchmarks](packages/core/benchmarks/additional.bench.ts)_
-
-React to state changes outside of components:
-
-```typescript
-import { effect } from '@storable/core'
-
-// Save todos to localStorage whenever they change
-effect(() => {
-  const todos = store.todos
-  localStorage.setItem('todos', JSON.stringify(todos))
-})
-
-// Note: You can read from the store in effects, but you still
-// cannot mutate it directly - use the update function
-```
-
-### Computed Values
-
-_Implementation: Re-exported from alien-signals in [index.ts](packages/core/src/index.ts)_
-
-Use `computed` from alien-signals for derived state:
-
-```typescript
-import { computed } from '@storable/core'
-
-const activeTodosCount = computed(() =>
-  store.todos.filter(t => !t.completed).length
-)
-
-// In component
-function TodoStats() {
-  useStore()
-  return <div>Active: {activeTodosCount()}</div>
-}
-```
-
-### Batching Updates
-
-_Implementation: [store.ts](packages/core/src/store.ts) | Tests: [store.test.ts](packages/core/tests/store.test.ts)_
-
-Multiple operations in a single update call are automatically batched:
-
-```typescript
-// These will cause only one re-render
-update({
-  $set: { filter: 'active', searchQuery: 'urgent' },
-  $inc: { viewCount: 1 },
-  $push: { recentFilters: 'active' },
-})
-```
-
-### Working with Arrays
-
-_Tests: [array.test.ts](packages/core/tests/array.test.ts) | [operators.test.ts](packages/core/tests/operators.test.ts)_
-
-```typescript
-// Add items
-update({ $push: { items: newItem } })
-update({ $push: { items: { $each: [item1, item2, item3] } } })
-
-// Remove items
-update({ $pull: { items: itemToRemove } })
-update({ $pull: { items: { id: 123 } } }) // Remove by condition
-
-// Add unique items
-update({ $addToSet: { tags: 'newTag' } })
-update({ $addToSet: { tags: { $each: ['tag1', 'tag2'] } } })
-
-// Update specific array element
-const index = state.items.findIndex(item => item.id === targetId)
-update({ $set: { [`items.${index}.property`]: newValue } })
-```
-
-### Nested Updates
-
-_Tests: [operators.test.ts](packages/core/tests/operators.test.ts)_
-
-Use dot notation for nested properties:
-
-```typescript
-update({
-  $set: {
-    'user.profile.name': 'Jane',
-    'user.profile.email': 'jane@example.com',
-    'settings.theme.primary': '#007bff',
-  },
-  $inc: {
-    'stats.profile.views': 1,
-  },
-})
-```
-
-## API Reference
-
-_Type Definitions: [store.ts](packages/core/src/store.ts) | [operators.ts](packages/core/src/operators.ts) | Exports: [index.ts](packages/core/src/index.ts)_
-
-### Core
-
-- `createStore<T>(initialState: T): [state: T, update: UpdateFunction]` - Create a reactive store
-- `unwrap(proxy: T): T` - Get the raw object from a proxy
-- `signal`, `computed`, `effect` - Re-exported from alien-signals
-
-### React
-
-- `useTrackedStore(store: T): T` - Hook that returns a tracked proxy of the store
-- `useStore(): void` - Hook that enables store tracking in a component (must be called first)
-
-### Update Operators
-
-- `$set: { path: value }` - Set field values
-- `$unset: { path: true }` - Remove fields
-- `$inc: { path: number }` - Increment numeric values
-- `$push: { path: value | { $each: value[] } }` - Add to arrays
-- `$pull: { path: condition }` - Remove from arrays
-- `$addToSet: { path: value | { $each: value[] } }` - Add unique elements
-- `$rename: { oldPath: newPath }` - Rename fields
-- `$min/$max: { path: number }` - Conditional numeric updates
-
-## Performance Tips
-
-_Examples: [nested-components.tsx](packages/react/examples/nested-components.tsx) | Tests: [use-store.test.tsx](packages/react/tests/use-store.test.tsx)_
-
-### 1. Split Components by Data Access
-
-Components only re-render for data they access:
-
-```typescript
-// Parent only re-renders when todos array changes
-function TodoList() {
+function ComponentB() {
   const state = useTrackedStore(store)
-  return (
-    <ul>
-      {state.todos.map(todo => (
-        <TodoItem key={todo.id} todo={todo} />
-      ))}
-    </ul>
-  )
+  // Only re-renders when 'y' changes
+  return <div>Y: {state.y}</div>
 }
 
-// Child only re-renders when its specific todo changes
-function TodoItem({ todo }) {
-  const trackedTodo = useTrackedStore(todo)
-  return <li>{trackedTodo.text}</li>
-}
-```
-
-### 2. Avoid Unnecessary Property Access
-
-```typescript
-// ❌ Bad: Accesses all properties
-const { x, y, z } = state // Component re-renders on any change
-
-// ✅ Good: Access only what you need
-const x = state.x // Component only re-renders when x changes
-```
-
-### 3. Batch Updates
-
-Multiple operations in one update call are automatically batched:
-
-```typescript
-// ✅ Good: Single re-render
-update({
-  $set: { 'user.name': 'Jane' },
-  $inc: { count: 1 },
-  $push: { items: 'new' },
-})
-
-// ❌ Less efficient: Multiple re-renders
-update({ $set: { 'user.name': 'Jane' } })
-update({ $inc: { count: 1 } })
-update({ $push: { items: 'new' } })
+// Updating 'z' won't re-render either component
+update({ $set: { z: 10 } })
 ```
 
 ## Documentation
 
-For complete documentation with examples and implementation details, see [USAGE.md](USAGE.md).
+📖 **[Complete Documentation & Examples → USAGE.md](USAGE.md)**
 
-## Important Notes
+The USAGE.md file contains:
 
-1. **The store is read-only** - Direct mutations will throw an error
-2. **All updates must use the update function** - This is the only way to modify state
-3. **Updates are automatically batched** - Multiple operations in one update call result in a single re-render
-4. **Fine-grained reactivity** - Components only re-render when properties they access change
+- Comprehensive tutorials and examples
+- Complete API reference
+- Building a full TODO app
+- Performance optimization tips
+- Advanced patterns and best practices
+- TypeScript usage
 
 ## License
 
