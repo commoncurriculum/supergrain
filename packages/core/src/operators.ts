@@ -55,8 +55,11 @@ function setPathValue(target: object, path: string, value: unknown): void {
   let current: any = target
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i]!
-    const value = current[part]
-    if (value === undefined || (!isObject(value) && !Array.isArray(value))) {
+    const existing = current[part]
+    if (
+      existing === undefined ||
+      (!isObject(existing) && !Array.isArray(existing))
+    ) {
       setProperty(current, part, {})
     }
     current = current[part]
@@ -75,6 +78,87 @@ function deletePath(target: object, path: string): void {
   }
 }
 
+// Precise function for incrementing numeric values
+function incrementValue(parent: any, key: string, increment: number): void {
+  const currentValue = parent[key]
+  if (typeof currentValue === 'number') {
+    parent[key] = currentValue + increment
+  } else if (currentValue == null) {
+    parent[key] = increment
+  }
+}
+
+// Precise function for comparing and setting min/max values
+function compareAndSetValue(
+  parent: any,
+  key: string,
+  newValue: number,
+  isMin: boolean
+): void {
+  const currentValue = parent[key]
+  if (typeof currentValue === 'number') {
+    const shouldUpdate = isMin
+      ? newValue < currentValue
+      : newValue > currentValue
+    if (shouldUpdate) {
+      parent[key] = newValue
+    }
+  } else if (typeof currentValue === 'undefined') {
+    parent[key] = newValue
+  }
+}
+
+// Precise function for array push operations
+function pushToArray(
+  parent: any,
+  key: string,
+  arr: any[],
+  itemsToAdd: any[]
+): void {
+  const startIndex = arr.length
+  for (let i = 0; i < itemsToAdd.length; i++) {
+    setProperty(arr, startIndex + i, itemsToAdd[i])
+  }
+}
+
+// Precise function for array pull operations
+function pullFromArray(
+  parent: any,
+  key: string,
+  arr: any[],
+  condition: any
+): boolean {
+  let removed = false
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (isObjectMatch(arr[i], condition)) {
+      arr.splice(i, 1)
+      removed = true
+    }
+  }
+  return removed
+}
+
+// Precise function for addToSet operations
+function addUniqueToArray(
+  parent: any,
+  key: string,
+  arr: any[],
+  itemsToAdd: any[]
+): boolean {
+  const newItems = itemsToAdd.filter(
+    item => !arr.some(existing => isEqual(existing, item))
+  )
+
+  if (newItems.length > 0) {
+    const startIndex = arr.length
+    for (let i = 0; i < newItems.length; i++) {
+      setProperty(arr, startIndex + i, newItems[i])
+    }
+    return true
+  }
+  return false
+}
+
 function $set(target: object, operations: Record<string, unknown>): void {
   for (const path in operations) {
     setPathValue(target, path, operations[path])
@@ -91,13 +175,11 @@ function $inc(target: object, operations: Record<string, number>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
     if (result) {
-      const currentValue = result.parent[result.key]
       const incValue = operations[path]!
-      if (typeof currentValue === 'number') {
-        setProperty(result.parent, result.key, currentValue + incValue)
-      } else if (currentValue == null) {
-        setPathValue(target, path, incValue)
-      }
+      incrementValue(result.parent, result.key, incValue)
+    } else {
+      // Path doesn't exist, create it
+      setPathValue(target, path, operations[path]!)
     }
   }
 }
@@ -113,8 +195,7 @@ function $push(target: object, operations: Record<string, any>): void {
           ? value['$each']
           : [value]
 
-      const newArr = [...arr, ...itemsToAdd]
-      setProperty(result.parent, result.key, newArr)
+      pushToArray(result.parent, result.key, arr, itemsToAdd)
     }
   }
 }
@@ -142,10 +223,7 @@ function $pull(target: object, operations: Record<string, any>): void {
     const arr = result?.parent[result.key]
     if (result && Array.isArray(arr)) {
       const condition = operations[path]
-      const newArr = arr.filter((item: any) => !isObjectMatch(item, condition))
-      if (newArr.length < arr.length) {
-        setProperty(result.parent, result.key, newArr)
-      }
+      pullFromArray(result.parent, result.key, arr, condition)
     }
   }
 }
@@ -161,13 +239,7 @@ function $addToSet(target: object, operations: Record<string, any>): void {
           ? value['$each']
           : [value]
 
-      const newItems = itemsToAdd.filter(
-        item => !arr.some(existing => isEqual(existing, item))
-      )
-
-      if (newItems.length > 0) {
-        setProperty(result.parent, result.key, [...arr, ...newItems])
-      }
+      addUniqueToArray(result.parent, result.key, arr, itemsToAdd)
     }
   }
 }
@@ -196,13 +268,11 @@ function $min(target: object, operations: Record<string, number>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
     if (result) {
-      const currentValue = result.parent[result.key]
       const newValue = operations[path]!
-      if (typeof currentValue === 'number' && newValue < currentValue) {
-        setProperty(result.parent, result.key, newValue)
-      } else if (typeof currentValue === 'undefined') {
-        setPathValue(target, path, newValue)
-      }
+      compareAndSetValue(result.parent, result.key, newValue, true)
+    } else {
+      // Path doesn't exist, create it
+      setPathValue(target, path, operations[path]!)
     }
   }
 }
@@ -211,13 +281,11 @@ function $max(target: object, operations: Record<string, number>): void {
   for (const path in operations) {
     const result = resolvePath(target, path)
     if (result) {
-      const currentValue = result.parent[result.key]
       const newValue = operations[path]!
-      if (typeof currentValue === 'number' && newValue > currentValue) {
-        setProperty(result.parent, result.key, newValue)
-      } else if (typeof currentValue === 'undefined') {
-        setPathValue(target, path, newValue)
-      }
+      compareAndSetValue(result.parent, result.key, newValue, false)
+    } else {
+      // Path doesn't exist, create it
+      setPathValue(target, path, operations[path]!)
     }
   }
 }
