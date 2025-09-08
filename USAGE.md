@@ -18,6 +18,8 @@ A comprehensive guide to using Storable for building reactive applications with 
 
 ## Installation
 
+_Package definitions: [core/package.json](packages/core/package.json) | [react/package.json](packages/react/package.json)_
+
 ```bash
 npm install @storable/core @storable/react
 # or
@@ -44,6 +46,8 @@ Storable is a reactive state management library that:
 
 ## Creating Stores
 
+_Implementation: [store.ts](packages/core/src/store.ts) | Tests: [store.test.ts](packages/core/tests/store.test.ts)_
+
 ```typescript
 import { createStore } from '@storable/core'
 
@@ -68,6 +72,8 @@ const [state, update] = createStore({
 
 ## Reading State
 
+_Implementation: [store.ts](packages/core/src/store.ts) | Tests: [store.test.ts](packages/core/tests/store.test.ts)_
+
 The state object is a reactive proxy that tracks property access:
 
 ```typescript
@@ -84,6 +90,8 @@ delete state.name // ❌ Throws: "Direct deletion of store state is not allowed"
 ```
 
 ## Updating State
+
+_Implementation: [operators.ts](packages/core/src/operators.ts) | Tests: [operators.test.ts](packages/core/tests/operators.test.ts)_
 
 All state updates MUST use the `update` function with MongoDB-style operators:
 
@@ -115,6 +123,8 @@ update({
 ```
 
 ## React Integration
+
+_Implementation: [use-store.ts](packages/react/src/use-store.ts) | Tests: [use-store.test.tsx](packages/react/tests/use-store.test.tsx) | Example: [nested-components.tsx](packages/react/examples/nested-components.tsx)_
 
 ### useTrackedStore Hook
 
@@ -186,6 +196,8 @@ update({ $set: { z: 10 } })
 ```
 
 ## MongoDB-Style Operators
+
+_Implementation: [operators.ts](packages/core/src/operators.ts) | Tests: [operators.test.ts](packages/core/tests/operators.test.ts)_
 
 ### $set - Set field values
 
@@ -275,6 +287,8 @@ update({ $max: { highestScore: 100 } })
 
 ## Effects and Computed Values
 
+_Implementation: Re-exported from alien-signals in [index.ts](packages/core/src/index.ts) | Usage Examples: [benchmarks](packages/core/benchmarks/additional.bench.ts)_
+
 ### Effects
 
 React to state changes with `effect`:
@@ -324,6 +338,8 @@ console.log(completedCount()) // 2
 ```
 
 ## Building a TODO App
+
+_Core Tests: [todo.test.ts](packages/core/tests/todo.test.ts) | React Tests: [use-store-todo.test.tsx](packages/react/tests/use-store-todo.test.tsx)_
 
 Here's a complete TODO app example using the actual API:
 
@@ -462,6 +478,8 @@ function TodoApp() {
 
 ## TypeScript
 
+_Type Definitions: [store.ts](packages/core/src/store.ts) | [operators.ts](packages/core/src/operators.ts) | Exports: [index.ts](packages/core/src/index.ts)_
+
 Storable has full TypeScript support:
 
 ```typescript
@@ -501,6 +519,8 @@ update({
 
 ## Performance Tips
 
+_Examples: [nested-components.tsx](packages/react/examples/nested-components.tsx) | Tests: [use-store.test.tsx](packages/react/tests/use-store.test.tsx)_
+
 ### 1. Split Components by Data Access
 
 Components only re-render for data they access:
@@ -535,6 +555,8 @@ const x = state.x // Component only re-renders when x changes
 ```
 
 ### 3. Batch Updates
+
+_Implementation: [store.ts](packages/core/src/store.ts) | Tests: [store.test.ts](packages/core/tests/store.test.ts)_
 
 Multiple operations in one update call are automatically batched:
 
