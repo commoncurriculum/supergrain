@@ -12,18 +12,24 @@ A comprehensive guide to using Storable for building reactive applications with 
 - [React Integration](#react-integration)
 - [MongoDB-Style Operators](#mongodb-style-operators)
 - [Effects and Computed Values](#effects-and-computed-values)
+- [App Store - Document Management](#app-store---document-management)
 - [Building a TODO App](#building-a-todo-app)
 - [TypeScript](#typescript)
 - [Performance Tips](#performance-tips)
 
 ## Installation
 
-_Package definitions: [core/package.json](packages/core/package.json) | [react/package.json](packages/react/package.json)_
+_Package definitions: [core/package.json](packages/core/package.json) | [react/package.json](packages/react/package.json) | [app-store/package.json](packages/app-store/package.json)_
 
 ```bash
+# Core reactive store
 npm install @storable/core @storable/react
-# or
-pnpm add @storable/core @storable/react
+
+# App-level document store (optional)
+npm install @storable/app-store
+
+# or with pnpm
+pnpm add @storable/core @storable/react @storable/app-store
 ```
 
 ## Core Concepts
@@ -335,6 +341,258 @@ update({
 })
 
 console.log(completedCount()) // 2
+```
+
+## App Store - Document Management
+
+_Implementation: [app-store.ts](packages/app-store/src/app-store.ts) | Tests: [app-store.test.ts](packages/app-store/tests/app-store.test.ts)_
+
+The `@storable/app-store` package provides a document-oriented store built on top of the core Storable reactivity system. It's designed for managing app-level data with a promise-like reactive API.
+
+### Key Features
+
+- **Document-oriented**: Store and retrieve documents by type and ID
+- **Promise-like API**: Familiar async patterns with reactive updates
+- **Automatic fetching**: Configurable fetch handlers for external data
+- **Type-safe**: Full TypeScript support with model registry
+- **Caching**: Documents cached automatically to prevent duplicate requests
+- **Optimistic updates**: Immediate UI updates for better UX
+
+### Basic Setup
+
+First, define your document types:
+
+```typescript
+import { AppStore } from '@storable/app-store'
+
+interface User {
+  id: number
+  firstName: string
+  lastName: string
+  email: string
+}
+
+interface Post {
+  id: number
+  title: string
+  content: string
+  userId: number
+  likes: number
+}
+
+// Global type registry
+interface DocumentTypes {
+  users: User
+  posts: Post
+}
+```
+
+Create an app store with optional fetch handler:
+
+```typescript
+// With automatic fetching
+const appStore = new AppStore<DocumentTypes>(async (modelType, id) => {
+  const response = await fetch(`/api/${modelType}/${id}`)
+  if (!response.ok) throw new Error('Failed to fetch')
+  return response.json()
+})
+
+// Without fetch handler (manual data management)
+const appStore = new AppStore<DocumentTypes>()
+```
+
+### Finding Documents
+
+Use `findDoc` to reactively retrieve documents:
+
+```typescript
+function BlogPost({ postId }: { postId: number }) {
+  const post = appStore.findDoc("posts", postId)
+  const author = appStore.findDoc("users", post.content?.userId)
+
+  // Handle loading state
+  if (post.isPending) return <div>Loading post...</div>
+
+  // Handle error state
+  if (post.isRejected) return <div>Error loading post</div>
+
+  // Handle success state
+  if (!post.content) return <div>Post not found</div>
+
+  return (
+    <article>
+      <h1>{post.content.title}</h1>
+      <p>By: {author.content?.firstName} {author.content?.lastName}</p>
+      <div>{post.content.content}</div>
+      <div>❤️ {post.content.likes} likes</div>
+    </article>
+  )
+}
+```
+
+### Document States
+
+Documents have a promise-like API with these properties:
+
+```typescript
+const doc = appStore.findDoc('posts', 1)
+
+doc.content // T | undefined - The document data
+doc.isPending // boolean - Request in progress
+doc.isSettled // boolean - Request completed (success or failure)
+doc.isRejected // boolean - Request failed
+doc.isFulfilled // boolean - Request succeeded
+```
+
+### Inserting Documents
+
+Create new documents with optimistic updates:
+
+```typescript
+async function createUser() {
+  // Shows as pending immediately, then fulfilled when complete
+  const newUser = await appStore.insertDocument('users', {
+    id: 123,
+    firstName: 'John',
+    lastName: 'Doe',
+    email: 'john@example.com',
+  })
+
+  // Document is immediately available to other components
+  const user = appStore.findDoc('users', 123)
+  console.log(user.content) // Available immediately
+}
+```
+
+### Manual Document Management
+
+Set document content or errors manually:
+
+```typescript
+// Set document directly
+appStore.setDocument('users', 1, {
+  id: 1,
+  firstName: 'Jane',
+  lastName: 'Smith',
+  email: 'jane@example.com',
+})
+
+// Handle errors
+appStore.setDocumentError('users', 999, 'User not found')
+```
+
+### Reactive Patterns
+
+Documents integrate seamlessly with computed values:
+
+```typescript
+import { computed } from '@storable/core'
+
+function UserProfile({ userId }: { userId: number }) {
+  const user = appStore.findDoc('users', userId)
+
+  // Reactive computed value
+  const displayName = computed(() =>
+    user.content
+      ? `${user.content.firstName} ${user.content.lastName}`
+      : 'Unknown User'
+  )
+
+  return (
+    <div>
+      <h2>{displayName()}</h2>
+      <p>{user.content?.email}</p>
+    </div>
+  )
+}
+```
+
+### Advanced Fetch Handlers
+
+Handle authentication, caching, and error scenarios:
+
+```typescript
+const appStore = new AppStore<DocumentTypes>(async (modelType, id) => {
+  const token = localStorage.getItem('authToken')
+
+  const response = await fetch(`/api/${modelType}/${id}`, {
+    headers: {
+      Authorization: token ? `Bearer ${token}` : '',
+      'Content-Type': 'application/json',
+      'Cache-Control': 'max-age=300', // 5 minute cache
+    },
+  })
+
+  if (response.status === 401) {
+    // Handle authentication
+    window.location.href = '/login'
+    throw new Error('Authentication required')
+  }
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+  }
+
+  return response.json()
+})
+```
+
+### Multiple Document Types
+
+The app store handles multiple document types seamlessly:
+
+```typescript
+function BlogPostWithRelations({ postId }: { postId: number }) {
+  const post = appStore.findDoc('posts', postId)
+  const author = appStore.findDoc('users', post.content?.userId)
+  const comments = appStore.findDoc('comments', `post:${postId}`)
+
+  // All documents fetched automatically as dependencies resolve
+  return (
+    <article>
+      <header>
+        <h1>{post.content?.title}</h1>
+        <p>By {author.content?.firstName}</p>
+      </header>
+      <div>{post.content?.content}</div>
+      <footer>
+        {comments.content?.map(comment => (
+          <CommentComponent key={comment.id} comment={comment} />
+        ))}
+      </footer>
+    </article>
+  )
+}
+```
+
+### Error Handling Best Practices
+
+```typescript
+function PostWithRetry({ postId }: { postId: number }) {
+  const post = appStore.findDoc('posts', postId)
+
+  if (post.isPending) {
+    return <div className="loading">Loading post...</div>
+  }
+
+  if (post.isRejected) {
+    return (
+      <div className="error">
+        <h3>Failed to load post</h3>
+        <button onClick={() => {
+          // Clear the error and retry
+          appStore.setDocument('posts', postId, undefined)
+          // This will trigger a new fetch
+          appStore.findDoc('posts', postId)
+        }}>
+          Retry
+        </button>
+      </div>
+    )
+  }
+
+  return <PostContent post={post.content!} />
+}
 ```
 
 ## Building a TODO App

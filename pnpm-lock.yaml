@@ -52,6 +52,16 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.18.1)(@vitest/browser@3.2.4)(jsdom@26.1.0)
 
+  packages/app-store:
+    dependencies:
+      '@storable/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.18.1)(@vitest/browser@3.2.4)(jsdom@26.1.0)
+
   packages/core:
     dependencies:
       alien-signals:

@@ -2,7 +2,7 @@
 
 A reactive store library with fine-grained reactivity powered by alien-signals. Create stores that track property access and update components with surgical precision using MongoDB-style update operators.
 
-_Core Implementation: [packages/core/src](packages/core/src) | React Integration: [packages/react/src](packages/react/src) | Examples: [packages/react/examples](packages/react/examples)_
+_Core Implementation: [packages/core/src](packages/core/src) | React Integration: [packages/react/src](packages/react/src) | App Store: [packages/app-store/src](packages/app-store/src) | Examples: [packages/react/examples](packages/react/examples)_
 
 ## Features
 
@@ -11,15 +11,21 @@ _Core Implementation: [packages/core/src](packages/core/src) | React Integration
 - 📦 **Zero boilerplate** - No actions, reducers, or decorators required
 - ⚛️ **React integration** - Simple hooks for reactive components
 - 📝 **Full TypeScript support** - Complete type safety and inference
+- 🗂️ **Document-oriented store** - App-level store for document management with promise-like API
 
 ## Installation
 
-_Package definitions: [core/package.json](packages/core/package.json) | [react/package.json](packages/react/package.json)_
+_Package definitions: [core/package.json](packages/core/package.json) | [react/package.json](packages/react/package.json) | [app-store/package.json](packages/app-store/package.json)_
 
 ```bash
+# Core reactive store
 npm install @storable/core @storable/react
-# or
-pnpm add @storable/core @storable/react
+
+# App-level document store (optional)
+npm install @storable/app-store
+
+# or with pnpm
+pnpm add @storable/core @storable/react @storable/app-store
 ```
 
 ## Quick Start
@@ -130,6 +136,52 @@ function ComponentB() {
 update({ $set: { z: 10 } })
 ```
 
+### Document-Oriented App Store
+
+_Implementation: [app-store.ts](packages/app-store/src/app-store.ts) | Tests: [app-store.test.ts](packages/app-store/tests/app-store.test.ts)_
+
+For app-level document management with a promise-like API:
+
+```typescript
+import { AppStore } from '@storable/app-store'
+
+// Define your document types
+interface DocumentTypes {
+  users: { id: number; firstName: string; lastName: string; email: string }
+  posts: { id: number; title: string; content: string; userId: number }
+}
+
+// Create app store with optional fetch handler
+const appStore = new AppStore<DocumentTypes>(async (modelType, id) => {
+  const response = await fetch(`/api/${modelType}/${id}`)
+  return response.json()
+})
+
+function MyComponent() {
+  // Documents are fetched automatically and cached
+  const post = appStore.findDoc("posts", 1)
+  const user = appStore.findDoc("users", post.content?.userId)
+
+  if (post.isPending) return <div>Loading post...</div>
+  if (post.isRejected) return <div>Error loading post</div>
+
+  return (
+    <article>
+      <h1>{post.content?.title}</h1>
+      {user.content && <p>By: {user.content.firstName} {user.content.lastName}</p>}
+    </article>
+  )
+}
+
+// Insert new documents
+await appStore.insertDocument('users', {
+  id: 2,
+  firstName: 'Jane',
+  lastName: 'Doe',
+  email: 'jane@example.com'
+})
+```
+
 ## Documentation
 
 📖 **[Complete Documentation & Examples → USAGE.md](USAGE.md)**
@@ -139,6 +191,7 @@ The USAGE.md file contains:
 - Comprehensive tutorials and examples
 - Complete API reference
 - Building a full TODO app
+- App Store document management patterns
 - Performance optimization tips
 - Advanced patterns and best practices
 - TypeScript usage
