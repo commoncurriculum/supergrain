@@ -106,6 +106,7 @@ describe('Core: Row Operations', () => {
       })
 
       // Select a row in the middle of the dataset
+      // @ts-ignore
       updateStore({ $set: { selected: store.data[500].id } })
 
       dispose()
@@ -128,6 +129,7 @@ describe('Core: Row Operations', () => {
       let trackedLabel: string | undefined
       const dispose = effect(() => {
         if (store.data.length > 1) {
+          // @ts-ignore
           trackedLabel = store.data[1].label
         }
       })
