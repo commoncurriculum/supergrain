@@ -105,6 +105,7 @@ export function useTrackedStore<T extends object>(store: T): T {
     cleanup: (() => void) | null
     effectNode: any
     proxy: T | null
+    proxyCache: WeakMap<any, any>
   } | null>(null)
 
   // Initialize on first render
@@ -123,18 +124,23 @@ export function useTrackedStore<T extends object>(store: T): T {
       forceUpdate()
     })
 
-    // Create a recursive proxy function with per-componenttracks cachingaccess
-    // This ensures the same nested object gets the same proxy within a component
-    const proxyCache = new WeakMap<object, object>()
+    // Cache for nested object proxies to ensure consistent identity
+    const proxyCache = new WeakMap<any, any>()
 
-    const createProxy = <U extends object>(target: U): U => {
-      // Check if we already have a proxy for this target in this component
+    // Create a recursive proxy that ensures our effect is current during all property access
+    const createProxy = (target: any): any => {
+      // Don't proxy primitives or null/undefined
+      if (!target || typeof target !== 'object') {
+        return target
+      }
+
+      // Return cached proxy if it exists
       if (proxyCache.has(target)) {
-        return proxyCache.get(target) as U
+        return proxyCache.get(target)
       }
 
       const proxy = new Proxy(target, {
-        get(target, prop, receiver) {
+        get(obj, prop, receiver) {
           // Save the current subscriber (might be another component's effect)
           const prevSub = getCurrentSub()
 
@@ -144,77 +150,47 @@ export function useTrackedStore<T extends object>(store: T): T {
 
           try {
             // Access the property (this will establish the dependency)
-            const value = Reflect.get(target, prop, receiver)
+            const value = Reflect.get(obj, prop, receiver)
 
-            // If the value is an object, recursively wrap it
-            // This ensures nested property access is tracked properly
-            if (
-              value !== null &&
-              typeof value === 'object' &&
-              !Array.isArray(value)
-            ) {
-              return createProxy(value)
-            }
-
-            // For arrays, create a proxy that tracks array access and wraps elements
-            if (Array.isArray(value)) {
-              return new Proxy(value, {
-                get(target, prop, receiver) {
-                  const result = Reflect.get(target, prop, receiver)
-                  // If accessing an array element that's an object, wrap it
-                  if (
-                    typeof prop === 'string' &&
-                    !isNaN(Number(prop)) &&
-                    result &&
-                    typeof result === 'object'
-                  ) {
-                    return createProxy(result)
-                  }
-                  return result
-                },
-                set(target, prop, value, receiver) {
-                  return Reflect.set(target, prop, value, receiver)
-                },
-                has(target, prop) {
-                  return Reflect.has(target, prop)
-                },
-                deleteProperty(target, prop) {
-                  return Reflect.deleteProperty(target, prop)
-                },
-                ownKeys(target) {
-                  return Reflect.ownKeys(target)
-                },
-                getOwnPropertyDescriptor(target, prop) {
-                  return Reflect.getOwnPropertyDescriptor(target, prop)
-                },
-              })
-            }
-
-            return value
+            // Recursively wrap nested objects/arrays in proxies
+            // This ensures that accessing nested properties also tracks dependencies
+            return createProxy(value)
           } finally {
             // Restore the previous subscriber
             // This is crucial for nested components
             setCurrentSub(prevSub)
           }
         },
-        set(target, prop, value, receiver) {
-          return Reflect.set(target, prop, value, receiver)
+        set(obj, prop, value, receiver) {
+          return Reflect.set(obj, prop, value, receiver)
         },
-        has(target, prop) {
-          return Reflect.has(target, prop)
+        has(obj, prop) {
+          const prevSub = getCurrentSub()
+          setCurrentSub(effectNode)
+          try {
+            return Reflect.has(obj, prop)
+          } finally {
+            setCurrentSub(prevSub)
+          }
         },
-        deleteProperty(target, prop) {
-          return Reflect.deleteProperty(target, prop)
+        deleteProperty(obj, prop) {
+          return Reflect.deleteProperty(obj, prop)
         },
-        ownKeys(target) {
-          return Reflect.ownKeys(target)
+        ownKeys(obj) {
+          const prevSub = getCurrentSub()
+          setCurrentSub(effectNode)
+          try {
+            return Reflect.ownKeys(obj)
+          } finally {
+            setCurrentSub(prevSub)
+          }
         },
-        getOwnPropertyDescriptor(target, prop) {
-          return Reflect.getOwnPropertyDescriptor(target, prop)
+        getOwnPropertyDescriptor(obj, prop) {
+          return Reflect.getOwnPropertyDescriptor(obj, prop)
         },
-      }) as U
+      })
 
-      // Cache the proxy for this component
+      // Cache the proxy
       proxyCache.set(target, proxy)
       return proxy
     }
@@ -225,6 +201,7 @@ export function useTrackedStore<T extends object>(store: T): T {
       cleanup,
       effectNode,
       proxy,
+      proxyCache,
     }
   }
 

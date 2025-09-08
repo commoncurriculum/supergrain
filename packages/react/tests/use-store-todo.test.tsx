@@ -1,8 +1,9 @@
 import React from 'react'
 import { render, screen, act } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { createStore } from '../../core/src'
+import { createStore } from '@storable/core'
 import { useTrackedStore } from '../src'
+import { flushMicrotasks } from './test-utils'
 
 // --- Test Setup ---
 
@@ -32,13 +33,13 @@ const TodoItem = ({ task }: { task: Task }) => {
 }
 
 const TodoListComponent = ({ store }: { store: UserTaskList }) => {
-  const state = useTrackedStore(store)
+  const trackedStore = useTrackedStore(store)
 
   return (
     <div>
-      <h1>{state.firstName}'s Tasks</h1>
+      <h1>{trackedStore.firstName}'s Tasks</h1>
       <ul>
-        {state.tasks.map(task => (
+        {trackedStore.tasks.map(task => (
           <TodoItem key={task.id} task={task} />
         ))}
       </ul>
@@ -49,7 +50,7 @@ const TodoListComponent = ({ store }: { store: UserTaskList }) => {
 // --- Tests ---
 
 describe('useTrackedStore Hook for Todo App', () => {
-  it('should re-render the component when a new todo is added', () => {
+  it('should re-render the component when a new todo is added', async () => {
     const initialState: UserTaskList = {
       id: 'user-1',
       firstName: 'Jane',
@@ -70,19 +71,20 @@ describe('useTrackedStore Hook for Todo App', () => {
     }
 
     // Use `act` to wrap the state update
-    act(() => {
+    await act(async () => {
       update({
         $push: {
           tasks: newTask,
         },
       })
+      await flushMicrotasks()
     })
 
     // After the update, the new task should be rendered
     expect(screen.getByText('Learn TDD')).not.toBeNull()
   })
 
-  it('should re-render and remove a todo when using $pull', () => {
+  it('should re-render and remove a todo when using $pull', async () => {
     const initialTasks: Task[] = [
       { id: 'task-1', isCompleted: false, text: 'First task' },
       { id: 'task-2', isCompleted: false, text: 'Second task' },
@@ -101,12 +103,13 @@ describe('useTrackedStore Hook for Todo App', () => {
     expect(screen.getByText('Second task')).not.toBeNull()
 
     // Remove the first task
-    act(() => {
+    await act(async () => {
       update({
         $pull: {
           tasks: { id: 'task-1' },
         },
       })
+      await flushMicrotasks()
     })
 
     // The first task should be gone, the second should remain
@@ -114,7 +117,7 @@ describe('useTrackedStore Hook for Todo App', () => {
     expect(screen.getByText('Second task')).not.toBeNull()
   })
 
-  it('should re-render and update a todo text when using $set', () => {
+  it('should re-render and update a todo text when using $set', async () => {
     const initialTasks: Task[] = [
       { id: 'task-1', isCompleted: false, text: 'Original text' },
       { id: 'task-2', isCompleted: false, text: 'Another item' },
@@ -133,12 +136,13 @@ describe('useTrackedStore Hook for Todo App', () => {
 
     const newText = 'This text has been updated'
     // Update the text of the first task
-    act(() => {
+    await act(async () => {
       update({
         $set: {
           'tasks.0.text': newText,
         },
       })
+      await flushMicrotasks()
     })
 
     // The old text should be gone, and the new text should be present
@@ -148,7 +152,7 @@ describe('useTrackedStore Hook for Todo App', () => {
     expect(screen.getByText('Another item')).not.toBeNull()
   })
 
-  it('should mark a todo as completed and update the style', () => {
+  it('should mark a todo as completed and update the style', async () => {
     const initialTasks: Task[] = [
       { id: 'task-1', isCompleted: false, text: 'Incomplete Task' },
     ]
@@ -165,12 +169,13 @@ describe('useTrackedStore Hook for Todo App', () => {
     expect(taskElement.style.textDecoration).toBe('none')
 
     // Mark the task as completed
-    act(() => {
+    await act(async () => {
       update({
         $set: {
           'tasks.0.isCompleted': true,
         },
       })
+      await flushMicrotasks()
     })
 
     expect(taskElement.style.textDecoration).toBe('line-through')
