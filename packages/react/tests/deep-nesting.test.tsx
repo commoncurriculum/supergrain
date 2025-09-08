@@ -1,11 +1,14 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { render, screen, act, cleanup } from '@testing-library/react'
 import React from 'react'
 import { createStore, effect, computed } from '@storable/core'
 import { useTrackedStore } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
 describe('Deep Nesting Operations in React Components', () => {
+  beforeEach(() => {
+    cleanup()
+  })
   // Helper functions for type-safe access to deeply nested properties
   const getDept = (state: any, index: number) =>
     state.organization.departments[index]!
@@ -238,31 +241,34 @@ describe('Deep Nesting Operations in React Components', () => {
   it('should display deeply nested organizational data in React components', async () => {
     const { state, update } = createComplexStore()
 
-    render(<OrganizationComponent store={state} />)
+    const { container } = render(<OrganizationComponent store={state} />)
 
     // Test initial rendering of deeply nested data
-    expect(screen.getByTestId('org-name-org-1').textContent).toBe('TechCorp')
-    expect(screen.getByTestId('dept-name-dept-1').textContent).toBe(
-      'Engineering'
-    )
-    expect(screen.getByTestId('team-name-team-1').textContent).toBe(
-      'Backend Team'
-    )
-    expect(screen.getByTestId('member-name-emp-1').textContent).toBe(
-      'Alice Johnson'
-    )
-    expect(screen.getByTestId('project-name-proj-1').textContent).toBe(
-      'API Redesign'
-    )
-    expect(screen.getByTestId('task-title-task-1').textContent).toBe(
-      'Database Migration'
-    )
+    expect(
+      container.querySelector('[data-testid="org-name-org-1"]')!.textContent
+    ).toBe('TechCorp')
+    expect(
+      container.querySelector('[data-testid="dept-name-dept-1"]')!.textContent
+    ).toBe('Engineering')
+    expect(
+      container.querySelector('[data-testid="team-name-team-1"]')!.textContent
+    ).toBe('Backend Team')
+    expect(
+      container.querySelector('[data-testid="member-name-emp-1"]')!.textContent
+    ).toBe('Alice Johnson')
+    expect(
+      container.querySelector('[data-testid="project-name-proj-1"]')!
+        .textContent
+    ).toBe('API Redesign')
+    expect(
+      container.querySelector('[data-testid="task-title-task-1"]')!.textContent
+    ).toBe('Database Migration')
   })
 
   it('should update React components when deeply nested fields change', async () => {
     const { state, update } = createComplexStore()
 
-    render(<OrganizationComponent store={state} />)
+    const { container } = render(<OrganizationComponent store={state} />)
 
     // Update a deeply nested task title
     await act(async () => {
@@ -275,15 +281,15 @@ describe('Deep Nesting Operations in React Components', () => {
       await flushMicrotasks()
     })
 
-    expect(screen.getByTestId('task-title-task-1').textContent).toBe(
-      'Database Refactoring'
-    )
+    expect(
+      container.querySelector('[data-testid="task-title-task-1"]')!.textContent
+    ).toBe('Database Refactoring')
   })
 
   it('should update React components when nested objects are created', async () => {
     const { state, update } = createComplexStore()
 
-    render(<OrganizationComponent store={state} />)
+    const { container } = render(<OrganizationComponent store={state} />)
 
     // Add a new task to existing project
     await act(async () => {
@@ -299,18 +305,19 @@ describe('Deep Nesting Operations in React Components', () => {
       await flushMicrotasks()
     })
 
-    expect(screen.getByTestId('task-title-task-3').textContent).toBe(
-      'Performance Testing'
-    )
-    expect(screen.getByTestId('task-completed-task-3').textContent).toBe(
-      'false'
-    )
+    expect(
+      container.querySelector('[data-testid="task-title-task-3"]')!.textContent
+    ).toBe('Performance Testing')
+    expect(
+      container.querySelector('[data-testid="task-completed-task-3"]')!
+        .textContent
+    ).toBe('false')
   })
 
   it('should update React components when nested arrays are reordered', async () => {
     const { state, update } = createComplexStore()
 
-    render(<OrganizationComponent store={state} />)
+    const { container } = render(<OrganizationComponent store={state} />)
 
     // First add another task so we have something to reorder
     await act(async () => {
@@ -340,7 +347,9 @@ describe('Deep Nesting Operations in React Components', () => {
     })
 
     // Check that tasks are now in new order
-    const taskElements = screen.getAllByTestId(/^task-task-/)
+    const taskElements = Array.from(
+      container.querySelectorAll('[data-testid^="task-task-"]')
+    )
     expect(taskElements[0].getAttribute('data-testid')).toBe('task-task-3')
     expect(taskElements[1].getAttribute('data-testid')).toBe('task-task-1')
     expect(taskElements[2].getAttribute('data-testid')).toBe('task-task-2')
@@ -349,7 +358,7 @@ describe('Deep Nesting Operations in React Components', () => {
   it('should update React components when deeply nested metrics change', async () => {
     const { state, update } = createComplexStore()
 
-    render(<OrganizationComponent store={state} />)
+    const { container } = render(<OrganizationComponent store={state} />)
 
     // Update project progress
     await act(async () => {
@@ -361,15 +370,16 @@ describe('Deep Nesting Operations in React Components', () => {
       await flushMicrotasks()
     })
 
-    expect(screen.getByTestId('project-progress-proj-1').textContent).toBe(
-      '0.85'
-    )
+    expect(
+      container.querySelector('[data-testid="project-progress-proj-1"]')!
+        .textContent
+    ).toBe('0.85')
   })
 
   it('should handle adding new departments and teams in React', async () => {
     const { state, update } = createComplexStore()
 
-    render(<OrganizationComponent store={state} />)
+    const { container } = render(<OrganizationComponent store={state} />)
 
     // Add a new department
     await act(async () => {
@@ -400,13 +410,15 @@ describe('Deep Nesting Operations in React Components', () => {
       await flushMicrotasks()
     })
 
-    expect(screen.getByTestId('dept-name-dept-2').textContent).toBe('Marketing')
-    expect(screen.getByTestId('team-name-team-2').textContent).toBe(
-      'Digital Marketing'
-    )
-    expect(screen.getByTestId('member-name-emp-2').textContent).toBe(
-      'Bob Smith'
-    )
+    expect(
+      container.querySelector('[data-testid="dept-name-dept-2"]')!.textContent
+    ).toBe('Marketing')
+    expect(
+      container.querySelector('[data-testid="team-name-team-2"]')!.textContent
+    ).toBe('Digital Marketing')
+    expect(
+      container.querySelector('[data-testid="member-name-emp-2"]')!.textContent
+    ).toBe('Bob Smith')
   })
 
   it('should update React components with computed values based on deep nesting', async () => {
@@ -425,9 +437,11 @@ describe('Deep Nesting Operations in React Components', () => {
       return <div data-testid="total-budget">{totalBudget()}</div>
     }
 
-    render(<ComputedComponent />)
+    const { container } = render(<ComputedComponent />)
 
-    expect(screen.getByTestId('total-budget').textContent).toBe('500000')
+    expect(
+      container.querySelector('[data-testid="total-budget"]')!.textContent
+    ).toBe('500000')
     expect(computedValue).toBe(500000)
 
     // Add a new department with budget
@@ -445,7 +459,9 @@ describe('Deep Nesting Operations in React Components', () => {
       await flushMicrotasks()
     })
 
-    expect(screen.getByTestId('total-budget').textContent).toBe('650000')
+    expect(
+      container.querySelector('[data-testid="total-budget"]')!.textContent
+    ).toBe('650000')
   })
 
   it('should track fine-grained updates in React without over-rendering', async () => {
@@ -459,7 +475,7 @@ describe('Deep Nesting Operations in React Components', () => {
       return <div data-testid="task-only">{task.title}</div>
     }
 
-    render(<TaskOnlyComponent />)
+    const { container } = render(<TaskOnlyComponent />)
     expect(renderCount).toBe(1)
 
     // Update unrelated data - should not re-render
@@ -486,6 +502,8 @@ describe('Deep Nesting Operations in React Components', () => {
     })
 
     expect(renderCount).toBe(2) // Re-rendered because task was updated
-    expect(screen.getByTestId('task-only').textContent).toBe('Updated Task')
+    expect(
+      container.querySelector('[data-testid="task-only"]')!.textContent
+    ).toBe('Updated Task')
   })
 })
