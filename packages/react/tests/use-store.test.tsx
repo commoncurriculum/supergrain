@@ -373,7 +373,7 @@ describe('useTrackedStore Hook', () => {
 
     render(<Component />)
     expect(renders).toBe(1)
-    expect(screen.getByTestId('count').textContent).toBe('2')
+    expect(screen.getByTestId('computed-count').textContent).toBe('2')
     expect(screen.getByTestId('doubled').textContent).toBe('4')
     expect(screen.getByTestId('tripled').textContent).toBe('6')
 
