@@ -1,0 +1,42 @@
+{
+  "name": "@storable/app-store",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Document-oriented app store for Storable with TypeScript support",
+  "keywords": [
+    "storable",
+    "app-store",
+    "document",
+    "reactive",
+    "typescript"
+  ],
+  "license": "MIT",
+  "author": "Scott Messinger",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.es.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.es.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "lint": "oxlint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@storable/core": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}
