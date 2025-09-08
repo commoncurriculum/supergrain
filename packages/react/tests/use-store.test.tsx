@@ -364,7 +364,7 @@ describe('useTrackedStore Hook', () => {
       const tripled = state.count * 3
       return (
         <div>
-          <span data-testid="count">{state.count}</span>
+          <span data-testid="computed-count">{state.count}</span>
           <span data-testid="doubled">{doubled}</span>
           <span data-testid="tripled">{tripled}</span>
         </div>
@@ -383,7 +383,7 @@ describe('useTrackedStore Hook', () => {
     })
 
     expect(renders).toBe(2)
-    expect(screen.getByTestId('count').textContent).toBe('5')
+    expect(screen.getByTestId('computed-count').textContent).toBe('5')
     expect(screen.getByTestId('doubled').textContent).toBe('10')
     expect(screen.getByTestId('tripled').textContent).toBe('15')
   })

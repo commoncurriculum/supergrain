@@ -123,11 +123,12 @@ export function useTrackedStore<T extends object>(store: T): T {
       forceUpdate()
     })
 
-    // Create a proxy that ensures our effect is current during property access
-    // This is the key to proper nested component isolation
+    // Create a recursive proxy function with per-componenttracks cachingaccess
+    // This ensures the same nested object gets the same proxy within a component
     const proxyCache = new WeakMap<object, object>()
 
-    const createDeepProxy = <U extends object>(target: U): U => {
+    const createProxy = <U extends object>(target: U): U => {
+      // Check if we already have a proxy for this target in this component
       if (proxyCache.has(target)) {
         return proxyCache.get(target) as U
       }
@@ -145,9 +146,48 @@ export function useTrackedStore<T extends object>(store: T): T {
             // Access the property (this will establish the dependency)
             const value = Reflect.get(target, prop, receiver)
 
-            // If the value is an object, wrap it in a proxy as well
-            if (value !== null && typeof value === 'object') {
-              return createDeepProxy(value)
+            // If the value is an object, recursively wrap it
+            // This ensures nested property access is tracked properly
+            if (
+              value !== null &&
+              typeof value === 'object' &&
+              !Array.isArray(value)
+            ) {
+              return createProxy(value)
+            }
+
+            // For arrays, create a proxy that tracks array access and wraps elements
+            if (Array.isArray(value)) {
+              return new Proxy(value, {
+                get(target, prop, receiver) {
+                  const result = Reflect.get(target, prop, receiver)
+                  // If accessing an array element that's an object, wrap it
+                  if (
+                    typeof prop === 'string' &&
+                    !isNaN(Number(prop)) &&
+                    result &&
+                    typeof result === 'object'
+                  ) {
+                    return createProxy(result)
+                  }
+                  return result
+                },
+                set(target, prop, value, receiver) {
+                  return Reflect.set(target, prop, value, receiver)
+                },
+                has(target, prop) {
+                  return Reflect.has(target, prop)
+                },
+                deleteProperty(target, prop) {
+                  return Reflect.deleteProperty(target, prop)
+                },
+                ownKeys(target) {
+                  return Reflect.ownKeys(target)
+                },
+                getOwnPropertyDescriptor(target, prop) {
+                  return Reflect.getOwnPropertyDescriptor(target, prop)
+                },
+              })
             }
 
             return value
@@ -174,11 +214,12 @@ export function useTrackedStore<T extends object>(store: T): T {
         },
       }) as U
 
+      // Cache the proxy for this component
       proxyCache.set(target, proxy)
       return proxy
     }
 
-    const proxy = createDeepProxy(store)
+    const proxy = createProxy(store)
 
     stateRef.current = {
       cleanup,
