@@ -2,6 +2,8 @@
 
 A reactive store library with fine-grained reactivity powered by alien-signals. Create stores that track property access and update components with surgical precision using MongoDB-style update operators.
 
+_Core Implementation: [packages/core/src](packages/core/src) | React Integration: [packages/react/src](packages/react/src) | Examples: [packages/react/examples](packages/react/examples)_
+
 ## Features
 
 - 🎯 **Fine-grained reactivity** - Only components using changed data re-render
@@ -12,6 +14,8 @@ A reactive store library with fine-grained reactivity powered by alien-signals. 
 
 ## Installation
 
+_Package definitions: [core/package.json](packages/core/package.json) | [react/package.json](packages/react/package.json)_
+
 ```bash
 npm install @storable/core @storable/react
 # or
@@ -19,6 +23,8 @@ pnpm add @storable/core @storable/react
 ```
 
 ## Quick Start
+
+_Implementation: [createStore](packages/core/src/store.ts) | [useTrackedStore](packages/react/src/use-store.ts) | Tests: [todo.test.ts](packages/core/tests/todo.test.ts)_
 
 ```typescript
 import { createStore } from '@storable/core'
@@ -83,6 +89,8 @@ function TodoApp() {
 
 ### Creating Stores
 
+_Implementation: [store.ts](packages/core/src/store.ts) | Tests: [store.test.ts](packages/core/tests/store.test.ts)_
+
 Stores hold your application state and make it reactive:
 
 ```typescript
@@ -104,6 +112,8 @@ update({ $set: { 'user.name': 'Jane' } }) // ✅ Correct way
 ```
 
 ### MongoDB-Style Update Operators
+
+_Implementation: [operators.ts](packages/core/src/operators.ts) | Tests: [operators.test.ts](packages/core/tests/operators.test.ts)_
 
 All state changes must use MongoDB-style operators through the `update` function:
 
@@ -146,6 +156,8 @@ Available operators:
 
 ## React Integration
 
+_Implementation: [use-store.ts](packages/react/src/use-store.ts) | Tests: [use-store.test.tsx](packages/react/tests/use-store.test.tsx) | Example: [nested-components.tsx](packages/react/examples/nested-components.tsx)_
+
 ### useTrackedStore Hook
 
 The primary way to use stores in React components:
@@ -167,13 +179,18 @@ function TodoList() {
 }
 
 function TodoItem({ todo }) {
+  const trackedTodo = useTrackedStore(todo)
+
   // This component only re-renders when THIS specific todo changes
   return (
     <li>
-      <span>{todo.text}</span>
-      <button onClick={() => update({
-        $set: { [`todos.${index}.completed`]: !todo.completed }
-      })}>
+      <span>{trackedTodo.text}</span>
+      <button onClick={() => {
+        const index = store.todos.findIndex(t => t.id === todo.id)
+        update({
+          $set: { [`todos.${index}.completed`]: !trackedTodo.completed }
+        })
+      }}>
         Toggle
       </button>
     </li>
@@ -203,6 +220,8 @@ function Counter() {
 ```
 
 ## Complete TODO App Example
+
+_Core Tests: [todo.test.ts](packages/core/tests/todo.test.ts) | React Tests: [use-store-todo.test.tsx](packages/react/tests/use-store-todo.test.tsx)_
 
 Here's a working TODO app demonstrating the key features:
 
@@ -401,6 +420,8 @@ function TodoItem({ todo, onToggle, onDelete, onAddTag }) {
 
 ### Effects
 
+_Implementation: Re-exported from alien-signals in [index.ts](packages/core/src/index.ts) | Usage Examples: [benchmarks](packages/core/benchmarks/additional.bench.ts)_
+
 React to state changes outside of components:
 
 ```typescript
@@ -417,6 +438,8 @@ effect(() => {
 ```
 
 ### Computed Values
+
+_Implementation: Re-exported from alien-signals in [index.ts](packages/core/src/index.ts)_
 
 Use `computed` from alien-signals for derived state:
 
@@ -436,6 +459,8 @@ function TodoStats() {
 
 ### Batching Updates
 
+_Implementation: [store.ts](packages/core/src/store.ts) | Tests: [store.test.ts](packages/core/tests/store.test.ts)_
+
 Multiple operations in a single update call are automatically batched:
 
 ```typescript
@@ -448,6 +473,8 @@ update({
 ```
 
 ### Working with Arrays
+
+_Tests: [array.test.ts](packages/core/tests/array.test.ts) | [operators.test.ts](packages/core/tests/operators.test.ts)_
 
 ```typescript
 // Add items
@@ -469,6 +496,8 @@ update({ $set: { [`items.${index}.property`]: newValue } })
 
 ### Nested Updates
 
+_Tests: [operators.test.ts](packages/core/tests/operators.test.ts)_
+
 Use dot notation for nested properties:
 
 ```typescript
@@ -485,6 +514,8 @@ update({
 ```
 
 ## API Reference
+
+_Type Definitions: [store.ts](packages/core/src/store.ts) | [operators.ts](packages/core/src/operators.ts) | Exports: [index.ts](packages/core/src/index.ts)_
 
 ### Core
 
@@ -507,6 +538,66 @@ update({
 - `$addToSet: { path: value | { $each: value[] } }` - Add unique elements
 - `$rename: { oldPath: newPath }` - Rename fields
 - `$min/$max: { path: number }` - Conditional numeric updates
+
+## Performance Tips
+
+_Examples: [nested-components.tsx](packages/react/examples/nested-components.tsx) | Tests: [use-store.test.tsx](packages/react/tests/use-store.test.tsx)_
+
+### 1. Split Components by Data Access
+
+Components only re-render for data they access:
+
+```typescript
+// Parent only re-renders when todos array changes
+function TodoList() {
+  const state = useTrackedStore(store)
+  return (
+    <ul>
+      {state.todos.map(todo => (
+        <TodoItem key={todo.id} todo={todo} />
+      ))}
+    </ul>
+  )
+}
+
+// Child only re-renders when its specific todo changes
+function TodoItem({ todo }) {
+  const trackedTodo = useTrackedStore(todo)
+  return <li>{trackedTodo.text}</li>
+}
+```
+
+### 2. Avoid Unnecessary Property Access
+
+```typescript
+// ❌ Bad: Accesses all properties
+const { x, y, z } = state // Component re-renders on any change
+
+// ✅ Good: Access only what you need
+const x = state.x // Component only re-renders when x changes
+```
+
+### 3. Batch Updates
+
+Multiple operations in one update call are automatically batched:
+
+```typescript
+// ✅ Good: Single re-render
+update({
+  $set: { 'user.name': 'Jane' },
+  $inc: { count: 1 },
+  $push: { items: 'new' },
+})
+
+// ❌ Less efficient: Multiple re-renders
+update({ $set: { 'user.name': 'Jane' } })
+update({ $inc: { count: 1 } })
+update({ $push: { items: 'new' } })
+```
+
+## Documentation
+
+For complete documentation with examples and implementation details, see [USAGE.md](USAGE.md).
 
 ## Important Notes
 
