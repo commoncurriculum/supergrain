@@ -8,67 +8,7 @@ Based on the comprehensive analysis of Reactively, several optimization strategi
 
 Based on analysis of the current Storable implementation in `/packages/core/src/store.ts`, here are specific optimizations grounded in actual code:
 
-### 1. ~~Optimize `reconcile()` Function~~ - **REJECTED: BREAKS REACTIVITY**
-
-**Why This Cannot Be Optimized:**
-The `reconcile()` function at line 203 appears to have redundant `signal()` calls, but **every call is required for reactivity**:
-
-```typescript
-for (const key of Object.keys(nodes)) {
-  const signal = nodes[key]
-  const newValue = (raw as any)[key]
-  if (signal() !== newValue) {  // ← MUST call signal() for dependency tracking
-    signal(newValue)            // ← Trigger update if different
-  }
-}
-```
-
-**Critical Issue:** During reconciliation, if there's an active reactive context (`getCurrentSub()`), every `signal()` call registers dependencies. Caching the signal values would break this dependency registration.
-
-**Lesson:** Even seemingly redundant signal calls serve the dual purpose of value comparison AND dependency tracking.
-
-### 2. Optimize `getNode()` Signal Creation - Line 37 ✅
-
-**Current Implementation:**
-```typescript
-function getNode(
-  nodes: DataNodes,
-  property: PropertyKey,
-  value?: any
-): Signal<any> {
-  if (nodes[property]) {
-    return nodes[property]!
-  }
-  const newSignal = signal(value) as Signal<any>
-  newSignal.$ = (v: any) => newSignal(v)  // Creates closure every time
-  nodes[property] = newSignal
-  return newSignal
-}
-```
-
-**Concrete Optimization:**
-```typescript
-// Pre-define the setter function to avoid creating closures
-const createSetter = (signal: Signal<any>) => (v: any) => signal(v)
-
-function getNode(
-  nodes: DataNodes,
-  property: PropertyKey,
-  value?: any
-): Signal<any> {
-  if (nodes[property]) {
-    return nodes[property]!
-  }
-  const newSignal = signal(value) as Signal<any>
-  newSignal.$ = createSetter(newSignal)  // Reuse function pattern
-  nodes[property] = newSignal
-  return newSignal
-}
-```
-
-**Performance Impact:** Eliminates closure creation overhead per signal
-
-### 3. Optimize Proxy Handler Symbol Checks - Line 110 ✅
+### 1. Optimize Proxy Handler Symbol Checks - Line 110 ✅
 
 **Current Implementation:**
 ```typescript
@@ -108,7 +48,7 @@ const handler: ProxyHandler<object> = {
 
 **Performance Impact:** Reduces symbol comparison overhead in hot path
 
-### 4. Optimize `setProperty()` Array Length Handling - Line 83 ✅
+### 2. Optimize `setProperty()` Array Length Handling - Line 83 ✅
 
 **Current Implementation:**
 ```typescript
