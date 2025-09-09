@@ -13,6 +13,7 @@ const $TRACK = Symbol('store-track')
 const $RAW = Symbol('store-raw')
 
 const proxyCache = new WeakMap<object, object>()
+const objectNodes = new WeakMap<object, DataNodes>()
 
 const isWrappable = (value: unknown): value is object =>
   value !== null &&
@@ -22,14 +23,10 @@ const isWrappable = (value: unknown): value is object =>
 type DataNodes = Record<PropertyKey, Signal<any>>
 
 function getNodes(target: object): DataNodes {
-  let nodes = (target as any)[$NODE]
+  let nodes = objectNodes.get(target)
   if (!nodes) {
     nodes = Object.create(null)
-    try {
-      Object.defineProperty(target, $NODE, { value: nodes, enumerable: false })
-    } catch {
-      // Frozen objects can't be modified.
-    }
+    objectNodes.set(target, nodes)
   }
   return nodes
 }
@@ -71,7 +68,7 @@ export function setProperty(
     target[property] = value
   }
 
-  const nodes = (target as any)[$NODE] as DataNodes | undefined
+  const nodes = objectNodes.get(target)
   if (nodes) {
     const node = nodes[property]
     if (node) {
@@ -206,7 +203,7 @@ function reconcile(raw: any, visited: Set<any>) {
   }
   visited.add(raw)
 
-  const nodes = (raw as any)[$NODE]
+  const nodes = objectNodes.get(raw)
   if (!nodes) return
 
   // Update signals for existing keys
