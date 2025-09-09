@@ -21,10 +21,11 @@ signal.get() // ~0.000017ms - direct _value access
 store.user.name // ~0.084ms - proxy get trap + signal infrastructure
 ```
 
-**Potential Optimization:**
-- **Pre-compute frequently accessed paths** to bypass proxy traps
-- **Cache property access results** for immutable computations
-- **Optimize signal.get() calls** in alien-signals for hot paths
+**Why This Cannot Be Optimized:**
+- **Proxy traps are required** for automatic dependency detection
+- **Every property access** must register dependencies in reactive contexts
+- **Bypassing proxy traps breaks reactivity** - the core value of Storable
+- **The performance difference is architectural**, not a bug to fix
 
 ### 2. Three-State Cache System
 
@@ -49,10 +50,11 @@ updateIfNecessary() {
 }
 ```
 
-**Application to Storable:**
-- **Add cache state to alien-signals** for early bailout
-- **Skip proxy trap processing** when signals are clean
-- **Batch state checks** before expensive operations
+**Why This Cannot Be Applied to Storable:**
+- **Cannot skip proxy trap processing** - breaks automatic dependency detection
+- **Cache state optimization only works** if you can bypass dependency registration
+- **Storable must process every property access** to maintain automatic reactivity
+- **Early bailout breaks the dependency graph** when reactive context exists
 
 ### 3. Optimized Observer Management
 
@@ -73,10 +75,12 @@ removeParentObservers(index) {
 }
 ```
 
-**Application to Storable:**
-- **Optimize alien-signals observer storage** from Sets to arrays where appropriate
-- **Implement swap-and-pop removal** for faster unsubscription
-- **Use typed arrays** for numeric indices where possible
+**Viable Application to Storable:**
+- **Optimize alien-signals observer storage** from Sets to arrays where appropriate ✅
+- **Implement swap-and-pop removal** for faster unsubscription ✅
+- **Use typed arrays** for numeric indices where possible ✅
+
+*Note: These optimizations don't break reactivity - they optimize the internal data structures within the reactive system*
 
 ### 4. Minimal Object Creation
 
@@ -97,10 +101,12 @@ get() {
 }
 ```
 
-**Application to Storable:**
-- **Pool temporary objects** during proxy trap execution
-- **Reuse tracking arrays** instead of creating new ones
-- **Minimize allocations** in hot path functions like getNodes()
+**Viable Application to Storable:**
+- **Pool temporary objects** during proxy trap execution ✅
+- **Reuse tracking arrays** instead of creating new ones ✅
+- **Minimize allocations** in hot path functions like getNodes() ✅
+
+*Note: These optimizations reduce memory allocation overhead without affecting the reactive dependency tracking*
 
 ## Viable Optimization Opportunities
 
