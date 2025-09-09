@@ -6,57 +6,7 @@ Based on the comprehensive analysis of Reactively, several optimization strategi
 
 ## Key Performance Insights from Reactively
 
-### 1. Direct Value Access vs Proxy Traps
-
-**Reactively's Advantage:**
-```typescript
-// Reactively - Direct property access
-const signal = reactive(42)
-signal.get() // ~0.000017ms - direct _value access
-```
-
-**Storable's Current Approach:**
-```typescript
-// Storable - Proxy trap overhead
-store.user.name // ~0.084ms - proxy get trap + signal infrastructure
-```
-
-**Why This Cannot Be Optimized:**
-- **Proxy traps are required** for automatic dependency detection
-- **Every property access** must register dependencies in reactive contexts
-- **Bypassing proxy traps breaks reactivity** - the core value of Storable
-- **The performance difference is architectural**, not a bug to fix
-
-### 2. Three-State Cache System
-
-**Reactively's Cache States:**
-```typescript
-const CacheClean = 0  // Value is up-to-date
-const CacheCheck = 1  // Need to verify parents  
-const CacheDirty = 2  // Needs recomputation
-
-// Only dirty nodes execute during updates
-updateIfNecessary() {
-  if (this.state === CacheCheck) {
-    // Check parents first - avoid unnecessary work
-    for (const source of this.sources) {
-      source.updateIfNecessary()
-      if (this.state === CacheDirty) break
-    }
-  }
-  if (this.state === CacheDirty) {
-    this.update() // Only execute if actually dirty
-  }
-}
-```
-
-**Why This Cannot Be Applied to Storable:**
-- **Cannot skip proxy trap processing** - breaks automatic dependency detection
-- **Cache state optimization only works** if you can bypass dependency registration
-- **Storable must process every property access** to maintain automatic reactivity
-- **Early bailout breaks the dependency graph** when reactive context exists
-
-### 3. Optimized Observer Management
+### 1. Optimized Observer Management
 
 **Reactively's Observer Arrays:**
 ```typescript
@@ -82,7 +32,7 @@ removeParentObservers(index) {
 
 *Note: These optimizations don't break reactivity - they optimize the internal data structures within the reactive system*
 
-### 4. Minimal Object Creation
+### 2. Minimal Object Creation
 
 **Reactively's Approach:**
 ```typescript
