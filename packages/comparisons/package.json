@@ -1,0 +1,13 @@
+{
+  "name": "@storable/comparisons",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Performance and integration comparisons with other state management libraries",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "valtio": "^2.1.7"
+  }
+}
