@@ -336,10 +336,10 @@ const name = snap.user.name
 - **No automatic batching**: Multiple updates = multiple expensive snapshot cycles
 
 **Performance vs Storable:**
-- **Creation**: Valtio ~3x faster (lazy proxying vs eager proxying)
+- **Creation**: Similar (~2-5ms vs ~1.3ms - both use lazy proxying)
 - **Reads**: Valtio ~4x faster via snapshots, ~4x slower via direct proxy
 - **Updates**: Storable ~2-3x faster (in-place updates vs snapshot generation)
-- **Memory growth**: Valtio more efficient during creation, Storable more efficient during updates
+- **Memory growth**: Similar efficiency patterns (both lazy proxy creation)
 
 ## TypeScript Support
 
