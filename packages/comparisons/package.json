@@ -8,8 +8,12 @@
     "test": "echo \"No tests yet\""
   },
   "dependencies": {
+    "@reduxjs/toolkit": "^2.9.0",
+    "jotai": "^2.14.0",
     "mobx": "^6.13.7",
     "mobx-react-lite": "^4.1.0",
-    "valtio": "^2.1.7"
+    "react-redux": "^9.2.0",
+    "valtio": "^2.1.7",
+    "zustand": "^5.0.8"
   }
 }
