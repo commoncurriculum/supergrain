@@ -8,69 +8,26 @@ Based on the comprehensive analysis of Reactively, several optimization strategi
 
 Based on analysis of the current Storable implementation in `/packages/core/src/store.ts`, here are specific optimizations grounded in actual code:
 
-### 1. Optimize `reconcile()` Function - Line 203
+### 1. ~~Optimize `reconcile()` Function~~ - **REJECTED: BREAKS REACTIVITY**
 
-**Current Implementation:**
+**Why This Cannot Be Optimized:**
+The `reconcile()` function at line 203 appears to have redundant `signal()` calls, but **every call is required for reactivity**:
+
 ```typescript
-function reconcile(raw: any, visited: Set<any>) {
-  if (!isWrappable(raw) || visited.has(raw)) {
-    return
-  }
-  visited.add(raw)
-
-  const nodes = (raw as any)[$NODE]
-  if (!nodes) return
-
-  // Update signals for existing keys - INEFFICIENT
-  for (const key of Object.keys(nodes)) {
-    const signal = nodes[key]
-    const newValue = (raw as any)[key]
-    if (signal() !== newValue) {  // Every signal() call has overhead
-      signal(newValue)
-    }
-  }
-
-  // Recurse into nested objects
-  for (const key of Object.keys(raw)) {
-    reconcile((raw as any)[key], visited)
+for (const key of Object.keys(nodes)) {
+  const signal = nodes[key]
+  const newValue = (raw as any)[key]
+  if (signal() !== newValue) {  // ← MUST call signal() for dependency tracking
+    signal(newValue)            // ← Trigger update if different
   }
 }
 ```
 
-**Concrete Optimization:**
-```typescript
-function reconcile(raw: any, visited: Set<any>) {
-  if (!isWrappable(raw) || visited.has(raw)) {
-    return
-  }
-  visited.add(raw)
+**Critical Issue:** During reconciliation, if there's an active reactive context (`getCurrentSub()`), every `signal()` call registers dependencies. Caching the signal values would break this dependency registration.
 
-  const nodes = (raw as any)[$NODE]
-  if (!nodes) return
+**Lesson:** Even seemingly redundant signal calls serve the dual purpose of value comparison AND dependency tracking.
 
-  // Optimize: Cache signal values to avoid repeated signal() calls
-  const signalValues = new Map<string, any>()
-  for (const key of Object.keys(nodes)) {
-    signalValues.set(key, nodes[key]())
-  }
-
-  // Compare cached values instead of calling signal() multiple times
-  for (const key of Object.keys(nodes)) {
-    const signal = nodes[key]
-    const oldValue = signalValues.get(key)
-    const newValue = (raw as any)[key]
-    if (oldValue !== newValue) {
-      signal(newValue)
-    }
-  }
-
-  // Rest unchanged...
-}
-```
-
-**Performance Impact:** Reduces signal() calls by ~50% during reconciliation
-
-### 2. Optimize `getNode()` Signal Creation - Line 37
+### 2. Optimize `getNode()` Signal Creation - Line 37 ✅
 
 **Current Implementation:**
 ```typescript
@@ -111,7 +68,7 @@ function getNode(
 
 **Performance Impact:** Eliminates closure creation overhead per signal
 
-### 3. Optimize Proxy Handler Symbol Checks - Line 110
+### 3. Optimize Proxy Handler Symbol Checks - Line 110 ✅
 
 **Current Implementation:**
 ```typescript
@@ -151,7 +108,7 @@ const handler: ProxyHandler<object> = {
 
 **Performance Impact:** Reduces symbol comparison overhead in hot path
 
-### 4. Optimize `setProperty()` Array Length Handling - Line 83
+### 4. Optimize `setProperty()` Array Length Handling - Line 83 ✅
 
 **Current Implementation:**
 ```typescript
