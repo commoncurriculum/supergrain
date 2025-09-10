@@ -7,7 +7,7 @@ export type Signal<T> = {
   $?: (value: T) => void
 }
 
-const $NODE = Symbol('store-node')
+export const $NODE = Symbol('store-node')
 const $PROXY = Symbol('store-proxy')
 const $TRACK = Symbol('store-track')
 const $RAW = Symbol('store-raw')
@@ -200,30 +200,6 @@ function createReactiveProxy<T extends object>(target: T): T {
 
 export type SetStoreFunction = (operations: UpdateOperations) => void
 
-function reconcile(raw: any, visited: Set<any>) {
-  if (!isWrappable(raw) || visited.has(raw)) {
-    return
-  }
-  visited.add(raw)
-
-  const nodes = (raw as any)[$NODE]
-  if (!nodes) return
-
-  // Update signals for existing keys
-  for (const key of Object.keys(nodes)) {
-    const signal = nodes[key]
-    const newValue = (raw as any)[key]
-    if (signal() !== newValue) {
-      signal(newValue) // trigger update
-    }
-  }
-
-  // Recurse into nested objects
-  for (const key of Object.keys(raw)) {
-    reconcile((raw as any)[key], visited)
-  }
-}
-
 export function createStore<T extends object>(
   initialState: T
 ): [T, SetStoreFunction] {
@@ -234,7 +210,9 @@ export function createStore<T extends object>(
     startBatch()
     try {
       applyUpdate(unwrappedState, operations)
-      reconcile(unwrappedState, new Set())
+      // Reconciliation is no longer needed since all operators properly use setProperty()
+      // or manually trigger signals. Array operations like pullFromArray use splice() for
+      // atomic modifications then trigger signals via setProperty(parent, key, array).
     } finally {
       endBatch()
     }

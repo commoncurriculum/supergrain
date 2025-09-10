@@ -10,7 +10,10 @@
       "Bash(git push:*)",
       "Bash(pnpm run bench:core:*)",
       "Bash(git checkout:*)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(pnpm add:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ],
     "deny": [],
     "ask": []

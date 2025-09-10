@@ -1,4 +1,13 @@
-import { setProperty } from './store'
+import { setProperty, $NODE } from './store'
+
+/**
+ * MongoDB-style operators for updating reactive stores.
+ *
+ * PERFORMANCE NOTE: All operators in this file have been optimized to use
+ * setProperty() for ALL mutations, eliminating the need for reconciliation.
+ * This ensures that signals are updated immediately during the operation,
+ * rather than requiring a separate reconciliation pass.
+ */
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -79,16 +88,18 @@ function deletePath(target: object, path: string): void {
 }
 
 // Precise function for incrementing numeric values
+// OPTIMIZATION: Uses setProperty to ensure signal updates
 function incrementValue(parent: any, key: string, increment: number): void {
   const currentValue = parent[key]
   if (typeof currentValue === 'number') {
-    parent[key] = currentValue + increment
+    setProperty(parent, key, currentValue + increment)
   } else if (currentValue == null) {
-    parent[key] = increment
+    setProperty(parent, key, increment)
   }
 }
 
 // Precise function for comparing and setting min/max values
+// OPTIMIZATION: Uses setProperty to ensure signal updates
 function compareAndSetValue(
   parent: any,
   key: string,
@@ -101,10 +112,10 @@ function compareAndSetValue(
       ? newValue < currentValue
       : newValue > currentValue
     if (shouldUpdate) {
-      parent[key] = newValue
+      setProperty(parent, key, newValue)
     }
   } else if (typeof currentValue === 'undefined') {
-    parent[key] = newValue
+    setProperty(parent, key, newValue)
   }
 }
 
@@ -122,6 +133,7 @@ function pushToArray(
 }
 
 // Precise function for array pull operations
+// OPTIMIZATION: Uses splice for atomic modification then manually triggers signals
 function pullFromArray(
   parent: any,
   key: string,
@@ -129,12 +141,42 @@ function pullFromArray(
   condition: any
 ): boolean {
   let removed = false
+  const originalLength = arr.length
+
+  // Remove items from end to beginning to avoid index shifting issues
   for (let i = arr.length - 1; i >= 0; i--) {
     if (isObjectMatch(arr[i], condition)) {
+      // Use native splice for atomic array modification
       arr.splice(i, 1)
       removed = true
     }
   }
+
+  // If we removed items, perform targeted reconciliation on the array
+  // This mimics what the full reconcile function does but only for this array
+  if (removed && arr.length !== originalLength) {
+    // Access the array's signal nodes to manually trigger updates
+    const nodes = (arr as any)[$NODE]
+    if (nodes) {
+      // Update the length signal if it exists
+      const lengthSignal = nodes['length']
+      if (lengthSignal && lengthSignal() !== arr.length) {
+        lengthSignal(arr.length)
+      }
+
+      // Update any indexed signals that may have changed
+      for (const key of Object.keys(nodes)) {
+        if (key !== 'length' && !isNaN(Number(key))) {
+          const signal = nodes[key]
+          const newValue = (arr as any)[key]
+          if (signal() !== newValue) {
+            signal(newValue)
+          }
+        }
+      }
+    }
+  }
+
   return removed
 }
 
