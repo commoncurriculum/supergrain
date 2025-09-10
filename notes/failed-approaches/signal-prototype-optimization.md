@@ -1,6 +1,6 @@
 # Failed Optimization: Signal Prototype Method Optimization
 
-**Date:** January 2025
+**Date:** September 2025
 **Optimization Attempted:** Move signal `$` setter method to prototype to reduce per-instance memory
 **Result:** Would break signal identity and reactivity
 **Key Lesson:** Signal identity consistency cannot be optimized away, even for seemingly innocent memory improvements
@@ -10,12 +10,16 @@
 During analysis of Storable's memory usage, the per-signal `$` property assignment was identified as a potential optimization target:
 
 ```typescript
-function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<any> {
+function getNode(
+  nodes: DataNodes,
+  property: PropertyKey,
+  value?: any
+): Signal<any> {
   if (nodes[property]) {
     return nodes[property]!
   }
   const newSignal = signal(value) as Signal<any>
-  newSignal.$ = (v: any) => newSignal(v)  // ← Per-instance method assignment
+  newSignal.$ = (v: any) => newSignal(v) // ← Per-instance method assignment
   nodes[property] = newSignal
   return newSignal
 }
@@ -26,14 +30,19 @@ Each signal gets its own `$` setter function, which appears wasteful from a memo
 ## Proposed Optimization
 
 ### Theoretical Implementation
+
 ```typescript
 class EnhancedSignal<T> extends Signal<T> {
   $prototype(value: T): void {
-    return this(value)  // Call the signal instance as a setter
+    return this(value) // Call the signal instance as a setter
   }
 }
 
-function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<any> {
+function getNode(
+  nodes: DataNodes,
+  property: PropertyKey,
+  value?: any
+): Signal<any> {
   if (nodes[property]) {
     return nodes[property]!
   }
@@ -45,6 +54,7 @@ function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<a
 ```
 
 ### Expected Benefits
+
 - **Memory reduction**: ~8-16 bytes saved per signal (function reference + closure)
 - **GC pressure**: Fewer per-instance function objects
 - **Initialization speed**: Eliminate property assignment during signal creation
@@ -58,30 +68,30 @@ The fundamental problem is that the `$` method must be bound to the specific sig
 
 ```typescript
 // Current working implementation:
-const nameSignal = signal("John")
+const nameSignal = signal('John')
 const ageSignal = signal(30)
 
-nameSignal.$ = (v) => nameSignal(v)  // Bound to nameSignal specifically
-ageSignal.$ = (v) => ageSignal(v)    // Bound to ageSignal specifically
+nameSignal.$ = v => nameSignal(v) // Bound to nameSignal specifically
+ageSignal.$ = v => ageSignal(v) // Bound to ageSignal specifically
 
 // Each $ method knows exactly which signal to update
-nameSignal.$("Jane")  // ✅ Updates only nameSignal
-ageSignal.$(31)       // ✅ Updates only ageSignal
+nameSignal.$('Jane') // ✅ Updates only nameSignal
+ageSignal.$(31) // ✅ Updates only ageSignal
 ```
 
 ```typescript
 // Broken prototype implementation:
 class EnhancedSignal {
   $(value) {
-    return this(value)  // ❌ Which signal is "this"?
+    return this(value) // ❌ Which signal is "this"?
   }
 }
 
-const nameSignal = new EnhancedSignal("John")
+const nameSignal = new EnhancedSignal('John')
 const ageSignal = new EnhancedSignal(30)
 
 // Both signals share the same $ method - identity confusion
-nameSignal.$(value)  // ❌ Could update wrong signal depending on binding
+nameSignal.$(value) // ❌ Could update wrong signal depending on binding
 ```
 
 ### 2. **Method Binding Issues**
@@ -90,12 +100,12 @@ JavaScript method binding creates additional complexity:
 
 ```typescript
 // Current approach - explicit binding
-const setter = nameSignal.$  // Works: bound function
-setter("Jane")               // ✅ Updates nameSignal correctly
+const setter = nameSignal.$ // Works: bound function
+setter('Jane') // ✅ Updates nameSignal correctly
 
 // Prototype approach - binding required
-const setter = nameSignal.$.bind(nameSignal)  // Required for correctness
-setter("Jane")  // ✅ Works but defeats the optimization purpose
+const setter = nameSignal.$.bind(nameSignal) // Required for correctness
+setter('Jane') // ✅ Works but defeats the optimization purpose
 ```
 
 The `.bind()` call would create a new function anyway, eliminating the memory benefit.
@@ -121,12 +131,12 @@ The existing API expects each signal to have its own `$` property:
 const signal1 = getNode(nodes, 'prop1', 'value1')
 const signal2 = getNode(nodes, 'prop2', 'value2')
 
-const setter1 = signal1.$  // Must be bound to signal1
-const setter2 = signal2.$  // Must be bound to signal2
+const setter1 = signal1.$ // Must be bound to signal1
+const setter2 = signal2.$ // Must be bound to signal2
 
 // These must update different signals
-setter1('newValue1')  // Only affects signal1
-setter2('newValue2')  // Only affects signal2
+setter1('newValue1') // Only affects signal1
+setter2('newValue2') // Only affects signal2
 ```
 
 ## Signal Identity Requirements
@@ -147,10 +157,15 @@ While this optimization doesn't directly share signals between properties, it br
 ## Alternative Approaches Considered
 
 ### 1. **Lazy $ Property Assignment**
+
 Only create the `$` method when first accessed:
 
 ```typescript
-function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<any> {
+function getNode(
+  nodes: DataNodes,
+  property: PropertyKey,
+  value?: any
+): Signal<any> {
   const newSignal = signal(value) as Signal<any>
 
   Object.defineProperty(newSignal, '$', {
@@ -160,7 +175,7 @@ function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<a
       }
       return this._setter
     },
-    configurable: false
+    configurable: false,
   })
 
   return newSignal
@@ -170,6 +185,7 @@ function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<a
 **Why this fails**: Still creates per-instance functions, adds getter overhead, more complex than original.
 
 ### 2. **Shared Method with Context Parameter**
+
 ```typescript
 const sharedSetter = (signal: Signal<any>, value: any) => signal(value)
 
@@ -179,15 +195,22 @@ const sharedSetter = (signal: Signal<any>, value: any) => signal(value)
 **Why this fails**: Changes the API, less ergonomic than `signal.$()`, breaks existing code.
 
 ### 3. **WeakMap-Based Method Storage**
+
 ```typescript
 const signalSetters = new WeakMap<Signal<any>, (v: any) => void>()
 
-function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<any> {
+function getNode(
+  nodes: DataNodes,
+  property: PropertyKey,
+  value?: any
+): Signal<any> {
   const newSignal = signal(value) as Signal<any>
   signalSetters.set(newSignal, (v: any) => newSignal(v))
 
   Object.defineProperty(newSignal, '$', {
-    get() { return signalSetters.get(this) }
+    get() {
+      return signalSetters.get(this)
+    },
   })
 
   return newSignal
@@ -201,6 +224,7 @@ function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<a
 ### 1. **Memory vs. Correctness Trade-off**
 
 While per-instance method assignment uses more memory, it ensures:
+
 - Correct signal identity
 - Proper closure semantics
 - API reliability
@@ -211,6 +235,7 @@ The memory cost is the price of maintaining reactivity guarantees.
 ### 2. **Apparent Waste vs. Essential Overhead**
 
 What appears to be "wasteful" per-instance assignment is actually:
+
 - **Essential for correctness**: Each signal needs its own setter
 - **Optimized by V8**: Modern engines optimize function creation and binding
 - **Minimal in practice**: 8-16 bytes per signal is acceptable overhead
@@ -227,6 +252,7 @@ Even seemingly innocent optimizations like shared prototype methods can break th
 ### 4. **V8 Optimization Considerations**
 
 Modern JavaScript engines already optimize:
+
 - Function creation and binding
 - Closure capture and storage
 - Method dispatch for similar objects
@@ -249,6 +275,7 @@ The signal prototype optimization represents a **classic example of premature op
 ### Value of This Analysis
 
 While this optimization was never implemented, analyzing it clarifies:
+
 - The boundaries of acceptable signal optimizations
 - Why certain memory patterns exist in reactive systems
 - How signal identity requirements constrain optimization options

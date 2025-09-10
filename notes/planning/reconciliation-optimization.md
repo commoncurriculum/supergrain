@@ -1,6 +1,6 @@
 # Reconciliation Algorithm Optimization Plan
 
-**Date:** January 2025
+**Date:** September 2025
 **Status:** Planning Phase
 **Goal:** Eliminate or optimize the reconciliation algorithm in Storable's update process
 
@@ -12,8 +12,8 @@
 function updateStore(operations: UpdateOperations): void {
   startBatch()
   try {
-    applyUpdate(unwrappedState, operations)  // Operators modify state
-    reconcile(unwrappedState, new Set())     // ← Why is this needed?
+    applyUpdate(unwrappedState, operations) // Operators modify state
+    reconcile(unwrappedState, new Set()) // ← Why is this needed?
   } finally {
     endBatch()
   }
@@ -50,6 +50,7 @@ function reconcile(raw: any, visited: Set<any>) {
 Looking at the code flow:
 
 1. **`setProperty` already updates signals**:
+
    ```typescript
    export function setProperty(target: any, property: PropertyKey, value: any) {
      // ... modify the raw object ...
@@ -65,6 +66,7 @@ Looking at the code flow:
    ```
 
 2. **All operators use `setProperty`**:
+
    ```typescript
    function $set(target: object, operations: Record<string, unknown>): void {
      for (const path in operations) {
@@ -80,6 +82,7 @@ Looking at the code flow:
 **Primary hypothesis**: The reconcile algorithm is doing duplicate work that `setProperty` already handles.
 
 **Test approach**:
+
 1. Comment out the `reconcile()` call
 2. Run all existing tests
 3. If tests pass, reconcile is redundant
@@ -119,7 +122,11 @@ function setPathValue(target: object, path: string, value: unknown): void {
 The current `getNode` function creates signals on-demand:
 
 ```typescript
-function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<any> {
+function getNode(
+  nodes: DataNodes,
+  property: PropertyKey,
+  value?: any
+): Signal<any> {
   if (nodes[property]) {
     return nodes[property]!
   }
@@ -139,6 +146,7 @@ function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<a
 **Approach**: Fix operators to handle all signal updates directly
 
 **Steps**:
+
 1. **Audit operator functions** - Ensure every mutation calls `setProperty`
 2. **Fix direct mutations** - Replace `arr.splice()` with proper `setProperty` calls
 3. **Handle intermediate objects** - Ensure new objects get proper signal initialization
@@ -151,6 +159,7 @@ function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<a
 **Approach**: Only reconcile objects/paths that were actually modified
 
 **Implementation**:
+
 ```typescript
 interface UpdateContext {
   modifiedPaths: Set<string>
@@ -186,6 +195,7 @@ function smartReconcile(raw: any, context: UpdateContext): void {
 **Approach**: Eliminate reconcile for simple cases, keep for complex ones
 
 **Implementation**:
+
 ```typescript
 function updateStore(operations: UpdateOperations): void {
   startBatch()
@@ -204,9 +214,9 @@ function updateStore(operations: UpdateOperations): void {
 function needsReconciliation(operations: UpdateOperations): boolean {
   // Check if any operators might create situations where reconcile is needed
   return (
-    '$rename' in operations ||  // Moves signals around
+    '$rename' in operations || // Moves signals around
     hasNestedObjectCreation(operations) || // Creates intermediate objects
-    hasComplexArrayOperations(operations)  // Array operations that might miss signals
+    hasComplexArrayOperations(operations) // Array operations that might miss signals
   )
 }
 ```
@@ -255,7 +265,8 @@ function updateStoreWithMetrics(operations: UpdateOperations): void {
     console.log({
       applyTime: reconcileStart - applyTime,
       reconcileTime: reconcileEnd - reconcileStart,
-      reconcilePercentage: (reconcileEnd - reconcileStart) / (reconcileEnd - startTime)
+      reconcilePercentage:
+        (reconcileEnd - reconcileStart) / (reconcileEnd - startTime),
     })
   } finally {
     endBatch()
