@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { createStore } from '@storable/core'
 import { useTrackedStore } from '@storable/react'
-import React, { FC, memo } from 'react'
+import React, { FC, memo, useCallback } from 'react'
 import { render, act, cleanup } from '@testing-library/react'
 
 /**
@@ -105,7 +105,10 @@ const MemoizedComponent: FC<{
   updateStore: any
 }> = ({ store, updateStore }) => {
   const state = useTrackedStore(store)
-  const selectRow = (id: number) => updateStore({ $set: { selected: id } })
+  const selectRow = useCallback(
+    (id: number) => updateStore({ $set: { selected: id } }),
+    [updateStore]
+  )
 
   return (
     <table>
@@ -261,7 +264,7 @@ describe('Render Analysis Tests', () => {
         .join(', ')}${results.renderedRowIds.length > 10 ? '...' : ''}]`
     )
 
-    // React.memo should prevent unnecessary re-renders
+    // React.memo should prevent unnecessary re-renders now that proxy stability is fixed
     expect(results.uniqueRowsRendered).toBeLessThanOrEqual(2) // Only selected row should change
   })
 
@@ -465,5 +468,87 @@ describe('Render Analysis Tests', () => {
 
     // This test reveals that proxy objects break React.memo
     expect(container).toBeDefined()
+  })
+
+  it('verifies proxy reference stability fix enables React.memo', () => {
+    console.log('\n=== PROXY REFERENCE STABILITY TEST ===')
+
+    const data = buildData(50)
+    const [store, updateStore] = createStore<AppState>({
+      data,
+      selected: null,
+    })
+
+    // Test that demonstrates the fix by using stable callbacks
+    const ProperMemoizedRow = memo<{
+      item: RowData
+      isSelected: boolean
+    }>(({ item, isSelected }) => {
+      renderCount++
+      renderedRowIds.add(item.id)
+
+      return (
+        <tr className={isSelected ? 'danger' : ''}>
+          <td>{item.id}</td>
+          <td>{item.label} (Properly Memoized)</td>
+        </tr>
+      )
+    })
+
+    const OptimizedComponent: FC<{
+      store: any
+      updateStore: any
+    }> = ({ store, updateStore }) => {
+      const state = useTrackedStore(store)
+
+      return (
+        <table>
+          <tbody>
+            {state.data.map((row: RowData) => (
+              <ProperMemoizedRow
+                key={row.id}
+                item={row} // ← This now has stable proxy reference thanks to the fix!
+                isSelected={row.id === state.selected}
+              />
+            ))}
+          </tbody>
+        </table>
+      )
+    }
+
+    resetRenderTracking()
+
+    const { container } = render(
+      <OptimizedComponent store={store} updateStore={updateStore} />
+    )
+
+    console.log(
+      `Initial render - Components: ${renderCount}, Unique rows: ${renderedRowIds.size}`
+    )
+
+    resetRenderTracking()
+
+    act(() => {
+      updateStore({ $set: { selected: data[24].id } })
+    })
+
+    const selectedRow = container.querySelector('tbody tr:nth-child(25)')
+    expect(selectedRow?.classList.contains('danger')).toBe(true)
+
+    const results = {
+      totalRenders: renderCount,
+      uniqueRowsRendered: renderedRowIds.size,
+      expectedOptimal: 1, // Only the selected row should re-render
+      efficiency: `${Math.round((1 / renderedRowIds.size) * 100)}%`,
+    }
+
+    console.log('Optimized selection results with stable proxy references:')
+    console.log(`- Total re-renders: ${results.totalRenders}`)
+    console.log(`- Unique rows re-rendered: ${results.uniqueRowsRendered}`)
+    console.log(`- Expected optimal: ${results.expectedOptimal}`)
+    console.log(`- Efficiency: ${results.efficiency}`)
+
+    // With stable proxy references and no changing callbacks, React.memo should work perfectly
+    expect(results.uniqueRowsRendered).toBeLessThanOrEqual(2) // Only selected and previously selected rows
   })
 })
