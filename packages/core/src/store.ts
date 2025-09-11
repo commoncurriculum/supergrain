@@ -107,36 +107,43 @@ function trackSelf(target: object): void {
 }
 
 const handler: ProxyHandler<object> = {
-  get(target, property, receiver) {
-    if (property === $RAW) return target
-    if (property === $PROXY) return receiver
-    if (property === $TRACK) {
+  get(target, prop, receiver) {
+    if (prop === $RAW) return target
+    if (prop === $PROXY) return receiver
+    if (prop === $TRACK) {
       trackSelf(target)
       return receiver
     }
-    if (property === $VERSION) return (target as any)[$VERSION] || 0
+    if (prop === $VERSION) return (target as any)[$VERSION] || 0
 
-    const value = Reflect.get(target, property, receiver)
+    const value = Reflect.get(target, prop, receiver)
 
+    // Functions: keep as-is (plus your iterator tracking)
     if (typeof value === 'function') {
-      if (Array.isArray(target) && property === Symbol.iterator) {
-        trackSelf(target)
-      }
+      if (Array.isArray(target) && prop === Symbol.iterator) trackSelf(target)
       return value
     }
 
     if (!getCurrentSub()) {
+      // Keep current behavior: eager wrap to preserve “always-proxy” semantics
       return wrap(value)
     }
 
-    const desc = Object.getOwnPropertyDescriptor(target, property)
-    if (desc && (desc.get || !desc.writable)) {
-      return wrap(value)
-    }
-
+    const own = Object.prototype.hasOwnProperty.call(target, prop)
     const nodes = getNodes(target)
-    const nodeSignal = getNode(nodes, property, value)
-    return wrap(nodeSignal())
+
+    if (own) {
+      const node = getNode(nodes, prop, value)
+      return wrap(node())
+    }
+
+    // Inherited property → still reactive (preserve semantics)
+    if (prop in target) {
+      const node = getNode(nodes, prop, value)
+      return wrap(node())
+    }
+
+    return wrap(value)
   },
 
   set() {
