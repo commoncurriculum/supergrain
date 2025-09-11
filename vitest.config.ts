@@ -5,7 +5,6 @@ export default defineConfig({
     projects: [
       // Node environment for core tests (default)
       {
-        name: 'node',
         test: {
           include: ['packages/core/**/*.test.{ts,tsx}'],
           environment: 'node',
@@ -13,7 +12,6 @@ export default defineConfig({
       },
       // jsdom environment for React tests
       {
-        name: 'jsdom',
         test: {
           include: [
             'packages/react/**/*.test.{ts,tsx}',
