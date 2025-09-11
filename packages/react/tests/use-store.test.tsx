@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import React from 'react'
 import { createStore } from '@storable/core'
-import { useStore, useTrackedStore } from '../src/use-store'
+import {
+  useStore,
+  useTrackedStore,
+  storePropsAreEqual,
+  For,
+} from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
 describe('Simple useStore Hook', () => {
@@ -415,5 +420,65 @@ describe('useTrackedStore Hook', () => {
     expect(screen.getByTestId('counter').textContent).toBe('5')
     // Exact render count depends on batching, but should be > 1
     expect(renders).toBeGreaterThan(1)
+  })
+
+  it('should only re-render memoized components when their specific item changes', async () => {
+    const [store, update] = createStore({
+      items: Array.from({ length: 10 }, (_, i) => ({
+        id: i,
+        name: `Item ${i}`,
+        value: i * 10,
+      })),
+    })
+
+    const renderCounts: { [id: number]: number } = {}
+
+    // Test For component approach - it automatically handles version props for optimal memoization
+    const MemoizedItem = React.memo(({ item }: { item: any }) => {
+      renderCounts[item.id] = (renderCounts[item.id] || 0) + 1
+      return (
+        <div data-testid={`item-${item.id}`}>
+          {item.name}: {item.value}
+        </div>
+      )
+    })
+
+    function ItemList() {
+      const state = useTrackedStore(store)
+      return (
+        <div>
+          <For each={state.items}>
+            {(item: any) => <MemoizedItem key={item.id} item={item} />}
+          </For>
+        </div>
+      )
+    }
+
+    render(<ItemList />)
+
+    // All items should render once initially
+    expect(Object.keys(renderCounts)).toHaveLength(10)
+    Object.values(renderCounts).forEach(count => expect(count).toBe(1))
+
+    // Reset render counts
+    Object.keys(renderCounts).forEach(key => {
+      renderCounts[parseInt(key)] = 0
+    })
+
+    // Update only item with id 3
+    await act(async () => {
+      update({ $set: { 'items.3.value': 999 } })
+      await flushMicrotasks()
+    })
+
+    // Only item 3 should have re-rendered (For component handles version props automatically)
+    expect(renderCounts[3]).toBe(1)
+    Object.keys(renderCounts)
+      .filter(k => k !== '3')
+      .forEach(key => {
+        expect(renderCounts[parseInt(key)]).toBe(0)
+      })
+
+    expect(screen.getByTestId('item-3').textContent).toBe('Item 3: 999')
   })
 })

@@ -1,7 +1,7 @@
 // Main entry point for @storable/react
 
 // Export the working hooks with proxy-based isolation
-export { useStore, useTrackedStore, storePropsAreEqual } from './use-store'
+export { useStore, useTrackedStore, storePropsAreEqual, For } from './use-store'
 
 
 

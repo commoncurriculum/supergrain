@@ -82,7 +82,8 @@ export function setProperty(
         node(isDelete ? undefined : value)
         // Increment version when value changes
         if ($VERSION in target) {
-          (target as any)[$VERSION]++
+          const currentVersion = (target as any)[$VERSION] || 0
+          ;(target as any)[$VERSION] = currentVersion + 1
         }
       }
     }

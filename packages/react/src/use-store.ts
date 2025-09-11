@@ -1,4 +1,4 @@
-import { useRef, useLayoutEffect, useEffect, useReducer } from 'react'
+import React, { useRef, useLayoutEffect, useEffect, useReducer } from 'react'
 import { effect, getCurrentSub, setCurrentSub, $VERSION } from '@storable/core'
 
 const isServer = typeof window === 'undefined'
@@ -301,28 +301,80 @@ export function useTrackedStore<T extends object>(store: T): T {
  * }
  * ```
  */
+
+interface ForProps<T> {
+  each: T[]
+  children: (item: T, index: number) => React.ReactNode
+  fallback?: React.ReactNode
+}
+
+/**
+ * Custom For component that automatically handles version props for optimal memoization.
+ * This component maps over an array and automatically passes version information to enable
+ * React.memo to work correctly with storable proxy objects.
+ *
+ * @example
+ * ```tsx
+ * <For each={state.items}>
+ *   {(item, index) => (
+ *     <MemoizedItemComponent key={item.id} item={item} index={index} />
+ *   )}
+ * </For>
+ * ```
+ */
+export function For<T>({ each, children, fallback }: ForProps<T>) {
+  const versionSymbol = Symbol.for('storable:version')
+
+  if (!each || each.length === 0) {
+    return fallback ? React.createElement(React.Fragment, null, fallback) : null
+  }
+
+  return React.createElement(
+    React.Fragment,
+    null,
+    each.map((item, index) => {
+      // Get version for this item if it's a proxy object
+      const version =
+        item && typeof item === 'object' && versionSymbol in item
+          ? (item as any)[versionSymbol]
+          : undefined
+
+      // Get the child element from the render function
+      const child = children(item, index)
+
+      // If child is a React element, clone it with version prop
+      if (React.isValidElement(child)) {
+        const key =
+          item && typeof item === 'object' && 'id' in item
+            ? `${(item as any).id}-${version}`
+            : `${index}-${version}`
+
+        return React.cloneElement(child, {
+          ...(child.props as any),
+          key,
+          version,
+        } as any)
+      }
+
+      // If not a React element, just return it
+      return child
+    })
+  )
+}
+
 export function storePropsAreEqual<P extends object>(
   prevProps: Readonly<P>,
   nextProps: Readonly<P>
 ): boolean {
-  // Check each prop for changes
+  // This function is kept for compatibility but doesn't work properly
+  // with stable proxy references. Use useStorableMemo instead.
+
+  // Check each prop for changes using Object.is
   for (const key in prevProps) {
     const prevValue = prevProps[key]
     const nextValue = nextProps[key]
 
-    // For store proxies, check if version changed
-    if (prevValue && typeof prevValue === 'object' && $VERSION in prevValue) {
-      const prevVersion = (prevValue as any)[$VERSION]
-      const nextVersion =
-        nextValue && typeof nextValue === 'object'
-          ? (nextValue as any)[$VERSION]
-          : undefined
-
-      if (prevVersion !== nextVersion) {
-        return false // Values are different, re-render
-      }
-    } else if (!Object.is(prevValue, nextValue)) {
-      // For non-proxy values, use Object.is comparison
+    if (!Object.is(prevValue, nextValue)) {
       return false // Values are different, re-render
     }
   }
