@@ -2,9 +2,9 @@ import { describe, it, expect, vi } from 'vitest'
 import React, { memo, useCallback } from 'react'
 import { render, act } from '@testing-library/react'
 import { createStore } from '@storable/core'
-import { useTrackedStore, propsAreEqual, For } from '../src/use-store'
+import { useTrackedStore, memoWithVersions, For } from '../src/use-store'
 
-describe('propsAreEqual Comparison Function', () => {
+describe('memoWithVersions Custom Memo', () => {
   it('should detect when proxy data changes despite stable reference', () => {
     const [store, updateStore] = createStore({
       items: [
@@ -17,22 +17,24 @@ describe('propsAreEqual Comparison Function', () => {
 
     const itemRenderCount: Record<number, number> = {}
 
-    // Component using propsAreEqual
-    const ItemWithPropsAreEqual = memo(({ item }: { item: any }) => {
-      itemRenderCount[item.id] = (itemRenderCount[item.id] || 0) + 1
-      return (
-        <div>
-          {item.name}: {item.value}
-        </div>
-      )
-    }, propsAreEqual)
+    // Component using memoWithVersions
+    const ItemWithVersionTracking = memoWithVersions(
+      ({ item }: { item: any }) => {
+        itemRenderCount[item.id] = (itemRenderCount[item.id] || 0) + 1
+        return (
+          <div>
+            {item.name}: {item.value}
+          </div>
+        )
+      }
+    )
 
     function App() {
       const state = useTrackedStore(store)
       return (
         <div>
           {state.items.map(item => (
-            <ItemWithPropsAreEqual key={item.id} item={item} />
+            <ItemWithVersionTracking key={item.id} item={item} />
           ))}
         </div>
       )
@@ -66,10 +68,10 @@ describe('propsAreEqual Comparison Function', () => {
 
     let renderCount = 0
 
-    const Item = memo(({ item }: { item: any }) => {
+    const Item = memoWithVersions(({ item }: { item: any }) => {
       renderCount++
       return <div>{item.name}</div>
-    }, propsAreEqual)
+    })
 
     function App() {
       const state = useTrackedStore(store)
@@ -98,14 +100,14 @@ describe('propsAreEqual Comparison Function', () => {
     let renderCount = 0
     const onClick = vi.fn()
 
-    const Item = memo(({ item, isSelected, onClick }: any) => {
+    const Item = memoWithVersions(({ item, isSelected, onClick }: any) => {
       renderCount++
       return (
         <div onClick={onClick} className={isSelected ? 'selected' : ''}>
           {item.name}
         </div>
       )
-    }, propsAreEqual)
+    })
 
     function App({ selected }: { selected: boolean }) {
       const state = useTrackedStore(store)
@@ -129,10 +131,10 @@ describe('propsAreEqual Comparison Function', () => {
   it('should handle props being added or removed', () => {
     let renderCount = 0
 
-    const Component = memo((props: any) => {
+    const Component = memoWithVersions((props: any) => {
       renderCount++
       return <div>{Object.keys(props).length} props</div>
-    }, propsAreEqual)
+    })
 
     const { rerender } = render(<Component a={1} b={2} />)
     expect(renderCount).toBe(1)
@@ -146,7 +148,7 @@ describe('propsAreEqual Comparison Function', () => {
     expect(renderCount).toBe(3)
   })
 
-  it('comparison: propsAreEqual vs For component performance', () => {
+  it('comparison: memoWithVersions vs For component performance', () => {
     const [store, updateStore] = createStore({
       items: Array.from({ length: 100 }, (_, i) => ({
         id: i + 1,
@@ -155,25 +157,26 @@ describe('propsAreEqual Comparison Function', () => {
       })),
     })
 
-    const propsAreEqualRenders: Record<number, number> = {}
+    const memoWithVersionsRenders: Record<number, number> = {}
     const forComponentRenders: Record<number, number> = {}
 
-    // Test with propsAreEqual
-    const ItemWithPropsAreEqual = memo(({ item }: { item: any }) => {
-      propsAreEqualRenders[item.id] = (propsAreEqualRenders[item.id] || 0) + 1
+    // Test with memoWithVersions
+    const ItemWithVersions = memoWithVersions(({ item }: { item: any }) => {
+      memoWithVersionsRenders[item.id] =
+        (memoWithVersionsRenders[item.id] || 0) + 1
       return (
         <div>
           {item.name}: {item.value}
         </div>
       )
-    }, propsAreEqual)
+    })
 
-    function AppWithPropsAreEqual() {
+    function AppWithMemoVersions() {
       const state = useTrackedStore(store)
       return (
         <div>
           {state.items.map(item => (
-            <ItemWithPropsAreEqual key={item.id} item={item} />
+            <ItemWithVersions key={item.id} item={item} />
           ))}
         </div>
       )
@@ -201,11 +204,11 @@ describe('propsAreEqual Comparison Function', () => {
     }
 
     // Render both approaches
-    const { rerender: rerenderPropsAreEqual } = render(<AppWithPropsAreEqual />)
+    const { rerender: rerenderMemoVersions } = render(<AppWithMemoVersions />)
     const { rerender: rerenderFor } = render(<AppWithFor />)
 
     // Initial render - all 100 items should render once in both
-    expect(Object.keys(propsAreEqualRenders).length).toBe(100)
+    expect(Object.keys(memoWithVersionsRenders).length).toBe(100)
     expect(Object.keys(forComponentRenders).length).toBe(100)
 
     // Update item 50
@@ -213,35 +216,35 @@ describe('propsAreEqual Comparison Function', () => {
       updateStore({ $set: { 'items.49.value': 9999 } })
     })
 
-    rerenderPropsAreEqual(<AppWithPropsAreEqual />)
+    rerenderMemoVersions(<AppWithMemoVersions />)
     rerenderFor(<AppWithFor />)
 
     // Count how many items re-rendered
-    const propsAreEqualRerenderedCount = Object.values(
-      propsAreEqualRenders
+    const memoVersionsRerenderedCount = Object.values(
+      memoWithVersionsRenders
     ).filter(count => count > 1).length
     const forRerenderedCount = Object.values(forComponentRenders).filter(
       count => count > 1
     ).length
 
     // Both should only re-render the one changed item
-    expect(propsAreEqualRerenderedCount).toBe(1)
+    expect(memoVersionsRerenderedCount).toBe(1)
     expect(forRerenderedCount).toBe(1)
 
     // Specifically check item 50
-    expect(propsAreEqualRenders[50]).toBe(2)
+    expect(memoWithVersionsRenders[50]).toBe(2)
     expect(forComponentRenders[50]).toBe(2)
 
     // Check that other items didn't re-render
-    expect(propsAreEqualRenders[1]).toBe(1)
-    expect(propsAreEqualRenders[100]).toBe(1)
+    expect(memoWithVersionsRenders[1]).toBe(1)
+    expect(memoWithVersionsRenders[100]).toBe(1)
     expect(forComponentRenders[1]).toBe(1)
     expect(forComponentRenders[100]).toBe(1)
 
     console.log('Performance comparison:')
     console.log(
-      'propsAreEqual approach - Items re-rendered:',
-      propsAreEqualRerenderedCount
+      'memoWithVersions approach - Items re-rendered:',
+      memoVersionsRerenderedCount
     )
     console.log(
       'For component approach - Items re-rendered:',
@@ -264,14 +267,14 @@ describe('propsAreEqual Comparison Function', () => {
 
     let renderCount = 0
 
-    const UserProfile = memo(({ user }: { user: any }) => {
+    const UserProfile = memoWithVersions(({ user }: { user: any }) => {
       renderCount++
       return (
         <div>
           {user.profile.name} - {user.profile.settings.theme}
         </div>
       )
-    }, propsAreEqual)
+    })
 
     function App() {
       const state = useTrackedStore(store)
@@ -316,10 +319,10 @@ describe('propsAreEqual Comparison Function', () => {
 
     let totalRenders = 0
 
-    const Item = memo(({ item }: { item: any }) => {
+    const Item = memoWithVersions(({ item }: { item: any }) => {
       totalRenders++
       return <span>{item.value}</span>
-    }, propsAreEqual)
+    })
 
     function App() {
       const state = useTrackedStore(store)

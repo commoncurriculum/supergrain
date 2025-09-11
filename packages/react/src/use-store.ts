@@ -311,67 +311,121 @@ export function useTrackedStore<T extends object>(store: T): T {
  * ```
  */
 
-// WeakMap to store last seen versions for each proxy object
-const proxyVersionCache = new WeakMap<object, number>()
-
 /**
- * A React.memo comparison function that properly handles Storable proxy objects.
+ * A custom memo function that properly tracks versions of Storable proxy objects.
  *
- * This function tracks the version of proxy objects to detect when their internal
- * data has changed, even though the proxy reference remains stable.
+ * Unlike React.memo with a comparison function, this creates a wrapper component
+ * that can maintain state between renders to track version changes.
  *
  * @example
  * ```tsx
- * const Row = memo(({ item, isSelected, onSelect }) => {
+ * const Row = memoWithVersions(({ item, isSelected, onSelect }) => {
  *   return (
  *     <tr className={isSelected ? 'selected' : ''}>
  *       <td>{item.name}</td>
  *       <td><button onClick={() => onSelect(item.id)}>Select</button></td>
  *     </tr>
  *   )
- * }, propsAreEqual)
+ * })
  * ```
  */
-export function propsAreEqual(prevProps: any, nextProps: any): boolean {
+export function memoWithVersions<P extends object>(
+  Component: React.ComponentType<P>
+): React.ComponentType<P> {
   const versionSymbol = Symbol.for('storable:version')
 
-  // Check each prop
-  for (const key in nextProps) {
-    const prevValue = prevProps[key]
-    const nextValue = nextProps[key]
+  // Use a WeakMap to store last version sum per component instance
+  // We'll use a stable object created in the component as the key
+  const instanceVersions = new WeakMap<object, number>()
 
-    // If the values are the same reference, check if it's a proxy with a version
-    if (prevValue === nextValue && nextValue && typeof nextValue === 'object') {
-      // Check if this is a proxy with a version
-      if (versionSymbol in nextValue) {
-        const currentVersion = (nextValue as any)[versionSymbol]
-        const lastSeenVersion = proxyVersionCache.get(nextValue)
+  // Create a wrapped component
+  function MemoizedComponent(props: P) {
+    // Create a stable reference for this component instance
+    const instanceKey = React.useRef({})
 
-        // If we haven't seen this proxy before, cache the current version
-        if (lastSeenVersion === undefined) {
-          proxyVersionCache.set(nextValue, currentVersion)
-          // First time seeing this proxy - don't trigger re-render
-          // (this is the initial render or parent re-rendered with same child)
-        } else if (lastSeenVersion !== currentVersion) {
-          // Version changed, update cache and re-render
-          proxyVersionCache.set(nextValue, currentVersion)
-          return false // Props are not equal, re-render needed
+    // Calculate current version sum
+    let currentVersionSum = 0
+    for (const key in props) {
+      const value = (props as any)[key]
+      if (value && typeof value === 'object' && versionSymbol in value) {
+        currentVersionSum += (value as any)[versionSymbol] || 0
+      }
+    }
+
+    // Get last version sum for this instance
+    const lastVersionSum = instanceVersions.get(instanceKey.current)
+
+    // Store current version sum
+    instanceVersions.set(instanceKey.current, currentVersionSum)
+
+    // Force re-render if version changed
+    const [, forceUpdate] = React.useReducer((x: number) => x + 1, 0)
+
+    React.useEffect(() => {
+      if (
+        lastVersionSum !== undefined &&
+        lastVersionSum !== currentVersionSum
+      ) {
+        forceUpdate()
+      }
+    }, [currentVersionSum, lastVersionSum])
+
+    // Render the wrapped component
+    return React.createElement(Component, props)
+  }
+
+  // Wrap with React.memo for non-proxy prop changes
+  const Memoized = React.memo(MemoizedComponent, (prevProps, nextProps) => {
+    // Check non-proxy props only
+    for (const key in nextProps) {
+      const prevValue = (prevProps as any)[key]
+      const nextValue = (nextProps as any)[key]
+
+      if (prevValue !== nextValue) {
+        // If it's not a proxy, this is a real change
+        if (
+          !nextValue ||
+          typeof nextValue !== 'object' ||
+          !(versionSymbol in nextValue)
+        ) {
+          return false
+        }
+        // If it's a proxy but different reference, also re-render
+        if (prevValue !== nextValue) {
+          return false
         }
       }
-    } else if (prevValue !== nextValue) {
-      // Different references/values, re-render needed
-      return false
     }
-  }
 
-  // Check if any props were removed
-  for (const key in prevProps) {
-    if (!(key in nextProps)) {
-      return false
+    // Check if props were removed
+    for (const key in prevProps) {
+      if (!(key in nextProps)) {
+        return false
+      }
     }
-  }
 
-  return true // Props are equal, skip re-render
+    // Let the component handle proxy version changes
+    return true
+  })
+
+  // Set display name for debugging
+  Memoized.displayName = `MemoWithVersions(${
+    Component.displayName || Component.name || 'Component'
+  })`
+
+  return Memoized as React.ComponentType<P>
+}
+
+/**
+ * Legacy comparison function for React.memo (kept for backwards compatibility)
+ * Note: This doesn't work reliably due to lack of stable component instance reference.
+ * Use memoWithVersions instead.
+ */
+export function propsAreEqual(prevProps: any, nextProps: any): boolean {
+  console.warn(
+    'propsAreEqual is deprecated. Use memoWithVersions() instead for reliable version tracking.'
+  )
+  return false // Always re-render as a fallback
 }
 
 interface ForProps<T> {
