@@ -322,7 +322,8 @@ interface ForProps<T> {
  * </For>
  * ```
  */
-export function For<T>({ each, children, fallback }: ForProps<T>) {
+export function For<T>(props: ForProps<T>): React.JSX.Element | null {
+  const { each, children, fallback } = props
   const versionSymbol = Symbol.for('storable:version')
 
   if (!each || each.length === 0) {

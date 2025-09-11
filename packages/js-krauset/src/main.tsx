@@ -1,6 +1,6 @@
 import { FC, memo, useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useTrackedStore, storePropsAreEqual } from '@storable/react'
+import { useTrackedStore, For } from '@storable/react'
 import { createStore } from '@storable/core'
 
 // --- Data Generation ---
@@ -170,14 +170,14 @@ document.getElementById('swaprows')!.addEventListener('click', swapRows)
 /**
  * Optimized Row component using React.memo for maximum performance.
  *
- * Thanks to the proxy reference stability fix in useTrackedStore:
- * - The 'item' prop has a stable reference across renders when data doesn't change
+ * Thanks to the <For> component automatically handling version props:
+ * - The <For> component detects changes in proxy objects and passes version info
  * - React.memo can properly detect when props haven't changed
  * - Only rows that actually need to update will re-render
  *
  * This provides massive performance improvements for large lists:
- * - Before fix: All rows re-render on any change (1-2% efficient)
- * - After fix: Only changed rows re-render (98%+ efficient)
+ * - Before: All rows re-render on any change (1-2% efficient)
+ * - After: Only changed rows re-render with <For> component (98%+ efficient)
  */
 const Row: FC<RowProps> = memo(({ item, isSelected, onSelect, onRemove }) => {
   return (
@@ -197,7 +197,7 @@ const Row: FC<RowProps> = memo(({ item, isSelected, onSelect, onRemove }) => {
       <td className="col-md-6"></td>
     </tr>
   )
-}, storePropsAreEqual)
+})
 
 const App: FC = () => {
   const state = useTrackedStore(store)
@@ -209,15 +209,17 @@ const App: FC = () => {
 
   return (
     <>
-      {state.data.map((item: RowData) => (
-        <Row
-          key={item.id}
-          item={item} // ← Stable proxy reference enables React.memo optimization!
-          isSelected={state.selected === item.id}
-          onSelect={handleSelect} // ← Stable callback reference
-          onRemove={handleRemove} // ← Stable callback reference
-        />
-      ))}
+      <For each={state.data}>
+        {(item: RowData) => (
+          <Row
+            key={item.id}
+            item={item} // ← <For> component automatically handles version props!
+            isSelected={state.selected === item.id}
+            onSelect={handleSelect} // ← Stable callback reference
+            onRemove={handleRemove} // ← Stable callback reference
+          />
+        )}
+      </For>
     </>
   )
 }
