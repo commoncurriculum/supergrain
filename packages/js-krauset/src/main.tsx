@@ -1,4 +1,4 @@
-import { FC, useCallback } from 'react'
+import { FC, memo, useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useTrackedStore, For, memoWithVersions } from '@storable/react'
 import { createStore } from '@storable/core'
@@ -179,27 +179,25 @@ document.getElementById('swaprows')!.addEventListener('click', swapRows)
  * - Before: All rows re-render on any change (1-2% efficient)
  * - After: Only changed rows re-render with <For> component (98%+ efficient)
  */
-const Row: FC<RowProps> = memoWithVersions(
-  ({ item, isSelected, onSelect, onRemove }) => {
-    return (
-      <tr className={isSelected ? 'danger' : ''}>
-        <td className="col-md-1">{item.id}</td>
-        <td className="col-md-4">
-          <a onClick={() => onSelect(item.id)}>{item.label}</a>
-        </td>
-        <td className="col-md-1">
-          <a onClick={() => onRemove(item.id)}>
-            <span
-              className="glyphicon glyphicon-remove"
-              aria-hidden="true"
-            ></span>
-          </a>
-        </td>
-        <td className="col-md-6"></td>
-      </tr>
-    )
-  }
-)
+const Row: FC<RowProps> = memo(({ item, isSelected, onSelect, onRemove }) => {
+  return (
+    <tr className={isSelected ? 'danger' : ''}>
+      <td className="col-md-1">{item.id}</td>
+      <td className="col-md-4">
+        <a onClick={() => onSelect(item.id)}>{item.label}</a>
+      </td>
+      <td className="col-md-1">
+        <a onClick={() => onRemove(item.id)}>
+          <span
+            className="glyphicon glyphicon-remove"
+            aria-hidden="true"
+          ></span>
+        </a>
+      </td>
+      <td className="col-md-6"></td>
+    </tr>
+  )
+})
 
 const App: FC = () => {
   const state = useTrackedStore(store)
