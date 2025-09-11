@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { createStore } from '@storable/core'
-import { useTrackedStore } from '@storable/react'
+import { useTrackedStore } from '../src/use-store'
 import React, { FC, memo, useCallback } from 'react'
 import { render, act, cleanup } from '@testing-library/react'
 
@@ -632,7 +632,7 @@ describe('Render Analysis Tests', () => {
 
       return (
         <div>
-          {state.items.map(item => (
+          {state.items.map((item: any) => (
             <ItemComponent
               key={item.id}
               item={item}
@@ -718,7 +718,7 @@ describe('Render Analysis Tests', () => {
 
       return (
         <div>
-          {state.items.map(item => (
+          {state.items.map((item: any) => (
             <div key={item.id} data-testid={`poor-item-${item.id}`}>
               {item.name}: {item.value}
             </div>
@@ -796,7 +796,7 @@ describe('Render Analysis Tests', () => {
       // Pass items array and version to child components
       return (
         <div>
-          {state.items.map(item => (
+          {state.items.map((item: any) => (
             <OptimalItemComponent
               key={item.id}
               itemId={item.id}
@@ -893,7 +893,7 @@ describe('Render Analysis Tests', () => {
       // For now, we manually track which items have changed
       return (
         <div>
-          {state.items.map(item => {
+          {state.items.map((item: any) => {
             // Get or initialize version for this item
             const version = itemVersions.get(item.id) || 0
 
@@ -1029,7 +1029,7 @@ describe('Render Analysis Tests', () => {
 
       return (
         <div>
-          {state.items.map((item, index) => (
+          {state.items.map((item: any, index: any) => (
             <SymbolAwareItem
               key={item.id}
               item={item}
