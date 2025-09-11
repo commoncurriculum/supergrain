@@ -100,9 +100,8 @@ describe('Core: Row Operations', () => {
       })
 
       // Track the selected value to ensure the benchmark measures reactive updates
-      let selectedValue: number | null = null
       const dispose = effect(() => {
-        selectedValue = store.selected
+        void store.selected // Track for reactivity
       })
 
       // Select a row in the middle of the dataset
@@ -126,11 +125,10 @@ describe('Core: Row Operations', () => {
       })
 
       // Create an effect to ensure reactivity is triggered and measured
-      let trackedLabel: string | undefined
       const dispose = effect(() => {
         if (store.data.length > 1) {
           // @ts-ignore
-          trackedLabel = store.data[1].label
+          void store.data[1].label // Track for reactivity
         }
       })
 

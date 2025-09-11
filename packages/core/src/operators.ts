@@ -121,8 +121,8 @@ function compareAndSetValue(
 
 // Precise function for array push operations
 function pushToArray(
-  parent: any,
-  key: string,
+  _parent: any,
+  _key: string,
   arr: any[],
   itemsToAdd: any[]
 ): void {
@@ -135,8 +135,8 @@ function pushToArray(
 // Precise function for array pull operations
 // OPTIMIZATION: Uses splice for atomic modification then manually triggers signals
 function pullFromArray(
-  parent: any,
-  key: string,
+  _parent: any,
+  _key: string,
   arr: any[],
   condition: any
 ): boolean {
@@ -182,8 +182,8 @@ function pullFromArray(
 
 // Precise function for addToSet operations
 function addUniqueToArray(
-  parent: any,
-  key: string,
+  _parent: any,
+  _key: string,
   arr: any[],
   itemsToAdd: any[]
 ): boolean {

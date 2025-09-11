@@ -159,7 +159,8 @@ describe('Symbol.for() Solution for React.memo', () => {
       })
     })
 
-    if (debug) console.log(`After update: ${renderCount} items re-rendered`)
+    if (debug)
+      console.log(`After update: ${renderTracker.size} items re-rendered`)
 
     // With Symbol.for() access, we could detect changes
     // Currently fails because symbols are private
@@ -272,7 +273,7 @@ describe('Symbol.for() Solution for React.memo', () => {
     expect(renderTracker.size).toBe(1)
     expect(renderTracker.has(51)).toBe(true)
     if (debug) {
-      console.log(`After update: ${renderCount} items re-rendered`)
+      console.log(`After update: ${renderTracker.size} items re-rendered`)
 
       console.log('\nWorkaround successful! But has downsides:')
       console.log('- Need to compute hash on every render')
