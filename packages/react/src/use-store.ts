@@ -44,16 +44,23 @@ const createStableProxy = (target: any, effectNode: any): any => {
         try {
           // Access the property (this will establish the dependency)
           const value = Reflect.get(obj, prop, receiver)
-          // Recursively wrap nested objects/arrays with stable proxies
-          return createStableProxy(value, currentEffectNode)
+          // Only create proxies for objects/arrays, return primitives directly
+          if (value && typeof value === 'object') {
+            return createStableProxy(value, currentEffectNode)
+          }
+          return value
         } finally {
           // Restore the previous subscriber
           setCurrentSub(prevSub)
         }
       } else {
-        // No effect context, just return the raw value wrapped in stable proxy
+        // No effect context, just return the raw value
         const value = Reflect.get(obj, prop, receiver)
-        return createStableProxy(value, effectNode)
+        // Only create proxies for objects/arrays, return primitives directly
+        if (value && typeof value === 'object') {
+          return createStableProxy(value, effectNode)
+        }
+        return value
       }
     },
     set(obj, prop, value, receiver) {
@@ -345,15 +352,23 @@ export function For<T>(props: ForProps<T>): React.JSX.Element | null {
       // Get the child element from the render function
       const child = children(item, index)
 
-      // If child is a React element, clone it with version prop
-      if (React.isValidElement(child)) {
-        const key =
+      // If child is a React element and has a version, add it as a prop
+      if (React.isValidElement(child) && version !== undefined) {
+        // Keep the original key stable - don't change it based on version!
+        // This allows React to update the component instead of unmounting/remounting
+        const stableKey = child.key || (
           item && typeof item === 'object' && 'id' in item
-            ? `${(item as any).id}-${version}`
-            : `${index}-${version}`
+            ? (item as any).id
+            : index
+        )
 
         return React.cloneElement(child, {
-          ...(child.props as any),
+          key: stableKey,
+          'data-version': version, // Use data attribute instead of spreading all props
+        } as any)
+      }
+
+...(child.props as any),
           key,
           version,
         } as any)
