@@ -312,10 +312,10 @@ export function useTrackedStore<T extends object>(store: T): T {
  */
 
 /**
- * A custom memo function that properly tracks versions of Storable proxy objects.
+ * A wrapper component that properly tracks versions of Storable proxy objects.
  *
- * Unlike React.memo with a comparison function, this creates a wrapper component
- * that can maintain state between renders to track version changes.
+ * This creates a wrapper component that maintains its own state to track version
+ * changes and controls when the memoized child component re-renders.
  *
  * @example
  * ```tsx
@@ -334,86 +334,59 @@ export function memoWithVersions<P extends object>(
 ): React.ComponentType<P> {
   const versionSymbol = Symbol.for('storable:version')
 
-  // Use a WeakMap to store last version sum per component instance
-  // We'll use a stable object created in the component as the key
-  const instanceVersions = new WeakMap<object, number>()
-
-  // Create a wrapped component
-  function MemoizedComponent(props: P) {
-    // Create a stable reference for this component instance
-    const instanceKey = React.useRef({})
-
-    // Calculate current version sum
+  // Create a wrapper component that tracks versions
+  const VersionTrackingWrapper = (props: P) => {
+    // Calculate current version sum from all proxy objects in props
     let currentVersionSum = 0
-    for (const key in props) {
-      const value = (props as any)[key]
-      if (value && typeof value === 'object' && versionSymbol in value) {
-        currentVersionSum += (value as any)[versionSymbol] || 0
+
+    // Recursive function to get versions from nested objects
+    const addVersions = (obj: any) => {
+      if (obj && typeof obj === 'object') {
+        if (versionSymbol in obj) {
+          currentVersionSum += (obj as any)[versionSymbol] || 0
+        }
+        // Check nested properties (but avoid infinite recursion)
+        const seen = new WeakSet()
+        const checkNested = (o: any) => {
+          if (!o || typeof o !== 'object' || seen.has(o)) return
+          seen.add(o)
+          if (versionSymbol in o) {
+            currentVersionSum += (o as any)[versionSymbol] || 0
+          }
+          for (const key in o) {
+            if (o.hasOwnProperty(key)) {
+              checkNested(o[key])
+            }
+          }
+        }
+        checkNested(obj)
       }
     }
 
-    // Get last version sum for this instance
-    const lastVersionSum = instanceVersions.get(instanceKey.current)
+    for (const key in props) {
+      addVersions((props as any)[key])
+    }
 
-    // Store current version sum
-    instanceVersions.set(instanceKey.current, currentVersionSum)
-
-    // Force re-render if version changed
-    const [, forceUpdate] = React.useReducer((x: number) => x + 1, 0)
-
-    React.useEffect(() => {
-      if (
-        lastVersionSum !== undefined &&
-        lastVersionSum !== currentVersionSum
-      ) {
-        forceUpdate()
-      }
-    }, [currentVersionSum, lastVersionSum])
-
-    // Render the wrapped component
-    return React.createElement(Component, props)
+    // Pass version sum directly as a prop - React.memo will detect the change
+    return React.createElement(MemoizedComponent, {
+      ...props,
+      __internalVersionSum: currentVersionSum,
+    } as any)
   }
 
-  // Wrap with React.memo for non-proxy prop changes
-  const Memoized = React.memo(MemoizedComponent, (prevProps, nextProps) => {
-    // Check non-proxy props only
-    for (const key in nextProps) {
-      const prevValue = (prevProps as any)[key]
-      const nextValue = (nextProps as any)[key]
-
-      if (prevValue !== nextValue) {
-        // If it's not a proxy, this is a real change
-        if (
-          !nextValue ||
-          typeof nextValue !== 'object' ||
-          !(versionSymbol in nextValue)
-        ) {
-          return false
-        }
-        // If it's a proxy but different reference, also re-render
-        if (prevValue !== nextValue) {
-          return false
-        }
-      }
-    }
-
-    // Check if props were removed
-    for (const key in prevProps) {
-      if (!(key in nextProps)) {
-        return false
-      }
-    }
-
-    // Let the component handle proxy version changes
-    return true
+  // Memoize the component with version tracking
+  const MemoizedComponent = React.memo((props: any) => {
+    // Don't pass the internal version to the actual component
+    const { __internalVersionSum, ...actualProps } = props
+    return React.createElement(Component, actualProps)
   })
 
   // Set display name for debugging
-  Memoized.displayName = `MemoWithVersions(${
+  VersionTrackingWrapper.displayName = `MemoWithVersions(${
     Component.displayName || Component.name || 'Component'
   })`
 
-  return Memoized as React.ComponentType<P>
+  return VersionTrackingWrapper as React.ComponentType<P>
 }
 
 /**
