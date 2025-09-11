@@ -930,7 +930,7 @@ describe('Render Analysis Tests', () => {
       // we can now properly track changes for React.memo
       console.log('\nSuccess: Version tracking now works via:')
       console.log('1. $VERSION symbol exposed from Storable')
-      console.log('2. storePropsAreEqual comparison function')
+      console.log('2. Version tracking via For component')
       console.log('3. Automatic change detection in proxies')
     }
 

@@ -283,19 +283,21 @@ export function useTrackedStore<T extends object>(store: T): T {
  *   // Component will re-render when item's data changes,
  *   // even though the proxy reference is stable
  *   return <tr className={isSelected ? 'selected' : ''}>{item.name}</tr>
- * }, storePropsAreEqual)
+ * })
  *
  * function Table() {
  *   const state = useTrackedStore(store)
  *   return (
  *     <tbody>
- *       {state.data.map(row => (
- *         <MemoizedRow
- *           key={row.id}
- *           item={row} // Proxy with stable reference but tracked version
- *           isSelected={row.id === state.selected}
- *         />
- *       ))}
+ *       <For each={state.data}>
+ *         {(row) => (
+ *           <MemoizedRow
+ *             key={row.id}
+ *             item={row} // Proxy with stable reference and version tracking
+ *             isSelected={row.id === state.selected}
+ *           />
+ *         )}
+ *       </For>
  *     </tbody>
  *   )
  * }
@@ -361,31 +363,4 @@ export function For<T>(props: ForProps<T>): React.JSX.Element | null {
       return child
     })
   )
-}
-
-export function storePropsAreEqual<P extends object>(
-  prevProps: Readonly<P>,
-  nextProps: Readonly<P>
-): boolean {
-  // This function is kept for compatibility but doesn't work properly
-  // with stable proxy references. Use useStorableMemo instead.
-
-  // Check each prop for changes using Object.is
-  for (const key in prevProps) {
-    const prevValue = prevProps[key]
-    const nextValue = nextProps[key]
-
-    if (!Object.is(prevValue, nextValue)) {
-      return false // Values are different, re-render
-    }
-  }
-
-  // Check for added/removed props
-  for (const key in nextProps) {
-    if (!(key in prevProps)) {
-      return false // New prop added, re-render
-    }
-  }
-
-  return true // Props are equal, skip re-render
 }
