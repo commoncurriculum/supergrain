@@ -107,6 +107,12 @@ importers:
 
   packages/js-krauset:
     dependencies:
+      '@storable/core':
+        specifier: workspace:*
+        version: link:../core
+      '@storable/react':
+        specifier: workspace:*
+        version: link:../react
       react:
         specifier: 19.0.0
         version: 19.0.0
