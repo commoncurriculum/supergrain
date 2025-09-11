@@ -1,6 +1,6 @@
 import { FC, memo, useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useTrackedStore, For } from '@storable/react'
+import { useTrackedStore, For, propsAreEqual } from '@storable/react'
 import { createStore } from '@storable/core'
 
 // --- Data Generation ---
@@ -197,7 +197,7 @@ const Row: FC<RowProps> = memo(({ item, isSelected, onSelect, onRemove }) => {
       <td className="col-md-6"></td>
     </tr>
   )
-})
+}, propsAreEqual)
 
 const App: FC = () => {
   const state = useTrackedStore(store)

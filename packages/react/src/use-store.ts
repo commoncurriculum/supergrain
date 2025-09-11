@@ -311,6 +311,67 @@ export function useTrackedStore<T extends object>(store: T): T {
  * ```
  */
 
+// WeakMap to store last seen versions for each proxy object
+const proxyVersionCache = new WeakMap<object, number>()
+
+/**
+ * A React.memo comparison function that properly handles Storable proxy objects.
+ *
+ * This function tracks the version of proxy objects to detect when their internal
+ * data has changed, even though the proxy reference remains stable.
+ *
+ * @example
+ * ```tsx
+ * const Row = memo(({ item, isSelected, onSelect }) => {
+ *   return (
+ *     <tr className={isSelected ? 'selected' : ''}>
+ *       <td>{item.name}</td>
+ *       <td><button onClick={() => onSelect(item.id)}>Select</button></td>
+ *     </tr>
+ *   )
+ * }, propsAreEqual)
+ * ```
+ */
+export function propsAreEqual(prevProps: any, nextProps: any): boolean {
+  const versionSymbol = Symbol.for('storable:version')
+
+  // Check each prop
+  for (const key in nextProps) {
+    const prevValue = prevProps[key]
+    const nextValue = nextProps[key]
+
+    // If the values are the same reference, check if it's a proxy with a version
+    if (prevValue === nextValue && nextValue && typeof nextValue === 'object') {
+      // Check if this is a proxy with a version
+      if (versionSymbol in nextValue) {
+        const currentVersion = (nextValue as any)[versionSymbol]
+        const lastSeenVersion = proxyVersionCache.get(nextValue)
+
+        // If we haven't seen this proxy before, or version changed, update and re-render
+        if (
+          lastSeenVersion === undefined ||
+          lastSeenVersion !== currentVersion
+        ) {
+          proxyVersionCache.set(nextValue, currentVersion)
+          return false // Props are not equal, re-render needed
+        }
+      }
+    } else if (prevValue !== nextValue) {
+      // Different references/values, re-render needed
+      return false
+    }
+  }
+
+  // Check if any props were removed
+  for (const key in prevProps) {
+    if (!(key in nextProps)) {
+      return false
+    }
+  }
+
+  return true // Props are equal, skip re-render
+}
+
 interface ForProps<T> {
   each: T[]
   children: (item: T, index: number) => React.ReactNode
