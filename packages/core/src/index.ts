@@ -3,6 +3,9 @@ export {
   createStore,
   unwrap,
   $VERSION,
+  $NODE,
+  $PROXY,
+  $RAW,
   type Signal,
   type SetStoreFunction,
 } from './store'
