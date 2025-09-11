@@ -347,11 +347,13 @@ export function propsAreEqual(prevProps: any, nextProps: any): boolean {
         const currentVersion = (nextValue as any)[versionSymbol]
         const lastSeenVersion = proxyVersionCache.get(nextValue)
 
-        // If we haven't seen this proxy before, or version changed, update and re-render
-        if (
-          lastSeenVersion === undefined ||
-          lastSeenVersion !== currentVersion
-        ) {
+        // If we haven't seen this proxy before, cache the current version
+        if (lastSeenVersion === undefined) {
+          proxyVersionCache.set(nextValue, currentVersion)
+          // First time seeing this proxy - don't trigger re-render
+          // (this is the initial render or parent re-rendered with same child)
+        } else if (lastSeenVersion !== currentVersion) {
+          // Version changed, update cache and re-render
           proxyVersionCache.set(nextValue, currentVersion)
           return false // Props are not equal, re-render needed
         }
