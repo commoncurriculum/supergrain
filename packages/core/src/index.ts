@@ -2,6 +2,7 @@
 export {
   createStore,
   unwrap,
+  $VERSION,
   type Signal,
   type SetStoreFunction,
 } from './store'

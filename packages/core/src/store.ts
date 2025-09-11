@@ -7,10 +7,11 @@ export type Signal<T> = {
   $?: (value: T) => void
 }
 
-export const $NODE = Symbol('store-node')
-const $PROXY = Symbol('store-proxy')
-const $TRACK = Symbol('store-track')
-const $RAW = Symbol('store-raw')
+export const $NODE = Symbol.for('storable:node')
+export const $PROXY = Symbol.for('storable:proxy')
+export const $TRACK = Symbol.for('storable:track')
+export const $RAW = Symbol.for('storable:raw')
+export const $VERSION = Symbol.for('storable:version')
 
 const proxyCache = new WeakMap<object, object>()
 
@@ -27,6 +28,8 @@ function getNodes(target: object): DataNodes {
     nodes = Object.create(null)
     try {
       Object.defineProperty(target, $NODE, { value: nodes, enumerable: false })
+      // Initialize version tracking
+      Object.defineProperty(target, $VERSION, { value: 0, writable: true, enumerable: false })
     } catch {
       // Frozen objects can't be modified.
     }
@@ -77,6 +80,10 @@ export function setProperty(
     if (node) {
       if (unwrap(oldValue) !== unwrap(value)) {
         node(isDelete ? undefined : value)
+        // Increment version when value changes
+        if ($VERSION in target) {
+          (target as any)[$VERSION]++
+        }
       }
     }
 
@@ -114,6 +121,7 @@ const handler: ProxyHandler<object> = {
       trackSelf(target)
       return receiver
     }
+    if (property === $VERSION) return (target as any)[$VERSION] || 0
 
     const value = Reflect.get(target, property, receiver)
 
@@ -156,7 +164,7 @@ const handler: ProxyHandler<object> = {
   },
 
   has(target, property) {
-    if (property === $RAW || property === $PROXY || property === $NODE) {
+    if (property === $RAW || property === $PROXY || property === $NODE || property === $VERSION) {
       return true
     }
     trackSelf(target)

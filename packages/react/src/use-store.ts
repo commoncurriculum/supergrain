@@ -1,5 +1,5 @@
 import { useRef, useLayoutEffect, useEffect, useReducer } from 'react'
-import { effect, getCurrentSub, setCurrentSub } from '@storable/core'
+import { effect, getCurrentSub, setCurrentSub, $VERSION } from '@storable/core'
 
 const isServer = typeof window === 'undefined'
 const useIsomorphicLayoutEffect = isServer ? useEffect : useLayoutEffect
@@ -268,4 +268,71 @@ export function useTrackedStore<T extends object>(store: T): T {
   }, [])
 
   return state.proxy!
+}
+
+/**
+ * Comparison function for React.memo that automatically detects changes in store proxies.
+ *
+ * This function checks the $VERSION symbol on store proxies to detect changes,
+ * even though the proxy reference stays stable. Use this with React.memo to get
+ * proper memoization with storable proxies.
+ *
+ * @example
+ * ```tsx
+ * const MemoizedRow = React.memo(({ item, isSelected }) => {
+ *   // Component will re-render when item's data changes,
+ *   // even though the proxy reference is stable
+ *   return <tr className={isSelected ? 'selected' : ''}>{item.name}</tr>
+ * }, storePropsAreEqual)
+ *
+ * function Table() {
+ *   const state = useTrackedStore(store)
+ *   return (
+ *     <tbody>
+ *       {state.data.map(row => (
+ *         <MemoizedRow
+ *           key={row.id}
+ *           item={row} // Proxy with stable reference but tracked version
+ *           isSelected={row.id === state.selected}
+ *         />
+ *       ))}
+ *     </tbody>
+ *   )
+ * }
+ * ```
+ */
+export function storePropsAreEqual<P extends object>(
+  prevProps: Readonly<P>,
+  nextProps: Readonly<P>
+): boolean {
+  // Check each prop for changes
+  for (const key in prevProps) {
+    const prevValue = prevProps[key]
+    const nextValue = nextProps[key]
+
+    // For store proxies, check if version changed
+    if (prevValue && typeof prevValue === 'object' && $VERSION in prevValue) {
+      const prevVersion = (prevValue as any)[$VERSION]
+      const nextVersion =
+        nextValue && typeof nextValue === 'object'
+          ? (nextValue as any)[$VERSION]
+          : undefined
+
+      if (prevVersion !== nextVersion) {
+        return false // Values are different, re-render
+      }
+    } else if (!Object.is(prevValue, nextValue)) {
+      // For non-proxy values, use Object.is comparison
+      return false // Values are different, re-render
+    }
+  }
+
+  // Check for added/removed props
+  for (const key in nextProps) {
+    if (!(key in prevProps)) {
+      return false // New prop added, re-render
+    }
+  }
+
+  return true // Props are equal, skip re-render
 }
