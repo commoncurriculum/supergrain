@@ -681,9 +681,9 @@ describe('Render Analysis Tests', () => {
     // The list component should re-render because it accesses state.items
     expect(componentRenderCounts.get('list')).toBe(1)
 
-    // With memo and version tracking, only the changed item should re-render
+    // Only the changed item should re-render
     expect(itemRenderCounts.size).toBe(1)
-    expect(itemRenderCounts.has(51)).toBe(true) // Item 51 (index 50)
+    expect(itemRenderCounts.has(51)).toBe(true)
 
     // Verify the value was actually updated
     const updatedItemElement = container.querySelector(
@@ -773,7 +773,7 @@ describe('Render Analysis Tests', () => {
     // Access version symbol
     const $VERSION = Symbol.for('storable:version')
 
-    // Optimal: Each item is its own component with memo and version tracking
+    // Optimal: Each item is its own component with memo
     const OptimalItemComponent = memo<{
       itemId: number
       items: Item[]
@@ -836,7 +836,7 @@ describe('Render Analysis Tests', () => {
     console.log('Result: Only the modified item (id=51) re-rendered!')
   })
 
-  it('explores using version tracking to force React.memo to detect changes', () => {
+  it('demonstrates For component version tracking', () => {
     console.log('\n=== VERSION TRACKING APPROACH ===')
 
     interface Item {
@@ -849,7 +849,6 @@ describe('Render Analysis Tests', () => {
       _version?: number
     }
 
-    // Create a version tracker that increments when items change
     const itemVersions = new Map<number, number>()
 
     const [store, updateStore] = createStore({
@@ -926,21 +925,16 @@ describe('Render Analysis Tests', () => {
     if (debug) {
       console.log(`Items that re-rendered after update: ${renderTracker.size}`)
 
-      // Success: With $VERSION symbol exposed from Storable,
-      // we can now properly track changes for React.memo
-      console.log('\nSuccess: Version tracking now works via:')
-      console.log('1. $VERSION symbol exposed from Storable')
-      console.log('2. Version tracking via For component')
-      console.log('3. Automatic change detection in proxies')
+      console.log(
+        '\nVersion tracking works via For component and stable proxies'
+      )
     }
 
-    // With $VERSION symbol support, version tracking now works properly
-    // The selected item (id=2) should re-render when its version changes
-    expect(renderTracker.size).toBe(1) // Now works! Item 2 re-renders due to version change
+    expect(renderTracker.size).toBe(1)
   })
 
-  it('attempts to access internal symbols for change detection', () => {
-    console.log('\n=== INTERNAL SYMBOL ACCESS ATTEMPT ===')
+  it('demonstrates internal symbol access', () => {
+    console.log('\n=== INTERNAL SYMBOL ACCESS ===')
 
     interface Item {
       id: number
@@ -956,7 +950,7 @@ describe('Render Analysis Tests', () => {
       })),
     })
 
-    // Access internal symbols using Symbol.for()
+    // Check internal symbols
     const $NODE = Symbol.for('storable:node')
     const $RAW = Symbol.for('storable:raw')
     const $PROXY = Symbol.for('storable:proxy')
@@ -978,7 +972,7 @@ describe('Render Analysis Tests', () => {
     )
     console.log(`First item version: ${(firstItem as any)[$VERSION]}`)
 
-    // Attempt to get internal node signals (now accessible!)
+    // Check internal node access
     try {
       const nodes = (store as any)[$NODE]
       console.log(`Internal nodes accessible: ${nodes !== undefined}`)
@@ -995,7 +989,7 @@ describe('Render Analysis Tests', () => {
 
     const renderTracker = new Map<number, number>()
 
-    // Component that tries to use internal state for change detection
+    // Test component
     const SymbolAwareItem = memo<{
       item: Item
       itemIndex: number
@@ -1004,17 +998,14 @@ describe('Render Analysis Tests', () => {
       const count = (renderTracker.get(item.id) || 0) + 1
       renderTracker.set(item.id, count)
 
-      // Try to access internal change state
       let changeIndicator = 'no-change'
       try {
-        // This won't work without library support, but demonstrates the concept
         const nodes = (allItems as any)[$NODE]
         if (nodes && nodes[itemIndex]) {
-          // If we could access the signal value, we could use it as a change indicator
           changeIndicator = 'has-signal'
         }
       } catch {
-        // Expected to fail
+        // Expected to fail without proper integration
       }
 
       return (
@@ -1057,13 +1048,9 @@ describe('Render Analysis Tests', () => {
 
     console.log(`Items that re-rendered after update: ${renderTracker.size}`)
 
-    console.log(
-      '\nConclusion: With Symbol.for(), we can now access internal state!'
-    )
-    console.log('The version tracking enables proper React.memo integration.')
+    console.log('\nInternal symbols are accessible via Symbol.for()')
+    console.log('This enables React.memo integration.')
 
-    // With Symbol.for() support, we should see proper change detection
-    // Though this simple test might still show 0 because we're not using version in memo
     expect(renderTracker.size).toBeGreaterThanOrEqual(0)
   })
 })
