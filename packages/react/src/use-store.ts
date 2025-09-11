@@ -352,23 +352,16 @@ export function For<T>(props: ForProps<T>): React.JSX.Element | null {
       // Get the child element from the render function
       const child = children(item, index)
 
-      // If child is a React element and has a version, add it as a prop
-      if (React.isValidElement(child) && version !== undefined) {
-        // Keep the original key stable - don't change it based on version!
-        // This allows React to update the component instead of unmounting/remounting
-        const stableKey = child.key || (
+      // If child is a React element, clone it with version prop
+      if (React.isValidElement(child)) {
+        // Use stable key - don't include version to avoid remounts!
+        const key =
           item && typeof item === 'object' && 'id' in item
             ? (item as any).id
             : index
-        )
 
         return React.cloneElement(child, {
-          key: stableKey,
-          'data-version': version, // Use data attribute instead of spreading all props
-        } as any)
-      }
-
-...(child.props as any),
+          ...(child.props as any),
           key,
           version,
         } as any)
