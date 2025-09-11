@@ -61,38 +61,30 @@ export function unwrap<T>(value: T): T {
 
 export function setProperty(
   target: any,
-  property: PropertyKey,
+  key: PropertyKey,
   value: any,
   isDelete = false
-): void {
-  const hadKey = Object.prototype.hasOwnProperty.call(target, property)
-  const oldValue = target[property]
+) {
+  const hadKey = Object.prototype.hasOwnProperty.call(target, key)
+  const prevLen = Array.isArray(target) ? target.length : -1
+  const oldValue = target[key]
 
-  if (isDelete) {
-    delete target[property]
-  } else {
-    target[property] = value
-  }
+  if (isDelete) delete target[key]
+  else target[key] = value
 
   const nodes = (target as any)[$NODE]
   if (nodes) {
-    const node = nodes[property]
-    if (node) {
-      if (unwrap(oldValue) !== unwrap(value)) {
-        node(isDelete ? undefined : value)
-        // Increment version when value changes
-        if ($VERSION in target) {
-          const currentVersion = (target as any)[$VERSION] || 0
-          ;(target as any)[$VERSION] = currentVersion + 1
-        }
+    const node = nodes[key]
+    if (node && unwrap(oldValue) !== unwrap(value)) {
+      node(isDelete ? undefined : value)
+      if ($VERSION in target) {
+        const currentVersion = (target as any)[$VERSION] || 0
+        ;(target as any)[$VERSION] = currentVersion + 1
       }
     }
-
-    if (Array.isArray(target) && property !== 'length') {
+    if (Array.isArray(target) && key !== 'length') {
       const lengthNode = nodes['length']
-      if (lengthNode && target.length !== (oldValue as any)?.length) {
-        lengthNode(target.length)
-      }
+      if (lengthNode && target.length !== prevLen) lengthNode(target.length)
     }
   }
 
