@@ -312,91 +312,12 @@ export function useTrackedStore<T extends object>(store: T): T {
  */
 
 /**
- * A wrapper component that properly tracks versions of Storable proxy objects.
- *
- * This creates a wrapper component that maintains its own state to track version
- * changes and controls when the memoized child component re-renders.
- *
- * @example
- * ```tsx
- * const Row = memoWithVersions(({ item, isSelected, onSelect }) => {
- *   return (
- *     <tr className={isSelected ? 'selected' : ''}>
- *       <td>{item.name}</td>
- *       <td><button onClick={() => onSelect(item.id)}>Select</button></td>
- *     </tr>
- *   )
- * })
- * ```
- */
-export function memoWithVersions<P extends object>(
-  Component: React.ComponentType<P>
-): React.ComponentType<P> {
-  const versionSymbol = Symbol.for('storable:version')
-
-  // Create a wrapper component that tracks versions
-  const VersionTrackingWrapper = (props: P) => {
-    // Calculate current version sum from all proxy objects in props
-    let currentVersionSum = 0
-
-    // Recursive function to get versions from nested objects
-    const addVersions = (obj: any) => {
-      if (obj && typeof obj === 'object') {
-        if (versionSymbol in obj) {
-          currentVersionSum += (obj as any)[versionSymbol] || 0
-        }
-        // Check nested properties (but avoid infinite recursion)
-        const seen = new WeakSet()
-        const checkNested = (o: any) => {
-          if (!o || typeof o !== 'object' || seen.has(o)) return
-          seen.add(o)
-          if (versionSymbol in o) {
-            currentVersionSum += (o as any)[versionSymbol] || 0
-          }
-          for (const key in o) {
-            if (o.hasOwnProperty(key)) {
-              checkNested(o[key])
-            }
-          }
-        }
-        checkNested(obj)
-      }
-    }
-
-    for (const key in props) {
-      addVersions((props as any)[key])
-    }
-
-    // Pass version sum directly as a prop - React.memo will detect the change
-    return React.createElement(MemoizedComponent, {
-      ...props,
-      __internalVersionSum: currentVersionSum,
-    } as any)
-  }
-
-  // Memoize the component with version tracking
-  const MemoizedComponent = React.memo((props: any) => {
-    // Don't pass the internal version to the actual component
-    const { __internalVersionSum, ...actualProps } = props
-    return React.createElement(Component, actualProps)
-  })
-
-  // Set display name for debugging
-  VersionTrackingWrapper.displayName = `MemoWithVersions(${
-    Component.displayName || Component.name || 'Component'
-  })`
-
-  return VersionTrackingWrapper as React.ComponentType<P>
-}
-
-/**
  * Legacy comparison function for React.memo (kept for backwards compatibility)
  * Note: This doesn't work reliably due to lack of stable component instance reference.
- * Use memoWithVersions instead.
  */
 export function propsAreEqual(prevProps: any, nextProps: any): boolean {
   console.warn(
-    'propsAreEqual is deprecated. Use memoWithVersions() instead for reliable version tracking.'
+    'propsAreEqual is deprecated and not reliable for version tracking.'
   )
   return false // Always re-render as a fallback
 }

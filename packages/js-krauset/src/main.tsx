@@ -1,6 +1,6 @@
 import { FC, memo, useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useTrackedStore, For, memoWithVersions } from '@storable/react'
+import { useTrackedStore, For } from '@storable/react'
 import { createStore } from '@storable/core'
 
 // --- Data Generation ---
