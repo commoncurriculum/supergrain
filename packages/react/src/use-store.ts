@@ -311,17 +311,6 @@ export function useTrackedStore<T extends object>(store: T): T {
  * ```
  */
 
-/**
- * Legacy comparison function for React.memo (kept for backwards compatibility)
- * Note: This doesn't work reliably due to lack of stable component instance reference.
- */
-export function propsAreEqual(prevProps: any, nextProps: any): boolean {
-  console.warn(
-    'propsAreEqual is deprecated and not reliable for version tracking.'
-  )
-  return false // Always re-render as a fallback
-}
-
 interface ForProps<T> {
   each: T[]
   children: (item: T, index: number) => React.ReactNode
