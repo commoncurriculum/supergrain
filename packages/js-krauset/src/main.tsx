@@ -63,11 +63,11 @@ const nouns = [
   'keyboard',
 ]
 
-function _random(max: number): number {
+export function _random(max: number): number {
   return Math.round(Math.random() * 1000) % max
 }
 
-function buildData(count: number): RowData[] {
+export function buildData(count: number): RowData[] {
   const data: RowData[] = new Array(count)
   for (let i = 0; i < count; i++) {
     data[i] = {
@@ -83,17 +83,17 @@ function buildData(count: number): RowData[] {
 
 // --- TypeScript Definitions ---
 
-interface RowData {
+export interface RowData {
   id: number
   label: string
 }
 
-interface AppState {
+export interface AppState {
   data: RowData[]
   selected: number | null
 }
 
-interface RowProps {
+export interface RowProps {
   item: RowData
   isSelected: boolean
   onSelect: (id: number) => void
@@ -102,12 +102,12 @@ interface RowProps {
 
 // --- Storable Implementation ---
 
-const [store, updateStore] = createStore<AppState>({
+export const [store, updateStore] = createStore<AppState>({
   data: [],
   selected: null,
 })
 
-const run = (count: number) => {
+export const run = (count: number) => {
   updateStore({
     $set: {
       data: buildData(count),
@@ -116,7 +116,7 @@ const run = (count: number) => {
   })
 }
 
-const add = () => {
+export const add = () => {
   updateStore({
     $push: {
       data: { $each: buildData(1000) },
@@ -124,7 +124,7 @@ const add = () => {
   })
 }
 
-const update = () => {
+export const update = () => {
   const updates: Record<string, string> = {}
   for (let i = 0; i < store.data.length; i += 10) {
     updates[`data.${i}.label`] = store.data[i].label + ' !!!'
@@ -132,11 +132,11 @@ const update = () => {
   updateStore({ $set: updates })
 }
 
-const clear = () => {
+export const clear = () => {
   updateStore({ $set: { data: [], selected: null } })
 }
 
-const swapRows = () => {
+export const swapRows = () => {
   if (store.data.length > 998) {
     const row1 = store.data[1]
     const row998 = store.data[998]
@@ -149,21 +149,25 @@ const swapRows = () => {
   }
 }
 
-const remove = (id: number) => {
+export const remove = (id: number) => {
   updateStore({ $pull: { data: { id } } })
 }
 
-const select = (id: number) => {
+export const select = (id: number) => {
   updateStore({ $set: { selected: id } })
 }
 
 // Attach event listeners to the static buttons on startup
-document.getElementById('run')!.addEventListener('click', () => run(1000))
-document.getElementById('runlots')!.addEventListener('click', () => run(10000))
-document.getElementById('add')!.addEventListener('click', add)
-document.getElementById('update')!.addEventListener('click', update)
-document.getElementById('clear')!.addEventListener('click', clear)
-document.getElementById('swaprows')!.addEventListener('click', swapRows)
+if (typeof window !== 'undefined' && document.getElementById('run')) {
+  document.getElementById('run')!.addEventListener('click', () => run(1000))
+  document
+    .getElementById('runlots')!
+    .addEventListener('click', () => run(10000))
+  document.getElementById('add')!.addEventListener('click', add)
+  document.getElementById('update')!.addEventListener('click', update)
+  document.getElementById('clear')!.addEventListener('click', clear)
+  document.getElementById('swaprows')!.addEventListener('click', swapRows)
+}
 
 // --- React Components ---
 
@@ -179,27 +183,29 @@ document.getElementById('swaprows')!.addEventListener('click', swapRows)
  * - Before: All rows re-render on any change (1-2% efficient)
  * - After: Only changed rows re-render with <For> component (98%+ efficient)
  */
-const Row: FC<RowProps> = memo(({ item, isSelected, onSelect, onRemove }) => {
-  return (
-    <tr className={isSelected ? 'danger' : ''}>
-      <td className="col-md-1">{item.id}</td>
-      <td className="col-md-4">
-        <a onClick={() => onSelect(item.id)}>{item.label}</a>
-      </td>
-      <td className="col-md-1">
-        <a onClick={() => onRemove(item.id)}>
-          <span
-            className="glyphicon glyphicon-remove"
-            aria-hidden="true"
-          ></span>
-        </a>
-      </td>
-      <td className="col-md-6"></td>
-    </tr>
-  )
-})
+export const Row: FC<RowProps> = memo(
+  ({ item, isSelected, onSelect, onRemove }) => {
+    return (
+      <tr className={isSelected ? 'danger' : ''}>
+        <td className="col-md-1">{item.id}</td>
+        <td className="col-md-4">
+          <a onClick={() => onSelect(item.id)}>{item.label}</a>
+        </td>
+        <td className="col-md-1">
+          <a onClick={() => onRemove(item.id)}>
+            <span
+              className="glyphicon glyphicon-remove"
+              aria-hidden="true"
+            ></span>
+          </a>
+        </td>
+        <td className="col-md-6"></td>
+      </tr>
+    )
+  }
+)
 
-const App: FC = () => {
+export const App: FC = () => {
   const state = useTrackedStore(store)
 
   // Create stable callbacks to prevent all rows from re-rendering
@@ -225,6 +231,8 @@ const App: FC = () => {
 }
 
 // --- React Rendering ---
-const container = document.getElementById('tbody')
-const root = createRoot(container!)
-root.render((<App />) as any)
+if (typeof window !== 'undefined' && document.getElementById('tbody')) {
+  const container = document.getElementById('tbody')
+  const root = createRoot(container!)
+  root.render((<App />) as any)
+}

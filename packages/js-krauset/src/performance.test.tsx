@@ -1,157 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'vitest'
 import { createRoot } from 'react-dom/client'
-import { createStore } from '@storable/core'
-import { useTrackedStore, For } from '@storable/react'
-import { FC, memo, useCallback } from 'react'
-
-// Import the exact same data generation and store logic from main.tsx
-let idCounter = 1
-
-const adjectives = [
-  'pretty',
-  'large',
-  'big',
-  'small',
-  'tall',
-  'short',
-  'long',
-  'handsome',
-  'plain',
-  'quaint',
-  'clean',
-  'elegant',
-  'easy',
-  'angry',
-  'crazy',
-  'helpful',
-  'mushy',
-  'odd',
-  'unsightly',
-  'adorable',
-  'important',
-  'inexpensive',
-  'cheap',
-  'expensive',
-  'fancy',
-]
-const colours = [
-  'red',
-  'yellow',
-  'blue',
-  'green',
-  'pink',
-  'brown',
-  'purple',
-  'brown',
-  'white',
-  'black',
-  'orange',
-]
-const nouns = [
-  'table',
-  'chair',
-  'house',
-  'bbq',
-  'desk',
-  'car',
-  'pony',
-  'cookie',
-  'sandwich',
-  'burger',
-  'pizza',
-  'mouse',
-  'keyboard',
-]
-
-function _random(max: number): number {
-  return Math.round(Math.random() * 1000) % max
-}
-
-function buildData(count: number): RowData[] {
-  const data: RowData[] = new Array(count)
-  for (let i = 0; i < count; i++) {
-    data[i] = {
-      id: idCounter++,
-      label: `${adjectives[_random(adjectives.length)]} ${
-        colours[_random(colours.length)]
-      } ${nouns[_random(nouns.length)]}`,
-    }
-  }
-  return data
-}
-
-interface RowData {
-  id: number
-  label: string
-}
-
-interface AppState {
-  data: RowData[]
-  selected: number | null
-}
-
-interface RowProps {
-  item: RowData
-  isSelected: boolean
-  onSelect: (id: number) => void
-  onRemove: (id: number) => void
-}
-
-// Use the exact same Row component from main.tsx
-const Row: FC<RowProps> = memo(({ item, isSelected, onSelect, onRemove }) => {
-  return (
-    <tr className={isSelected ? 'danger' : ''}>
-      <td className="col-md-1">{item.id}</td>
-      <td className="col-md-4">
-        <a onClick={() => onSelect(item.id)}>{item.label}</a>
-      </td>
-      <td className="col-md-1">
-        <a onClick={() => onRemove(item.id)}>
-          <span
-            className="glyphicon glyphicon-remove"
-            aria-hidden="true"
-          ></span>
-        </a>
-      </td>
-      <td className="col-md-6"></td>
-    </tr>
-  )
-})
-
-// Use the exact same App component from main.tsx
-const App: FC<{ store: any; updateStore: any }> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
-
-  const handleSelect = useCallback(
-    (id: number) => {
-      updateStore({ $set: { selected: id } })
-    },
-    [updateStore]
-  )
-
-  const handleRemove = useCallback(
-    (id: number) => {
-      updateStore({ $pull: { data: { id } } })
-    },
-    [updateStore]
-  )
-
-  return (
-    <>
-      <For each={state.data}>
-        {(item: RowData) => (
-          <Row
-            key={item.id}
-            item={item}
-            isSelected={state.selected === item.id}
-            onSelect={handleSelect}
-            onRemove={handleRemove}
-          />
-        )}
-      </For>
-    </>
-  )
-}
+import { buildData, RowData, AppState, store, updateStore, App } from './main'
 
 // Helper function to measure performance with async completion
 async function measureTimeAsync(name: string, fn: () => void): Promise<number> {
@@ -178,13 +27,8 @@ function waitForRender(): Promise<void> {
 describe('Krauset Performance Tests', () => {
   let container: HTMLDivElement
   let root: any
-  let store: any
-  let updateStore: any
 
   beforeEach(() => {
-    // Reset idCounter for consistent results
-    idCounter = 1
-
     // Create DOM container
     container = document.createElement('div')
     container.innerHTML = '<table><tbody id="tbody"></tbody></table>'
@@ -192,17 +36,12 @@ describe('Krauset Performance Tests', () => {
     container.style.left = '-9999px'
     document.body.appendChild(container)
 
-    // Create store
-    const storeResult = createStore<AppState>({
-      data: [],
-      selected: null,
-    })
-    store = storeResult[0]
-    updateStore = storeResult[1]
-
     // Create React root
     const tbody = container.querySelector('#tbody')!
     root = createRoot(tbody)
+
+    // Clear store
+    updateStore({ $set: { data: [], selected: null } })
   })
 
   afterEach(() => {
@@ -225,7 +64,7 @@ describe('Krauset Performance Tests', () => {
           selected: null,
         },
       })
-      root.render(<App store={store} updateStore={updateStore} />)
+      root.render(<App />)
     })
 
     // Verify rows were created
@@ -246,7 +85,7 @@ describe('Krauset Performance Tests', () => {
           selected: null,
         },
       })
-      root.render(<App store={store} updateStore={updateStore} />)
+      root.render(<App />)
     })
 
     // Verify rows were created
@@ -267,7 +106,7 @@ describe('Krauset Performance Tests', () => {
         selected: null,
       },
     })
-    root.render(<App store={store} updateStore={updateStore} />)
+    root.render(<App />)
     await waitForRender()
 
     console.log('Initial render complete, now measuring update...')
@@ -308,7 +147,7 @@ describe('Krauset Performance Tests', () => {
         selected: null,
       },
     })
-    root.render(<App store={store} updateStore={updateStore} />)
+    root.render(<App />)
     await waitForRender()
 
     console.log('Initial render complete, now measuring swap...')
@@ -358,7 +197,7 @@ describe('Krauset Performance Tests', () => {
         selected: null,
       },
     })
-    root.render(<App store={store} updateStore={updateStore} />)
+    root.render(<App />)
     await waitForRender()
 
     console.log('Initial render complete, now measuring selection...')
@@ -393,7 +232,7 @@ describe('Krauset Performance Tests', () => {
       updateStore({
         $set: { data: data1k, selected: null },
       })
-      root.render(<App store={store} updateStore={updateStore} />)
+      root.render(<App />)
     })
     results['create_1k'] = create1k
 
