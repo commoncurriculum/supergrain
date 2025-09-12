@@ -136,6 +136,43 @@ function ComponentB() {
 update({ $set: { z: 10 } })
 ```
 
+### For Component - Optimized Array Rendering
+
+_Implementation: [use-store.ts](packages/react/src/use-store.ts) | Tests: [render-analysis.test.tsx](packages/react/tests/render-analysis.test.tsx)_
+
+The `For` component provides optimal performance for rendering arrays by automatically handling version props for React.memo components:
+
+```typescript
+import { For } from '@storable/react'
+
+// Memoized component for each item
+const TodoItem = memo(({ todo }) => (
+  <div className={todo.completed ? 'completed' : ''}>
+    {todo.text}
+    <button onClick={() => toggleTodo(todo.id)}>Toggle</button>
+  </div>
+))
+
+function TodoList() {
+  const state = useTrackedStore(store)
+
+  return (
+    <For each={state.todos} fallback={<div>No todos yet</div>}>
+      {(todo, index) => (
+        <TodoItem key={todo.id} todo={todo} />
+      )}
+    </For>
+  )
+}
+```
+
+**Benefits:**
+
+- Automatically passes version information to enable React.memo optimization
+- Uses stable keys (item.id if available, otherwise index)
+- Only re-renders items whose data actually changed
+- Supports fallback content for empty arrays
+
 ### Document-Oriented App Store
 
 _Implementation: [app-store.ts](packages/app-store/src/app-store.ts) | Tests: [app-store.test.ts](packages/app-store/tests/app-store.test.ts)_
