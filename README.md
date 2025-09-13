@@ -136,6 +136,56 @@ function ComponentB() {
 update({ $set: { z: 10 } })
 ```
 
+### Using with Memoized Components
+
+_Tests: [deep-nesting.test.tsx](packages/react/tests/deep-nesting.test.tsx)_
+
+For optimal performance with complex component hierarchies, call `useTrackedStore` inside each memoized component rather than passing state as props:
+
+```typescript
+import React, { memo } from 'react'
+
+// ✅ Correct - useTrackedStore inside memoized component
+const TaskComponent = memo(({ store, taskId }) => {
+  const state = useTrackedStore(store)
+  const task = state.tasks.find(t => t.id === taskId)
+
+  return (
+    <div>
+      <h3>{task.title}</h3>
+      <span>{task.completed ? '✓' : '○'}</span>
+    </div>
+  )
+})
+
+// ❌ Incorrect - passing state as prop breaks memoization
+const TaskComponent = memo(({ state, taskId }) => {
+  const task = state.tasks.find(t => t.id === taskId)
+  // This will re-render on every state change because state object reference changes
+  return <div>{task.title}</div>
+})
+
+// Usage
+function ProjectView() {
+  const state = useTrackedStore(store)
+
+  return (
+    <div>
+      {state.project.taskIds.map(taskId => (
+        <TaskComponent key={taskId} store={store} taskId={taskId} />
+      ))}
+    </div>
+  )
+}
+```
+
+**Benefits of this pattern:**
+
+- Only components accessing changed data re-render
+- React.memo works effectively with fine-grained subscriptions
+- Deep nested updates don't cause cascade re-renders
+- Maintains optimal performance even with complex component trees
+
 ### For Component - Optimized Array Rendering
 
 _Implementation: [use-store.ts](packages/react/src/use-store.ts) | Tests: [render-analysis.test.tsx](packages/react/tests/render-analysis.test.tsx)_
