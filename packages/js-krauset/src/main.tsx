@@ -1,4 +1,4 @@
-import { FC, memo, useCallback } from 'react'
+import { FC, memo, useCallback, useMemo } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useTrackedStore, For } from '@storable/react'
 import { createStore } from '@storable/core'
@@ -213,8 +213,11 @@ export const App: FC = () => {
   const handleSelect = useCallback((id: number) => select(id), [])
   const handleRemove = useCallback((id: number) => remove(id), [])
 
-  return (
-    <>
+  const versionSymbol = Symbol.for('storable:version')
+  const dataVersion = (state.data as any)?.[versionSymbol]
+
+  const rowElements = useMemo(() => {
+    return (
       <For each={state.data}>
         {(item: RowData) => (
           <Row
@@ -226,8 +229,10 @@ export const App: FC = () => {
           />
         )}
       </For>
-    </>
-  )
+    )
+  }, [state.data, dataVersion, state.selected])
+
+  return <>{rowElements}</>
 }
 
 // --- React Rendering ---
