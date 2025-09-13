@@ -205,11 +205,11 @@ export const Row: FC<RowProps> = memo(
   }
 )
 
-const RowList = memo(() => {
-  const state = useTrackedStore(store)
-
+export const App = memo(() => {
   const handleSelect = useCallback((id: number) => select(id), [])
   const handleRemove = useCallback((id: number) => remove(id), [])
+
+  const state = useTrackedStore(store)
 
   return (
     <For each={state.data}>
@@ -225,10 +225,6 @@ const RowList = memo(() => {
     </For>
   )
 })
-
-export const App: FC = () => {
-  return <RowList />
-}
 
 // --- React Rendering ---
 if (typeof window !== 'undefined' && document.getElementById('tbody')) {

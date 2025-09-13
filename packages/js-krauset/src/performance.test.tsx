@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterEach } from 'vitest'
+import { describe, it, beforeEach, afterEach, expect } from 'vitest'
 import { createRoot } from 'react-dom/client'
 import { buildData, RowData, AppState, store, updateStore, App } from './main'
 
@@ -70,6 +70,7 @@ describe('Krauset Performance Tests', () => {
     // Verify rows were created
     const rows = container.querySelectorAll('tbody tr')
     console.log(`Rendered ${rows.length} rows`)
+    expect(rows.length).toBe(1000)
 
     console.log(`\nRESULT: Creating 1K rows took ${duration.toFixed(2)}ms\n`)
   })
@@ -91,6 +92,7 @@ describe('Krauset Performance Tests', () => {
     // Verify rows were created
     const rows = container.querySelectorAll('tbody tr')
     console.log(`Rendered ${rows.length} rows`)
+    expect(rows.length).toBe(10000)
 
     console.log(`\nRESULT: Creating 10K rows took ${duration.toFixed(2)}ms\n`)
   })

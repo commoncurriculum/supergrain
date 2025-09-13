@@ -10,6 +10,7 @@ A comprehensive guide to using Storable for building reactive applications with 
 - [Reading State](#reading-state)
 - [Updating State](#updating-state)
 - [React Integration](#react-integration)
+- [How the Reactive System Works](#how-the-reactive-system-works)
 - [MongoDB-Style Operators](#mongodb-style-operators)
 - [Effects and Computed Values](#effects-and-computed-values)
 - [App Store - Document Management](#app-store---document-management)
@@ -269,6 +270,211 @@ function TodoList() {
 - With `For` + `memo`: Only changed items re-render (optimal)
 - Without `For`: All items may re-render when any item changes
 - 10-100x performance improvement for large lists
+
+## How the Reactive System Works
+
+### Property Access Tracking
+
+Storable's fine-grained reactivity is powered by JavaScript Proxy objects and the alien-signals library. Here's how it works:
+
+1. **Proxy Wrapping**: The state object returned by `createStore` is a Proxy that intercepts all property access
+2. **Subscription Creation**: When `useTrackedStore` is called, it creates an effect context
+3. **Property Tracking**: During component render, any property access on the state object creates a subscription
+4. **Precise Updates**: Only components that accessed changed properties will re-render
+
+### Understanding useTrackedStore
+
+The `useTrackedStore` hook is what enables reactive subscriptions:
+
+```typescript
+// ❌ Without useTrackedStore - component never re-renders
+function BrokenComponent() {
+  return <div>Count: {store.count}</div> // No subscription created!
+}
+
+// ✅ With useTrackedStore - component re-renders when count changes
+function WorkingComponent() {
+  const state = useTrackedStore(store)
+  return <div>Count: {state.count}</div> // Subscription created for 'count'
+}
+```
+
+### Subscription Specificity
+
+Subscriptions are created only for properties that are actually accessed:
+
+```typescript
+const [state, update] = createStore({
+  user: { name: 'John', age: 30, email: 'john@example.com' },
+  todos: [],
+  settings: { theme: 'dark' }
+})
+
+function UserName() {
+  const state = useTrackedStore(store)
+  // Only subscribes to 'user.name' - won't re-render for age, email, todos, or settings
+  return <div>{state.user.name}</div>
+}
+
+function UserAge() {
+  const state = useTrackedStore(store)
+  // Only subscribes to 'user.age' - completely independent from UserName component
+  return <div>{state.user.age}</div>
+}
+
+// This update only re-renders UserAge, not UserName
+update({ $set: { 'user.age': 31 } })
+```
+
+### Deep Nesting and Arrays
+
+The reactive system works seamlessly with deeply nested data structures:
+
+```typescript
+const [state, update] = createStore({
+  departments: [{
+    teams: [{
+      members: [{
+        projects: [{
+          tasks: [{ name: 'Task 1', completed: false }]
+        }]
+      }]
+    }]
+  }]
+})
+
+function DeepTaskComponent() {
+  const state = useTrackedStore(store)
+
+  // Creates subscription specifically for this deep path:
+  // departments[0].teams[0].members[0].projects[0].tasks[0].completed
+  const task = state.departments[0].teams[0].members[0].projects[0].tasks[0]
+
+  return (
+    <div className={task.completed ? 'done' : 'pending'}>
+      {task.name}
+    </div>
+  )
+}
+
+// This update will only re-render components that access this specific task
+update({
+  $set: { 'departments.0.teams.0.members.0.projects.0.tasks.0.completed': true }
+})
+```
+
+### Array Iteration Behavior
+
+When components iterate over arrays, they subscribe to the items they access:
+
+```typescript
+const [state, update] = createStore({
+  items: [
+    { id: 1, name: 'Item 1', value: 10 },
+    { id: 2, name: 'Item 2', value: 20 },
+    { id: 3, name: 'Item 3', value: 30 }
+  ]
+})
+
+function ItemList() {
+  const state = useTrackedStore(store)
+
+  return (
+    <ul>
+      {state.items.map((item, index) => (
+        <li key={item.id}>
+          {/* Creates subscriptions for items[0].name, items[1].name, items[2].name */}
+          {item.name}: {item.value}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// When one item changes, the entire list re-renders because the parent
+// component iterates over the array and accesses each item
+update({ $set: { 'items.0.value': 15 } }) // Re-renders ItemList
+```
+
+### Optimizing Array Rendering
+
+For optimal performance with arrays, use React.memo on item components:
+
+```typescript
+const MemoizedItem = React.memo(({ item }: { item: any }) => {
+  // Each item component has its own useTrackedStore call
+  const state = useTrackedStore(store)
+
+  // Find this specific item in the store
+  const currentItem = state.items.find(i => i.id === item.id)
+
+  return (
+    <div>
+      {currentItem?.name}: {currentItem?.value}
+    </div>
+  )
+})
+
+function OptimizedItemList() {
+  const state = useTrackedStore(store)
+
+  return (
+    <ul>
+      {state.items.map(item => (
+        <MemoizedItem key={item.id} item={item} />
+      ))}
+    </ul>
+  )
+}
+```
+
+Or use the `For` component which handles this optimization automatically:
+
+```typescript
+import { For } from '@storable/react'
+
+const ItemComponent = React.memo(({ item }: { item: any }) => {
+  return <div>{item.name}: {item.value}</div>
+})
+
+function OptimalItemList() {
+  const state = useTrackedStore(store)
+
+  return (
+    <For each={state.items}>
+      {(item) => <ItemComponent item={item} />}
+    </For>
+  )
+}
+```
+
+### Effect Context and Signals
+
+Under the hood, Storable uses the alien-signals library for reactivity:
+
+```typescript
+import { effect, computed } from '@storable/core'
+
+const [state, update] = createStore({ count: 0, multiplier: 2 })
+
+// Effects track property access and run when dependencies change
+effect(() => {
+  console.log('Count is:', state.count) // Subscribes to 'count'
+})
+
+// Computed values work the same way
+const doubled = computed(() => state.count * state.multiplier) // Subscribes to both properties
+
+// React components work identically - useTrackedStore creates an effect context
+```
+
+### Key Principles
+
+1. **Property Access = Subscription**: Any property you read during render creates a subscription
+2. **Precise Tracking**: Only components that access changed properties re-render
+3. **Deep Reactivity**: Works with arbitrarily nested object and array structures
+4. **Effect Context**: `useTrackedStore`, `effect`, and `computed` all use the same underlying mechanism
+5. **No Magic**: The system is deterministic - subscriptions are created based on actual property access
 
 ## MongoDB-Style Operators
 

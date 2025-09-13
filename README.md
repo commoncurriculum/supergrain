@@ -75,6 +75,61 @@ function TodoApp() {
 }
 ```
 
+## How It Works
+
+### Reactive System Architecture
+
+Storable uses **fine-grained reactivity** powered by `alien-signals` to automatically track which components access which data, creating subscriptions only to properties that are actually used.
+
+#### **The Magic of `useTrackedStore`**
+
+When you call `useTrackedStore(store)` in a React component, it:
+
+1. **Creates an effect context** using `alien-signals`
+2. **Returns a proxy** of your store that tracks property access
+3. **Automatically subscribes** to any properties accessed during render
+4. **Re-renders the component** only when subscribed properties change
+
+```typescript
+function MyComponent() {
+  const state = useTrackedStore(store) // Creates reactive proxy
+
+  // This creates a subscription to 'user.profile.name'
+  const name = state.user.profile.name
+
+  // This creates a subscription to 'items[0].title'
+  const firstTitle = state.items[0].title
+
+  return <div>{name}: {firstTitle}</div>
+}
+
+// Later, when you update:
+update({ $set: { 'user.profile.name': 'Jane' } }) // Only this component re-renders
+update({ $set: { 'user.profile.age': 30 } })     // This component does NOT re-render
+```
+
+#### **Property Access = Subscription**
+
+Every property you access during render creates a subscription. The system is so precise that:
+
+- ✅ `state.items[0].name` creates subscription to that exact property
+- ✅ `state.items.map(item => item.title)` creates subscriptions to each item's title
+- ✅ Deeply nested access like `state.a.b.c.d.e` works perfectly
+- ❌ Accessing `state.items[0].name` won't re-render when `state.items[0].age` changes
+
+#### **No Manual Subscription Management**
+
+Unlike other reactive systems, you never need to manually subscribe or unsubscribe:
+
+```typescript
+// ❌ Other libraries require manual subscriptions
+const unsubscribe = store.subscribe('user.name', callback)
+useEffect(() => unsubscribe, [])
+
+// ✅ Storable: just access the data normally
+const userName = useTrackedStore(store).user.name // Automatically subscribed!
+```
+
 ## Key Concepts
 
 ### Read-Only State
@@ -185,6 +240,67 @@ function ProjectView() {
 - React.memo works effectively with fine-grained subscriptions
 - Deep nested updates don't cause cascade re-renders
 - Maintains optimal performance even with complex component trees
+
+### Important: Subscription Behavior
+
+The reactive system creates subscriptions based on **exactly which properties you access** during render:
+
+#### **Precise Property Subscriptions**
+
+```typescript
+// Component only subscribes to the specific properties it accesses
+const ProfileComponent = () => {
+  const state = useTrackedStore(store)
+  return <div>{state.user.profile.name}</div> // Only subscribes to 'user.profile.name'
+}
+
+// This update WILL trigger re-render (accesses user.profile.name)
+update({ $set: { 'user.profile.name': 'Jane' } })
+
+// This update will NOT trigger re-render (doesn't access user.profile.age)
+update({ $set: { 'user.profile.age': 30 } })
+```
+
+#### **Array Iteration Creates Item Subscriptions**
+
+When you iterate over arrays, you create subscriptions to the properties you access on each item:
+
+```typescript
+const ListComponent = () => {
+  const state = useTrackedStore(store)
+  return (
+    <div>
+      {state.items.map(item => (
+        <div key={item.id}>{item.name}</div> // Subscribes to each item.name
+      ))}
+    </div>
+  )
+}
+
+// This WILL trigger re-render because the component accesses items[0].name during iteration
+update({ $set: { 'items.0.name': 'Updated' } })
+
+// This will NOT trigger re-render because the component doesn't access items[0].description
+update({ $set: { 'items.0.description': 'New desc' } })
+```
+
+#### **Deep Nesting Works Perfectly**
+
+```typescript
+const DeepComponent = () => {
+  const state = useTrackedStore(store)
+  // Creates subscription to this exact nested property
+  return <div>{state.items[0].obj.objTwo.objThree}</div>
+}
+
+// This WILL trigger re-render - exact property match
+update({ $set: { 'items.0.obj.objTwo.objThree': 42 } })
+
+// This will NOT trigger re-render - different property
+update({ $set: { 'items.0.obj.objTwo.otherProp': 'value' } })
+```
+
+**Key insight**: Components re-render when **properties they actually access** change, regardless of nesting depth or data structure. The system is truly fine-grained.
 
 ### For Component - Optimized Array Rendering
 
