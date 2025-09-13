@@ -1,4 +1,4 @@
-import { FC, memo, useCallback, useMemo } from 'react'
+import { FC, memo, useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useTrackedStore, For } from '@storable/react'
 import { createStore } from '@storable/core'
@@ -205,34 +205,29 @@ export const Row: FC<RowProps> = memo(
   }
 )
 
-export const App: FC = () => {
+const RowList = memo(() => {
   const state = useTrackedStore(store)
 
-  // Create stable callbacks to prevent all rows from re-rendering
-  // when parent component re-renders
   const handleSelect = useCallback((id: number) => select(id), [])
   const handleRemove = useCallback((id: number) => remove(id), [])
 
-  const versionSymbol = Symbol.for('storable:version')
-  const dataVersion = (state.data as any)?.[versionSymbol]
+  return (
+    <For each={state.data}>
+      {(item: RowData) => (
+        <Row
+          key={item.id}
+          item={item}
+          isSelected={state.selected === item.id}
+          onSelect={handleSelect}
+          onRemove={handleRemove}
+        />
+      )}
+    </For>
+  )
+})
 
-  const rowElements = useMemo(() => {
-    return (
-      <For each={state.data}>
-        {(item: RowData) => (
-          <Row
-            key={item.id}
-            item={item} // ← <For> component automatically handles version props!
-            isSelected={state.selected === item.id}
-            onSelect={handleSelect} // ← Stable callback reference
-            onRemove={handleRemove} // ← Stable callback reference
-          />
-        )}
-      </For>
-    )
-  }, [state.data, dataVersion, state.selected])
-
-  return <>{rowElements}</>
+export const App: FC = () => {
+  return <RowList />
 }
 
 // --- React Rendering ---
