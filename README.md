@@ -50,6 +50,7 @@ _Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/t
 
 ```typescript
 // [#DOC_TEST_3](packages/documentation/tests/quick-start.test.tsx)
+
 import { createStore } from '@storable/core'
 import { useTrackedStore } from '@storable/react'
 
@@ -140,6 +141,7 @@ Unlike other reactive systems, you never need to manually subscribe or unsubscri
 
 ```typescript
 // [#DOC_TEST_29](packages/documentation/tests/readme-examples.test.tsx)
+
 // ❌ Other libraries require manual subscriptions
 const unsubscribe = store.subscribe('user.name', callback)
 useEffect(() => unsubscribe, [])
@@ -156,6 +158,7 @@ _Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/s
 
 ```typescript
 // [#DOC_TEST_1](packages/documentation/tests/creating-stores.test.ts)
+
 import { createStore } from '@storable/core'
 
 const [state, update] = createStore({
@@ -168,6 +171,7 @@ const [state, update] = createStore({
 
 ```typescript
 // [#DOC_TEST_2](packages/documentation/tests/creating-stores.test.ts)
+
 import { createStore } from '@storable/core'
 
 const [state, update] = createStore({
@@ -204,6 +208,7 @@ The state object is a reactive proxy that tracks property access:
 
 ```typescript
 // [#DOC_TEST_4](packages/documentation/tests/read-only-state.test.ts)
+
 const [state, update] = createStore({ count: 0, name: 'John' })
 
 // You can read properties normally
@@ -226,6 +231,7 @@ All state updates MUST use the `update` function with MongoDB-style operators:
 
 ```typescript
 // [#DOC_TEST_5](packages/documentation/tests/mongodb-operators.test.ts)
+
 const [state, update] = createStore({
   count: 0,
   user: { name: 'John', age: 30 },
@@ -262,6 +268,7 @@ The primary way to use stores in React:
 
 ```typescript
 // [#DOC_TEST_6](packages/documentation/tests/react-integration.test.tsx)
+
 import { useTrackedStore } from '@storable/react'
 
 function Counter() {
@@ -284,6 +291,7 @@ Alternative hook that must be called first in the component:
 
 ```typescript
 // [#DOC_TEST_7](packages/documentation/tests/react-integration.test.tsx)
+
 import { useStore } from '@storable/react'
 
 function Counter() {
@@ -306,6 +314,7 @@ Components only re-render when properties they access change:
 
 ```typescript
 // [#DOC_TEST_8](packages/documentation/tests/react-integration.test.tsx)
+
 const [state, update] = createStore({
   x: 1,
   y: 2,
@@ -334,6 +343,7 @@ Because values are proxies and they're stable across renders, passing them will 
 
 ```typescript
 // [#DOC_TEST_9](packages/documentation/tests/react-integration.test.tsx)
+
 import React, { memo } from 'react'
 
 // ✅ Correct - useTrackedStore inside memoized component
@@ -371,6 +381,7 @@ The `For` component provides optimal performance for rendering arrays by automat
 
 ```typescript
 // [#DOC_TEST_10](packages/documentation/tests/react-integration.test.tsx)
+
 import { For } from '@storable/react'
 
 // Memoized component for each item
@@ -402,6 +413,7 @@ _Links: [Source Code](packages/core/src/operators.ts). [Tests](packages/core/tes
 
 ```typescript
 // [#DOC_TEST_11](packages/documentation/tests/mongodb-operators.test.ts)
+
 update({ $set: { count: 10 } })
 update({ $set: { 'user.name': 'Alice' } }) // Nested with dot notation
 update({
@@ -417,6 +429,7 @@ update({
 
 ```typescript
 // [#DOC_TEST_12](packages/documentation/tests/mongodb-operators.test.ts)
+
 update({ $unset: { temporaryField: 1 } })
 update({ $unset: { 'user.middleName': 1 } })
 ```
@@ -425,6 +438,7 @@ update({ $unset: { 'user.middleName': 1 } })
 
 ```typescript
 // [#DOC_TEST_13](packages/documentation/tests/mongodb-operators.test.ts)
+
 update({ $inc: { count: 1 } })
 update({ $inc: { count: -5 } }) // Decrement
 update({ $inc: { 'stats.views': 10 } })
@@ -434,6 +448,7 @@ update({ $inc: { 'stats.views': 10 } })
 
 ```typescript
 // [#DOC_TEST_14](packages/documentation/tests/mongodb-operators.test.ts)
+
 update({ $push: { items: 'newItem' } })
 
 // Add multiple items with $each
@@ -448,6 +463,7 @@ update({
 
 ```typescript
 // [#DOC_TEST_15](packages/documentation/tests/mongodb-operators.test.ts)
+
 // Remove by value
 update({ $pull: { items: 'itemToRemove' } })
 
@@ -463,6 +479,7 @@ update({
 
 ```typescript
 // [#DOC_TEST_16](packages/documentation/tests/mongodb-operators.test.ts)
+
 update({ $addToSet: { tags: 'newTag' } }) // Won't add if already exists
 
 // Add multiple unique items
@@ -477,6 +494,7 @@ update({
 
 ```typescript
 // [#DOC_TEST_17](packages/documentation/tests/mongodb-operators.test.ts)
+
 update({ $rename: { oldFieldName: 'newFieldName' } })
 update({ $rename: { 'user.firstName': 'user.name' } })
 ```
@@ -485,6 +503,7 @@ update({ $rename: { 'user.firstName': 'user.name' } })
 
 ```typescript
 // [#DOC_TEST_18](packages/documentation/tests/mongodb-operators.test.ts)
+
 // Only updates if new value is smaller
 update({ $min: { lowestScore: 50 } })
 
@@ -502,6 +521,7 @@ React to state changes with `effect`:
 
 ```typescript
 // [#DOC_TEST_19](packages/documentation/tests/effects.test.ts)
+
 import { effect } from '@storable/core'
 
 const [state, update] = createStore({ count: 0 })
@@ -523,6 +543,7 @@ Derive values that update automatically:
 
 ```typescript
 // [#DOC_TEST_20](packages/documentation/tests/computed.test.ts)
+
 import { computed } from '@storable/core'
 
 const [state, update] = createStore({
@@ -558,6 +579,7 @@ Define your document types and create an AppStore:
 
 ```typescript
 // [#DOC_TEST_21](packages/documentation/tests/app-store.test.tsx)
+
 import { AppStore } from '@storable/app-store'
 
 interface DocumentTypes {
@@ -589,6 +611,7 @@ const appStore = new AppStore<DocumentTypes>()
 
 ```typescript
 // [#DOC_TEST_22](packages/documentation/tests/app-store.test.tsx)
+
 // Get a document (returns immediately, fetches if not cached)
 const doc = appStore.findDoc('posts', 1)
 
@@ -604,6 +627,7 @@ doc.isFulfilled // boolean - Request succeeded
 
 ```typescript
 // [#DOC_TEST_23](packages/documentation/tests/app-store.test.tsx)
+
 // Set document directly
 appStore.setDocument('users', 1, {
   id: 1,
@@ -626,6 +650,7 @@ console.log(errorUser.isRejected) // true
 
 ```typescript
 // [#DOC_TEST_24](packages/documentation/tests/app-store.test.tsx)
+
 // Shows as pending immediately, then fulfilled when complete
 const newUserPromise = appStore.insertDocument('users', {
   id: 123,
@@ -646,6 +671,7 @@ console.log(user.isFulfilled) // true after promise resolves
 
 ```typescript
 // [#DOC_TEST_25](packages/documentation/tests/app-store.test.tsx)
+
 function MyComponent() {
   // Documents are fetched automatically and cached
   const post = appStore.findDoc('posts', 1)
@@ -673,6 +699,7 @@ Here's a complete TODO application demonstrating Storable's features:
 
 ```typescript
 // [#DOC_TEST_26](packages/documentation/tests/todo-app.test.tsx)
+
 import { createStore } from '@storable/core'
 import { useTrackedStore, For } from '@storable/react'
 import { memo } from 'react'
@@ -786,6 +813,7 @@ Storable provides full TypeScript support with type inference and type safety:
 
 ```typescript
 // [#DOC_TEST_27](packages/documentation/tests/typescript.test.ts)
+
 interface AppState {
   user: {
     name: string
