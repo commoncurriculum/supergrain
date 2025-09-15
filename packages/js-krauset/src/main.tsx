@@ -102,59 +102,49 @@ export interface RowProps {
 
 // --- Storable Implementation ---
 
-export const [store, updateStore] = createStore<AppState>({
+export const [store] = createStore<AppState>({
   data: [],
   selected: null,
 })
 
 export const run = (count: number) => {
-  updateStore({
-    $set: {
-      data: buildData(count),
-      selected: null,
-    },
-  })
+  store.data = buildData(count)
+  store.selected = null
 }
 
 export const add = () => {
-  updateStore({
-    $push: {
-      data: { $each: buildData(1000) },
-    },
-  })
+  store.data.push(...buildData(1000))
 }
 
 export const update = () => {
-  const updates: Record<string, string> = {}
   for (let i = 0; i < store.data.length; i += 10) {
-    updates[`data.${i}.label`] = store.data[i].label + ' !!!'
+    store.data[i].label = store.data[i].label + ' !!!'
   }
-  updateStore({ $set: updates })
 }
 
 export const clear = () => {
-  updateStore({ $set: { data: [], selected: null } })
+  store.data = []
+  store.selected = null
 }
 
 export const swapRows = () => {
   if (store.data.length > 998) {
     const row1 = store.data[1]
     const row998 = store.data[998]
-    updateStore({
-      $set: {
-        'data.1': row998,
-        'data.998': row1,
-      },
-    })
+    store.data[1] = row998
+    store.data[998] = row1
   }
 }
 
 export const remove = (id: number) => {
-  updateStore({ $pull: { data: { id } } })
+  const index = store.data.findIndex(item => item.id === id)
+  if (index !== -1) {
+    store.data.splice(index, 1)
+  }
 }
 
 export const select = (id: number) => {
-  updateStore({ $set: { selected: id } })
+  store.selected = id
 }
 
 // Attach event listeners to the static buttons on startup

@@ -85,8 +85,8 @@ describe('Parent Invalidation Depth Tests', () => {
     const Level4Component = memo(() => {
       level4RenderCount++
       const state = useTrackedStore(store)
-      // Access level4 property
-      const _ = state.level0.level1.level2.level3.level4
+      // Access level4 property - defensive access since structure may be replaced
+      const _ = state.level0?.level1?.level2?.level3?.level4
       return <div data-testid="level4">Level4: {level4RenderCount}</div>
     })
 

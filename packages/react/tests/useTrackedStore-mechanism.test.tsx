@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
 import React, { memo, useState, useEffect } from 'react'
-import { createStore } from '@storable/core'
+import { createStore, effect } from '@storable/core'
 import { useTrackedStore } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
@@ -137,9 +137,6 @@ describe('useTrackedStore Mechanism Tests', () => {
       console.log(`ManualEffectComponent: render #${manualRenderCount}`)
 
       useEffect(() => {
-        // Import effect from the store package
-        const { effect } = require('@storable/core')
-
         const cleanup = effect(() => {
           console.log('Manual effect running...')
           // Access the store property - this should create subscription

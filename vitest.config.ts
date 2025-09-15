@@ -1,4 +1,6 @@
 import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+import { resolve } from 'path'
 
 export default defineConfig({
   test: {
@@ -10,14 +12,32 @@ export default defineConfig({
           environment: 'node',
         },
       },
-      // jsdom environment for React tests
+      // Browser environment for React tests
       {
+        plugins: [react()],
         test: {
           include: [
             'packages/react/**/*.test.{ts,tsx}',
             'packages/react-example/**/*.test.{ts,tsx}',
           ],
-          environment: 'jsdom',
+          browser: {
+            enabled: true,
+            provider: 'playwright',
+            headless: true,
+            instances: [
+              {
+                browser: 'chromium',
+              },
+            ],
+          },
+          setupFiles: ['./packages/react/tests/setup.ts'],
+          globals: true,
+        },
+        resolve: {
+          alias: {
+            '@storable/core': resolve(__dirname, './packages/core/src'),
+            '@storable/react': resolve(__dirname, './packages/react/src'),
+          },
         },
       },
     ],

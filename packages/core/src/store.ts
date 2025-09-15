@@ -146,10 +146,10 @@ const handler: ProxyHandler<object> = {
     return wrap(value)
   },
 
-  set() {
-    throw new Error(
-      'Direct mutation of store state is not allowed. Use the update function.'
-    )
+  set(target: any, prop: PropertyKey, value: any): boolean {
+    // Enable direct mutations by calling setProperty automatically
+    setProperty(target, prop, value)
+    return true
   },
 
   deleteProperty() {
