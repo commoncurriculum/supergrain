@@ -38,3 +38,6 @@ jobs:
 
       - name: Run tests
         run: pnpm test
+
+      - name: Validate README documentation
+        run: pnpm run test:validate

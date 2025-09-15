@@ -471,6 +471,76 @@ describe('README Complex Examples', () => {
     })
   })
 
+  describe('How It Works Examples', () => {
+    it('#DOC_TEST_28', () => {
+      // Test the conceptual example from the "How It Works" section
+      const [store, update] = createStore({
+        user: {
+          profile: {
+            name: 'John Doe',
+          },
+        },
+        items: [{ title: 'First Item' }],
+      })
+
+      function MyComponent() {
+        const state = useTrackedStore(store) // Creates reactive proxy
+
+        // This creates a subscription to 'user.profile.name'
+        const name = state.user.profile.name
+
+        // This creates a subscription to 'items[0].title'
+        const firstTitle = state.items[0].title
+
+        return (
+          <div>
+            {name}: {firstTitle}
+          </div>
+        )
+      }
+
+      render(<MyComponent />)
+
+      expect(screen.getByText(/John Doe/)).toBeInTheDocument()
+      expect(screen.getByText(/First Item/)).toBeInTheDocument()
+
+      // Later, when you update:
+      update({ $set: { 'user.profile.name': 'Jane' } }) // Only this component re-renders
+      expect(screen.getByText(/Jane/)).toBeInTheDocument()
+      expect(screen.getByText(/First Item/)).toBeInTheDocument()
+
+      update({ $set: { 'user.profile.age': 30 } }) // This component does NOT re-render
+      expect(screen.getByText(/Jane/)).toBeInTheDocument()
+      expect(screen.getByText(/First Item/)).toBeInTheDocument()
+    })
+
+    it('#DOC_TEST_29', () => {
+      // Test the subscription comparison example
+      const [store, update] = createStore({
+        user: {
+          name: 'John',
+        },
+      })
+
+      function TestComponent() {
+        // ✅ Storable: just access the data normally
+        const userName = useTrackedStore(store).user.name // Automatically subscribed!
+
+        return <div>User: {userName}</div>
+      }
+
+      render(<TestComponent />)
+
+      expect(screen.getByText(/User:/)).toBeInTheDocument()
+      expect(screen.getByText(/John/)).toBeInTheDocument()
+
+      // Update should cause re-render
+      update({ $set: { 'user.name': 'Jane' } })
+      expect(screen.getByText(/User:/)).toBeInTheDocument()
+      expect(screen.getByText(/Jane/)).toBeInTheDocument()
+    })
+  })
+
   describe('TypeScript Examples', () => {
     it('#DOC_TEST_27', () => {
       interface AppState {

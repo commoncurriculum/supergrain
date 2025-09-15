@@ -106,6 +106,7 @@ When you call `useTrackedStore(store)` in a React component, it:
 4. **Re-renders the component** only when subscribed properties change
 
 ```typescript
+// [#DOC_TEST_28](packages/documentation/tests/readme-examples.test.tsx)
 function MyComponent() {
   const state = useTrackedStore(store) // Creates reactive proxy
 
@@ -137,6 +138,7 @@ Every property you access during render creates a subscription. The reactivity s
 Unlike other reactive systems, you never need to manually subscribe or unsubscribe:
 
 ```typescript
+// [#DOC_TEST_29](packages/documentation/tests/readme-examples.test.tsx)
 // ❌ Other libraries require manual subscriptions
 const unsubscribe = store.subscribe('user.name', callback)
 useEffect(() => unsubscribe, [])

@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "vitest",
+    "test:validate": "pnpm --filter @storable/documentation run test:validate",
     "bench:core": "vitest bench --root packages/core"
   },
   "keywords": [],
