@@ -46,7 +46,7 @@ pnpm add @storable/core @storable/react @storable/app-store
 
 ## Quick Start
 
-_Implementation: [createStore](packages/core/src/store.ts) | [useTrackedStore](packages/react/src/use-store.ts) | Tests: [todo.test.ts](packages/core/tests/todo.test.ts) | [Documentation Tests](packages/documentation/tests)_
+_Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/todo.test.ts). [Doc Tests](packages/documentation/tests)._
 
 ```typescript
 import { createStore } from '@storable/core'
@@ -90,8 +90,6 @@ function TodoApp() {
   )
 }
 ```
-
-**Test Coverage**: [Quick Start Tests](packages/documentation/tests/quick-start.test.tsx)
 
 ## How It Works
 
@@ -146,11 +144,9 @@ useEffect(() => unsubscribe, [])
 const userName = useTrackedStore(store).user.name // Automatically subscribed!
 ```
 
-**Test Coverage**: [Reactive System Tests](packages/documentation/tests/react-integration.test.tsx)
-
 ## Creating Stores
 
-_Implementation: [store.ts](packages/core/src/store.ts) | Tests: [store.test.ts](packages/core/tests/store.test.ts)_
+_Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/store.test.ts). [Doc Test](packages/documentation/tests/creating-stores.test.ts)._
 
 ```typescript
 import { createStore } from '@storable/core'
@@ -174,11 +170,9 @@ const [state, update] = createStore({
 })
 ```
 
-**Test Coverage**: [Creating Stores Tests](packages/documentation/tests/creating-stores.test.ts)
-
 ## Reading State
 
-_Implementation: [store.ts](packages/core/src/store.ts) | Tests: [store.test.ts](packages/core/tests/store.test.ts)_
+_Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/store.test.ts). [Doc Test](packages/documentation/tests/read-only-state.test.ts)._
 
 The state object is a reactive proxy that tracks property access:
 
@@ -197,11 +191,9 @@ state.name = 'Jane' // ✅ Works fine!
 update({ $set: { count: 10, name: 'Bob' } })
 ```
 
-**Test Coverage**: [Reading State Tests](packages/documentation/tests/read-only-state.test.ts)
-
 ## Updating State
 
-_Implementation: [operators.ts](packages/core/src/operators.ts) | Tests: [operators.test.ts](packages/core/tests/operators.test.ts)_
+_Links: [Source Code](packages/core/src/operators.ts). [Tests](packages/core/tests/operators.test.ts). [Doc Test](packages/documentation/tests/mongodb-operators.test.ts)._
 
 All state updates MUST use the `update` function with MongoDB-style operators:
 
@@ -232,11 +224,9 @@ update({
 })
 ```
 
-**Test Coverage**: [Updating State Tests](packages/documentation/tests/mongodb-operators.test.ts)
-
 ## React Integration
 
-_Implementation: [use-store.ts](packages/react/src/use-store.ts) | Tests: [use-store.test.tsx](packages/react/tests/use-store.test.tsx) | Example: [nested-components.tsx](packages/react/examples/nested-components.tsx)_
+_Links: [Source Code](packages/react/src/use-store.ts). [Tests](packages/react/tests/use-store.test.tsx). [Examples](packages/react/examples/nested-components.tsx). [Doc Test](packages/documentation/tests/react-integration.test.tsx)._
 
 ### useTrackedStore Hook
 
@@ -343,7 +333,7 @@ function ProjectView() {
 
 ### For Component - Optimized Array Rendering
 
-_Implementation: [use-store.ts](packages/react/src/use-store.ts) | Tests: [render-analysis.test.tsx](packages/react/tests/render-analysis.test.tsx)_
+_Links: [Source Code](packages/react/src/use-store.ts). [Tests](packages/react/tests/render-analysis.test.tsx)._
 
 The `For` component provides optimal performance for rendering arrays by automatically handling version props for React.memo components:
 
@@ -371,11 +361,9 @@ function TodoList() {
 }
 ```
 
-**Test Coverage**: [React Integration Tests](packages/documentation/tests/react-integration.test.tsx)
-
 ## MongoDB-Style Operators
 
-_Implementation: [operators.ts](packages/core/src/operators.ts) | Tests: [operators.test.ts](packages/core/tests/operators.test.ts)_
+_Links: [Source Code](packages/core/src/operators.ts). [Tests](packages/core/tests/operators.test.ts). [Doc Test](packages/documentation/tests/mongodb-operators.test.ts)._
 
 ### $set - Set field values
 
@@ -463,11 +451,9 @@ update({ $min: { lowestScore: 50 } })
 update({ $max: { highestScore: 100 } })
 ```
 
-**Test Coverage**: [MongoDB Operators Tests](packages/documentation/tests/mongodb-operators.test.ts)
-
 ## Effects and Computed Values
 
-_Implementation: Re-exported from alien-signals in [index.ts](packages/core/src/index.ts) | Usage Examples: [benchmarks](packages/core/benchmarks/additional.bench.ts)_
+_Links: [Source Code](packages/core/src/index.ts). [Examples](packages/core/benchmarks/additional.bench.ts). [Doc Test](packages/documentation/tests/creating-stores.test.ts)._
 
 ### Effects
 
@@ -517,11 +503,9 @@ update({
 console.log(completedCount()) // 2
 ```
 
-**Test Coverage**: [Effects and Computed Tests](packages/documentation/tests/creating-stores.test.ts)
-
 ## App Store - Document Management
 
-_Implementation: [app-store.ts](packages/app-store/src/app-store.ts) | Tests: [app-store.test.tsx](packages/documentation/tests/app-store.test.tsx)_
+_Links: [Source Code](packages/app-store/src/app-store.ts). [Doc Test](packages/documentation/tests/app-store.test.tsx)._
 
 The `@storable/app-store` package provides a document-oriented store built on top of the core Storable reactivity system. It's designed for managing app-level data with a promise-like reactive API.
 
@@ -632,11 +616,11 @@ function MyComponent() {
   )
 }
 
-**Test Coverage**: [App Store Tests](packages/documentation/tests/app-store.test.tsx)
+
 
 ## Building a TODO App
 
-_Complete Example: [todo-app.tsx](packages/react/examples/todo-app.tsx) | Tests: [todo-app.test.tsx](packages/documentation/tests/todo-app.test.tsx)_
+_Links: [Source Code](packages/react/examples/todo-app.tsx). [Doc Test](packages/documentation/tests/todo-app.test.tsx)._
 
 Here's a complete TODO application demonstrating Storable's features:
 
@@ -747,8 +731,6 @@ function TodoApp() {
   )
 }
 ````
-
-**Test Coverage**: [TODO App Tests](packages/documentation/tests/todo-app.test.tsx)
 
 ## TypeScript
 
