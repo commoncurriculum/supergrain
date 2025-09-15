@@ -1,8 +1,8 @@
 /**
  * Quick Start Tests
  *
- * Tests the basic quick start example from the README to ensure
- * it works as documented.
+ * Tests the exact quick start example from the README to ensure
+ * it works as documented. Code is copied exactly from README.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -12,7 +12,7 @@ import { createStore } from '@storable/core'
 import { useTrackedStore } from '@storable/react'
 
 describe('Quick Start Example', () => {
-  it('should create a store and update count', async () => {
+  it('should work exactly as shown in README', async () => {
     // Create a store with initial state
     const [store, update] = createStore({
       count: 0,
@@ -25,7 +25,6 @@ describe('Quick Start Example', () => {
 
       // Updates MUST use the update function with operators
       const addTodo = (text: string) => {
-        if (!text.trim()) return
         update({
           $push: {
             todos: { id: Date.now(), text, completed: false },
@@ -36,30 +35,18 @@ describe('Quick Start Example', () => {
       return (
         <div>
           <h1>Count: {state.count}</h1>
-          <button
-            onClick={() => update({ $inc: { count: 1 } })}
-            data-testid="increment"
-          >
+          <button onClick={() => update({ $inc: { count: 1 } })}>
             Increment
           </button>
 
           <input
-            data-testid="todo-input"
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                const target = e.target as HTMLInputElement
-                addTodo(target.value)
-                target.value = ''
-              }
-            }}
+            onKeyPress={e => e.key === 'Enter' && addTodo(e.target.value)}
             placeholder="Add todo..."
           />
 
-          <div data-testid="todos">
-            {state.todos.map(todo => (
-              <div key={todo.id}>{todo.text}</div>
-            ))}
-          </div>
+          {state.todos.map(todo => (
+            <div key={todo.id}>{todo.text}</div>
+          ))}
         </div>
       )
     }
@@ -70,77 +57,24 @@ describe('Quick Start Example', () => {
     expect(screen.getByText('Count: 0')).toBeInTheDocument()
 
     // Test increment button
-    await userEvent.click(screen.getByTestId('increment'))
+    const incrementButton = screen.getByText('Increment')
+    await userEvent.click(incrementButton)
     expect(screen.getByText('Count: 1')).toBeInTheDocument()
 
     // Test adding a todo
-    const todoInput = screen.getByTestId('todo-input')
-    await userEvent.type(todoInput, 'Test todo')
-    await userEvent.keyboard('{Enter}')
+    const todoInput = screen.getByPlaceholderText('Add todo...')
+    await userEvent.type(todoInput, 'Test todo{Enter}')
 
     // Should see the todo in the list
     expect(screen.getByText('Test todo')).toBeInTheDocument()
 
-    // Add another todo
-    await userEvent.type(todoInput, 'Second todo')
-    await userEvent.keyboard('{Enter}')
-
+    // Clear the input and add another todo
+    await userEvent.clear(todoInput)
+    await userEvent.type(todoInput, 'Second todo{Enter}')
     expect(screen.getByText('Second todo')).toBeInTheDocument()
 
     // Should have both todos
-    const todosContainer = screen.getByTestId('todos')
-    expect(todosContainer.children).toHaveLength(2)
-  })
-
-  it('should handle empty todo input', async () => {
-    const [store, update] = createStore({
-      count: 0,
-      todos: [],
-    })
-
-    function TodoApp() {
-      const state = useTrackedStore(store)
-
-      const addTodo = (text: string) => {
-        if (!text.trim()) return
-        update({
-          $push: {
-            todos: { id: Date.now(), text, completed: false },
-          },
-        })
-      }
-
-      return (
-        <div>
-          <input
-            data-testid="todo-input"
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                const target = e.target as HTMLInputElement
-                addTodo(target.value)
-                target.value = ''
-              }
-            }}
-            placeholder="Add todo..."
-          />
-          <div data-testid="todos">
-            {state.todos.map(todo => (
-              <div key={todo.id}>{todo.text}</div>
-            ))}
-          </div>
-        </div>
-      )
-    }
-
-    render(<TodoApp />)
-
-    // Try to add empty todo
-    const todoInput = screen.getByTestId('todo-input')
-    await userEvent.type(todoInput, '   ') // Just spaces
-    await userEvent.keyboard('{Enter}')
-
-    // Should not add the todo
-    const todosContainer = screen.getByTestId('todos')
-    expect(todosContainer.children).toHaveLength(0)
+    expect(screen.getByText('Test todo')).toBeInTheDocument()
+    expect(screen.getByText('Second todo')).toBeInTheDocument()
   })
 })
