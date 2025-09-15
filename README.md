@@ -224,7 +224,8 @@ update({ $set: { z: 10 } })
 
 _Tests: [deep-nesting.test.tsx](packages/react/tests/deep-nesting.test.tsx)_
 
-For optimal performance with complex component hierarchies, call `useTrackedStore` inside each memoized component rather than passing state as props:
+Because values are proxies and they're stable across renders, passing them will break memoized components (as the proxy won't change when the values do). To solve this,
+call `useTrackedStore` inside each memoized component rather than passing state as props:
 
 ```typescript
 import React, { memo } from 'react'
