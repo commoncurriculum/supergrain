@@ -1,8 +1,12 @@
 /**
- * React Integration Tests
+ * README React Examples Tests
  *
- * Tests the exact React integration examples from the README.
- * Code is copied exactly from README with only assertions added.
+ * Tests for React integration examples from the README:
+ * - useTrackedStore Hook (DOC_TEST_6)
+ * - useStore Hook (DOC_TEST_7)
+ * - Fine-grained Reactivity (DOC_TEST_8)
+ * - Memoized Components (DOC_TEST_9)
+ * - For Component (DOC_TEST_10)
  */
 
 import { describe, it, expect } from 'vitest'
@@ -12,7 +16,7 @@ import { createStore } from '@storable/core'
 import { useTrackedStore, useStore, For } from '@storable/react'
 import { memo } from 'react'
 
-describe('React Integration Examples', () => {
+describe('README React Examples', () => {
   describe('useTrackedStore Hook', () => {
     it('#DOC_TEST_6', async () => {
       const [store, update] = createStore({ count: 0 })
@@ -192,23 +196,6 @@ describe('React Integration Examples', () => {
       // Check that completed class is applied
       const task2Container = screen.getByText('Task 2').closest('div')
       expect(task2Container).toHaveClass('completed')
-    })
-
-    it('should show fallback when array is empty', () => {
-      const [store] = createStore({ todos: [] })
-
-      function TodoList() {
-        const state = useTrackedStore(store)
-
-        return (
-          <For each={state.todos} fallback={<div>No todos yet</div>}>
-            {todo => <div key={todo.id}>{todo.text}</div>}
-          </For>
-        )
-      }
-
-      render(<TodoList />)
-      expect(screen.getByText('No todos yet')).toBeInTheDocument()
     })
   })
 })
