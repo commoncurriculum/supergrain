@@ -287,26 +287,60 @@ function Counter() {
 
 ### useStore Hook
 
-Alternative hook that must be called first in the component:
+For accessing multiple stores in one component. Must be called first in the component:
 
 ```typescript
-// [#DOC_TEST_7](packages/documentation/tests/react-integration.test.tsx)
+// [#DOC_TEST_7](packages/documentation/tests/readme-react.test.tsx)
 
 import { useStore } from '@storable/react'
 
-function Counter() {
-  useStore() // Must be called first!
+// Multiple stores scenario
+const [userStore, updateUser] = createStore({ name: 'John', age: 30 })
+const [cartStore, updateCart] = createStore({ items: [], total: 0 })
+const [settingsStore, updateSettings] = createStore({ theme: 'dark' })
+
+function Dashboard() {
+  useStore() // Sets up reactivity context for ALL stores
 
   return (
     <div>
-      <p>Count: {store.count}</p>
-      <button onClick={() => update({ $inc: { count: 1 } })}>
-        Increment
-      </button>
+      <h1>Welcome {userStore.name}</h1>           {/* Store 1 */}
+      <p>Age: {userStore.age}</p>                 {/* Store 1 */}
+      <p>Cart: {cartStore.items.length} items</p> {/* Store 2 */}
+      <p>Total: ${cartStore.total}</p>            {/* Store 2 */}
+      <p>Theme: {settingsStore.theme}</p>         {/* Store 3 */}
+    </div>
+  )
+}
+
+// vs. useTrackedStore approach (more verbose for multiple stores)
+function Dashboard() {
+  const user = useTrackedStore(userStore)         // 3 separate hook calls
+  const cart = useTrackedStore(cartStore)         // 3 separate proxies
+  const settings = useTrackedStore(settingsStore)
+
+  return (
+    <div>
+      <h1>Welcome {user.name}</h1>
+      <p>Age: {user.age}</p>
+      <p>Cart: {cart.items.length} items</p>
+      <p>Total: ${cart.total}</p>
+      <p>Theme: {settings.theme}</p>
     </div>
   )
 }
 ```
+
+**When to use `useStore`:**
+
+- Multiple stores in one component
+- Less memory overhead (no proxy creation)
+- Performance-critical scenarios
+
+**When to use `useTrackedStore`:**
+
+- Single store per component (recommended for most cases)
+- Better developer experience and type safety
 
 ### Fine-grained Reactivity
 

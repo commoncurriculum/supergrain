@@ -46,28 +46,87 @@ describe('README React Examples', () => {
 
   describe('useStore Hook', () => {
     it('#DOC_TEST_7', async () => {
-      const [store, update] = createStore({ count: 0 })
+      // Multiple stores scenario
+      const [userStore, updateUser] = createStore({ name: 'John', age: 30 })
+      const [cartStore, updateCart] = createStore({ items: [], total: 0 })
+      const [settingsStore, updateSettings] = createStore({ theme: 'dark' })
 
-      // Alternative hook that must be called first in the component:
-      function Counter() {
-        useStore() // Must be called first!
+      function Dashboard() {
+        useStore() // Sets up reactivity context for ALL stores
 
         return (
           <div>
-            <p>Count: {store.count}</p>
-            <button onClick={() => update({ $inc: { count: 1 } })}>
-              Increment
-            </button>
+            <h1>Welcome {userStore.name}</h1> {/* Store 1 */}
+            <p>Age: {userStore.age}</p> {/* Store 1 */}
+            <p>Cart: {cartStore.items.length} items</p> {/* Store 2 */}
+            <p>Total: ${cartStore.total}</p> {/* Store 2 */}
+            <p>Theme: {settingsStore.theme}</p> {/* Store 3 */}
           </div>
         )
       }
 
-      render(<Counter />)
+      // vs. useTrackedStore approach (more verbose for multiple stores)
+      function DashboardWithTrackedStore() {
+        const user = useTrackedStore(userStore) // 3 separate hook calls
+        const cart = useTrackedStore(cartStore) // 3 separate proxies
+        const settings = useTrackedStore(settingsStore)
 
-      expect(screen.getByText('Count: 0')).toBeInTheDocument()
+        return (
+          <div data-testid="tracked-dashboard">
+            <h1>Welcome {user.name}</h1>
+            <p>Age: {user.age}</p>
+            <p>Cart: {cart.items.length} items</p>
+            <p>Total: ${cart.total}</p>
+            <p>Theme: {settings.theme}</p>
+          </div>
+        )
+      }
 
-      await userEvent.click(screen.getByText('Increment'))
-      expect(screen.getByText('Count: 1')).toBeInTheDocument()
+      // Test useStore approach
+      render(<Dashboard />)
+
+      expect(screen.getByText('Welcome John')).toBeInTheDocument()
+      expect(screen.getByText('Age: 30')).toBeInTheDocument()
+      expect(screen.getByText('Cart: 0 items')).toBeInTheDocument()
+      expect(screen.getByText('Total: $0')).toBeInTheDocument()
+      expect(screen.getByText('Theme: dark')).toBeInTheDocument()
+
+      // Test that updating each store works independently
+      await act(async () => {
+        updateUser({ $set: { name: 'Jane', age: 25 } })
+      })
+      expect(screen.getByText('Welcome Jane')).toBeInTheDocument()
+      expect(screen.getByText('Age: 25')).toBeInTheDocument()
+
+      await act(async () => {
+        updateCart({ $set: { total: 100 }, $push: { items: 'item1' } })
+      })
+      expect(screen.getByText('Cart: 1 items')).toBeInTheDocument()
+      expect(screen.getByText('Total: $100')).toBeInTheDocument()
+
+      await act(async () => {
+        updateSettings({ $set: { theme: 'light' } })
+      })
+      expect(screen.getByText('Theme: light')).toBeInTheDocument()
+
+      // Test useTrackedStore approach for comparison
+      render(<DashboardWithTrackedStore />)
+
+      expect(screen.getByTestId('tracked-dashboard')).toHaveTextContent(
+        'Welcome Jane'
+      )
+      expect(screen.getByTestId('tracked-dashboard')).toHaveTextContent(
+        'Age: 25'
+      )
+      expect(screen.getByTestId('tracked-dashboard')).toHaveTextContent(
+        'Cart: 1 items'
+      )
+      expect(screen.getByTestId('tracked-dashboard')).toHaveTextContent(
+        'Total: $100'
+      )
+      expect(screen.getByTestId('tracked-dashboard')).toHaveTextContent(
+        'Theme: light'
+      )
     })
   })
 
@@ -102,14 +161,18 @@ describe('README React Examples', () => {
       expect(screen.getByText('Y: 2')).toBeInTheDocument()
 
       // Updating 'z' won't re-render ComponentA or ComponentB
-      update({ $set: { z: 10 } })
+      act(() => {
+        update({ $set: { z: 10 } })
+      })
 
       // Components should still show original values
       expect(screen.getByText('X: 1')).toBeInTheDocument()
       expect(screen.getByText('Y: 2')).toBeInTheDocument()
 
       // Update x - testing actual behavior (component doesn't auto-rerender)
-      update({ $set: { x: 5 } })
+      act(() => {
+        update({ $set: { x: 5 } })
+      })
       // Component still shows original value because it doesn't re-render automatically
       expect(screen.getByText('X: 1')).toBeInTheDocument()
       expect(screen.getByText('Y: 2')).toBeInTheDocument()

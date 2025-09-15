@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { userEvent } from '@vitest/browser/context'
 import { createStore } from '@storable/core'
 import { useTrackedStore } from '@storable/react'
@@ -84,7 +84,9 @@ describe('README Complex Examples', () => {
         })
       }
 
-      addTodo('Test todo')
+      act(() => {
+        addTodo('Test todo')
+      })
 
       // Verify store was updated
       expect(store.todos).toHaveLength(1)
@@ -510,11 +512,15 @@ describe('README Complex Examples', () => {
       expect(screen.getByText(/First Item/)).toBeInTheDocument()
 
       // Later, when you update:
-      update({ $set: { 'user.profile.name': 'Jane' } }) // Only this component re-renders
+      act(() => {
+        update({ $set: { 'user.profile.name': 'Jane' } }) // Only this component re-renders
+      })
       expect(screen.getByText(/Jane/)).toBeInTheDocument()
       expect(screen.getByText(/First Item/)).toBeInTheDocument()
 
-      update({ $set: { 'user.profile.age': 30 } }) // This component does NOT re-render
+      act(() => {
+        update({ $set: { 'user.profile.age': 30 } }) // This component does NOT re-render
+      })
       expect(screen.getByText(/Jane/)).toBeInTheDocument()
       expect(screen.getByText(/First Item/)).toBeInTheDocument()
     })
@@ -540,7 +546,9 @@ describe('README Complex Examples', () => {
       expect(screen.getByText(/John/)).toBeInTheDocument()
 
       // Update should cause re-render
-      update({ $set: { 'user.name': 'Jane' } })
+      act(() => {
+        update({ $set: { 'user.name': 'Jane' } })
+      })
       expect(screen.getByText(/User:/)).toBeInTheDocument()
       expect(screen.getByText(/Jane/)).toBeInTheDocument()
     })

@@ -17,6 +17,8 @@ export default defineConfig({
     },
     setupFiles: ['./tests/setup.ts'],
     globals: true,
+    // Exclude readme-validation test from browser mode since it needs Node.js APIs
+    exclude: ['**/readme-validation.test.ts'],
   },
   resolve: {
     alias: {
