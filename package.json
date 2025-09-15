@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest",
     "test:validate": "pnpm --filter @storable/documentation run test:validate",
-    "bench:core": "vitest bench --root packages/core"
+    "bench:core": "vitest bench --root packages/core",
+    "typecheck": "pnpm -r --filter=\"@storable/*\" run typecheck && pnpm --filter=\"js-framework-benchmark-react-storable\" run typecheck"
   },
   "keywords": [],
   "author": "",
