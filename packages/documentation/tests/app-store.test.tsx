@@ -11,7 +11,7 @@ import { AppStore } from '@storable/app-store'
 
 describe('App Store Examples', () => {
   describe('Basic Setup', () => {
-    it('should create AppStore with fetch handler exactly as shown in README', async () => {
+    it('#DOC_TEST_21', async () => {
       // Define your document types and create an AppStore:
       interface DocumentTypes {
         users: {
@@ -64,7 +64,7 @@ describe('App Store Examples', () => {
   })
 
   describe('Finding Documents', () => {
-    it('should handle document states exactly as shown in README', () => {
+    it('#DOC_TEST_22', () => {
       interface DocumentTypes {
         posts: {
           id: number
@@ -89,7 +89,7 @@ describe('App Store Examples', () => {
   })
 
   describe('Manual Document Management', () => {
-    it('should work exactly as shown in README', () => {
+    it('#DOC_TEST_23', () => {
       interface DocumentTypes {
         users: {
           id: number
@@ -127,7 +127,7 @@ describe('App Store Examples', () => {
   })
 
   describe('Inserting Documents', () => {
-    it('should work exactly as shown in README', async () => {
+    it('#DOC_TEST_24', async () => {
       interface DocumentTypes {
         users: {
           id: number
@@ -157,7 +157,7 @@ describe('App Store Examples', () => {
   })
 
   describe('React Integration', () => {
-    it('should work exactly as shown in README', () => {
+    it('#DOC_TEST_25', () => {
       interface DocumentTypes {
         users: {
           id: number

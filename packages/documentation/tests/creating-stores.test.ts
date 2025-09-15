@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest'
 import { createStore } from '@storable/core'
 
 describe('Creating Stores Examples', () => {
-  it('should create a simple store', () => {
+  it('#DOC_TEST_1', () => {
     // Simple store
     const [state, update] = createStore({
       count: 0,
@@ -29,7 +29,7 @@ describe('Creating Stores Examples', () => {
     expect(state.name).toBe('Jane')
   })
 
-  it('should create a store with nested objects', () => {
+  it('#DOC_TEST_2', () => {
     // With nested objects
     const [state, update] = createStore({
       user: {

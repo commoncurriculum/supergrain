@@ -49,7 +49,7 @@ describe('MongoDB-Style Operators Examples', () => {
   })
 
   describe('Detailed examples from Updating State section', () => {
-    it('should work exactly as shown in README', () => {
+    it('#DOC_TEST_5', () => {
       const [state, update] = createStore({
         count: 0,
         user: { name: 'John', age: 30 },
@@ -91,7 +91,7 @@ describe('MongoDB-Style Operators Examples', () => {
   })
 
   describe('$set - Set field values', () => {
-    it('should work exactly as shown in README', () => {
+    it('#DOC_TEST_11', () => {
       const [state, update] = createStore({
         count: 0,
         user: { name: 'John', age: 25 },
@@ -119,7 +119,7 @@ describe('MongoDB-Style Operators Examples', () => {
   })
 
   describe('$unset - Remove fields', () => {
-    it('should work exactly as shown in README', () => {
+    it('#DOC_TEST_12', () => {
       const [state, update] = createStore({
         temporaryField: 'temp',
         user: { middleName: 'Middle', name: 'John' },
@@ -135,7 +135,7 @@ describe('MongoDB-Style Operators Examples', () => {
   })
 
   describe('$inc - Increment numeric values', () => {
-    it('should work exactly as shown in README', () => {
+    it('#DOC_TEST_13', () => {
       const [state, update] = createStore({
         count: 0,
         stats: { views: 100 },
@@ -153,7 +153,7 @@ describe('MongoDB-Style Operators Examples', () => {
   })
 
   describe('$push - Add to arrays', () => {
-    it('should work exactly as shown in README', () => {
+    it('#DOC_TEST_14', () => {
       const [state, update] = createStore({ items: ['existing'] })
 
       update({ $push: { items: 'newItem' } })
@@ -173,7 +173,7 @@ describe('MongoDB-Style Operators Examples', () => {
   })
 
   describe('$pull - Remove from arrays', () => {
-    it('should work exactly as shown in README', () => {
+    it('#DOC_TEST_15', () => {
       const [state, update] = createStore({
         items: ['itemToRemove', 'keep'],
         users: [
@@ -200,7 +200,7 @@ describe('MongoDB-Style Operators Examples', () => {
   })
 
   describe('$addToSet - Add unique elements to arrays', () => {
-    it('should work exactly as shown in README', () => {
+    it('#DOC_TEST_16', () => {
       const [state, update] = createStore({ tags: ['existing'] })
 
       update({ $addToSet: { tags: 'newTag' } }) // Won't add if already exists
@@ -223,7 +223,7 @@ describe('MongoDB-Style Operators Examples', () => {
   })
 
   describe('$rename - Rename fields', () => {
-    it('should work exactly as shown in README', () => {
+    it('#DOC_TEST_17', () => {
       const [state, update] = createStore({
         oldFieldName: 'value',
         user: { firstName: 'John', lastName: 'Doe' },
@@ -241,7 +241,7 @@ describe('MongoDB-Style Operators Examples', () => {
   })
 
   describe('$min/$max - Conditional updates', () => {
-    it('should work exactly as shown in README', () => {
+    it('#DOC_TEST_18', () => {
       const [state, update] = createStore({
         lowestScore: 100,
         highestScore: 50,

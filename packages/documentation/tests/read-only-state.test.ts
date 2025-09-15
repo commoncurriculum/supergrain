@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest'
 import { createStore } from '@storable/core'
 
 describe('Reading State Example', () => {
-  it('should work exactly as shown in README', () => {
+  it('#DOC_TEST_4', () => {
     const [state, update] = createStore({ count: 0, name: 'John' })
 
     // You can read properties normally

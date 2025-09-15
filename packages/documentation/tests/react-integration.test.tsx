@@ -14,7 +14,7 @@ import { memo } from 'react'
 
 describe('React Integration Examples', () => {
   describe('useTrackedStore Hook', () => {
-    it('should work exactly as shown in README', async () => {
+    it('#DOC_TEST_6', async () => {
       const [store, update] = createStore({ count: 0 })
 
       // The primary way to use stores in React:
@@ -41,7 +41,7 @@ describe('React Integration Examples', () => {
   })
 
   describe('useStore Hook', () => {
-    it('should work exactly as shown in README', async () => {
+    it('#DOC_TEST_7', async () => {
       const [store, update] = createStore({ count: 0 })
 
       // Alternative hook that must be called first in the component:
@@ -68,7 +68,7 @@ describe('React Integration Examples', () => {
   })
 
   describe('Fine-grained Reactivity', () => {
-    it('should work exactly as shown in README', async () => {
+    it('#DOC_TEST_8', async () => {
       const [store, update] = createStore({ x: 1, y: 2, z: 3 })
 
       function ComponentA() {
@@ -113,7 +113,7 @@ describe('React Integration Examples', () => {
   })
 
   describe('Using with Memoized Components', () => {
-    it('should work exactly as shown in README', async () => {
+    it('#DOC_TEST_9', async () => {
       const [store, update] = createStore({
         tasks: [
           { id: 1, title: 'Task 1', completed: false },
@@ -158,7 +158,7 @@ describe('React Integration Examples', () => {
   })
 
   describe('For Component - Optimized Array Rendering', () => {
-    it('should work exactly as shown in README', async () => {
+    it('#DOC_TEST_10', async () => {
       const [store, update] = createStore({
         todos: [
           { id: 1, text: 'Task 1', completed: false },

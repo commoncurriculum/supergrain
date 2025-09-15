@@ -13,7 +13,7 @@ import { useTrackedStore } from '@storable/react'
 import { useState } from 'react'
 
 describe('TODO App Example', () => {
-  it('should work exactly as shown in README', async () => {
+  it('#DOC_TEST_26', async () => {
     // Types
     interface Todo {
       id: number
