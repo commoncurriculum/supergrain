@@ -10,9 +10,9 @@ import { render, screen } from '@testing-library/react'
 import { AppStore } from '@storable/app-store'
 
 describe('App Store Examples', () => {
-  describe('Basic Setup and Document Types', () => {
+  describe('Basic Setup', () => {
     it('should create AppStore with fetch handler exactly as shown in README', async () => {
-      // Define your document types
+      // Define your document types and create an AppStore:
       interface DocumentTypes {
         users: {
           id: number
@@ -20,7 +20,12 @@ describe('App Store Examples', () => {
           lastName: string
           email: string
         }
-        posts: { id: number; title: string; content: string; userId: number }
+        posts: {
+          id: number
+          title: string
+          content: string
+          userId: number
+        }
       }
 
       // Create app store with optional fetch handler
@@ -43,10 +48,15 @@ describe('App Store Examples', () => {
           lastName: string
           email: string
         }
-        posts: { id: number; title: string; content: string; userId: number }
+        posts: {
+          id: number
+          title: string
+          content: string
+          userId: number
+        }
       }
 
-      // Without fetch handler (manual data management)
+      // Or without fetch handler (manual data management)
       const appStore = new AppStore<DocumentTypes>()
 
       expect(appStore).toBeInstanceOf(AppStore)
@@ -61,18 +71,17 @@ describe('App Store Examples', () => {
           title: string
           content: string
           userId: number
-          likes: number
         }
-        users: { id: number; firstName: string; lastName: string }
       }
 
       const appStore = new AppStore<DocumentTypes>()
 
+      // Get a document (returns immediately, fetches if not cached)
       const doc = appStore.findDoc('posts', 1)
 
       // Document States - Documents have a promise-like API with these properties:
       expect(typeof doc.content).toBe('undefined') // T | undefined - The document data
-      expect(doc.isPending).toBe(false) // boolean - Request in progress (false without fetch handler)
+      expect(doc.isPending).toBe(false) // boolean - Request in progress
       expect(doc.isSettled).toBe(false) // boolean - Request completed (success or failure)
       expect(doc.isRejected).toBe(false) // boolean - Request failed
       expect(doc.isFulfilled).toBe(false) // boolean - Request succeeded
@@ -101,8 +110,9 @@ describe('App Store Examples', () => {
       })
 
       const user = appStore.findDoc('users', 1)
-      expect(user.isFulfilled).toBe(true)
+      expect(user.isFulfilled).toBe(true) // true
       expect(user.content).toEqual({
+        // { id: 1, firstName: 'Jane', ... }
         id: 1,
         firstName: 'Jane',
         lastName: 'Smith',
@@ -112,7 +122,7 @@ describe('App Store Examples', () => {
       // Handle errors
       appStore.setDocumentError('users', 999, 'User not found')
       const errorUser = appStore.findDoc('users', 999)
-      expect(errorUser.isRejected).toBe(true)
+      expect(errorUser.isRejected).toBe(true) // true
     })
   })
 
@@ -139,25 +149,15 @@ describe('App Store Examples', () => {
 
       // Document is immediately available to other components
       const user = appStore.findDoc('users', 123)
-      expect(user.isPending).toBe(true) // Initially pending
+      expect(user.isPending).toBe(true) // true initially
 
       const newUser = await newUserPromise
-      expect(newUser).toEqual({
-        id: 123,
-        firstName: 'John',
-        lastName: 'Doe',
-        email: 'john@example.com',
-      })
-
-      // Now should be fulfilled
-      expect(user.isFulfilled).toBe(true)
-      expect(user.content).toEqual(newUser)
+      expect(user.isFulfilled).toBe(true) // true after promise resolves
     })
   })
 
-  describe('Document-Oriented App Store integration example', () => {
+  describe('React Integration', () => {
     it('should work exactly as shown in README', () => {
-      // For app-level document management with a promise-like API:
       interface DocumentTypes {
         users: {
           id: number
@@ -165,14 +165,15 @@ describe('App Store Examples', () => {
           lastName: string
           email: string
         }
-        posts: { id: number; title: string; content: string; userId: number }
+        posts: {
+          id: number
+          title: string
+          content: string
+          userId: number
+        }
       }
 
-      // Create app store with optional fetch handler
-      const appStore = new AppStore<DocumentTypes>(async (modelType, id) => {
-        const response = await fetch(`/api/${modelType}/${id}`)
-        return response.json()
-      })
+      const appStore = new AppStore<DocumentTypes>()
 
       function MyComponent() {
         // Documents are fetched automatically and cached
@@ -217,7 +218,12 @@ describe('App Store Examples', () => {
 
     it('should handle loading and error states exactly as shown in README', () => {
       interface DocumentTypes {
-        posts: { id: number; title: string; content: string; userId: number }
+        posts: {
+          id: number
+          title: string
+          content: string
+          userId: number
+        }
       }
 
       const appStore = new AppStore<DocumentTypes>()

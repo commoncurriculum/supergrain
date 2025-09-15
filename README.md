@@ -18,13 +18,10 @@ _Core Implementation: [packages/core/src](packages/core/src) | React Integration
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [How It Works](#how-it-works)
-- [Key Concepts](#key-concepts)
-- [Core Concepts](#core-concepts)
 - [Creating Stores](#creating-stores)
 - [Reading State](#reading-state)
 - [Updating State](#updating-state)
 - [React Integration](#react-integration)
-- [How the Reactive System Works](#how-the-reactive-system-works)
 - [MongoDB-Style Operators](#mongodb-style-operators)
 - [Effects and Computed Values](#effects-and-computed-values)
 - [App Store - Document Management](#app-store---document-management)
@@ -98,11 +95,9 @@ function TodoApp() {
 
 ## How It Works
 
-### Reactive System Architecture
-
 Storable uses **fine-grained reactivity** powered by `alien-signals` to automatically track which components access which data, creating subscriptions only to properties that are actually used.
 
-#### **The Magic of `useTrackedStore`**
+### The Magic of `useTrackedStore`
 
 When you call `useTrackedStore(store)` in a React component, it:
 
@@ -129,9 +124,7 @@ update({ $set: { 'user.profile.name': 'Jane' } }) // Only this component re-rend
 update({ $set: { 'user.profile.age': 30 } })     // This component does NOT re-render
 ```
 
-**Test Coverage**: [Reactive System Tests](packages/documentation/tests/react-integration.test.tsx)
-
-#### **Property Access = Subscription**
+### Property Access = Subscription
 
 Every property you access during render creates a subscription. The reactivity system:
 
@@ -140,7 +133,7 @@ Every property you access during render creates a subscription. The reactivity s
 - ✅ Deeply nested access like `state.a.b.c.d.e` works perfectly
 - ⚠️ Accessing `state.items[0].name` WILL re-render when `state.items[0].age` changes (same object)
 
-#### **No Manual Subscription Management**
+### No Manual Subscription Management
 
 Unlike other reactive systems, you never need to manually subscribe or unsubscribe:
 
@@ -153,245 +146,7 @@ useEffect(() => unsubscribe, [])
 const userName = useTrackedStore(store).user.name // Automatically subscribed!
 ```
 
-## Key Concepts
-
-### State Access and Mutation
-
-```typescript
-const [state, update] = createStore({ count: 0 })
-
-// ✅ Reading is fine
-console.log(state.count)
-
-// ✅ Direct mutations are supported
-state.count = 5 // Works fine!
-
-// ✅ Update function also works
-update({ $set: { count: 5 } })
-
-// Both approaches work - use whichever you prefer
-```
-
-**Test Coverage**: [State Access Tests](packages/documentation/tests/read-only-state.test.ts)
-
-### MongoDB-Style Operators
-
-_Implementation: [operators.ts](packages/core/src/operators.ts) | Tests: [operators.test.ts](packages/core/tests/operators.test.ts)_
-
-```typescript
-// Set values
-update({ $set: { 'user.name': 'Jane' } })
-
-// Increment numbers
-update({ $inc: { count: 1 } })
-
-// Array operations
-update({ $push: { items: 'newItem' } })
-update({ $pull: { items: 'oldItem' } })
-
-// Multiple operations (batched automatically)
-update({
-  $set: { title: 'New Title' },
-  $inc: { views: 1 },
-  $push: { tags: 'featured' },
-})
-```
-
-### Fine-Grained Reactivity
-
-_Example: [nested-components.tsx](packages/react/examples/nested-components.tsx) | Tests: [use-store.test.tsx](packages/react/tests/use-store.test.tsx)_
-
-```typescript
-function ComponentA() {
-  const state = useTrackedStore(store)
-  // Only re-renders when 'x' changes
-  return <div>X: {state.x}</div>
-}
-
-function ComponentB() {
-  const state = useTrackedStore(store)
-  // Only re-renders when 'y' changes
-  return <div>Y: {state.y}</div>
-}
-
-// Updating 'z' won't re-render either component
-update({ $set: { z: 10 } })
-```
-
-**Test Coverage**: [Fine-Grained Reactivity Tests](packages/documentation/tests/react-integration.test.tsx)
-
-### Using with Memoized Components
-
-_Tests: [deep-nesting.test.tsx](packages/react/tests/deep-nesting.test.tsx)_
-
-Because values are proxies and they're stable across renders, passing them will break memoized components (as the proxy won't change when the values do). To solve this,
-call `useTrackedStore` inside each memoized component rather than passing state as props:
-
-```typescript
-import React, { memo } from 'react'
-
-// ✅ Correct - useTrackedStore inside memoized component
-const TaskComponent = memo(({ store, taskId }) => {
-  const state = useTrackedStore(store)
-  const task = state.tasks.find(t => t.id === taskId)
-
-  return (
-    <div>
-      <h3>{task.title}</h3>
-      <span>{task.completed ? '✓' : '○'}</span>
-    </div>
-  )
-})
-
-// ❌ Incorrect - passing state as prop breaks memoization
-const TaskComponent = memo(({ state, taskId }) => {
-  const task = state.tasks.find(t => t.id === taskId)
-  // This will re-render on every state change because state object reference changes
-  return <div>{task.title}</div>
-})
-
-// Usage
-function ProjectView() {
-  const state = useTrackedStore(store)
-
-  return (
-    <div>
-      {state.project.taskIds.map(taskId => (
-        <TaskComponent key={taskId} store={store} taskId={taskId} />
-      ))}
-    </div>
-  )
-}
-```
-
-**Test Coverage**: [Memoized Components Tests](packages/documentation/tests/react-integration.test.tsx)
-
-**Benefits of this pattern:**
-
-- Only components accessing changed data re-render
-- React.memo works effectively with fine-grained subscriptions
-- Deep nested updates don't cause cascade re-renders
-- Maintains optimal performance even with complex component trees
-
-### Important: Subscription Behavior
-
-The reactive system creates subscriptions based on **exactly which properties you access** during render:
-
-#### **Precise Property Subscriptions**
-
-```typescript
-// Component only subscribes to the specific properties it accesses
-const ProfileComponent = () => {
-  const state = useTrackedStore(store)
-  return <div>{state.user.profile.name}</div> // Only subscribes to 'user.profile.name'
-}
-
-// This update WILL trigger re-render (accesses user.profile.name)
-update({ $set: { 'user.profile.name': 'Jane' } })
-
-// This update will NOT trigger re-render (doesn't access user.profile.age)
-update({ $set: { 'user.profile.age': 30 } })
-```
-
-#### **Array Iteration Creates Item Subscriptions**
-
-When you iterate over arrays, you create subscriptions to the properties you access on each item:
-
-```typescript
-const ListComponent = () => {
-  const state = useTrackedStore(store)
-  return (
-    <div>
-      {state.items.map(item => (
-        <div key={item.id}>{item.name}</div> // Subscribes to each item.name
-      ))}
-    </div>
-  )
-}
-
-// This WILL trigger re-render because the component accesses items[0].name during iteration
-update({ $set: { 'items.0.name': 'Updated' } })
-
-// This will NOT trigger re-render because the component doesn't access items[0].description
-update({ $set: { 'items.0.description': 'New desc' } })
-```
-
-#### **Deep Nesting Works Perfectly**
-
-```typescript
-const DeepComponent = () => {
-  const state = useTrackedStore(store)
-  // Creates subscription to this exact nested property
-  return <div>{state.items[0].obj.objTwo.objThree}</div>
-}
-
-// This WILL trigger re-render - exact property match
-update({ $set: { 'items.0.obj.objTwo.objThree': 42 } })
-
-// This will NOT trigger re-render - different property
-update({ $set: { 'items.0.obj.objTwo.otherProp': 'value' } })
-```
-
-**Test Coverage**: [Subscription Behavior Tests](packages/documentation/tests/react-integration.test.tsx)
-
-**Key insight**: Components re-render when **properties they actually access** change, regardless of nesting depth or data structure. The system is truly fine-grained.
-
-### For Component - Optimized Array Rendering
-
-_Implementation: [use-store.ts](packages/react/src/use-store.ts) | Tests: [render-analysis.test.tsx](packages/react/tests/render-analysis.test.tsx)_
-
-The `For` component provides optimal performance for rendering arrays by automatically handling version props for React.memo components:
-
-```typescript
-import { For } from '@storable/react'
-
-// Memoized component for each item
-const TodoItem = memo(({ todo }) => (
-  <div className={todo.completed ? 'completed' : ''}>
-    {todo.text}
-    <button onClick={() => toggleTodo(todo.id)}>Toggle</button>
-  </div>
-))
-
-function TodoList() {
-  const state = useTrackedStore(store)
-
-  return (
-    <For each={state.todos} fallback={<div>No todos yet</div>}>
-      {(todo, index) => (
-        <TodoItem key={todo.id} todo={todo} />
-      )}
-    </For>
-  )
-}
-```
-
-**Test Coverage**: [For Component Tests](packages/documentation/tests/react-integration.test.tsx)
-
-**Benefits:**
-
-- Automatically passes version information to enable React.memo optimization
-- Uses stable keys (item.id if available, otherwise index)
-- Only re-renders items whose data actually changed
-- Supports fallback content for empty arrays
-
-## Core Concepts
-
-### What is Storable?
-
-Storable is a reactive state management library that:
-
-- Creates reactive stores with JavaScript Proxy objects
-- Tracks property access for fine-grained reactivity
-- Updates state ONLY through MongoDB-style operators
-- Integrates seamlessly with React
-
-### Key Principles
-
-1. **Flexible state mutations**: Both direct mutations and MongoDB-style operators work
-2. **Update function available**: Use `update` with operators for complex changes
-3. **Reactive components**: Components re-render when accessed data changes
-4. **Automatic batching**: Multiple operations in one update call are batched
+**Test Coverage**: [Reactive System Tests](packages/documentation/tests/react-integration.test.tsx)
 
 ## Creating Stores
 
@@ -525,8 +280,6 @@ function Counter() {
 }
 ```
 
-**Test Coverage**: [React Integration Tests](packages/documentation/tests/react-integration.test.tsx)
-
 ### Fine-grained Reactivity
 
 Components only re-render when properties they access change:
@@ -554,281 +307,71 @@ function ComponentB() {
 update({ $set: { z: 10 } })
 ```
 
+### Using with Memoized Components
+
+Because values are proxies and they're stable across renders, passing them will break memoized components (as the proxy won't change when the values do). To solve this, call `useTrackedStore` inside each memoized component rather than passing state as props:
+
+```typescript
+import React, { memo } from 'react'
+
+// ✅ Correct - useTrackedStore inside memoized component
+const TaskComponent = memo(({ store, taskId }) => {
+  const state = useTrackedStore(store)
+  const task = state.tasks.find(t => t.id === taskId)
+
+  return (
+    <div>
+      <h3>{task.title}</h3>
+      <span>{task.completed ? '✓' : '○'}</span>
+    </div>
+  )
+})
+
+// Usage
+function ProjectView() {
+  const state = useTrackedStore(store)
+
+  return (
+    <div>
+      {state.project.taskIds.map(taskId => (
+        <TaskComponent key={taskId} store={store} taskId={taskId} />
+      ))}
+    </div>
+  )
+}
+```
+
 ### For Component - Optimized Array Rendering
 
-The `For` component provides optimal performance when rendering arrays by automatically handling version props for React.memo optimization:
+_Implementation: [use-store.ts](packages/react/src/use-store.ts) | Tests: [render-analysis.test.tsx](packages/react/tests/render-analysis.test.tsx)_
+
+The `For` component provides optimal performance for rendering arrays by automatically handling version props for React.memo components:
 
 ```typescript
 import { For } from '@storable/react'
-import { memo } from 'react'
 
-// Create a memoized item component
-const TodoItem = memo(({ todo, onToggle, onDelete }) => (
-  <div className={todo.completed ? 'completed' : 'pending'}>
-    <input
-      type="checkbox"
-      checked={todo.completed}
-      onChange={() => onToggle(todo.id)}
-    />
-    <span>{todo.text}</span>
-    <button onClick={() => onDelete(todo.id)}>Delete</button>
+// Memoized component for each item
+const TodoItem = memo(({ todo }) => (
+  <div className={todo.completed ? 'completed' : ''}>
+    {todo.text}
+    <button onClick={() => toggleTodo(todo.id)}>Toggle</button>
   </div>
 ))
 
 function TodoList() {
   const state = useTrackedStore(store)
 
-  const toggleTodo = (id) => {
-    update({
-      $set: {
-        [`todos.${state.todos.findIndex(t => t.id === id)}.completed`]:
-          !state.todos.find(t => t.id === id).completed
-      }
-    })
-  }
-
-  const deleteTodo = (id) => {
-    update({ $pull: { todos: { id } } })
-  }
-
   return (
-    <div>
-      <h3>Todo List ({state.todos.length})</h3>
-      <For each={state.todos} fallback={<p>No todos yet. Add one above!</p>}>
-        {(todo, index) => (
-          <TodoItem
-            key={todo.id}
-            todo={todo}
-            onToggle={toggleTodo}
-            onDelete={deleteTodo}
-          />
-        )}
-      </For>
-    </div>
-  )
-}
-```
-
-**Key Features:**
-
-- **Automatic optimization**: Passes version information to enable React.memo
-- **Stable keys**: Uses `item.id` when available, falls back to array index
-- **Selective re-renders**: Only items whose data changed will re-render
-- **Fallback support**: Shows fallback content when array is empty
-- **Type safety**: Full TypeScript support with generic typing
-
-**Performance Benefits:**
-
-- With `For` + `memo`: Only changed items re-render (optimal)
-- Without `For`: All items may re-render when any item changes
-- 10-100x performance improvement for large lists
-
-## How the Reactive System Works
-
-### Property Access Tracking
-
-Storable's fine-grained reactivity is powered by JavaScript Proxy objects and the alien-signals library. Here's how it works:
-
-1. **Proxy Wrapping**: The state object returned by `createStore` is a Proxy that intercepts all property access
-2. **Subscription Creation**: When `useTrackedStore` is called, it creates an effect context
-3. **Property Tracking**: During component render, any property access on the state object creates a subscription
-4. **Precise Updates**: Only components that accessed changed properties will re-render
-
-### Understanding useTrackedStore
-
-The `useTrackedStore` hook is what enables reactive subscriptions:
-
-```typescript
-// ❌ Without useTrackedStore - component never re-renders
-function BrokenComponent() {
-  return <div>Count: {store.count}</div> // No subscription created!
-}
-
-// ✅ With useTrackedStore - component re-renders when count changes
-function WorkingComponent() {
-  const state = useTrackedStore(store)
-  return <div>Count: {state.count}</div> // Subscription created for 'count'
-}
-```
-
-### Subscription Specificity
-
-Subscriptions are created only for properties that are actually accessed:
-
-```typescript
-const [state, update] = createStore({
-  user: { name: 'John', age: 30, email: 'john@example.com' },
-  todos: [],
-  settings: { theme: 'dark' }
-})
-
-function UserName() {
-  const state = useTrackedStore(store)
-  // Only subscribes to 'user.name' - won't re-render for age, email, todos, or settings
-  return <div>{state.user.name}</div>
-}
-
-function UserAge() {
-  const state = useTrackedStore(store)
-  // Only subscribes to 'user.age' - completely independent from UserName component
-  return <div>{state.user.age}</div>
-}
-
-// This update only re-renders UserAge, not UserName
-update({ $set: { 'user.age': 31 } })
-```
-
-### Deep Nesting and Arrays
-
-The reactive system works seamlessly with deeply nested data structures:
-
-```typescript
-const [state, update] = createStore({
-  departments: [{
-    teams: [{
-      members: [{
-        projects: [{
-          tasks: [{ name: 'Task 1', completed: false }]
-        }]
-      }]
-    }]
-  }]
-})
-
-function DeepTaskComponent() {
-  const state = useTrackedStore(store)
-
-  // Creates subscription specifically for this deep path:
-  // departments[0].teams[0].members[0].projects[0].tasks[0].completed
-  const task = state.departments[0].teams[0].members[0].projects[0].tasks[0]
-
-  return (
-    <div className={task.completed ? 'done' : 'pending'}>
-      {task.name}
-    </div>
-  )
-}
-
-// This update will only re-render components that access this specific task
-update({
-  $set: { 'departments.0.teams.0.members.0.projects.0.tasks.0.completed': true }
-})
-```
-
-### Array Iteration Behavior
-
-When components iterate over arrays, they subscribe to the items they access:
-
-```typescript
-const [state, update] = createStore({
-  items: [
-    { id: 1, name: 'Item 1', value: 10 },
-    { id: 2, name: 'Item 2', value: 20 },
-    { id: 3, name: 'Item 3', value: 30 }
-  ]
-})
-
-function ItemList() {
-  const state = useTrackedStore(store)
-
-  return (
-    <ul>
-      {state.items.map((item, index) => (
-        <li key={item.id}>
-          {/* Creates subscriptions for items[0].name, items[1].name, items[2].name */}
-          {item.name}: {item.value}
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-// When one item changes, the entire list re-renders because the parent
-// component iterates over the array and accesses each item
-update({ $set: { 'items.0.value': 15 } }) // Re-renders ItemList
-```
-
-### Optimizing Array Rendering
-
-For optimal performance with arrays, use React.memo on item components:
-
-```typescript
-const MemoizedItem = React.memo(({ item }: { item: any }) => {
-  // Each item component has its own useTrackedStore call
-  const state = useTrackedStore(store)
-
-  // Find this specific item in the store
-  const currentItem = state.items.find(i => i.id === item.id)
-
-  return (
-    <div>
-      {currentItem?.name}: {currentItem?.value}
-    </div>
-  )
-})
-
-function OptimizedItemList() {
-  const state = useTrackedStore(store)
-
-  return (
-    <ul>
-      {state.items.map(item => (
-        <MemoizedItem key={item.id} item={item} />
-      ))}
-    </ul>
-  )
-}
-```
-
-Or use the `For` component which handles this optimization automatically:
-
-```typescript
-import { For } from '@storable/react'
-
-const ItemComponent = React.memo(({ item }: { item: any }) => {
-  return <div>{item.name}: {item.value}</div>
-})
-
-function OptimalItemList() {
-  const state = useTrackedStore(store)
-
-  return (
-    <For each={state.items}>
-      {(item) => <ItemComponent item={item} />}
+    <For each={state.todos} fallback={<div>No todos yet</div>}>
+      {(todo, index) => (
+        <TodoItem key={todo.id} todo={todo} />
+      )}
     </For>
   )
 }
 ```
 
-**Test Coverage**: [Reactive System Deep Dive Tests](packages/documentation/tests/react-integration.test.tsx)
-
-### Effect Context and Signals
-
-Under the hood, Storable uses the alien-signals library for reactivity:
-
-```typescript
-import { effect, computed } from '@storable/core'
-
-const [state, update] = createStore({ count: 0, multiplier: 2 })
-
-// Effects track property access and run when dependencies change
-effect(() => {
-  console.log('Count is:', state.count) // Subscribes to 'count'
-})
-
-// Computed values work the same way
-const doubled = computed(() => state.count * state.multiplier) // Subscribes to both properties
-
-// React components work identically - useTrackedStore creates an effect context
-```
-
-### Key Principles
-
-1. **Property Access = Subscription**: Any property you read during render creates a subscription
-2. **Precise Tracking**: Only components that access changed properties re-render
-3. **Deep Reactivity**: Works with arbitrarily nested object and array structures
-4. **Effect Context**: `useTrackedStore`, `effect`, and `computed` all use the same underlying mechanism
-5. **No Magic**: The system is deterministic - subscriptions are created based on actual property access
+**Test Coverage**: [React Integration Tests](packages/documentation/tests/react-integration.test.tsx)
 
 ## MongoDB-Style Operators
 
@@ -978,98 +521,49 @@ console.log(completedCount()) // 2
 
 ## App Store - Document Management
 
-_Implementation: [app-store.ts](packages/app-store/src/app-store.ts) | Tests: [app-store.test.ts](packages/app-store/tests/app-store.test.ts)_
+_Implementation: [app-store.ts](packages/app-store/src/app-store.ts) | Tests: [app-store.test.tsx](packages/documentation/tests/app-store.test.tsx)_
 
 The `@storable/app-store` package provides a document-oriented store built on top of the core Storable reactivity system. It's designed for managing app-level data with a promise-like reactive API.
 
-### Key Features
-
-- **Document-oriented**: Store and retrieve documents by type and ID
-- **Promise-like API**: Familiar async patterns with reactive updates
-- **Automatic fetching**: Configurable fetch handlers for external data
-- **Type-safe**: Full TypeScript support with model registry
-- **Caching**: Documents cached automatically to prevent duplicate requests
-- **Optimistic updates**: Immediate UI updates for better UX
-
 ### Basic Setup
 
-First, define your document types:
+Define your document types and create an AppStore:
 
 ```typescript
 import { AppStore } from '@storable/app-store'
 
-interface User {
-  id: number
-  firstName: string
-  lastName: string
-  email: string
-}
-
-interface Post {
-  id: number
-  title: string
-  content: string
-  userId: number
-  likes: number
-}
-
-// Global type registry
 interface DocumentTypes {
-  users: User
-  posts: Post
+  users: {
+    id: number
+    firstName: string
+    lastName: string
+    email: string
+  }
+  posts: {
+    id: number
+    title: string
+    content: string
+    userId: number
+  }
 }
-```
 
-Create an app store with optional fetch handler:
-
-```typescript
-// With automatic fetching
+// Create app store with optional fetch handler
 const appStore = new AppStore<DocumentTypes>(async (modelType, id) => {
   const response = await fetch(`/api/${modelType}/${id}`)
-  if (!response.ok) throw new Error('Failed to fetch')
   return response.json()
 })
 
-// Without fetch handler (manual data management)
+// Or without fetch handler (manual data management)
 const appStore = new AppStore<DocumentTypes>()
 ```
 
 ### Finding Documents
 
-Use `findDoc` to reactively retrieve documents:
-
 ```typescript
-function BlogPost({ postId }: { postId: number }) {
-  const post = appStore.findDoc("posts", postId)
-  const author = appStore.findDoc("users", post.content?.userId)
-
-  // Handle loading state
-  if (post.isPending) return <div>Loading post...</div>
-
-  // Handle error state
-  if (post.isRejected) return <div>Error loading post</div>
-
-  // Handle success state
-  if (!post.content) return <div>Post not found</div>
-
-  return (
-    <article>
-      <h1>{post.content.title}</h1>
-      <p>By: {author.content?.firstName} {author.content?.lastName}</p>
-      <div>{post.content.content}</div>
-      <div>❤️ {post.content.likes} likes</div>
-    </article>
-  )
-}
-```
-
-### Document States
-
-Documents have a promise-like API with these properties:
-
-```typescript
+// Get a document (returns immediately, fetches if not cached)
 const doc = appStore.findDoc('posts', 1)
 
+// Document States - Documents have a promise-like API with these properties:
 doc.content // T | undefined - The document data
 doc.isPending // boolean - Request in progress
 doc.isSettled // boolean - Request completed (success or failure)
@@ -1077,29 +571,7 @@ doc.isRejected // boolean - Request failed
 doc.isFulfilled // boolean - Request succeeded
 ```
 
-### Inserting Documents
-
-Create new documents with optimistic updates:
-
-```typescript
-async function createUser() {
-  // Shows as pending immediately, then fulfilled when complete
-  const newUser = await appStore.insertDocument('users', {
-    id: 123,
-    firstName: 'John',
-    lastName: 'Doe',
-    email: 'john@example.com',
-  })
-
-  // Document is immediately available to other components
-  const user = appStore.findDoc('users', 123)
-  console.log(user.content) // Available immediately
-}
-```
-
 ### Manual Document Management
-
-Set document content or errors manually:
 
 ```typescript
 // Set document directly
@@ -1110,201 +582,126 @@ appStore.setDocument('users', 1, {
   email: 'jane@example.com',
 })
 
+const user = appStore.findDoc('users', 1)
+console.log(user.isFulfilled) // true
+console.log(user.content) // { id: 1, firstName: 'Jane', ... }
+
 // Handle errors
 appStore.setDocumentError('users', 999, 'User not found')
+const errorUser = appStore.findDoc('users', 999)
+console.log(errorUser.isRejected) // true
 ```
 
-### Reactive Patterns
-
-Documents integrate seamlessly with computed values:
+### Inserting Documents
 
 ```typescript
-import { computed } from '@storable/core'
-
-function UserProfile({ userId }: { userId: number }) {
-  const user = appStore.findDoc('users', userId)
-
-  // Reactive computed value
-  const displayName = computed(() =>
-    user.content
-      ? `${user.content.firstName} ${user.content.lastName}`
-      : 'Unknown User'
-  )
-
-  return (
-    <div>
-      <h2>{displayName()}</h2>
-      <p>{user.content?.email}</p>
-    </div>
-  )
-}
-```
-
-### Advanced Fetch Handlers
-
-Handle authentication, caching, and error scenarios:
-
-```typescript
-const appStore = new AppStore<DocumentTypes>(async (modelType, id) => {
-  const token = localStorage.getItem('authToken')
-
-  const response = await fetch(`/api/${modelType}/${id}`, {
-    headers: {
-      Authorization: token ? `Bearer ${token}` : '',
-      'Content-Type': 'application/json',
-      'Cache-Control': 'max-age=300', // 5 minute cache
-    },
-  })
-
-  if (response.status === 401) {
-    // Handle authentication
-    window.location.href = '/login'
-    throw new Error('Authentication required')
-  }
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-  }
-
-  return response.json()
+// Shows as pending immediately, then fulfilled when complete
+const newUserPromise = appStore.insertDocument('users', {
+  id: 123,
+  firstName: 'John',
+  lastName: 'Doe',
+  email: 'john@example.com',
 })
+
+// Document is immediately available to other components
+const user = appStore.findDoc('users', 123)
+console.log(user.isPending) // true initially
+
+const newUser = await newUserPromise
+console.log(user.isFulfilled) // true after promise resolves
 ```
 
-### Multiple Document Types
+### React Integration
 
-The app store handles multiple document types seamlessly:
+````typescript
+function MyComponent() {
+  // Documents are fetched automatically and cached
+  const post = appStore.findDoc('posts', 1)
+  const user = appStore.findDoc('users', post.content?.userId)
 
-```typescript
-function BlogPostWithRelations({ postId }: { postId: number }) {
-  const post = appStore.findDoc('posts', postId)
-  const author = appStore.findDoc('users', post.content?.userId)
-  const comments = appStore.findDoc('comments', `post:${postId}`)
+  if (post.isPending) return <div>Loading post...</div>
+  if (post.isRejected) return <div>Error loading post</div>
 
-  // All documents fetched automatically as dependencies resolve
   return (
     <article>
-      <header>
-        <h1>{post.content?.title}</h1>
-        <p>By {author.content?.firstName}</p>
-      </header>
-      <div>{post.content?.content}</div>
-      <footer>
-        {comments.content?.map(comment => (
-          <CommentComponent key={comment.id} comment={comment} />
-        ))}
-      </footer>
+      <h1>{post.content?.title}</h1>
+      {user.content && (
+        <p>By: {user.content.firstName} {user.content.lastName}</p>
+      )}
     </article>
   )
 }
-```
-
-### Error Handling Best Practices
-
-```typescript
-function PostWithRetry({ postId }: { postId: number }) {
-  const post = appStore.findDoc('posts', postId)
-
-  if (post.isPending) {
-    return <div className="loading">Loading post...</div>
-  }
-
-  if (post.isRejected) {
-    return (
-      <div className="error">
-        <h3>Failed to load post</h3>
-        <button onClick={() => {
-          // Clear the error and retry
-          appStore.setDocument('posts', postId, undefined)
-          // This will trigger a new fetch
-          appStore.findDoc('posts', postId)
-        }}>
-          Retry
-        </button>
-      </div>
-    )
-  }
-
-  return <PostContent post={post.content!} />
-}
-```
 
 **Test Coverage**: [App Store Tests](packages/documentation/tests/app-store.test.tsx)
 
 ## Building a TODO App
 
-_Core Tests: [todo.test.ts](packages/core/tests/todo.test.ts) | React Tests: [use-store-todo.test.tsx](packages/react/tests/use-store-todo.test.tsx)_
+_Complete Example: [todo-app.tsx](packages/react/examples/todo-app.tsx) | Tests: [todo-app.test.tsx](packages/documentation/tests/todo-app.test.tsx)_
 
-Here's a complete TODO app example using the actual API:
+Here's a complete TODO application demonstrating Storable's features:
 
 ```typescript
 import { createStore } from '@storable/core'
-import { useTrackedStore } from '@storable/react'
-import { useState } from 'react'
+import { useTrackedStore, For } from '@storable/react'
+import { memo } from 'react'
 
-// Types
 interface Todo {
   id: number
   text: string
   completed: boolean
 }
 
-interface AppState {
-  todos: Todo[]
-  filter: 'all' | 'active' | 'completed'
-}
-
 // Create store
-const [todoStore, updateTodos] = createStore<AppState>({
-  todos: [],
-  filter: 'all'
+const [store, update] = createStore({
+  todos: [] as Todo[],
+  filter: 'all' as 'all' | 'active' | 'completed',
+  newTodoText: '',
 })
 
-// Main component
-function TodoApp() {
-  const state = useTrackedStore(todoStore)
-  const [inputText, setInputText] = useState('')
-
-  const addTodo = () => {
-    if (!inputText.trim()) return
-
-    updateTodos({
-      $push: {
-        todos: {
-          id: Date.now(),
-          text: inputText,
-          completed: false
-        }
-      }
+// Memoized todo item component
+const TodoItem = memo(({ todo }: { todo: Todo }) => {
+  const toggleTodo = () => {
+    const index = store.todos.findIndex(t => t.id === todo.id)
+    update({
+      $set: { [`todos.${index}.completed`]: !todo.completed }
     })
-
-    setInputText('')
   }
 
-  const toggleTodo = (id: number) => {
-    const index = state.todos.findIndex(t => t.id === id)
-    if (index !== -1) {
-      updateTodos({
-        $set: {
-          [`todos.${index}.completed`]: !state.todos[index].completed
-        }
+  const deleteTodo = () => {
+    update({ $pull: { todos: { id: todo.id } } })
+  }
+
+  return (
+    <div className={todo.completed ? 'completed' : 'pending'}>
+      <input
+        type="checkbox"
+        checked={todo.completed}
+        onChange={toggleTodo}
+      />
+      <span>{todo.text}</span>
+      <button onClick={deleteTodo}>Delete</button>
+    </div>
+  )
+})
+
+function TodoApp() {
+  const state = useTrackedStore(store)
+
+  const addTodo = () => {
+    if (state.newTodoText.trim()) {
+      update({
+        $push: {
+          todos: {
+            id: Date.now(),
+            text: state.newTodoText,
+            completed: false
+          }
+        },
+        $set: { newTodoText: '' }
       })
     }
   }
 
-  const deleteTodo = (id: number) => {
-    updateTodos({
-      $pull: { todos: { id } }
-    })
-  }
-
-  const clearCompleted = () => {
-    const activeTodos = state.todos.filter(t => !t.completed)
-    updateTodos({
-      $set: { todos: activeTodos }
-    })
-  }
-
-  // Filter todos
   const filteredTodos = state.todos.filter(todo => {
     if (state.filter === 'active') return !todo.completed
     if (state.filter === 'completed') return todo.completed
@@ -1315,218 +712,113 @@ function TodoApp() {
     <div>
       <h1>TODO App</h1>
 
-      {/* Add todo */}
       <div>
         <input
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && addTodo()}
+          value={state.newTodoText}
+          onChange={e => update({ $set: { newTodoText: e.target.value } })}
+          onKeyPress={e => e.key === 'Enter' && addTodo()}
           placeholder="What needs to be done?"
         />
         <button onClick={addTodo}>Add</button>
       </div>
 
-      {/* Filters */}
       <div>
-        {(['all', 'active', 'completed'] as const).map(filterType => (
+        {['all', 'active', 'completed'].map(filter => (
           <button
-            key={filterType}
-            className={state.filter === filterType ? 'active' : ''}
-            onClick={() => updateTodos({ $set: { filter: filterType } })}
+            key={filter}
+            className={state.filter === filter ? 'active' : ''}
+            onClick={() => update({ $set: { filter } })}
           >
-            {filterType}
+            {filter}
           </button>
         ))}
       </div>
 
-      {/* Todo list */}
-      <ul>
-        {filteredTodos.map(todo => (
-          <li key={todo.id}>
-            <input
-              type="checkbox"
-              checked={todo.completed}
-              onChange={() => toggleTodo(todo.id)}
-            />
-            <span style={{
-              textDecoration: todo.completed ? 'line-through' : 'none'
-            }}>
-              {todo.text}
-            </span>
-            <button onClick={() => deleteTodo(todo.id)}>Delete</button>
-          </li>
-        ))}
-      </ul>
+      <For each={filteredTodos} fallback={<p>No todos to show</p>}>
+        {todo => <TodoItem key={todo.id} todo={todo} />}
+      </For>
 
-      {/* Clear completed */}
-      {state.todos.some(t => t.completed) && (
-        <button onClick={clearCompleted}>
-          Clear Completed
-        </button>
-      )}
+      <div>
+        Total: {state.todos.length} |
+        Active: {state.todos.filter(t => !t.completed).length} |
+        Completed: {state.todos.filter(t => t.completed).length}
+      </div>
     </div>
   )
 }
-```
+````
 
 **Test Coverage**: [TODO App Tests](packages/documentation/tests/todo-app.test.tsx)
 
 ## TypeScript
 
-_Type Definitions: [store.ts](packages/core/src/store.ts) | [operators.ts](packages/core/src/operators.ts) | Exports: [index.ts](packages/core/src/index.ts)_
-
-Storable has full TypeScript support:
+Storable provides full TypeScript support with type inference and type safety:
 
 ```typescript
-interface User {
-  name: string
-  age: number
-  email?: string
-}
-
 interface AppState {
-  user: User
-  todos: Array<{ id: number; text: string }>
+  user: {
+    name: string
+    age: number
+    preferences: {
+      theme: 'light' | 'dark'
+      notifications: boolean
+    }
+  }
+  items: Array<{ id: string; title: string; count: number }>
 }
 
-const [state, update] = createStore<AppState>({
-  user: { name: 'John', age: 30 },
-  todos: [],
-})
-
-// Type-safe updates
-update({ $set: { 'user.name': 'Jane' } }) // ✅ OK
-update({ $set: { 'user.invalid': 'value' } }) // ❌ Type error
-
-// Type-safe array operations
-update({
-  $push: {
-    todos: { id: 1, text: 'Task' }, // ✅ OK
+const [store, update] = createStore<AppState>({
+  user: {
+    name: 'John',
+    age: 30,
+    preferences: {
+      theme: 'light',
+      notifications: true
+    }
   },
+  items: []
 })
 
+// TypeScript will enforce correct types in updates
 update({
-  $push: {
-    todos: { text: 'Task' }, // ❌ Type error: missing 'id'
+  $set: {
+    'user.name': 'Jane',        // ✅ string
+    'user.age': 'invalid'       // ❌ TypeScript error - must be number
   },
+  $push: {
+    items: {
+      id: '1',
+      title: 'Item 1',
+      count: 5                  // ✅ All required fields
+    }
+  }
 })
+
+// Component usage is also type-safe
+function UserProfile() {
+  const state = useTrackedStore(store)
+
+  return (
+    <div>
+      <h1>{state.user.name}</h1>        {/* ✅ TypeScript knows this is string */}
+      <p>Age: {state.user.age}</p>       {/* ✅ TypeScript knows this is number */}
+    </div>
+  )
+}
 ```
-
-**Test Coverage**: [TypeScript Tests](packages/documentation/tests/react-integration.test.tsx)
 
 ## Performance Tips
 
-_Examples: [nested-components.tsx](packages/react/examples/nested-components.tsx) | Tests: [use-store.test.tsx](packages/react/tests/use-store.test.tsx)_
+1. **Use React.memo for list items** - When rendering arrays, wrap item components with `React.memo` or use the `For` component for automatic optimization
 
-### 1. Split Components by Data Access
+2. **Access only needed properties** - The more specific your property access, the fewer re-renders you'll get
 
-Components only re-render for data they access:
+3. **Batch updates when possible** - Multiple operations in one `update()` call are automatically batched
 
-```typescript
-// Parent only re-renders when todos array changes
-function TodoList() {
-  const state = useTrackedStore(store)
-  return (
-    <ul>
-      {state.todos.map(todo => (
-        <TodoItem key={todo.id} todo={todo} />
-      ))}
-    </ul>
-  )
-}
+4. **Use computed values for derived state** - Instead of recalculating in components, use `computed()` for efficient caching
 
-// Child only re-renders when its specific todo changes
-function TodoItem({ todo }) {
-  return <li>{todo.text}</li>
-}
-```
+5. **Avoid accessing array length in hot paths** - `state.items.length` creates a subscription to the entire array; consider tracking count separately if needed
 
-### 2. Avoid Unnecessary Property Access
+6. **Profile with React DevTools** - Use the React DevTools Profiler to identify unnecessary re-renders
 
-```typescript
-// ❌ Bad: Accesses all properties
-const { x, y, z } = state // Component re-renders on any change
-
-// ✅ Good: Access only what you need
-const x = state.x // Component only re-renders when x changes
-```
-
-### 3. Batch Updates
-
-_Implementation: [store.ts](packages/core/src/store.ts) | Tests: [store.test.ts](packages/core/tests/store.test.ts)_
-
-Multiple operations in one update call are automatically batched:
-
-```typescript
-// ✅ Good: Single re-render
-update({
-  $set: { 'user.name': 'Jane' },
-  $inc: { count: 1 },
-  $push: { items: 'new' },
-})
-
-// ❌ Less efficient: Multiple re-renders
-update({ $set: { 'user.name': 'Jane' } })
-update({ $inc: { count: 1 } })
-update({ $push: { items: 'new' } })
-```
-
-**Test Coverage**: [Performance Tips Tests](packages/documentation/tests/react-integration.test.tsx)
-
-### Document-Oriented App Store
-
-_Implementation: [app-store.ts](packages/app-store/src/app-store.ts) | Tests: [app-store.test.ts](packages/app-store/tests/app-store.test.ts)_
-
-For app-level document management with a promise-like API:
-
-```typescript
-import { AppStore } from '@storable/app-store'
-
-// Define your document types
-interface DocumentTypes {
-  users: { id: number; firstName: string; lastName: string; email: string }
-  posts: { id: number; title: string; content: string; userId: number }
-}
-
-// Create app store with optional fetch handler
-const appStore = new AppStore<DocumentTypes>(async (modelType, id) => {
-  const response = await fetch(`/api/${modelType}/${id}`)
-  return response.json()
-})
-
-function MyComponent() {
-  // Documents are fetched automatically and cached
-  const post = appStore.findDoc("posts", 1)
-  const user = appStore.findDoc("users", post.content?.userId)
-
-  if (post.isPending) return <div>Loading post...</div>
-  if (post.isRejected) return <div>Error loading post</div>
-
-  return (
-    <article>
-      <h1>{post.content?.title}</h1>
-      {user.content && <p>By: {user.content.firstName} {user.content.lastName}</p>}
-    </article>
-  )
-}
-
-// Insert new documents
-await appStore.insertDocument('users', {
-  id: 2,
-  firstName: 'Jane',
-  lastName: 'Doe',
-  email: 'jane@example.com'
-})
-```
-
-## Key Takeaways
-
-1. **Flexible state mutations** - Both direct mutations and update function work
-2. **MongoDB-style operators** - Use update function with operators for complex changes
-3. **Fine-grained reactivity** - Components only re-render for accessed properties
-4. **Automatic batching** - Multiple operations in one update are batched
-5. **TypeScript friendly** - Full type safety and inference
-
-## License
-
-MIT
+The reactive system is designed to be fast by default, but following these patterns will help you achieve optimal performance in complex applications.
