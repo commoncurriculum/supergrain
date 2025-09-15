@@ -129,16 +129,16 @@ update({ $set: { 'user.profile.name': 'Jane' } }) // Only this component re-rend
 update({ $set: { 'user.profile.age': 30 } })     // This component does NOT re-render
 ```
 
-**Test Coverage**: [Reactive System Tests](packages/documentation/tests/reactive-system.test.tsx)
+**Test Coverage**: [Reactive System Tests](packages/documentation/tests/react-integration.test.tsx)
 
 #### **Property Access = Subscription**
 
-Every property you access during render creates a subscription. The system is so precise that:
+Every property you access during render creates a subscription. The reactivity system:
 
-- ✅ `state.items[0].name` creates subscription to that exact property
-- ✅ `state.items.map(item => item.title)` creates subscriptions to each item's title
+- ✅ `state.items[0].name` creates subscription to the `items[0]` object
+- ✅ `state.items.map(item => item.title)` creates subscriptions to each item
 - ✅ Deeply nested access like `state.a.b.c.d.e` works perfectly
-- ❌ Accessing `state.items[0].name` won't re-render when `state.items[0].age` changes
+- ⚠️ Accessing `state.items[0].name` WILL re-render when `state.items[0].age` changes (same object)
 
 #### **No Manual Subscription Management**
 
@@ -155,7 +155,7 @@ const userName = useTrackedStore(store).user.name // Automatically subscribed!
 
 ## Key Concepts
 
-### Read-Only State
+### State Access and Mutation
 
 ```typescript
 const [state, update] = createStore({ count: 0 })
@@ -163,14 +163,16 @@ const [state, update] = createStore({ count: 0 })
 // ✅ Reading is fine
 console.log(state.count)
 
-// ❌ Direct mutation throws an error
-state.count = 5 // Error!
+// ✅ Direct mutations are supported
+state.count = 5 // Works fine!
 
-// ✅ Use update function instead
+// ✅ Update function also works
 update({ $set: { count: 5 } })
+
+// Both approaches work - use whichever you prefer
 ```
 
-**Test Coverage**: [Read-Only State Tests](packages/documentation/tests/read-only-state.test.ts)
+**Test Coverage**: [State Access Tests](packages/documentation/tests/read-only-state.test.ts)
 
 ### MongoDB-Style Operators
 
@@ -216,7 +218,7 @@ function ComponentB() {
 update({ $set: { z: 10 } })
 ```
 
-**Test Coverage**: [Fine-Grained Reactivity Tests](packages/documentation/tests/fine-grained-reactivity.test.tsx)
+**Test Coverage**: [Fine-Grained Reactivity Tests](packages/documentation/tests/react-integration.test.tsx)
 
 ### Using with Memoized Components
 
@@ -261,7 +263,7 @@ function ProjectView() {
 }
 ```
 
-**Test Coverage**: [Memoized Components Tests](packages/documentation/tests/memoized-components.test.tsx)
+**Test Coverage**: [Memoized Components Tests](packages/documentation/tests/react-integration.test.tsx)
 
 **Benefits of this pattern:**
 
@@ -329,7 +331,7 @@ update({ $set: { 'items.0.obj.objTwo.objThree': 42 } })
 update({ $set: { 'items.0.obj.objTwo.otherProp': 'value' } })
 ```
 
-**Test Coverage**: [Subscription Behavior Tests](packages/documentation/tests/subscription-behavior.test.tsx)
+**Test Coverage**: [Subscription Behavior Tests](packages/documentation/tests/react-integration.test.tsx)
 
 **Key insight**: Components re-render when **properties they actually access** change, regardless of nesting depth or data structure. The system is truly fine-grained.
 
@@ -363,7 +365,7 @@ function TodoList() {
 }
 ```
 
-**Test Coverage**: [For Component Tests](packages/documentation/tests/for-component.test.tsx)
+**Test Coverage**: [For Component Tests](packages/documentation/tests/react-integration.test.tsx)
 
 **Benefits:**
 
@@ -385,10 +387,10 @@ Storable is a reactive state management library that:
 
 ### Key Principles
 
-1. **Read-only state**: The state proxy is read-only; direct mutations throw errors
-2. **Operator-based updates**: All changes use MongoDB-style operators via the `update` function
-3. **Fine-grained reactivity**: Components only re-render when accessed properties change
-4. **Automatic batching**: Multiple updates in one call are batched
+1. **Flexible state mutations**: Both direct mutations and MongoDB-style operators work
+2. **Update function available**: Use `update` with operators for complex changes
+3. **Reactive components**: Components re-render when accessed data changes
+4. **Automatic batching**: Multiple operations in one update call are batched
 
 ## Creating Stores
 
@@ -431,13 +433,15 @@ const [state, update] = createStore({ count: 0, name: 'John' })
 console.log(state.count) // 0
 console.log(state.name) // 'John'
 
-// But you CANNOT mutate them directly
-state.count = 5 // ❌ Throws: "Direct mutation of store state is not allowed"
-state.name = 'Jane' // ❌ Throws: "Direct mutation of store state is not allowed"
-delete state.name // ❌ Throws: "Direct deletion of store state is not allowed"
+// Direct mutations are supported
+state.count = 5 // ✅ Works fine!
+state.name = 'Jane' // ✅ Works fine!
+
+// Update function also works
+update({ $set: { count: 10, name: 'Bob' } })
 ```
 
-**Test Coverage**: [Reading State Tests](packages/documentation/tests/reading-state.test.ts)
+**Test Coverage**: [Reading State Tests](packages/documentation/tests/read-only-state.test.ts)
 
 ## Updating State
 
@@ -472,7 +476,7 @@ update({
 })
 ```
 
-**Test Coverage**: [Updating State Tests](packages/documentation/tests/updating-state.test.ts)
+**Test Coverage**: [Updating State Tests](packages/documentation/tests/mongodb-operators.test.ts)
 
 ## React Integration
 
@@ -795,7 +799,7 @@ function OptimalItemList() {
 }
 ```
 
-**Test Coverage**: [Reactive System Deep Dive Tests](packages/documentation/tests/reactive-system-deep-dive.test.tsx)
+**Test Coverage**: [Reactive System Deep Dive Tests](packages/documentation/tests/react-integration.test.tsx)
 
 ### Effect Context and Signals
 
@@ -969,7 +973,7 @@ update({
 console.log(completedCount()) // 2
 ```
 
-**Test Coverage**: [Effects and Computed Tests](packages/documentation/tests/effects-computed.test.ts)
+**Test Coverage**: [Effects and Computed Tests](packages/documentation/tests/creating-stores.test.ts)
 
 ## App Store - Document Management
 
@@ -1407,7 +1411,7 @@ update({
 })
 ```
 
-**Test Coverage**: [TypeScript Tests](packages/documentation/tests/typescript.test.tsx)
+**Test Coverage**: [TypeScript Tests](packages/documentation/tests/react-integration.test.tsx)
 
 ## Performance Tips
 
@@ -1466,7 +1470,7 @@ update({ $inc: { count: 1 } })
 update({ $push: { items: 'new' } })
 ```
 
-**Test Coverage**: [Performance Tips Tests](packages/documentation/tests/performance-tips.test.tsx)
+**Test Coverage**: [Performance Tips Tests](packages/documentation/tests/react-integration.test.tsx)
 
 ### Document-Oriented App Store
 
@@ -1516,8 +1520,8 @@ await appStore.insertDocument('users', {
 
 ## Key Takeaways
 
-1. **State is read-only** - Never try to mutate the state directly
-2. **Use update function** - All changes must go through MongoDB-style operators
+1. **Flexible state mutations** - Both direct mutations and update function work
+2. **MongoDB-style operators** - Use update function with operators for complex changes
 3. **Fine-grained reactivity** - Components only re-render for accessed properties
 4. **Automatic batching** - Multiple operations in one update are batched
 5. **TypeScript friendly** - Full type safety and inference
