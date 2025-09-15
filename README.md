@@ -159,14 +159,28 @@ const [state, update] = createStore({
 
 // With nested objects
 const [state, update] = createStore({
-  user: {
-    name: 'Alice',
-    address: {
-      city: 'New York',
-      zip: '10001',
+  users: [
+    {
+      id: 1,
+      name: 'Alice',
+      todos: [
+        {
+          id: 1,
+          text: 'Use Storable.',
+          tags: [
+            {
+              id: 1,
+              title: 'Urgent.',
+            },
+          ],
+        },
+      ],
+      address: {
+        city: 'New York',
+        zip: '10001',
+      },
     },
-  },
-  todos: [],
+  ],
 })
 ```
 
