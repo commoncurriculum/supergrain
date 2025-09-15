@@ -28,22 +28,29 @@ export class AppStore<T extends DocumentTypes = DocumentTypes> {
     const key = String(id)
     const modelTypeStr = String(modelType)
 
-    const documentState = computed(() => {
-      return this.store.documents[modelTypeStr]?.[key]
-    })
+    // Check if document already exists
+    const existingDoc = this.store.documents[modelTypeStr]?.[key]
 
-    if (!documentState()) {
+    if (!existingDoc) {
       this.triggerFetch(modelTypeStr, id)
 
+      // Ensure the nested path exists before setting the document
       this.update({
         $set: {
-          [`documents.${modelTypeStr}.${key}`]: {
-            content: undefined,
-            status: 'pending' as const,
+          [`documents.${modelTypeStr}`]: {
+            ...this.store.documents[modelTypeStr],
+            [key]: {
+              content: undefined,
+              status: 'pending' as const,
+            },
           },
         },
       })
     }
+
+    const documentState = computed(() => {
+      return this.store.documents[modelTypeStr]?.[key]
+    })
 
     return new DocumentPromiseImpl(documentState)
   }

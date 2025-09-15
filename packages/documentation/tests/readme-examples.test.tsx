@@ -144,7 +144,7 @@ describe('README Complex Examples', () => {
 
       // Document States - Documents have a promise-like API with these properties:
       expect(typeof doc.content).toBe('undefined') // T | undefined - The document data
-      expect(doc.isPending).toBe(false) // boolean - Request in progress
+      expect(doc.isPending).toBe(true) // boolean - Request in progress
       expect(doc.isSettled).toBe(false) // boolean - Request completed (success or failure)
       expect(doc.isRejected).toBe(false) // boolean - Request failed
       expect(doc.isFulfilled).toBe(false) // boolean - Request succeeded

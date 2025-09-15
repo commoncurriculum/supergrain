@@ -169,12 +169,12 @@ describe('README React Examples', () => {
       expect(screen.getByText('X: 1')).toBeInTheDocument()
       expect(screen.getByText('Y: 2')).toBeInTheDocument()
 
-      // Update x - testing actual behavior (component doesn't auto-rerender)
+      // Update x - ComponentA should re-render because it accesses state.x
       act(() => {
         update({ $set: { x: 5 } })
       })
-      // Component still shows original value because it doesn't re-render automatically
-      expect(screen.getByText('X: 1')).toBeInTheDocument()
+      // ComponentA re-renders with new value, ComponentB stays the same
+      expect(screen.getByText('X: 5')).toBeInTheDocument()
       expect(screen.getByText('Y: 2')).toBeInTheDocument()
     })
   })
