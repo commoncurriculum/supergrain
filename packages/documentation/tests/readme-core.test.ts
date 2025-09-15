@@ -288,11 +288,11 @@ describe('README Core Examples', () => {
 
       update({ $rename: { oldFieldName: 'newFieldName' } })
       expect('oldFieldName' in state).toBe(false)
-      expect(state.newFieldName).toBe('value')
+      expect((state as any).newFieldName).toBe('value')
 
       update({ $rename: { 'user.firstName': 'user.name' } })
       expect('firstName' in state.user).toBe(false)
-      expect(state.user.name).toBe('John')
+      expect((state.user as any).name).toBe('John')
       expect(state.user.lastName).toBe('Doe')
     })
 

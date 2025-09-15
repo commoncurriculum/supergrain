@@ -107,6 +107,7 @@ When you call `useTrackedStore(store)` in a React component, it:
 
 ```typescript
 // [#DOC_TEST_28](packages/documentation/tests/readme-examples.test.tsx)
+
 function MyComponent() {
   const state = useTrackedStore(store) // Creates reactive proxy
 

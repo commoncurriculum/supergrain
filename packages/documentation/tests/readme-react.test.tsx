@@ -127,17 +127,19 @@ describe('README React Examples', () => {
       })
 
       // ✅ Correct - useTrackedStore inside memoized component
-      const TaskComponent = memo(({ store, taskId }) => {
-        const state = useTrackedStore(store)
-        const task = state.tasks.find(t => t.id === taskId)
+      const TaskComponent = memo(
+        ({ store, taskId }: { store: any; taskId: number }) => {
+          const state = useTrackedStore(store)
+          const task = state.tasks.find((t: any) => t.id === taskId)
 
-        return (
-          <div>
-            <h3>{task.title}</h3>
-            <span>{task.completed ? '✓' : '○'}</span>
-          </div>
-        )
-      })
+          return (
+            <div>
+              <h3>{task.title}</h3>
+              <span>{task.completed ? '✓' : '○'}</span>
+            </div>
+          )
+        }
+      )
 
       // Usage
       function ProjectView() {
@@ -171,7 +173,7 @@ describe('README React Examples', () => {
       })
 
       // Memoized component for each item
-      const TodoItem = memo(({ todo }) => (
+      const TodoItem = memo(({ todo }: { todo: any }) => (
         <div className={todo.completed ? 'completed' : ''}>
           {todo.text}
           <button>Toggle</button>

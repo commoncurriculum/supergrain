@@ -2,8 +2,12 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "types": ["vitest/globals", "@vitest/browser/providers/playwright"],
-    "lib": ["DOM", "DOM.Iterable"]
+    "lib": ["DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
   },
-  "include": ["tests/**/*", "vitest.config.ts"],
+  "include": ["tests/**/*", "vitest.config.ts", "vitest.node.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -7,6 +7,7 @@ export default defineConfig({
       entry: 'src/index.ts',
       name: 'StorableAppStore',
       formats: ['es', 'cjs'],
+      fileName: 'index',
     },
     rollupOptions: {
       external: ['@storable/core'],
@@ -17,5 +18,10 @@ export default defineConfig({
       },
     },
   },
-  plugins: [dts()],
+  plugins: [
+    dts({
+      rollupTypes: true,
+      tsconfigPath: './tsconfig.json',
+    }),
+  ],
 })

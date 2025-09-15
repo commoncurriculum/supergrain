@@ -22,7 +22,7 @@ describe('README Complex Examples', () => {
       // Create a store with initial state
       const [store, update] = createStore({
         count: 0,
-        todos: [],
+        todos: [] as Array<{ id: number; text: string; completed: boolean }>,
       })
 
       // Use in React components
@@ -46,7 +46,10 @@ describe('README Complex Examples', () => {
             </button>
 
             <input
-              onKeyPress={e => e.key === 'Enter' && addTodo(e.target.value)}
+              onKeyPress={e =>
+                e.key === 'Enter' &&
+                addTodo((e.target as HTMLInputElement).value)
+              }
               placeholder="Add todo..."
             />
 
@@ -109,10 +112,12 @@ describe('README Complex Examples', () => {
       }
 
       // Create app store with optional fetch handler
-      const appStore = new AppStore<DocumentTypes>(async (modelType, id) => {
-        const response = await fetch(`/api/${modelType}/${id}`)
-        return response.json()
-      })
+      const appStore = new AppStore<DocumentTypes>(
+        async (modelType: string, id: string | number) => {
+          const response = await fetch(`/api/${modelType}/${id}`)
+          return response.json()
+        }
+      )
 
       // Basic assertions
       expect(appStore).toBeInstanceOf(AppStore)
@@ -228,7 +233,7 @@ describe('README Complex Examples', () => {
       function MyComponent() {
         // Documents are fetched automatically and cached
         const post = appStore.findDoc('posts', 1)
-        const user = appStore.findDoc('users', post.content?.userId)
+        const user = appStore.findDoc('users', post.content?.userId!)
 
         if (post.isPending) return <div>Loading post...</div>
         if (post.isRejected) return <div>Error loading post</div>

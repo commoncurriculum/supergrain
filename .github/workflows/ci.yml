@@ -41,3 +41,6 @@ jobs:
 
       - name: Validate README documentation
         run: pnpm run test:validate
+
+      - name: TypeCheck documentation
+        run: cd packages/documentation && pnpm run typecheck
