@@ -64,7 +64,7 @@ const [store, update] = createStore({
 function TodoApp() {
   const state = useTrackedStore(store)
 
-  // Updates MUST use the update function with operators
+  // Use update function with MongoDB-style operators
   const addTodo = (text: string) => {
     update({
       $push: {
@@ -227,16 +227,30 @@ update({ $set: { count: 10, name: 'Bob' } })
 
 _Links: [Source Code](packages/core/src/operators.ts). [Tests](packages/core/tests/operators.test.ts)._
 
-All state updates MUST use the `update` function with MongoDB-style operators:
+State can be updated in two ways: direct mutations or the `update` function with MongoDB-style operators:
+
+**Option 1: Direct mutations (simpler syntax)**
 
 ```typescript
-// [#DOC_TEST_5](packages/documentation/tests/mongodb-operators.test.ts)
+// [#DOC_TEST_4](packages/documentation/tests/read-only-state.test.ts)
 
 const [state, update] = createStore({
   count: 0,
   user: { name: 'John', age: 30 },
   items: ['a', 'b', 'c'],
 })
+
+// Direct mutations work perfectly
+state.count = 5
+state.user.name = 'Jane'
+state.user.age = 35
+state.items.push('d')
+```
+
+**Option 2: Update function with MongoDB-style operators**
+
+```typescript
+// [#DOC_TEST_5](packages/documentation/tests/mongodb-operators.test.ts)
 
 // Set values
 update({ $set: { count: 5 } })
