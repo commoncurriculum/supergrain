@@ -4,6 +4,7 @@
  * Tests for core Storable functionality examples from the README:
  * - Creating stores (DOC_TEST_1, DOC_TEST_2)
  * - Reading state (DOC_TEST_4)
+ * - Direct mutations (DOC_TEST_30)
  * - Updating state (DOC_TEST_5, DOC_TEST_11-18)
  * - Effects (DOC_TEST_19)
  * - Computed values (DOC_TEST_20)
@@ -116,6 +117,29 @@ describe('README Core Examples', () => {
 
       expect(state.count).toBe(10)
       expect(state.name).toBe('Bob')
+    })
+  })
+
+  describe('Direct Mutations', () => {
+    it('#DOC_TEST_30', () => {
+      const [state, update] = createStore({
+        count: 0,
+        user: { name: 'John', age: 30 },
+        items: ['a', 'b', 'c'],
+      })
+
+      // Direct mutations work perfectly
+      state.count = 5
+      expect(state.count).toBe(5)
+
+      state.user.name = 'Jane'
+      expect(state.user.name).toBe('Jane')
+
+      state.user.age = 35
+      expect(state.user.age).toBe(35)
+
+      state.items.push('d')
+      expect(state.items).toEqual(['a', 'b', 'c', 'd'])
     })
   })
 
