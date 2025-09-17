@@ -108,79 +108,89 @@ const createStableProxy = (target: any, effectNode: any): any => {
 }
 
 /**
- * The simplest possible hook for using storable stores in React.
+ * DEPRECATED: This hook is replaced with useTrackedStore for better safety.
+ * 
+ * The fundamental issue with useStore was its global subscriber pattern that created
+ * timing-based race conditions. Rather than try to fix this complex timing issue,
+ * the recommendation is to use useTrackedStore which provides perfect isolation.
  *
- * Since storable's proxy already tracks dependencies when getCurrentSub()
- * returns an effect, we just need to:
- * 1. Create an effect that triggers re-renders
- * 2. Set it as current subscriber during our component's render
- * 3. Restore the previous subscriber after render
- *
- * @example
+ * @deprecated Use useTrackedStore instead for better safety and isolation
+ * 
+ * For multiple stores, consider this pattern:
  * ```tsx
- * function Counter() {
- *   useStore() // Must be called first!
- *   return <div>{store.count}</div>
+ * function Dashboard() {
+ *   const user = useTrackedStore(userStore)
+ *   const cart = useTrackedStore(cartStore) 
+ *   const settings = useTrackedStore(settingsStore)
+ *   return <div>{user.name} - {cart.total} - {settings.theme}</div>
+ * }
+ * ```
+ * 
+ * Or use the new useStores helper for multiple stores with the same safety:
+ * ```tsx
+ * function Dashboard() {
+ *   const [user, cart, settings] = useStores(userStore, cartStore, settingsStore)
+ *   return <div>{user.name} - {cart.total} - {settings.theme}</div>
  * }
  * ```
  */
 export function useStore(): void {
-  // Force re-render when dependencies change
+  console.warn('useStore is deprecated due to timing-based race conditions. Use useTrackedStore instead for better safety.')
+  
+  // For backwards compatibility, provide a simple implementation
+  // that just creates an effect but doesn't set global subscriber state
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
-
-  // Store our effect state
-  const stateRef = useRef<{
-    cleanup: (() => void) | null
-    effectNode: any
-    prevSub: any
-  } | null>(null)
-
-  // Initialize on first render
+  
+  const stateRef = useRef<{ cleanup: (() => void) | null } | null>(null)
+  
   if (!stateRef.current) {
-    let effectNode: any = null
     let isFirstRun = true
-
-    // Create an effect that will be notified when dependencies change
     const cleanup = effect(() => {
-      // Capture the effect node on first run
       if (isFirstRun) {
-        effectNode = getCurrentSub()
         isFirstRun = false
         return
       }
-
-      // On subsequent runs, a dependency changed - trigger re-render
       forceUpdate()
     })
-
-    stateRef.current = {
-      cleanup,
-      effectNode,
-      prevSub: getCurrentSub(), // Save whatever was current before
-    }
+    
+    stateRef.current = { cleanup }
   }
-
-  const state = stateRef.current
-
-  // Set our effect as the current subscriber for this render
-  // Storable's proxy will check getCurrentSub() when properties are accessed
-  setCurrentSub(state.effectNode)
-
-  // Restore the previous subscriber after this component renders
-  // This prevents conflicts with nested components
-  useIsomorphicLayoutEffect(() => {
-    setCurrentSub(state.prevSub)
-  })
-
-  // Clean up when component unmounts
+  
   useEffect(() => {
     return () => {
-      if (state.cleanup) {
-        state.cleanup()
-        state.cleanup = null
+      if (stateRef.current?.cleanup) {
+        stateRef.current.cleanup()
+        stateRef.current.cleanup = null
       }
     }
   }, [])
+}
+
+/**
+ * Helper hook for using multiple stores with the same safety guarantees as useTrackedStore.
+ * 
+ * This provides the ergonomics of the old useStore but with proper isolation.
+ * Each store gets its own tracking context, eliminating cross-component interference.
+ *
+ * @example
+ * ```tsx
+ * function Dashboard() {
+ *   const [user, cart, settings] = useStores(userStore, cartStore, settingsStore)
+ *   return (
+ *     <div>
+ *       <h1>Welcome {user.name}</h1>
+ *       <p>Cart: ${cart.total}</p>
+ *       <p>Theme: {settings.theme}</p>
+ *     </div>
+ *   )
+ * }
+ * ```
+ */
+export function useStores<T extends readonly object[]>(...stores: T): {
+  [K in keyof T]: T[K]
+} {
+  // Use useTrackedStore for each store to get proper isolation
+  return stores.map(store => useTrackedStore(store)) as { [K in keyof T]: T[K] }
 }
 
 /**

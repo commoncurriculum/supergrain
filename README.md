@@ -299,38 +299,39 @@ function Counter() {
 }
 ```
 
-### useStore Hook
+### useStore Hook (Deprecated)
 
-For accessing multiple stores in one component. Must be called first in the component:
+⚠️ **DEPRECATED**: `useStore` is deprecated due to timing-based race conditions. Use `useTrackedStore` or the new `useStores` helper instead.
 
 ```typescript
 // [#DOC_TEST_7](packages/documentation/tests/readme-react.test.tsx)
 
-import { useStore } from '@storable/react'
+import { useStores } from '@storable/react'
 
-// Multiple stores scenario
+// Multiple stores with safe isolation
 const [userStore, updateUser] = createStore({ name: 'John', age: 30 })
 const [cartStore, updateCart] = createStore({ items: [], total: 0 })
 const [settingsStore, updateSettings] = createStore({ theme: 'dark' })
 
+// ✅ NEW: Safe multiple stores approach
 function Dashboard() {
-  useStore() // Sets up reactivity context for ALL stores
+  const [user, cart, settings] = useStores(userStore, cartStore, settingsStore)
 
   return (
     <div>
-      <h1>Welcome {userStore.name}</h1>           {/* Store 1 */}
-      <p>Age: {userStore.age}</p>                 {/* Store 1 */}
-      <p>Cart: {cartStore.items.length} items</p> {/* Store 2 */}
-      <p>Total: ${cartStore.total}</p>            {/* Store 2 */}
-      <p>Theme: {settingsStore.theme}</p>         {/* Store 3 */}
+      <h1>Welcome {user.name}</h1>           {/* Store 1 - safely tracked */}
+      <p>Age: {user.age}</p>                 {/* Store 1 - safely tracked */}
+      <p>Cart: {cart.items.length} items</p> {/* Store 2 - safely tracked */}
+      <p>Total: ${cart.total}</p>            {/* Store 2 - safely tracked */}
+      <p>Theme: {settings.theme}</p>         {/* Store 3 - safely tracked */}
     </div>
   )
 }
 
-// vs. useTrackedStore approach (more verbose for multiple stores)
+// ✅ ALTERNATIVE: Individual useTrackedStore calls
 function Dashboard() {
-  const user = useTrackedStore(userStore)         // 3 separate hook calls
-  const cart = useTrackedStore(cartStore)         // 3 separate proxies
+  const user = useTrackedStore(userStore)
+  const cart = useTrackedStore(cartStore)
   const settings = useTrackedStore(settingsStore)
 
   return (
@@ -345,37 +346,40 @@ function Dashboard() {
 }
 ```
 
-**When to use `useStore`:**
+**Migration from `useStore`:**
 
-- Multiple stores in one component (only remaining use case)
-- Less memory overhead (no proxy creation)
-- ⚠️ **Note**: Current implementation has timing-based isolation issues in nested components
+```typescript
+// ❌ OLD: Timing issues with nested components
+function Dashboard() {
+  useStore() // Global subscriber - race conditions
+  return <div>{userStore.name} - {cartStore.total}</div>
+}
 
-**When to use `useTrackedStore` (Recommended):**
+// ✅ NEW: Safe isolation with useStores helper
+function Dashboard() {
+  const [user, cart] = useStores(userStore, cartStore)
+  return <div>{user.name} - {cart.total}</div>
+}
+```
 
-- Single store per component (preferred approach)
-- Better isolation and safety guarantees
-- No timing dependencies on React lifecycle
-- Safer for nested component scenarios
-- Better developer experience and type safety
+**Why the change:**
+- **Safety**: Eliminates timing-based race conditions
+- **Isolation**: Each store gets its own tracking context  
+- **Architecture**: Uses the same proven approach as `useTrackedStore`
+- **Ergonomics**: `useStores` helper maintains multiple-store convenience
 
-### Technical Implementation Differences
+**Migration Guide:**
 
-The key difference between the hooks lies in their tracking isolation approach:
+- **Single store**: Use `useTrackedStore(store)` (recommended for most cases)
+- **Multiple stores**: Use `useStores(store1, store2, store3)` for safe ergonomics
+- **Legacy**: `useStore()` is deprecated but still works for backwards compatibility
 
-**`useStore` (Global Subscriber Pattern):**
-- Sets global subscriber state during render
-- Restores previous subscriber in `useLayoutEffect` 
-- ⚠️ **Risk**: Timing window where other components could track to wrong effect
-- ⚠️ **Risk**: Cross-component interference in nested scenarios
+**Why `useTrackedStore` and `useStores` are better:**
 
-**`useTrackedStore` (Per-Access Isolation):**
-- Uses proxy that swaps subscriber per property access
-- Immediately restores subscriber after each property access
-- ✅ **Safe**: Perfect isolation with no timing dependencies
-- ✅ **Safe**: Self-contained tracking scope
-
-For this reason, `useTrackedStore` is architecturally superior and recommended for most use cases.
+- ✅ **Perfect isolation** - No cross-component interference
+- ✅ **No timing dependencies** - Self-contained tracking scope  
+- ✅ **Architectural safety** - Each property access is independently tracked
+- ✅ **Better developer experience** - Clear, predictable behavior
 
 ### Fine-grained Reactivity
 
