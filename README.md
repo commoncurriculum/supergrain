@@ -347,14 +347,35 @@ function Dashboard() {
 
 **When to use `useStore`:**
 
-- Multiple stores in one component
+- Multiple stores in one component (only remaining use case)
 - Less memory overhead (no proxy creation)
-- Performance-critical scenarios
+- ⚠️ **Note**: Current implementation has timing-based isolation issues in nested components
 
-**When to use `useTrackedStore`:**
+**When to use `useTrackedStore` (Recommended):**
 
-- Single store per component (recommended for most cases)
+- Single store per component (preferred approach)
+- Better isolation and safety guarantees
+- No timing dependencies on React lifecycle
+- Safer for nested component scenarios
 - Better developer experience and type safety
+
+### Technical Implementation Differences
+
+The key difference between the hooks lies in their tracking isolation approach:
+
+**`useStore` (Global Subscriber Pattern):**
+- Sets global subscriber state during render
+- Restores previous subscriber in `useLayoutEffect` 
+- ⚠️ **Risk**: Timing window where other components could track to wrong effect
+- ⚠️ **Risk**: Cross-component interference in nested scenarios
+
+**`useTrackedStore` (Per-Access Isolation):**
+- Uses proxy that swaps subscriber per property access
+- Immediately restores subscriber after each property access
+- ✅ **Safe**: Perfect isolation with no timing dependencies
+- ✅ **Safe**: Self-contained tracking scope
+
+For this reason, `useTrackedStore` is architecturally superior and recommended for most use cases.
 
 ### Fine-grained Reactivity
 
