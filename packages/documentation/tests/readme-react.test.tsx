@@ -2,8 +2,7 @@
  * README React Examples Tests
  *
  * Tests for React integration examples from the README:
- * - useTrackedStore Hook (DOC_TEST_6)
- * - useStores Hook (DOC_TEST_7)
+ * - useTrackedStore Hook (DOC_TEST_6)  
  * - Fine-grained Reactivity (DOC_TEST_8)
  * - Memoized Components (DOC_TEST_9)
  * - For Component (DOC_TEST_10)
@@ -13,7 +12,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { userEvent } from '@vitest/browser/context'
 import { createStore } from '@storable/core'
-import { useTrackedStore, useStores, For } from '@storable/react'
+import { useTrackedStore, For } from '@storable/react'
 import { memo } from 'react'
 
 describe('README React Examples', () => {
@@ -41,92 +40,6 @@ describe('README React Examples', () => {
 
       await userEvent.click(screen.getByText('Increment'))
       expect(screen.getByText('Count: 1')).toBeInTheDocument()
-    })
-  })
-
-  describe('useStores Hook', () => {
-    it('#DOC_TEST_7', async () => {
-      // Multiple stores with safe isolation
-      const [userStore, updateUser] = createStore({ name: 'John', age: 30 })
-      const [cartStore, updateCart] = createStore({ items: [], total: 0 })
-      const [settingsStore, updateSettings] = createStore({ theme: 'dark' })
-
-      function Dashboard() {
-        const [user, cart, settings] = useStores(userStore, cartStore, settingsStore)
-
-        return (
-          <div>
-            <h1>Welcome {user.name}</h1>           {/* Store 1 - safely tracked */}
-            <p>Age: {user.age}</p>                 {/* Store 1 - safely tracked */}
-            <p>Cart: {cart.items.length} items</p> {/* Store 2 - safely tracked */}
-            <p>Total: ${cart.total}</p>            {/* Store 2 - safely tracked */}
-            <p>Theme: {settings.theme}</p>         {/* Store 3 - safely tracked */}
-          </div>
-        )
-      }
-
-      // Alternative: Individual useTrackedStore calls
-      function DashboardWithTrackedStore() {
-        const user = useTrackedStore(userStore)
-        const cart = useTrackedStore(cartStore)
-        const settings = useTrackedStore(settingsStore)
-
-        return (
-          <div data-testid="tracked-dashboard">
-            <h1>Welcome {user.name}</h1>
-            <p>Age: {user.age}</p>
-            <p>Cart: {cart.items.length} items</p>
-            <p>Total: ${cart.total}</p>
-            <p>Theme: {settings.theme}</p>
-          </div>
-        )
-      }
-
-      // Test useStores approach
-      render(<Dashboard />)
-
-      expect(screen.getByText('Welcome John')).toBeInTheDocument()
-      expect(screen.getByText('Age: 30')).toBeInTheDocument()
-      expect(screen.getByText('Cart: 0 items')).toBeInTheDocument()
-      expect(screen.getByText('Total: $0')).toBeInTheDocument()
-      expect(screen.getByText('Theme: dark')).toBeInTheDocument()
-
-      // Test that updating each store works independently
-      await act(async () => {
-        updateUser({ $set: { name: 'Jane', age: 25 } })
-      })
-      expect(screen.getByText('Welcome Jane')).toBeInTheDocument()
-      expect(screen.getByText('Age: 25')).toBeInTheDocument()
-
-      await act(async () => {
-        updateCart({ $set: { total: 100 }, $push: { items: 'item1' } })
-      })
-      expect(screen.getByText('Cart: 1 items')).toBeInTheDocument()
-      expect(screen.getByText('Total: $100')).toBeInTheDocument()
-
-      await act(async () => {
-        updateSettings({ $set: { theme: 'light' } })
-      })
-      expect(screen.getByText('Theme: light')).toBeInTheDocument()
-
-      // Test useTrackedStore approach for comparison
-      render(<DashboardWithTrackedStore />)
-
-      expect(screen.getByTestId('tracked-dashboard')).toHaveTextContent(
-        'Welcome Jane'
-      )
-      expect(screen.getByTestId('tracked-dashboard')).toHaveTextContent(
-        'Age: 25'
-      )
-      expect(screen.getByTestId('tracked-dashboard')).toHaveTextContent(
-        'Cart: 1 items'
-      )
-      expect(screen.getByTestId('tracked-dashboard')).toHaveTextContent(
-        'Total: $100'
-      )
-      expect(screen.getByTestId('tracked-dashboard')).toHaveTextContent(
-        'Theme: light'
-      )
     })
   })
 

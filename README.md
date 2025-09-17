@@ -299,64 +299,6 @@ function Counter() {
 }
 ```
 
-### useStores Hook
-
-For accessing multiple stores with the same safety guarantees as `useTrackedStore`:
-
-```typescript
-// [#DOC_TEST_7](packages/documentation/tests/readme-react.test.tsx)
-
-import { useStores } from '@storable/react'
-
-// Multiple stores with safe isolation
-const [userStore, updateUser] = createStore({ name: 'John', age: 30 })
-const [cartStore, updateCart] = createStore({ items: [], total: 0 })
-const [settingsStore, updateSettings] = createStore({ theme: 'dark' })
-
-function Dashboard() {
-  const [user, cart, settings] = useStores(userStore, cartStore, settingsStore)
-
-  return (
-    <div>
-      <h1>Welcome {user.name}</h1>           {/* Store 1 - safely tracked */}
-      <p>Age: {user.age}</p>                 {/* Store 1 - safely tracked */}
-      <p>Cart: {cart.items.length} items</p> {/* Store 2 - safely tracked */}
-      <p>Total: ${cart.total}</p>            {/* Store 2 - safely tracked */}
-      <p>Theme: {settings.theme}</p>         {/* Store 3 - safely tracked */}
-    </div>
-  )
-}
-
-// Alternative: Individual useTrackedStore calls
-function Dashboard() {
-  const user = useTrackedStore(userStore)
-  const cart = useTrackedStore(cartStore)
-  const settings = useTrackedStore(settingsStore)
-
-  return (
-    <div>
-      <h1>Welcome {user.name}</h1>
-      <p>Age: {user.age}</p>
-      <p>Cart: {cart.items.length} items</p>
-      <p>Total: ${cart.total}</p>
-      <p>Theme: {settings.theme}</p>
-    </div>
-  )
-}
-```
-
-**When to use each approach:**
-
-- **Single store**: Use `useTrackedStore(store)` (recommended for most cases)
-- **Multiple stores**: Use `useStores(store1, store2, store3)` for convenience and type safety
-
-**Why `useStores` is safe:**
-
-- ✅ **Perfect isolation** - Uses `useTrackedStore` internally for each store
-- ✅ **No timing dependencies** - Same per-access isolation as `useTrackedStore`
-- ✅ **Type safety** - Full TypeScript support with proper inference
-- ✅ **Better developer experience** - Clean, predictable behavior
-
 ### Fine-grained Reactivity
 
 Components only re-render when properties they access change:

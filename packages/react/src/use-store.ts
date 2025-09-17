@@ -108,33 +108,6 @@ const createStableProxy = (target: any, effectNode: any): any => {
 }
 
 /**
- * Helper hook for using multiple stores with the same safety guarantees as useTrackedStore.
- * 
- * This provides the ergonomics of the old useStore but with proper isolation.
- * Each store gets its own tracking context, eliminating cross-component interference.
- *
- * @example
- * ```tsx
- * function Dashboard() {
- *   const [user, cart, settings] = useStores(userStore, cartStore, settingsStore)
- *   return (
- *     <div>
- *       <h1>Welcome {user.name}</h1>
- *       <p>Cart: ${cart.total}</p>
- *       <p>Theme: {settings.theme}</p>
- *     </div>
- *   )
- * }
- * ```
- */
-export function useStores<T extends readonly object[]>(...stores: T): {
-  [K in keyof T]: T[K]
-} {
-  // Use useTrackedStore for each store to get proper isolation
-  return stores.map(store => useTrackedStore(store)) as { [K in keyof T]: T[K] }
-}
-
-/**
  * Returns a stable proxy of the store that enables React optimizations.
  *
  * FIXED: Proxy reference stability issue
