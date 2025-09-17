@@ -6,6 +6,7 @@ export {
   $NODE,
   $PROXY,
   $RAW,
+  $OWN_KEYS,
   type Signal,
   type SetStoreFunction,
 } from './store'
@@ -24,6 +25,5 @@ export {
   startBatch,
   endBatch,
   getCurrentSub,
-  getCurrentSub as getListener,
   setCurrentSub,
 } from 'alien-signals'

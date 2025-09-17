@@ -38,11 +38,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "alien-signals": "^2.0.7",
-    "vitest": "^3.2.4"
+    "alien-signals": "^2.0.7"
   },
   "devDependencies": {
     "@solidjs/testing-library": "^0.8.10",
-    "solid-js": "^1.9.9"
+    "solid-js": "^1.9.9",
+    "vitest": "^3.2.4"
   }
 }
