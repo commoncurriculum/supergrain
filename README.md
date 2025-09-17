@@ -232,7 +232,7 @@ State can be updated in two ways: direct mutations or the `update` function with
 **Option 1: Direct mutations (simpler syntax)**
 
 ```typescript
-// [#DOC_TEST_4](packages/documentation/tests/read-only-state.test.ts)
+// [#DOC_TEST_30](packages/documentation/tests/readme-core.test.ts)
 
 const [state, update] = createStore({
   count: 0,
