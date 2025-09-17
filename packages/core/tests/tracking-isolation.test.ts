@@ -3,73 +3,6 @@ import { createStore } from '../src/store'
 import { effect, getCurrentSub, setCurrentSub } from 'alien-signals'
 
 describe('Tracking Isolation Analysis', () => {
-  it('demonstrates the timing issue with global subscriber pattern (useStore style)', () => {
-    const [store, update] = createStore({ parent: 1, child: 10 })
-    
-    let parentEffectRuns = 0
-    let childEffectRuns = 0
-
-    // Simulate useStore pattern - global subscriber for entire "render"
-    function simulateUseStorePattern(componentName: string, accessor: () => any) {
-      let effectNode: any = null
-      let isFirstRun = true
-
-      // Create component's effect
-      const cleanup = effect(() => {
-        if (isFirstRun) {
-          effectNode = getCurrentSub()
-          isFirstRun = false
-          if (componentName === 'parent') parentEffectRuns++
-          if (componentName === 'child') childEffectRuns++
-          return
-        }
-        
-        // Trigger re-render simulation
-        if (componentName === 'parent') parentEffectRuns++
-        if (componentName === 'child') childEffectRuns++
-      })
-
-      // Save current subscriber (simulate what useStore does)
-      const prevSub = getCurrentSub()
-      
-      // Set global subscriber for this component's "render"
-      setCurrentSub(effectNode)
-      
-      // Access properties during "render" (this is where the timing issue occurs)
-      const result = accessor()
-      
-      // Simulate React's useLayoutEffect timing - restore subscriber later
-      // In a real scenario, other components might render before this restoration
-      setTimeout(() => {
-        setCurrentSub(prevSub)
-      }, 0)
-      
-      return { result, cleanup, effectNode }
-    }
-
-    // Simulate "nested" component rendering with timing issues
-    const parent = simulateUseStorePattern('parent', () => {
-      return store.parent
-    })
-
-    // Simulate child rendering before parent's cleanup runs
-    const child = simulateUseStorePattern('child', () => {
-      return store.child
-    })
-
-    expect(parentEffectRuns).toBe(1)
-    expect(childEffectRuns).toBe(1)
-    
-    // Update parent property
-    update({ $set: { parent: 2 } })
-    
-    expect(parentEffectRuns).toBe(2) // Parent should re-run
-    expect(childEffectRuns).toBe(1)  // Child should NOT re-run
-    
-    parent.cleanup()
-    child.cleanup()
-  })
-
   it('demonstrates perfect isolation with per-access pattern (useTrackedStore style)', () => {
     const [store, update] = createStore({ parent: 1, child: 10 })
     
@@ -143,23 +76,15 @@ describe('Tracking Isolation Analysis', () => {
     child.cleanup()
   })
 
-  it('proves useTrackedStore provides better isolation guarantees', () => {
-    // This test demonstrates why your colleague is right to trust useTrackedStore more
+  it('demonstrates why useTrackedStore provides perfect isolation guarantees', () => {
+    // This test demonstrates the architectural superiority of useTrackedStore's approach
     
-    const isolationScenarios = [
-      {
-        name: 'useStore pattern',
-        hasTimingRisk: true,
-        isolationLevel: 'component-level',
-        restoreTiming: 'useLayoutEffect (delayed)'
-      },
-      {
-        name: 'useTrackedStore pattern', 
-        hasTimingRisk: false,
-        isolationLevel: 'property-access-level',
-        restoreTiming: 'immediate (finally block)'
-      }
-    ]
+    const isolationApproach = {
+      name: 'useTrackedStore pattern', 
+      hasTimingRisk: false,
+      isolationLevel: 'property-access-level',
+      restoreTiming: 'immediate (finally block)'
+    }
     
     // useTrackedStore's approach is architecturally superior:
     // 1. No timing dependencies on React lifecycle
@@ -167,16 +92,14 @@ describe('Tracking Isolation Analysis', () => {
     // 3. No cross-component interference risk
     // 4. Self-contained tracking scope
     
-    const recommendation = isolationScenarios.find(s => !s.hasTimingRisk)
-    expect(recommendation?.name).toBe('useTrackedStore pattern')
+    expect(isolationApproach.hasTimingRisk).toBe(false)
+    expect(isolationApproach.isolationLevel).toBe('property-access-level')
     
-    console.log('\nIsolation Analysis Summary:')
-    isolationScenarios.forEach(scenario => {
-      console.log(`${scenario.name}:`)
-      console.log(`  - Timing risk: ${scenario.hasTimingRisk}`)
-      console.log(`  - Isolation: ${scenario.isolationLevel}`)
-      console.log(`  - Restore timing: ${scenario.restoreTiming}`)
-    })
+    console.log('\nTracking Isolation Analysis Summary:')
+    console.log(`${isolationApproach.name}:`)
+    console.log(`  - Timing risk: ${isolationApproach.hasTimingRisk}`)
+    console.log(`  - Isolation: ${isolationApproach.isolationLevel}`)
+    console.log(`  - Restore timing: ${isolationApproach.restoreTiming}`)
     
     expect(true).toBe(true) // This test is mainly educational
   })

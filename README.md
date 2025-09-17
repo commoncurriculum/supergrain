@@ -299,9 +299,9 @@ function Counter() {
 }
 ```
 
-### useStore Hook (Deprecated)
+### useStores Hook
 
-⚠️ **DEPRECATED**: `useStore` is deprecated due to timing-based race conditions. Use `useTrackedStore` or the new `useStores` helper instead.
+For accessing multiple stores with the same safety guarantees as `useTrackedStore`:
 
 ```typescript
 // [#DOC_TEST_7](packages/documentation/tests/readme-react.test.tsx)
@@ -313,7 +313,6 @@ const [userStore, updateUser] = createStore({ name: 'John', age: 30 })
 const [cartStore, updateCart] = createStore({ items: [], total: 0 })
 const [settingsStore, updateSettings] = createStore({ theme: 'dark' })
 
-// ✅ NEW: Safe multiple stores approach
 function Dashboard() {
   const [user, cart, settings] = useStores(userStore, cartStore, settingsStore)
 
@@ -328,7 +327,7 @@ function Dashboard() {
   )
 }
 
-// ✅ ALTERNATIVE: Individual useTrackedStore calls
+// Alternative: Individual useTrackedStore calls
 function Dashboard() {
   const user = useTrackedStore(userStore)
   const cart = useTrackedStore(cartStore)
@@ -346,40 +345,17 @@ function Dashboard() {
 }
 ```
 
-**Migration from `useStore`:**
-
-```typescript
-// ❌ OLD: Timing issues with nested components
-function Dashboard() {
-  useStore() // Global subscriber - race conditions
-  return <div>{userStore.name} - {cartStore.total}</div>
-}
-
-// ✅ NEW: Safe isolation with useStores helper
-function Dashboard() {
-  const [user, cart] = useStores(userStore, cartStore)
-  return <div>{user.name} - {cart.total}</div>
-}
-```
-
-**Why the change:**
-- **Safety**: Eliminates timing-based race conditions
-- **Isolation**: Each store gets its own tracking context  
-- **Architecture**: Uses the same proven approach as `useTrackedStore`
-- **Ergonomics**: `useStores` helper maintains multiple-store convenience
-
-**Migration Guide:**
+**When to use each approach:**
 
 - **Single store**: Use `useTrackedStore(store)` (recommended for most cases)
-- **Multiple stores**: Use `useStores(store1, store2, store3)` for safe ergonomics
-- **Legacy**: `useStore()` is deprecated but still works for backwards compatibility
+- **Multiple stores**: Use `useStores(store1, store2, store3)` for convenience and type safety
 
-**Why `useTrackedStore` and `useStores` are better:**
+**Why `useStores` is safe:**
 
-- ✅ **Perfect isolation** - No cross-component interference
-- ✅ **No timing dependencies** - Self-contained tracking scope  
-- ✅ **Architectural safety** - Each property access is independently tracked
-- ✅ **Better developer experience** - Clear, predictable behavior
+- ✅ **Perfect isolation** - Uses `useTrackedStore` internally for each store
+- ✅ **No timing dependencies** - Same per-access isolation as `useTrackedStore`
+- ✅ **Type safety** - Full TypeScript support with proper inference
+- ✅ **Better developer experience** - Clean, predictable behavior
 
 ### Fine-grained Reactivity
 

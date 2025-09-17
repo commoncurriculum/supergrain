@@ -3,7 +3,7 @@
  *
  * Tests for React integration examples from the README:
  * - useTrackedStore Hook (DOC_TEST_6)
- * - useStore Hook (DOC_TEST_7)
+ * - useStores Hook (DOC_TEST_7)
  * - Fine-grained Reactivity (DOC_TEST_8)
  * - Memoized Components (DOC_TEST_9)
  * - For Component (DOC_TEST_10)
@@ -13,7 +13,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { userEvent } from '@vitest/browser/context'
 import { createStore } from '@storable/core'
-import { useTrackedStore, useStore, For } from '@storable/react'
+import { useTrackedStore, useStores, For } from '@storable/react'
 import { memo } from 'react'
 
 describe('README React Examples', () => {
@@ -44,31 +44,31 @@ describe('README React Examples', () => {
     })
   })
 
-  describe('useStore Hook', () => {
+  describe('useStores Hook', () => {
     it('#DOC_TEST_7', async () => {
-      // Multiple stores scenario
+      // Multiple stores with safe isolation
       const [userStore, updateUser] = createStore({ name: 'John', age: 30 })
       const [cartStore, updateCart] = createStore({ items: [], total: 0 })
       const [settingsStore, updateSettings] = createStore({ theme: 'dark' })
 
       function Dashboard() {
-        useStore() // Sets up reactivity context for ALL stores
+        const [user, cart, settings] = useStores(userStore, cartStore, settingsStore)
 
         return (
           <div>
-            <h1>Welcome {userStore.name}</h1> {/* Store 1 */}
-            <p>Age: {userStore.age}</p> {/* Store 1 */}
-            <p>Cart: {cartStore.items.length} items</p> {/* Store 2 */}
-            <p>Total: ${cartStore.total}</p> {/* Store 2 */}
-            <p>Theme: {settingsStore.theme}</p> {/* Store 3 */}
+            <h1>Welcome {user.name}</h1>           {/* Store 1 - safely tracked */}
+            <p>Age: {user.age}</p>                 {/* Store 1 - safely tracked */}
+            <p>Cart: {cart.items.length} items</p> {/* Store 2 - safely tracked */}
+            <p>Total: ${cart.total}</p>            {/* Store 2 - safely tracked */}
+            <p>Theme: {settings.theme}</p>         {/* Store 3 - safely tracked */}
           </div>
         )
       }
 
-      // vs. useTrackedStore approach (more verbose for multiple stores)
+      // Alternative: Individual useTrackedStore calls
       function DashboardWithTrackedStore() {
-        const user = useTrackedStore(userStore) // 3 separate hook calls
-        const cart = useTrackedStore(cartStore) // 3 separate proxies
+        const user = useTrackedStore(userStore)
+        const cart = useTrackedStore(cartStore)
         const settings = useTrackedStore(settingsStore)
 
         return (
@@ -82,7 +82,7 @@ describe('README React Examples', () => {
         )
       }
 
-      // Test useStore approach
+      // Test useStores approach
       render(<Dashboard />)
 
       expect(screen.getByText('Welcome John')).toBeInTheDocument()

@@ -108,65 +108,6 @@ const createStableProxy = (target: any, effectNode: any): any => {
 }
 
 /**
- * DEPRECATED: This hook is replaced with useTrackedStore for better safety.
- * 
- * The fundamental issue with useStore was its global subscriber pattern that created
- * timing-based race conditions. Rather than try to fix this complex timing issue,
- * the recommendation is to use useTrackedStore which provides perfect isolation.
- *
- * @deprecated Use useTrackedStore instead for better safety and isolation
- * 
- * For multiple stores, consider this pattern:
- * ```tsx
- * function Dashboard() {
- *   const user = useTrackedStore(userStore)
- *   const cart = useTrackedStore(cartStore) 
- *   const settings = useTrackedStore(settingsStore)
- *   return <div>{user.name} - {cart.total} - {settings.theme}</div>
- * }
- * ```
- * 
- * Or use the new useStores helper for multiple stores with the same safety:
- * ```tsx
- * function Dashboard() {
- *   const [user, cart, settings] = useStores(userStore, cartStore, settingsStore)
- *   return <div>{user.name} - {cart.total} - {settings.theme}</div>
- * }
- * ```
- */
-export function useStore(): void {
-  console.warn('useStore is deprecated due to timing-based race conditions. Use useTrackedStore instead for better safety.')
-  
-  // For backwards compatibility, provide a simple implementation
-  // that just creates an effect but doesn't set global subscriber state
-  const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
-  
-  const stateRef = useRef<{ cleanup: (() => void) | null } | null>(null)
-  
-  if (!stateRef.current) {
-    let isFirstRun = true
-    const cleanup = effect(() => {
-      if (isFirstRun) {
-        isFirstRun = false
-        return
-      }
-      forceUpdate()
-    })
-    
-    stateRef.current = { cleanup }
-  }
-  
-  useEffect(() => {
-    return () => {
-      if (stateRef.current?.cleanup) {
-        stateRef.current.cleanup()
-        stateRef.current.cleanup = null
-      }
-    }
-  }, [])
-}
-
-/**
  * Helper hook for using multiple stores with the same safety guarantees as useTrackedStore.
  * 
  * This provides the ergonomics of the old useStore but with proper isolation.
