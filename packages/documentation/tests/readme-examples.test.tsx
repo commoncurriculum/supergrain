@@ -198,20 +198,20 @@ describe('README Complex Examples', () => {
 
       const appStore = new AppStore<DocumentTypes>()
 
-      // Shows as pending immediately, then fulfilled when complete
-      const newUserPromise = appStore.insertDocument('users', {
+      // Document is initially pending from findDoc
+      const user = appStore.findDoc('users', 123)
+      expect(user.isPending).toBe(true) // true initially
+
+      // Set the document directly (replaces insertDocument functionality)
+      const newUser = {
         id: 123,
         firstName: 'John',
         lastName: 'Doe',
         email: 'john@example.com',
-      })
-
-      // Document is immediately available to other components
-      const user = appStore.findDoc('users', 123)
-      expect(user.isPending).toBe(true) // true initially
-
-      const newUser = await newUserPromise
-      expect(user.isFulfilled).toBe(true) // true after promise resolves
+      }
+      appStore.setDocument('users', 123, newUser)
+      
+      expect(user.isFulfilled).toBe(true) // true after setting document
     })
 
     it('#DOC_TEST_25', () => {
