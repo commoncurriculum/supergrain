@@ -25,8 +25,34 @@ export default defineConfig({
           },
         },
       },
-      // Temporarily disable browser tests - React tests need browser environment
-      // which requires Playwright browsers to be installed. Uncomment when browsers are available.
+      // Browser environment for React tests
+      {
+        plugins: [react()],
+        test: {
+          include: [
+            'packages/react/**/*.test.{ts,tsx}',
+            'packages/react-example/**/*.test.{ts,tsx}',
+          ],
+          browser: {
+            enabled: true,
+            provider: 'playwright',
+            headless: true,
+            instances: [
+              {
+                browser: 'chromium',
+              },
+            ],
+          },
+          setupFiles: ['./packages/react/tests/setup.ts'],
+          globals: true,
+        },
+        resolve: {
+          alias: {
+            '@storable/core': resolve(__dirname, './packages/core/src'),
+            '@storable/react': resolve(__dirname, './packages/react/src'),
+          },
+        },
+      },
     ],
   },
 })
