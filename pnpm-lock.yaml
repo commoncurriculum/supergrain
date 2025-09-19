@@ -100,9 +100,6 @@ importers:
       alien-signals:
         specifier: ^2.0.7
         version: 2.0.7
-      vitest:
-        specifier: ^3.2.4
-        version: 3.2.4(@types/node@22.18.3)(@vitest/browser@3.2.4)(jsdom@26.1.0)
     devDependencies:
       '@solidjs/testing-library':
         specifier: ^0.8.10
@@ -110,6 +107,9 @@ importers:
       solid-js:
         specifier: ^1.9.9
         version: 1.9.9
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.18.3)(@vitest/browser@3.2.4)(jsdom@26.1.0)
 
   packages/documentation:
     dependencies:

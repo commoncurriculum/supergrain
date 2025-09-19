@@ -29,8 +29,8 @@ export function isEqual(a: unknown, b: unknown): boolean {
   if (keysA.length !== keysB.length) return false
 
   // Use Set for keysB to avoid quadratic time complexity, but only for large objects
-  // to avoid harming the common case of objects with a few keys
-  const keysBSet = keysB.length > 10 ? new Set(keysB) : null
+  // Benchmark testing shows Set becomes faster than array.includes() at around 50 keys
+  const keysBSet = keysB.length >= 50 ? new Set(keysB) : null
 
   for (const key of keysA) {
     const valA = (a as Record<string, unknown>)[key]
