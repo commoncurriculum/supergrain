@@ -93,41 +93,6 @@ export class AppStore<T extends DocumentTypes = DocumentTypes> {
     })
   }
 
-  insertDocument<K extends keyof T>(
-    modelType: K,
-    data: Partial<T[K]> & { id: string | number }
-  ): Promise<T[K]> {
-    return new Promise((resolve, reject) => {
-      const id = data.id
-      const key = String(id)
-      const modelTypeStr = String(modelType)
-
-      // Set as pending first
-      this.update({
-        $set: {
-          [`documents.${modelTypeStr}.${key}`]: {
-            content: undefined,
-            status: 'pending' as const,
-          },
-        },
-      })
-
-      // Simulate async insertion
-      setTimeout(() => {
-        try {
-          // In a real implementation, this would call an API
-          const insertedData = { ...data } as T[K]
-          this.setDocument(modelType, id, insertedData)
-          resolve(insertedData)
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          this.setDocumentError(modelType, id, errorMessage)
-          reject(error)
-        }
-      }, 0)
-    })
-  }
-
   private async triggerFetch(modelType: string, id: string | number): Promise<void> {
     if (!this.fetchHandler) {
       return

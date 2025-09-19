@@ -12,6 +12,7 @@ export const $PROXY = Symbol.for('storable:proxy')
 export const $TRACK = Symbol.for('storable:track')
 export const $RAW = Symbol.for('storable:raw')
 export const $VERSION = Symbol.for('storable:version')
+export const $OWN_KEYS = Symbol.for('ownKeys')
 
 const proxyCache = new WeakMap<object, object>()
 
@@ -91,7 +92,7 @@ export function setProperty(
   const wasAdded = !hadKey && !isDelete
   const wasDeleted = hadKey && isDelete
   if ((wasAdded || wasDeleted) && nodes) {
-    const ownKeysSignal = nodes[Symbol.for('ownKeys')]
+    const ownKeysSignal = nodes[$OWN_KEYS]
     if (ownKeysSignal) {
       ownKeysSignal(ownKeysSignal() + 1)
     }
@@ -101,7 +102,7 @@ export function setProperty(
 function trackSelf(target: object): void {
   if (getCurrentSub()) {
     const nodes = getNodes(target)
-    const ownKeysSignal = getNode(nodes, Symbol.for('ownKeys'), 0)
+    const ownKeysSignal = getNode(nodes, $OWN_KEYS, 0)
     ownKeysSignal()
   }
 }
@@ -228,5 +229,3 @@ export function createStore<T extends object>(
 
   return [state, updateStore]
 }
-
-export { effect } from 'alien-signals'

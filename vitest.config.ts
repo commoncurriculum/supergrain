@@ -12,6 +12,19 @@ export default defineConfig({
           environment: 'node',
         },
       },
+      // Node environment for app-store tests
+      {
+        test: {
+          include: ['packages/app-store/**/*.test.{ts,tsx}'],
+          environment: 'node',
+        },
+        resolve: {
+          alias: {
+            '@storable/core': resolve(__dirname, './packages/core/src'),
+            '@storable/app-store': resolve(__dirname, './packages/app-store/src'),
+          },
+        },
+      },
       // Browser environment for React tests
       {
         plugins: [react()],
