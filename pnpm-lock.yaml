@@ -54,6 +54,10 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.18.3)(@vitest/browser@3.2.4)(jsdom@26.1.0)
+    optionalDependencies:
+      structurae:
+        specifier: ^4.0.2
+        version: 4.0.2
 
   packages/app-store:
     dependencies:
@@ -1644,6 +1648,9 @@ packages:
   strip-literal@3.0.0:
     resolution: {integrity: sha512-TcccoMhJOM3OebGhSBEmp3UZ2SfDMZUEBdRA/9ynfLi8yYajyWX3JiXArcJt4Umh4vISpspkQIY8ZZoCqjbviA==}
 
+  structurae@4.0.2:
+    resolution: {integrity: sha512-eVmfxEEQSEADXhvuwS2IriKw3JKZtpQ33YSyAber0GAtBGmEuOxBXopASCeslokSbiOqzezTPYfweMybzp8WNA==}
+
   supports-color@8.1.1:
     resolution: {integrity: sha512-MpUEN2OodtUzxvKQl72cUF7RQ5EiHsGvSsVG0ia9c5RbWGL2CI4C7EpPS8UTBIplnlzZiNuV56w+FuNxy3ty2Q==}
     engines: {node: '>=10'}
@@ -3194,6 +3201,9 @@ snapshots:
   strip-literal@3.0.0:
     dependencies:
       js-tokens: 9.0.1
+
+  structurae@4.0.2:
+    optional: true
 
   supports-color@8.1.1:
     dependencies:
