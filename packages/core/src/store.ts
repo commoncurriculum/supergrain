@@ -117,7 +117,7 @@ const handler: ProxyHandler<object> = {
     }
     if (prop === $VERSION) return (target as any)[$VERSION] || 0
 
-    const value = Reflect.get(target, prop, receiver)
+    const value = (target as any)[prop]
 
     // Functions: keep as-is (plus your iterator tracking)
     if (typeof value === 'function') {
