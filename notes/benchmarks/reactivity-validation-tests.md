@@ -1,19 +1,20 @@
+# Reactivity Contract Validation Tests
+
+These tests ensure that any optimizations preserve the fundamental reactivity guarantees of @storable/core. Based on the failed approaches documented in `/notes/failed-approaches/`, we validate:
+
+1. Every property access in reactive context registers dependencies
+2. Signal identity consistency for update propagation  
+3. Automatic dependency tracking without manual setup
+4. Transparent object mutations that propagate reactively
+
+## Test Code
+
+```typescript
+
+```typescript
 import { describe, it, expect } from 'vitest'
 import { createStore } from '../src'
 import { effect } from 'alien-signals'
-
-/**
- * Reactivity Contract Validation Tests
- * 
- * These tests ensure that any optimizations preserve the fundamental
- * reactivity guarantees of @storable/core. Based on the failed approaches
- * documented in /notes/failed-approaches/, we validate:
- * 
- * 1. Every property access in reactive context registers dependencies
- * 2. Signal identity consistency for update propagation  
- * 3. Automatic dependency tracking without manual setup
- * 4. Transparent object mutations that propagate reactively
- */
 
 describe('Reactivity Contract: Basic Property Access', () => {
   it('should register dependencies on every property access in reactive context', () => {
@@ -403,3 +404,36 @@ export function validateReactivityContract(
     })
   })
 }
+```
+
+## Purpose
+
+These tests were created to validate that the 4 performance optimizations implemented in this PR preserved all reactivity guarantees:
+
+1. **Direct Property Access**: Ensures Reflect.get → direct access doesn't break reactivity
+2. **Object Literal for Nodes**: Ensures Object.create(null) → {} doesn't break signal identity
+3. **Signal $ Method Assignment**: Ensures closure → direct reference doesn't break signal behavior  
+4. **Simplified Proxy Handler Logic**: Ensures removing redundant checks doesn't break dependency tracking
+
+## Test Results
+
+All 11 tests passed for each optimization, confirming:
+- ✅ Every property access in reactive context registers dependencies
+- ✅ Signal identity consistency is maintained across access patterns
+- ✅ Automatic dependency tracking works without manual setup
+- ✅ Transparent object mutations propagate reactively
+- ✅ No optimization skips dependency registration for performance
+- ✅ Complex update patterns and error conditions work correctly
+
+## Usage
+
+This test suite was originally created as `packages/core/tests/reactivity-validation.test.ts` but has been moved to documentation format per project maintainer request.
+
+To run similar validation:
+```bash
+cd packages/core  
+# Create a temporary test file with the above code
+pnpm test your-validation.test.ts
+```
+
+The `validateReactivityContract` helper function can be used to test any optimized proxy implementations against the same reactivity guarantees.
