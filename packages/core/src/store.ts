@@ -130,21 +130,10 @@ const handler: ProxyHandler<object> = {
       return wrap(value)
     }
 
-    const own = Object.prototype.hasOwnProperty.call(target, prop)
+    // Reactive context - get or create signal for this property
     const nodes = getNodes(target)
-
-    if (own) {
-      const node = getNode(nodes, prop, value)
-      return wrap(node())
-    }
-
-    // Inherited property → still reactive (preserve semantics)
-    if (prop in target) {
-      const node = getNode(nodes, prop, value)
-      return wrap(node())
-    }
-
-    return wrap(value)
+    const node = getNode(nodes, prop, value)
+    return wrap(node())
   },
 
   set(target: any, prop: PropertyKey, value: any): boolean {
