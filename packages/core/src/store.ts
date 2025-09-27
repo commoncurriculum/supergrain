@@ -47,7 +47,7 @@ function getNode(
     return nodes[property]!
   }
   const newSignal = signal(value) as Signal<any>
-  newSignal.$ = (v: any) => newSignal(v)
+  newSignal.$ = newSignal as (v: any) => void
   nodes[property] = newSignal
   return newSignal
 }
