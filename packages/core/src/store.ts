@@ -26,7 +26,7 @@ type DataNodes = Record<PropertyKey, Signal<any>>
 function getNodes(target: object): DataNodes {
   let nodes = (target as any)[$NODE]
   if (!nodes) {
-    nodes = Object.create(null)
+    nodes = {} as DataNodes
     try {
       Object.defineProperty(target, $NODE, { value: nodes, enumerable: false })
       // Initialize version tracking
