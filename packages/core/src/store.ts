@@ -26,7 +26,7 @@ type DataNodes = Record<PropertyKey, Signal<any>>
 function getNodes(target: object): DataNodes {
   let nodes = (target as any)[$NODE]
   if (!nodes) {
-    nodes = Object.create(null)
+    nodes = {} as DataNodes
     try {
       Object.defineProperty(target, $NODE, { value: nodes, enumerable: false })
       // Initialize version tracking
@@ -47,7 +47,7 @@ function getNode(
     return nodes[property]!
   }
   const newSignal = signal(value) as Signal<any>
-  newSignal.$ = (v: any) => newSignal(v)
+  newSignal.$ = newSignal as (v: any) => void
   nodes[property] = newSignal
   return newSignal
 }
@@ -117,7 +117,7 @@ const handler: ProxyHandler<object> = {
     }
     if (prop === $VERSION) return (target as any)[$VERSION] || 0
 
-    const value = Reflect.get(target, prop, receiver)
+    const value = (target as any)[prop]
 
     // Functions: keep as-is (plus your iterator tracking)
     if (typeof value === 'function') {
@@ -130,21 +130,10 @@ const handler: ProxyHandler<object> = {
       return wrap(value)
     }
 
-    const own = Object.prototype.hasOwnProperty.call(target, prop)
+    // Reactive context - get or create signal for this property
     const nodes = getNodes(target)
-
-    if (own) {
-      const node = getNode(nodes, prop, value)
-      return wrap(node())
-    }
-
-    // Inherited property → still reactive (preserve semantics)
-    if (prop in target) {
-      const node = getNode(nodes, prop, value)
-      return wrap(node())
-    }
-
-    return wrap(value)
+    const node = getNode(nodes, prop, value)
+    return wrap(node())
   },
 
   set(target: any, prop: PropertyKey, value: any): boolean {
