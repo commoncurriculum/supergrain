@@ -1,6 +1,6 @@
 # Benchmarks
 
-This directory contains performance benchmarks comparing `@storable/core` with `solid-js/store` and analyzing internal performance characteristics.
+This directory contains performance benchmarks comparing `@supergrain/core` with `solid-js/store` and analyzing internal performance characteristics.
 
 ## Quick Start
 
@@ -10,7 +10,7 @@ Run the core benchmarks for rapid iteration during development:
 pnpm bench:core
 ```
 
-This runs only the essential benchmarks that directly compare `@storable/core` with `solid-js/store`.
+This runs only the essential benchmarks that directly compare `@supergrain/core` with `solid-js/store`.
 
 ## Benchmark Structure
 
@@ -125,7 +125,7 @@ When adding new benchmarks:
 
 1. **Core benchmarks**: Add to `core-comparison.bench.ts` if it's essential for validating changes
 2. **Additional benchmarks**: Add to `additional.bench.ts` if it's for detailed analysis
-3. Always include both `@storable/core` and `solid-js/store` versions for comparison
+3. Always include both `@supergrain/core` and `solid-js/store` versions for comparison
 4. Add reactive context validation for any benchmark testing reactive behavior
 5. Use realistic data sizes and patterns
 6. Include a baseline (plain JavaScript) when measuring overhead

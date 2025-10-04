@@ -602,7 +602,7 @@ describe('Render Analysis Tests', () => {
     })
 
     // Access the version symbol
-    const $VERSION = Symbol.for('storable:version')
+    const $VERSION = Symbol.for('supergrain:version')
 
     // Track renders for each item component
     const itemRenderCounts = new Map<number, number>()
@@ -771,7 +771,7 @@ describe('Render Analysis Tests', () => {
     const renderTracker = new Map<number, number>()
 
     // Access version symbol
-    const $VERSION = Symbol.for('storable:version')
+    const $VERSION = Symbol.for('supergrain:version')
 
     // Optimal: Each item is its own component with memo
     const OptimalItemComponent = memo<{
@@ -951,10 +951,10 @@ describe('Render Analysis Tests', () => {
     })
 
     // Check internal symbols
-    const $NODE = Symbol.for('storable:node')
-    const $RAW = Symbol.for('storable:raw')
-    const $PROXY = Symbol.for('storable:proxy')
-    const $VERSION = Symbol.for('storable:version')
+    const $NODE = Symbol.for('supergrain:node')
+    const $RAW = Symbol.for('supergrain:raw')
+    const $PROXY = Symbol.for('supergrain:proxy')
+    const $VERSION = Symbol.for('supergrain:version')
 
     console.log('Checking for internal symbols on proxy:')
     console.log(`- $NODE present: ${$NODE in store}`)

@@ -1,10 +1,10 @@
 # Allocation Analysis Benchmark Code
 
-This document contains the benchmark code that was used to identify specific allocations and overhead sources contributing to @storable/core performance degradation.
+This document contains the benchmark code that was used to identify specific allocations and overhead sources contributing to @supergrain/core performance degradation.
 
 ## Purpose
 
-Focuses on identifying the specific allocations and overhead sources that contribute to the performance degradation in @storable/core, allowing for targeted optimization efforts.
+Focuses on identifying the specific allocations and overhead sources that contribute to the performance degradation in @supergrain/core, allowing for targeted optimization efforts.
 
 ## Benchmark Code
 
@@ -17,7 +17,7 @@ import { signal, getCurrentSub } from 'alien-signals'
  * Allocation Analysis Benchmark
  * 
  * This benchmark focuses on identifying the specific allocations and overhead
- * sources that contribute to the performance degradation in @storable/core.
+ * sources that contribute to the performance degradation in @supergrain/core.
  */
 
 describe('Allocation Analysis: Function Call Overhead', () => {
@@ -248,7 +248,7 @@ describe('Allocation Analysis: WeakMap Overhead', () => {
 })
 
 describe('Allocation Analysis: Memory Allocation Patterns', () => {
-  bench('Simulate @storable/core object creation: 1k objects', () => {
+  bench('Simulate @supergrain/core object creation: 1k objects', () => {
     const objects = []
     for (let i = 0; i < 1_000; i++) {
       const obj = { id: i, name: `item-${i}`, value: i * 2 }
@@ -317,7 +317,7 @@ From these allocation analysis benchmarks, the major overhead sources were ident
 - **DataNodes with Object.create(null)**: Additional overhead
 
 ### Memory Allocation Patterns
-- Each @storable/core wrapped object: ~430+ bytes overhead
+- Each @supergrain/core wrapped object: ~430+ bytes overhead
 - Per-property signal tracking: ~200 bytes each
 - WeakMap caching: ~30 bytes per cached object
 - Symbol properties: ~50 bytes per object

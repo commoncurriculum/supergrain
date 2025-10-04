@@ -1,6 +1,6 @@
-# Storable Benchmark Documentation
+# Supergrain Benchmark Documentation
 
-This directory contains comprehensive performance analysis and benchmarking documentation for `@storable/core`.
+This directory contains comprehensive performance analysis and benchmarking documentation for `@supergrain/core`.
 
 ## Quick Navigation
 
@@ -31,7 +31,7 @@ This directory contains comprehensive performance analysis and benchmarking docu
 ## Performance at a Glance
 
 ### vs RxJS/solid-js
-| Operation | Storable Performance | Gap |
+| Operation | Supergrain Performance | Gap |
 |-----------|---------------------|-----|
 | Property Updates | ~1.06x slower | ✅ Competitive |
 | Store Creation | 82x faster | ✅ Excellent |
@@ -47,7 +47,7 @@ This directory contains comprehensive performance analysis and benchmarking docu
 
 ## Key Insights
 
-### ✅ What Storable Does Well
+### ✅ What Supergrain Does Well
 1. **Write Performance**: Nearly matches solid-js
 2. **Developer Experience**: Clean, intuitive proxy-based API
 3. **MongoDB Operators**: Unique, well-optimized feature set
@@ -60,7 +60,7 @@ This directory contains comprehensive performance analysis and benchmarking docu
 3. **Read-Heavy Applications**: 27-66x slower than solid-js
 4. **Cannot Bypass React**: Reconciliation limits optimization potential
 
-## When to Use Storable
+## When to Use Supergrain
 
 ### ✅ Great Choice For:
 - CRUD applications (forms, dashboards, admin panels)

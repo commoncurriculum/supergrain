@@ -190,7 +190,7 @@ Based on benchmarks, optimize these instead:
 
 - **Platform**: Chromium via Playwright (real browser)
 - **Framework**: React 19.1.1
-- **Store**: Storable with alien-signals
+- **Store**: Supergrain with alien-signals
 - **Test sizes**: 50, 100, 200, 1000, 10000 items
 - **Measurement**: Component render tracking + performance timing
 
@@ -453,7 +453,7 @@ The 208x performance difference between hook-only and full DOM operations shows 
 
 - **Platform**: Chromium via Playwright
 - **Framework**: React 19.1.1
-- **Store**: Storable with alien-signals
+- **Store**: Supergrain with alien-signals
 - **Test Sizes**: 50, 100, 200, 1000 items
 
 ### Benchmark Architecture

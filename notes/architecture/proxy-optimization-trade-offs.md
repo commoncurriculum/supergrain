@@ -1,10 +1,10 @@
 # Proxy Optimization Trade-offs: Functionality vs Performance
 
-This document analyzes the functionality trade-offs made in the proxy handler optimizations implemented in @storable/core, specifically the removal of `Reflect.get` and `Object.prototype.hasOwnProperty` checks.
+This document analyzes the functionality trade-offs made in the proxy handler optimizations implemented in @supergrain/core, specifically the removal of `Reflect.get` and `Object.prototype.hasOwnProperty` checks.
 
 ## Overview
 
-The proxy handler optimizations achieved a **2.69x performance improvement** in property access by simplifying the proxy implementation. However, this came with the removal of certain edge-case functionality that is not needed for @storable/core's intended use cases.
+The proxy handler optimizations achieved a **2.69x performance improvement** in property access by simplifying the proxy implementation. However, this came with the removal of certain edge-case functionality that is not needed for @supergrain/core's intended use cases.
 
 ## Optimization 1: `Reflect.get` → Direct Property Access
 
@@ -28,7 +28,7 @@ const value = (target as any)[prop]
 #### 2. **Proxy Chain Handling** 
 - **What it was**: Better behavior when proxies wrap other proxies
 - **Impact**: Nested proxy scenarios would be handled more robustly
-- **Why it's safe**: @storable/core doesn't have proxy-wrapping-proxy architectures
+- **Why it's safe**: @supergrain/core doesn't have proxy-wrapping-proxy architectures
 
 #### 3. **Getter Function Context**
 - **What it was**: Ensures custom getters run with correct `this` context
@@ -88,7 +88,7 @@ return wrap(node())
 
 ## Architecture Assumptions
 
-The optimizations are safe because @storable/core's architecture makes specific assumptions:
+The optimizations are safe because @supergrain/core's architecture makes specific assumptions:
 
 ### 1. **Plain Data Objects Only**
 - Store objects are created from JSON literals or plain JavaScript objects
@@ -149,7 +149,7 @@ The safety of these optimizations is validated by:
 
 ## Conclusion
 
-The proxy optimizations represent a **performance vs edge-case flexibility trade-off** that aligns well with @storable/core's design philosophy:
+The proxy optimizations represent a **performance vs edge-case flexibility trade-off** that aligns well with @supergrain/core's design philosophy:
 
 ### **Benefits Gained**
 - **2.69x faster property access** (22x improvement from Reflect.get removal)
@@ -166,4 +166,4 @@ The proxy optimizations represent a **performance vs edge-case flexibility trade
 - Eliminates unused complexity from uncommon use cases
 - Maintains 100% compatibility with intended usage patterns
 
-The trade-off strongly favors performance optimization since the removed functionality deals with patterns that don't align with @storable/core's reactive data architecture. Users who need complex object behavior can use class-based patterns outside the reactive store system.
+The trade-off strongly favors performance optimization since the removed functionality deals with patterns that don't align with @supergrain/core's reactive data architecture. Users who need complex object behavior can use class-based patterns outside the reactive store system.

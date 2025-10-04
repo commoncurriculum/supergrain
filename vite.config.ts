@@ -13,9 +13,9 @@ export default defineConfig({
     // This is a placeholder and will be overridden in each package's config
     lib: {
       entry: resolve(__dirname, 'packages/core/src/index.ts'),
-      name: 'storable',
+      name: 'supergrain',
       formats: ['es', 'umd'],
-      fileName: format => `storable.${format}.js`,
+      fileName: format => `supergrain.${format}.js`,
     },
     rollupOptions: {
       // Externalize peer dependencies

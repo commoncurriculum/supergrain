@@ -22,14 +22,14 @@
 - **URL**: https://raw.githubusercontent.com/stackblitz/alien-signals/refs/heads/master/src/index.ts
 - **Purpose**: Signal, computed, and effect implementations
 
-### Storable Core Index
+### Supergrain Core Index
 
 - **Local Path**: packages/core/src/index.ts
 - **Purpose**: Current storable library exports and structure
 
 ## Overview
 
-This document outlines the architecture and implementation strategy for creating a React adapter for the Storable library, incorporating best practices from Preact Signals and Alien Signals implementations.
+This document outlines the architecture and implementation strategy for creating a React adapter for the Supergrain library, incorporating best practices from Preact Signals and Alien Signals implementations.
 
 ## Core Requirements
 
@@ -378,7 +378,7 @@ function useStoreEffect(effectFn: () => void | (() => void)): void {
 
 ### 3. Leverage Alien Signals' Reactive System
 
-**Rationale**: Since Storable already uses alien-signals, we can leverage its efficient dependency tracking and batching mechanisms rather than reimplementing.
+**Rationale**: Since Supergrain already uses alien-signals, we can leverage its efficient dependency tracking and batching mechanisms rather than reimplementing.
 
 ### 4. Effect Store per Component (from Preact approach)
 
@@ -657,9 +657,9 @@ function createTrackedEffect(store: any): TrackedEffect {
 
 ## Conclusion
 
-This React adapter design combines the best practices from Preact Signals (React integration patterns, lifecycle management) and Alien Signals (efficient reactive system, batching) to create a powerful, performant, and developer-friendly solution for using Storable stores in React applications.
+This React adapter design combines the best practices from Preact Signals (React integration patterns, lifecycle management) and Alien Signals (efficient reactive system, batching) to create a powerful, performant, and developer-friendly solution for using Supergrain stores in React applications.
 
-The key innovation is leveraging the existing alien-signals reactive system that Storable already uses, while adding React-specific integration layers that handle component lifecycles, concurrent rendering, and other React-specific concerns.
+The key innovation is leveraging the existing alien-signals reactive system that Supergrain already uses, while adding React-specific integration layers that handle component lifecycles, concurrent rendering, and other React-specific concerns.
 
 This approach provides:
 

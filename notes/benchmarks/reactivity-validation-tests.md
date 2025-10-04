@@ -1,6 +1,6 @@
 # Reactivity Contract Validation Tests
 
-These tests ensure that any optimizations preserve the fundamental reactivity guarantees of @storable/core. Based on the failed approaches documented in `/notes/failed-approaches/`, we validate:
+These tests ensure that any optimizations preserve the fundamental reactivity guarantees of @supergrain/core. Based on the failed approaches documented in `/notes/failed-approaches/`, we validate:
 
 1. Every property access in reactive context registers dependencies
 2. Signal identity consistency for update propagation  

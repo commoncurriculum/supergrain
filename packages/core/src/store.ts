@@ -7,11 +7,11 @@ export type Signal<T> = {
   $?: (value: T) => void
 }
 
-export const $NODE = Symbol.for('storable:node')
-export const $PROXY = Symbol.for('storable:proxy')
-export const $TRACK = Symbol.for('storable:track')
-export const $RAW = Symbol.for('storable:raw')
-export const $VERSION = Symbol.for('storable:version')
+export const $NODE = Symbol.for('supergrain:node')
+export const $PROXY = Symbol.for('supergrain:proxy')
+export const $TRACK = Symbol.for('supergrain:track')
+export const $RAW = Symbol.for('supergrain:raw')
+export const $VERSION = Symbol.for('supergrain:version')
 export const $OWN_KEYS = Symbol.for('ownKeys')
 
 const proxyCache = new WeakMap<object, object>()

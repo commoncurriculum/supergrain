@@ -1,6 +1,6 @@
 # Safe Optimization Benchmarks Code
 
-This document contains the benchmark code that was used to test safe optimizations that preserve reactivity guarantees in @storable/core.
+This document contains the benchmark code that was used to test safe optimizations that preserve reactivity guarantees in @supergrain/core.
 
 ## Purpose
 

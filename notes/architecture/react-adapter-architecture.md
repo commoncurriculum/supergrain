@@ -1,10 +1,10 @@
-# React Adapter for Storable - Architecture
+# React Adapter for Supergrain - Architecture
 
-This document outlines the architecture for a React adapter for the Storable library, which uses alien-signals for reactivity. The adapter will enable React components to efficiently subscribe to store changes without requiring a Babel transform.
+This document outlines the architecture for a React adapter for the Supergrain library, which uses alien-signals for reactivity. The adapter will enable React components to efficiently subscribe to store changes without requiring a Babel transform.
 
-## Understanding Storable's Architecture
+## Understanding Supergrain's Architecture
 
-Storable is built on top of alien-signals and provides:
+Supergrain is built on top of alien-signals and provides:
 
 1. **Reactive Proxies**: Uses JavaScript Proxies to intercept property access and track dependencies
 2. **Signal-based Reactivity**: Each property access creates/uses an alien-signal under the hood
@@ -62,7 +62,7 @@ onStoreChange() // Trigger React re-render
 
 1. **Store-centric vs Signal-centric**: Our API centers around stores, not individual signals
 2. **Proxy-based Tracking**: We track property access through proxies, not direct signal access
-3. **Batched by Default**: Storable already batches updates at the microtask level
+3. **Batched by Default**: Supergrain already batches updates at the microtask level
 4. **No Direct Signal Access**: Users interact with proxied state, not raw signals
 
 ## Proposed API
@@ -428,7 +428,7 @@ export function useStore(initialState) {
 
 ### 1. Automatic Batching
 
-Storable already batches updates at the microtask level, so multiple updates in the same tick only trigger one re-render:
+Supergrain already batches updates at the microtask level, so multiple updates in the same tick only trigger one re-render:
 
 ```javascript
 // These updates are automatically batched
@@ -670,7 +670,7 @@ function TodoApp() {
 
 ## Conclusion
 
-This architecture provides a seamless integration between Storable's proxy-based reactivity and React's component model. By leveraging alien-signals' effect system and React's `useSyncExternalStore`, we achieve:
+This architecture provides a seamless integration between Supergrain's proxy-based reactivity and React's component model. By leveraging alien-signals' effect system and React's `useSyncExternalStore`, we achieve:
 
 1. **Automatic dependency tracking** through proxy interception
 2. **Efficient re-renders** using the version-based subscription pattern

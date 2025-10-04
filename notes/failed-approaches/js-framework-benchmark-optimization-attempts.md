@@ -1,14 +1,14 @@
 # Failed Approaches: js-framework-benchmark React Performance Optimization
 
 **Date:** January 2025
-**Goal:** Optimize the js-framework-benchmark react-hooks implementation beyond Storable's performance
+**Goal:** Optimize the js-framework-benchmark react-hooks implementation beyond Supergrain's performance
 **Original Problem:** js-framework-benchmark react-hooks creates new callbacks on every render, breaking React.memo
 **Result:** Multiple optimization attempts with mixed results, revealing fundamental limits of React reconciliation bypassing
 **Key Lesson:** React's reconciliation is highly optimized; fighting it usually makes performance worse, but imperative updates can provide modest gains with significant complexity trade-offs
 
 ## Background
 
-The investigation began with analyzing why Storable's React adapter appeared slower than other implementations in js-framework-benchmark. The user provided links to the fastest React implementations and requested a systematic exploration of React optimization techniques, specifically asking whether React's reconciliation work could be avoided or minimized.
+The investigation began with analyzing why Supergrain's React adapter appeared slower than other implementations in js-framework-benchmark. The user provided links to the fastest React implementations and requested a systematic exploration of React optimization techniques, specifically asking whether React's reconciliation work could be avoided or minimized.
 
 ### Original Implementation Problem
 
@@ -415,7 +415,7 @@ export const updateStore = updates => {
 }
 ```
 
-**Performance:** ~563ms total (27% faster than Storable) 🚀 **DRAMATIC IMPROVEMENT**
+**Performance:** ~563ms total (27% faster than Supergrain) 🚀 **DRAMATIC IMPROVEMENT**
 **Key Finding:** Complete bypass of React reconciliation provides significant performance gains
 **Lesson:** Maximum speed comes from abandoning React's rendering system entirely
 
@@ -453,7 +453,7 @@ export const updateStore = updates => {
 }
 ```
 
-**Performance:** ~902ms total (nearly identical to Storable)
+**Performance:** ~902ms total (nearly identical to Supergrain)
 **Key Finding:** React rendering + imperative updates provides ecosystem benefits with minimal performance cost
 **Lesson:** Best of both worlds - React's rendering system with reconciliation bypassing for updates
 
@@ -748,9 +748,9 @@ Only use imperative patterns when:
 - Validate correctness alongside performance claims
 - Test across different React versions and environments
 
-## Historical Context: Original Storable Performance
+## Historical Context: Original Supergrain Performance
 
-**Storable + For Component (Reference):**
+**Supergrain + For Component (Reference):**
 
 - Create 1K: ~64ms
 - Create 10K: ~679ms
@@ -761,9 +761,9 @@ Only use imperative patterns when:
 
 - **Original (broken)**: 944ms
 - **Best optimization (useMemo)**: 844ms
-- **Still slower than Storable's approach**: 844ms vs 773ms
+- **Still slower than Supergrain's approach**: 844ms vs 773ms
 
-**Key Insight:** The original Storable + `<For>` component was already well-optimized for this use case. The optimization exercise validated that Storable's automatic reactive model with proper React integration achieves excellent performance.
+**Key Insight:** The original Supergrain + `<For>` component was already well-optimized for this use case. The optimization exercise validated that Supergrain's automatic reactive model with proper React integration achieves excellent performance.
 
 ## Conclusion
 
@@ -813,6 +813,6 @@ While most optimization attempts failed, this exploration provided:
 
 **Status:** Multiple approaches tested, documented, and evaluated
 **Impact:** Prevented implementation of optimizations that would harm performance while identifying viable strategies
-**Follow-up:** Apply lessons to future React performance work in Storable and other projects
+**Follow-up:** Apply lessons to future React performance work in Supergrain and other projects
 
 _This analysis demonstrates that sometimes the best optimization is understanding why your current approach is already well-optimized and focusing efforts on higher-level architectural improvements._

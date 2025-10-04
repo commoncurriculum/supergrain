@@ -2,13 +2,13 @@
 
 ## Executive Summary
 
-After correcting the benchmark methodology to ensure Solid.js effects run synchronously using `createComputed` instead of `createEffect`, we now have accurate performance comparisons. The actual performance gap between @storable/core and solid-js is significant but not catastrophic.
+After correcting the benchmark methodology to ensure Solid.js effects run synchronously using `createComputed` instead of `createEffect`, we now have accurate performance comparisons. The actual performance gap between @supergrain/core and solid-js is significant but not catastrophic.
 
 ## Corrected Performance Metrics
 
 ### Real Performance Comparison
 
-| Operation                             | @storable/core  | solid-js        | Performance Gap  |
+| Operation                             | @supergrain/core  | solid-js        | Performance Gap  |
 | ------------------------------------- | --------------- | --------------- | ---------------- |
 | **Reactive reads (10k in effect)**    | 2,377 ops/sec   | 63,955 ops/sec  | **27x slower**   |
 | **Non-reactive reads (100k)**         | 376 ops/sec     | 24,964 ops/sec  | **66x slower**   |
@@ -35,30 +35,30 @@ The original benchmarks were showing "0ms" or extremely fast times for Solid.js 
 
 #### Reactive Property Access: 27-55x slower
 
-- @storable/core: ~1,200-2,400 ops/sec
+- @supergrain/core: ~1,200-2,400 ops/sec
 - solid-js: ~64,000-67,000 ops/sec
 - This is the main performance bottleneck
 
 #### Non-Reactive Property Access: 66x slower
 
-- @storable/core: ~376 ops/sec
+- @supergrain/core: ~376 ops/sec
 - solid-js: ~25,000 ops/sec
 - Proxy overhead is significant even outside reactive contexts
 
 #### Property Updates: Nearly Equal (1.06x slower)
 
-- @storable/core: ~11,000 ops/sec
+- @supergrain/core: ~11,000 ops/sec
 - solid-js: ~11,700 ops/sec
 - Performance is competitive for write operations
 
 #### Store Creation: 82x faster
 
-- @storable/core creates stores much faster
+- @supergrain/core creates stores much faster
 - Likely due to simpler initialization
 
 ## Performance Breakdown
 
-### Where @storable/core Struggles
+### Where @supergrain/core Struggles
 
 1. **Proxy Overhead (Primary Issue)**
    - Every property access goes through proxy traps
@@ -75,7 +75,7 @@ The original benchmarks were showing "0ms" or extremely fast times for Solid.js 
    - Each level of nesting adds proxy overhead
    - Recursive wrapping compounds the problem
 
-### Where @storable/core Performs Well
+### Where @supergrain/core Performs Well
 
 1. **Write Operations**
    - Nearly equal performance to solid-js
@@ -160,8 +160,8 @@ Given the architecture:
 
 ## Conclusion
 
-The corrected benchmarks show that @storable/core is **27-66x slower** for read operations compared to solid-js, not the previously reported 12,000x. This is primarily due to proxy overhead, which accounts for approximately 60x slowdown by itself.
+The corrected benchmarks show that @supergrain/core is **27-66x slower** for read operations compared to solid-js, not the previously reported 12,000x. This is primarily due to proxy overhead, which accounts for approximately 60x slowdown by itself.
 
-However, write performance is nearly identical (only 1.06x slower), and @storable/core offers unique features like MongoDB-style operators. The performance gap for reads is significant but not insurmountable for many applications, especially those that are not read-heavy in hot paths.
+However, write performance is nearly identical (only 1.06x slower), and @supergrain/core offers unique features like MongoDB-style operators. The performance gap for reads is significant but not insurmountable for many applications, especially those that are not read-heavy in hot paths.
 
-The key insight is that the proxy-based architecture has fundamental performance limitations that cannot be fully overcome without architectural changes. Users should be aware of these tradeoffs when choosing between @storable/core and solid-js.
+The key insight is that the proxy-based architecture has fundamental performance limitations that cannot be fully overcome without architectural changes. Users should be aware of these tradeoffs when choosing between @supergrain/core and solid-js.

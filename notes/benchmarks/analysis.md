@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The benchmarks compare `@storable/core` with `solid-js/store` across various operations. The results show significant performance differences, with each library excelling in different areas.
+The benchmarks compare `@supergrain/core` with `solid-js/store` across various operations. The results show significant performance differences, with each library excelling in different areas.
 
 ## Key Performance Metrics
 
@@ -14,7 +14,7 @@ The benchmarks compare `@storable/core` with `solid-js/store` across various ope
 | **Reactive Property Reads** | solid-js | 11,709-12,291x faster |
 | **Non-Reactive Reads** | solid-js | 162-179x faster |
 | **Property Updates** | solid-js | 1.2-1.3x faster |
-| **Array Push Operations** | @storable/core | 1.56x faster |
+| **Array Push Operations** | @supergrain/core | 1.56x faster |
 | **Array Remove Operations** | solid-js | 2-24x faster |
 | **Deep Object Access** | solid-js | 143-3,552x faster |
 | **Batch Updates** | solid-js | 2.3-5.4x faster |
@@ -26,7 +26,7 @@ The benchmarks compare `@storable/core` with `solid-js/store` across various ope
 ```
 Operation: Creating 1,000 stores/proxies
 ─────────────────────────────────────────
-@storable/core:    843 ops/sec
+@supergrain/core:    843 ops/sec
 solid-js:       38,129 ops/sec
 Difference:     45.2x slower
 ```
@@ -35,7 +35,7 @@ Difference:     45.2x slower
 ```
 Operation: 10,000 reactive reads in single effect
 ─────────────────────────────────────────────────
-@storable/core:        1,212 ops/sec
+@supergrain/core:        1,212 ops/sec
 solid-js:         14,687,833 ops/sec
 Difference:       12,115x slower
 ```
@@ -44,7 +44,7 @@ Difference:       12,115x slower
 ```
 Operation: 10,000 non-reactive reads
 ──────────────────────────────────────
-@storable/core:        5,069 ops/sec
+@supergrain/core:        5,069 ops/sec
 solid-js:            246,457 ops/sec
 Plain Object:        247,783 ops/sec (baseline)
 Difference:          48.6x slower than solid-js
@@ -54,7 +54,7 @@ Difference:          48.6x slower than solid-js
 ```
 Operation: 1,000 updates with active effect
 ────────────────────────────────────────────
-@storable/core:       11,070 ops/sec
+@supergrain/core:       11,070 ops/sec
 solid-js:             12,137 ops/sec
 Difference:           1.1x slower
 ```
@@ -65,7 +65,7 @@ Difference:           1.1x slower
 ```
 Operation: Push 500 items
 ──────────────────────────
-@storable/core:        4,314 ops/sec
+@supergrain/core:        4,314 ops/sec
 solid-js:              5,307 ops/sec
 Plain Array:         881,586 ops/sec (baseline)
 ```
@@ -74,7 +74,7 @@ Plain Array:         881,586 ops/sec (baseline)
 ```
 Operation: Adding 1,000 items
 ──────────────────────────────
-@storable/core:    WINNER (1.56x faster than solid-js)
+@supergrain/core:    WINNER (1.56x faster than solid-js)
 solid-js:           (baseline)
 ```
 
@@ -82,9 +82,9 @@ solid-js:           (baseline)
 ```
 Operation: Update nested object
 ────────────────────────────────
-@storable/core:        2,823 ops/sec
+@supergrain/core:        2,823 ops/sec
 solid-js:              1,248 ops/sec
-Difference:            @storable/core is 2.3x faster
+Difference:            @supergrain/core is 2.3x faster
 ```
 
 ## MongoDB Update Operators Performance
@@ -114,7 +114,7 @@ The proxy implementation introduces significant overhead:
 
 ## Performance Insights
 
-### Strengths of @storable/core
+### Strengths of @supergrain/core
 1. **Complex Object Updates**: 2.3x faster than solid-js for nested object updates
 2. **Array Push Performance**: 1.56x faster for adding items to arrays
 3. **MongoDB Operators**: Excellent performance for database-style operations
@@ -138,7 +138,7 @@ The most significant performance differences occur in:
 
 ## Recommendations
 
-### For @storable/core Optimization
+### For @supergrain/core Optimization
 
 1. **Priority 1: Reactive System**
    - The reactive property access is the most critical bottleneck
@@ -155,7 +155,7 @@ The most significant performance differences occur in:
 
 ### Use Case Recommendations
 
-**Use @storable/core when:**
+**Use @supergrain/core when:**
 - Working with MongoDB-style updates
 - Performing complex nested object updates
 - Need specific array push performance
@@ -169,6 +169,6 @@ The most significant performance differences occur in:
 
 ## Conclusion
 
-While @storable/core shows promise in certain areas (complex updates, MongoDB operators), it faces significant performance challenges in core reactive operations compared to solid-js. The 11,000x+ difference in reactive property access suggests fundamental architectural differences that may require substantial refactoring to address.
+While @supergrain/core shows promise in certain areas (complex updates, MongoDB operators), it faces significant performance challenges in core reactive operations compared to solid-js. The 11,000x+ difference in reactive property access suggests fundamental architectural differences that may require substantial refactoring to address.
 
 The MongoDB update operators feature is well-optimized and provides a unique value proposition, but the core proxy and reactivity system needs significant optimization to be competitive for general reactive state management use cases.

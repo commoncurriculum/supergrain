@@ -1,8 +1,8 @@
-# Safe Compile-Time Optimization Strategies for Storable
+# Safe Compile-Time Optimization Strategies for Supergrain
 
 ## Executive Summary
 
-This document outlines compile-time optimization strategies that can improve @storable/core performance while **preserving all reactivity guarantees**. Based on analysis of failed approaches in `/notes/failed-approaches/`, we focus on optimizations that work within the reactive model rather than attempting to bypass it.
+This document outlines compile-time optimization strategies that can improve @supergrain/core performance while **preserving all reactivity guarantees**. Based on analysis of failed approaches in `/notes/failed-approaches/`, we focus on optimizations that work within the reactive model rather than attempting to bypass it.
 
 ## Core Principle: Never Break Reactivity
 
@@ -349,7 +349,7 @@ Based on allocation analysis benchmarks:
 
 ## Conclusion
 
-Compile-time optimization for @storable/core is viable when approached as **specialization of existing behavior** rather than bypassing reactivity mechanisms. The key insight from the failed approaches is that automatic reactivity has inherent costs - but those costs can be optimized without breaking the reactive model.
+Compile-time optimization for @supergrain/core is viable when approached as **specialization of existing behavior** rather than bypassing reactivity mechanisms. The key insight from the failed approaches is that automatic reactivity has inherent costs - but those costs can be optimized without breaking the reactive model.
 
 These optimizations provide significant performance improvements (30-60%) while maintaining perfect behavioral compatibility and preserving all reactivity guarantees. The approach uses compile-time information to pre-specialize runtime code paths, not to skip necessary reactive operations.
 

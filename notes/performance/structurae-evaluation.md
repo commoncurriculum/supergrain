@@ -1,10 +1,10 @@
-# Structurae Performance Evaluation for Storable
+# Structurae Performance Evaluation for Supergrain
 
 ## Executive Summary
 
-After comprehensive evaluation of the @zandaqo/structurae library against Storable's performance profile, we've identified **limited but strategic optimization opportunities**. While structurae offers excellent data structures, most don't align with Storable's reactive proxy-based architecture.
+After comprehensive evaluation of the @zandaqo/structurae library against Supergrain's performance profile, we've identified **limited but strategic optimization opportunities**. While structurae offers excellent data structures, most don't align with Supergrain's reactive proxy-based architecture.
 
-## Current Storable Performance Profile
+## Current Supergrain Performance Profile
 
 ### Key Bottlenecks (from benchmarks):
 1. **Proxy overhead**: 60x slower than plain objects (primary issue)
@@ -196,7 +196,7 @@ class OptimizedDataNodes {
 
 ## Conclusion
 
-While structurae offers excellent data structures, **signal object pooling with Pool is the only optimization that provides meaningful performance benefits** for Storable's architecture. The primary performance bottleneck (proxy overhead) cannot be addressed through better data structures alone.
+While structurae offers excellent data structures, **signal object pooling with Pool is the only optimization that provides meaningful performance benefits** for Supergrain's architecture. The primary performance bottleneck (proxy overhead) cannot be addressed through better data structures alone.
 
 **Recommendation:** Implement signal pooling as an experimental feature with comprehensive benchmarking to validate the expected ~10% performance improvement in property access patterns.
 

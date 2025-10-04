@@ -206,7 +206,7 @@ export function useTrackedStore<T extends object>(store: T): T {
  *
  * This function checks the $VERSION symbol on store proxies to detect changes,
  * even though the proxy reference stays stable. Use this with React.memo to get
- * proper memoization with storable proxies.
+ * proper memoization with supergrain proxies.
  *
  * @example
  * ```tsx
@@ -244,7 +244,7 @@ interface ForProps<T> {
 /**
  * Custom For component that automatically handles version props for optimal memoization.
  * This component maps over an array and automatically passes version information to enable
- * React.memo to work correctly with storable proxy objects.
+ * React.memo to work correctly with supergrain proxy objects.
  *
  * @example
  * ```tsx
@@ -257,7 +257,7 @@ interface ForProps<T> {
  */
 export function For<T>(props: ForProps<T>): React.JSX.Element | null {
   const { each, children, fallback } = props
-  const versionSymbol = Symbol.for('storable:version')
+  const versionSymbol = Symbol.for('supergrain:version')
 
   if (!each || each.length === 0) {
     return fallback ? React.createElement(React.Fragment, null, fallback) : null

@@ -17,7 +17,7 @@ function validationError(message: string) {
  * IMPORTANT NOTES:
  * 1. Solid.js requires browser builds for reactivity in Node.js (solid-js/dist/solid.js).
  * 2. Benchmarks use manual `createRoot` and `dispose` for SolidJS to provide a
- *    fairer comparison against storable's manual effect disposal, avoiding
+ *    fairer comparison against supergrain's manual effect disposal, avoiding
  *    testing-library overhead.
  * 3. Solid's `createStore` is used for object/deep reactivity comparisons,
  *    while `createSignal` is used for primitive value comparisons where appropriate.

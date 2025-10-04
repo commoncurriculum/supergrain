@@ -2,7 +2,7 @@
 
 ## Summary
 
-This document contains the benchmark code and results that demonstrated why signal pooling with @zandaqo/structurae was not beneficial for Storable's performance.
+This document contains the benchmark code and results that demonstrated why signal pooling with @zandaqo/structurae was not beneficial for Supergrain's performance.
 
 ## Benchmark Results
 
@@ -390,4 +390,4 @@ describe('Integration with Store Operations', () => {
 
 ## Conclusion
 
-The benchmark code conclusively demonstrated that signal pooling introduces more overhead than benefit, with performance regressions ranging from 1.5x to 1.73x slower than regular allocation. This confirmed that @zandaqo/structurae's Pool is not suitable for optimizing Storable's signal allocation patterns.
+The benchmark code conclusively demonstrated that signal pooling introduces more overhead than benefit, with performance regressions ranging from 1.5x to 1.73x slower than regular allocation. This confirmed that @zandaqo/structurae's Pool is not suitable for optimizing Supergrain's signal allocation patterns.

@@ -1,4 +1,4 @@
-# Storable Notes
+# Supergrain Notes
 
 This directory contains all development notes, documentation, and analysis files organized by category.
 

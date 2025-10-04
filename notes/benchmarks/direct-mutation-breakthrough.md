@@ -2,7 +2,7 @@
 
 ## The Discovery
 
-During performance analysis comparing Storable to RxJS, a simple question led to a breakthrough:
+During performance analysis comparing Supergrain to RxJS, a simple question led to a breakthrough:
 
 > **"What if I enabled the setter in the proxy? Would that speed things up?"**
 
@@ -171,16 +171,16 @@ npm run test  # packages/js-krauset
 
 ## Conclusion
 
-The direct mutation capability transforms Storable's performance story:
+The direct mutation capability transforms Supergrain's performance story:
 
 **Before**: Competitive for writes, slow for complex operations
 **After**: Competitive across the board with 6x improvement available
 
-This breakthrough maintains Storable's core value propositions:
+This breakthrough maintains Supergrain's core value propositions:
 - ✅ Excellent developer experience
 - ✅ Full backward compatibility
 - ✅ Automatic reactivity and dependency tracking
 - ✅ MongoDB-style operators for complex updates
 - ✅ **NEW**: High-performance direct mutations for hot paths
 
-The result is a framework that scales from simple CRUD apps to performance-critical applications, giving developers the flexibility to optimize when needed without sacrificing the clean API that makes Storable unique.
+The result is a framework that scales from simple CRUD apps to performance-critical applications, giving developers the flexibility to optimize when needed without sacrificing the clean API that makes Supergrain unique.
