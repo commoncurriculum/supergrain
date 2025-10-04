@@ -10,7 +10,7 @@
     "store",
     "signals"
   ],
-  "license": "MIT",
+  "license": "MPL-2.0",
   "author": "Scott Messinger",
   "type": "module",
   "main": "./dist/index.cjs.js",
