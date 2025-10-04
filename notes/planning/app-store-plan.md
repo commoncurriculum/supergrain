@@ -294,15 +294,15 @@ function MyComponent() {
 
 ```
 packages/
-  app-store/
+  store/
     src/
       index.ts              # Main exports
-      app-store.ts          # AppStore class
+      store.ts          # AppStore class
       document-promise.ts   # DocumentPromise implementation
       types.ts              # TypeScript interfaces
       react.ts              # React integration hooks
     tests/
-      app-store.test.ts
+      store.test.ts
       react.test.tsx
     package.json
 ```

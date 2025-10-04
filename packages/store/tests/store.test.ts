@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { AppStore } from '../src/app-store'
+import { Store } from '../src/store'
 import type { DocumentTypes } from '../src/types'
 
 interface User {
@@ -22,10 +22,10 @@ interface TestDocumentTypes extends DocumentTypes {
   posts: Post
 }
 
-describe('AppStore', () => {
+describe('Store', () => {
   describe('findDoc without fetch handler', () => {
     it('should return pending state for unfetched document', () => {
-      const store = new AppStore<TestDocumentTypes>()
+      const store = new Store<TestDocumentTypes>()
       const doc = store.findDoc('users', 1)
 
       expect(doc.content).toBeUndefined()
@@ -36,7 +36,7 @@ describe('AppStore', () => {
     })
 
     it('should return same DocumentPromise instance for same document', () => {
-      const store = new AppStore<TestDocumentTypes>()
+      const store = new Store<TestDocumentTypes>()
       const doc1 = store.findDoc('users', 1)
       const doc2 = store.findDoc('users', 1)
 
@@ -45,7 +45,7 @@ describe('AppStore', () => {
     })
 
     it('should handle different document types', () => {
-      const store = new AppStore<TestDocumentTypes>()
+      const store = new Store<TestDocumentTypes>()
       const userDoc = store.findDoc('users', 1)
       const postDoc = store.findDoc('posts', 1)
 
@@ -58,7 +58,7 @@ describe('AppStore', () => {
 
   describe('setDocument', () => {
     it('should set document content and mark as fulfilled', () => {
-      const store = new AppStore<TestDocumentTypes>()
+      const store = new Store<TestDocumentTypes>()
       const userData: User = {
         id: 1,
         firstName: 'John',
@@ -77,7 +77,7 @@ describe('AppStore', () => {
     })
 
     it('should update existing document', () => {
-      const store = new AppStore<TestDocumentTypes>()
+      const store = new Store<TestDocumentTypes>()
       const userData1: User = {
         id: 1,
         firstName: 'John',
@@ -102,7 +102,7 @@ describe('AppStore', () => {
 
   describe('setDocumentError', () => {
     it('should set document as rejected with error', () => {
-      const store = new AppStore<TestDocumentTypes>()
+      const store = new Store<TestDocumentTypes>()
       const errorMessage = 'User not found'
 
       store.setDocumentError('users', 1, errorMessage)
@@ -128,7 +128,7 @@ describe('AppStore', () => {
 
       mockFetchHandler.mockResolvedValue(userData)
 
-      const store = new AppStore<TestDocumentTypes>(mockFetchHandler)
+      const store = new Store<TestDocumentTypes>(mockFetchHandler)
       const doc = store.findDoc('users', 1)
 
       expect(doc.isPending).toBe(true)
@@ -146,7 +146,7 @@ describe('AppStore', () => {
 
       mockFetchHandler.mockRejectedValue(new Error(errorMessage))
 
-      const store = new AppStore<TestDocumentTypes>(mockFetchHandler)
+      const store = new Store<TestDocumentTypes>(mockFetchHandler)
       const doc = store.findDoc('users', 1)
 
       expect(doc.isPending).toBe(true)
@@ -167,7 +167,7 @@ describe('AppStore', () => {
         email: 'john@example.com',
       }
 
-      const store = new AppStore<TestDocumentTypes>(mockFetchHandler)
+      const store = new Store<TestDocumentTypes>(mockFetchHandler)
 
       store.setDocument('users', 1, userData)
       const doc = store.findDoc('users', 1)

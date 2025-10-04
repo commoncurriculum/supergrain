@@ -3,7 +3,7 @@
  *
  * Tests for complex examples from the README:
  * - Quick Start (DOC_TEST_3)
- * - App Store examples (DOC_TEST_21-25)
+ * - Store examples (DOC_TEST_21-25)
  * - Todo App (DOC_TEST_26)
  * - TypeScript (DOC_TEST_27)
  */
@@ -13,7 +13,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { userEvent } from '@vitest/browser/context'
 import { createStore } from '@supergrain/core'
 import { useTrackedStore } from '@supergrain/react'
-import { AppStore } from '@supergrain/app-store'
+import { Store } from '@supergrain/store'
 import { useState } from 'react'
 
 describe('README Complex Examples', () => {
@@ -95,9 +95,9 @@ describe('README Complex Examples', () => {
     })
   })
 
-  describe('App Store Examples', () => {
+  describe('Store Examples', () => {
     it('#DOC_TEST_21', async () => {
-      // Define your document types and create an AppStore:
+      // Define your document types and create a Store:
       interface DocumentTypes {
         users: {
           id: number
@@ -113,8 +113,8 @@ describe('README Complex Examples', () => {
         }
       }
 
-      // Create app store with optional fetch handler
-      const appStore = new AppStore<DocumentTypes>(
+      // Create store with optional fetch handler
+      const store = new Store<DocumentTypes>(
         async (modelType: string, id: string | number) => {
           const response = await fetch(`/api/${modelType}/${id}`)
           return response.json()
@@ -122,9 +122,9 @@ describe('README Complex Examples', () => {
       )
 
       // Basic assertions
-      expect(appStore).toBeInstanceOf(AppStore)
-      expect(typeof appStore.findDoc).toBe('function')
-      expect(typeof appStore.setDocument).toBe('function')
+      expect(store).toBeInstanceOf(Store)
+      expect(typeof store.findDoc).toBe('function')
+      expect(typeof store.setDocument).toBe('function')
     })
 
     it('#DOC_TEST_22', () => {
@@ -137,10 +137,10 @@ describe('README Complex Examples', () => {
         }
       }
 
-      const appStore = new AppStore<DocumentTypes>()
+      const store = new Store<DocumentTypes>()
 
       // Get a document (returns immediately, fetches if not cached)
-      const doc = appStore.findDoc('posts', 1)
+      const doc = store.findDoc('posts', 1)
 
       // Document States - Documents have a promise-like API with these properties:
       expect(typeof doc.content).toBe('undefined') // T | undefined - The document data
@@ -160,17 +160,17 @@ describe('README Complex Examples', () => {
         }
       }
 
-      const appStore = new AppStore<DocumentTypes>()
+      const store = new Store<DocumentTypes>()
 
       // Set document directly
-      appStore.setDocument('users', 1, {
+      store.setDocument('users', 1, {
         id: 1,
         firstName: 'Jane',
         lastName: 'Smith',
         email: 'jane@example.com',
       })
 
-      const user = appStore.findDoc('users', 1)
+      const user = store.findDoc('users', 1)
       expect(user.isFulfilled).toBe(true) // true
       expect(user.content).toEqual({
         // { id: 1, firstName: 'Jane', ... }
@@ -181,8 +181,8 @@ describe('README Complex Examples', () => {
       })
 
       // Handle errors
-      appStore.setDocumentError('users', 999, 'User not found')
-      const errorUser = appStore.findDoc('users', 999)
+      store.setDocumentError('users', 999, 'User not found')
+      const errorUser = store.findDoc('users', 999)
       expect(errorUser.isRejected).toBe(true) // true
     })
 
@@ -196,10 +196,10 @@ describe('README Complex Examples', () => {
         }
       }
 
-      const appStore = new AppStore<DocumentTypes>()
+      const store = new Store<DocumentTypes>()
 
       // Document is initially pending from findDoc
-      const user = appStore.findDoc('users', 123)
+      const user = store.findDoc('users', 123)
       expect(user.isPending).toBe(true) // true initially
 
       // Set the document directly (replaces insertDocument functionality)
@@ -209,7 +209,7 @@ describe('README Complex Examples', () => {
         lastName: 'Doe',
         email: 'john@example.com',
       }
-      appStore.setDocument('users', 123, newUser)
+      store.setDocument('users', 123, newUser)
       
       expect(user.isFulfilled).toBe(true) // true after setting document
     })
@@ -230,12 +230,12 @@ describe('README Complex Examples', () => {
         }
       }
 
-      const appStore = new AppStore<DocumentTypes>()
+      const store = new Store<DocumentTypes>()
 
       function MyComponent() {
         // Documents are fetched automatically and cached
-        const post = appStore.findDoc('posts', 1)
-        const user = appStore.findDoc('users', post.content?.userId!)
+        const post = store.findDoc('posts', 1)
+        const user = store.findDoc('users', post.content?.userId!)
 
         if (post.isPending) return <div>Loading post...</div>
         if (post.isRejected) return <div>Error loading post</div>
@@ -253,14 +253,14 @@ describe('README Complex Examples', () => {
       }
 
       // Set up some test data
-      appStore.setDocument('posts', 1, {
+      store.setDocument('posts', 1, {
         id: 1,
         title: 'Test Post',
         content: 'This is a test',
         userId: 2,
       })
 
-      appStore.setDocument('users', 2, {
+      store.setDocument('users', 2, {
         id: 2,
         firstName: 'Jane',
         lastName: 'Doe',

@@ -8,7 +8,7 @@ Supergrain is a reactive store library with fine-grained reactivity. The project
 
 - `@supergrain/core` - Core reactive store implementation
 - `@supergrain/react` - React integration and hooks
-- `@supergrain/app-store` - Document-oriented store for app-level state management
+- `@supergrain/store` - Document-oriented store for app-level state management
 - `@supergrain/documentation` - Documentation and example tests
 - `js-framework-benchmark-react-supergrain` - Performance benchmarks
 

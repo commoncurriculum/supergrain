@@ -5,7 +5,7 @@ export interface DocumentState<T = any> {
   lastFetched?: number
 }
 
-export interface AppStoreState {
+export interface StoreState {
   documents: {
     [modelType: string]: {
       [id: string]: DocumentState

@@ -55,16 +55,6 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.18.3)(@vitest/browser@3.2.4)(jsdom@26.1.0)
 
-  packages/app-store:
-    dependencies:
-      '@supergrain/core':
-        specifier: workspace:*
-        version: link:../core
-    devDependencies:
-      vitest:
-        specifier: ^3.2.4
-        version: 3.2.4(@types/node@22.18.3)(@vitest/browser@3.2.4)(jsdom@26.1.0)
-
   packages/comparisons:
     dependencies:
       '@reactively/core':
@@ -113,15 +103,15 @@ importers:
 
   packages/documentation:
     dependencies:
-      '@supergrain/app-store':
-        specifier: workspace:*
-        version: link:../app-store
       '@supergrain/core':
         specifier: workspace:*
         version: link:../core
       '@supergrain/react':
         specifier: workspace:*
         version: link:../react
+      '@supergrain/store':
+        specifier: workspace:*
+        version: link:../store
     devDependencies:
       '@testing-library/dom':
         specifier: ^10.4.1
@@ -312,6 +302,16 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.18.1)(@vitest/browser@3.2.4)(jsdom@26.1.0)
+
+  packages/store:
+    dependencies:
+      '@supergrain/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@22.18.3)(@vitest/browser@3.2.4)(jsdom@26.1.0)
 
 packages:
 

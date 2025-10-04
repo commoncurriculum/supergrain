@@ -11,7 +11,7 @@ export default defineConfig({
     alias: {
       '@supergrain/core': resolve(__dirname, '../core/src'),
       '@supergrain/react': resolve(__dirname, '../react/src'),
-      '@supergrain/app-store': resolve(__dirname, '../app-store/src'),
+      '@supergrain/store': resolve(__dirname, '../app-store/src'),
     },
   },
 })

@@ -15,13 +15,13 @@ export default defineConfig({
       // Node environment for app-store tests
       {
         test: {
-          include: ['packages/app-store/**/*.test.{ts,tsx}'],
+          include: ['packages/store/**/*.test.{ts,tsx}'],
           environment: 'node',
         },
         resolve: {
           alias: {
             '@supergrain/core': resolve(__dirname, './packages/core/src'),
-            '@supergrain/app-store': resolve(__dirname, './packages/app-store/src'),
+            '@supergrain/store': resolve(__dirname, './packages/store/src'),
           },
         },
       },

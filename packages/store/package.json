@@ -1,11 +1,11 @@
 {
-  "name": "@supergrain/app-store",
+  "name": "@supergrain/store",
   "version": "0.0.1",
   "private": true,
-  "description": "Document-oriented app store for Supergrain with TypeScript support",
+  "description": "Document-oriented store for Supergrain with TypeScript support",
   "keywords": [
     "supergrain",
-    "app-store",
+    "store",
     "document",
     "reactive",
     "typescript"
