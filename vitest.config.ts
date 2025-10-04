@@ -20,8 +20,8 @@ export default defineConfig({
         },
         resolve: {
           alias: {
-            '@storable/core': resolve(__dirname, './packages/core/src'),
-            '@storable/app-store': resolve(__dirname, './packages/app-store/src'),
+            '@supergrain/core': resolve(__dirname, './packages/core/src'),
+            '@supergrain/app-store': resolve(__dirname, './packages/app-store/src'),
           },
         },
       },
@@ -48,8 +48,8 @@ export default defineConfig({
         },
         resolve: {
           alias: {
-            '@storable/core': resolve(__dirname, './packages/core/src'),
-            '@storable/react': resolve(__dirname, './packages/react/src'),
+            '@supergrain/core': resolve(__dirname, './packages/core/src'),
+            '@supergrain/react': resolve(__dirname, './packages/react/src'),
           },
         },
       },

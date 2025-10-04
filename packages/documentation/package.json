@@ -1,7 +1,7 @@
 {
-  "name": "@storable/documentation",
+  "name": "@supergrain/documentation",
   "version": "0.1.0",
-  "description": "Documentation tests for Storable examples",
+  "description": "Documentation tests for Supergrain examples",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,9 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@storable/core": "workspace:*",
-    "@storable/react": "workspace:*",
-    "@storable/app-store": "workspace:*"
+    "@supergrain/core": "workspace:*",
+    "@supergrain/react": "workspace:*",
+    "@supergrain/app-store": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
@@ -32,7 +32,7 @@
     "vitest": "^3.2.4"
   },
   "keywords": [
-    "storable",
+    "supergrain",
     "documentation",
     "tests",
     "examples"

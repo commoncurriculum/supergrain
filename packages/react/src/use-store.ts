@@ -1,5 +1,5 @@
 import React, { useRef, useLayoutEffect, useEffect, useReducer } from 'react'
-import { effect, getCurrentSub, setCurrentSub, $VERSION } from '@storable/core'
+import { effect, getCurrentSub, setCurrentSub, $VERSION } from '@supergrain/core'
 
 const isServer = typeof window === 'undefined'
 const useIsomorphicLayoutEffect = isServer ? useEffect : useLayoutEffect

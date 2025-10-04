@@ -1,10 +1,10 @@
 {
-  "name": "@storable/core",
+  "name": "@supergrain/core",
   "version": "0.0.1",
   "private": true,
-  "description": "Core reactive store implementation for Storable.",
+  "description": "Core reactive store implementation for Supergrain.",
   "keywords": [
-    "storable",
+    "supergrain",
     "core",
     "reactive",
     "store",

@@ -11,9 +11,9 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { userEvent } from '@vitest/browser/context'
-import { createStore } from '@storable/core'
-import { useTrackedStore } from '@storable/react'
-import { AppStore } from '@storable/app-store'
+import { createStore } from '@supergrain/core'
+import { useTrackedStore } from '@supergrain/react'
+import { AppStore } from '@supergrain/app-store'
 import { useState } from 'react'
 
 describe('README Complex Examples', () => {

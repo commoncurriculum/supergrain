@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
 import React, { memo, useCallback } from 'react'
-import { createStore } from '@storable/core'
+import { createStore } from '@supergrain/core'
 import { useTrackedStore, For } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 

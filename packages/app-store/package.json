@@ -1,10 +1,10 @@
 {
-  "name": "@storable/app-store",
+  "name": "@supergrain/app-store",
   "version": "0.0.1",
   "private": true,
-  "description": "Document-oriented app store for Storable with TypeScript support",
+  "description": "Document-oriented app store for Supergrain with TypeScript support",
   "keywords": [
-    "storable",
+    "supergrain",
     "app-store",
     "document",
     "reactive",
@@ -34,7 +34,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@storable/core": "workspace:*"
+    "@supergrain/core": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

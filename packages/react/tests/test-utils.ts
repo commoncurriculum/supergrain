@@ -1,4 +1,4 @@
-import { startBatch, endBatch } from '@storable/core'
+import { startBatch, endBatch } from '@supergrain/core'
 
 /**
  * Flushes pending microtasks to ensure batched updates complete.

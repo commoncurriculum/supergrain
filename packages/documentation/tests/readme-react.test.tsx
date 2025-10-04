@@ -11,8 +11,8 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { userEvent } from '@vitest/browser/context'
-import { createStore } from '@storable/core'
-import { useTrackedStore, For } from '@storable/react'
+import { createStore } from '@supergrain/core'
+import { useTrackedStore, For } from '@supergrain/react'
 import { memo } from 'react'
 
 describe('README React Examples', () => {

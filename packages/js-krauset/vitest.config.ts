@@ -20,8 +20,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@storable/core': resolve(__dirname, '../core/src/index.ts'),
-      '@storable/react': resolve(__dirname, '../react/src/index.ts'),
+      '@supergrain/core': resolve(__dirname, '../core/src/index.ts'),
+      '@supergrain/react': resolve(__dirname, '../react/src/index.ts'),
     },
   },
 })

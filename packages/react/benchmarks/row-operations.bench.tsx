@@ -1,6 +1,6 @@
 import { bench, describe, afterEach } from 'vitest'
-import { createStore } from '@storable/core'
-import { useTrackedStore } from '@storable/react'
+import { createStore } from '@supergrain/core'
+import { useTrackedStore } from '@supergrain/react'
 import React, { FC } from 'react'
 import {
   render,
@@ -13,7 +13,7 @@ import {
 /**
  * React Adapter Benchmarks: Row Operations
  *
- * This benchmark suite measures the performance of the @storable/react adapter
+ * This benchmark suite measures the performance of the @supergrain/react adapter
  * in various scenarios to understand the overhead of different operations:
  *
  * 1. Hook-only benchmarks: Pure React integration without DOM complexity
@@ -25,7 +25,7 @@ import {
  * - Full DOM operations: ~20 ops/sec (DOM rendering overhead)
  * - Large dataset operations: ~750 ops/sec (scales well)
  *
- * The benchmarks demonstrate that @storable/react has minimal overhead
+ * The benchmarks demonstrate that @supergrain/react has minimal overhead
  * for state management, with performance primarily limited by React's
  * rendering and DOM manipulation rather than the store itself.
  */
@@ -171,7 +171,7 @@ describe('React Adapter: Row Operations', () => {
 
   // ==============================================================
   // Hook-only benchmarks (fastest, measuring pure React integration)
-  // These measure the core performance of @storable/react without
+  // These measure the core performance of @supergrain/react without
   // DOM rendering overhead, focusing on state updates and hook re-renders.
   // ==============================================================
 
@@ -323,7 +323,7 @@ describe('React Adapter: Row Operations', () => {
 
   // ==============================================================
   // Large dataset benchmarks (scalability testing)
-  // These test how @storable/react performs with larger datasets
+  // These test how @supergrain/react performs with larger datasets
   // to understand scaling characteristics and memory efficiency.
   // ==============================================================
 

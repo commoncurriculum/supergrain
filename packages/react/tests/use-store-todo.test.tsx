@@ -1,7 +1,7 @@
 import React from 'react'
 import { render, screen, act } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { createStore } from '@storable/core'
+import { createStore } from '@supergrain/core'
 import { useTrackedStore } from '../src'
 import { flushMicrotasks } from './test-utils'
 

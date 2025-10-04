@@ -57,7 +57,7 @@ importers:
 
   packages/app-store:
     dependencies:
-      '@storable/core':
+      '@supergrain/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -113,13 +113,13 @@ importers:
 
   packages/documentation:
     dependencies:
-      '@storable/app-store':
+      '@supergrain/app-store':
         specifier: workspace:*
         version: link:../app-store
-      '@storable/core':
+      '@supergrain/core':
         specifier: workspace:*
         version: link:../core
-      '@storable/react':
+      '@supergrain/react':
         specifier: workspace:*
         version: link:../react
     devDependencies:
@@ -165,10 +165,10 @@ importers:
 
   packages/js-krauset:
     dependencies:
-      '@storable/core':
+      '@supergrain/core':
         specifier: workspace:*
         version: link:../core
-      '@storable/react':
+      '@supergrain/react':
         specifier: workspace:*
         version: link:../react
       react:
@@ -208,7 +208,7 @@ importers:
 
   packages/react:
     dependencies:
-      '@storable/core':
+      '@supergrain/core':
         specifier: workspace:*
         version: link:../core
       use-sync-external-store:
@@ -260,10 +260,10 @@ importers:
 
   packages/react-example:
     dependencies:
-      '@storable/core':
+      '@supergrain/core':
         specifier: workspace:*
         version: link:../core
-      '@storable/react':
+      '@supergrain/react':
         specifier: workspace:*
         version: link:../react
       react:

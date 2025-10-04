@@ -1,4 +1,4 @@
-import { createStore, computed, type SetStoreFunction } from '@storable/core'
+import { createStore, computed, type SetStoreFunction } from '@supergrain/core'
 import { DocumentPromiseImpl } from './document-promise'
 import type {
   AppStoreState,
