@@ -7,7 +7,10 @@
     "test": "vitest",
     "test:validate": "pnpm --filter @supergrain/documentation run test:validate",
     "bench:core": "vitest bench --root packages/core",
-    "typecheck": "pnpm -r --filter=\"@supergrain/*\" run typecheck && pnpm --filter=\"js-framework-benchmark-react-supergrain\" run typecheck"
+    "typecheck": "pnpm -r --filter=\"@supergrain/*\" run typecheck && pnpm --filter=\"js-framework-benchmark-react-supergrain\" run typecheck",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "keywords": [],
   "author": "",
@@ -26,6 +29,7 @@
     "typescript": "^5.9.2",
     "vite": "^7.1.5",
     "vite-plugin-dts": "^4.5.4",
+    "vitepress": "^1.6.4",
     "vitest": "^3.2.4"
   },
   "dependencies": {

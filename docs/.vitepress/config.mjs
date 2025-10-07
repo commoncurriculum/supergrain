@@ -1,0 +1,33 @@
+import { defineConfig } from 'vitepress'
+
+export default defineConfig({
+  title: 'Supergrain',
+  description: 'A reactive store library with super fine-grained reactivity',
+  base: '/supergrain/',
+  ignoreDeadLinks: true,
+  
+  themeConfig: {
+    nav: [
+      { text: 'Home', link: '/' },
+      { text: 'GitHub', link: 'https://github.com/commoncurriculum/supergrain' }
+    ],
+    
+    sidebar: [
+      {
+        text: 'Introduction',
+        items: [
+          { text: 'Getting Started', link: '/' },
+        ]
+      }
+    ],
+    
+    socialLinks: [
+      { icon: 'github', link: 'https://github.com/commoncurriculum/supergrain' }
+    ],
+    
+    footer: {
+      message: 'Released under the MIT License.',
+      copyright: 'Copyright © 2024'
+    }
+  }
+})
