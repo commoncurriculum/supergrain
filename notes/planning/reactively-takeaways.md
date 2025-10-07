@@ -1,12 +1,12 @@
-# Reactively Takeaways for Storable
+# Reactively Takeaways for Supergrain
 
 ## Overview
 
-Based on the comprehensive analysis of Reactively, several optimization strategies and architectural insights could potentially improve Storable's performance while maintaining its developer-friendly automatic proxy wrapping.
+Based on the comprehensive analysis of Reactively, several optimization strategies and architectural insights could potentially improve Supergrain's performance while maintaining its developer-friendly automatic proxy wrapping.
 
-## Concrete Optimization Opportunities in Storable
+## Concrete Optimization Opportunities in Supergrain
 
-Based on analysis of the current Storable implementation in `/packages/core/src/store.ts`, here are specific optimizations grounded in actual code:
+Based on analysis of the current Supergrain implementation in `/packages/core/src/store.ts`, here are specific optimizations grounded in actual code:
 
 ### 1. Optimize Proxy Handler Symbol Checks - Line 110 ✅
 
@@ -78,7 +78,7 @@ if (Array.isArray(target) && property !== 'length') {
 
 ## Viable Optimization Opportunities
 
-**IMPORTANT:** After analysis, many initially proposed optimizations would break Storable's automatic reactivity. The following optimizations maintain reactivity while improving performance within system constraints.
+**IMPORTANT:** After analysis, many initially proposed optimizations would break Supergrain's automatic reactivity. The following optimizations maintain reactivity while improving performance within system constraints.
 
 ### 1. Signal Implementation Optimizations
 
@@ -193,12 +193,12 @@ function optimizedGetNode(nodes: DataNodes, property: PropertyKey, value?: any):
 - No React dependencies in core
 - Minimal API surface
 
-**Storable Optimization:**
+**Supergrain Optimization:**
 ```typescript
 // Split packages like Reactively
-// @storable/core - Pure reactive logic
-// @storable/react - React integration only
-// @storable/dev - Development tools
+// @supergrain/core - Pure reactive logic
+// @supergrain/react - React integration only
+// @supergrain/dev - Development tools
 
 // Enable better tree shaking
 export { createStore } from './store'
@@ -227,7 +227,7 @@ const isDirty = (state) => (state & CACHE_DIRTY) !== 0 // Bit operation
 1. **Signal implementation micro-optimizations** in alien-signals
 2. **Observer data structure improvements** (arrays vs Sets where appropriate)
 3. **Reduce object allocations** through pooling in hot paths  
-4. **Bundle splitting** for better tree shaking (@storable/core, @storable/react)
+4. **Bundle splitting** for better tree shaking (@supergrain/core, @supergrain/react)
 
 ### Phase 2: Data Structure Optimizations  
 1. **Optimized WeakMap alternatives** for node storage (if faster than current approach)
@@ -236,7 +236,7 @@ const isDirty = (state) => (state & CACHE_DIRTY) !== 0 // Bit operation
 4. **Object pooling** for temporary objects in proxy traps
 
 ### Phase 3: Advanced Optimizations (Within Reactive Constraints)
-1. **Custom signal implementation** optimized for Storable's specific patterns
+1. **Custom signal implementation** optimized for Supergrain's specific patterns
 2. **V8-specific optimizations** for proxy trap performance
 3. **Advanced bundler optimizations** and dead code elimination
 4. **Memory usage profiling** and targeted optimizations
@@ -260,7 +260,7 @@ const benchmarks = [
 ```
 
 ### Compatibility Testing
-- Ensure all existing Storable tests pass
+- Ensure all existing Supergrain tests pass
 - Validate React integration remains seamless
 - Test edge cases (frozen objects, circular references)
 - Measure bundle size impact
@@ -290,15 +290,15 @@ const benchmarks = [
 
 ## Conclusion
 
-After deeper analysis, Reactively's performance advantages come primarily from its **explicit manual reactivity model**, not from techniques that can be directly applied to Storable's automatic system.
+After deeper analysis, Reactively's performance advantages come primarily from its **explicit manual reactivity model**, not from techniques that can be directly applied to Supergrain's automatic system.
 
 **Key Insights:**
 
-1. **Performance gap is architectural**: Reactively's 5000x faster reads come from direct `signal.value` access vs Storable's proxy trap overhead
+1. **Performance gap is architectural**: Reactively's 5000x faster reads come from direct `signal.value` access vs Supergrain's proxy trap overhead
 2. **Automatic reactivity has inherent costs**: Every property access must register dependencies, creating unavoidable overhead  
-3. **Optimization constraints are fundamental**: Attempts to skip reactivity infrastructure break the automatic tracking that is Storable's core value
+3. **Optimization constraints are fundamental**: Attempts to skip reactivity infrastructure break the automatic tracking that is Supergrain's core value
 
-**Viable Optimizations for Storable:**
+**Viable Optimizations for Supergrain:**
 
 1. **Signal implementation micro-optimizations** (10-20% improvements possible)
 2. **Data structure improvements** (arrays vs Sets, better memory layout)
@@ -309,6 +309,6 @@ After deeper analysis, Reactively's performance advantages come primarily from i
 **The Trade-off Reality:**
 
 - **Reactively**: Maximum performance through explicit reactivity (user controls what's tracked)
-- **Storable**: Developer experience through automatic reactivity (system tracks everything transparently)
+- **Supergrain**: Developer experience through automatic reactivity (system tracks everything transparently)
 
-The performance difference isn't a bug to fix - it's the cost of automatic transparency. Storable's optimization opportunities lie in making the required reactive infrastructure as efficient as possible, not in trying to bypass it.
+The performance difference isn't a bug to fix - it's the cost of automatic transparency. Supergrain's optimization opportunities lie in making the required reactive infrastructure as efficient as possible, not in trying to bypass it.

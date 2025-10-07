@@ -1,5 +1,5 @@
 {
-  "name": "@storable/comparisons",
+  "name": "@supergrain/comparisons",
   "version": "1.0.0",
   "private": true,
   "description": "Performance and integration comparisons with other state management libraries",

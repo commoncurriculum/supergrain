@@ -1,12 +1,12 @@
-# Storable
+# Supergrain
 
-A reactive store library with fine-grained reactivity powered by alien-signals. Create stores that track property access and update components with surgical precision using MongoDB-style update operators.
+A reactive store library with super fine-grained reactivity powered by alien-signals. Create stores that track property access and update components with surgical precision using MongoDB-style update operators.
 
-_Core Implementation: [packages/core/src](packages/core/src) | React Integration: [packages/react/src](packages/react/src) | App Store: [packages/app-store/src](packages/app-store/src) | Examples: [packages/react/examples](packages/react/examples)_
+_Core Implementation: [packages/core/src](packages/core/src) | React Integration: [packages/react/src](packages/react/src) | Store: [packages/store/src](packages/store/src) | Examples: [packages/react/examples](packages/react/examples)_
 
 ## Features
 
-- 🎯 **Fine-grained reactivity** - Only components using changed data re-render
+- 🎯 **Super fine-grained reactivity** - Only components using changed data re-render
 - 🔄 **MongoDB-style operators** - Powerful update operations with automatic batching
 - 📦 **Zero boilerplate** - No actions, reducers, or decorators required
 - ⚛️ **React integration** - Simple hooks for reactive components
@@ -24,24 +24,24 @@ _Core Implementation: [packages/core/src](packages/core/src) | React Integration
 - [React Integration](#react-integration)
 - [MongoDB-Style Operators](#mongodb-style-operators)
 - [Effects and Computed Values](#effects-and-computed-values)
-- [App Store - Document Management](#app-store---document-management)
+- [Store - Document Management](#store---document-management)
 - [Building a TODO App](#building-a-todo-app)
 - [TypeScript](#typescript)
 - [Performance Tips](#performance-tips)
 
 ## Installation
 
-_Package definitions: [core/package.json](packages/core/package.json) | [react/package.json](packages/react/package.json) | [app-store/package.json](packages/app-store/package.json)_
+_Package definitions: [core/package.json](packages/core/package.json) | [react/package.json](packages/react/package.json) | [store/package.json](packages/store/package.json)_
 
 ```bash
 # Core reactive store
-npm install @storable/core @storable/react
+npm install @supergrain/core @supergrain/react
 
 # App-level document store (optional)
-npm install @storable/app-store
+npm install @supergrain/store
 
 # or with pnpm
-pnpm add @storable/core @storable/react @storable/app-store
+pnpm add @supergrain/core @supergrain/react @supergrain/store
 ```
 
 ## Quick Start
@@ -51,8 +51,8 @@ _Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/t
 ```typescript
 // [#DOC_TEST_3](packages/documentation/tests/quick-start.test.tsx)
 
-import { createStore } from '@storable/core'
-import { useTrackedStore } from '@storable/react'
+import { createStore } from '@supergrain/core'
+import { useTrackedStore } from '@supergrain/react'
 
 // Create a store with initial state
 const [store, update] = createStore({
@@ -95,7 +95,7 @@ function TodoApp() {
 
 ## How It Works
 
-Storable uses **fine-grained reactivity** powered by `alien-signals` to automatically track which components access which data, creating subscriptions only to properties that are actually used.
+Supergrain uses **super fine-grained reactivity** powered by `alien-signals` to automatically track which components access which data, creating subscriptions only to properties that are actually used.
 
 ### The Magic of `useTrackedStore`
 
@@ -146,7 +146,7 @@ Unlike other reactive systems, you never need to manually subscribe or unsubscri
 const unsubscribe = store.subscribe('user.name', callback)
 useEffect(() => unsubscribe, [])
 
-// ✅ Storable: just access the data normally
+// ✅ Supergrain: just access the data normally
 const userName = useTrackedStore(store).user.name // Automatically subscribed!
 ```
 
@@ -159,7 +159,7 @@ _Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/s
 ```typescript
 // [#DOC_TEST_1](packages/documentation/tests/creating-stores.test.ts)
 
-import { createStore } from '@storable/core'
+import { createStore } from '@supergrain/core'
 
 const [state, update] = createStore({
   count: 0,
@@ -172,7 +172,7 @@ const [state, update] = createStore({
 ```typescript
 // [#DOC_TEST_2](packages/documentation/tests/creating-stores.test.ts)
 
-import { createStore } from '@storable/core'
+import { createStore } from '@supergrain/core'
 
 const [state, update] = createStore({
   users: [
@@ -182,7 +182,7 @@ const [state, update] = createStore({
       todos: [
         {
           id: 1,
-          text: 'Use Storable.',
+          text: 'Use Supergrain.',
           tags: [
             {
               id: 1,
@@ -283,7 +283,7 @@ The primary way to use stores in React:
 ```typescript
 // [#DOC_TEST_6](packages/documentation/tests/react-integration.test.tsx)
 
-import { useTrackedStore } from '@storable/react'
+import { useTrackedStore } from '@supergrain/react'
 
 function Counter() {
   const state = useTrackedStore(store)
@@ -299,7 +299,7 @@ function Counter() {
 }
 ```
 
-### Fine-grained Reactivity
+### Super Fine-grained Reactivity
 
 Components only re-render when properties they access change:
 
@@ -373,7 +373,7 @@ The `For` component provides optimal performance for rendering arrays by automat
 ```typescript
 // [#DOC_TEST_10](packages/documentation/tests/react-integration.test.tsx)
 
-import { For } from '@storable/react'
+import { For } from '@supergrain/react'
 
 // Memoized component for each item
 const TodoItem = memo(({ todo }) => (
@@ -513,7 +513,7 @@ React to state changes with `effect`:
 ```typescript
 // [#DOC_TEST_19](packages/documentation/tests/effects.test.ts)
 
-import { effect } from '@storable/core'
+import { effect } from '@supergrain/core'
 
 const [state, update] = createStore({ count: 0 })
 
@@ -535,7 +535,7 @@ Derive values that update automatically:
 ```typescript
 // [#DOC_TEST_20](packages/documentation/tests/computed.test.ts)
 
-import { computed } from '@storable/core'
+import { computed } from '@supergrain/core'
 
 const [state, update] = createStore({
   todos: [
@@ -558,20 +558,20 @@ update({
 console.log(completedCount()) // 2
 ```
 
-## App Store - Document Management
+## Store - Document Management
 
-_Links: [Source Code](packages/app-store/src/app-store.ts)._
+_Links: [Source Code](packages/store/src/store.ts)._
 
-The `@storable/app-store` package provides a document-oriented store built on top of the core Storable reactivity system. It's designed for managing app-level data with a promise-like reactive API.
+The `@supergrain/store` package provides a document-oriented store built on top of the core Supergrain reactivity system. It's designed for managing app-level data with a promise-like reactive API.
 
 ### Basic Setup
 
-Define your document types and create an AppStore:
+Define your document types and create a Store:
 
 ```typescript
-// [#DOC_TEST_21](packages/documentation/tests/app-store.test.tsx)
+// [#DOC_TEST_21](packages/documentation/tests/store.test.tsx)
 
-import { AppStore } from '@storable/app-store'
+import { Store } from '@supergrain/store'
 
 interface DocumentTypes {
   users: {
@@ -588,23 +588,23 @@ interface DocumentTypes {
   }
 }
 
-// Create app store with optional fetch handler
-const appStore = new AppStore<DocumentTypes>(async (modelType, id) => {
+// Create store with optional fetch handler
+const store = new Store<DocumentTypes>(async (modelType, id) => {
   const response = await fetch(`/api/${modelType}/${id}`)
   return response.json()
 })
 
 // Or without fetch handler (manual data management)
-const appStore = new AppStore<DocumentTypes>()
+const store = new Store<DocumentTypes>()
 ```
 
 ### Finding Documents
 
 ```typescript
-// [#DOC_TEST_22](packages/documentation/tests/app-store.test.tsx)
+// [#DOC_TEST_22](packages/documentation/tests/store.test.tsx)
 
 // Get a document (returns immediately, fetches if not cached)
-const doc = appStore.findDoc('posts', 1)
+const doc = store.findDoc('posts', 1)
 
 // Document States - Documents have a promise-like API with these properties:
 doc.content // T | undefined - The document data
@@ -617,33 +617,33 @@ doc.isFulfilled // boolean - Request succeeded
 ### Manual Document Management
 
 ```typescript
-// [#DOC_TEST_23](packages/documentation/tests/app-store.test.tsx)
+// [#DOC_TEST_23](packages/documentation/tests/store.test.tsx)
 
 // Set document directly
-appStore.setDocument('users', 1, {
+store.setDocument('users', 1, {
   id: 1,
   firstName: 'Jane',
   lastName: 'Smith',
   email: 'jane@example.com',
 })
 
-const user = appStore.findDoc('users', 1)
+const user = store.findDoc('users', 1)
 console.log(user.isFulfilled) // true
 console.log(user.content) // { id: 1, firstName: 'Jane', ... }
 
 // Handle errors
-appStore.setDocumentError('users', 999, 'User not found')
-const errorUser = appStore.findDoc('users', 999)
+store.setDocumentError('users', 999, 'User not found')
+const errorUser = store.findDoc('users', 999)
 console.log(errorUser.isRejected) // true
 ```
 
 ### Inserting Documents
 
 ```typescript
-// [#DOC_TEST_24](packages/documentation/tests/app-store.test.tsx)
+// [#DOC_TEST_24](packages/documentation/tests/store.test.tsx)
 
 // Shows as pending immediately, then fulfilled when complete
-const newUserPromise = appStore.insertDocument('users', {
+const newUserPromise = store.insertDocument('users', {
   id: 123,
   firstName: 'John',
   lastName: 'Doe',
@@ -651,7 +651,7 @@ const newUserPromise = appStore.insertDocument('users', {
 })
 
 // Document is immediately available to other components
-const user = appStore.findDoc('users', 123)
+const user = store.findDoc('users', 123)
 console.log(user.isPending) // true initially
 
 const newUser = await newUserPromise
@@ -661,12 +661,12 @@ console.log(user.isFulfilled) // true after promise resolves
 ### React Integration
 
 ```typescript
-// [#DOC_TEST_25](packages/documentation/tests/app-store.test.tsx)
+// [#DOC_TEST_25](packages/documentation/tests/store.test.tsx)
 
 function MyComponent() {
   // Documents are fetched automatically and cached
-  const post = appStore.findDoc('posts', 1)
-  const user = appStore.findDoc('users', post.content?.userId)
+  const post = store.findDoc('posts', 1)
+  const user = store.findDoc('users', post.content?.userId)
 
   if (post.isPending) return <div>Loading post...</div>
   if (post.isRejected) return <div>Error loading post</div>
@@ -686,13 +686,13 @@ function MyComponent() {
 
 _Links: [Source Code](packages/react/examples/todo-app.tsx)._
 
-Here's a complete TODO application demonstrating Storable's features:
+Here's a complete TODO application demonstrating Supergrain's features:
 
 ```typescript
 // [#DOC_TEST_26](packages/documentation/tests/todo-app.test.tsx)
 
-import { createStore } from '@storable/core'
-import { useTrackedStore, For } from '@storable/react'
+import { createStore } from '@supergrain/core'
+import { useTrackedStore, For } from '@supergrain/react'
 import { memo } from 'react'
 
 interface Todo {
@@ -800,7 +800,7 @@ function TodoApp() {
 
 ## TypeScript
 
-Storable provides full TypeScript support with type inference and type safety:
+Supergrain provides full TypeScript support with type inference and type safety:
 
 ```typescript
 // [#DOC_TEST_27](packages/documentation/tests/typescript.test.ts)

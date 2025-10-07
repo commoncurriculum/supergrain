@@ -12,16 +12,16 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      name: '@storable/react',
+      name: '@supergrain/react',
       fileName: format => `index.${format}.js`,
       formats: ['es', 'cjs'],
     },
     rollupOptions: {
-      external: ['react', '@storable/core'],
+      external: ['react', '@supergrain/core'],
       output: {
         globals: {
           react: 'React',
-          '@storable/core': 'storableCore',
+          '@supergrain/core': 'supergrainCore',
         },
       },
     },

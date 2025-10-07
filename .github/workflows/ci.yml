@@ -34,7 +34,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build packages
-        run: pnpm -r --filter="@storable/core" --filter="@storable/react" --filter="@storable/app-store" build
+        run: pnpm -r --filter="@supergrain/core" --filter="@supergrain/react" --filter="@supergrain/store" build
 
       - name: Run tests
         run: pnpm test

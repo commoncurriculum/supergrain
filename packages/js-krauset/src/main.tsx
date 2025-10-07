@@ -1,7 +1,7 @@
 import { FC, memo, useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useTrackedStore, For } from '@storable/react'
-import { createStore } from '@storable/core'
+import { useTrackedStore, For } from '@supergrain/react'
+import { createStore } from '@supergrain/core'
 
 // --- Data Generation ---
 

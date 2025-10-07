@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document analyzes potential optimizations to Storable's signal infrastructure to improve property access performance while maintaining full reactivity guarantees. The focus is on reactive property access only - non-reactive reads are explicitly out of scope.
+This document analyzes potential optimizations to Supergrain's signal infrastructure to improve property access performance while maintaining full reactivity guarantees. The focus is on reactive property access only - non-reactive reads are explicitly out of scope.
 
 ## Current Performance Baseline
 
@@ -141,7 +141,7 @@ function subscribeToInlineNode(nodeData: InlineSignalData, callback: () => void)
 **Current:** ~0.084ms per reactive property access
 **With WeakMap optimization:** ~0.069ms per reactive property access (18% improvement)
 
-This would bring Storable's reactive read performance much closer to MobX (~0.05ms) while maintaining automatic reactivity advantages.
+This would bring Supergrain's reactive read performance much closer to MobX (~0.05ms) while maintaining automatic reactivity advantages.
 
 ## Implementation Considerations
 
@@ -149,7 +149,7 @@ This would bring Storable's reactive read performance much closer to MobX (~0.05
 - Comprehensive reactivity testing with complex subscription scenarios
 - Memory leak detection over extended usage
 - Performance benchmarking across different property access patterns
-- Compatibility testing with existing Storable applications
+- Compatibility testing with existing Supergrain applications
 
 ### Monitoring
 - Property access timing metrics

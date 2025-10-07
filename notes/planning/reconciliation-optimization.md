@@ -2,7 +2,7 @@
 
 **Date:** September 2025
 **Status:** Planning Phase
-**Goal:** Eliminate or optimize the reconciliation algorithm in Storable's update process
+**Goal:** Eliminate or optimize the reconciliation algorithm in Supergrain's update process
 
 ## Current State Analysis
 

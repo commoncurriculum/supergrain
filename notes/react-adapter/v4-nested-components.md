@@ -2,7 +2,7 @@
 
 ## Context
 
-We've successfully implemented a React adapter for the `@storable` library that enables automatic reactivity. The solution uses alien-signals' effect system and leverages storable's existing proxy for dependency tracking.
+We've successfully implemented a React adapter for the `@supergrain` library that enables automatic reactivity. The solution uses alien-signals' effect system and leverages storable's existing proxy for dependency tracking.
 
 ### What's Working
 - Basic store reactivity with `useStore()` and `useTrackedStore()` hooks

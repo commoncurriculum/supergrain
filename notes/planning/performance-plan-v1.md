@@ -4,13 +4,13 @@
 
 The single most important objective of this plan is to **eliminate the performance bottleneck for property reads within a reactive context.**
 
-Our benchmarks revealed a catastrophic performance gap: `@storable/core` performs at **~2,700 operations/sec**, while a comparable Solid.js store performs at **~17,300,000 operations/sec**. This is a **~6,400x difference**. This plan is focused exclusively on closing that gap.
+Our benchmarks revealed a catastrophic performance gap: `@supergrain/core` performs at **~2,700 operations/sec**, while a comparable Solid.js store performs at **~17,300,000 operations/sec**. This is a **~6,400x difference**. This plan is focused exclusively on closing that gap.
 
 ## 2. Root Cause Analysis: The Hot Path Bottleneck
 
 The massive discrepancy stems from a fundamental architectural difference in the "hot path"—the code that executes on every single tracked property access.
 
-### `@storable/core` (Current, Slow Architecture)
+### `@supergrain/core` (Current, Slow Architecture)
 
 For every tracked read (e.g., `user.name` inside an `effect`):
 
@@ -34,7 +34,7 @@ For every tracked read:
 
 ## 3. The Action Plan: Refactor for a Direct-Access Model
 
-We will refactor `@storable/core` to mirror Solid's direct-access architecture. This involves attaching a hidden cache for signals directly to the state object.
+We will refactor `@supergrain/core` to mirror Solid's direct-access architecture. This involves attaching a hidden cache for signals directly to the state object.
 
 ### Step 1: Implement the "Non-Reactive Fast Path"
 

@@ -15,13 +15,13 @@ export default defineConfig({
       // Node environment for app-store tests
       {
         test: {
-          include: ['packages/app-store/**/*.test.{ts,tsx}'],
+          include: ['packages/store/**/*.test.{ts,tsx}'],
           environment: 'node',
         },
         resolve: {
           alias: {
-            '@storable/core': resolve(__dirname, './packages/core/src'),
-            '@storable/app-store': resolve(__dirname, './packages/app-store/src'),
+            '@supergrain/core': resolve(__dirname, './packages/core/src'),
+            '@supergrain/store': resolve(__dirname, './packages/store/src'),
           },
         },
       },
@@ -48,8 +48,8 @@ export default defineConfig({
         },
         resolve: {
           alias: {
-            '@storable/core': resolve(__dirname, './packages/core/src'),
-            '@storable/react': resolve(__dirname, './packages/react/src'),
+            '@supergrain/core': resolve(__dirname, './packages/core/src'),
+            '@supergrain/react': resolve(__dirname, './packages/react/src'),
           },
         },
       },

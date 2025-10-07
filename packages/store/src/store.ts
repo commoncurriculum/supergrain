@@ -1,19 +1,19 @@
-import { createStore, computed, type SetStoreFunction } from '@storable/core'
+import { createStore, computed, type SetStoreFunction } from '@supergrain/core'
 import { DocumentPromiseImpl } from './document-promise'
 import type {
-  AppStoreState,
+  StoreState,
   DocumentPromise,
   DocumentTypes,
   FetchHandler
 } from './types'
 
-export class AppStore<T extends DocumentTypes = DocumentTypes> {
-  private store: AppStoreState
+export class Store<T extends DocumentTypes = DocumentTypes> {
+  private store: StoreState
   private update: SetStoreFunction
   private fetchHandler?: FetchHandler
 
   constructor(fetchHandler?: FetchHandler) {
-    const [store, update] = createStore<AppStoreState>({
+    const [store, update] = createStore<StoreState>({
       documents: {},
     })
     this.store = store

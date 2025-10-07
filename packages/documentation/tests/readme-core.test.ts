@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createStore, effect, computed } from '@storable/core'
+import { createStore, effect, computed } from '@supergrain/core'
 
 describe('README Core Examples', () => {
   describe('Creating Stores', () => {

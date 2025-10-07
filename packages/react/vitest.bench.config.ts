@@ -25,8 +25,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@storable/core': resolve(__dirname, '../core/src'),
-      '@storable/react': resolve(__dirname, './src'),
+      '@supergrain/core': resolve(__dirname, '../core/src'),
+      '@supergrain/react': resolve(__dirname, './src'),
     },
   },
 })

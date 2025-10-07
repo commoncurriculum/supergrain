@@ -62,7 +62,7 @@ export function useTrackedStore<T extends object>(store: T): T {
 ### Why This Works
 
 1. **Two-Proxy Architecture**:
-   - **Storable's proxy**: Tracks dependencies for whoever is currently listening (`getCurrentSub()`)
+   - **Supergrain's proxy**: Tracks dependencies for whoever is currently listening (`getCurrentSub()`)
    - **Our proxy**: Ensures the RIGHT component is listening during each specific property access
 
 2. **Temporal Isolation**: The subscriber swap happens at the exact moment of property access, providing microsecond-level precision
@@ -489,7 +489,7 @@ Preact Signals takes a fundamentally different approach that avoids the nested c
 2. **Different Signal System**:
    - Preact signals use getter properties that check global `currentStore`
    - Alien-signals requires the effect to be current during property access
-   - Storable uses proxies for tracking, not getter/setter properties
+   - Supergrain uses proxies for tracking, not getter/setter properties
    - Preact can check "who's rendering" globally, we can't without similar infrastructure
 
 3. **Global State Management Issues**:

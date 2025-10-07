@@ -15,7 +15,7 @@ const nextTick = () =>
 async function validatePropertyUpdates() {
   console.log('--- Validating: Property Updates with Effects ---')
 
-  // @storable/core
+  // @supergrain/core
   const [storableStore, setStorableStore] = createStore({ count: 0 })
   let storableRuns = 0
   const storableDispose = effect(() => {
@@ -29,7 +29,7 @@ async function validatePropertyUpdates() {
   await nextTick()
 
   console.log(
-    `[@storable/core] Sequential updates: Expected 2 runs, got ${storableRuns}.`,
+    `[@supergrain/core] Sequential updates: Expected 2 runs, got ${storableRuns}.`,
     storableRuns === 2 ? 'PASS' : 'FAIL'
   )
   storableDispose()
@@ -69,7 +69,7 @@ async function validateDeepUpdates() {
   console.log('--- Validating: Deep Updates ---')
   const getDeepState = () => ({ l1: { l2: { l3: { value: 0 } } } })
 
-  // @storable/core
+  // @supergrain/core
   const [storableStore, setStorableStore] = createStore(getDeepState())
   let storableRuns = 0
   const storableDispose = effect(() => {
@@ -82,7 +82,7 @@ async function validateDeepUpdates() {
   }
   await nextTick()
   console.log(
-    `[@storable/core] Deep updates: Expected 2 runs, got ${storableRuns}.`,
+    `[@supergrain/core] Deep updates: Expected 2 runs, got ${storableRuns}.`,
     storableRuns === 2 ? 'PASS' : 'FAIL'
   )
   storableDispose()
@@ -153,7 +153,7 @@ async function validateGranularReactivity() {
     return data
   }
 
-  // @storable/core
+  // @supergrain/core
   const [storableStore, setStorableStore] = createStore(getInitialData())
   const storableRuns = Array(10).fill(0)
   const storableDisposers: (() => void)[] = []
@@ -168,7 +168,7 @@ async function validateGranularReactivity() {
     )
   }
   await nextTick()
-  console.log(`[@storable/core] Initial runs: ${storableRuns.join(', ')}`)
+  console.log(`[@supergrain/core] Initial runs: ${storableRuns.join(', ')}`)
 
   setStorableStore({ $set: { 'prop5.nested': 999 } })
   await nextTick()
@@ -176,7 +176,7 @@ async function validateGranularReactivity() {
   const storablePassed =
     storableRuns[5] === 2 && storableRuns.every((r, i) => i === 5 || r === 1)
   console.log(
-    `[@storable/core] After update: Runs: ${storableRuns.join(', ')}.`,
+    `[@supergrain/core] After update: Runs: ${storableRuns.join(', ')}.`,
     storablePassed ? 'PASS' : 'FAIL'
   )
   storableDisposers.forEach(d => d())

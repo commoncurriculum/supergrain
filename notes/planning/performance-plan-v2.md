@@ -34,7 +34,7 @@ Despite implementing the optimizations from PLAN_FOR_PERF.md, our benchmarks sho
 
 ### Before Optimization
 
-| Operation                | @storable/core | solid-js/store     | Gap               |
+| Operation                | @supergrain/core | solid-js/store     | Gap               |
 | ------------------------ | -------------- | ------------------ | ----------------- |
 | Reactive reads (10k)     | 2,931 ops/sec  | 17,230,822 ops/sec | **5,878x slower** |
 | Array removal (1k items) | 4.7 ops/sec    | 3,383 ops/sec      | **716x slower**   |
@@ -59,31 +59,31 @@ After analyzing Solid.js's implementation, we've identified critical architectur
 ### 1. Tracking Context Detection
 
 - **Solid.js**: Uses `getListener()` from the core reactive system - a direct pointer check
-- **@storable/core**: Uses manual `effectDepth` counting with try/finally blocks
+- **@supergrain/core**: Uses manual `effectDepth` counting with try/finally blocks
 - **Impact**: Every property read pays the overhead of our tracking check
 
 ### 2. Proxy Creation Strategy
 
 - **Solid.js**: Proxies wrap the **original object** directly, no copying
-- **@storable/core**: Creates a **copy** (`[...array]` or `{...object}`) before wrapping
+- **@supergrain/core**: Creates a **copy** (`[...array]` or `{...object}`) before wrapping
 - **Impact**: Unnecessary memory allocation and copying on every proxy creation
 
 ### 3. Signal Storage & Access
 
 - **Solid.js**: Direct property access on a hidden object with no intermediate checks
-- **@storable/core**: Multiple function calls (`getSignal` → `createSignalFor`) even for hot paths
+- **@supergrain/core**: Multiple function calls (`getSignal` → `createSignalFor`) even for hot paths
 - **Impact**: Function call overhead on every reactive read
 
 ### 4. Proxy Caching
 
 - **Solid.js**: Stores proxy reference **directly on the object** via `$PROXY` symbol
-- **@storable/core**: Only uses WeakMap lookup
+- **@supergrain/core**: Only uses WeakMap lookup
 - **Impact**: WeakMap lookup overhead on every proxy access
 
 ### 5. Array Operations
 
 - **Solid.js**: Optimized array reconciliation with minimal signal updates
-- **@storable/core**: Triggers shape change signals on every array mutation
+- **@supergrain/core**: Triggers shape change signals on every array mutation
 - **Impact**: Massive overhead for array operations (716x slower for removals)
 
 ## The New Architecture

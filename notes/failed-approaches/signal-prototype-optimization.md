@@ -7,7 +7,7 @@
 
 ## Background
 
-During analysis of Storable's memory usage, the per-signal `$` property assignment was identified as a potential optimization target:
+During analysis of Supergrain's memory usage, the per-signal `$` property assignment was identified as a potential optimization target:
 
 ```typescript
 function getNode(

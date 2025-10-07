@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the design for a new app-level store that builds on top of the existing Storable library. The goal is to create a document-oriented store that provides a simple API for finding and inserting documents by type and ID, with full TypeScript support and reactive capabilities.
+This document outlines the design for a new app-level store that builds on top of the existing Supergrain library. The goal is to create a document-oriented store that provides a simple API for finding and inserting documents by type and ID, with full TypeScript support and reactive capabilities.
 
 ## API Requirements
 
@@ -30,7 +30,7 @@ Where `findDoc` returns a promise-like object with:
 
 ## Architecture Decision: Store Structure
 
-After analyzing the requirements, I recommend **Option 2: Single Storable Store** over a Map<string, Store> approach.
+After analyzing the requirements, I recommend **Option 2: Single Supergrain Store** over a Map<string, Store> approach.
 
 ### Why Single Store Approach?
 
@@ -130,7 +130,7 @@ function findDoc<K extends keyof DocumentTypes>(
 ### Phase 1: Core Store Structure
 
 1. **Create AppStore class**
-   - Wraps the core Storable store
+   - Wraps the core Supergrain store
    - Manages document lifecycle (pending -> fulfilled/rejected)
    - Handles type mapping and validation
 
@@ -172,8 +172,8 @@ function findDoc<K extends keyof DocumentTypes>(
 ### Core AppStore Class
 
 ```typescript
-import { createStore } from '@storable/core'
-import { computed } from '@storable/core'
+import { createStore } from '@supergrain/core'
+import { computed } from '@supergrain/core'
 
 class AppStore {
   private store: AppStoreState
@@ -294,15 +294,15 @@ function MyComponent() {
 
 ```
 packages/
-  app-store/
+  store/
     src/
       index.ts              # Main exports
-      app-store.ts          # AppStore class
+      store.ts          # AppStore class
       document-promise.ts   # DocumentPromise implementation
       types.ts              # TypeScript interfaces
       react.ts              # React integration hooks
     tests/
-      app-store.test.ts
+      store.test.ts
       react.test.tsx
     package.json
 ```
@@ -310,7 +310,7 @@ packages/
 ## Benefits of This Approach
 
 1. **Type Safety**: Full TypeScript support with model registry
-2. **Reactive**: Built on proven Storable reactivity system
+2. **Reactive**: Built on proven Supergrain reactivity system
 3. **Performance**: Fine-grained updates, only affected components re-render
 4. **Simple**: Focused API - just findDoc by ID and insertDocument
 5. **Familiar**: Promise-like API that developers expect
@@ -336,4 +336,4 @@ packages/
 5. Build example application to validate API
 6. Add caching and persistence as needed
 
-This approach provides a focused, simple document store for local-first apps while leveraging the existing Storable library's proven reactivity system. The API is intentionally minimal - just fetching documents by ID and inserting new ones.
+This approach provides a focused, simple document store for local-first apps while leveraging the existing Supergrain library's proven reactivity system. The API is intentionally minimal - just fetching documents by ID and inserting new ones.

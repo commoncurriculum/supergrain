@@ -1,6 +1,6 @@
 import { bench, describe } from 'vitest'
-import { createStore } from '@storable/core'
-import { useTrackedStore } from '@storable/react'
+import { createStore } from '@supergrain/core'
+import { useTrackedStore } from '@supergrain/react'
 import React, { FC, memo, useCallback } from 'react'
 import { render, act } from '@testing-library/react'
 

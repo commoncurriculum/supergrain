@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { createStore } from '@storable/core'
+import { createStore } from '@supergrain/core'
 import { useTrackedStore, For } from '../src/use-store'
 import React, { FC, memo } from 'react'
 import { render, act, cleanup } from '@testing-library/react'

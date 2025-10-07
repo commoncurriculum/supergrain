@@ -7,7 +7,7 @@
 
 ## Background
 
-After analyzing Reactively's exceptional performance (5000x faster property reads than Storable), several optimization strategies were proposed to bring similar performance gains to Storable while maintaining its automatic proxy-based reactivity.
+After analyzing Reactively's exceptional performance (5000x faster property reads than Supergrain), several optimization strategies were proposed to bring similar performance gains to Supergrain while maintaining its automatic proxy-based reactivity.
 
 ## Failed Optimization 1: Fast Path Property Access
 
@@ -47,7 +47,7 @@ setTimeout(() => {
 }, 1000)
 ```
 
-**Root Cause:** In Storable's automatic system, every property access in a reactive context (`getCurrentSub()` exists) MUST register a dependency by calling the signal. The fast path bypassed this critical step.
+**Root Cause:** In Supergrain's automatic system, every property access in a reactive context (`getCurrentSub()` exists) MUST register a dependency by calling the signal. The fast path bypassed this critical step.
 
 ## Failed Optimization 2: Hybrid Caching with Access Count
 
@@ -66,7 +66,7 @@ function optimizedGet(target: object, property: PropertyKey) {
     }
   }
 
-  return currentStorableGet(target, property)
+  return currentSupergrainGet(target, property)
 }
 ```
 
@@ -152,7 +152,7 @@ console.log(doubled()) // Still shows 0, not 10!
 
 All three failed optimizations share a common misconception: **they attempt to optimize away the core cost of automatic reactivity**.
 
-**Storable's Value Proposition:**
+**Supergrain's Value Proposition:**
 
 - Automatic dependency tracking without manual setup
 - Transparent object mutations that propagate reactively
@@ -190,10 +190,10 @@ const doubled = reactive(() => counter.value * 2)
 - **No automatic tracking:** User controls what's reactive
 - **Direct access:** `signal.value` directly accesses internal state
 
-### Why Storable Cannot Use Same Optimizations
+### Why Supergrain Cannot Use Same Optimizations
 
 ```typescript
-// Storable - Automatic system
+// Supergrain - Automatic system
 const [store] = createStore({ count: 0 })
 const doubled = reactive(() => store.count * 2)
 
@@ -261,7 +261,7 @@ function getPooledSignal(initialValue) {
 - ❌ Verbose setup (every reactive value needs explicit wrapper)
 - ✅ Predictable costs (user sees all reactive boundaries)
 
-**Automatic Reactive Systems (Storable):**
+**Automatic Reactive Systems (Supergrain):**
 
 - ❌ Performance overhead (must track everything transparently)
 - ✅ Seamless developer experience (objects "just work")
@@ -269,21 +269,21 @@ function getPooledSignal(initialValue) {
 
 ### 2. Performance Ceilings Are Fundamental
 
-The performance difference between Reactively and Storable isn't an implementation detail - it's an architectural consequence:
+The performance difference between Reactively and Supergrain isn't an implementation detail - it's an architectural consequence:
 
 - **Reactively**: User explicitly marks `reactive(value)` → library can optimize
-- **Storable**: System automatically detects `obj.prop` → library must intercept everything
+- **Supergrain**: System automatically detects `obj.prop` → library must intercept everything
 
 ### 3. Optimization Constraints
 
-**Valid Storable Optimizations:**
+**Valid Supergrain Optimizations:**
 
 - Optimize the signal implementation itself
 - Optimize proxy trap execution
 - Optimize memory layout and data structures
 - Bundle size improvements
 
-**Invalid Storable Optimizations:**
+**Invalid Supergrain Optimizations:**
 
 - Skip signal calls in reactive contexts
 - Create inconsistent signal instances
@@ -312,7 +312,7 @@ function skipSignalForPerformance() {
 
 ### 2. Accept the Performance Trade-off
 
-Storable's automatic reactivity is a **feature**, not a bug to optimize away:
+Supergrain's automatic reactivity is a **feature**, not a bug to optimize away:
 
 - Embrace the developer experience benefits
 - Focus on optimizing within the constraints
@@ -335,7 +335,7 @@ Storable's automatic reactivity is a **feature**, not a bug to optimize away:
 
 ## Conclusion
 
-The failed optimization attempts revealed a fundamental truth: **Storable's automatic reactivity model has inherent performance costs that cannot be optimized away without breaking the core functionality**.
+The failed optimization attempts revealed a fundamental truth: **Supergrain's automatic reactivity model has inherent performance costs that cannot be optimized away without breaking the core functionality**.
 
 **Key Insights:**
 

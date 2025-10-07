@@ -5,15 +5,15 @@ export default defineConfig({
   build: {
     lib: {
       entry: 'src/index.ts',
-      name: 'StorableAppStore',
+      name: 'SupergrainStore',
       formats: ['es', 'cjs'],
       fileName: 'index',
     },
     rollupOptions: {
-      external: ['@storable/core'],
+      external: ['@supergrain/core'],
       output: {
         globals: {
-          '@storable/core': 'StorableCore',
+          '@supergrain/core': 'SupergrainCore',
         },
       },
     },

@@ -1,16 +1,16 @@
-# AI Assistant Instructions for Storable Project
+# AI Assistant Instructions for Supergrain Project
 
-This document provides important instructions for AI assistants working on the Storable project.
+This document provides important instructions for AI assistants working on the Supergrain project.
 
 ## Project Overview
 
-Storable is a reactive store library with fine-grained reactivity. The project uses pnpm workspaces with multiple packages:
+Supergrain is a reactive store library with fine-grained reactivity. The project uses pnpm workspaces with multiple packages:
 
-- `@storable/core` - Core reactive store implementation
-- `@storable/react` - React integration and hooks
-- `@storable/app-store` - Document-oriented store for app-level state management
-- `@storable/documentation` - Documentation and example tests
-- `js-framework-benchmark-react-storable` - Performance benchmarks
+- `@supergrain/core` - Core reactive store implementation
+- `@supergrain/react` - React integration and hooks
+- `@supergrain/store` - Document-oriented store for app-level state management
+- `@supergrain/documentation` - Documentation and example tests
+- `js-framework-benchmark-react-supergrain` - Performance benchmarks
 
 ## Required Commands After Code Changes
 
@@ -51,7 +51,7 @@ The project uses GitHub Actions CI that runs:
 
 ## Documentation Tests
 
-The documentation package (`@storable/documentation`) contains special tests that validate README examples:
+The documentation package (`@supergrain/documentation`) contains special tests that validate README examples:
 - Tests are linked to README code blocks via `#DOC_TEST_XX` identifiers
 - All React state updates in tests must be wrapped in `act()` to prevent warnings
 - Tests run in browser environment using Vitest + Playwright

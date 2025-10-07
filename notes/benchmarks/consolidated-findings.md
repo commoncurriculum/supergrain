@@ -1,16 +1,16 @@
-# Consolidated Benchmark Findings: Storable Performance Journey
+# Consolidated Benchmark Findings: Supergrain Performance Journey
 
 ## Executive Summary
 
-This document consolidates all benchmark findings from our comprehensive performance analysis of `@storable/core`, including the breakthrough discovery that enabled **6x performance improvement** through direct mutations while maintaining full backward compatibility.
+This document consolidates all benchmark findings from our comprehensive performance analysis of `@supergrain/core`, including the breakthrough discovery that enabled **6x performance improvement** through direct mutations while maintaining full backward compatibility.
 
 ## The Performance Journey
 
 ### Initial Problem
-RxJS significantly outperformed Storable in the krauset benchmark:
-- **Row Selection**: 2x faster than Storable
-- **Partial Updates**: 1.45x faster than Storable
-- Overall: Storable was **25.4x slower** than RxJS
+RxJS significantly outperformed Supergrain in the krauset benchmark:
+- **Row Selection**: 2x faster than Supergrain
+- **Partial Updates**: 1.45x faster than Supergrain
+- Overall: Supergrain was **25.4x slower** than RxJS
 
 ### Discovery Process
 
@@ -61,11 +61,11 @@ store.data[X].label = "..."
 
 ## Comprehensive Performance Analysis
 
-### RxJS vs Storable (Corrected Benchmarks)
+### RxJS vs Supergrain (Corrected Benchmarks)
 
 After fixing async effects issue in solid-js benchmarks:
 
-| Operation | @storable/core | RxJS/solid-js | Performance Gap |
+| Operation | @supergrain/core | RxJS/solid-js | Performance Gap |
 |-----------|---------------|---------------|-----------------|
 | **Reactive reads** | 2,377 ops/sec | 63,955 ops/sec | **27x slower** |
 | **Non-reactive reads** | 376 ops/sec | 24,964 ops/sec | **66x slower** |
@@ -147,7 +147,7 @@ Despite path traversal overhead, operators remain highly optimized:
 
 ## Recommendations
 
-### For Storable Users
+### For Supergrain Users
 1. **Use Direct Mutations**: 6x performance improvement for bulk updates
 2. **Avoid Deep Nesting**: Each level multiplies proxy overhead
 3. **Profile First**: Measure before assuming performance bottlenecks
@@ -163,7 +163,7 @@ Despite path traversal overhead, operators remain highly optimized:
 
 ## Conclusion
 
-The benchmark journey revealed that **Storable's performance story is complex**:
+The benchmark journey revealed that **Supergrain's performance story is complex**:
 
 **Strengths**:
 - Competitive write performance
@@ -176,6 +176,6 @@ The benchmark journey revealed that **Storable's performance story is complex**:
 - Read operations 27-66x slower than solid-js
 - Cannot match compiled/optimized reactive systems
 
-**Bottom Line**: Storable is fast enough for most applications, provides unique features, and now has a high-performance escape hatch for critical paths. The 6x improvement from direct mutations makes it viable for performance-sensitive applications while preserving the excellent developer experience that is its core value proposition.
+**Bottom Line**: Supergrain is fast enough for most applications, provides unique features, and now has a high-performance escape hatch for critical paths. The 6x improvement from direct mutations makes it viable for performance-sensitive applications while preserving the excellent developer experience that is its core value proposition.
 
 The performance gap with solid-js remains significant, but the direct mutation capability bridges that gap sufficiently for real-world applications where write performance and developer ergonomics often matter more than micro-benchmark read performance.

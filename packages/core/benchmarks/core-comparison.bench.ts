@@ -12,12 +12,12 @@ function validationError(message: string) {
 }
 
 /**
- * Core benchmarks for comparing @storable/core with solid-js.
+ * Core benchmarks for comparing @supergrain/core with solid-js.
  *
  * IMPORTANT NOTES:
  * 1. Solid.js requires browser builds for reactivity in Node.js (solid-js/dist/solid.js).
  * 2. Benchmarks use manual `createRoot` and `dispose` for SolidJS to provide a
- *    fairer comparison against storable's manual effect disposal, avoiding
+ *    fairer comparison against supergrain's manual effect disposal, avoiding
  *    testing-library overhead.
  * 3. Solid's `createStore` is used for object/deep reactivity comparisons,
  *    while `createSignal` is used for primitive value comparisons where appropriate.
@@ -25,7 +25,7 @@ function validationError(message: string) {
  */
 
 describe('Core: Store Creation', () => {
-  bench('@storable/core: create 1000 stores', () => {
+  bench('@supergrain/core: create 1000 stores', () => {
     for (let i = 0; i < 1000; i++) {
       createStore({
         id: i,
@@ -57,7 +57,7 @@ describe('Core: Property Access (Non-reactive)', () => {
     dispose()
   })
 
-  bench('@storable/core: 1M non-reactive reads', () => {
+  bench('@supergrain/core: 1M non-reactive reads', () => {
     for (let i = 0; i < 1000000; i++) {
       storableStore.user.age
     }
@@ -71,7 +71,7 @@ describe('Core: Property Access (Non-reactive)', () => {
 })
 
 describe('Core: Reactive Effect Creation', () => {
-  bench('@storable/core: create effect with 10k property reads', () => {
+  bench('@supergrain/core: create effect with 10k property reads', () => {
     const [store] = createStore({ value: 0 })
     let runs = 0
     const dispose = effect(() => {
@@ -81,7 +81,7 @@ describe('Core: Reactive Effect Creation', () => {
       }
     })
     if (runs !== 1) {
-      validationError(`[@storable/core] Unexpected initial runs: ${runs}`)
+      validationError(`[@supergrain/core] Unexpected initial runs: ${runs}`)
     }
     dispose()
   })
@@ -102,7 +102,7 @@ describe('Core: Reactive Effect Creation', () => {
 })
 
 describe('Core: Property Updates with Effects', () => {
-  bench('@storable/core: 1000 sequential updates', async () => {
+  bench('@supergrain/core: 1000 sequential updates', async () => {
     const [store, setStore] = createStore({ count: 0 })
     let runs = 0
     const dispose = effect(() => {
@@ -112,7 +112,7 @@ describe('Core: Property Updates with Effects', () => {
 
     if (runs !== 1) {
       validationError(
-        `[@storable/core] Initial effect did not run. Runs: ${runs}`
+        `[@supergrain/core] Initial effect did not run. Runs: ${runs}`
       )
     }
 
@@ -124,7 +124,7 @@ describe('Core: Property Updates with Effects', () => {
 
     if (runs !== 2) {
       validationError(
-        `[@storable/core] Expected 2 runs for batched updates, got ${runs}`
+        `[@supergrain/core] Expected 2 runs for batched updates, got ${runs}`
       )
     }
     dispose()
@@ -159,7 +159,7 @@ describe('Core: Property Updates with Effects', () => {
 })
 
 describe('Core: Batch Updates', () => {
-  bench('@storable/core: batch update 3 properties', async () => {
+  bench('@supergrain/core: batch update 3 properties', async () => {
     const [store, setStore] = createStore({ a: 0, b: 0, c: 0 })
     let runs = 0
     const dispose = effect(() => {
@@ -174,7 +174,7 @@ describe('Core: Batch Updates', () => {
     await new Promise<void>(resolve => queueMicrotask(() => resolve()))
 
     if (runs !== 2) {
-      validationError(`[@storable/core] Expected 2 runs, got ${runs}`)
+      validationError(`[@supergrain/core] Expected 2 runs, got ${runs}`)
     }
     dispose()
   })
@@ -207,7 +207,7 @@ describe('Core: Batch Updates', () => {
 })
 
 describe('Core: Array Operations', () => {
-  bench('@storable/core: 100 array pushes', async () => {
+  bench('@supergrain/core: 100 array pushes', async () => {
     const [store, update] = createStore<{ items: number[] }>({ items: [] })
     let runs = 0
     const dispose = effect(() => {
@@ -222,7 +222,7 @@ describe('Core: Array Operations', () => {
     await new Promise<void>(resolve => queueMicrotask(() => resolve()))
 
     if (runs !== 2) {
-      validationError(`[@storable/core] Expected 2 runs, got ${runs}`)
+      validationError(`[@supergrain/core] Expected 2 runs, got ${runs}`)
     }
     dispose()
   })
@@ -258,7 +258,7 @@ describe('Core: Array Operations', () => {
 describe('Core: Deep Updates', () => {
   const getDeepState = () => ({ l1: { l2: { l3: { value: 0 } } } })
 
-  bench('@storable/core: 100 deep updates', async () => {
+  bench('@supergrain/core: 100 deep updates', async () => {
     const [store, setStore] = createStore(getDeepState())
     let runs = 0
     const dispose = effect(() => {
@@ -273,7 +273,7 @@ describe('Core: Deep Updates', () => {
     await new Promise<void>(resolve => queueMicrotask(() => resolve()))
 
     if (runs !== 2) {
-      validationError(`[@storable/core] Expected 2 runs, got ${runs}`)
+      validationError(`[@supergrain/core] Expected 2 runs, got ${runs}`)
     }
     dispose()
   })
@@ -306,7 +306,7 @@ describe('Core: Deep Updates', () => {
 
 describe('Core: Granular Reactivity', () => {
   bench(
-    '@storable/core: update one property in object with 10 properties',
+    '@supergrain/core: update one property in object with 10 properties',
     async () => {
       const data: any = {}
       for (let i = 0; i < 10; i++) data[`prop${i}`] = { nested: i }
@@ -327,7 +327,7 @@ describe('Core: Granular Reactivity', () => {
       // Effects run once on creation.
       if (runs.some(r => r !== 1)) {
         validationError(
-          `[@storable/core] Unexpected initial runs: ${runs.join(', ')}`
+          `[@supergrain/core] Unexpected initial runs: ${runs.join(', ')}`
         )
       }
 
@@ -338,7 +338,7 @@ describe('Core: Granular Reactivity', () => {
       const passed = runs[5] === 2 && runs.every((r, i) => i === 5 || r === 1)
       if (!passed) {
         validationError(
-          `[@storable/core] Expected only one effect to run. Runs: ${runs.join(
+          `[@supergrain/core] Expected only one effect to run. Runs: ${runs.join(
             ', '
           )}`
         )
@@ -384,7 +384,7 @@ describe('Core: Granular Reactivity', () => {
  * These benchmarks compare store manipulation without reactive effects
  */
 describe('Core: Non-reactive Store Operations', () => {
-  bench('@storable/core: 1000 non-reactive updates', () => {
+  bench('@supergrain/core: 1000 non-reactive updates', () => {
     const [_store, setStore] = createStore({ count: 0 })
     for (let i = 0; i < 1000; i++) {
       setStore({ $set: { count: i + 1 } })

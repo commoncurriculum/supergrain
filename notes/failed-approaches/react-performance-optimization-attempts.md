@@ -2,12 +2,12 @@
 
 **Date:** January 2025
 **Goal:** Achieve theoretical maximum React performance by bypassing reconciliation
-**Result:** All approaches failed to beat the original Storable + `<For>` implementation
+**Result:** All approaches failed to beat the original Supergrain + `<For>` implementation
 **Key Lesson:** React's reconciliation is highly optimized; fighting it usually makes performance worse
 
 ## Background
 
-The original Storable implementation with the `<For>` component achieved solid performance:
+The original Supergrain implementation with the `<For>` component achieved solid performance:
 - **1K rows**: ~64ms
 - **10K rows**: ~679ms
 - **Updates**: ~30ms
@@ -177,11 +177,11 @@ const Row = memo(({ item }) => {
 
 **Key Insight**: React Context is surprisingly performant for shared state scenarios.
 
-## Approach 5: Minimal For Component (Removing Storable)
+## Approach 5: Minimal For Component (Removing Supergrain)
 
 ### Implementation Strategy
 
-Created a lightweight version of the `<For>` component without Storable's overhead:
+Created a lightweight version of the `<For>` component without Supergrain's overhead:
 
 ```typescript
 class MinimalStore {
@@ -207,25 +207,25 @@ const For = memo(({ each, children, getKey }) => {
 ```
 
 ### Expected Benefits
-- **Remove Library Overhead**: No Storable proxy system
+- **Remove Library Overhead**: No Supergrain proxy system
 - **Plain JavaScript**: Simple subscription mechanism
 - **Same Pattern**: Keep the successful `<For>` component pattern
 
 ### Results
 
-| Operation | Original (Storable) | Minimal For | Performance |
+| Operation | Original (Supergrain) | Minimal For | Performance |
 |-----------|-------------------|-------------|-------------|
 | Create 1K | 66ms | 65ms | **2% faster** ✅ |
 | Create 10K | 679ms | **787ms** | **16% slower** ❌ |
 | Updates | 30ms | 33ms | **10% slower** ❌ |
 
-### Why Removing Storable Made It Slower
+### Why Removing Supergrain Made It Slower
 
-1. **Lost Optimizations**: Storable's proxy system is highly optimized
+1. **Lost Optimizations**: Supergrain's proxy system is highly optimized
 2. **Batching Inefficiencies**: Manual state management lost React optimizations
-3. **Memory Management**: Storable may have better object pooling/reuse
+3. **Memory Management**: Supergrain may have better object pooling/reuse
 
-**Key Insight**: Well-designed libraries often outperform naive implementations. Storable's "overhead" is actually sophisticated optimization.
+**Key Insight**: Well-designed libraries often outperform naive implementations. Supergrain's "overhead" is actually sophisticated optimization.
 
 ## Comprehensive Performance Comparison
 
@@ -233,7 +233,7 @@ const For = memo(({ each, children, getKey }) => {
 
 | Implementation | 1K ms | 10K ms | Advantage | Notes |
 |----------------|-------|--------|-----------|-------|
-| **🥇 Original (Storable + For)** | 64 | **666** | **Baseline** | Winner |
+| **🥇 Original (Supergrain + For)** | 64 | **666** | **Baseline** | Winner |
 | **🥈 React Context** | 56 | 765 | 15% slower | Surprisingly good |
 | **🥉 Minimal For** | 65 | 787 | 18% slower | Library overhead myth |
 | **❌ useSyncExternalStore** | 75 | 1161 | 74% slower | Wrong tool |
@@ -246,7 +246,7 @@ const For = memo(({ each, children, getKey }) => {
 1. **Single Shared State**: 1 reactive object vs 10,000 individual subscriptions
 2. **Optimized Reconciliation**: React's diffing algorithm is highly tuned
 3. **Batched Updates**: React updates all rows in one efficient pass
-4. **Library Optimizations**: Storable + `<For>` gives React perfect optimization hints
+4. **Library Optimizations**: Supergrain + `<For>` gives React perfect optimization hints
 
 **Why Alternatives Failed:**
 
@@ -277,8 +277,8 @@ React's virtual DOM diffing is:
 
 ### 3. Library Overhead ≠ Always Bad
 
-**Assumption**: "Removing Storable will eliminate overhead"
-**Reality**: Storable's "overhead" includes sophisticated optimizations
+**Assumption**: "Removing Supergrain will eliminate overhead"
+**Reality**: Supergrain's "overhead" includes sophisticated optimizations
 
 Well-designed libraries often include:
 - Optimized memory management
@@ -413,11 +413,11 @@ This validation approach caught:
 
 ## Conclusion
 
-This comprehensive exploration of React performance optimization attempts demonstrates a crucial principle: **the original Storable + `<For>` implementation was already at the performance optimum for this use case**.
+This comprehensive exploration of React performance optimization attempts demonstrates a crucial principle: **the original Supergrain + `<For>` implementation was already at the performance optimum for this use case**.
 
 ### Final Performance Ranking
 
-1. **🥇 Original (Storable + For): 666ms** - Leverages React's strengths
+1. **🥇 Original (Supergrain + For): 666ms** - Leverages React's strengths
 2. **🥈 React Context: 765ms** - Built-in optimization
 3. **🥉 Minimal For: 787ms** - Manual implementation overhead
 4. **❌ useSyncExternalStore: 1161ms** - Wrong abstraction level

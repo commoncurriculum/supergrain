@@ -1,5 +1,5 @@
 {
-  "name": "@storable/react-example",
+  "name": "@supergrain/react-example",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,8 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@storable/core": "workspace:*",
-    "@storable/react": "workspace:*",
+    "@supergrain/core": "workspace:*",
+    "@supergrain/react": "workspace:*",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

@@ -1,6 +1,6 @@
 # Benchmarks
 
-Performance benchmarking for `@storable/core` with a focus on comparing against `solid-js/store`.
+Performance benchmarking for `@supergrain/core` with a focus on comparing against `solid-js/store`.
 
 ## Quick Start
 
@@ -11,7 +11,7 @@ cd packages/core
 pnpm bench:core
 ```
 
-This runs only the essential benchmarks that directly compare `@storable/core` with `solid-js/store` and completes in under 30 seconds.
+This runs only the essential benchmarks that directly compare `@supergrain/core` with `solid-js/store` and completes in under 30 seconds.
 
 ## Benchmark Organization
 
@@ -123,7 +123,7 @@ Vitest bench provides:
 
 ### What to Look For
 
-1. **Relative Performance**: Compare `@storable/core` vs `solid-js/store`
+1. **Relative Performance**: Compare `@supergrain/core` vs `solid-js/store`
 2. **Consistency**: Low standard deviation indicates predictable performance
 3. **Scaling**: Performance should degrade linearly with data size
 4. **Memory**: Watch for memory leaks in create/dispose cycles
@@ -148,7 +148,7 @@ If reactive tracking fails, benchmarks will throw an error immediately with a de
 Example validation:
 
 ```typescript
-bench('@storable/core: reactive test', () => {
+bench('@supergrain/core: reactive test', () => {
   const [store] = createStore({ value: 0 })
   let effectRuns = 0
 
@@ -177,7 +177,7 @@ When adding benchmarks:
    - Detailed analysis? → Add to `additional.bench.ts`
 
 2. **Include comparisons**:
-   - Always include `@storable/core` version
+   - Always include `@supergrain/core` version
    - Always include `solid-js/store` version
    - Consider adding plain JavaScript baseline
 

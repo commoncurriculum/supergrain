@@ -9,7 +9,7 @@ We conducted extensive benchmarks comparing regular `.map()` rendering vs a `For
 ### Test Environment
 - **Platform**: Real browser (Chromium via Playwright)
 - **Framework**: React 19.1.1
-- **Store**: Storable with alien-signals
+- **Store**: Supergrain with alien-signals
 - **Test Size**: 10, 100, and 1000 items
 
 ### Key Findings

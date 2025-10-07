@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
 import React, { memo } from 'react'
-import { createStore } from '@storable/core'
+import { createStore } from '@supergrain/core'
 import { useTrackedStore, For } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
@@ -123,7 +123,7 @@ describe('For Component Magic Tests', () => {
       console.log('About to call state.data.map...')
       const result = state.data.map((item, index) => {
         // Get version like For does
-        const versionSymbol = Symbol.for('storable:version')
+        const versionSymbol = Symbol.for('supergrain:version')
         const version =
           item && typeof item === 'object' && versionSymbol in item
             ? (item as any)[versionSymbol]

@@ -1,7 +1,7 @@
 {
-  "name": "@storable/react",
+  "name": "@supergrain/react",
   "version": "0.2.0",
-  "description": "React adapter for Storable",
+  "description": "React adapter for Supergrain",
   "private": true,
   "type": "module",
   "main": "./dist/index.cjs",
@@ -30,7 +30,7 @@
     "react": "^18.2.0 || ^19.0.0"
   },
   "dependencies": {
-    "@storable/core": "workspace:*",
+    "@supergrain/core": "workspace:*",
     "use-sync-external-store": "^1.5.0"
   },
   "devDependencies": {
@@ -50,7 +50,7 @@
     "vitest": "^3.2.4"
   },
   "keywords": [
-    "storable",
+    "supergrain",
     "react",
     "hooks",
     "state-management",

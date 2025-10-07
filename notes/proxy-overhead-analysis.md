@@ -1,8 +1,8 @@
-# Storable Proxy Overhead Analysis Report
+# Supergrain Proxy Overhead Analysis Report
 
 ## Executive Summary
 
-Our comprehensive benchmark analysis reveals that **@storable/core has significant proxy overhead** compared to direct object access:
+Our comprehensive benchmark analysis reveals that **@supergrain/core has significant proxy overhead** compared to direct object access:
 
 - **Simple property access**: **188.5x slower** than direct access
 - **Nested object access**: **990.9x slower** than direct access  
@@ -19,16 +19,16 @@ Our comprehensive benchmark analysis reveals that **@storable/core has significa
 |-----------|---------|-------------------|
 | Direct object: 1M property reads | 1,605.86 | **1x (baseline)** |
 | Basic proxy: 1M property reads | 11.47 | **139.95x slower** |
-| @storable/core: 1M property reads | 8.52 | **188.50x slower** |
+| @supergrain/core: 1M property reads | 8.52 | **188.50x slower** |
 
-**Key Finding**: Even a minimal proxy adds ~140x overhead, and @storable/core adds an additional ~50x overhead on top of basic proxy overhead.
+**Key Finding**: Even a minimal proxy adds ~140x overhead, and @supergrain/core adds an additional ~50x overhead on top of basic proxy overhead.
 
 ### 2. Nested Object Access Overhead
 
 | Operation | Ops/sec | Overhead vs Direct |
 |-----------|---------|-------------------|
 | Direct object: 100k nested reads | 15,978.19 | **1x (baseline)** |
-| @storable/core: 100k nested reads | 16.13 | **990.86x slower** |
+| @supergrain/core: 100k nested reads | 16.13 | **990.86x slower** |
 
 **Key Finding**: Nested access compounds the proxy overhead dramatically, reaching nearly 1000x slowdown.
 
@@ -37,7 +37,7 @@ Our comprehensive benchmark analysis reveals that **@storable/core has significa
 | Operation | Ops/sec | Overhead vs Direct |
 |-----------|---------|-------------------|
 | Direct array: 10k iterations (100 items) | 739.63 | **1x (baseline)** |
-| @storable/core: 10k iterations (100 items) | 4.58 | **161.32x slower** |
+| @supergrain/core: 10k iterations (100 items) | 4.58 | **161.32x slower** |
 
 **Key Finding**: Array operations are severely impacted, with over 160x overhead.
 
@@ -47,7 +47,7 @@ Our comprehensive benchmark analysis reveals that **@storable/core has significa
 |-----------|---------|-------------------|
 | Direct object: create 10k objects | 4,410.77 | **1x (baseline)** |
 | Basic proxy: create 10k proxies | 2,599.53 | **1.70x slower** |
-| @storable/core: create 10k stores | 86.16 | **51.19x slower** |
+| @supergrain/core: create 10k stores | 86.16 | **51.19x slower** |
 
 **Key Finding**: Store creation is expensive due to signal creation and proxy setup overhead.
 
@@ -93,7 +93,7 @@ Our comprehensive benchmark analysis reveals that **@storable/core has significa
 | Create 10k signals with $ setter | 5,521.61 | **1.71x slower** |
 | Create 10k signals via getNode pattern | 501.41 | **18.79x slower** |
 
-**Analysis**: The `getNode` pattern used in @storable/core adds significant overhead due to property checking and setup.
+**Analysis**: The `getNode` pattern used in @supergrain/core adds significant overhead due to property checking and setup.
 
 ### 5. Object Creation Overhead
 
@@ -104,7 +104,7 @@ Our comprehensive benchmark analysis reveals that **@storable/core has significa
 | Object.create(null) | 37.87 | **5.08x slower** |
 | Object.defineProperty | 31.52 | **6.11x slower** |
 
-**Analysis**: @storable/core uses multiple `Object.defineProperty` calls for symbol setup, contributing to creation overhead.
+**Analysis**: @supergrain/core uses multiple `Object.defineProperty` calls for symbol setup, contributing to creation overhead.
 
 ## Memory Allocation Sources
 
@@ -118,7 +118,7 @@ Our comprehensive benchmark analysis reveals that **@storable/core has significa
 
 ### Per-Object Memory Footprint
 
-Based on the benchmarks, each @storable/core wrapped object has approximately:
+Based on the benchmarks, each @supergrain/core wrapped object has approximately:
 - **Proxy overhead**: ~150 bytes (proxy object + handler references)
 - **Signal tracking**: ~200 bytes per property (signal + $ method + nodes storage)
 - **Symbol properties**: ~50 bytes ($NODE, $RAW, $VERSION, $PROXY)
@@ -131,9 +131,9 @@ Based on the benchmarks, each @storable/core wrapped object has approximately:
 The problem statement mentioned that basic proxy overhead is 4-5x. Our benchmarks show:
 
 - **Basic proxy**: 139.95x slower than direct access
-- **@storable/core**: 188.50x slower than direct access
+- **@supergrain/core**: 188.50x slower than direct access
 
-This suggests the baseline measurement may have been under different conditions. However, @storable/core adds approximately **35-50% additional overhead** on top of basic proxy overhead.
+This suggests the baseline measurement may have been under different conditions. However, @supergrain/core adds approximately **35-50% additional overhead** on top of basic proxy overhead.
 
 ## Recommendations
 
@@ -158,7 +158,7 @@ This suggests the baseline measurement may have been under different conditions.
 
 ## Conclusion
 
-@storable/core's proxy overhead is **significantly higher than the 7x threshold**, with overheads ranging from **50x to 990x** depending on the operation. The primary contributors are:
+@supergrain/core's proxy overhead is **significantly higher than the 7x threshold**, with overheads ranging from **50x to 990x** depending on the operation. The primary contributors are:
 
 1. **Proxy handler complexity** (45-83x overhead)
 2. **Signal creation and management** (18x overhead for creation pattern)

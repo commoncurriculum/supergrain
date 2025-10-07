@@ -1,8 +1,8 @@
-import { startBatch, endBatch } from '@storable/core'
+import { startBatch, endBatch } from '@supergrain/core'
 
 /**
  * Flushes pending microtasks to ensure batched updates complete.
- * This is necessary because storable schedules endBatch() calls via queueMicrotask().
+ * This is necessary because supergrain schedules endBatch() calls via queueMicrotask().
  */
 export async function flushMicrotasks(): Promise<void> {
   // Wait for microtasks to run
@@ -15,7 +15,7 @@ export async function flushMicrotasks(): Promise<void> {
  * Synchronously flushes any pending batched effects.
  * This forces immediate execution of effects without waiting for microtasks.
  *
- * Note: This may not work correctly if storable has scheduled endBatch
+ * Note: This may not work correctly if supergrain has scheduled endBatch
  * via microtask, so prefer flushMicrotasks() in most cases.
  */
 export function flushSync(): void {

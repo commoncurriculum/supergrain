@@ -7,7 +7,7 @@
 
 ## Background
 
-Based on performance analysis of Storable's signal infrastructure, we identified `Object.defineProperty` calls in `getNodes()` as a potential bottleneck, consuming ~0.015ms per new object vs ~0.003ms for WeakMap operations.
+Based on performance analysis of Supergrain's signal infrastructure, we identified `Object.defineProperty` calls in `getNodes()` as a potential bottleneck, consuming ~0.015ms per new object vs ~0.003ms for WeakMap operations.
 
 ## Theoretical Analysis
 
@@ -302,7 +302,7 @@ The WeakMap node storage optimization represents a **well-reasoned but ultimatel
 
 While the optimization was reverted, this effort provided:
 
-- **Detailed performance analysis** of Storable's signal infrastructure
+- **Detailed performance analysis** of Supergrain's signal infrastructure
 - **Comprehensive benchmarking framework** for future optimization work
 - **Documentation of V8 behavior patterns** in reactive systems
 - **Methodology improvements** for future performance work

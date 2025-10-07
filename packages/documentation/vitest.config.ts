@@ -22,9 +22,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@storable/core': resolve(__dirname, '../core/src'),
-      '@storable/react': resolve(__dirname, '../react/src'),
-      '@storable/app-store': resolve(__dirname, '../app-store/src'),
+      '@supergrain/core': resolve(__dirname, '../core/src'),
+      '@supergrain/react': resolve(__dirname, '../react/src'),
+      '@supergrain/store': resolve(__dirname, '../app-store/src'),
     },
   },
 })

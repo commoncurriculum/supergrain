@@ -2,7 +2,7 @@
 
 ## Question Answered: "What is our overhead?"
 
-**Answer**: @storable/core has **dramatically higher overhead** than the baseline 4-5x proxy overhead mentioned in the problem statement:
+**Answer**: @supergrain/core has **dramatically higher overhead** than the baseline 4-5x proxy overhead mentioned in the problem statement:
 
 - **Simple property access**: **188.5x slower** than direct access
 - **Nested object access**: **990.9x slower** than direct access  
@@ -26,7 +26,7 @@ pnpm run bench benchmarks/allocation-analysis.bench.ts
 
 ### 1. Proxy Handler Overhead (Primary Issue)
 - **Basic proxy**: 140x slower than direct access
-- **@storable proxy**: 188x slower than direct access
+- **@supergrain proxy**: 188x slower than direct access
 - Each additional check/operation compounds overhead
 
 ### 2. Major Contributors to Slowdown

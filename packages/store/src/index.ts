@@ -1,8 +1,8 @@
-export { AppStore } from './app-store'
+export { Store } from './store'
 export { DocumentPromiseImpl } from './document-promise'
 export type {
   DocumentState,
-  AppStoreState,
+  StoreState,
   DocumentPromise,
   DocumentTypes,
   FetchHandler,
