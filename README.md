@@ -872,3 +872,41 @@ function UserProfile() {
 6. **Profile with React DevTools** - Use the React DevTools Profiler to identify unnecessary re-renders
 
 The reactive system is designed to be fast by default, but following these patterns will help you achieve optimal performance in complex applications.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+### Development
+
+```bash
+# Clone the repository
+git clone https://github.com/commoncurriculum/supergrain.git
+cd supergrain
+
+# Install dependencies
+pnpm install
+
+# Build packages
+pnpm -r --filter="@supergrain/*" build
+
+# Run tests
+pnpm test
+
+# Run type checks
+pnpm run typecheck
+```
+
+### Publishing Releases
+
+This project uses [Changesets](https://github.com/changesets/changesets) for automated releases. You can create changesets via:
+- **GitHub UI**: Use the [Add Changeset workflow](https://github.com/commoncurriculum/supergrain/actions/workflows/add-changeset.yml) (no terminal needed!)
+- **Terminal**: Run `pnpm changeset`
+
+GitHub Actions automatically handles versioning, changelogs, and publishing to NPM.
+
+See [RELEASING.md](RELEASING.md) for detailed instructions.
+
+## License
+
+MIT

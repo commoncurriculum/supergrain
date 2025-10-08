@@ -1,7 +1,6 @@
 {
   "name": "@supergrain/core",
   "version": "0.0.1",
-  "private": true,
   "description": "Core reactive store implementation for Supergrain.",
   "keywords": [
     "supergrain",
