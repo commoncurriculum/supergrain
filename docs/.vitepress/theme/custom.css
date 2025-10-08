@@ -1,47 +1,11 @@
 @import "tailwindcss";
 
-/* Hero customization */
+/* Hero customization - using inline styles via CSS variables */
 .VPHero .image-bg {
-  @apply bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full;
+  background: linear-gradient(to bottom right, rgb(99 102 241), rgb(168 85 247));
+  border-radius: 9999px;
 }
 
 .VPHero .image {
   filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.2));
-}
-
-.VPFeatures {
-  @apply py-12;
-}
-
-/* Content container styles */
-.content-container {
-  @apply max-w-4xl mx-auto px-6 py-12;
-}
-
-.content-container h2 {
-  @apply text-3xl font-bold mt-12 mb-6;
-}
-
-.content-container h3 {
-  @apply text-2xl font-semibold mt-8 mb-4;
-}
-
-.content-container p {
-  @apply mb-4 leading-relaxed;
-}
-
-.content-container code {
-  @apply bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-sm font-mono;
-}
-
-.content-container pre {
-  @apply bg-gray-900 text-gray-50 p-6 rounded-lg overflow-x-auto mb-6;
-}
-
-.content-container ul {
-  @apply list-disc list-inside mb-4 space-y-2;
-}
-
-.content-container a {
-  @apply text-blue-600 dark:text-blue-400 hover:underline;
 }

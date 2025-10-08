@@ -37,71 +37,8 @@ features:
     details: App-level store for document management with promise-like API
 ---
 
-<div class="content-container">
+<div class="max-w-4xl mx-auto px-6 py-12">
 
-## Installation
-
-_Package definitions: [core/package.json](packages/core/package.json) | [react/package.json](packages/react/package.json) | [store/package.json](packages/store/package.json)_
-
-```bash
-# Core reactive store
-npm install @supergrain/core @supergrain/react
-
-# App-level document store (optional)
-npm install @supergrain/store
-
-# or with pnpm
-pnpm add @supergrain/core @supergrain/react @supergrain/store
-```
-
-## Quick Start
-
-_Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/todo.test.ts)._
-
-```typescript
-// [#DOC_TEST_3](packages/documentation/tests/quick-start.test.tsx)
-
-import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '@supergrain/react'
-
-// Create a store with initial state
-const [store, update] = createStore({
-  count: 0,
-  todos: [],
-})
-
-// Use in React components
-function TodoApp() {
-  const state = useTrackedStore(store)
-
-  // Use update function with MongoDB-style operators
-  const addTodo = (text: string) => {
-    update({
-      $push: {
-        todos: { id: Date.now(), text, completed: false }
-      }
-    })
-  }
-
-  return (
-    <div>
-      <h1>Count: {state.count}</h1>
-      <button onClick={() => update({ $inc: { count: 1 } })}>
-        Increment
-      </button>
-
-      <input
-        onKeyPress={(e) => e.key === 'Enter' && addTodo(e.target.value)}
-        placeholder="Add todo..."
-      />
-      {state.todos.map(todo => (
-        <div key={todo.id}>{todo.text}</div>
-      ))}
-    </div>
-  )
-}
-```
-
-For full documentation, see the [README](https://github.com/commoncurriculum/supergrain/blob/main/README.md).
+<!--@include: ../README.md-->
 
 </div>
