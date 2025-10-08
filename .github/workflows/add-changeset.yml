@@ -1,0 +1,120 @@
+name: Add Changeset
+
+on:
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: 'Packages to release (comma-separated: core, react, store, or "all")'
+        required: true
+        type: string
+        default: 'all'
+      bump:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: 'patch'
+      message:
+        description: 'Changelog message (describe your changes)'
+        required: true
+        type: string
+
+jobs:
+  add-changeset:
+    name: Add Changeset
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create changeset file
+        run: |
+          # Generate a random ID for the changeset file
+          CHANGESET_ID=$(date +%s)-$(openssl rand -hex 4)
+          CHANGESET_FILE=".changeset/${CHANGESET_ID}.md"
+          
+          # Determine which packages to include
+          PACKAGES_INPUT="${{ github.event.inputs.packages }}"
+          BUMP_TYPE="${{ github.event.inputs.bump }}"
+          
+          # Start the changeset file with frontmatter
+          echo "---" > "$CHANGESET_FILE"
+          
+          # Add packages based on input
+          if [ "$PACKAGES_INPUT" = "all" ]; then
+            echo "\"@supergrain/core\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+            echo "\"@supergrain/react\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+            echo "\"@supergrain/store\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+          else
+            # Split comma-separated packages
+            IFS=',' read -ra PKGS <<< "$PACKAGES_INPUT"
+            for pkg in "${PKGS[@]}"; do
+              # Trim whitespace
+              pkg=$(echo "$pkg" | xargs)
+              case "$pkg" in
+                core)
+                  echo "\"@supergrain/core\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+                  ;;
+                react)
+                  echo "\"@supergrain/react\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+                  ;;
+                store)
+                  echo "\"@supergrain/store\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+                  ;;
+                *)
+                  echo "Warning: Unknown package '$pkg', skipping"
+                  ;;
+              esac
+            done
+          fi
+          
+          echo "---" >> "$CHANGESET_FILE"
+          echo "" >> "$CHANGESET_FILE"
+          
+          # Add the message
+          echo "${{ github.event.inputs.message }}" >> "$CHANGESET_FILE"
+          
+          echo "Created changeset file: $CHANGESET_FILE"
+          cat "$CHANGESET_FILE"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Add changeset: ${{ github.event.inputs.message }}"
+          title: "Add changeset: ${{ github.event.inputs.message }}"
+          body: |
+            ## Changeset Details
+            
+            **Packages**: `${{ github.event.inputs.packages }}`
+            **Bump type**: `${{ github.event.inputs.bump }}`
+            **Changes**: ${{ github.event.inputs.message }}
+            
+            ---
+            
+            This changeset was created via GitHub Actions.
+            
+            Once this PR is merged, the Release workflow will create a "Release: Version Packages" PR with the version bumps and changelog entries.
+          branch: changeset-${{ github.run_id }}
+          delete-branch: true

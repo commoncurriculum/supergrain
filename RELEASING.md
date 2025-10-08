@@ -16,7 +16,20 @@ This project uses [Changesets](https://github.com/changesets/changesets) to mana
 
 ### Step 1: Add a Changeset
 
-When you make changes that should be released, create a changeset:
+You have two options for creating a changeset:
+
+#### Option A: GitHub UI (No terminal needed!)
+
+1. Go to the [Add Changeset workflow](https://github.com/commoncurriculum/supergrain/actions/workflows/add-changeset.yml)
+2. Click "Run workflow"
+3. Fill in the form:
+   - **Packages**: Enter `all` or comma-separated list like `core, react`
+   - **Version bump type**: Choose `patch`, `minor`, or `major`
+   - **Changelog message**: Describe your changes
+4. Click "Run workflow"
+5. The workflow creates a PR with the changeset - review and merge it!
+
+#### Option B: Local Terminal
 
 ```bash
 pnpm changeset
@@ -56,6 +69,20 @@ When you push to `main`, the GitHub Action automatically:
 That's it! No manual version bumping, no manual publishing, no manual changelog writing.
 
 ## Example Workflow
+
+### Using GitHub UI (Easiest!)
+
+1. Make your changes and push to a branch
+2. Go to [Actions → Add Changeset](https://github.com/commoncurriculum/supergrain/actions/workflows/add-changeset.yml)
+3. Click "Run workflow"
+   - Packages: `core`
+   - Bump: `minor`
+   - Message: `Add support for nested array updates`
+4. Merge the changeset PR
+5. Wait for the "Release: Version Packages" PR to be created
+6. Review and merge it → packages publish automatically!
+
+### Using Terminal
 
 ```bash
 # Make your changes to code

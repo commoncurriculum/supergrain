@@ -899,7 +899,11 @@ pnpm run typecheck
 
 ### Publishing Releases
 
-This project uses [Changesets](https://github.com/changesets/changesets) for automated releases. Simply run `pnpm changeset` after making changes, and GitHub Actions will handle versioning, changelogs, and publishing to NPM automatically.
+This project uses [Changesets](https://github.com/changesets/changesets) for automated releases. You can create changesets via:
+- **GitHub UI**: Use the [Add Changeset workflow](https://github.com/commoncurriculum/supergrain/actions/workflows/add-changeset.yml) (no terminal needed!)
+- **Terminal**: Run `pnpm changeset`
+
+GitHub Actions automatically handles versioning, changelogs, and publishing to NPM.
 
 See [RELEASING.md](RELEASING.md) for detailed instructions.
 
