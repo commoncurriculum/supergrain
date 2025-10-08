@@ -1,0 +1,43 @@
+<svg width="400" height="400" viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Grain body -->
+  <ellipse cx="200" cy="220" rx="80" ry="120" fill="#F59E0B" stroke="#D97706" stroke-width="4"/>
+  
+  <!-- Superhero cape -->
+  <path d="M 120 150 Q 80 200 60 280 L 60 340 L 100 300 L 120 220 Z" fill="#DC2626" stroke="#B91C1C" stroke-width="3"/>
+  <path d="M 280 150 Q 320 200 340 280 L 340 340 L 300 300 L 280 220 Z" fill="#DC2626" stroke="#B91C1C" stroke-width="3"/>
+  
+  <!-- Superhero belt -->
+  <rect x="160" y="240" width="80" height="15" rx="2" fill="#EAB308" stroke="#CA8A04" stroke-width="2"/>
+  <circle cx="200" cy="247.5" r="8" fill="#FEF3C7" stroke="#CA8A04" stroke-width="2"/>
+  
+  <!-- Eyes -->
+  <ellipse cx="180" cy="200" rx="12" ry="15" fill="#1F2937"/>
+  <ellipse cx="220" cy="200" rx="12" ry="15" fill="#1F2937"/>
+  <ellipse cx="182" cy="198" rx="5" ry="6" fill="white"/>
+  <ellipse cx="222" cy="198" rx="5" ry="6" fill="white"/>
+  
+  <!-- Superhero mask -->
+  <path d="M 160 190 Q 165 185 170 185 L 185 190 L 180 200 L 170 195 Z" fill="#1E40AF" opacity="0.8"/>
+  <path d="M 240 190 Q 235 185 230 185 L 215 190 L 220 200 L 230 195 Z" fill="#1E40AF" opacity="0.8"/>
+  <rect x="170" y="188" width="60" height="8" fill="#1E40AF" opacity="0.8"/>
+  
+  <!-- Smile -->
+  <path d="M 180 225 Q 200 235 220 225" stroke="#D97706" stroke-width="3" stroke-linecap="round" fill="none"/>
+  
+  <!-- Sparkles/shine effect -->
+  <circle cx="150" cy="170" r="3" fill="#FCD34D"/>
+  <circle cx="250" cy="180" r="3" fill="#FCD34D"/>
+  <circle cx="160" cy="140" r="2" fill="#FDE68A"/>
+  <circle cx="240" cy="150" r="2" fill="#FDE68A"/>
+  
+  <!-- Flying pose effect lines -->
+  <line x1="100" y1="180" x2="80" y2="185" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <line x1="95" y1="200" x2="70" y2="210" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <line x1="300" y1="180" x2="320" y2="185" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <line x1="305" y1="200" x2="330" y2="210" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  
+  <!-- Text bubble -->
+  <text x="200" y="380" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#1F2937" text-anchor="middle">
+    SUPER GRAIN!
+  </text>
+</svg>
