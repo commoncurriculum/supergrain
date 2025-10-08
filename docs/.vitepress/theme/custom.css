@@ -1,205 +1,8 @@
-/* Tailwind-inspired utility classes using modern CSS */
-
-:root {
-  /* Colors */
-  --color-primary: #3b82f6;
-  --color-primary-dark: #2563eb;
-  --color-secondary: #8b5cf6;
-  --color-accent: #f59e0b;
-  --color-gray-50: #f9fafb;
-  --color-gray-100: #f3f4f6;
-  --color-gray-200: #e5e7eb;
-  --color-gray-300: #d1d5db;
-  --color-gray-400: #9ca3af;
-  --color-gray-500: #6b7280;
-  --color-gray-600: #4b5563;
-  --color-gray-700: #374151;
-  --color-gray-800: #1f2937;
-  --color-gray-900: #111827;
-  
-  /* Spacing */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-12: 3rem;
-  --space-16: 4rem;
-  --space-24: 6rem;
-  
-  /* Font sizes */
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.25rem;
-  --text-2xl: 1.5rem;
-  --text-3xl: 1.875rem;
-  --text-4xl: 2.25rem;
-  --text-5xl: 3rem;
-}
-
-.dark {
-  --color-gray-50: #1f2937;
-  --color-gray-100: #374151;
-  --color-gray-800: #f3f4f6;
-  --color-gray-900: #f9fafb;
-}
-
-/* Utility classes */
-.max-w-4xl {
-  max-width: 56rem;
-}
-
-.mx-auto {
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.px-6 {
-  padding-left: var(--space-6);
-  padding-right: var(--space-6);
-}
-
-.py-12 {
-  padding-top: var(--space-12);
-  padding-bottom: var(--space-12);
-}
-
-.mb-4 {
-  margin-bottom: var(--space-4);
-}
-
-.mb-6 {
-  margin-bottom: var(--space-6);
-}
-
-.mt-8 {
-  margin-top: var(--space-8);
-}
-
-.mt-12 {
-  margin-top: var(--space-12);
-}
-
-.text-sm {
-  font-size: var(--text-sm);
-}
-
-.text-2xl {
-  font-size: var(--text-2xl);
-}
-
-.text-3xl {
-  font-size: var(--text-3xl);
-}
-
-.font-bold {
-  font-weight: 700;
-}
-
-.font-semibold {
-  font-weight: 600;
-}
-
-.leading-relaxed {
-  line-height: 1.625;
-}
-
-.rounded {
-  border-radius: 0.25rem;
-}
-
-.rounded-lg {
-  border-radius: 0.5rem;
-}
-
-.overflow-x-auto {
-  overflow-x: auto;
-}
-
-/* Content container styles */
-.content-container {
-  max-width: 56rem;
-  margin-left: auto;
-  margin-right: auto;
-  padding: var(--space-12) var(--space-6);
-}
-
-.content-container h2 {
-  font-size: var(--text-3xl);
-  font-weight: 700;
-  margin-top: var(--space-12);
-  margin-bottom: var(--space-6);
-  color: var(--vp-c-text-1);
-}
-
-.content-container h3 {
-  font-size: var(--text-2xl);
-  font-weight: 600;
-  margin-top: var(--space-8);
-  margin-bottom: var(--space-4);
-  color: var(--vp-c-text-1);
-}
-
-.content-container p {
-  margin-bottom: var(--space-4);
-  line-height: 1.625;
-  color: var(--vp-c-text-2);
-}
-
-.content-container code {
-  background-color: var(--color-gray-100);
-  padding: var(--space-1) var(--space-2);
-  border-radius: 0.25rem;
-  font-size: var(--text-sm);
-  font-family: 'Courier New', monospace;
-}
-
-.dark .content-container code {
-  background-color: var(--color-gray-800);
-}
-
-.content-container pre {
-  background-color: var(--color-gray-900);
-  color: var(--color-gray-50);
-  padding: var(--space-6);
-  border-radius: 0.5rem;
-  overflow-x: auto;
-  margin-bottom: var(--space-6);
-}
-
-.dark .content-container pre {
-  background-color: var(--color-gray-800);
-}
-
-.content-container ul {
-  list-style-type: disc;
-  list-style-position: inside;
-  margin-bottom: var(--space-4);
-}
-
-.content-container ul li {
-  margin-bottom: var(--space-2);
-}
-
-.content-container a {
-  color: var(--color-primary);
-  text-decoration: none;
-}
-
-.content-container a:hover {
-  text-decoration: underline;
-}
-
-.dark .content-container a {
-  color: var(--color-primary-dark);
-}
+@import "tailwindcss";
 
 /* Hero customization */
 .VPHero .image-bg {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 50%;
+  @apply bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full;
 }
 
 .VPHero .image {
@@ -207,6 +10,38 @@
 }
 
 .VPFeatures {
-  padding-top: var(--space-12);
-  padding-bottom: var(--space-12);
+  @apply py-12;
+}
+
+/* Content container styles */
+.content-container {
+  @apply max-w-4xl mx-auto px-6 py-12;
+}
+
+.content-container h2 {
+  @apply text-3xl font-bold mt-12 mb-6;
+}
+
+.content-container h3 {
+  @apply text-2xl font-semibold mt-8 mb-4;
+}
+
+.content-container p {
+  @apply mb-4 leading-relaxed;
+}
+
+.content-container code {
+  @apply bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-sm font-mono;
+}
+
+.content-container pre {
+  @apply bg-gray-900 text-gray-50 p-6 rounded-lg overflow-x-auto mb-6;
+}
+
+.content-container ul {
+  @apply list-disc list-inside mb-4 space-y-2;
+}
+
+.content-container a {
+  @apply text-blue-600 dark:text-blue-400 hover:underline;
 }
