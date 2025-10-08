@@ -5,9 +5,9 @@ import { effect, getCurrentSub, setCurrentSub } from 'alien-signals'
 describe('Object Property Isolation', () => {
   it('validates README claim: accessing items[0].name should track only that property, not the whole object', () => {
     /**
-     * README claim: "Accessing state.items[0].name WILL re-render when state.items[0].age changes (same object)"
+     * README now correctly states: "Accessing state.items[0].name will NOT re-render when state.items[0].age changes (property-level granularity)"
      * 
-     * This test validates whether this is true or false.
+     * This test confirms that tracking is indeed at the property level, not object level.
      */
     const [store, update] = createStore({
       items: [
@@ -75,30 +75,16 @@ describe('Object Property Isolation', () => {
 
     cleanup()
 
-    // Based on the README, it claims:
-    // "Accessing state.items[0].name WILL re-render when state.items[0].age changes"
-    // 
-    // But based on the fine-grained reactivity system, this should NOT be true
-    // because tracking happens at the property level, not the object level.
-    
     console.log('\n=== Analysis ===')
-    console.log(`README claim: "Accessing state.items[0].name WILL re-render when state.items[0].age changes"`)
+    console.log(`README states: "Accessing state.items[0].name will NOT re-render when state.items[0].age changes"`)
     
-    // If effectRuns is 2, it means updating 'age' did NOT trigger re-render
-    // If effectRuns is 3, it means updating 'age' DID trigger re-render
+    // Verify the README's claim is correct
+    expect(effectRuns).toBe(2) // Only the 'name' update should trigger, not 'age'
     
-    if (effectRuns === 2) {
-      console.log('✗ README claim is INCORRECT')
-      console.log('  Updating age did NOT trigger effect')
-      console.log('  Only updating name triggered effect')
-      console.log('  The system has property-level granularity, not object-level')
-    } else if (effectRuns === 3) {
-      console.log('✓ README claim is CORRECT')
-      console.log('  Updating age DID trigger effect')
-      console.log('  The system tracks at object-level, not property-level')
-    }
-
-    // This will reveal whether the README statement is accurate
+    console.log('✓ README statement is CORRECT')
+    console.log('  Updating age did NOT trigger effect')
+    console.log('  Only updating name triggered effect')
+    console.log('  The system has property-level granularity, not object-level')
   })
 
   it('tests the behavior at different access levels', () => {

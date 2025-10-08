@@ -130,10 +130,10 @@ update({ $set: { 'user.profile.age': 30 } })     // This component does NOT re-r
 
 Every property you access during render creates a subscription. The reactivity system:
 
-- ✅ `state.items[0].name` creates subscription to the `items[0]` object
-- ✅ `state.items.map(item => item.title)` creates subscriptions to each item
+- ✅ `state.items[0].name` creates subscription to ONLY the `name` property
+- ✅ `state.items.map(item => item.title)` creates subscriptions to each item's `title` property
 - ✅ Deeply nested access like `state.a.b.c.d.e` works perfectly
-- ⚠️ Accessing `state.items[0].name` WILL re-render when `state.items[0].age` changes (same object)
+- ✅ Accessing `state.items[0].name` will NOT re-render when `state.items[0].age` changes (property-level granularity)
 
 ### No Manual Subscription Management
 
