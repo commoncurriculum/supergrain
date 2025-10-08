@@ -12,15 +12,6 @@ export default defineConfig({
       { text: 'GitHub', link: 'https://github.com/commoncurriculum/supergrain' }
     ],
     
-    sidebar: [
-      {
-        text: 'Introduction',
-        items: [
-          { text: 'Getting Started', link: '/' },
-        ]
-      }
-    ],
-    
     socialLinks: [
       { icon: 'github', link: 'https://github.com/commoncurriculum/supergrain' }
     ],

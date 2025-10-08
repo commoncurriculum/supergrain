@@ -4,7 +4,11 @@ This directory contains the documentation site for Supergrain, built with [ViteP
 
 ## How It Works
 
-The documentation site uses the root `README.md` as its main content. The `index.md` file in this directory is a symlink to `../README.md`, so any changes to the root README are automatically reflected in the docs site.
+The documentation site features:
+- A hero section with the Supergrain logo (superhero grain)
+- Feature highlights on the home page
+- A quick start guide and installation instructions
+- Custom utility-first CSS (Tailwind-inspired) for styling
 
 ## Local Development
 
