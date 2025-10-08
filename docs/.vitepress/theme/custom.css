@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+/* Hero customization - using inline styles via CSS variables */
+.VPHero .image-bg {
+  background: linear-gradient(to bottom right, rgb(99 102 241), rgb(168 85 247));
+  border-radius: 9999px;
+}
+
+.VPHero .image {
+  filter: drop-shadow(0 10px 30px rgba(0, 0, 0, 0.2));
+}

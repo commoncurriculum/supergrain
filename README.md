@@ -2,7 +2,7 @@
 
 A reactive store library with super fine-grained reactivity powered by alien-signals. Create stores that track property access and update components with surgical precision using MongoDB-style update operators.
 
-_Core Implementation: [packages/core/src](packages/core/src) | React Integration: [packages/react/src](packages/react/src) | Store: [packages/store/src](packages/store/src) | Examples: [packages/react/examples](packages/react/examples)_
+📚 **[View Full Documentation](https://commoncurriculum.github.io/supergrain/)** | _Core Implementation: [packages/core/src](packages/core/src) | React Integration: [packages/react/src](packages/react/src) | Store: [packages/store/src](packages/store/src) | Examples: [packages/react/examples](packages/react/examples)_
 
 ## Features
 
