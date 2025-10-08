@@ -7,13 +7,17 @@
     "test": "vitest",
     "test:validate": "pnpm --filter @supergrain/documentation run test:validate",
     "bench:core": "vitest bench --root packages/core",
-    "typecheck": "pnpm -r --filter=\"@supergrain/*\" run typecheck && pnpm --filter=\"js-framework-benchmark-react-supergrain\" run typecheck"
+    "typecheck": "pnpm -r --filter=\"@supergrain/*\" run typecheck && pnpm --filter=\"js-framework-benchmark-react-supergrain\" run typecheck",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm -r --filter=\"@supergrain/*\" build && changeset publish"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "packageManager": "pnpm@10.6.3",
   "devDependencies": {
+    "@changesets/cli": "^2.29.7",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",

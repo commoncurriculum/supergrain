@@ -1,129 +1,123 @@
 # How to Create a Release and Publish to NPM
 
-This document explains how to create a release for Supergrain packages and publish them to NPM.
+This project uses [Changesets](https://github.com/changesets/changesets) to manage releases. Changesets automates versioning, changelog generation, and publishing to NPM.
 
-## Prerequisites
+## One-Time Setup
 
-Before creating a release, you need to:
+**Set up NPM_TOKEN secret in GitHub** (if not already done):
 
-1. **Set up NPM_TOKEN secret in GitHub**:
-   - Go to [npmjs.com](https://www.npmjs.com/) and log in
-   - Navigate to your account settings > Access Tokens
-   - Create a new "Automation" token
-   - Copy the token
-   - Go to your GitHub repository: https://github.com/commoncurriculum/supergrain
-   - Navigate to Settings > Secrets and variables > Actions
-   - Click "New repository secret"
-   - Name: `NPM_TOKEN`
-   - Value: paste your NPM token
-   - Click "Add secret"
+1. Go to [npmjs.com](https://www.npmjs.com/) and create an "Automation" token
+2. Add it to GitHub repository secrets:
+   - Go to https://github.com/commoncurriculum/supergrain/settings/secrets/actions
+   - Create a new secret named `NPM_TOKEN`
+   - Paste your NPM token
 
-2. **Ensure you have permissions**:
-   - You must be a collaborator on the GitHub repository
-   - You must be a maintainer/owner of the NPM packages (@supergrain/core, @supergrain/react, @supergrain/store)
+## How to Release (Simple!)
 
-## Release Process
+### Step 1: Add a Changeset
 
-### 1. Update Package Versions
-
-Before creating a release, update the version numbers in the package.json files:
+When you make changes that should be released, create a changeset:
 
 ```bash
-# Update version in packages/core/package.json
-# Update version in packages/react/package.json
-# Update version in packages/store/package.json
+pnpm changeset
 ```
 
-Make sure to follow [Semantic Versioning](https://semver.org/):
-- MAJOR version for incompatible API changes
-- MINOR version for new functionality in a backward-compatible manner
-- PATCH version for backward-compatible bug fixes
+This interactive CLI will ask you:
+1. **Which packages to release?** Select the packages you changed
+2. **What type of change?** Choose:
+   - **major** - Breaking changes (e.g., v1.0.0 → v2.0.0)
+   - **minor** - New features (e.g., v1.0.0 → v1.1.0)
+   - **patch** - Bug fixes (e.g., v1.0.0 → v1.0.1)
+3. **Summary** - Describe your changes (becomes the changelog entry)
 
-### 2. Commit and Push Version Changes
+This creates a small markdown file in `.changeset/` that describes your changes.
+
+### Step 2: Commit and Push
 
 ```bash
-git add packages/*/package.json
-git commit -m "Bump version to X.Y.Z"
+git add .
+git commit -m "Add feature X"
 git push origin main
 ```
 
-### 3. Create a Git Tag
+### Step 3: Merge the Release PR
+
+When you push to `main`, the GitHub Action automatically:
+
+1. **Creates a "Release: Version Packages" PR** that:
+   - Updates version numbers in package.json
+   - Generates/updates CHANGELOG.md files
+   - Removes the changeset files
+
+2. **When you merge this PR**, it automatically:
+   - Publishes all updated packages to NPM
+   - Creates GitHub releases with changelogs
+
+That's it! No manual version bumping, no manual publishing, no manual changelog writing.
+
+## Example Workflow
 
 ```bash
-# Create and push a tag matching the version
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
+# Make your changes to code
+vim packages/core/src/store.ts
+
+# Create a changeset
+pnpm changeset
+# Select: @supergrain/core
+# Type: minor (new feature)
+# Summary: "Add support for nested array updates"
+
+# Commit and push
+git add .
+git commit -m "feat: Add nested array update support"
+git push origin main
+
+# Wait for GitHub Action to create a "Release: Version Packages" PR
+# Review the PR to see the version bumps and changelog
+# Merge the PR → packages automatically publish to NPM!
 ```
 
-### 4. Create a GitHub Release
+## Manual Publishing (if needed)
 
-#### Option A: Using GitHub Web Interface (Recommended)
-
-1. Go to https://github.com/commoncurriculum/supergrain/releases
-2. Click "Draft a new release"
-3. Click "Choose a tag" and select the tag you just created (or create a new one)
-4. Enter a release title (e.g., "v0.1.0")
-5. Add release notes describing:
-   - New features
-   - Bug fixes
-   - Breaking changes
-   - Any other important information
-6. Click "Publish release"
-
-#### Option B: Using GitHub CLI
+If you need to publish manually (not recommended):
 
 ```bash
-# Install GitHub CLI if you haven't: https://cli.github.com/
+# Build all packages
+pnpm -r --filter="@supergrain/*" build
 
-# Create a release
-gh release create v0.1.0 \
-  --title "v0.1.0" \
-  --notes "Release notes here"
+# Bump versions and generate changelogs
+pnpm version-packages
+
+# Publish to NPM
+pnpm release
 ```
 
-## What Happens Next
+## Multiple Changes Between Releases
 
-Once you create a release:
+You can create multiple changesets before releasing:
 
-1. The GitHub Action workflow (`.github/workflows/publish.yml`) will be automatically triggered
-2. The workflow will:
-   - Check out the code
-   - Install dependencies with pnpm
-   - Build all three packages (@supergrain/core, @supergrain/react, @supergrain/store)
-   - Publish each package to NPM with public access
-3. You can monitor the progress at: https://github.com/commoncurriculum/supergrain/actions
+```bash
+# Fix a bug
+pnpm changeset  # Select patch for @supergrain/react
+
+# Add a feature
+pnpm changeset  # Select minor for @supergrain/core
+
+# Make breaking change
+pnpm changeset  # Select major for @supergrain/store
+```
+
+All changesets will be combined into a single release PR.
 
 ## Troubleshooting
 
-### Workflow Fails with Authentication Error
+**"No changeset files found"**: You need to run `pnpm changeset` first to describe your changes.
 
-- Verify the `NPM_TOKEN` secret is set correctly in GitHub repository settings
-- Check that your NPM token has "Automation" type permissions
-- Ensure your NPM token hasn't expired
+**NPM publish fails**: Check that `NPM_TOKEN` secret is set correctly in GitHub settings.
 
-### Package Already Published Error
+**Wrong version bump**: Edit or delete the changeset file in `.changeset/` and create a new one.
 
-- You cannot republish the same version to NPM
-- Increment the version number in package.json and create a new release
+## Learn More
 
-### Build Fails
-
-- Check the GitHub Actions logs for specific errors
-- Ensure all tests pass before creating a release: `pnpm test`
-- Ensure all packages build successfully: `pnpm -r --filter="@supergrain/*" build`
-
-## Version Management
-
-For consistency, it's recommended to keep the version numbers synchronized across all three packages. However, if you need to publish only specific packages, you can:
-
-1. Update only the version in specific package.json files
-2. Modify the `.github/workflows/publish.yml` to publish only the packages you want
-3. Create a release as normal
-
-## Best Practices
-
-1. **Test before releasing**: Always run `pnpm test` and `pnpm run typecheck` before creating a release
-2. **Update CHANGELOG**: Keep a CHANGELOG.md file with release notes
-3. **Use semantic versioning**: Follow semver guidelines for version numbers
-4. **Write clear release notes**: Help users understand what changed
-5. **Tag commits**: Always create a git tag for releases for traceability
+- [Changesets Documentation](https://github.com/changesets/changesets)
+- [Semantic Versioning](https://semver.org/)

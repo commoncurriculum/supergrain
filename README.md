@@ -899,7 +899,9 @@ pnpm run typecheck
 
 ### Publishing Releases
 
-See [RELEASING.md](RELEASING.md) for detailed instructions on how to create releases and publish packages to NPM.
+This project uses [Changesets](https://github.com/changesets/changesets) for automated releases. Simply run `pnpm changeset` after making changes, and GitHub Actions will handle versioning, changelogs, and publishing to NPM automatically.
+
+See [RELEASING.md](RELEASING.md) for detailed instructions.
 
 ## License
 
