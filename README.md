@@ -905,7 +905,9 @@ This project uses [Changesets](https://github.com/changesets/changesets) for aut
 
 GitHub Actions automatically handles versioning, changelogs, and publishing to NPM.
 
-See [RELEASING.md](RELEASING.md) for detailed instructions.
+**Documentation:**
+- [NPM_SETUP.md](NPM_SETUP.md) - Complete guide for setting up NPM publishing (tokens, scoped packages, troubleshooting)
+- [RELEASING.md](RELEASING.md) - Step-by-step instructions for creating releases
 
 ## License
 

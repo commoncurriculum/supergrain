@@ -57,5 +57,17 @@
     "signals"
   ],
   "author": "Scott Messinger",
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/commoncurriculum/supergrain.git",
+    "directory": "packages/react"
+  },
+  "homepage": "https://commoncurriculum.github.io/supergrain/",
+  "bugs": {
+    "url": "https://github.com/commoncurriculum/supergrain/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
