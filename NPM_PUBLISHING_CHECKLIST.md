@@ -74,6 +74,11 @@ If something goes wrong, check:
 3. **Token expiration** - Check if your NPM token is still valid
 4. **NPM_SETUP.md** - Review the troubleshooting section
 
+### 🔴 Release Job Failing?
+
+If you're seeing **404 errors** or other NPM publish failures, see:
+📖 **[TROUBLESHOOTING_RELEASE.md](TROUBLESHOOTING_RELEASE.md)** - Comprehensive debugging guide
+
 Common issues and solutions are documented in [NPM_SETUP.md](NPM_SETUP.md#troubleshooting).
 
 ## 🎉 Success!

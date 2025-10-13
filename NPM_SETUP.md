@@ -133,6 +133,11 @@ Once the token is added, the publishing workflow is ready! To test:
 
 ## Troubleshooting
 
+### Release Job Failing with 404 Error?
+
+**If you're seeing NPM publish failures**, see the comprehensive debugging guide:
+📖 **[TROUBLESHOOTING_RELEASE.md](TROUBLESHOOTING_RELEASE.md)** - Step-by-step diagnosis and fixes
+
 ### "402 Payment Required" Error
 
 This means you're trying to publish a scoped package without the proper NPM organization setup or token permissions. Make sure:
@@ -147,6 +152,16 @@ This means authentication failed or you don't have permission. Check:
 - The token hasn't expired
 - The token has "Read and Write" permissions
 - You're an admin of the `@supergrain` organization
+
+### "404 Not Found" Error When Publishing
+
+This means NPM cannot access the `@supergrain` organization. Common causes:
+- The NPM organization `@supergrain` doesn't exist (create it at https://www.npmjs.com/org/create)
+- Your NPM token doesn't have access to the organization
+- Your token is the wrong type (must be "Automation", not "Publish")
+- Your token has expired
+
+**See [TROUBLESHOOTING_RELEASE.md](TROUBLESHOOTING_RELEASE.md) for detailed steps to fix this.**
 
 ### "404 Not Found" When Installing
 
