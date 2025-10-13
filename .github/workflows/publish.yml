@@ -42,7 +42,7 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
-          publish: pnpm exec changeset publish
+          publish: pnpm release
           title: "Release: Version Packages"
           commit: "Release: Version Packages"
         env:

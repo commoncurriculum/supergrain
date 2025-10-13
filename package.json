@@ -10,7 +10,7 @@
     "typecheck": "pnpm -r --filter=\"@supergrain/*\" run typecheck && pnpm --filter=\"js-framework-benchmark-react-supergrain\" run typecheck",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm -r --filter=\"@supergrain/*\" build && changeset publish",
+    "release": "pnpm -r publish",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"
