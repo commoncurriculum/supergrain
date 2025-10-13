@@ -20,9 +20,11 @@ Scoped packages in NPM use the format `@scope/package-name` (e.g., `@supergrain/
 
 2. **Public access** - All packages have `publishConfig.access: "public"` in their package.json files
 
-3. **Changesets configuration** - `.changeset/config.json` has `"access": "public"`
+3. **Root package marked as private** - The root package.json has `"private": true` to prevent it from being published (only scoped packages should be published)
 
-4. **GitHub Actions workflow** - `.github/workflows/publish.yml` is configured to:
+4. **Changesets configuration** - `.changeset/config.json` has `"access": "public"`
+
+5. **GitHub Actions workflow** - `.github/workflows/publish.yml` is configured to:
    - Build packages on every push to main
    - Create release PRs automatically
    - Publish to NPM when release PRs are merged

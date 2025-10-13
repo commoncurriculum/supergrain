@@ -8,6 +8,7 @@ The repository is already configured with:
 
 - ✅ **Scoped package names**: `@supergrain/core`, `@supergrain/react`, `@supergrain/store`
 - ✅ **Public access configuration**: All packages have `publishConfig.access: "public"`
+- ✅ **Root package marked private**: Root `package.json` has `"private": true` to prevent publishing
 - ✅ **Changesets configuration**: `.changeset/config.json` is properly configured
 - ✅ **GitHub Actions workflow**: `.github/workflows/publish.yml` is ready to publish
 - ✅ **Package exports**: All packages properly configured with ESM/CJS exports
