@@ -10,7 +10,16 @@
     "signals"
   ],
   "license": "MIT",
-  "author": "Scott Messinger",
+  "author": "Scott Ames-Messinger",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/commoncurriculum/supergrain.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://commoncurriculum.github.io/supergrain/",
+  "bugs": {
+    "url": "https://github.com/commoncurriculum/supergrain/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs.js",
   "module": "./dist/index.es.js",
@@ -43,5 +52,8 @@
     "@solidjs/testing-library": "^0.8.10",
     "solid-js": "^1.9.9",
     "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

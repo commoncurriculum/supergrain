@@ -6,11 +6,34 @@ This project uses [Changesets](https://github.com/changesets/changesets) to mana
 
 **Set up NPM_TOKEN secret in GitHub** (if not already done):
 
-1. Go to [npmjs.com](https://www.npmjs.com/) and create an "Automation" token
-2. Add it to GitHub repository secrets:
+### Prerequisites
+
+1. **Create or verify NPM organization**: Make sure you have access to the `@supergrain` organization on [npmjs.com](https://www.npmjs.com/). If you haven't created it yet:
+   - Go to https://www.npmjs.com/org/create
+   - Enter "supergrain" as the organization name
+   - Follow the prompts to create the organization
+
+2. **Create an NPM Automation Token**:
+   - Log in to [npmjs.com](https://www.npmjs.com/)
+   - Go to your profile → Access Tokens → Generate New Token
+   - Select **"Automation"** token type (this is important for CI/CD)
+   - **Required permissions**: Read and Write (to publish packages)
+   - **Scope**: Make sure the token has access to the `@supergrain` organization
+   - Copy the token (you won't be able to see it again)
+
+3. **Add token to GitHub repository secrets**:
    - Go to https://github.com/commoncurriculum/supergrain/settings/secrets/actions
-   - Create a new secret named `NPM_TOKEN`
-   - Paste your NPM token
+   - Click "New repository secret"
+   - Name: `NPM_TOKEN` (exactly this name - the workflow expects it)
+   - Value: Paste your NPM automation token
+   - Click "Add secret"
+
+### Verification
+
+After setting up the token, the GitHub Actions workflow (`.github/workflows/publish.yml`) will automatically use it to:
+- Authenticate with NPM during the publish step
+- Publish packages under the `@supergrain` scope
+- All packages are configured with `"publishConfig": { "access": "public" }` to ensure they're publicly accessible
 
 ## How to Release (Simple!)
 
