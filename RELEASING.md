@@ -161,9 +161,16 @@ All changesets will be combined into a single release PR.
 
 ## Troubleshooting
 
+### 🔴 Release Job Failing with 404 Error?
+
+If your release workflow is failing with NPM publish errors, see the comprehensive debugging guide:
+📖 **[TROUBLESHOOTING_RELEASE.md](TROUBLESHOOTING_RELEASE.md)** - Step-by-step diagnosis and fixes
+
+### Quick Fixes
+
 **"No changeset files found"**: You need to run `pnpm changeset` first to describe your changes.
 
-**NPM publish fails**: Check that `NPM_TOKEN` secret is set correctly in GitHub settings.
+**NPM publish fails**: Check that `NPM_TOKEN` secret is set correctly in GitHub settings. See [TROUBLESHOOTING_RELEASE.md](TROUBLESHOOTING_RELEASE.md) for detailed steps.
 
 **Wrong version bump**: Edit or delete the changeset file in `.changeset/` and create a new one.
 
