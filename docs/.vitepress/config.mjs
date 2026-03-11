@@ -9,6 +9,14 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
+      {
+        text: 'Design Directions',
+        items: [
+          { text: 'A — Minimal Precision', link: '/direction-a' },
+          { text: 'B — Signal Flow', link: '/direction-b' },
+          { text: 'C — Code Pulse', link: '/direction-c' }
+        ]
+      },
       { text: 'GitHub', link: 'https://github.com/commoncurriculum/supergrain' }
     ],
     

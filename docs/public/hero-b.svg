@@ -1,0 +1,70 @@
+<svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="edgeGrad" x1="0" y1="0" x2="320" y2="320" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="50%" stop-color="#A78BFA"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="nodeGradA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="nodeGradB" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Signal edges (connections) -->
+  <path d="M 90 100 C 130 100, 130 160, 160 160" stroke="url(#edgeGrad)" stroke-width="2" fill="none" opacity="0.5"/>
+  <path d="M 90 220 C 130 220, 130 160, 160 160" stroke="url(#edgeGrad)" stroke-width="2" fill="none" opacity="0.5"/>
+  <path d="M 160 160 C 190 160, 190 100, 230 100" stroke="url(#edgeGrad)" stroke-width="2" fill="none" opacity="0.4"/>
+  <path d="M 160 160 C 190 160, 190 220, 230 220" stroke="url(#edgeGrad)" stroke-width="2" fill="none" opacity="0.4"/>
+  <path d="M 160 160 L 230 160" stroke="url(#edgeGrad)" stroke-width="2" fill="none" opacity="0.4"/>
+
+  <!-- Traveling signal pulses on edges -->
+  <circle r="3" fill="#A78BFA" opacity="0.8" filter="url(#softGlow)">
+    <animateMotion dur="2.5s" repeatCount="indefinite" path="M 90 100 C 130 100, 130 160, 160 160"/>
+  </circle>
+  <circle r="3" fill="#F59E0B" opacity="0.8" filter="url(#softGlow)">
+    <animateMotion dur="2s" repeatCount="indefinite" path="M 160 160 C 190 160, 190 100, 230 100"/>
+  </circle>
+  <circle r="2.5" fill="#A78BFA" opacity="0.6" filter="url(#softGlow)">
+    <animateMotion dur="3s" repeatCount="indefinite" path="M 90 220 C 130 220, 130 160, 160 160"/>
+  </circle>
+
+  <!-- Source nodes (left) -->
+  <circle cx="90" cy="100" r="10" fill="url(#nodeGradA)" filter="url(#softGlow)"/>
+  <circle cx="90" cy="100" r="4" fill="white" opacity="0.5"/>
+  <circle cx="90" cy="220" r="10" fill="url(#nodeGradA)" filter="url(#softGlow)"/>
+  <circle cx="90" cy="220" r="4" fill="white" opacity="0.5"/>
+
+  <!-- Center node (store) — larger -->
+  <circle cx="160" cy="160" r="18" fill="url(#nodeGradB)" filter="url(#glow)"/>
+  <circle cx="160" cy="160" r="8" fill="white" opacity="0.4"/>
+
+  <!-- Output nodes (right) -->
+  <circle cx="230" cy="100" r="8" fill="url(#nodeGradB)" filter="url(#softGlow)"/>
+  <circle cx="230" cy="100" r="3.5" fill="white" opacity="0.5"/>
+  <circle cx="230" cy="160" r="8" fill="url(#nodeGradB)" filter="url(#softGlow)"/>
+  <circle cx="230" cy="160" r="3.5" fill="white" opacity="0.5"/>
+  <circle cx="230" cy="220" r="8" fill="url(#nodeGradB)" filter="url(#softGlow)"/>
+  <circle cx="230" cy="220" r="3.5" fill="white" opacity="0.5"/>
+
+  <!-- Faint outer ring to ground the composition -->
+  <circle cx="160" cy="160" r="140" stroke="#818CF8" stroke-width="0.5" fill="none" opacity="0.1"/>
+</svg>
