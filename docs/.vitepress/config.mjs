@@ -9,6 +9,14 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
+      {
+        text: 'Design Directions',
+        items: [
+          { text: 'A — Golden Harvest', link: '/direction-a' },
+          { text: 'B — Super Grain', link: '/direction-b' },
+          { text: 'C — Grain Field', link: '/direction-c' }
+        ]
+      },
       { text: 'GitHub', link: 'https://github.com/commoncurriculum/supergrain' }
     ],
     

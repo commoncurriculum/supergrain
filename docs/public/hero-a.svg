@@ -1,0 +1,58 @@
+<svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="stalkGrad" x1="160" y1="300" x2="160" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#65A30D"/>
+      <stop offset="100%" stop-color="#A3E635"/>
+    </linearGradient>
+    <linearGradient id="kernelGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="50%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="glowGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FDE68A" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#FDE68A" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="warmGlow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Warm background glow -->
+  <circle cx="160" cy="130" r="100" fill="#FDE68A" opacity="0.08"/>
+
+  <!-- Main stalk -->
+  <path d="M 160 300 Q 158 240, 160 100" stroke="url(#stalkGrad)" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Left grain kernels on stalk -->
+  <ellipse cx="144" cy="88" rx="14" ry="24" transform="rotate(20, 144, 88)" fill="url(#kernelGrad)" filter="url(#warmGlow)"/>
+  <ellipse cx="139" cy="120" rx="13" ry="22" transform="rotate(25, 139, 120)" fill="url(#kernelGrad)" filter="url(#warmGlow)"/>
+  <ellipse cx="141" cy="152" rx="12" ry="20" transform="rotate(28, 141, 152)" fill="url(#kernelGrad)"/>
+  <ellipse cx="145" cy="180" rx="11" ry="18" transform="rotate(30, 145, 180)" fill="url(#kernelGrad)"/>
+
+  <!-- Right grain kernels on stalk -->
+  <ellipse cx="176" cy="78" rx="14" ry="24" transform="rotate(-20, 176, 78)" fill="url(#kernelGrad)" filter="url(#warmGlow)"/>
+  <ellipse cx="181" cy="110" rx="13" ry="22" transform="rotate(-25, 181, 110)" fill="url(#kernelGrad)" filter="url(#warmGlow)"/>
+  <ellipse cx="179" cy="142" rx="12" ry="20" transform="rotate(-28, 179, 142)" fill="url(#kernelGrad)"/>
+  <ellipse cx="175" cy="170" rx="11" ry="18" transform="rotate(-30, 175, 170)" fill="url(#kernelGrad)"/>
+
+  <!-- Top kernel (tip of the ear) -->
+  <ellipse cx="160" cy="62" rx="10" ry="20" fill="url(#kernelGrad)" filter="url(#warmGlow)"/>
+
+  <!-- Awns (whiskers at top) -->
+  <line x1="160" y1="42" x2="155" y2="15" stroke="#D97706" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+  <line x1="165" y1="50" x2="180" y2="20" stroke="#D97706" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="155" y1="50" x2="135" y2="22" stroke="#D97706" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
+  <line x1="170" y1="60" x2="195" y2="35" stroke="#D97706" stroke-width="1.2" stroke-linecap="round" opacity="0.5"/>
+  <line x1="150" y1="60" x2="125" y2="37" stroke="#D97706" stroke-width="1.2" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- Small leaf on stalk -->
+  <path d="M 160 230 Q 130 215, 105 230 Q 130 225, 160 230" fill="#65A30D" opacity="0.6"/>
+  <path d="M 160 250 Q 190 238, 215 248 Q 190 242, 160 250" fill="#65A30D" opacity="0.5"/>
+
+  <!-- Kernel shine highlights -->
+  <ellipse cx="170" cy="74" rx="4" ry="8" transform="rotate(-20, 170, 74)" fill="white" opacity="0.25"/>
+  <ellipse cx="150" cy="84" rx="4" ry="8" transform="rotate(20, 150, 84)" fill="white" opacity="0.25"/>
+  <ellipse cx="160" cy="58" rx="3" ry="7" fill="white" opacity="0.25"/>
+</svg>
