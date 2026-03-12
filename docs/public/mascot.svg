@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Flying wheat grain mascot with cape -->
+  
+  <!-- Cape flowing behind -->
+  <path d="M85 95 Q60 130 45 170 Q70 160 85 140 Q75 155 65 175 Q90 155 95 130 Q88 145 80 165 Q100 140 100 115" fill="#dc2626" opacity="0.9"/>
+  <path d="M80 100 Q50 125 35 165 Q55 155 75 135" fill="#b91c1c"/>
+  
+  <!-- Grain body - oval wheat kernel shape, tilted for flying pose -->
+  <ellipse cx="115" cy="100" rx="38" ry="55" fill="#f59e0b" transform="rotate(-25 115 100)"/>
+  
+  <!-- Grain body shading/depth -->
+  <ellipse cx="108" cy="95" rx="28" ry="45" fill="#fbbf24" transform="rotate(-25 115 100)"/>
+  <ellipse cx="105" cy="90" rx="15" ry="30" fill="#fcd34d" transform="rotate(-25 115 100)" opacity="0.5"/>
+  
+  <!-- Grain crease line -->
+  <path d="M95 60 Q115 100 100 145" stroke="#d97706" stroke-width="2" fill="none" transform="rotate(-25 115 100)"/>
+  
+  <!-- Face -->
+  <!-- Eyes - excited/determined look -->
+  <ellipse cx="105" cy="85" rx="8" ry="10" fill="white"/>
+  <ellipse cx="130" cy="78" rx="8" ry="10" fill="white"/>
+  <circle cx="107" cy="86" r="5" fill="#1c1917"/>
+  <circle cx="132" cy="79" r="5" fill="#1c1917"/>
+  <circle cx="108" cy="84" r="2" fill="white"/>
+  <circle cx="133" cy="77" r="2" fill="white"/>
+  
+  <!-- Eyebrows - determined -->
+  <path d="M97 75 Q105 72 113 75" stroke="#92400e" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M122 68 Q130 65 138 70" stroke="#92400e" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  
+  <!-- Big happy smile -->
+  <path d="M105 100 Q120 118 138 98" stroke="#92400e" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M108 102 Q120 115 135 100" fill="#fef3c7"/>
+  
+  <!-- Blush marks -->
+  <ellipse cx="98" cy="98" rx="5" ry="3" fill="#fca5a5" opacity="0.6"/>
+  <ellipse cx="143" cy="88" rx="5" ry="3" fill="#fca5a5" opacity="0.6"/>
+  
+  <!-- Arms -->
+  <!-- Forward flying arm (Superman pose) -->
+  <path d="M145 85 Q165 70 180 55" stroke="#f59e0b" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <circle cx="182" cy="53" r="8" fill="#fbbf24"/>
+  
+  <!-- Back arm -->
+  <path d="M90 110 Q75 125 65 130" stroke="#f59e0b" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <circle cx="63" cy="132" r="6" fill="#fbbf24"/>
+  
+  <!-- Legs trailing behind -->
+  <path d="M100 140 Q85 160 75 175" stroke="#f59e0b" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <circle cx="73" cy="177" r="6" fill="#fbbf24"/>
+  
+  <path d="M115 145 Q105 165 100 180" stroke="#f59e0b" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <circle cx="98" cy="182" r="6" fill="#fbbf24"/>
+  
+  <!-- Speed lines -->
+  <path d="M40 80 L25 80" stroke="#fcd34d" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  <path d="M35 95 L15 95" stroke="#fcd34d" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M40 110 L20 110" stroke="#fcd34d" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+</svg>

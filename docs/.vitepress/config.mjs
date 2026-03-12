@@ -3,7 +3,6 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'Supergrain',
   description: 'A reactive store library with super fine-grained reactivity',
-  base: '/supergrain/',
   ignoreDeadLinks: true,
   
   themeConfig: {
