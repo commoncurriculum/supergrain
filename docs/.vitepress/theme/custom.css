@@ -78,11 +78,6 @@
   animation: fly 4s ease-in-out infinite;
   position: relative;
   z-index: 10;
-  border-radius: 50%;
-}
-
-.dark .mascot {
-  mix-blend-mode: lighten;
 }
 
 @keyframes fly {

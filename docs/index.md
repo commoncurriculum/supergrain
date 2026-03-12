@@ -11,7 +11,7 @@ layout: page
     </div>
   </div>
   <div class="hero-image">
-    <img src="/hero.jpg" alt="Supergrain mascot" class="mascot" />
+    <img src="/mascot.svg" alt="Supergrain mascot" class="mascot" />
   </div>
 </div>
 
