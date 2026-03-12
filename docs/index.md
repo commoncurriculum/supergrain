@@ -58,12 +58,12 @@ function Counter() {
   </div>
   <div class="showcase-stats">
     <div class="stat">
-      <span class="stat-value">2x</span>
-      <span class="stat-label">faster deep updates than Zustand</span>
+      <span class="stat-value">0</span>
+      <span class="stat-label">selectors to write</span>
     </div>
     <div class="stat">
       <span class="stat-value">0</span>
-      <span class="stat-label">selectors to write</span>
+      <span class="stat-label">boilerplate</span>
     </div>
     <div class="stat">
       <span class="stat-value">~2kb</span>
@@ -72,6 +72,7 @@ function Counter() {
   </div>
 </div>
 
+<!-- TODO: Add performance comparison once we have real Zustand benchmarks
 <div class="perf-comparison">
   <h3>Performance: Solid.js-level speed</h3>
   <p class="perf-subtitle">Reactive property reads at scale (10K operations)</p>
@@ -136,6 +137,7 @@ function Counter() {
   
   <p class="perf-source">Source: <a href="https://github.com/commoncurriculum/supergrain/blob/main/notes/planning/performance-plan-v2.md">notes/planning/performance-plan-v2.md</a></p>
 </div>
+-->
 
 <div class="readme-content">
 
