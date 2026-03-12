@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 /* ============================================
    SUPERGRAIN THEME
@@ -24,6 +25,10 @@
   --vp-c-bg-alt: #fef3c7;
   --vp-c-bg-elv: #ffffff;
   --vp-c-bg-soft: #fde68a;
+  
+  /* Typography */
+  --vp-font-family-base: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --vp-font-family-mono: 'IBM Plex Mono', Consolas, monospace;
 }
 
 .dark {
@@ -188,19 +193,19 @@
 }
 
 .readme-content h2 {
-  font-size: 1.75rem;
-  font-weight: 800;
+  font-size: 1.5rem;
+  font-weight: 700;
   letter-spacing: -0.02em;
   margin-top: 48px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   padding-bottom: 8px;
   border-bottom: 2px solid var(--sg-gold);
 }
 
 .readme-content h3 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-top: 32px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-top: 28px;
   color: var(--sg-gold-dark);
 }
 
@@ -209,8 +214,14 @@
 }
 
 .readme-content p {
-  line-height: 1.75;
-  margin-bottom: 16px;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  margin-bottom: 14px;
+}
+
+.readme-content li {
+  font-size: 0.95rem;
+  line-height: 1.7;
 }
 
 .readme-content a {
@@ -239,14 +250,29 @@
 .readme-content div[class*="language-"],
 div[class*="language-"] {
   border-radius: 12px !important;
-  border: 1px solid rgba(120, 53, 15, 0.1) !important;
+  border: 1px solid rgba(120, 53, 15, 0.15) !important;
   margin: 24px 0 !important;
+  background: #ffffff !important;
+  padding: 0 !important;
+}
+
+.readme-content div[class*="language-"] pre,
+div[class*="language-"] pre {
+  padding: 20px 24px !important;
+  background: transparent !important;
+  margin: 0 !important;
+}
+
+.readme-content div[class*="language-"] code,
+div[class*="language-"] code {
+  font-size: 0.875rem !important;
+  line-height: 1.7 !important;
 }
 
 .dark .readme-content div[class*="language-"],
 .dark div[class*="language-"] {
-  background: #292524 !important;
-  border: 1px solid rgba(251, 191, 36, 0.1) !important;
+  background: #1c1917 !important;
+  border: 1px solid rgba(251, 191, 36, 0.15) !important;
 }
 
 /* ===== NAVIGATION ===== */
