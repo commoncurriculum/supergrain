@@ -73,47 +73,68 @@ function Counter() {
 </div>
 
 <div class="perf-comparison">
-  <h3>Deep Nested Updates: Supergrain vs Zustand</h3>
-  <p class="perf-subtitle">Updating <code>user.profile.address.coordinates.lat</code> in a store</p>
+  <h3>Performance: Solid.js-level speed</h3>
+  <p class="perf-subtitle">Reactive property reads at scale (10K operations)</p>
   
   <div class="perf-bars">
     <div class="perf-row">
       <span class="perf-label">Supergrain</span>
       <div class="perf-bar-container">
-        <div class="perf-bar supergrain" style="width: 33%"></div>
-        <span class="perf-time">~2ms</span>
+        <div class="perf-bar supergrain" style="width: 90%"></div>
+        <span class="perf-time">0.097μs/read</span>
       </div>
     </div>
     <div class="perf-row">
-      <span class="perf-label">Zustand</span>
+      <span class="perf-label">Non-reactive</span>
       <div class="perf-bar-container">
-        <div class="perf-bar zustand" style="width: 83%"></div>
-        <span class="perf-time">~5ms</span>
+        <div class="perf-bar baseline" style="width: 60%"></div>
+        <span class="perf-time">0.067μs/read</span>
       </div>
     </div>
   </div>
   
-  <div class="perf-explanation">
-    <p><strong>Why?</strong> Zustand recreates the entire object tree on every nested update:</p>
-
-```javascript
-// Zustand: spread, spread, spread...
-set(state => ({
-  ...state,
-  user: { ...state.user,
-    profile: { ...state.user.profile,
-      address: { ...state.user.profile.address,
-        coordinates: { lat: 42, lng: 0 }
-      }}}
-}))
-
-// Supergrain: just change it
-state.user.profile.address.coordinates.lat = 42
-```
-
+  <p class="perf-overhead"><strong>1.5x overhead</strong> — near-native performance with full reactivity</p>
+  
+  <div class="perf-table">
+    <table>
+      <thead>
+        <tr>
+          <th>Operation</th>
+          <th>Performance</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Reactive reads</td>
+          <td><strong>1.5x</strong> overhead vs non-reactive</td>
+        </tr>
+        <tr>
+          <td>Array push (100 items)</td>
+          <td><strong>0.52ms</strong> with batching</td>
+        </tr>
+        <tr>
+          <td>Array splice (50 items)</td>
+          <td><strong>1.26ms</strong> efficient updates</td>
+        </tr>
+        <tr>
+          <td>Memory per store</td>
+          <td><strong>~1KB</strong></td>
+        </tr>
+      </tbody>
+    </table>
   </div>
   
-  <p class="perf-source">Source: <a href="https://github.com/commoncurriculum/supergrain/tree/main/packages/comparisons">packages/comparisons/analysis/zustand.md</a></p>
+  <div class="perf-explanation">
+    <p><strong>Why is it fast?</strong> We use the same techniques as Solid.js:</p>
+    <ul>
+      <li>Lazy signal creation — only create signals for accessed properties</li>
+      <li>Direct object mutation — no copying, no spread operators</li>
+      <li>Batched updates — array operations are grouped efficiently</li>
+      <li>Dual caching — symbol + WeakMap for instant proxy lookups</li>
+    </ul>
+  </div>
+  
+  <p class="perf-source">Source: <a href="https://github.com/commoncurriculum/supergrain/blob/main/notes/planning/performance-plan-v2.md">notes/planning/performance-plan-v2.md</a></p>
 </div>
 
 <div class="readme-content">
