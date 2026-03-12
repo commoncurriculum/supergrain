@@ -37,6 +37,41 @@ layout: page
   </div>
 </div>
 
+<div class="showcase">
+  <div class="showcase-code">
+    <div class="showcase-label">The whole API</div>
+
+```tsx
+// Create a store
+const store = createStore({ count: 0, user: { name: 'Jane' } })
+
+// Use it in React
+function Counter() {
+  const state = useStore(store)
+  return <button onClick={() => state.count++}>{state.count}</button>
+}
+
+// That's it. When count changes, only Counter re-renders.
+// Not the parent. Not siblings. Just this component.
+```
+
+  </div>
+  <div class="showcase-stats">
+    <div class="stat">
+      <span class="stat-value">~2kb</span>
+      <span class="stat-label">gzipped</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">0</span>
+      <span class="stat-label">dependencies</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">100%</span>
+      <span class="stat-label">TypeScript</span>
+    </div>
+  </div>
+</div>
+
 <div class="readme-content">
 
 <!--@include: ../README.md-->

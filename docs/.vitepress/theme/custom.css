@@ -261,6 +261,73 @@
   }
 }
 
+/* ===== SHOWCASE SECTION ===== */
+.showcase {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 48px 64px;
+  display: flex;
+  gap: 48px;
+  align-items: flex-start;
+}
+
+.showcase-code {
+  flex: 1;
+}
+
+.showcase-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sg-gold);
+  margin-bottom: 12px;
+}
+
+.showcase-code div[class*="language-"] {
+  margin: 0 !important;
+}
+
+.showcase-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding-top: 36px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--sg-gold);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 0.85rem;
+  color: var(--vp-c-text-2);
+  font-weight: 500;
+}
+
+@media (max-width: 900px) {
+  .showcase {
+    flex-direction: column;
+    padding: 0 24px 48px;
+    gap: 32px;
+  }
+  
+  .showcase-stats {
+    flex-direction: row;
+    gap: 32px;
+    padding-top: 0;
+  }
+}
+
 /* ===== README CONTENT STYLING ===== */
 .readme-content {
   max-width: 800px;
