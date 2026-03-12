@@ -73,11 +73,11 @@
   width: 420px;
   height: 420px;
   max-width: none;
-  object-fit: contain;
-  filter: drop-shadow(0 20px 60px rgba(245, 158, 11, 0.4));
+  object-fit: cover;
   animation: fly 4s ease-in-out infinite;
   position: relative;
   z-index: 10;
+  border-radius: 50%;
 }
 
 @keyframes fly {
@@ -88,11 +88,15 @@
 .hero-image::before {
   content: '';
   position: absolute;
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(251, 191, 36, 0.15) 0%, transparent 70%);
-  filter: blur(60px);
+  width: 520px;
+  height: 520px;
+  background: radial-gradient(circle, #b45f32 0%, transparent 70%);
+  border-radius: 50%;
   z-index: 0;
+}
+
+.dark .hero-image::before {
+  background: radial-gradient(circle, #b45f32 0%, transparent 65%);
 }
 
 .hero-title {
