@@ -22,12 +22,12 @@ A reactive store library with super fine-grained reactivity powered by alien-sig
 - [Reading State](#reading-state)
 - [Updating State](#updating-state)
 - [React Integration](#react-integration)
-- [MongoDB-Style Operators](#mongodb-style-operators)
 - [Effects and Computed Values](#effects-and-computed-values)
 - [Store - Document Management](#store---document-management)
 - [Building a TODO App](#building-a-todo-app)
 - [TypeScript](#typescript)
 - [Performance Tips](#performance-tips)
+- [Bonus: MongoDB-Style Operators](#bonus-mongodb-style-operators)
 
 ## Installation
 
@@ -394,112 +394,6 @@ function TodoList() {
     </For>
   )
 }
-```
-
-## MongoDB-Style Operators
-
-_Links: [Source Code](packages/core/src/operators.ts). [Tests](packages/core/tests/operators.test.ts)._
-
-### $set - Set field values
-
-```typescript
-// [#DOC_TEST_11](packages/documentation/tests/mongodb-operators.test.ts)
-
-update({ $set: { count: 10 } })
-update({ $set: { 'user.name': 'Alice' } }) // Nested with dot notation
-update({
-  $set: {
-    'user.name': 'Bob',
-    'user.age': 25,
-    'settings.theme': 'dark',
-  },
-})
-```
-
-### $unset - Remove fields
-
-```typescript
-// [#DOC_TEST_12](packages/documentation/tests/mongodb-operators.test.ts)
-
-update({ $unset: { temporaryField: 1 } })
-update({ $unset: { 'user.middleName': 1 } })
-```
-
-### $inc - Increment numeric values
-
-```typescript
-// [#DOC_TEST_13](packages/documentation/tests/mongodb-operators.test.ts)
-
-update({ $inc: { count: 1 } })
-update({ $inc: { count: -5 } }) // Decrement
-update({ $inc: { 'stats.views': 10 } })
-```
-
-### $push - Add to arrays
-
-```typescript
-// [#DOC_TEST_14](packages/documentation/tests/mongodb-operators.test.ts)
-
-update({ $push: { items: 'newItem' } })
-
-// Add multiple items with $each
-update({
-  $push: {
-    items: { $each: ['item1', 'item2', 'item3'] },
-  },
-})
-```
-
-### $pull - Remove from arrays
-
-```typescript
-// [#DOC_TEST_15](packages/documentation/tests/mongodb-operators.test.ts)
-
-// Remove by value
-update({ $pull: { items: 'itemToRemove' } })
-
-// Remove objects by matching properties
-update({
-  $pull: {
-    users: { id: 123, name: 'John' },
-  },
-})
-```
-
-### $addToSet - Add unique elements to arrays
-
-```typescript
-// [#DOC_TEST_16](packages/documentation/tests/mongodb-operators.test.ts)
-
-update({ $addToSet: { tags: 'newTag' } }) // Won't add if already exists
-
-// Add multiple unique items
-update({
-  $addToSet: {
-    tags: { $each: ['tag1', 'tag2', 'tag3'] },
-  },
-})
-```
-
-### $rename - Rename fields
-
-```typescript
-// [#DOC_TEST_17](packages/documentation/tests/mongodb-operators.test.ts)
-
-update({ $rename: { oldFieldName: 'newFieldName' } })
-update({ $rename: { 'user.firstName': 'user.name' } })
-```
-
-### $min/$max - Conditional updates
-
-```typescript
-// [#DOC_TEST_18](packages/documentation/tests/mongodb-operators.test.ts)
-
-// Only updates if new value is smaller
-update({ $min: { lowestScore: 50 } })
-
-// Only updates if new value is larger
-update({ $max: { highestScore: 100 } })
 ```
 
 ## Effects and Computed Values
@@ -872,6 +766,118 @@ function UserProfile() {
 6. **Profile with React DevTools** - Use the React DevTools Profiler to identify unnecessary re-renders
 
 The reactive system is designed to be fast by default, but following these patterns will help you achieve optimal performance in complex applications.
+
+---
+
+## Bonus: MongoDB-Style Operators
+
+_Links: [Source Code](packages/core/src/operators.ts). [Tests](packages/core/tests/operators.test.ts)._
+
+For complex updates, you can use MongoDB-style operators. These are especially useful for batching multiple changes or doing array manipulations.
+
+### $set - Set field values
+
+```typescript
+// [#DOC_TEST_11](packages/documentation/tests/mongodb-operators.test.ts)
+
+update({ $set: { count: 10 } })
+update({ $set: { 'user.name': 'Alice' } }) // Nested with dot notation
+update({
+  $set: {
+    'user.name': 'Bob',
+    'user.age': 25,
+    'settings.theme': 'dark',
+  },
+})
+```
+
+### $unset - Remove fields
+
+```typescript
+// [#DOC_TEST_12](packages/documentation/tests/mongodb-operators.test.ts)
+
+update({ $unset: { temporaryField: 1 } })
+update({ $unset: { 'user.middleName': 1 } })
+```
+
+### $inc - Increment numeric values
+
+```typescript
+// [#DOC_TEST_13](packages/documentation/tests/mongodb-operators.test.ts)
+
+update({ $inc: { count: 1 } })
+update({ $inc: { count: -5 } }) // Decrement
+update({ $inc: { 'stats.views': 10 } })
+```
+
+### $push - Add to arrays
+
+```typescript
+// [#DOC_TEST_14](packages/documentation/tests/mongodb-operators.test.ts)
+
+update({ $push: { items: 'newItem' } })
+
+// Add multiple items with $each
+update({
+  $push: {
+    items: { $each: ['item1', 'item2', 'item3'] },
+  },
+})
+```
+
+### $pull - Remove from arrays
+
+```typescript
+// [#DOC_TEST_15](packages/documentation/tests/mongodb-operators.test.ts)
+
+// Remove by value
+update({ $pull: { items: 'itemToRemove' } })
+
+// Remove objects by matching properties
+update({
+  $pull: {
+    users: { id: 123, name: 'John' },
+  },
+})
+```
+
+### $addToSet - Add unique elements to arrays
+
+```typescript
+// [#DOC_TEST_16](packages/documentation/tests/mongodb-operators.test.ts)
+
+update({ $addToSet: { tags: 'newTag' } }) // Won't add if already exists
+
+// Add multiple unique items
+update({
+  $addToSet: {
+    tags: { $each: ['tag1', 'tag2', 'tag3'] },
+  },
+})
+```
+
+### $rename - Rename fields
+
+```typescript
+// [#DOC_TEST_17](packages/documentation/tests/mongodb-operators.test.ts)
+
+update({ $rename: { oldFieldName: 'newFieldName' } })
+update({ $rename: { 'user.firstName': 'user.name' } })
+```
+
+### $min/$max - Conditional updates
+
+```typescript
+// [#DOC_TEST_18](packages/documentation/tests/mongodb-operators.test.ts)
+
+// Only updates if new value is smaller
+update({ $min: { lowestScore: 50 } })
+
+// Only updates if new value is larger
+update({ $max: { highestScore: 100 } })
+```
+
+---
 
 ## Contributing
 
