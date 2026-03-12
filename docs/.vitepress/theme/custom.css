@@ -328,6 +328,43 @@
   }
 }
 
+/* ===== COMPARISON NOTE ===== */
+.comparison-note {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 32px 48px;
+  background: var(--vp-c-bg-alt);
+  border-radius: 16px;
+  border-left: 4px solid var(--sg-gold);
+}
+
+.comparison-note p {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0 0 12px;
+  color: var(--vp-c-text-2);
+}
+
+.comparison-note p:last-child {
+  margin-bottom: 0;
+}
+
+.comparison-note strong {
+  color: var(--vp-c-text-1);
+  font-weight: 600;
+}
+
+.dark .comparison-note {
+  background: rgba(251, 191, 36, 0.05);
+}
+
+@media (max-width: 900px) {
+  .comparison-note {
+    margin: 0 24px;
+    padding: 24px;
+  }
+}
+
 /* ===== README CONTENT STYLING ===== */
 .readme-content {
   max-width: 800px;

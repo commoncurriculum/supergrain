@@ -58,18 +58,23 @@ function Counter() {
   </div>
   <div class="showcase-stats">
     <div class="stat">
-      <span class="stat-value">~2kb</span>
-      <span class="stat-label">gzipped</span>
+      <span class="stat-value">2x</span>
+      <span class="stat-label">faster deep updates than Zustand</span>
     </div>
     <div class="stat">
       <span class="stat-value">0</span>
-      <span class="stat-label">dependencies</span>
+      <span class="stat-label">selectors to write</span>
     </div>
     <div class="stat">
-      <span class="stat-value">100%</span>
-      <span class="stat-label">TypeScript</span>
+      <span class="stat-value">~2kb</span>
+      <span class="stat-label">gzipped</span>
     </div>
   </div>
+</div>
+
+<div class="comparison-note">
+  <p><strong>vs Zustand:</strong> No selectors, no immutable spread syntax, automatic fine-grained reactivity. Deep nested updates are 2x faster because we mutate in place instead of recreating object trees.</p>
+  <p><strong>vs Redux:</strong> No actions, no reducers, no dispatch, no boilerplate. Just state.</p>
 </div>
 
 <div class="readme-content">
