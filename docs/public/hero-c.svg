@@ -1,76 +1,98 @@
 <svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bgGrad" x1="0" y1="0" x2="320" y2="320" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#1E1B2E"/>
-      <stop offset="100%" stop-color="#0F172A"/>
+    <linearGradient id="skyGrad" x1="160" y1="0" x2="160" y2="320" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FEF3C7"/>
+      <stop offset="40%" stop-color="#FDE68A"/>
+      <stop offset="70%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
     </linearGradient>
-    <linearGradient id="barGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#6366F1"/>
-      <stop offset="100%" stop-color="#F59E0B"/>
+    <linearGradient id="stalkGradC" x1="0" y1="320" x2="0" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4D7C0F"/>
+      <stop offset="100%" stop-color="#65A30D"/>
     </linearGradient>
-    <clipPath id="roundRect">
-      <rect x="30" y="30" width="260" height="260" rx="20"/>
-    </clipPath>
+    <linearGradient id="headGradC" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <filter id="sunGlow">
+      <feGaussianBlur stdDeviation="15" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
 
-  <!-- Terminal window background -->
-  <rect x="30" y="30" width="260" height="260" rx="20" fill="url(#bgGrad)"/>
-  <rect x="30" y="30" width="260" height="260" rx="20" stroke="#334155" stroke-width="1"/>
+  <!-- Sky/sunset background circle -->
+  <circle cx="160" cy="160" r="150" fill="url(#skyGrad)" opacity="0.15"/>
 
-  <!-- Title bar -->
-  <rect x="30" y="30" width="260" height="32" rx="20" fill="#1E293B" clip-path="url(#roundRect)"/>
-  <rect x="30" y="46" width="260" height="16" fill="#1E293B"/>
-  <line x1="30" y1="62" x2="290" y2="62" stroke="#334155" stroke-width="0.5"/>
+  <!-- Sun -->
+  <circle cx="160" cy="80" r="35" fill="#FDE68A" opacity="0.3" filter="url(#sunGlow)"/>
+  <circle cx="160" cy="80" r="18" fill="#F59E0B" opacity="0.5"/>
 
-  <!-- Window dots -->
-  <circle cx="52" cy="46" r="5" fill="#EF4444" opacity="0.8"/>
-  <circle cx="70" cy="46" r="5" fill="#F59E0B" opacity="0.8"/>
-  <circle cx="88" cy="46" r="5" fill="#22C55E" opacity="0.8"/>
+  <!-- Field of wheat stalks — row 1 (back, shorter) -->
+  <g opacity="0.4">
+    <line x1="55" y1="300" x2="58" y2="185" stroke="url(#stalkGradC)" stroke-width="2" stroke-linecap="round"/>
+    <ellipse cx="56" cy="175" rx="5" ry="12" transform="rotate(-5, 56, 175)" fill="url(#headGradC)"/>
+    <line x1="85" y1="300" x2="82" y2="180" stroke="url(#stalkGradC)" stroke-width="2" stroke-linecap="round"/>
+    <ellipse cx="81" cy="170" rx="5" ry="12" transform="rotate(5, 81, 170)" fill="url(#headGradC)"/>
+    <line x1="115" y1="300" x2="117" y2="175" stroke="url(#stalkGradC)" stroke-width="2" stroke-linecap="round"/>
+    <ellipse cx="117" cy="165" rx="5" ry="13" transform="rotate(-3, 117, 165)" fill="url(#headGradC)"/>
+    <line x1="205" y1="300" x2="203" y2="178" stroke="url(#stalkGradC)" stroke-width="2" stroke-linecap="round"/>
+    <ellipse cx="202" cy="168" rx="5" ry="12" transform="rotate(4, 202, 168)" fill="url(#headGradC)"/>
+    <line x1="235" y1="300" x2="238" y2="182" stroke="url(#stalkGradC)" stroke-width="2" stroke-linecap="round"/>
+    <ellipse cx="238" cy="172" rx="5" ry="12" transform="rotate(-5, 238, 172)" fill="url(#headGradC)"/>
+    <line x1="265" y1="300" x2="262" y2="188" stroke="url(#stalkGradC)" stroke-width="2" stroke-linecap="round"/>
+    <ellipse cx="261" cy="178" rx="5" ry="11" transform="rotate(3, 261, 178)" fill="url(#headGradC)"/>
+  </g>
 
-  <!-- Code lines -->
-  <!-- Line 1: const store = grain({ -->
-  <text x="50" y="88" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#C084FC" font-weight="500">const</text>
-  <text x="90" y="88" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#E2E8F0">store</text>
-  <text x="126" y="88" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#64748B">=</text>
-  <text x="138" y="88" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#F59E0B">grain</text>
-  <text x="172" y="88" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#64748B">({</text>
+  <!-- Field of wheat stalks — row 2 (mid, taller) -->
+  <g opacity="0.6">
+    <line x1="40" y1="310" x2="44" y2="170" stroke="url(#stalkGradC)" stroke-width="2.5" stroke-linecap="round"/>
+    <ellipse cx="43" cy="158" rx="6" ry="14" transform="rotate(-8, 43, 158)" fill="url(#headGradC)"/>
+    <line x1="70" y1="310" x2="66" y2="165" stroke="url(#stalkGradC)" stroke-width="2.5" stroke-linecap="round"/>
+    <ellipse cx="65" cy="153" rx="6" ry="14" transform="rotate(6, 65, 153)" fill="url(#headGradC)"/>
+    <line x1="100" y1="310" x2="103" y2="160" stroke="url(#stalkGradC)" stroke-width="2.5" stroke-linecap="round"/>
+    <ellipse cx="103" cy="148" rx="6" ry="15" transform="rotate(-4, 103, 148)" fill="url(#headGradC)"/>
+    <line x1="220" y1="310" x2="217" y2="163" stroke="url(#stalkGradC)" stroke-width="2.5" stroke-linecap="round"/>
+    <ellipse cx="216" cy="151" rx="6" ry="14" transform="rotate(5, 216, 151)" fill="url(#headGradC)"/>
+    <line x1="250" y1="310" x2="253" y2="168" stroke="url(#stalkGradC)" stroke-width="2.5" stroke-linecap="round"/>
+    <ellipse cx="253" cy="156" rx="6" ry="14" transform="rotate(-6, 253, 156)" fill="url(#headGradC)"/>
+    <line x1="280" y1="310" x2="277" y2="174" stroke="url(#stalkGradC)" stroke-width="2.5" stroke-linecap="round"/>
+    <ellipse cx="276" cy="162" rx="6" ry="13" transform="rotate(4, 276, 162)" fill="url(#headGradC)"/>
+  </g>
 
-  <!-- Line 2:   count: 0, -->
-  <text x="62" y="106" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#7DD3FC">count</text>
-  <text x="97" y="106" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#64748B">:</text>
-  <text x="106" y="106" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#FDE68A">0</text>
-  <text x="114" y="106" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#64748B">,</text>
+  <!-- Center hero wheat stalk — tallest, most prominent -->
+  <line x1="160" y1="310" x2="160" y2="130" stroke="#65A30D" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Center wheat head kernels — left -->
+  <ellipse cx="148" cy="118" rx="8" ry="16" transform="rotate(18, 148, 118)" fill="url(#headGradC)"/>
+  <ellipse cx="145" cy="140" rx="7" ry="14" transform="rotate(22, 145, 140)" fill="url(#headGradC)"/>
+  <!-- Center wheat head kernels — right -->
+  <ellipse cx="172" cy="114" rx="8" ry="16" transform="rotate(-18, 172, 114)" fill="url(#headGradC)"/>
+  <ellipse cx="175" cy="136" rx="7" ry="14" transform="rotate(-22, 175, 136)" fill="url(#headGradC)"/>
+  <!-- Top kernel -->
+  <ellipse cx="160" cy="100" rx="7" ry="15" fill="url(#headGradC)"/>
+  <!-- Awns -->
+  <line x1="160" y1="85" x2="155" y2="60" stroke="#D97706" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+  <line x1="165" y1="90" x2="180" y2="65" stroke="#D97706" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+  <line x1="155" y1="90" x2="140" y2="67" stroke="#D97706" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+  <!-- Shine -->
+  <ellipse cx="155" cy="105" rx="3" ry="8" fill="white" opacity="0.25"/>
+  <ellipse cx="168" cy="110" rx="3" ry="7" fill="white" opacity="0.2"/>
 
-  <!-- Line 3:   name: "supergrain" -->
-  <text x="62" y="124" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#7DD3FC">name</text>
-  <text x="93" y="124" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#64748B">:</text>
-  <text x="102" y="124" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#86EFAC">"supergrain"</text>
+  <!-- Front row stalks (foreground, larger) -->
+  <g opacity="0.7">
+    <line x1="130" y1="320" x2="133" y2="155" stroke="url(#stalkGradC)" stroke-width="3" stroke-linecap="round"/>
+    <ellipse cx="131" cy="143" rx="7" ry="15" transform="rotate(10, 131, 143)" fill="url(#headGradC)"/>
+    <line x1="190" y1="320" x2="187" y2="158" stroke="url(#stalkGradC)" stroke-width="3" stroke-linecap="round"/>
+    <ellipse cx="186" cy="146" rx="7" ry="15" transform="rotate(-8, 186, 146)" fill="url(#headGradC)"/>
+  </g>
 
-  <!-- Line 4: }) -->
-  <text x="50" y="142" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#64748B">})</text>
-
-  <!-- Blank line -->
-
-  <!-- Line 5: update(store, { -->
-  <text x="50" y="172" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#F59E0B">update</text>
-  <text x="90" y="172" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#64748B">(store, {</text>
-
-  <!-- Line 6:   $inc: { count: 1 } -->
-  <text x="62" y="190" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#C084FC">$inc</text>
-  <text x="88" y="190" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#64748B">: {</text>
-  <text x="110" y="190" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#7DD3FC">count</text>
-  <text x="145" y="190" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#64748B">:</text>
-  <text x="154" y="190" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#FDE68A">1</text>
-  <text x="163" y="190" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#64748B">}</text>
-
-  <!-- Line 7: }) -->
-  <text x="50" y="208" font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="11" fill="#64748B">})</text>
-
-  <!-- Blinking cursor -->
-  <rect x="66" y="218" width="7" height="14" fill="#F59E0B" opacity="0.8">
-    <animate attributeName="opacity" values="0.8;0;0.8" dur="1.2s" repeatCount="indefinite"/>
-  </rect>
-
-  <!-- Subtle gradient bar at bottom -->
-  <rect x="50" y="264" width="220" height="2" rx="1" fill="url(#barGrad)" opacity="0.6"/>
+  <!-- Floating grain particles -->
+  <circle cx="80" cy="120" r="2" fill="#F59E0B" opacity="0.4">
+    <animate attributeName="cy" values="120;110;120" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="240" cy="130" r="1.5" fill="#FDE68A" opacity="0.5">
+    <animate attributeName="cy" values="130;118;130" dur="2.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="180" cy="50" r="1.5" fill="#FDE68A" opacity="0.3">
+    <animate attributeName="cy" values="50;42;50" dur="4s" repeatCount="indefinite"/>
+  </circle>
 </svg>
