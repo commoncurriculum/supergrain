@@ -5,7 +5,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "vitepress dev docs",
+    "dev": "vitepress build docs && vitepress preview docs",
     "test": "vitest",
     "test:validate": "pnpm --filter @supergrain/documentation run test:validate",
     "bench:core": "vitest bench --root packages/core",
