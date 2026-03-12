@@ -328,40 +328,134 @@
   }
 }
 
-/* ===== COMPARISON NOTE ===== */
-.comparison-note {
+/* ===== PERFORMANCE COMPARISON ===== */
+.perf-comparison {
   max-width: 800px;
-  margin: 0 auto;
+  margin: 0 auto 48px;
   padding: 32px 48px;
   background: var(--vp-c-bg-alt);
   border-radius: 16px;
-  border-left: 4px solid var(--sg-gold);
 }
 
-.comparison-note p {
-  font-size: 0.95rem;
-  line-height: 1.6;
-  margin: 0 0 12px;
-  color: var(--vp-c-text-2);
-}
-
-.comparison-note p:last-child {
-  margin-bottom: 0;
-}
-
-.comparison-note strong {
+.perf-comparison h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 4px;
   color: var(--vp-c-text-1);
-  font-weight: 600;
 }
 
-.dark .comparison-note {
+.perf-subtitle {
+  font-size: 0.9rem;
+  color: var(--vp-c-text-2);
+  margin: 0 0 24px;
+}
+
+.perf-subtitle code {
+  background: var(--vp-c-bg-soft);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+.perf-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.perf-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.perf-label {
+  width: 100px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+}
+
+.perf-bar-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.perf-bar {
+  height: 32px;
+  border-radius: 6px;
+  transition: width 0.5s ease;
+}
+
+.perf-bar.supergrain {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.perf-bar.zustand {
+  background: linear-gradient(90deg, #6b7280, #9ca3af);
+}
+
+.perf-time {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  white-space: nowrap;
+}
+
+.perf-explanation {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(120, 53, 15, 0.1);
+}
+
+.dark .perf-explanation {
+  border-top-color: rgba(251, 191, 36, 0.1);
+}
+
+.perf-explanation p {
+  font-size: 0.9rem;
+  color: var(--vp-c-text-2);
+  margin: 0 0 16px;
+}
+
+.perf-explanation strong {
+  color: var(--vp-c-text-1);
+}
+
+.perf-explanation div[class*="language-"] {
+  margin: 16px 0 0 !important;
+}
+
+.perf-source {
+  font-size: 0.8rem;
+  color: var(--vp-c-text-3);
+  margin-top: 16px;
+}
+
+.perf-source a {
+  color: var(--sg-gold-dark);
+}
+
+.dark .perf-source a {
+  color: var(--sg-gold-light);
+}
+
+.dark .perf-comparison {
   background: rgba(251, 191, 36, 0.05);
 }
 
 @media (max-width: 900px) {
-  .comparison-note {
-    margin: 0 24px;
+  .perf-comparison {
+    margin: 0 24px 48px;
     padding: 24px;
+  }
+  
+  .perf-label {
+    width: 80px;
+    font-size: 0.8rem;
   }
 }
 

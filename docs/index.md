@@ -72,9 +72,48 @@ function Counter() {
   </div>
 </div>
 
-<div class="comparison-note">
-  <p><strong>vs Zustand:</strong> No selectors, no immutable spread syntax, automatic fine-grained reactivity. Deep nested updates are 2x faster because we mutate in place instead of recreating object trees.</p>
-  <p><strong>vs Redux:</strong> No actions, no reducers, no dispatch, no boilerplate. Just state.</p>
+<div class="perf-comparison">
+  <h3>Deep Nested Updates: Supergrain vs Zustand</h3>
+  <p class="perf-subtitle">Updating <code>user.profile.address.coordinates.lat</code> in a store</p>
+  
+  <div class="perf-bars">
+    <div class="perf-row">
+      <span class="perf-label">Supergrain</span>
+      <div class="perf-bar-container">
+        <div class="perf-bar supergrain" style="width: 33%"></div>
+        <span class="perf-time">~2ms</span>
+      </div>
+    </div>
+    <div class="perf-row">
+      <span class="perf-label">Zustand</span>
+      <div class="perf-bar-container">
+        <div class="perf-bar zustand" style="width: 83%"></div>
+        <span class="perf-time">~5ms</span>
+      </div>
+    </div>
+  </div>
+  
+  <div class="perf-explanation">
+    <p><strong>Why?</strong> Zustand recreates the entire object tree on every nested update:</p>
+
+```javascript
+// Zustand: spread, spread, spread...
+set(state => ({
+  ...state,
+  user: { ...state.user,
+    profile: { ...state.user.profile,
+      address: { ...state.user.profile.address,
+        coordinates: { lat: 42, lng: 0 }
+      }}}
+}))
+
+// Supergrain: just change it
+state.user.profile.address.coordinates.lat = 42
+```
+
+  </div>
+  
+  <p class="perf-source">Source: <a href="https://github.com/commoncurriculum/supergrain/tree/main/packages/comparisons">packages/comparisons/analysis/zustand.md</a></p>
 </div>
 
 <div class="readme-content">
