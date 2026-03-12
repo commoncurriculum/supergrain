@@ -269,6 +269,11 @@ div[class*="language-"] code {
   line-height: 1.7 !important;
 }
 
+/* Hide language label */
+div[class*="language-"] > span.lang {
+  display: none !important;
+}
+
 .dark .readme-content div[class*="language-"],
 .dark div[class*="language-"] {
   background: #1c1917 !important;
