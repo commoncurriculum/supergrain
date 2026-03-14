@@ -311,7 +311,7 @@ function useReactive<T>(signal: Reactive<T>): T {
 - No automatic component optimization
 
 **Comparison with Other Libraries:**
-- Storable: `useTrackedStore()` with automatic subscriptions
+- Storable: `useTracked()` with automatic subscriptions
 - MobX: `observer()` HOC with automatic tracking
 - Jotai: `useAtom()` with automatic updates
 - Reactively: **Manual integration required**
@@ -326,7 +326,7 @@ function useReactive<T>(signal: Reactive<T>): T {
 | **Object Handling** | Manual wrapping required | Automatic proxy wrapping |
 | **Bundle Size** | <1KB | ~8KB (with alien-signals) |
 | **Memory per Property** | ~109 bytes | ~200 bytes (with proxy overhead) |
-| **React Integration** | None (manual required) | Built-in useTrackedStore() hook |
+| **React Integration** | None (manual required) | Built-in useTracked() hook |
 
 ### Performance Comparison
 
@@ -353,7 +353,7 @@ function useReactive<T>(signal: Reactive<T>): T {
 
 **Storable Advantages:**
 - **Automatic reactivity**: Objects become reactive transparently
-- **React integration**: Built-in useTrackedStore() hook  
+- **React integration**: Built-in useTracked() hook  
 - **Developer experience**: Natural object syntax
 - **Ecosystem**: More comprehensive tooling
 

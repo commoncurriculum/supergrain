@@ -48,7 +48,7 @@ Row 2: Original vs Proxied = DIFFERENT
 Row 3: Original vs Proxied = DIFFERENT
 ```
 
-**Root Cause**: `useTrackedStore` creates new proxy objects for array items on each render, giving them different object references. This breaks React.memo's shallow comparison, causing all components to re-render even when their actual data hasn't changed.
+**Root Cause**: `useTracked` creates new proxy objects for array items on each render, giving them different object references. This breaks React.memo's shallow comparison, causing all components to re-render even when their actual data hasn't changed.
 
 ```tsx
 // This is why React.memo fails:
@@ -291,7 +291,7 @@ Row 2: Original vs Proxied = DIFFERENT
 Row 3: Original vs Proxied = DIFFERENT
 ```
 
-**Root Cause:** The `useTrackedStore` proxy creates new object references for array items on each render, breaking React's shallow comparison in `memo()`.
+**Root Cause:** The `useTracked` proxy creates new object references for array items on each render, breaking React's shallow comparison in `memo()`.
 
 ## Why React.memo Fails
 

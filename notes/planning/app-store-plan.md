@@ -268,7 +268,7 @@ class DocumentPromise<T> {
 ```typescript
 // Hook for using the app store
 function useAppStore() {
-  return useTrackedStore(appStore.store)
+  return useTracked(appStore.store)
 }
 
 // Usage in components

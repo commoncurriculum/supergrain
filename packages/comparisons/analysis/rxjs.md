@@ -270,7 +270,7 @@ const updateItems = items =>
 | **Memory Pattern**     | New objects per change                 | In-place modifications              |
 | **Change Detection**   | Stream emissions                       | Proxy trap execution                |
 | **Subscription Model** | Observable subscriptions               | Signal subscriptions                |
-| **React Integration**  | useStateObservable hook                | useTrackedStore hook                |
+| **React Integration**  | useStateObservable hook                | useTracked hook                |
 | **Batching**           | Stream-based automatic                 | Signal-based automatic              |
 | **Bundle Size**        | ~45KB (RxJS + react-rxjs)              | ~8KB (core + react + alien-signals) |
 

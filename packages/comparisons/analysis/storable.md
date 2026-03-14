@@ -6,14 +6,14 @@ Storable is a proxy-based reactive state management library that provides automa
 
 ## React Integration
 
-### Core Hook: useTrackedStore
+### Core Hook: useTracked
 
 Storable's React integration is built around automatic dependency tracking with minimal overhead:
 
 **Source: [`packages/core/src/store.ts:185-204`](../../packages/core/src/store.ts#L185-L204)**
 
 ```typescript
-function useTrackedStore<T extends object>(store: T): T {
+function useTracked<T extends object>(store: T): T {
   const [, forceUpdate] = useReducer((x) => x + 1, 0)
   
   useLayoutEffect(() => {

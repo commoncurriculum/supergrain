@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '../src/use-store'
+import { useTracked } from '../src/use-store'
 
 describe('Direct Mutation with React Integration', () => {
   it('should work with click handlers and direct mutations', () => {
     const [store] = createStore({ count: 0, message: 'Hello' })
 
     function App() {
-      const { count, message } = useTrackedStore(store)
+      const { count, message } = useTracked(store)
 
       return (
         <div>
@@ -61,7 +61,7 @@ describe('Direct Mutation with React Integration', () => {
     })
 
     function App() {
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       return (
         <div>
@@ -132,7 +132,7 @@ describe('Direct Mutation with React Integration', () => {
     })
 
     function TodoList() {
-      const { items } = useTrackedStore(store)
+      const { items } = useTracked(store)
 
       return (
         <div>
@@ -195,7 +195,7 @@ describe('Direct Mutation with React Integration', () => {
     })
 
     function App() {
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       return (
         <div>

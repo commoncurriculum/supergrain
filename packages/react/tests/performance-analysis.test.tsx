@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore, For } from '../src/use-store'
+import { useTracked, For } from '../src/use-store'
 import React, { FC, memo } from 'react'
 import { render, act, cleanup } from '@testing-library/react'
 
@@ -61,7 +61,7 @@ const TrackingRow: FC<{
 const App: FC<{
   store: any
 }> = ({ store }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   return (
     <table>

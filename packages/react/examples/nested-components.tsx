@@ -1,6 +1,6 @@
 import React from 'react'
 import { createStore } from '../../core/src/index'
-import { useTrackedStore } from '../src/index'
+import { useTracked } from '../src/index'
 
 // Create a store with separate properties for different component levels
 const [store, update] = createStore({
@@ -29,7 +29,7 @@ let childRenders = 0
 
 // Child component - only tracks child.value
 function Child() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   childRenders++
 
   return (
@@ -57,7 +57,7 @@ function Child() {
 
 // Parent component - tracks parent.value and renders Child
 function Parent() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   parentRenders++
 
   return (
@@ -86,7 +86,7 @@ function Parent() {
 
 // Grandparent component - tracks grandparent.value and renders Parent
 function GrandParent() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   grandparentRenders++
 
   return (
@@ -126,7 +126,7 @@ function GrandParent() {
 
 // Sibling components example - demonstrating independent tracking
 function SiblingA() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   return (
     <div
       style={{
@@ -142,7 +142,7 @@ function SiblingA() {
 }
 
 function SiblingB() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   return (
     <div
       style={{

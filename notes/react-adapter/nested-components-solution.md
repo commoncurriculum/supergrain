@@ -20,7 +20,7 @@ The solution uses a proxy that wraps the store and temporarily activates the cor
 ### Implementation
 
 ```typescript
-export function useTrackedStore<T extends object>(store: T): T {
+export function useTracked<T extends object>(store: T): T {
   // Force re-render when dependencies change
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
 
@@ -105,7 +105,7 @@ function Counter() {
 
 // Preferred usage - returns a proxy that handles isolation automatically
 function Counter() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   return <div>{state.count}</div>
 }
 ```

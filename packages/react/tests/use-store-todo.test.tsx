@@ -2,7 +2,7 @@ import React from 'react'
 import { render, screen, act } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '../src'
+import { useTracked } from '../src'
 import { flushMicrotasks } from './test-utils'
 
 // --- Test Setup ---
@@ -20,7 +20,7 @@ interface UserTaskList {
 }
 
 const TodoItem = ({ task }: { task: Task }) => {
-  const trackedTask = useTrackedStore(task)
+  const trackedTask = useTracked(task)
   return (
     <li
       style={{
@@ -33,7 +33,7 @@ const TodoItem = ({ task }: { task: Task }) => {
 }
 
 const TodoListComponent = ({ store }: { store: UserTaskList }) => {
-  const trackedStore = useTrackedStore(store)
+  const trackedStore = useTracked(store)
 
   return (
     <div>
@@ -49,7 +49,7 @@ const TodoListComponent = ({ store }: { store: UserTaskList }) => {
 
 // --- Tests ---
 
-describe('useTrackedStore Hook for Todo App', () => {
+describe('useTracked Hook for Todo App', () => {
   it('should re-render the component when a new todo is added', async () => {
     const initialState: UserTaskList = {
       id: 'user-1',

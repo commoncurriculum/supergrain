@@ -1,21 +1,21 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import React from 'react'
-import { createStore, unwrap, readSignal, setProperty, startBatch, endBatch } from '@supergrain/core'
+import { createStore } from '@supergrain/core'
 import { useTracked } from '../src'
 
 describe('useTracked', () => {
-  it('returns the value passed in', () => {
+  it('returns a proxy that provides access to store values', () => {
     const [store] = createStore({ title: 'hello' })
 
     function TestComponent() {
       const tracked = useTracked(store)
-      // useTracked returns the same reference
-      return <div data-testid="title">{String(tracked === store)}</div>
+      // useTracked returns a proxy wrapping the store
+      return <div data-testid="title">{tracked.title}</div>
     }
 
     render(<TestComponent />)
-    expect(screen.getByTestId('title').textContent).toBe('true')
+    expect(screen.getByTestId('title').textContent).toBe('hello')
   })
 
   it('re-renders when tracked signal changes', () => {
@@ -25,9 +25,9 @@ describe('useTracked', () => {
     function TestComponent() {
       renderCount++
       const tracked = useTracked(store)
-      // Simulate what the plugin would compile: store.title → readSignal(store, 'title')()
-      const title = readSignal(tracked, 'title')()
-      return <div data-testid="title">{title as string}</div>
+      // Access through proxy to establish tracking
+      const title = tracked.title
+      return <div data-testid="title">{title}</div>
     }
 
     render(<TestComponent />)
@@ -35,9 +35,7 @@ describe('useTracked', () => {
     expect(renderCount).toBe(1)
 
     act(() => {
-      startBatch()
-      setProperty(unwrap(store) as any, 'title', 'world')
-      endBatch()
+      store.title = 'world'
     })
 
     expect(screen.getByTestId('title').textContent).toBe('world')
@@ -51,8 +49,9 @@ describe('useTracked', () => {
     function TestComponent() {
       renderCount++
       const tracked = useTracked(store)
-      const title = readSignal(tracked, 'title')()
-      return <div data-testid="title">{title as string}</div>
+      // Only access title — count is not tracked
+      const title = tracked.title
+      return <div data-testid="title">{title}</div>
     }
 
     render(<TestComponent />)
@@ -60,9 +59,7 @@ describe('useTracked', () => {
 
     // Update count (not tracked by this component)
     act(() => {
-      startBatch()
-      setProperty(unwrap(store) as any, 'count', 42)
-      endBatch()
+      store.count = 42
     })
 
     // Should NOT re-render
@@ -70,9 +67,7 @@ describe('useTracked', () => {
 
     // Update title (tracked)
     act(() => {
-      startBatch()
-      setProperty(unwrap(store) as any, 'title', 'world')
-      endBatch()
+      store.title = 'world'
     })
 
     // Should re-render

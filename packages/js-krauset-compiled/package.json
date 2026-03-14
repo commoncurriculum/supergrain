@@ -1,0 +1,34 @@
+{
+  "name": "js-framework-benchmark-react-supergrain-compiled",
+  "version": "1.0.0",
+  "private": true,
+  "js-framework-benchmark": {
+    "frameworkVersionFromPackage": "react",
+    "frameworkHomeURL": "https://reactjs.org/"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build-prod": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:performance": "vitest src/performance.test.tsx"
+  },
+  "dependencies": {
+    "@supergrain/core": "workspace:*",
+    "@supergrain/react": "workspace:*",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@supergrain/vite-plugin": "workspace:*",
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/browser": "^3.2.4",
+    "playwright": "^1.55.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^3.2.4"
+  }
+}

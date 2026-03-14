@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { userEvent } from '@vitest/browser/context'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '@supergrain/react'
+import { useTracked } from '@supergrain/react'
 import { Store } from '@supergrain/store'
 import { useState } from 'react'
 
@@ -27,7 +27,7 @@ describe('README Complex Examples', () => {
 
       // Use in React components
       function TodoApp() {
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
 
         // Updates MUST use the update function with operators
         const addTodo = (text: string) => {
@@ -296,7 +296,7 @@ describe('README Complex Examples', () => {
 
       // Main component
       function TodoApp() {
-        const state = useTrackedStore(todoStore)
+        const state = useTracked(todoStore)
         const [inputText, setInputText] = useState('')
 
         const addTodo = () => {
@@ -491,7 +491,7 @@ describe('README Complex Examples', () => {
       })
 
       function MyComponent() {
-        const state = useTrackedStore(store) // Creates reactive proxy
+        const state = useTracked(store) // Creates reactive proxy
 
         // This creates a subscription to 'user.profile.name'
         const name = state.user.profile.name
@@ -535,7 +535,7 @@ describe('README Complex Examples', () => {
 
       function TestComponent() {
         // ✅ Storable: just access the data normally
-        const userName = useTrackedStore(store).user.name // Automatically subscribed!
+        const userName = useTracked(store).user.name // Automatically subscribed!
 
         return <div>User: {userName}</div>
       }
@@ -605,7 +605,7 @@ describe('README Complex Examples', () => {
 
       // Component usage is also type-safe
       function UserProfile() {
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
 
         return (
           <div>

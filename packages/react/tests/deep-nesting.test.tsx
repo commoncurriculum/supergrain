@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, act, cleanup } from '@testing-library/react'
 import React from 'react'
 import { createStore, effect, computed } from '@supergrain/core'
-import { useTrackedStore } from '../src/use-store'
+import { useTracked } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
 describe('Deep Nesting Operations in React Components', () => {
@@ -221,7 +221,7 @@ describe('Deep Nesting Operations in React Components', () => {
   }
 
   function OrganizationComponent({ store }: any) {
-    const state = useTrackedStore(store)
+    const state = useTracked(store)
     return (
       <div data-testid={`org-${state.organization.id}`}>
         <h1 data-testid={`org-name-${state.organization.id}`}>
@@ -426,7 +426,7 @@ describe('Deep Nesting Operations in React Components', () => {
     let computedValue = 0
 
     function ComputedComponent() {
-      const stateValue = useTrackedStore(state)
+      const stateValue = useTracked(state)
       const totalBudget = computed(() => {
         return stateValue.organization.departments.reduce(
           (sum: number, dept: any) => sum + dept.budget,
@@ -469,7 +469,7 @@ describe('Deep Nesting Operations in React Components', () => {
     let renderCount = 0
 
     function TaskOnlyComponent() {
-      const stateValue = useTrackedStore(state)
+      const stateValue = useTracked(state)
       renderCount++
       const task = getTask(stateValue, 0, 0, 0, 0, 0)
       return <div data-testid="task-only">{task.title}</div>
@@ -526,7 +526,7 @@ describe('Deep Nesting Operations in React Components', () => {
         taskIndex,
       }: any) => {
         taskRenderCount++
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
         const task = getTask(
           state,
           deptIndex,
@@ -551,7 +551,7 @@ describe('Deep Nesting Operations in React Components', () => {
     const MemoizedProjectComponent = React.memo(
       ({ store, deptIndex, teamIndex, memberIndex, projectIndex }: any) => {
         projectRenderCount++
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
         const project = getProject(
           state,
           deptIndex,
@@ -586,7 +586,7 @@ describe('Deep Nesting Operations in React Components', () => {
     const MemoizedMemberComponent = React.memo(
       ({ store, deptIndex, teamIndex, memberIndex }: any) => {
         memberRenderCount++
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
         const member = getMember(state, deptIndex, teamIndex, memberIndex)
         return (
           <div data-testid={`memoized-member-${member.id}`}>
@@ -614,7 +614,7 @@ describe('Deep Nesting Operations in React Components', () => {
     const MemoizedTeamComponent = React.memo(
       ({ store, deptIndex, teamIndex }: any) => {
         teamRenderCount++
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
         const team = getTeam(state, deptIndex, teamIndex)
         return (
           <div data-testid={`memoized-team-${team.id}`}>
@@ -636,7 +636,7 @@ describe('Deep Nesting Operations in React Components', () => {
     const MemoizedDepartmentComponent = React.memo(
       ({ store, deptIndex }: any) => {
         deptRenderCount++
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
         const dept = getDept(state, deptIndex)
         return (
           <div data-testid={`memoized-dept-${dept.id}`}>
@@ -659,7 +659,7 @@ describe('Deep Nesting Operations in React Components', () => {
 
     const MemoizedOrganizationComponent = React.memo(({ store }: any) => {
       orgRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       return (
         <div data-testid={`memoized-org-${state.organization.id}`}>
           <h1 data-testid={`memoized-org-name-${state.organization.id}`}>
@@ -705,7 +705,7 @@ describe('Deep Nesting Operations in React Components', () => {
       await flushMicrotasks()
     })
 
-    // With useTrackedStore in each component, only components that access the changed data should re-render
+    // With useTracked in each component, only components that access the changed data should re-render
     expect(orgRenderCount).toBe(1) // Org doesn't access task data directly
     expect(deptRenderCount).toBe(1) // Dept doesn't access task data
     expect(teamRenderCount).toBe(1) // Team doesn't access task data

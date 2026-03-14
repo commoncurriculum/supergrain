@@ -1,6 +1,6 @@
 import { bench, describe, afterEach } from 'vitest'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '@supergrain/react'
+import { useTracked } from '@supergrain/react'
 import React, { FC } from 'react'
 import {
   render,
@@ -116,7 +116,7 @@ const BenchmarkComponent: FC<{
   store: any
   updateStore: any
 }> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
   const swapRows = () => {
@@ -185,7 +185,7 @@ describe('React Adapter: Row Operations', () => {
       })
 
       // Use renderHook to test the hook directly without DOM
-      const { result } = renderHook(() => useTrackedStore(store))
+      const { result } = renderHook(() => useTracked(store))
 
       // Measure the state update and React re-render
       act(() => {
@@ -214,7 +214,7 @@ describe('React Adapter: Row Operations', () => {
       })
 
       // Use renderHook to test the hook directly without DOM
-      const { result } = renderHook(() => useTrackedStore(store))
+      const { result } = renderHook(() => useTracked(store))
 
       // Capture original values
       const originalRow1 = data[1]
@@ -336,7 +336,7 @@ describe('React Adapter: Row Operations', () => {
         selected: null,
       })
 
-      const { result } = renderHook(() => useTrackedStore(store))
+      const { result } = renderHook(() => useTracked(store))
 
       act(() => {
         updateStore({ $set: { selected: data[5000].id } })
@@ -362,7 +362,7 @@ describe('React Adapter: Row Operations', () => {
         selected: null,
       })
 
-      const { result } = renderHook(() => useTrackedStore(store))
+      const { result } = renderHook(() => useTracked(store))
 
       const originalRow1 = data[1]
       const originalRow9998 = data[9998]

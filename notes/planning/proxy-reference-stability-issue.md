@@ -7,7 +7,7 @@
 
 ## Problem Statement (RESOLVED)
 
-The `useTrackedStore` React adapter **was creating** new proxy objects for array/object items on every render, instead of reusing existing proxies. This **broke** React's optimization strategies and **caused** significant performance degradation.
+The `useTracked` React adapter **was creating** new proxy objects for array/object items on every render, instead of reusing existing proxies. This **broke** React's optimization strategies and **caused** significant performance degradation.
 
 **✅ FIXED:** Implemented global proxy caching with per-component effect context isolation.
 
@@ -83,7 +83,7 @@ This **meant** that ALL React optimization strategies **failed**:
 
 ### Confirmed Implementation Issue
 
-The `useTrackedStore` proxy system **was**:
+The `useTracked` proxy system **was**:
 
 1. **Creating proxies on-demand** during property access ❌
 2. **Not caching/reusing** proxy objects for the same underlying data ❌
@@ -95,7 +95,7 @@ The `useTrackedStore` proxy system **was**:
 ### Previous Proxy Architecture (Confirmed Issue)
 
 ```tsx
-// In useTrackedStore implementation:
+// In useTracked implementation:
 const createProxy = (target: any): any => {
   // Problem: Always creates new proxy, no caching
   return new Proxy(target, {
@@ -184,14 +184,14 @@ Row 3 rendered - item reference: object, isSelected: false  ← Shouldn't render
 ### 4. React Integration (✅ IMPLEMENTED)
 
 - **Now works** with `React.memo`, `useMemo`, `useCallback` ✅
-- **Preserved** existing `useTrackedStore` API ✅
+- **Preserved** existing `useTracked` API ✅
 - **Maintains** dependency tracking functionality ✅
 
 ## Implementation Results (✅ COMPLETED)
 
 ### Phase 1: Root Cause Confirmed ✅
 
-- [x] Examined `useTrackedStore` implementation
+- [x] Examined `useTracked` implementation
 - [x] Identified where new proxies were created
 - [x] Confirmed no proxy caching existed
 - [x] Measured proxy creation overhead
@@ -206,7 +206,7 @@ Row 3 rendered - item reference: object, isSelected: false  ← Shouldn't render
 ### Phase 3: Implementation ✅
 
 - [x] Implemented global proxy caching system
-- [x] Updated `useTrackedStore` to use cached proxies with effect isolation
+- [x] Updated `useTracked` to use cached proxies with effect isolation
 - [x] Ensured dependency tracking still works correctly
 - [x] Added comprehensive tests to verify fix
 
@@ -227,7 +227,7 @@ Row 3 rendered - item reference: object, isSelected: false  ← Shouldn't render
 
 ### Functional Requirements (✅ ALL MET)
 
-- ✅ Existing `useTrackedStore` API unchanged ✅
+- ✅ Existing `useTracked` API unchanged ✅
 - ✅ Dependency tracking continues to work ✅
 - ✅ React.memo, useMemo, useCallback work properly ✅
 - ✅ No memory leaks or reference issues ✅

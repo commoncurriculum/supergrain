@@ -1,6 +1,6 @@
 import { bench, describe, afterEach } from 'vitest'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '@supergrain/react'
+import { useTracked } from '@supergrain/react'
 import React, { FC, memo, useState, useRef } from 'react'
 import {
   render,
@@ -204,7 +204,7 @@ const RegularMapComponent: FC<{
   store: any
   updateStore: any
 }> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
 
@@ -228,7 +228,7 @@ const MemoizedMapComponent: FC<{
   store: any
   updateStore: any
 }> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
 
@@ -252,7 +252,7 @@ const ForComponent: FC<{
   store: any
   updateStore: any
 }> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
 
@@ -278,7 +278,7 @@ const OptimizedForComponent: FC<{
   store: any
   updateStore: any
 }> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
 

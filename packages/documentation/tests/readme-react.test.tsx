@@ -2,7 +2,7 @@
  * README React Examples Tests
  *
  * Tests for React integration examples from the README:
- * - useTrackedStore Hook (DOC_TEST_6)  
+ * - useTracked Hook (DOC_TEST_6)  
  * - Fine-grained Reactivity (DOC_TEST_8)
  * - Memoized Components (DOC_TEST_9)
  * - For Component (DOC_TEST_10)
@@ -12,17 +12,17 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { userEvent } from '@vitest/browser/context'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore, For } from '@supergrain/react'
+import { useTracked, For } from '@supergrain/react'
 import { memo } from 'react'
 
 describe('README React Examples', () => {
-  describe('useTrackedStore Hook', () => {
+  describe('useTracked Hook', () => {
     it('#DOC_TEST_6', async () => {
       const [store, update] = createStore({ count: 0 })
 
       // The primary way to use stores in React:
       function Counter() {
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
 
         return (
           <div>
@@ -48,13 +48,13 @@ describe('README React Examples', () => {
       const [store, update] = createStore({ x: 1, y: 2, z: 3 })
 
       function ComponentA() {
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
         // Only re-renders when 'x' changes
         return <div>X: {state.x}</div>
       }
 
       function ComponentB() {
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
         // Only re-renders when 'y' changes
         return <div>Y: {state.y}</div>
       }
@@ -102,10 +102,10 @@ describe('README React Examples', () => {
         project: { taskIds: [1, 2] },
       })
 
-      // ✅ Correct - useTrackedStore inside memoized component
+      // ✅ Correct - useTracked inside memoized component
       const TaskComponent = memo(
         ({ store, taskId }: { store: any; taskId: number }) => {
-          const state = useTrackedStore(store)
+          const state = useTracked(store)
           const task = state.tasks.find((t: any) => t.id === taskId)
 
           return (
@@ -119,7 +119,7 @@ describe('README React Examples', () => {
 
       // Usage
       function ProjectView() {
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
 
         return (
           <div>
@@ -157,7 +157,7 @@ describe('README React Examples', () => {
       ))
 
       function TodoList() {
-        const state = useTrackedStore(store)
+        const state = useTracked(store)
 
         return (
           <For each={state.todos} fallback={<div>No todos yet</div>}>

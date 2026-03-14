@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '../src/use-store'
+import { useTracked } from '../src/use-store'
 import React, { FC, memo, useCallback } from 'react'
 import { render, act, cleanup } from '@testing-library/react'
 
@@ -81,7 +81,7 @@ const RegularMapComponent: FC<{
   store: any
   updateStore: any
 }> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
 
   return (
@@ -104,7 +104,7 @@ const MemoizedComponent: FC<{
   store: any
   updateStore: any
 }> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   const selectRow = useCallback(
     (id: number) => updateStore({ $set: { selected: id } }),
     [updateStore]
@@ -138,7 +138,7 @@ const ForComponent: FC<{
   store: any
   updateStore: any
 }> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
 
   return (
@@ -446,7 +446,7 @@ describe('Render Analysis Tests', () => {
       store: any
       updateStore: any
     }> = ({ store, updateStore }) => {
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       const selectRow = (id: number) => updateStore({ $set: { selected: id } })
 
       if (debug) {
@@ -521,7 +521,7 @@ describe('Render Analysis Tests', () => {
       store: any
       updateStore: any
     }> = ({ store, updateStore }) => {
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       return (
         <table>
@@ -626,7 +626,7 @@ describe('Render Analysis Tests', () => {
 
     // List component that maps over items and passes version
     const ItemListComponent: FC = () => {
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       const currentCount = componentRenderCounts.get('list') || 0
       componentRenderCounts.set('list', currentCount + 1)
 
@@ -713,7 +713,7 @@ describe('Render Analysis Tests', () => {
 
     // Poor structure: Single component renders all items
     const PoorlyStructuredComponent: FC = () => {
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       renderCount++
 
       return (
@@ -791,7 +791,7 @@ describe('Render Analysis Tests', () => {
     })
 
     const OptimalListComponent: FC = () => {
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       // Pass items array and version to child components
       return (
@@ -886,7 +886,7 @@ describe('Render Analysis Tests', () => {
     )
 
     const VersionTrackingList: FC = () => {
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       // In a real implementation, this would be tracked internally
       // For now, we manually track which items have changed
@@ -1016,7 +1016,7 @@ describe('Render Analysis Tests', () => {
     })
 
     const SymbolTrackingList: FC = () => {
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       return (
         <div>

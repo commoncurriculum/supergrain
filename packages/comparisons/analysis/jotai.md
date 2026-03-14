@@ -246,7 +246,7 @@ For 100 atoms vs 1 store with 100 properties:
 | **Subscription Granularity** | Per atom per component | Per store per component |
 | **Dependency Tracking** | Explicit atom dependencies | Implicit property access |
 | **Change Propagation** | Atom graph traversal | Proxy-based signals |
-| **React Integration** | useAtomValue/useSetAtom | useTrackedStore |
+| **React Integration** | useAtomValue/useSetAtom | useTracked |
 | **Bundle Size Impact** | Dead code elimination | Monolithic store |
 | **GC Pressure** | High (many objects) | Low (fewer objects) |
 | **Memory Efficiency** | Poor for many unused atoms | Good for complex objects |

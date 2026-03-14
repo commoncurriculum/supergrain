@@ -2,15 +2,15 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
 import React, { memo, useState, useEffect } from 'react'
 import { createStore, effect } from '@supergrain/core'
-import { useTrackedStore } from '../src/use-store'
+import { useTracked } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
-describe('useTrackedStore Mechanism Tests', () => {
+describe('useTracked Mechanism Tests', () => {
   beforeEach(() => {
     cleanup()
   })
 
-  it('should demonstrate that useTrackedStore is what enables reactive subscriptions', async () => {
+  it('should demonstrate that useTracked is what enables reactive subscriptions', async () => {
     const [store, update] = createStore({
       items: [{ deep: { value: 1 } }],
     })
@@ -18,10 +18,10 @@ describe('useTrackedStore Mechanism Tests', () => {
     let trackedRenderCount = 0
     let nonTrackedRenderCount = 0
 
-    // Component using useTrackedStore - should be reactive
+    // Component using useTracked - should be reactive
     const TrackedComponent = memo(() => {
       trackedRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       console.log(`TrackedComponent: render #${trackedRenderCount}`)
       const value = state.items[0].deep.value
@@ -30,12 +30,12 @@ describe('useTrackedStore Mechanism Tests', () => {
       return <div data-testid="tracked-value">{value}</div>
     })
 
-    // Component NOT using useTrackedStore - should NOT be reactive
+    // Component NOT using useTracked - should NOT be reactive
     const NonTrackedComponent = memo(() => {
       nonTrackedRenderCount++
       console.log(`NonTrackedComponent: render #${nonTrackedRenderCount}`)
 
-      // Access store directly without useTrackedStore
+      // Access store directly without useTracked
       const value = store.items[0].deep.value
       console.log(`  Accessing store.items[0].deep.value directly = ${value}`)
 
@@ -105,7 +105,7 @@ describe('useTrackedStore Mechanism Tests', () => {
 
     if (trackedRenderCount > 1 && nonTrackedRenderCount === 1) {
       console.log(
-        '✓ CONFIRMED: useTrackedStore is what enables reactive subscriptions'
+        '✓ CONFIRMED: useTracked is what enables reactive subscriptions'
       )
       expect(
         container.querySelector('[data-testid="tracked-value"]')?.textContent
@@ -129,7 +129,7 @@ describe('useTrackedStore Mechanism Tests', () => {
     let effectTriggered = false
     let manualRenderCount = 0
 
-    // Component that manually uses effect like useTrackedStore does internally
+    // Component that manually uses effect like useTracked does internally
     const ManualEffectComponent = memo(() => {
       manualRenderCount++
       const [, forceUpdate] = useState({})
@@ -204,7 +204,7 @@ describe('useTrackedStore Mechanism Tests', () => {
 
     const SpecificSubscriptionComponent = memo(() => {
       renderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       console.log(`SpecificSubscriptionComponent: render #${renderCount}`)
 

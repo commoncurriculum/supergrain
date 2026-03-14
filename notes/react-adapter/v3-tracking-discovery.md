@@ -49,7 +49,7 @@ The effect has an empty callback, so it never establishes dependencies on the st
 Create a proxy that wraps each property access with proper tracking:
 
 ```typescript
-export function useTrackedStore<T extends object>(store: T): T {
+export function useTracked<T extends object>(store: T): T {
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
   const effectRef = useRef<{ cleanup: (() => void) | null; effectNode: any }>()
 
@@ -170,12 +170,12 @@ export function useReactive(): void {
 
 ```tsx
 function Counter() {
-  const store = useTrackedStore(myStore)
+  const store = useTracked(myStore)
   return <div>{store.count}</div> // Automatically tracked
 }
 
 function Parent() {
-  const store = useTrackedStore(myStore)
+  const store = useTracked(myStore)
   return (
     <div>
       {store.parentValue}
@@ -261,7 +261,7 @@ await act(async () => {
 
 ## Migration Guide
 
-### From useStore (broken) to useTrackedStore
+### From useStore (broken) to useTracked
 
 Before:
 ```tsx
@@ -274,7 +274,7 @@ function Component() {
 After:
 ```tsx
 function Component() {
-  const state = useTrackedStore(store) // Properly tracked
+  const state = useTracked(store) // Properly tracked
   return <div>{state.value}</div>
 }
 ```
@@ -284,7 +284,7 @@ function Component() {
 For existing components, simply add the hook:
 ```tsx
 function ExistingComponent() {
-  const store = useTrackedStore(globalStore) // Add this
+  const store = useTracked(globalStore) // Add this
 
   // Now use store instead of globalStore
   return <div>{store.value}</div>

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
 import React, { memo } from 'react'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore, For } from '../src/use-store'
+import { useTracked, For } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
 describe('For Component Magic Tests', () => {
@@ -24,7 +24,7 @@ describe('For Component Magic Tests', () => {
     // Component that uses For
     const WithForComponent = memo(() => {
       withForRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       console.log(
         `WithFor: render #${withForRenderCount}, accessing state.data for For`
@@ -42,7 +42,7 @@ describe('For Component Magic Tests', () => {
     // Component that uses regular map
     const WithoutForComponent = memo(() => {
       withoutForRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       console.log(
         `WithoutFor: render #${withoutForRenderCount}, accessing state.data for map`
@@ -115,7 +115,7 @@ describe('For Component Magic Tests', () => {
 
     const TestComponent = memo(() => {
       renderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       console.log(`TestComponent: render #${renderCount}`)
 

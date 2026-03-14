@@ -153,7 +153,7 @@ if (bulkOperation) {
 
 ### Comprehensive Test Coverage
 - ✅ **Core Package**: Direct mutation reactivity tests
-- ✅ **React Package**: Integration with `useTrackedStore`
+- ✅ **React Package**: Integration with `useTracked`
 - ✅ **Performance Tests**: Before/after comparisons
 - ✅ **Type Safety**: Full TypeScript support maintained
 

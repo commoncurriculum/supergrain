@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
 import React, { memo, useCallback } from 'react'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore, For } from '../src/use-store'
+import { useTracked, For } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
 describe('JS-Krauset Simple Case Tests', () => {
@@ -64,7 +64,7 @@ describe('JS-Krauset Simple Case Tests', () => {
       parentRenderCount++
       console.log(`RowList rendered (render #${parentRenderCount})`)
 
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       const handleSelect = useCallback((id: number) => {
         updateStore({ $set: { selected: id } })
@@ -181,7 +181,7 @@ describe('JS-Krauset Simple Case Tests', () => {
       parentRenderCount++
       console.log(`DirectRowList rendered (render #${parentRenderCount})`)
 
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       return (
         <div>
@@ -241,7 +241,7 @@ describe('JS-Krauset Simple Case Tests', () => {
 
     const TestComponent = memo(() => {
       parentRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       // Only access the array, not individual items
       console.log(

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
 import React, { memo } from 'react'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '../src/use-store'
+import { useTracked } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
 describe('Array Subscription Theory Tests', () => {
@@ -25,7 +25,7 @@ describe('Array Subscription Theory Tests', () => {
     // Component that only accesses the array, not elements
     const ArrayOnlyComponent = memo(() => {
       arrayOnlyRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Only access array length, not individual elements
       console.log(`ArrayOnly: accessed array length: ${state.data.length}`)
       return <div>Array length: {state.data.length}</div>
@@ -34,7 +34,7 @@ describe('Array Subscription Theory Tests', () => {
     // Component that accesses all elements during iteration
     const ElementAccessComponent = memo(() => {
       elementAccessRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access each element (this should create subscriptions to data[0], data[1], etc.)
       const elementCount = state.data.map(item => item.id).length
       console.log(`ElementAccess: accessed ${elementCount} elements`)
@@ -44,7 +44,7 @@ describe('Array Subscription Theory Tests', () => {
     // Component that accesses only a specific element
     const SpecificElementComponent = memo(() => {
       specificElementRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access only data[0]
       const firstItem = state.data[0]
       console.log(`SpecificElement: accessed data[0].id = ${firstItem?.id}`)

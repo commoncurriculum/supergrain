@@ -52,7 +52,7 @@ _Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/t
 // [#DOC_TEST_3](packages/documentation/tests/quick-start.test.tsx)
 
 import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '@supergrain/react'
+import { useTracked } from '@supergrain/react'
 
 // Create a store with initial state
 const [store, update] = createStore({
@@ -62,7 +62,7 @@ const [store, update] = createStore({
 
 // Use in React components
 function TodoApp() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   // Use update function with MongoDB-style operators
   const addTodo = (text: string) => {
@@ -97,9 +97,9 @@ function TodoApp() {
 
 Supergrain uses **super fine-grained reactivity** powered by `alien-signals` to automatically track which components access which data, creating subscriptions only to properties that are actually used.
 
-### The Magic of `useTrackedStore`
+### The Magic of `useTracked`
 
-When you call `useTrackedStore(store)` in a React component, it:
+When you call `useTracked(store)` in a React component, it:
 
 1. **Creates an effect context** using `alien-signals`
 2. **Returns a proxy** of your store that tracks property access
@@ -110,7 +110,7 @@ When you call `useTrackedStore(store)` in a React component, it:
 // [#DOC_TEST_28](packages/documentation/tests/readme-examples.test.tsx)
 
 function MyComponent() {
-  const state = useTrackedStore(store) // Creates reactive proxy
+  const state = useTracked(store) // Creates reactive proxy
 
   // This creates a subscription to 'user.profile.name'
   const name = state.user.profile.name
@@ -147,7 +147,7 @@ const unsubscribe = store.subscribe('user.name', callback)
 useEffect(() => unsubscribe, [])
 
 // ✅ Supergrain: just access the data normally
-const userName = useTrackedStore(store).user.name // Automatically subscribed!
+const userName = useTracked(store).user.name // Automatically subscribed!
 ```
 
 ## Creating Stores
@@ -276,17 +276,17 @@ update({
 
 _Links: [Source Code](packages/react/src/use-store.ts). [Tests](packages/react/tests/use-store.test.tsx). [Examples](packages/react/examples/nested-components.tsx)._
 
-### useTrackedStore Hook
+### useTracked Hook
 
 The primary way to use stores in React:
 
 ```typescript
 // [#DOC_TEST_6](packages/documentation/tests/react-integration.test.tsx)
 
-import { useTrackedStore } from '@supergrain/react'
+import { useTracked } from '@supergrain/react'
 
 function Counter() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   return (
     <div>
@@ -313,13 +313,13 @@ const [state, update] = createStore({
 })
 
 function ComponentA() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   // Only re-renders when 'x' changes
   return <div>X: {state.x}</div>
 }
 
 function ComponentB() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   // Only re-renders when 'y' changes
   return <div>Y: {state.y}</div>
 }
@@ -330,16 +330,16 @@ update({ $set: { z: 10 } })
 
 ### Using with Memoized Components
 
-Because values are proxies and they're stable across renders, passing them will break memoized components (as the proxy won't change when the values do). To solve this, call `useTrackedStore` inside each memoized component rather than passing state as props:
+Because values are proxies and they're stable across renders, passing them will break memoized components (as the proxy won't change when the values do). To solve this, call `useTracked` inside each memoized component rather than passing state as props:
 
 ```typescript
 // [#DOC_TEST_9](packages/documentation/tests/react-integration.test.tsx)
 
 import React, { memo } from 'react'
 
-// ✅ Correct - useTrackedStore inside memoized component
+// ✅ Correct - useTracked inside memoized component
 const TaskComponent = memo(({ store, taskId }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   const task = state.tasks.find(t => t.id === taskId)
 
   return (
@@ -352,7 +352,7 @@ const TaskComponent = memo(({ store, taskId }) => {
 
 // Usage
 function ProjectView() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   return (
     <div>
@@ -384,7 +384,7 @@ const TodoItem = memo(({ todo }) => (
 ))
 
 function TodoList() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   return (
     <For each={state.todos} fallback={<div>No todos yet</div>}>
@@ -586,7 +586,7 @@ Here's a complete TODO application demonstrating Supergrain's features:
 // [#DOC_TEST_26](packages/documentation/tests/todo-app.test.tsx)
 
 import { createStore } from '@supergrain/core'
-import { useTrackedStore, For } from '@supergrain/react'
+import { useTracked, For } from '@supergrain/react'
 import { memo } from 'react'
 
 interface Todo {
@@ -629,7 +629,7 @@ const TodoItem = memo(({ todo }: { todo: Todo }) => {
 })
 
 function TodoApp() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   const addTodo = () => {
     if (state.newTodoText.trim()) {
@@ -740,7 +740,7 @@ update({
 
 // Component usage is also type-safe
 function UserProfile() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   return (
     <div>

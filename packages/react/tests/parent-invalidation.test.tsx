@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
 import React, { memo } from 'react'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '../src/use-store'
+import { useTracked } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
 describe('Parent Invalidation Depth Tests', () => {
@@ -48,7 +48,7 @@ describe('Parent Invalidation Depth Tests', () => {
     // Component that accesses root level
     const RootComponent = memo(() => {
       rootRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access the root level0 property
       const _ = state.level0
       return <div data-testid="root">Root: {rootRenderCount}</div>
@@ -57,7 +57,7 @@ describe('Parent Invalidation Depth Tests', () => {
     // Component that accesses level1
     const Level1Component = memo(() => {
       level1RenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access level1 property
       const _ = state.level0.level1
       return <div data-testid="level1">Level1: {level1RenderCount}</div>
@@ -66,7 +66,7 @@ describe('Parent Invalidation Depth Tests', () => {
     // Component that accesses level2
     const Level2Component = memo(() => {
       level2RenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access level2 property
       const _ = state.level0.level1.level2
       return <div data-testid="level2">Level2: {level2RenderCount}</div>
@@ -75,7 +75,7 @@ describe('Parent Invalidation Depth Tests', () => {
     // Component that accesses level3
     const Level3Component = memo(() => {
       level3RenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access level3 property
       const _ = state.level0.level1.level2.level3
       return <div data-testid="level3">Level3: {level3RenderCount}</div>
@@ -84,7 +84,7 @@ describe('Parent Invalidation Depth Tests', () => {
     // Component that accesses level4
     const Level4Component = memo(() => {
       level4RenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access level4 property - defensive access since structure may be replaced
       const _ = state.level0?.level1?.level2?.level3?.level4
       return <div data-testid="level4">Level4: {level4RenderCount}</div>
@@ -93,7 +93,7 @@ describe('Parent Invalidation Depth Tests', () => {
     // Component that accesses array
     const ArrayComponent = memo(() => {
       arrayRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access the array itself
       const _ = state.array
       return <div data-testid="array">Array: {arrayRenderCount}</div>
@@ -102,7 +102,7 @@ describe('Parent Invalidation Depth Tests', () => {
     // Component that accesses array item
     const ArrayItemComponent = memo(() => {
       arrayItemRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access the array item
       const _ = state.array[0]
       return (
@@ -263,7 +263,7 @@ describe('Parent Invalidation Depth Tests', () => {
     // Component that accesses the array
     const ArrayAccessComponent = memo(() => {
       arrayAccessRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access the items array
       const _ = state.items
       return <div>Array access: {arrayAccessRenderCount}</div>
@@ -272,7 +272,7 @@ describe('Parent Invalidation Depth Tests', () => {
     // Component that accesses first array item
     const ItemAccessComponent = memo(() => {
       itemAccessRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access the first item
       const _ = state.items[0]
       return <div>Item access: {itemAccessRenderCount}</div>
@@ -281,7 +281,7 @@ describe('Parent Invalidation Depth Tests', () => {
     // Component that accesses nested property in array item
     const DetailsAccessComponent = memo(() => {
       detailsAccessRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
       // Access nested details
       const _ = state.items[0].details
       return <div>Details access: {detailsAccessRenderCount}</div>

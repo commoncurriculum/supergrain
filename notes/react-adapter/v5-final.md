@@ -9,7 +9,7 @@ After extensive experimentation with multiple approaches, we solved the nested c
 ### Implementation
 
 ```typescript
-export function useTrackedStore<T extends object>(store: T): T {
+export function useTracked<T extends object>(store: T): T {
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
 
   const stateRef = useRef<{
@@ -75,7 +75,7 @@ export function useTrackedStore<T extends object>(store: T): T {
 
 ```tsx
 function Parent() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   return (
     <div>
       {state.parent}  {/* Only tracks parent property */}
@@ -85,7 +85,7 @@ function Parent() {
 }
 
 function Child() {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
   return <div>{state.child}</div>  {/* Only tracks child property */}
 }
 ```
@@ -355,7 +355,7 @@ function useStore(): void {
 ### Trade-offs
 
 1. **Extra Proxy Layer**: Adds one level of indirection (negligible performance impact)
-2. **Not Zero-Config**: Requires using `useTrackedStore` instead of direct store access
+2. **Not Zero-Config**: Requires using `useTracked` instead of direct store access
 3. **Proxy Browser Support**: Requires Proxy support (all modern browsers)
 
 ## Performance Analysis
@@ -502,7 +502,7 @@ Preact Signals takes a fundamentally different approach that avoids the nested c
 
 | Aspect                  | Preact (UNMANAGED)   | Preact (MANAGED)    | Our Proxy Solution         |
 | ----------------------- | -------------------- | ------------------- | -------------------------- |
-| **Setup Complexity**    | Zero-config          | Requires Babel      | Requires `useTrackedStore` |
+| **Setup Complexity**    | Zero-config          | Requires Babel      | Requires `useTracked` |
 | **Build Step**          | None                 | Required            | None                       |
 | **Performance**         | Good                 | Best                | Good                       |
 | **Nested Components**   | Timing issues        | Perfect             | Perfect via proxy          |

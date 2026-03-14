@@ -1,6 +1,6 @@
 import { bench, describe } from 'vitest'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '@supergrain/react'
+import { useTracked } from '@supergrain/react'
 import React, { FC, memo, useCallback } from 'react'
 import { render, act } from '@testing-library/react'
 
@@ -145,7 +145,7 @@ const UnmemoizedApp: FC<{
   store: any
   updateStore: any
 }> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   const select = (id: number) => updateStore({ $set: { selected: id } })
   const remove = (id: number) => updateStore({ $pull: { data: { id } } })
@@ -172,7 +172,7 @@ const MemoizedApp: FC<{
   store: any
   updateStore: any
 }> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
+  const state = useTracked(store)
 
   // Stable callbacks prevent unnecessary re-renders
   const select = useCallback(

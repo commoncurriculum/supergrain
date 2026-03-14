@@ -1,8 +1,5 @@
-import React, { useRef, useLayoutEffect, useEffect, useReducer } from 'react'
-import { effect, getCurrentSub, setCurrentSub, $VERSION } from '@supergrain/core'
-
-const isServer = typeof window === 'undefined'
-const useIsomorphicLayoutEffect = isServer ? useEffect : useLayoutEffect
+import React, { useRef, useEffect, useReducer } from 'react'
+import { effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
 
 // Global proxy cache to ensure consistent identity across all component instances
 // This is the key fix for the proxy reference stability issue
@@ -127,7 +124,7 @@ const createStableProxy = (target: any, effectNode: any): any => {
  * ))
  *
  * function Table() {
- *   const state = useTrackedStore(store)
+ *   const state = useTracked(store)
  *   return (
  *     <tbody>
  *       {state.data.map(row => (
@@ -142,7 +139,7 @@ const createStableProxy = (target: any, effectNode: any): any => {
  * }
  * ```
  */
-export function useTrackedStore<T extends object>(store: T): T {
+export function useTracked<T extends object>(store: T): T {
   // Force re-render when dependencies change
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
 
@@ -217,7 +214,7 @@ export function useTrackedStore<T extends object>(store: T): T {
  * })
  *
  * function Table() {
- *   const state = useTrackedStore(store)
+ *   const state = useTracked(store)
  *   return (
  *     <tbody>
  *       <For each={state.data}>
@@ -234,65 +231,6 @@ export function useTrackedStore<T extends object>(store: T): T {
  * }
  * ```
  */
-
-/**
- * Simplified tracking hook for use with the Vite compiler plugin.
- * Sets the current subscriber so compiled readSignal() calls track
- * to this component's effect. No tracking proxy needed.
- *
- * For top-level store access:
- *   const store = useTracked(todoStore)
- *
- * The plugin auto-inserts useTracked for components with branded props.
- */
-export function useTracked<T>(value: T): T {
-  const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
-
-  const stateRef = useRef<{
-    cleanup: (() => void) | null
-    effectNode: any
-  } | null>(null)
-
-  if (!stateRef.current) {
-    let effectNode: any = null
-    let isFirstRun = true
-
-    const cleanup = effect(() => {
-      if (isFirstRun) {
-        effectNode = getCurrentSub()
-        isFirstRun = false
-        return
-      }
-      forceUpdate()
-    })
-
-    stateRef.current = { cleanup, effectNode }
-  }
-
-  // Save the previous subscriber and set this component's effect
-  const prevSub = getCurrentSub()
-  setCurrentSub(stateRef.current.effectNode)
-
-  // Restore the previous subscriber after render completes.
-  // useLayoutEffect runs synchronously after the render phase,
-  // so all readSignal() calls during render see our effectNode.
-  useIsomorphicLayoutEffect(() => {
-    setCurrentSub(prevSub)
-  })
-
-  // Clean up when component unmounts
-  useIsomorphicLayoutEffect(() => {
-    return () => {
-      const state = stateRef.current
-      if (state?.cleanup) {
-        state.cleanup()
-        state.cleanup = null
-      }
-    }
-  }, [])
-
-  return value
-}
 
 interface ForProps<T> {
   each: T[]

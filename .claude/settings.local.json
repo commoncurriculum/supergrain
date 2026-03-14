@@ -56,7 +56,17 @@
       "Bash(node -e \"console.log\\(require.resolve\\('alien-signals'\\)\\)\")",
       "Bash(node prototype/check-versions.mjs)",
       "Bash(cd /Users/scottamesmessinger/code/commoncurriculum/supergrain/packages/core && npx tsc --noEmit --strict prototype/branded-type.test.ts 2>&1)",
-      "Bash(cd /Users/scottamesmessinger/code/commoncurriculum/supergrain/packages/core && npx tsx prototype/plugin-feasibility/detect-branded.ts 2>&1)"
+      "Bash(cd /Users/scottamesmessinger/code/commoncurriculum/supergrain/packages/core && npx tsx prototype/plugin-feasibility/detect-branded.ts 2>&1)",
+      "Bash(cd /Users/scottamesmessinger/code/commoncurriculum/supergrain/packages/core && pnpm run typecheck 2>&1 | tail -30)",
+      "Bash(cd /Users/scottamesmessinger/code/commoncurriculum/supergrain/packages/core && pnpm run typecheck 2>&1 | grep -E \"error TS\" | grep -v \"benchmarks/\" | head -30)",
+      "Bash(pnpm run:*)",
+      "Bash(pnpm --filter @supergrain/core run build 2>&1 | tail -5 && pnpm --filter @supergrain/store run build 2>&1 | tail -5)",
+      "Bash(pnpm --filter @supergrain/core run build 2>&1 | tail -3)",
+      "Bash(gh pr:*)",
+      "Bash(pnpm --filter @supergrain/vite-plugin run build)",
+      "Bash(pnpm --filter js-framework-benchmark-react-supergrain-compiled run build-prod)",
+      "Bash(pnpm --filter @supergrain/react run build)",
+      "Bash(/usr/bin/grep -rl 'useTrackedStore' --include='*.ts' --include='*.tsx' --include='*.md' . | xargs sed -i '' 's/useTrackedStore/useTracked/g')"
     ],
     "deny": [],
     "ask": []

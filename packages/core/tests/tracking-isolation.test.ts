@@ -3,13 +3,13 @@ import { createStore } from '../src/store'
 import { effect, getCurrentSub, setCurrentSub } from 'alien-signals'
 
 describe('Tracking Isolation Analysis', () => {
-  it('demonstrates perfect isolation with per-access pattern (useTrackedStore style)', () => {
+  it('demonstrates perfect isolation with per-access pattern (useTracked style)', () => {
     const [store, update] = createStore({ parent: 1, child: 10 })
     
     let parentEffectRuns = 0
     let childEffectRuns = 0
 
-    // Simulate useTrackedStore pattern - subscriber swapped per access
+    // Simulate useTracked pattern - subscriber swapped per access
     function simulateUseTrackedStorePattern(componentName: string) {
       let effectNode: any = null
       let isFirstRun = true
@@ -76,17 +76,17 @@ describe('Tracking Isolation Analysis', () => {
     child.cleanup()
   })
 
-  it('demonstrates why useTrackedStore provides perfect isolation guarantees', () => {
-    // This test demonstrates the architectural superiority of useTrackedStore's approach
+  it('demonstrates why useTracked provides perfect isolation guarantees', () => {
+    // This test demonstrates the architectural superiority of useTracked's approach
     
     const isolationApproach = {
-      name: 'useTrackedStore pattern', 
+      name: 'useTracked pattern', 
       hasTimingRisk: false,
       isolationLevel: 'property-access-level',
       restoreTiming: 'immediate (finally block)'
     }
     
-    // useTrackedStore's approach is architecturally superior:
+    // useTracked's approach is architecturally superior:
     // 1. No timing dependencies on React lifecycle
     // 2. Perfect isolation per property access
     // 3. No cross-component interference risk

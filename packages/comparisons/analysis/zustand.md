@@ -502,7 +502,7 @@ const coordinates = useStore((state) => state.user.profile.address.coordinates);
 // Only re-renders when coordinates object reference changes
 
 // Storable: Automatic fine-grained tracking
-const state = useTrackedStore(store);
+const state = useTracked(store);
 const coordinates = state.user.profile.address.coordinates;
 // Only re-renders when lat or lng values change (more granular)
 ```

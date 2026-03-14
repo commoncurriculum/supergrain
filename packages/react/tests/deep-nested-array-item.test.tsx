@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, act, cleanup } from '@testing-library/react'
 import React, { memo } from 'react'
 import { createStore } from '@supergrain/core'
-import { useTrackedStore, For } from '../src/use-store'
+import { useTracked, For } from '../src/use-store'
 import { flushMicrotasks } from './test-utils'
 
 describe('Deep Nested Array Item Tests', () => {
@@ -30,7 +30,7 @@ describe('Deep Nested Array Item Tests', () => {
     // Single component that accesses the deeply nested structure
     const DeepNestedComponent = memo(() => {
       componentRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       console.log(`DeepNestedComponent: render #${componentRenderCount}`)
 
@@ -154,7 +154,7 @@ describe('Deep Nested Array Item Tests', () => {
 
     const ArrayIterationComponent = memo(() => {
       componentRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       console.log(`ArrayIterationComponent: render #${componentRenderCount}`)
 
@@ -218,7 +218,7 @@ describe('Deep Nested Array Item Tests', () => {
 
     const ForComponent = memo(() => {
       componentRenderCount++
-      const state = useTrackedStore(store)
+      const state = useTracked(store)
 
       console.log(`ForComponent: render #${componentRenderCount}`)
 
