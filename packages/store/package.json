@@ -45,7 +45,8 @@
     "@supergrain/core": "workspace:*"
   },
   "devDependencies": {
-    "vitest": "^3.2.4"
+    "@vitest/browser": "4.1.0",
+    "vitest": "4.1.0"
   },
   "publishConfig": {
     "access": "public"

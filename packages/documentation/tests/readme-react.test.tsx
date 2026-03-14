@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
-import { userEvent } from '@vitest/browser/context'
+import { userEvent } from 'vitest/browser'
 import { createStore } from '@supergrain/core'
 import { useTracked, For } from '@supergrain/react'
 import { memo } from 'react'

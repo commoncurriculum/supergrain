@@ -15,23 +15,26 @@
       "require": "./dist/index.cjs.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "vite build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "typescript": "^5.9.2",
-    "magic-string": "^0.30.17"
+    "magic-string": "^0.30.17",
+    "typescript": "^5.9.2"
   },
   "peerDependencies": {
     "vite": ">=5.0.0"
   },
   "devDependencies": {
     "@supergrain/core": "workspace:*",
+    "@vitest/browser": "4.1.0",
     "vite": "^6.3.5",
     "vite-plugin-dts": "^4.5.4",
-    "vitest": "^3.2.4"
+    "vitest": "4.1.0"
   }
 }

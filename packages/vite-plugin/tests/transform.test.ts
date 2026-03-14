@@ -41,7 +41,7 @@ const x = store.title
     const { sourceFile, checker } = createTestProgram(code)
     const result = transformCode(code, sourceFile, checker)
     expect(result).not.toBeNull()
-    expect(result!.code).toContain("readSignal(store, 'title')()")
+    expect(result!.code).toContain("readSignal(store, 'title')")
     expect(result!.code).toContain('readSignal')
     expect(result!.code).toContain("@supergrain/core")
   })
@@ -55,7 +55,7 @@ const x = store.assignee.name
     const { sourceFile, checker } = createTestProgram(code)
     const result = transformCode(code, sourceFile, checker)
     expect(result).not.toBeNull()
-    expect(result!.code).toContain("readSignal(store.assignee, 'name')()")
+    expect(result!.code).toContain("readSignal(readSignal(store, 'assignee'), 'name')")
   })
 
   it('does NOT compile writes (assignment)', () => {

@@ -6,13 +6,12 @@ describe('readSignal: basic reactivity', () => {
   it('effect fires when property changes', () => {
     const [store] = createStore({ title: 'Buy milk' })
     const raw = unwrap(store) as any
-    const titleSignal = readSignal(raw, 'title')
 
     let runs = 0
     let lastValue: string | undefined
     const dispose = effect(() => {
       runs++
-      lastValue = titleSignal()
+      lastValue = readSignal(raw, 'title')
     })
 
     expect(runs).toBe(1)
@@ -33,12 +32,11 @@ describe('readSignal: multiple mutations', () => {
   it('1k mutations = 1k+1 effect runs', () => {
     const [store] = createStore({ title: 'start' })
     const raw = unwrap(store) as any
-    const titleSignal = readSignal(raw, 'title')
 
     let runs = 0
     const dispose = effect(() => {
       runs++
-      titleSignal()
+      readSignal(raw, 'title')
     })
 
     expect(runs).toBe(1)
@@ -57,14 +55,11 @@ describe('readSignal: fine-grained tracking', () => {
   it('mutating title only fires title effect', () => {
     const [store] = createStore({ title: 'Buy milk', priority: 'medium', notes: 'test' })
     const raw = unwrap(store) as any
-    const titleSignal = readSignal(raw, 'title')
-    const prioritySignal = readSignal(raw, 'priority')
-    const notesSignal = readSignal(raw, 'notes')
 
     let titleRuns = 0, priorityRuns = 0, notesRuns = 0
-    const d1 = effect(() => { titleRuns++; titleSignal() })
-    const d2 = effect(() => { priorityRuns++; prioritySignal() })
-    const d3 = effect(() => { notesRuns++; notesSignal() })
+    const d1 = effect(() => { titleRuns++; readSignal(raw, 'title') })
+    const d2 = effect(() => { priorityRuns++; readSignal(raw, 'priority') })
+    const d3 = effect(() => { notesRuns++; readSignal(raw, 'notes') })
 
     expect(titleRuns).toBe(1)
     expect(priorityRuns).toBe(1)
@@ -90,16 +85,15 @@ describe('readSignal: batched updates', () => {
       notes: 'test', updatedAt: '2026-03-13',
     })
     const raw = unwrap(store) as any
-    const cTitle = readSignal(raw, 'title')
-    const cCompleted = readSignal(raw, 'completed')
-    const cPriority = readSignal(raw, 'priority')
-    const cNotes = readSignal(raw, 'notes')
-    const cUpdatedAt = readSignal(raw, 'updatedAt')
 
     let runs = 0
     const dispose = effect(() => {
       runs++
-      cTitle(); cCompleted(); cPriority(); cNotes(); cUpdatedAt()
+      readSignal(raw, 'title')
+      readSignal(raw, 'completed')
+      readSignal(raw, 'priority')
+      readSignal(raw, 'notes')
+      readSignal(raw, 'updatedAt')
     })
 
     expect(runs).toBe(1)
@@ -123,10 +117,9 @@ describe('readSignal: deep nested', () => {
     const [store] = createStore({ l1: { l2: { l3: { value: 0 } } } })
     const raw = unwrap(store) as any
     const l3Raw = raw.l1.l2.l3
-    const valueSignal = readSignal(l3Raw, 'value')
 
     let lastValue: number | undefined
-    const dispose = effect(() => { lastValue = valueSignal() })
+    const dispose = effect(() => { lastValue = readSignal(l3Raw, 'value') })
 
     expect(lastValue).toBe(0)
 
@@ -151,9 +144,8 @@ describe('readSignal: proxy interop', () => {
     expect(proxyValue).toBe('Buy milk')
 
     // readSignal should find the existing signal
-    const titleSignal = readSignal(raw, 'title')
     let directValue: string | undefined
-    const d2 = effect(() => { directValue = titleSignal() })
+    const d2 = effect(() => { directValue = readSignal(raw, 'title') })
     expect(directValue).toBe('Buy milk')
 
     // Update — both should see the change
@@ -170,10 +162,9 @@ describe('readSignal: proxy interop', () => {
   it('readSignal created first, proxy read second — same signal', () => {
     const [store] = createStore({ title: 'Buy milk' })
     const raw = unwrap(store) as any
-    const titleSignal = readSignal(raw, 'title')
 
     let directValue: string | undefined
-    const d1 = effect(() => { directValue = titleSignal() })
+    const d1 = effect(() => { directValue = readSignal(raw, 'title') })
 
     let proxyValue: string | undefined
     const d2 = effect(() => { proxyValue = store.title })
@@ -194,10 +185,9 @@ describe('readSignal: proxy interop', () => {
   it('readSignal works with proxy (not just raw)', () => {
     const [store] = createStore({ title: 'Buy milk' })
     // Pass the proxy directly — readSignal calls unwrap() internally
-    const titleSignal = readSignal(store, 'title')
 
     let lastValue: string | undefined
-    const dispose = effect(() => { lastValue = titleSignal() })
+    const dispose = effect(() => { lastValue = readSignal(store, 'title') })
     expect(lastValue).toBe('Buy milk')
 
     startBatch()

@@ -4,7 +4,7 @@
     "outDir": "./dist",
     "rootDir": ".",
     "jsx": "react-jsx",
-    "types": ["node"],
+    "types": ["node", "vitest/browser"],
     "esModuleInterop": true,
     "composite": true
   },

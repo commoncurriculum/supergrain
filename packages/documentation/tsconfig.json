@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "types": ["vitest/globals", "@vitest/browser/providers/playwright"],
+    "types": ["vitest/globals", "vitest/browser"],
     "lib": ["DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "allowSyntheticDefaultImports": true,

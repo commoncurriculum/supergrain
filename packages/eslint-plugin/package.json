@@ -12,9 +12,10 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@vitest/browser": "4.1.0",
     "eslint": "^9.0.0",
-    "vitest": "^3.2.4",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "4.1.0"
   },
   "peerDependencies": {
     "eslint": ">=9.0.0"

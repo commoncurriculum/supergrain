@@ -1,9 +1,25 @@
 import { defineConfig } from 'vitest/config'
+import { supergrain } from '../vite-plugin/src/plugin'
 
 export default defineConfig({
   test: {
-    // Most core tests run in a 'node' environment.
-    // This benchmark file, however, uses @testing-library/react and needs a DOM.
-    environmentMatchGlobs: [['tests/foreach-benchmark.test.tsx', 'jsdom']],
+    projects: [
+      {
+        test: {
+          name: 'proxy',
+          environmentMatchGlobs: [['tests/foreach-benchmark.test.tsx', 'jsdom']],
+        },
+      },
+      {
+        test: {
+          name: 'compiled',
+          environmentMatchGlobs: [['tests/foreach-benchmark.test.tsx', 'jsdom']],
+          exclude: [
+            '**/tracking-isolation.test.ts', // Tests proxy-specific useTracked pattern
+          ],
+        },
+        plugins: [supergrain()],
+      },
+    ],
   },
 })
