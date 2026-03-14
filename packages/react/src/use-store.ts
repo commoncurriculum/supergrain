@@ -269,9 +269,16 @@ export function useTracked<T>(value: T): T {
     stateRef.current = { cleanup, effectNode }
   }
 
-  // Set this component's effect as the current subscriber
-  // All readSignal() calls until the component returns will track here
+  // Save the previous subscriber and set this component's effect
+  const prevSub = getCurrentSub()
   setCurrentSub(stateRef.current.effectNode)
+
+  // Restore the previous subscriber after render completes.
+  // useLayoutEffect runs synchronously after the render phase,
+  // so all readSignal() calls during render see our effectNode.
+  useIsomorphicLayoutEffect(() => {
+    setCurrentSub(prevSub)
+  })
 
   // Clean up when component unmounts
   useIsomorphicLayoutEffect(() => {

@@ -6,7 +6,7 @@ import path from 'path'
 function hasBrand(type: ts.Type): boolean {
   for (const prop of type.getProperties()) {
     const name = prop.getName()
-    if (name.startsWith('__@')) return true
+    if (name.includes('supergrain:brand')) return true
   }
   return false
 }
@@ -117,6 +117,14 @@ export function transformCode(
   }
 }
 
+/**
+ * Vite plugin that compiles branded store property reads into direct signal access.
+ *
+ * NOTE: The TypeScript program is created once at startup. During `vite dev`,
+ * files added or changed after startup won't be compiled. This works correctly
+ * for production builds. Dev mode incremental compilation requires a
+ * LanguageService-based approach (planned for a future release).
+ */
 export function supergrain(): Plugin {
   let program: ts.Program | null = null
   let checker: ts.TypeChecker | null = null
