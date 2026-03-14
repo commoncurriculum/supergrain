@@ -134,7 +134,7 @@ describe('Non-reactive Updates: 1000 updates', () => {
   })
 
   bench('zustand', () => {
-    const store = createZustandStore<{ count: number }>((set) => ({
+    const store = createZustandStore<{ count: number }>((_set) => ({
       count: 0,
     }))
     for (let i = 0; i < 1000; i++) {
@@ -520,9 +520,9 @@ describe('Granular Reactivity: update 1 of 10 independently observed props', () 
     const atoms = Array.from({ length: 10 }, (_, i) => atom(i))
     const unsubs: (() => void)[] = []
     for (let i = 0; i < 10; i++) {
-      unsubs.push(store.sub(atoms[i], () => { store.get(atoms[i]) }))
+      unsubs.push(store.sub(atoms[i]!, () => { store.get(atoms[i]!) }))
     }
-    store.set(atoms[5], 999)
+    store.set(atoms[5]!, 999)
     unsubs.forEach((u) => u())
   })
 
@@ -534,7 +534,7 @@ describe('Granular Reactivity: update 1 of 10 independently observed props', () 
       // Valtio subscribe fires for any change on the proxy
       unsubs.push(subscribe(state, () => { snapshot(state)[`p${i}`] }))
     }
-    state.p5 = 999
+    state['p5'] = 999
     await new Promise<void>((r) => queueMicrotask(r))
     unsubs.forEach((u) => u())
   })
@@ -546,7 +546,7 @@ describe('Granular Reactivity: update 1 of 10 independently observed props', () 
     for (let i = 0; i < 10; i++) {
       disposers.push(autorun(() => { state[`p${i}`] }))
     }
-    runInAction(() => { state.p5 = 999 })
+    runInAction(() => { state['p5'] = 999 })
     disposers.forEach((d) => d())
   })
 
@@ -554,9 +554,9 @@ describe('Granular Reactivity: update 1 of 10 independently observed props', () 
     const signals = Array.from({ length: 10 }, (_, i) => preactSignal(i))
     const disposers: (() => void)[] = []
     for (let i = 0; i < 10; i++) {
-      disposers.push(preactEffect(() => { signals[i].value }))
+      disposers.push(preactEffect(() => { signals[i]!.value }))
     }
-    signals[5].value = 999
+    signals[5]!.value = 999
     disposers.forEach((d) => d())
   })
 })

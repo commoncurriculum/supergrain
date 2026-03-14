@@ -1,6 +1,17 @@
 import { signal, getCurrentSub, startBatch, endBatch } from 'alien-signals'
 import { update as applyUpdate, type UpdateOperations } from './operators'
 
+// Phantom brand for compile-time store identification (no runtime property).
+// Exported as a real symbol so consumers can reference `typeof $BRAND` in type positions.
+export const $BRAND = Symbol.for('supergrain:brand')
+
+export type Branded<T> =
+  T extends Array<infer U>
+    ? Array<Branded<U>>
+    : T extends object
+      ? { [K in keyof T]: Branded<T[K]> } & { readonly [$BRAND]?: true }
+      : T
+
 export type Signal<T> = {
   (): T
   (value: T): void
@@ -200,7 +211,7 @@ export type SetStoreFunction = (operations: UpdateOperations) => void
 
 export function createStore<T extends object>(
   initialState: T
-): [T, SetStoreFunction] {
+): [Branded<T>, SetStoreFunction] {
   const unwrappedState = unwrap(initialState || ({} as T))
   const state = createReactiveProxy(unwrappedState)
 
@@ -216,5 +227,5 @@ export function createStore<T extends object>(
     }
   }
 
-  return [state, updateStore]
+  return [state as Branded<T>, updateStore]
 }

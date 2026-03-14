@@ -5,18 +5,7 @@
  * If it compiles, the types work. If it doesn't, we know what breaks.
  */
 
-// ---------------------------------------------------------------------------
-// The Branded type
-// ---------------------------------------------------------------------------
-
-declare const $BRAND: unique symbol
-
-type Branded<T> =
-  T extends Array<infer U>
-    ? Array<Branded<U>>
-    : T extends object
-      ? { [K in keyof T]: Branded<T[K]> } & { readonly [$BRAND]: true }
-      : T
+import { $BRAND, type Branded, createStore } from '../src'
 
 // ---------------------------------------------------------------------------
 // Real-world interfaces (from user's codebase)
@@ -209,7 +198,7 @@ interface LegacyCardComment {
 // Type assertion helpers
 // ---------------------------------------------------------------------------
 
-type AssertBranded<T> = T extends { readonly [$BRAND]: true } ? true : false
+type AssertBranded<T> = typeof $BRAND extends keyof T ? true : false
 type Assert<T extends true> = T
 
 // ---------------------------------------------------------------------------
@@ -321,9 +310,6 @@ type _94 = Assert<AssertBranded<BrandedGC['attachmentSettings']>>
 // ---------------------------------------------------------------------------
 // Tests: typeof store pattern (how users would extract types)
 // ---------------------------------------------------------------------------
-
-// Simulate createStore returning Branded<T>
-declare function createStore<T extends object>(data: T): [Branded<T>, (ops: any) => void]
 
 const [store] = createStore({
   organization: {

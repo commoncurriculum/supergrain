@@ -7,8 +7,10 @@ export {
   $PROXY,
   $RAW,
   $OWN_KEYS,
+  $BRAND,
   type Signal,
   type SetStoreFunction,
+  type Branded,
 } from './store'
 
 // Export MongoDB-style update operators
