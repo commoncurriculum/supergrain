@@ -1,0 +1,22 @@
+{
+  "name": "@supergrain/eslint-plugin",
+  "version": "0.0.1",
+  "description": "ESLint plugin for supergrain store usage rules.",
+  "license": "MIT",
+  "author": "Scott Messinger",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "vitest": "^3.2.4",
+    "typescript": "^5.9.2"
+  },
+  "peerDependencies": {
+    "eslint": ">=9.0.0"
+  }
+}
