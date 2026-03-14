@@ -24,11 +24,20 @@ const rule: Rule.RuleModule = {
     function exitFunction() {
       const scope = functionStack.pop()
       if (!scope) return
-      if (scope.hasReadSignal && !scope.hasUseTracked) {
+
+      // Check if any ancestor scope has useTracked
+      const ancestorHasUseTracked = functionStack.some((s) => s.hasUseTracked)
+
+      if (scope.hasReadSignal && !scope.hasUseTracked && !ancestorHasUseTracked) {
         context.report({
           node: scope.node,
           messageId: 'missingUseTracked',
         })
+      }
+
+      // Propagate readSignal flag to parent so it knows about nested usage
+      if (scope.hasReadSignal && functionStack.length > 0) {
+        functionStack[functionStack.length - 1]!.hasReadSignal = true
       }
     }
 

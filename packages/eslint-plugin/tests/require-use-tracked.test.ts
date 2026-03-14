@@ -49,6 +49,17 @@ describe('require-use-tracked', () => {
             }
           `,
         },
+        // readSignal in .map() callback, useTracked in parent component
+        {
+          code: `
+            function TodoList({ store }) {
+              store = useTracked(store)
+              return readSignal(store, 'items')().map((item) => {
+                return readSignal(item, 'title')()
+              })
+            }
+          `,
+        },
       ],
       invalid: [
         // readSignal without useTracked — ERROR
@@ -80,6 +91,20 @@ describe('require-use-tracked', () => {
             }
           `,
           errors: [{ messageId: 'missingUseTracked' }],
+        },
+        // readSignal in .map() callback, NO useTracked anywhere
+        {
+          code: `
+            function TodoList({ store }) {
+              return readSignal(store, 'items')().map((item) => {
+                return readSignal(item, 'title')()
+              })
+            }
+          `,
+          errors: [
+            { messageId: 'missingUseTracked' },
+            { messageId: 'missingUseTracked' },
+          ],
         },
       ],
     })
