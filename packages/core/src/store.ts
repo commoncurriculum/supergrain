@@ -71,6 +71,12 @@ export function unwrap<T>(value: T): T {
   return (value && (value as any)[$RAW]) || value
 }
 
+export function readSignal(target: any, prop: PropertyKey): Signal<any> {
+  const raw = unwrap(target)
+  const nodes = getNodes(raw as object)
+  return getNode(nodes, prop, (raw as any)[prop])
+}
+
 export function setProperty(
   target: any,
   key: PropertyKey,

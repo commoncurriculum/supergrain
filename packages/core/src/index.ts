@@ -2,6 +2,8 @@
 export {
   createStore,
   unwrap,
+  readSignal,
+  setProperty,
   $VERSION,
   $NODE,
   $PROXY,
