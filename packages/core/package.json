@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/core",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Core reactive store implementation for Supergrain.",
   "keywords": [
     "supergrain",
@@ -10,16 +10,7 @@
     "signals"
   ],
   "license": "MIT",
-  "author": "Scott Ames-Messinger",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/commoncurriculum/supergrain.git",
-    "directory": "packages/core"
-  },
-  "homepage": "https://commoncurriculum.github.io/supergrain/",
-  "bugs": {
-    "url": "https://github.com/commoncurriculum/supergrain/issues"
-  },
+  "author": "Scott Messinger",
   "type": "module",
   "main": "./dist/index.cjs.js",
   "module": "./dist/index.es.js",
@@ -43,17 +34,21 @@
     "bench:core": "vitest bench benchmarks/core-comparison.bench.ts",
     "bench:all": "vitest bench benchmarks/*.bench.ts",
     "bench:additional": "vitest bench benchmarks/additional.bench.ts",
+    "bench:libraries": "vitest bench benchmarks/state-libraries.bench.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "alien-signals": "^2.0.7"
   },
   "devDependencies": {
+    "@preact/signals-core": "^1.14.0",
     "@solidjs/testing-library": "^0.8.10",
+    "arktype": "^2.2.0",
+    "jotai": "^2.14.0",
+    "mobx": "^6.13.7",
     "solid-js": "^1.9.9",
-    "vitest": "^3.2.4"
-  },
-  "publishConfig": {
-    "access": "public"
+    "valtio": "^2.1.7",
+    "vitest": "^3.2.4",
+    "zustand": "^5.0.8"
   }
 }
