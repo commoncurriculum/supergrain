@@ -1,66 +1,75 @@
-import { FC, memo, useCallback } from 'react'
+/**
+ * Hand-written "compiled" version of the krauset benchmark.
+ *
+ * This represents what the vite plugin SHOULD produce.
+ * Proxy version: useTracked(store) → reads go through proxy get trap.
+ * This version: useCompiled(store) → reads go through $NODE signals directly.
+ *
+ * Only the App component needs signal reads (it tracks data + selected).
+ * Row is memoized and receives plain values as props — no signals needed.
+ */
+
+import { FC, memo, useCallback, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useTracked, For } from '@supergrain/react'
-import { createStore, $BRAND, type Branded } from '@supergrain/core'
+import { For } from '@supergrain/react'
+import { createStore, $NODE, $RAW, effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
+
+function useCompiled<T extends object>(store: T) {
+  const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
+  const stateRef = useRef<{ cleanup: (() => void) | null; effectNode: any; raw: any; nodes: any } | null>(null)
+
+  if (!stateRef.current) {
+    let effectNode: any = null
+    let isFirstRun = true
+    const cleanup = effect(() => {
+      if (isFirstRun) {
+        effectNode = getCurrentSub()
+        isFirstRun = false
+        return
+      }
+      forceUpdate()
+    })
+    const raw = (store as any)[$RAW] || store
+    stateRef.current = { cleanup, effectNode, raw, nodes: raw[$NODE] }
+  }
+
+  const prevSub = getCurrentSub()
+  setCurrentSub(stateRef.current.effectNode)
+
+  useLayoutEffect(() => {
+    setCurrentSub(prevSub)
+  })
+
+  useEffect(() => {
+    return () => {
+      if (stateRef.current?.cleanup) {
+        stateRef.current.cleanup()
+        stateRef.current.cleanup = null
+      }
+    }
+  }, [])
+
+  // Return cached nodes for direct signal access
+  return stateRef.current.nodes
+}
 
 // --- Data Generation ---
 
 let idCounter = 1
 
 const adjectives = [
-  'pretty',
-  'large',
-  'big',
-  'small',
-  'tall',
-  'short',
-  'long',
-  'handsome',
-  'plain',
-  'quaint',
-  'clean',
-  'elegant',
-  'easy',
-  'angry',
-  'crazy',
-  'helpful',
-  'mushy',
-  'odd',
-  'unsightly',
-  'adorable',
-  'important',
-  'inexpensive',
-  'cheap',
-  'expensive',
-  'fancy',
+  'pretty', 'large', 'big', 'small', 'tall', 'short', 'long', 'handsome',
+  'plain', 'quaint', 'clean', 'elegant', 'easy', 'angry', 'crazy', 'helpful',
+  'mushy', 'odd', 'unsightly', 'adorable', 'important', 'inexpensive',
+  'cheap', 'expensive', 'fancy',
 ]
 const colours = [
-  'red',
-  'yellow',
-  'blue',
-  'green',
-  'pink',
-  'brown',
-  'purple',
-  'brown',
-  'white',
-  'black',
-  'orange',
+  'red', 'yellow', 'blue', 'green', 'pink', 'brown', 'purple', 'brown',
+  'white', 'black', 'orange',
 ]
 const nouns = [
-  'table',
-  'chair',
-  'house',
-  'bbq',
-  'desk',
-  'car',
-  'pony',
-  'cookie',
-  'sandwich',
-  'burger',
-  'pizza',
-  'mouse',
-  'keyboard',
+  'table', 'chair', 'house', 'bbq', 'desk', 'car', 'pony', 'cookie',
+  'sandwich', 'burger', 'pizza', 'mouse', 'keyboard',
 ]
 
 export function _random(max: number): number {
@@ -72,7 +81,6 @@ export function buildData(count: number): RowData[] {
   for (let i = 0; i < count; i++) {
     data[i] = {
       id: idCounter++,
-
       label: `${adjectives[_random(adjectives.length)]} ${
         colours[_random(colours.length)]
       } ${nouns[_random(nouns.length)]}`,
@@ -100,7 +108,7 @@ export interface RowProps {
   onRemove: (id: number) => void
 }
 
-// --- Storable Implementation ---
+// --- Store ---
 
 export const [store] = createStore<AppState>({
   data: [],
@@ -147,12 +155,9 @@ export const select = (id: number) => {
   store.selected = id
 }
 
-// Attach event listeners to the static buttons on startup
 if (typeof window !== 'undefined' && document.getElementById('run')) {
   document.getElementById('run')!.addEventListener('click', () => run(1000))
-  document
-    .getElementById('runlots')!
-    .addEventListener('click', () => run(10000))
+  document.getElementById('runlots')!.addEventListener('click', () => run(10000))
   document.getElementById('add')!.addEventListener('click', add)
   document.getElementById('update')!.addEventListener('click', update)
   document.getElementById('clear')!.addEventListener('click', clear)
@@ -161,18 +166,7 @@ if (typeof window !== 'undefined' && document.getElementById('run')) {
 
 // --- React Components ---
 
-/**
- * Optimized Row component using React.memo for maximum performance.
- *
- * Thanks to the <For> component automatically handling version props:
- * - The <For> component detects changes in proxy objects and passes version info
- * - React.memo can properly detect when props haven't changed
- * - Only rows that actually need to update will re-render
- *
- * This provides massive performance improvements for large lists:
- * - Before: All rows re-render on any change (1-2% efficient)
- * - After: Only changed rows re-render with <For> component (98%+ efficient)
- */
+// Row is memoized — receives plain values as props, no signal reads needed
 export const Row: FC<RowProps> = memo(
   ({ item, isSelected, onSelect, onRemove }) => {
     return (
@@ -199,15 +193,19 @@ export const App = memo(() => {
   const handleSelect = useCallback((id: number) => select(id), [])
   const handleRemove = useCallback((id: number) => remove(id), [])
 
-  const state = useTracked(store)
+  // "Compiled" read: useCompiled returns cached $NODE map
+  // Signal reads subscribe to the component's effect
+  const nodes = useCompiled(store)
+  const data: RowData[] = nodes['data']()
+  const selected: number | null = nodes['selected']()
 
   return (
-    <For each={state.data}>
+    <For each={data}>
       {(item: RowData) => (
         <Row
           key={item.id}
           item={item}
-          isSelected={state.selected === item.id}
+          isSelected={selected === item.id}
           onSelect={handleSelect}
           onRemove={handleRemove}
         />
@@ -216,7 +214,6 @@ export const App = memo(() => {
   )
 })
 
-// --- React Rendering ---
 if (typeof window !== 'undefined' && document.getElementById('tbody')) {
   const container = document.getElementById('tbody')
   const root = createRoot(container!)

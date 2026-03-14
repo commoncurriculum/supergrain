@@ -11,7 +11,7 @@ export default defineConfig({
     dts({
       insertTypesEntry: true,
     }),
-    supergrain(),
+    // supergrain() plugin removed — this file IS the hand-written compiled output
     react(),
   ],
 

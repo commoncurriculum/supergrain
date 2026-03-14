@@ -1,16 +1,14 @@
 /**
- * Benchmarks comparing proxy reads vs compiled (readSignal) reads.
+ * Benchmarks comparing proxy reads vs compiled reads.
  *
- * "Compiled" means what the vite plugin actually produces:
- *   store.title  →  readSignal(store, 'title')
- *
- * readSignal reads the signal directly and wraps the result,
- * bypassing the proxy get trap.
+ * The vite plugin produces:
+ *   store.title (string)  →  readLeaf(store, 'title')   — no wrap, primitives
+ *   store.user  (object)  →  readSignal(store, 'user')   — wrap, objects
  */
 
 import { bench, describe } from 'vitest'
-import { createStore, readSignal, unwrap } from '../src'
-import { effect, signal as rawSignal, startBatch, endBatch } from 'alien-signals'
+import { createStore, readSignal, readLeaf } from '../src'
+import { effect, signal as rawSignal } from 'alien-signals'
 
 const data = () => ({
   id: 1,
@@ -24,54 +22,11 @@ const data = () => ({
   updatedAt: '2026-03-13',
 })
 
-// --- Non-reactive leaf reads ---
-
-describe('Non-reactive Leaf Reads (1M)', () => {
-  const [store] = createStore(data())
-
-  bench('proxy: store.title', () => {
-    for (let i = 0; i < 1_000_000; i++) {
-      store.title
-    }
-  })
-
-  bench('compiled: readSignal(store, "title")', () => {
-    for (let i = 0; i < 1_000_000; i++) {
-      readSignal(store, 'title')
-    }
-  })
-
-  const sig = rawSignal('Buy milk')
-  bench('raw signal baseline', () => {
-    for (let i = 0; i < 1_000_000; i++) {
-      sig()
-    }
-  })
-})
-
-// --- Non-reactive nested reads ---
-
-describe('Non-reactive Nested Reads (1M)', () => {
-  const [store] = createStore(data())
-
-  bench('proxy: store.assignee.name', () => {
-    for (let i = 0; i < 1_000_000; i++) {
-      store.assignee.name
-    }
-  })
-
-  bench('compiled: readSignal(store.assignee, "name")', () => {
-    for (let i = 0; i < 1_000_000; i++) {
-      readSignal(store.assignee, 'name')
-    }
-  })
-})
-
 // --- Reactive leaf reads inside effect ---
 
 describe('Reactive Leaf Reads (100k inside effect)', () => {
   const [proxyStore] = createStore(data())
-  const [compiledStore] = createStore(data())
+  const [leafStore] = createStore(data())
 
   bench('proxy', () => {
     const dispose = effect(() => {
@@ -82,10 +37,10 @@ describe('Reactive Leaf Reads (100k inside effect)', () => {
     dispose()
   })
 
-  bench('compiled', () => {
+  bench('readLeaf', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        readSignal(compiledStore, 'title')
+        readLeaf(leafStore, 'title')
       }
     })
     dispose()
@@ -114,9 +69,9 @@ describe('Reactive Updates (1000 mutations)', () => {
     dispose()
   })
 
-  bench('compiled', () => {
+  bench('readLeaf', () => {
     const [store, update] = createStore(data())
-    const dispose = effect(() => { readSignal(store, 'title') })
+    const dispose = effect(() => { readLeaf(store, 'title') })
     for (let i = 0; i < 1000; i++) {
       update({ $set: { title: `Title ${i}` } })
     }
@@ -128,7 +83,7 @@ describe('Reactive Updates (1000 mutations)', () => {
 
 describe('Component Render: 8 prop reads (10k renders)', () => {
   const [proxyStore] = createStore(data())
-  const [compiledStore] = createStore(data())
+  const [leafStore] = createStore(data())
 
   bench('proxy', () => {
     for (let i = 0; i < 10_000; i++) {
@@ -143,16 +98,16 @@ describe('Component Render: 8 prop reads (10k renders)', () => {
     }
   })
 
-  bench('compiled', () => {
+  bench('compiled (readLeaf + readSignal)', () => {
     for (let i = 0; i < 10_000; i++) {
-      readSignal(compiledStore, 'title')
-      readSignal(compiledStore, 'completed')
-      readSignal(readSignal(compiledStore, 'assignee'), 'name')
-      readSignal(readSignal(compiledStore, 'assignee'), 'avatar')
-      readSignal(compiledStore, 'dueDate')
-      readSignal(compiledStore, 'notes')
-      readSignal(compiledStore, 'createdAt')
-      readSignal(compiledStore, 'updatedAt')
+      readLeaf(leafStore, 'title')
+      readLeaf(leafStore, 'completed')
+      readLeaf(readSignal(leafStore, 'assignee'), 'name')
+      readLeaf(readSignal(leafStore, 'assignee'), 'avatar')
+      readLeaf(leafStore, 'dueDate')
+      readLeaf(leafStore, 'notes')
+      readLeaf(leafStore, 'createdAt')
+      readLeaf(leafStore, 'updatedAt')
     }
   })
 })
@@ -173,14 +128,14 @@ describe('Batched Updates: 5 fields (1000 batches)', () => {
     dispose()
   })
 
-  bench('compiled', () => {
+  bench('compiled (readLeaf)', () => {
     const [store, update] = createStore(data())
     const dispose = effect(() => {
-      readSignal(store, 'title')
-      readSignal(store, 'completed')
-      readSignal(store, 'notes')
-      readSignal(store, 'dueDate')
-      readSignal(store, 'updatedAt')
+      readLeaf(store, 'title')
+      readLeaf(store, 'completed')
+      readLeaf(store, 'notes')
+      readLeaf(store, 'dueDate')
+      readLeaf(store, 'updatedAt')
     })
     for (let i = 0; i < 1000; i++) {
       update({

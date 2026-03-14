@@ -3,6 +3,7 @@ export {
   createStore,
   unwrap,
   readSignal,
+  readLeaf,
   setProperty,
   $VERSION,
   $NODE,

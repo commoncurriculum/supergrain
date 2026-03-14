@@ -39,7 +39,7 @@ function getNodes(target: object): DataNodes {
   if (!nodes) {
     nodes = {} as DataNodes
     try {
-      Object.defineProperty(target, $NODE, { value: nodes, enumerable: false })
+      Object.defineProperty(target, $NODE, { value: nodes, enumerable: false, configurable: true })
       // Initialize version tracking
       Object.defineProperty(target, $VERSION, { value: 0, writable: true, enumerable: false })
     } catch {
@@ -79,6 +79,13 @@ export function readSignal(target: any, prop: PropertyKey): any {
   return wrap(node())
 }
 
+export function readLeaf(target: any, prop: PropertyKey): any {
+  const raw = (target as any)[$RAW] || target
+  const node = (raw as any)[$NODE]?.[prop]
+  if (node) return node()
+  return getNode(getNodes(raw as object), prop, (raw as any)[prop])()
+}
+
 export function setProperty(
   target: any,
   key: PropertyKey,
@@ -90,7 +97,11 @@ export function setProperty(
   const oldValue = target[key]
 
   if (isDelete) delete target[key]
-  else target[key] = value
+  else {
+    target[key] = value
+    // Initialize signals on new wrappable values that don't already have $NODE
+    if (isWrappable(value) && !(value as any)[$NODE]) initSignals(value)
+  }
 
   const nodes = (target as any)[$NODE]
   if (nodes) {
@@ -217,10 +228,33 @@ function createReactiveProxy<T extends object>(target: T): T {
 
 export type SetStoreFunction = (operations: UpdateOperations) => void
 
+function initSignals(target: object, visited?: Set<object>): void {
+  if (!isWrappable(target) || Object.isFrozen(target)) return
+  if (!visited) visited = new Set()
+  if (visited.has(target)) return
+  visited.add(target)
+
+  const nodes = getNodes(target)
+  if (Array.isArray(target)) {
+    for (let i = 0; i < target.length; i++) {
+      getNode(nodes, i, target[i])
+      if (isWrappable(target[i])) initSignals(target[i], visited)
+    }
+    getNode(nodes, 'length', target.length)
+  } else {
+    for (const key of Object.keys(target)) {
+      const value = (target as any)[key]
+      getNode(nodes, key, value)
+      if (isWrappable(value)) initSignals(value, visited)
+    }
+  }
+}
+
 export function createStore<T extends object>(
   initialState: T
 ): [Branded<T>, SetStoreFunction] {
   const unwrappedState = unwrap(initialState || ({} as T))
+  initSignals(unwrappedState)
   const state = createReactiveProxy(unwrappedState)
 
   function updateStore(operations: UpdateOperations): void {

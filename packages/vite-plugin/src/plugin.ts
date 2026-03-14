@@ -54,8 +54,18 @@ export function transformCode(
   // Track nodes that should be skipped (e.g., receiver of a method call)
   const skipNodes = new Set<ts.Node>()
 
-  // Build a fully nested readSignal expression for a property access chain.
-  // e.g. store.user.address.city → readSignal(readSignal(readSignal(store, 'user'), 'address'), 'city')
+  function isPrimitiveType(type: ts.Type): boolean {
+    const flags = type.getFlags()
+    return !!(flags & (
+      ts.TypeFlags.String | ts.TypeFlags.Number | ts.TypeFlags.Boolean |
+      ts.TypeFlags.StringLiteral | ts.TypeFlags.NumberLiteral | ts.TypeFlags.BooleanLiteral |
+      ts.TypeFlags.Undefined | ts.TypeFlags.Null | ts.TypeFlags.Void |
+      ts.TypeFlags.BigInt | ts.TypeFlags.BigIntLiteral
+    ))
+  }
+
+  // Build a fully nested read expression for a property access chain.
+  // Uses readSignal which reads the signal and wraps the result for nested access.
   function buildReadExpr(node: ts.PropertyAccessExpression): string {
     const propName = node.name.getText(sourceFile)
     const expr = node.expression
@@ -68,7 +78,7 @@ export function transformCode(
       }
     }
 
-    // Base case: expression is not a branded property access (identifier, call, bracket, etc.)
+    // Base case: expression is not a branded property access
     const exprStart = expr.getStart(sourceFile)
     const exprEnd = expr.getEnd()
     const exprText = code.slice(exprStart, exprEnd)
@@ -167,9 +177,10 @@ export function transformCode(
 
   if (!hasRewrites) return null
 
-  // Add readSignal import — find the import that provides createStore
-  // (could be '@supergrain/core', '../src', or any path)
-  if (!code.includes('readSignal')) {
+  // Add readSignal import
+  const newImports = !code.includes('readSignal') ? 'readSignal' : ''
+
+  if (newImports) {
     const importRegex = /import\s*\{([^}]+)\}\s*from\s*(['"][^'"]+['"])/g
     let importMatch: RegExpExecArray | null
     let found = false
@@ -179,13 +190,13 @@ export function transformCode(
         const importEnd = importStart + importMatch[0].length
         const existingImports = importMatch[1]
         const source = importMatch[2]
-        s.overwrite(importStart, importEnd, `import {${existingImports}, readSignal } from ${source}`)
+        s.overwrite(importStart, importEnd, `import {${existingImports}, ${newImports} } from ${source}`)
         found = true
         break
       }
     }
     if (!found) {
-      s.prepend("import { readSignal } from '@supergrain/core';\n")
+      s.prepend(`import { ${newImports} } from '@supergrain/core';\n`)
     }
   }
 
