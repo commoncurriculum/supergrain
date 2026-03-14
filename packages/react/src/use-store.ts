@@ -235,6 +235,58 @@ export function useTrackedStore<T extends object>(store: T): T {
  * ```
  */
 
+/**
+ * Simplified tracking hook for use with the Vite compiler plugin.
+ * Sets the current subscriber so compiled readSignal() calls track
+ * to this component's effect. No tracking proxy needed.
+ *
+ * For top-level store access:
+ *   const store = useTracked(todoStore)
+ *
+ * The plugin auto-inserts useTracked for components with branded props.
+ */
+export function useTracked<T>(value: T): T {
+  const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
+
+  const stateRef = useRef<{
+    cleanup: (() => void) | null
+    effectNode: any
+  } | null>(null)
+
+  if (!stateRef.current) {
+    let effectNode: any = null
+    let isFirstRun = true
+
+    const cleanup = effect(() => {
+      if (isFirstRun) {
+        effectNode = getCurrentSub()
+        isFirstRun = false
+        return
+      }
+      forceUpdate()
+    })
+
+    stateRef.current = { cleanup, effectNode }
+  }
+
+  // Set this component's effect as the current subscriber
+  // All readSignal() calls until the component returns will track here
+  setCurrentSub(stateRef.current.effectNode)
+
+  // Clean up when component unmounts
+  useIsomorphicLayoutEffect(() => {
+    return () => {
+      const state = stateRef.current
+      if (state?.cleanup) {
+        state.cleanup()
+        state.cleanup = null
+      }
+    }
+  }, [])
+
+  return value
+}
+
 interface ForProps<T> {
   each: T[]
   children: (item: T, index: number) => React.ReactNode
