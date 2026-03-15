@@ -139,6 +139,20 @@ function trackSelf(target: object): void {
 
 const handler: ProxyHandler<object> = {
   get(target, prop, receiver) {
+    // Fast path: already-tracked string property (most common case on re-reads)
+    // Symbols ($RAW, $PROXY, etc.) and functions skip this — they're never in $NODE
+    if (typeof prop === 'string') {
+      const existingNodes = (target as any)[$NODE]
+      if (existingNodes) {
+        const tracked = existingNodes[prop]
+        if (tracked) {
+          const v = tracked()
+          return isWrappable(v) ? createReactiveProxy(v) : v
+        }
+      }
+    }
+
+    // Slow path: symbols, first-time reads, functions
     if (prop === $RAW) return target
     if (prop === $PROXY) return receiver
     if (prop === $TRACK) {
@@ -149,18 +163,15 @@ const handler: ProxyHandler<object> = {
 
     const value = (target as any)[prop]
 
-    // Functions: keep as-is (plus your iterator tracking)
     if (typeof value === 'function') {
       if (Array.isArray(target) && prop === Symbol.iterator) trackSelf(target)
       return value
     }
 
     if (!getCurrentSub()) {
-      // Keep current behavior: eager wrap to preserve “always-proxy” semantics
       return wrap(value)
     }
 
-    // Reactive context - get or create signal for this property
     const nodes = getNodes(target)
     const node = getNode(nodes, prop, value)
     return wrap(node())
