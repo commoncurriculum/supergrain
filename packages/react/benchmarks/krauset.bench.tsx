@@ -1,13 +1,13 @@
 /**
  * Krauset-style benchmark: proxy vs class-getter
  *
- * Runs in browser via vitest bench. Measures real React render time
- * for the standard js-framework-benchmark operations.
+ * Separates setup from measurement. Each bench iteration measures
+ * only the operation, not mount/setup.
  *
  * Run: cd packages/react && npx vitest bench --config vitest.bench.config.ts
  */
 
-import { bench, describe } from 'vitest'
+import { bench, describe, beforeEach, afterEach } from 'vitest'
 import { createStore, $NODE, $RAW, effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
 import { signal } from 'alien-signals'
 import { useTracked, For } from '../src/use-store'
@@ -82,7 +82,7 @@ function buildData(count: number): RowData[] {
   return d
 }
 
-// --- Row component (shared, no store reads) ---
+// --- Row (shared) ---
 const Row: FC<{ item: RowData; isSelected: boolean; onSelect: (id: number) => void; onRemove: (id: number) => void }> = memo(
   ({ item, isSelected, onSelect, onRemove }) => (
     <tr className={isSelected ? 'danger' : ''}>
@@ -94,59 +94,44 @@ const Row: FC<{ item: RowData; isSelected: boolean; onSelect: (id: number) => vo
   )
 )
 
-// --- Proxy App ---
+// --- Apps ---
 const ProxyApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) => void }> = memo(({ store, sel, rem }) => {
   const state = useTracked(store)
-  const handleSel = useCallback((id: number) => sel(id), [])
-  const handleRem = useCallback((id: number) => rem(id), [])
-  return (
-    <table><tbody>
-      <For each={state.data}>
-        {(item: RowData) => (
-          <Row key={item.id} item={item} isSelected={state.selected === item.id}
-            onSelect={handleSel} onRemove={handleRem} />
-        )}
-      </For>
-    </tbody></table>
-  )
+  const hs = useCallback((id: number) => sel(id), [])
+  const hr = useCallback((id: number) => rem(id), [])
+  return <table><tbody><For each={state.data}>{(item: RowData) => (
+    <Row key={item.id} item={item} isSelected={state.selected === item.id} onSelect={hs} onRemove={hr} />
+  )}</For></tbody></table>
 })
 
-// --- Class Getter App ---
 const GetterApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) => void }> = memo(({ store, sel, rem }) => {
   const view = useClassView(store, AppStateView)
-  const handleSel = useCallback((id: number) => sel(id), [])
-  const handleRem = useCallback((id: number) => rem(id), [])
-  return (
-    <table><tbody>
-      <For each={view.data}>
-        {(item: RowData) => (
-          <Row key={item.id} item={item} isSelected={view.selected === item.id}
-            onSelect={handleSel} onRemove={handleRem} />
-        )}
-      </For>
-    </tbody></table>
-  )
+  const hs = useCallback((id: number) => sel(id), [])
+  const hr = useCallback((id: number) => rem(id), [])
+  return <table><tbody><For each={view.data}>{(item: RowData) => (
+    <Row key={item.id} item={item} isSelected={view.selected === item.id} onSelect={hs} onRemove={hr} />
+  )}</For></tbody></table>
 })
 
-// --- Helpers ---
 function makeStore() {
-  const [store, updateStore] = createStore<AppState>({ data: [], selected: null })
+  const [store, upd] = createStore<AppState>({ data: [], selected: null })
   return {
-    store, updateStore,
+    store, upd,
     run: (n: number) => { store.data = buildData(n); store.selected = null },
     sel: (id: number) => { store.selected = id },
-    rem: (id: number) => { updateStore({ $pull: { data: { id } } }) },
-    upd: () => { for (let i = 0; i < store.data.length; i += 10) store.data[i].label += ' !!!' },
+    rem: (id: number) => { upd({ $pull: { data: { id } } }) },
+    update10th: () => { for (let i = 0; i < store.data.length; i += 10) store.data[i].label += ' !!!' },
     swap: () => {
       if (store.data.length > 998) {
         const a = store.data[1], b = store.data[998]
         store.data[1] = b; store.data[998] = a
       }
     },
+    clear: () => { store.data = []; store.selected = null },
   }
 }
 
-// --- Benchmarks ---
+// --- Create 1000 rows (includes mount + initial render) ---
 
 describe('Create 1000 rows', () => {
   bench('proxy', async () => {
@@ -166,12 +151,15 @@ describe('Create 1000 rows', () => {
   })
 })
 
-describe('Update every 10th row', () => {
+// --- Replace all rows (re-render with fresh data) ---
+
+describe('Replace 1000 rows', () => {
   bench('proxy', async () => {
     const ctx = makeStore()
     render(<ProxyApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
-    await act(async () => { ctx.upd() })
+    // Now measure: replace all data
+    await act(async () => { ctx.run(1000) })
     cleanup()
     idCounter = 1
   })
@@ -180,11 +168,35 @@ describe('Update every 10th row', () => {
     const ctx = makeStore()
     render(<GetterApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
-    await act(async () => { ctx.upd() })
+    await act(async () => { ctx.run(1000) })
     cleanup()
     idCounter = 1
   })
 })
+
+// --- Partial update (every 10th row label) ---
+
+describe('Partial update (100 of 1000)', () => {
+  bench('proxy', async () => {
+    const ctx = makeStore()
+    render(<ProxyApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.update10th() })
+    cleanup()
+    idCounter = 1
+  })
+
+  bench('class-getter', async () => {
+    const ctx = makeStore()
+    render(<GetterApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.update10th() })
+    cleanup()
+    idCounter = 1
+  })
+})
+
+// --- Select row ---
 
 describe('Select row', () => {
   bench('proxy', async () => {
@@ -206,6 +218,8 @@ describe('Select row', () => {
   })
 })
 
+// --- Swap rows ---
+
 describe('Swap rows', () => {
   bench('proxy', async () => {
     const ctx = makeStore()
@@ -221,6 +235,28 @@ describe('Swap rows', () => {
     render(<GetterApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
     await act(async () => { ctx.swap() })
+    cleanup()
+    idCounter = 1
+  })
+})
+
+// --- Clear rows ---
+
+describe('Clear 1000 rows', () => {
+  bench('proxy', async () => {
+    const ctx = makeStore()
+    render(<ProxyApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.clear() })
+    cleanup()
+    idCounter = 1
+  })
+
+  bench('class-getter', async () => {
+    const ctx = makeStore()
+    render(<GetterApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.clear() })
     cleanup()
     idCounter = 1
   })
