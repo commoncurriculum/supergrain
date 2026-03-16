@@ -1,13 +1,12 @@
 /**
- * Proxy vs readLeaf vs class getter: reactive read comparison.
+ * Proxy vs class getter vs model store: reactive read comparison.
  *
  * Class getters are V8's sweet spot — inlined to near-bare-signal speed.
- * Function calls (readSignal/readLeaf) cannot be inlined by V8.
  */
 
 import { bench, describe } from 'vitest'
 import { type } from 'arktype'
-import { createStore, createModelStore, readLeaf, unwrap, $NODE } from '../src'
+import { createStore, createModelStore, unwrap, $NODE } from '../src'
 import { effect, signal } from 'alien-signals'
 
 const data = () => ({
@@ -52,7 +51,6 @@ class StoreView {
 
 describe('Reactive Leaf Reads (100k inside effect)', () => {
   const [proxyStore] = createStore(data())
-  const [leafStore] = createStore(data())
 
   const viewRaw = unwrap(createStore(data())[0]) as any
   const view = new StoreView(viewRaw)
@@ -62,13 +60,6 @@ describe('Reactive Leaf Reads (100k inside effect)', () => {
   bench('proxy', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { proxyStore.title }
-    })
-    dispose()
-  })
-
-  bench('readLeaf', () => {
-    const dispose = effect(() => {
-      for (let i = 0; i < 100_000; i++) { readLeaf(leafStore, 'title') }
     })
     dispose()
   })
@@ -108,15 +99,6 @@ describe('Reactive Updates (1000 mutations)', () => {
     dispose()
   })
 
-  bench('readLeaf', () => {
-    const [store, update] = createStore(data())
-    const dispose = effect(() => { readLeaf(store, 'title') })
-    for (let i = 0; i < 1000; i++) {
-      update({ $set: { title: `Title ${i}` } })
-    }
-    dispose()
-  })
-
   bench('class getter', () => {
     const [store, update] = createStore(data())
     const raw = unwrap(store) as any
@@ -142,7 +124,6 @@ describe('Reactive Updates (1000 mutations)', () => {
 
 describe('Component Render: 6 leaf reads (10k renders)', () => {
   const [proxyStore] = createStore(data())
-  const [leafStore] = createStore(data())
 
   const viewRaw = unwrap(createStore(data())[0]) as any
   const view = new StoreView(viewRaw)
@@ -152,16 +133,6 @@ describe('Component Render: 6 leaf reads (10k renders)', () => {
       for (let i = 0; i < 10_000; i++) {
         proxyStore.title; proxyStore.completed; proxyStore.dueDate
         proxyStore.notes; proxyStore.createdAt; proxyStore.updatedAt
-      }
-    })
-    dispose()
-  })
-
-  bench('readLeaf', () => {
-    const dispose = effect(() => {
-      for (let i = 0; i < 10_000; i++) {
-        readLeaf(leafStore, 'title'); readLeaf(leafStore, 'completed'); readLeaf(leafStore, 'dueDate')
-        readLeaf(leafStore, 'notes'); readLeaf(leafStore, 'createdAt'); readLeaf(leafStore, 'updatedAt')
       }
     })
     dispose()

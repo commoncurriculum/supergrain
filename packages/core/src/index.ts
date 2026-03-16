@@ -4,8 +4,6 @@ export {
   createModelStore,
   createView,
   unwrap,
-  readSignal,
-  readLeaf,
   setProperty,
   $$,
   $VERSION,

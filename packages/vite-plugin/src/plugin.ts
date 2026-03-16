@@ -3,43 +3,6 @@ import ts from 'typescript'
 import MagicString from 'magic-string'
 import path from 'path'
 
-function hasBrand(type: ts.Type): boolean {
-  for (const prop of type.getProperties()) {
-    const name = prop.getName()
-    // Match both the Symbol.for name and the TS internal representation
-    // TS may represent Symbol.for('supergrain:brand') as either:
-    //   - "__@$BRAND@NNNN" (unique symbol internal name)
-    //   - containing "supergrain:brand" (when resolved through Symbol.for)
-    if (name.includes('supergrain:brand') || name.includes('$BRAND')) return true
-  }
-  return false
-}
-
-function isWriteTarget(node: ts.PropertyAccessExpression): boolean {
-  const parent = node.parent
-  if (
-    ts.isBinaryExpression(parent) &&
-    parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-    parent.left === node
-  ) {
-    return true
-  }
-  // Also skip compound assignments (+=, -=, etc.)
-  if (
-    ts.isBinaryExpression(parent) &&
-    parent.operatorToken.kind >= ts.SyntaxKind.FirstCompoundAssignment &&
-    parent.operatorToken.kind <= ts.SyntaxKind.LastCompoundAssignment &&
-    parent.left === node
-  ) {
-    return true
-  }
-  // Skip delete expressions
-  if (ts.isDeleteExpression(parent)) return true
-  // Skip prefix/postfix unary (++/--)
-  if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent)) return true
-  return false
-}
-
 export function transformCode(
   code: string,
   sourceFile: ts.SourceFile,
@@ -47,124 +10,7 @@ export function transformCode(
 ): { code: string; map: any } | null {
   const s = new MagicString(code)
 
-  // Track write context depth — when > 0, we're inside the LHS of an assignment
-  // and should not transform any reads (they feed into a mutation path).
-  let inWriteContext = 0
-
-  // Track nodes that should be skipped (e.g., receiver of a method call)
-  const skipNodes = new Set<ts.Node>()
-
-  function isPrimitiveType(type: ts.Type): boolean {
-    const flags = type.getFlags()
-    return !!(flags & (
-      ts.TypeFlags.String | ts.TypeFlags.Number | ts.TypeFlags.Boolean |
-      ts.TypeFlags.StringLiteral | ts.TypeFlags.NumberLiteral | ts.TypeFlags.BooleanLiteral |
-      ts.TypeFlags.Undefined | ts.TypeFlags.Null | ts.TypeFlags.Void |
-      ts.TypeFlags.BigInt | ts.TypeFlags.BigIntLiteral
-    ))
-  }
-
-  // Build a fully nested read expression for a property access chain.
-  // Uses readSignal which reads the signal and wraps the result for nested access.
-  function buildReadExpr(node: ts.PropertyAccessExpression): string {
-    const propName = node.name.getText(sourceFile)
-    const expr = node.expression
-
-    // If the expression is also a branded property access, recurse
-    if (ts.isPropertyAccessExpression(expr) && !skipNodes.has(expr)) {
-      const exprType = checker.getTypeAtLocation(expr.expression)
-      if (hasBrand(exprType)) {
-        return `readSignal(${buildReadExpr(expr)}, '${propName}')`
-      }
-    }
-
-    // Base case: expression is not a branded property access
-    const exprStart = expr.getStart(sourceFile)
-    const exprEnd = expr.getEnd()
-    const exprText = code.slice(exprStart, exprEnd)
-    return `readSignal(${exprText}, '${propName}')`
-  }
-
-  // Collect outermost rewrites only — each builds the full nested expression
   const rewrites: { start: number; end: number; replacement: string }[] = []
-  const compiledNodes = new Set<ts.Node>()
-
-  function visit(node: ts.Node) {
-    // Detect if this node is the LHS of an assignment — everything below is write context
-    let startedWriteContext = false
-    if (node.parent && ts.isBinaryExpression(node.parent)) {
-      const opKind = node.parent.operatorToken.kind
-      const isAssignment =
-        opKind === ts.SyntaxKind.EqualsToken ||
-        (opKind >= ts.SyntaxKind.FirstCompoundAssignment &&
-          opKind <= ts.SyntaxKind.LastCompoundAssignment)
-      if (isAssignment && node.parent.left === node) {
-        inWriteContext++
-        startedWriteContext = true
-      }
-    }
-    // delete expression: the operand is a write target
-    if (node.parent && ts.isDeleteExpression(node.parent) && node.parent.expression === node) {
-      inWriteContext++
-      startedWriteContext = true
-    }
-    // prefix/postfix unary (++/--): the operand is a write target
-    if (node.parent && (ts.isPrefixUnaryExpression(node.parent) || ts.isPostfixUnaryExpression(node.parent))) {
-      inWriteContext++
-      startedWriteContext = true
-    }
-
-    if (ts.isPropertyAccessExpression(node)) {
-      // Skip if this node was marked (e.g., receiver of a method call like store.data in store.data.push())
-      if (skipNodes.has(node)) {
-        ts.forEachChild(node, visit)
-        if (startedWriteContext) inWriteContext--
-        return
-      }
-
-      // Skip method calls AND mark the receiver expression as skip.
-      // For store.data.push(): the callee is store.data.push (a PropertyAccessExpression).
-      // We skip the callee itself, and also mark store.data (its .expression) as skip
-      // so it won't be transformed — push() needs the proxy, not the raw array.
-      if (ts.isCallExpression(node.parent) && node.parent.expression === node) {
-        skipNodes.add(node.expression)
-        ts.forEachChild(node, visit)
-        if (startedWriteContext) inWriteContext--
-        return
-      }
-
-      // Only transform in pure read context (not inside LHS of assignments)
-      // Only transform outermost — skip if parent already compiled this node
-      if (inWriteContext === 0 && !compiledNodes.has(node)) {
-        const exprType = checker.getTypeAtLocation(node.expression)
-        if (hasBrand(exprType)) {
-          const start = node.getStart(sourceFile)
-          const end = node.getEnd()
-          const replacement = buildReadExpr(node)
-
-          rewrites.push({ start, end, replacement })
-
-          // Mark all inner property access nodes as compiled so they don't generate separate rewrites.
-          // Walk through all expression wrappers (NonNull, ElementAccess, Parenthesized, etc.)
-          function markInner(n: ts.Node) {
-            if (ts.isPropertyAccessExpression(n)) {
-              compiledNodes.add(n)
-              markInner(n.expression)
-            } else if (ts.isNonNullExpression(n) || ts.isParenthesizedExpression(n) || ts.isAsExpression(n)) {
-              markInner(n.expression)
-            } else if (ts.isElementAccessExpression(n)) {
-              markInner(n.expression)
-            }
-          }
-          markInner(node.expression)
-        }
-      }
-    }
-    ts.forEachChild(node, visit)
-    if (startedWriteContext) inWriteContext--
-  }
-
-  visit(sourceFile)
 
   // --- $$ transformation pass ---
   interface DollarDollarBinding {
@@ -225,9 +71,6 @@ export function transformCode(
     ) {
       const arg = node.arguments[0]
       const innerText = code.slice(arg.getStart(sourceFile), arg.getEnd())
-
-      // Determine if the inner expression is a getter (arrow function or function expression)
-      const isGetter = ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)
 
       // Determine position: check parent chain
       const parent = node.parent
@@ -372,32 +215,6 @@ export function transformCode(
 
   if (!hasRewrites) return null
 
-  // Add readSignal import
-  const newCoreImports: string[] = []
-  if (rewrites.some(r => r.replacement.includes('readSignal')) && !code.includes('readSignal')) {
-    newCoreImports.push('readSignal')
-  }
-
-  if (newCoreImports.length > 0) {
-    const importRegex = /import\s*\{([^}]+)\}\s*from\s*(['"][^'"]+['"])/g
-    let importMatch: RegExpExecArray | null
-    let found = false
-    while ((importMatch = importRegex.exec(code)) !== null) {
-      if (importMatch[1].includes('createStore')) {
-        const importStart = importMatch.index
-        const importEnd = importStart + importMatch[0].length
-        const existingImports = importMatch[1]
-        const source = importMatch[2]
-        s.overwrite(importStart, importEnd, `import {${existingImports}, ${newCoreImports.join(', ')} } from ${source}`)
-        found = true
-        break
-      }
-    }
-    if (!found) {
-      s.prepend(`import { ${newCoreImports.join(', ')} } from '@supergrain/core';\n`)
-    }
-  }
-
   // Add react imports for $$ transformation
   if (hasDDBindings) {
     // Add useRef from react
@@ -438,9 +255,6 @@ export function transformCode(
         s.prepend(`import { useDirectBindings } from '@supergrain/react';\n`)
       }
     }
-
-    // Remove $$ import if it was imported from @supergrain/core
-    // (The $$ function is only needed at compile time)
   }
 
   return {
@@ -473,7 +287,7 @@ function createInMemoryHost(
 }
 
 /**
- * Vite plugin that compiles branded store property reads into direct signal access.
+ * Vite plugin that compiles $$() calls into direct DOM bindings.
  *
  * Creates a fresh TypeScript program per transform call with an in-memory
  * compiler host, so the program always sees the current file content from Vite

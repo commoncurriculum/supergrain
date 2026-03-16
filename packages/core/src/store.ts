@@ -71,21 +71,6 @@ export function unwrap<T>(value: T): T {
   return (value && (value as any)[$RAW]) || value
 }
 
-export function readSignal<T, K extends keyof T>(target: T, prop: K): T[K]
-export function readSignal(target: any, prop: PropertyKey): any {
-  const raw = unwrap(target)
-  const nodes = getNodes(raw as object)
-  const node = getNode(nodes, prop, (raw as any)[prop])
-  return wrap(node())
-}
-
-export function readLeaf(target: any, prop: PropertyKey): any {
-  const raw = (target as any)[$RAW] || target
-  const node = (raw as any)[$NODE]?.[prop]
-  if (node) return node()
-  return getNode(getNodes(raw as object), prop, (raw as any)[prop])()
-}
-
 export function setProperty(
   target: any,
   key: PropertyKey,
