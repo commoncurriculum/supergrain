@@ -392,13 +392,6 @@ function createModelView<T extends object>(
   return view as T
 }
 
-/** @deprecated Use createStore(data, schema) instead */
-export const createModelStore = <S extends SchemaLike>(
-  schema: S,
-  initialData: S['infer']
-): [Branded<S['infer']>, SetStoreFunction, S['infer']] => {
-  return createStore(initialData, schema)
-}
 
 // Overloads: with schema returns [proxy, update, view], without returns [proxy, update]
 export function createStore<S extends SchemaLike>(
