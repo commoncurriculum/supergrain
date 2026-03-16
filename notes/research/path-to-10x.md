@@ -1,5 +1,7 @@
 # Path to 10x: How to Make Supergrain as Fast as Solid
 
+> **Status:** Largely superseded by [compiled-reads-investigation.md](compiled-reads-investigation.md), which tells the full story of what was tried and what worked. This doc preserves the original strategy analysis and proxy fast-path proposal.
+
 ## The Real Picture
 
 ### Why Solid is fast
@@ -160,21 +162,18 @@ Does 10x faster reads translate to visible improvement in the krauset benchmark?
 
 ## Action Plan
 
-### Phase 1: Proxy fast path (no compiler needed)
-1. Add solid-style fast path to proxy get trap
-2. Benchmark the proxy improvement on krauset
+### Phase 1: Proxy fast path (no compiler needed) -- DONE
+1. ~~Add solid-style fast path to proxy get trap~~ -- implemented
+2. ~~Benchmark the proxy improvement on krauset~~ -- modest improvement (1.1-1.6x)
 3. This benefits ALL users immediately, compiled or not
 
-### Phase 2: Class getter prototype
-1. Hand-write view classes for the krauset types (RowData, AppState)
-2. Hand-write `useCompiled` that returns view instances
-3. Run krauset benchmark: proxy vs class-getter
-4. Measure the actual end-to-end improvement
+### Phase 2: Class getter prototype -- DONE (createView)
+1. ~~Hand-write view classes for the krauset types~~ -- implemented as `createView()` with dynamic prototype getters
+2. ~~Hand-write `useCompiled` that returns view instances~~ -- implemented
+3. ~~Run krauset benchmark: proxy vs class-getter~~ -- 1.1-1.6x improvement over proxy, but React reconciliation dominates
 
-### Phase 3: Compiler generates view classes (only if Phase 2 shows meaningful improvement)
-1. Plugin walks Branded<T> types and generates view classes
-2. Plugin replaces useTracked with useCompiled + ViewClass
-3. Plugin rewrites property reads to use the view
+### Phase 3: Direct DOM bindings -- DONE ($$())
+The original plan was compiler-generated view classes, but the investigation showed that **React reconciliation** was the real bottleneck, not proxy reads. The solution was `$$()` direct DOM bindings that bypass React entirely. See [compiled-reads-investigation.md](compiled-reads-investigation.md) for the full story.
 
 ## Resolved Questions
 

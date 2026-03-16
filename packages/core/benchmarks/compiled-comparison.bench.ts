@@ -6,7 +6,7 @@
 
 import { bench, describe } from 'vitest'
 import { type } from 'arktype'
-import { createStore, createModelStore, unwrap, $NODE } from '../src'
+import { createStore, unwrap, $NODE } from '../src'
 import { effect, signal } from 'alien-signals'
 
 const data = () => ({
@@ -55,7 +55,7 @@ describe('Reactive Leaf Reads (100k inside effect)', () => {
   const viewRaw = unwrap(createStore(data())[0]) as any
   const view = new StoreView(viewRaw)
 
-  const [, , modelView] = createModelStore(TodoSchema, data())
+  const [, , modelView] = createStore(data(), TodoSchema)
 
   bench('proxy', () => {
     const dispose = effect(() => {
@@ -111,7 +111,7 @@ describe('Reactive Updates (1000 mutations)', () => {
   })
 
   bench('model store (schema-driven)', () => {
-    const [, update, mv] = createModelStore(TodoSchema, data())
+    const [, update, mv] = createStore(data(), TodoSchema)
     const dispose = effect(() => { mv.title })
     for (let i = 0; i < 1000; i++) {
       update({ $set: { title: `Title ${i}` } })
@@ -148,7 +148,7 @@ describe('Component Render: 6 leaf reads (10k renders)', () => {
     dispose()
   })
 
-  const [, , modelView6] = createModelStore(TodoSchema, data())
+  const [, , modelView6] = createStore(data(), TodoSchema)
 
   bench('model store (schema-driven)', () => {
     const dispose = effect(() => {
@@ -193,7 +193,7 @@ describe('Batched Updates: 5 fields (1000 batches)', () => {
   })
 
   bench('model store (schema-driven)', () => {
-    const [, update, mv] = createModelStore(TodoSchema, data())
+    const [, update, mv] = createStore(data(), TodoSchema)
     const dispose = effect(() => {
       mv.title; mv.completed; mv.notes; mv.dueDate; mv.updatedAt
     })

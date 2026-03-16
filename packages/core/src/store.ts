@@ -392,61 +392,43 @@ function createModelView<T extends object>(
   return view as T
 }
 
-/**
- * Creates a schema-driven store with pre-built view prototypes.
- *
- * Uses an ArkType schema to walk the type structure at creation time and
- * build shared prototype objects with getters for every property (including
- * nested objects). This avoids per-instance `Object.defineProperty` overhead.
- *
- * @param schema - An ArkType schema with `.props` and `.infer`.
- * @param initialData - Initial data matching the schema.
- * @returns `[proxy, update, view]` — the reactive proxy, an update function
- *   accepting MongoDB-style operators, and a fast view with prototype getters.
- */
-export function createModelStore<S extends SchemaLike>(
+/** @deprecated Use createStore(data, schema) instead */
+export const createModelStore = <S extends SchemaLike>(
   schema: S,
   initialData: S['infer']
-): [Branded<S['infer']>, SetStoreFunction, S['infer']] {
-  const unwrappedState = unwrap(initialData || ({} as any))
-  const state = createReactiveProxy(unwrappedState)
-
-  const entry = getModelProto(schema)
-  const view = createModelView<S['infer']>(
-    unwrappedState,
-    entry,
-    schema.props
-  )
-
-  function updateStore(operations: UpdateOperations): void {
-    startBatch()
-    try {
-      applyUpdate(unwrappedState, operations)
-    } finally {
-      endBatch()
-    }
-  }
-
-  return [state as Branded<S['infer']>, updateStore, view]
+): [Branded<S['infer']>, SetStoreFunction, S['infer']] => {
+  return createStore(initialData, schema)
 }
 
+// Overloads: with schema returns [proxy, update, view], without returns [proxy, update]
+export function createStore<S extends SchemaLike>(
+  initialState: S['infer'],
+  schema: S
+): [Branded<S['infer']>, SetStoreFunction, Readonly<S['infer']>]
 export function createStore<T extends object>(
   initialState: T
-): [Branded<T>, SetStoreFunction] {
-  const unwrappedState = unwrap(initialState || ({} as T))
+): [Branded<T>, SetStoreFunction]
+export function createStore(
+  initialState: any,
+  schema?: SchemaLike
+): [any, SetStoreFunction, any?] {
+  const unwrappedState = unwrap(initialState || {})
   const state = createReactiveProxy(unwrappedState)
 
   function updateStore(operations: UpdateOperations): void {
     startBatch()
     try {
       applyUpdate(unwrappedState, operations)
-      // Reconciliation is no longer needed since all operators properly use setProperty()
-      // or manually trigger signals. Array operations like pullFromArray use splice() for
-      // atomic modifications then trigger signals via setProperty(parent, key, array).
     } finally {
       endBatch()
     }
   }
 
-  return [state as Branded<T>, updateStore]
+  if (schema) {
+    const entry = getModelProto(schema)
+    const view = createModelView(unwrappedState, entry, schema.props)
+    return [state, updateStore, view]
+  }
+
+  return [state, updateStore]
 }

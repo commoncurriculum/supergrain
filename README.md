@@ -44,16 +44,16 @@ view.title  // prototype getter -> signal read (V8 inlined)
 
 Only properties present at creation time get getters. For dynamic properties added later, use the proxy directly.
 
-### createModelStore — Schema-Driven Stores
+### Schema-Driven Stores
 
-With ArkType schemas, `createModelStore` pre-builds view prototypes from the schema shape, including nested objects:
+Pass an ArkType schema as the second argument to `createStore` to get a pre-built view with nested prototype getters:
 
 ```tsx
 import { type } from 'arktype'
-import { createModelStore } from '@supergrain/core'
+import { createStore } from '@supergrain/core'
 
 const TodoSchema = type({ title: 'string', done: 'boolean' })
-const [store, update, view] = createModelStore(TodoSchema, { title: 'Buy milk', done: false })
+const [store, update, view] = createStore({ title: 'Buy milk', done: false }, TodoSchema)
 view.title  // fast prototype getter read
 ```
 

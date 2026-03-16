@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { type } from 'arktype'
-import { createModelStore, effect } from '../src'
+import { createStore, effect } from '../src'
 
 const TodoSchema = type({
   id: 'number',
@@ -12,14 +12,14 @@ const TodoSchema = type({
   },
 })
 
-describe('createModelStore', () => {
-  it('should create a store from an ArkType schema', () => {
-    const [_store, _update, view] = createModelStore(TodoSchema, {
+describe('createStore with schema', () => {
+  it('should create a store with view from schema', () => {
+    const [_store, _update, view] = createStore({
       id: 1,
       title: 'Buy milk',
       completed: false,
       assignee: { name: 'Scott', avatar: 'scott.png' },
-    })
+    }, TodoSchema)
 
     expect(view.title).toBe('Buy milk')
     expect(view.id).toBe(1)
@@ -27,17 +27,15 @@ describe('createModelStore', () => {
   })
 
   it('should return reactive view reads inside effects', () => {
-    const [_store, update, view] = createModelStore(TodoSchema, {
+    const [_store, update, view] = createStore({
       id: 1,
       title: 'Buy milk',
       completed: false,
       assignee: { name: 'Scott', avatar: 'scott.png' },
-    })
+    }, TodoSchema)
 
     let title = ''
-    const effectFn = vi.fn(() => {
-      title = view.title
-    })
+    const effectFn = vi.fn(() => { title = view.title })
 
     effect(effectFn)
     expect(title).toBe('Buy milk')
@@ -49,12 +47,12 @@ describe('createModelStore', () => {
   })
 
   it('should allow writes through the update function', () => {
-    const [_store, update, view] = createModelStore(TodoSchema, {
+    const [_store, update, view] = createStore({
       id: 1,
       title: 'Buy milk',
       completed: false,
       assignee: { name: 'Scott', avatar: 'scott.png' },
-    })
+    }, TodoSchema)
 
     expect(view.completed).toBe(false)
     update({ $set: { completed: true } })
@@ -62,12 +60,12 @@ describe('createModelStore', () => {
   })
 
   it('should handle nested object views', () => {
-    const [_store, _update, view] = createModelStore(TodoSchema, {
+    const [_store, _update, view] = createStore({
       id: 1,
       title: 'Buy milk',
       completed: false,
       assignee: { name: 'Scott', avatar: 'scott.png' },
-    })
+    }, TodoSchema)
 
     const assigneeView = view.assignee
     expect(assigneeView.name).toBe('Scott')
@@ -75,17 +73,15 @@ describe('createModelStore', () => {
   })
 
   it('should reactively track nested object properties', () => {
-    const [_store, update, view] = createModelStore(TodoSchema, {
+    const [_store, update, view] = createStore({
       id: 1,
       title: 'Buy milk',
       completed: false,
       assignee: { name: 'Scott', avatar: 'scott.png' },
-    })
+    }, TodoSchema)
 
     let name = ''
-    const effectFn = vi.fn(() => {
-      name = view.assignee.name
-    })
+    const effectFn = vi.fn(() => { name = view.assignee.name })
 
     effect(effectFn)
     expect(name).toBe('Scott')
@@ -97,48 +93,41 @@ describe('createModelStore', () => {
   })
 
   it('should handle sub-tree replacement for nested objects', () => {
-    const [_store, update, view] = createModelStore(TodoSchema, {
+    const [_store, update, view] = createStore({
       id: 1,
       title: 'Buy milk',
       completed: false,
       assignee: { name: 'Scott', avatar: 'scott.png' },
-    })
+    }, TodoSchema)
 
     let name = ''
-    const effectFn = vi.fn(() => {
-      name = view.assignee.name
-    })
+    const effectFn = vi.fn(() => { name = view.assignee.name })
 
     effect(effectFn)
     expect(name).toBe('Scott')
 
-    // Replace the entire assignee sub-tree
     update({ $set: { assignee: { name: 'Bob', avatar: 'bob.png' } } })
     expect(name).toBe('Bob')
     expect(view.assignee.avatar).toBe('bob.png')
   })
 
   it('should only re-run effects when tracked properties change', () => {
-    const [_store, update, view] = createModelStore(TodoSchema, {
+    const [_store, update, view] = createStore({
       id: 1,
       title: 'Buy milk',
       completed: false,
       assignee: { name: 'Scott', avatar: 'scott.png' },
-    })
+    }, TodoSchema)
 
     let title = ''
-    const titleEffect = vi.fn(() => {
-      title = view.title
-    })
+    const titleEffect = vi.fn(() => { title = view.title })
 
     effect(titleEffect)
     expect(titleEffect).toHaveBeenCalledTimes(1)
 
-    // Updating a different property should not trigger the title effect
     update({ $set: { completed: true } })
     expect(titleEffect).toHaveBeenCalledTimes(1)
 
-    // Updating title should trigger it
     update({ $set: { title: 'Buy eggs' } })
     expect(titleEffect).toHaveBeenCalledTimes(2)
     expect(title).toBe('Buy eggs')
@@ -148,10 +137,9 @@ describe('createModelStore', () => {
     const data1 = { id: 1, title: 'A', completed: false, assignee: { name: 'X', avatar: 'x.png' } }
     const data2 = { id: 2, title: 'B', completed: true, assignee: { name: 'Y', avatar: 'y.png' } }
 
-    const [, , view1] = createModelStore(TodoSchema, data1)
-    const [, , view2] = createModelStore(TodoSchema, data2)
+    const [, , view1] = createStore(data1, TodoSchema)
+    const [, , view2] = createStore(data2, TodoSchema)
 
-    // They should share the same prototype (schema-driven, built once)
     expect(Object.getPrototypeOf(view1)).toBe(Object.getPrototypeOf(view2))
   })
 
@@ -162,16 +150,14 @@ describe('createModelStore', () => {
       label: 'string',
     })
 
-    const [_store, update, view] = createModelStore(FlatSchema, {
+    const [_store, update, view] = createStore({
       x: 10,
       y: 20,
       label: 'origin',
-    })
+    }, FlatSchema)
 
     let label = ''
-    const effectFn = vi.fn(() => {
-      label = view.label
-    })
+    const effectFn = vi.fn(() => { label = view.label })
 
     effect(effectFn)
     expect(label).toBe('origin')
