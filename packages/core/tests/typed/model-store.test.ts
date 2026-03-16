@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { type } from 'arktype'
-import { createStore, effect } from '../src'
+import { createStore, effect } from '../../src'
 
 const TodoSchema = type({
   id: 'number',
@@ -14,12 +14,15 @@ const TodoSchema = type({
 
 describe('createStore with schema', () => {
   it('should create a store with view from schema', () => {
-    const [_store, _update, view] = createStore({
-      id: 1,
-      title: 'Buy milk',
-      completed: false,
-      assignee: { name: 'Scott', avatar: 'scott.png' },
-    }, TodoSchema)
+    const [_store, _update, view] = createStore(
+      {
+        id: 1,
+        title: 'Buy milk',
+        completed: false,
+        assignee: { name: 'Scott', avatar: 'scott.png' },
+      },
+      TodoSchema
+    )
 
     expect(view.title).toBe('Buy milk')
     expect(view.id).toBe(1)
@@ -27,15 +30,20 @@ describe('createStore with schema', () => {
   })
 
   it('should return reactive view reads inside effects', () => {
-    const [_store, update, view] = createStore({
-      id: 1,
-      title: 'Buy milk',
-      completed: false,
-      assignee: { name: 'Scott', avatar: 'scott.png' },
-    }, TodoSchema)
+    const [_store, update, view] = createStore(
+      {
+        id: 1,
+        title: 'Buy milk',
+        completed: false,
+        assignee: { name: 'Scott', avatar: 'scott.png' },
+      },
+      TodoSchema
+    )
 
     let title = ''
-    const effectFn = vi.fn(() => { title = view.title })
+    const effectFn = vi.fn(() => {
+      title = view.title
+    })
 
     effect(effectFn)
     expect(title).toBe('Buy milk')
@@ -47,12 +55,15 @@ describe('createStore with schema', () => {
   })
 
   it('should allow writes through the update function', () => {
-    const [_store, update, view] = createStore({
-      id: 1,
-      title: 'Buy milk',
-      completed: false,
-      assignee: { name: 'Scott', avatar: 'scott.png' },
-    }, TodoSchema)
+    const [_store, update, view] = createStore(
+      {
+        id: 1,
+        title: 'Buy milk',
+        completed: false,
+        assignee: { name: 'Scott', avatar: 'scott.png' },
+      },
+      TodoSchema
+    )
 
     expect(view.completed).toBe(false)
     update({ $set: { completed: true } })
@@ -60,12 +71,15 @@ describe('createStore with schema', () => {
   })
 
   it('should handle nested object views', () => {
-    const [_store, _update, view] = createStore({
-      id: 1,
-      title: 'Buy milk',
-      completed: false,
-      assignee: { name: 'Scott', avatar: 'scott.png' },
-    }, TodoSchema)
+    const [_store, _update, view] = createStore(
+      {
+        id: 1,
+        title: 'Buy milk',
+        completed: false,
+        assignee: { name: 'Scott', avatar: 'scott.png' },
+      },
+      TodoSchema
+    )
 
     const assigneeView = view.assignee
     expect(assigneeView.name).toBe('Scott')
@@ -73,15 +87,20 @@ describe('createStore with schema', () => {
   })
 
   it('should reactively track nested object properties', () => {
-    const [_store, update, view] = createStore({
-      id: 1,
-      title: 'Buy milk',
-      completed: false,
-      assignee: { name: 'Scott', avatar: 'scott.png' },
-    }, TodoSchema)
+    const [_store, update, view] = createStore(
+      {
+        id: 1,
+        title: 'Buy milk',
+        completed: false,
+        assignee: { name: 'Scott', avatar: 'scott.png' },
+      },
+      TodoSchema
+    )
 
     let name = ''
-    const effectFn = vi.fn(() => { name = view.assignee.name })
+    const effectFn = vi.fn(() => {
+      name = view.assignee.name
+    })
 
     effect(effectFn)
     expect(name).toBe('Scott')
@@ -93,15 +112,20 @@ describe('createStore with schema', () => {
   })
 
   it('should handle sub-tree replacement for nested objects', () => {
-    const [_store, update, view] = createStore({
-      id: 1,
-      title: 'Buy milk',
-      completed: false,
-      assignee: { name: 'Scott', avatar: 'scott.png' },
-    }, TodoSchema)
+    const [_store, update, view] = createStore(
+      {
+        id: 1,
+        title: 'Buy milk',
+        completed: false,
+        assignee: { name: 'Scott', avatar: 'scott.png' },
+      },
+      TodoSchema
+    )
 
     let name = ''
-    const effectFn = vi.fn(() => { name = view.assignee.name })
+    const effectFn = vi.fn(() => {
+      name = view.assignee.name
+    })
 
     effect(effectFn)
     expect(name).toBe('Scott')
@@ -112,15 +136,20 @@ describe('createStore with schema', () => {
   })
 
   it('should only re-run effects when tracked properties change', () => {
-    const [_store, update, view] = createStore({
-      id: 1,
-      title: 'Buy milk',
-      completed: false,
-      assignee: { name: 'Scott', avatar: 'scott.png' },
-    }, TodoSchema)
+    const [_store, update, view] = createStore(
+      {
+        id: 1,
+        title: 'Buy milk',
+        completed: false,
+        assignee: { name: 'Scott', avatar: 'scott.png' },
+      },
+      TodoSchema
+    )
 
     let title = ''
-    const titleEffect = vi.fn(() => { title = view.title })
+    const titleEffect = vi.fn(() => {
+      title = view.title
+    })
 
     effect(titleEffect)
     expect(titleEffect).toHaveBeenCalledTimes(1)
@@ -134,8 +163,18 @@ describe('createStore with schema', () => {
   })
 
   it('should share view prototype across instances with the same schema', () => {
-    const data1 = { id: 1, title: 'A', completed: false, assignee: { name: 'X', avatar: 'x.png' } }
-    const data2 = { id: 2, title: 'B', completed: true, assignee: { name: 'Y', avatar: 'y.png' } }
+    const data1 = {
+      id: 1,
+      title: 'A',
+      completed: false,
+      assignee: { name: 'X', avatar: 'x.png' },
+    }
+    const data2 = {
+      id: 2,
+      title: 'B',
+      completed: true,
+      assignee: { name: 'Y', avatar: 'y.png' },
+    }
 
     const [, , view1] = createStore(data1, TodoSchema)
     const [, , view2] = createStore(data2, TodoSchema)
@@ -150,14 +189,19 @@ describe('createStore with schema', () => {
       label: 'string',
     })
 
-    const [_store, update, view] = createStore({
-      x: 10,
-      y: 20,
-      label: 'origin',
-    }, FlatSchema)
+    const [_store, update, view] = createStore(
+      {
+        x: 10,
+        y: 20,
+        label: 'origin',
+      },
+      FlatSchema
+    )
 
     let label = ''
-    const effectFn = vi.fn(() => { label = view.label })
+    const effectFn = vi.fn(() => {
+      label = view.label
+    })
 
     effect(effectFn)
     expect(label).toBe('origin')

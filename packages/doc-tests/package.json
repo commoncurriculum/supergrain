@@ -1,5 +1,5 @@
 {
-  "name": "@supergrain/documentation",
+  "name": "@supergrain/doc-tests",
   "version": "0.1.0",
   "description": "Documentation tests for Supergrain examples",
   "private": true,

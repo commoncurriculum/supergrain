@@ -1,4 +1,5 @@
-import { setProperty, $NODE } from './store'
+import { $NODE } from './core'
+import { setProperty } from './write'
 
 /**
  * MongoDB-style operators for updating reactive stores.

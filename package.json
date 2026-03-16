@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vitepress dev docs",
     "test": "vitest",
-    "test:validate": "pnpm --filter @supergrain/documentation run test:validate",
+    "test:validate": "pnpm --filter @supergrain/doc-tests run test:validate",
     "bench:core": "vitest bench --root packages/core",
     "typecheck": "pnpm -r --filter=\"@supergrain/*\" run typecheck && pnpm --filter=\"js-framework-benchmark-react-supergrain\" run typecheck",
     "changeset": "changeset",

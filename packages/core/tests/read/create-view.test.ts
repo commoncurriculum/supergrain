@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createStore, createView, effect } from '../src'
+import { createStore, createView, effect } from '../../src'
 
 describe('createView', () => {
   it('creates a view with getters for all properties', () => {
@@ -20,7 +20,9 @@ describe('createView', () => {
     const [store] = createStore({ title: 'hello' })
     const view = createView(store)
     let value = ''
-    const dispose = effect(() => { value = view.title })
+    const dispose = effect(() => {
+      value = view.title
+    })
     expect(value).toBe('hello')
     store.title = 'world'
     expect(value).toBe('world')

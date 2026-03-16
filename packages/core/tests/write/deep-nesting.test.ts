@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createStore, effect, computed } from '../src'
+import { createStore, effect, computed } from '../../src'
 
 describe('Deep Nesting Operations (Type Safe)', () => {
   // Helper to safely access deeply nested properties (not used but kept for future reference)

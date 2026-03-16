@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createStore } from '../src/store'
+import { createStore } from '../../src/store'
 
 describe('Direct Mutation Support', () => {
   it('should allow direct property assignment', () => {
