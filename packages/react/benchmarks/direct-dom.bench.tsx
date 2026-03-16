@@ -329,10 +329,10 @@ describe('Create 1000 rows', () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => {
-      const data = buildData(1000)
-      ;(ctx.store as any).__directBuild(data)
+      ;(ctx.store as any).__directBuild(buildData(1000))
+      cleanup()
     })
-    cleanup(); idCounter = 1
+    idCounter = 1
   })
   bench('react-hooks (vanilla)', async () => {
     const ctx = makeHooksApp()
@@ -360,8 +360,11 @@ describe('Select row', () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ;(ctx.store as any).__directBuild(buildData(1000)) })
-    await act(async () => { ctx.sel(500) })
-    cleanup(); idCounter = 1
+    await act(async () => {
+      ctx.sel(500)
+      cleanup()
+    })
+    idCounter = 1
   })
   bench('react-hooks (vanilla)', async () => {
     const ctx = makeHooksApp()
@@ -391,8 +394,11 @@ describe('Swap rows', () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ;(ctx.store as any).__directBuild(buildData(1000)) })
-    await act(async () => { ctx.swap() })
-    cleanup(); idCounter = 1
+    await act(async () => {
+      ctx.swap()
+      cleanup()
+    })
+    idCounter = 1
   })
   bench('react-hooks (vanilla)', async () => {
     const ctx = makeHooksApp()
@@ -422,8 +428,11 @@ describe('Partial update (100 of 1000)', () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ;(ctx.store as any).__directBuild(buildData(1000)) })
-    await act(async () => { ctx.update10th() })
-    cleanup(); idCounter = 1
+    await act(async () => {
+      ctx.update10th()
+      cleanup()
+    })
+    idCounter = 1
   })
   bench('react-hooks (vanilla)', async () => {
     const ctx = makeHooksApp()
