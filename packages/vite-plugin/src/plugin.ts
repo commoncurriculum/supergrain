@@ -166,21 +166,219 @@ export function transformCode(
 
   visit(sourceFile)
 
+  // --- $$ transformation pass ---
+  interface DollarDollarBinding {
+    // The $$(expr) CallExpression node
+    callNode: ts.CallExpression
+    // The inner expression text (what's inside $$())
+    innerExprText: string
+    // 'text' or 'attribute'
+    position: 'text' | 'attribute'
+    // For attribute position, the attribute name (e.g. 'className')
+    attrName?: string
+    // The JSX opening element (or self-closing) where ref should be added
+    targetElement: ts.JsxOpeningElement | ts.JsxSelfClosingElement
+    // The component function body where refs/hook should be inserted
+    componentBody: ts.Block
+    // Unique index for this binding
+    index: number
+  }
+
+  const ddBindings: DollarDollarBinding[] = []
+  let ddIndex = 0
+
+  function findEnclosingComponent(node: ts.Node): ts.Block | null {
+    let current: ts.Node | undefined = node.parent
+    while (current) {
+      if (ts.isFunctionDeclaration(current) || ts.isFunctionExpression(current) || ts.isArrowFunction(current)) {
+        const body = current.body
+        if (body && ts.isBlock(body)) {
+          return body
+        }
+        return null
+      }
+      current = current.parent
+    }
+    return null
+  }
+
+  function findParentJsxElement(node: ts.Node): ts.JsxOpeningElement | ts.JsxSelfClosingElement | null {
+    let current: ts.Node | undefined = node.parent
+    while (current) {
+      if (ts.isJsxElement(current)) {
+        return current.openingElement
+      }
+      if (ts.isJsxSelfClosingElement(current)) {
+        return current
+      }
+      current = current.parent
+    }
+    return null
+  }
+
+  function visitDD(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === '$$' &&
+      node.arguments.length === 1
+    ) {
+      const arg = node.arguments[0]
+      const innerText = code.slice(arg.getStart(sourceFile), arg.getEnd())
+
+      // Determine if the inner expression is a getter (arrow function or function expression)
+      const isGetter = ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)
+
+      // Determine position: check parent chain
+      const parent = node.parent
+      if (parent && ts.isJsxExpression(parent)) {
+        const grandparent = parent.parent
+        if (grandparent && ts.isJsxAttribute(grandparent)) {
+          // Attribute position
+          const attrName = grandparent.name.getText(sourceFile)
+          // JsxAttribute -> JsxAttributes -> JsxOpeningElement/JsxSelfClosingElement
+          const element = grandparent.parent?.parent
+          if (element && (ts.isJsxOpeningElement(element) || ts.isJsxSelfClosingElement(element))) {
+            const componentBody = findEnclosingComponent(node)
+            if (componentBody) {
+              ddBindings.push({
+                callNode: node,
+                innerExprText: innerText,
+                position: 'attribute',
+                attrName,
+                targetElement: element,
+                componentBody,
+                index: ddIndex++,
+              })
+            }
+          }
+        } else {
+          // Text position — find the parent JSX element
+          const targetElement = findParentJsxElement(parent)
+          if (targetElement) {
+            const componentBody = findEnclosingComponent(node)
+            if (componentBody) {
+              ddBindings.push({
+                callNode: node,
+                innerExprText: innerText,
+                position: 'text',
+                targetElement,
+                componentBody,
+                index: ddIndex++,
+              })
+            }
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visitDD)
+  }
+
+  visitDD(sourceFile)
+
+  // Group bindings by component body
+  const bindingsByComponent = new Map<ts.Block, DollarDollarBinding[]>()
+  for (const binding of ddBindings) {
+    const existing = bindingsByComponent.get(binding.componentBody)
+    if (existing) {
+      existing.push(binding)
+    } else {
+      bindingsByComponent.set(binding.componentBody, [binding])
+    }
+  }
+
+  // Apply $$ rewrites
+  for (const binding of ddBindings) {
+    const callStart = binding.callNode.getStart(sourceFile)
+    const callEnd = binding.callNode.getEnd()
+
+    // For getter expressions (arrow functions), extract the body
+    const arg = binding.callNode.arguments[0]
+    let replacementExpr: string
+    if (ts.isArrowFunction(arg) && !ts.isBlock(arg.body)) {
+      // () => expr  ->  expr
+      replacementExpr = code.slice(arg.body.getStart(sourceFile), arg.body.getEnd())
+    } else {
+      replacementExpr = binding.innerExprText
+    }
+
+    // Replace $$(expr) with expr
+    rewrites.push({ start: callStart, end: callEnd, replacement: replacementExpr })
+  }
+
+  // Track elements that already have a ref added (to avoid duplicates)
+  const elementsWithRef = new Set<ts.Node>()
+
+  // Add ref attributes to target elements
+  for (const binding of ddBindings) {
+    const el = binding.targetElement
+    if (elementsWithRef.has(el)) continue
+    elementsWithRef.add(el)
+
+    // Insert ref={__$$N} before the closing > of the opening tag
+    const tagEnd = el.getEnd()
+    // For JsxOpeningElement, the tag ends with >
+    // For JsxSelfClosingElement, it ends with />
+    if (ts.isJsxSelfClosingElement(el)) {
+      // Insert before />
+      const tagText = code.slice(el.getStart(sourceFile), tagEnd)
+      const slashPos = tagText.lastIndexOf('/>')
+      const insertPos = el.getStart(sourceFile) + slashPos
+      rewrites.push({ start: insertPos, end: insertPos, replacement: ` ref={__$$${binding.index}} ` })
+    } else {
+      // JsxOpeningElement: insert before >
+      const tagText = code.slice(el.getStart(sourceFile), tagEnd)
+      const gtPos = tagText.lastIndexOf('>')
+      const insertPos = el.getStart(sourceFile) + gtPos
+      rewrites.push({ start: insertPos, end: insertPos, replacement: ` ref={__$$${binding.index}}` })
+    }
+  }
+
+  // Insert ref declarations and useDirectBindings at component body start
+  for (const [body, bindings] of bindingsByComponent) {
+    const bodyStart = body.getStart(sourceFile) + 1 // after {
+
+    const refDecls = bindings.map(b => `\n  const __$$${b.index} = useRef(null)`).join('')
+
+    const bindingEntries = bindings.map(b => {
+      const getterExpr = (ts.isArrowFunction(b.callNode.arguments[0]) || ts.isFunctionExpression(b.callNode.arguments[0]))
+        ? b.innerExprText
+        : `() => ${b.innerExprText}`
+
+      if (b.position === 'attribute' && b.attrName) {
+        return `{ ref: __$$${b.index}, getter: ${getterExpr}, attr: '${b.attrName}' }`
+      }
+      return `{ ref: __$$${b.index}, getter: ${getterExpr} }`
+    })
+
+    const hookCall = `\n  useDirectBindings([${bindingEntries.join(', ')}])`
+
+    rewrites.push({ start: bodyStart, end: bodyStart, replacement: refDecls + hookCall })
+  }
+
   // Sort by start descending so overwrites don't shift positions
   rewrites.sort((a, b) => b.start - a.start)
 
   for (const r of rewrites) {
-    s.overwrite(r.start, r.end, r.replacement)
+    if (r.start === r.end) {
+      s.appendLeft(r.start, r.replacement)
+    } else {
+      s.overwrite(r.start, r.end, r.replacement)
+    }
   }
 
   const hasRewrites = rewrites.length > 0
+  const hasDDBindings = ddBindings.length > 0
 
   if (!hasRewrites) return null
 
   // Add readSignal import
-  const newImports = !code.includes('readSignal') ? 'readSignal' : ''
+  const newCoreImports: string[] = []
+  if (rewrites.some(r => r.replacement.includes('readSignal')) && !code.includes('readSignal')) {
+    newCoreImports.push('readSignal')
+  }
 
-  if (newImports) {
+  if (newCoreImports.length > 0) {
     const importRegex = /import\s*\{([^}]+)\}\s*from\s*(['"][^'"]+['"])/g
     let importMatch: RegExpExecArray | null
     let found = false
@@ -190,14 +388,59 @@ export function transformCode(
         const importEnd = importStart + importMatch[0].length
         const existingImports = importMatch[1]
         const source = importMatch[2]
-        s.overwrite(importStart, importEnd, `import {${existingImports}, ${newImports} } from ${source}`)
+        s.overwrite(importStart, importEnd, `import {${existingImports}, ${newCoreImports.join(', ')} } from ${source}`)
         found = true
         break
       }
     }
     if (!found) {
-      s.prepend(`import { ${newImports} } from '@supergrain/core';\n`)
+      s.prepend(`import { ${newCoreImports.join(', ')} } from '@supergrain/core';\n`)
     }
+  }
+
+  // Add react imports for $$ transformation
+  if (hasDDBindings) {
+    // Add useRef from react
+    if (!code.includes('useRef')) {
+      // Check if there's an existing react import
+      const reactImportRegex = /import\s*\{([^}]+)\}\s*from\s*(['"]react['"])/g
+      let reactMatch: RegExpExecArray | null
+      let foundReact = false
+      while ((reactMatch = reactImportRegex.exec(code)) !== null) {
+        const importStart = reactMatch.index
+        const importEnd = importStart + reactMatch[0].length
+        const existingImports = reactMatch[1]
+        const source = reactMatch[2]
+        s.overwrite(importStart, importEnd, `import {${existingImports}, useRef } from ${source}`)
+        foundReact = true
+        break
+      }
+      if (!foundReact) {
+        s.prepend(`import { useRef } from 'react';\n`)
+      }
+    }
+
+    // Add useDirectBindings from @supergrain/react
+    if (!code.includes('useDirectBindings')) {
+      const sgReactImportRegex = /import\s*\{([^}]+)\}\s*from\s*(['"]@supergrain\/react['"])/g
+      let sgReactMatch: RegExpExecArray | null
+      let foundSgReact = false
+      while ((sgReactMatch = sgReactImportRegex.exec(code)) !== null) {
+        const importStart = sgReactMatch.index
+        const importEnd = importStart + sgReactMatch[0].length
+        const existingImports = sgReactMatch[1]
+        const source = sgReactMatch[2]
+        s.overwrite(importStart, importEnd, `import {${existingImports}, useDirectBindings } from ${source}`)
+        foundSgReact = true
+        break
+      }
+      if (!foundSgReact) {
+        s.prepend(`import { useDirectBindings } from '@supergrain/react';\n`)
+      }
+    }
+
+    // Remove $$ import if it was imported from @supergrain/core
+    // (The $$ function is only needed at compile time)
   }
 
   return {
