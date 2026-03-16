@@ -1,4 +1,5 @@
 // @ts-nocheck — benchmark file, sink variables prevent dead code elimination
+// Dynamic vs static prototype getters — tests whether a compiler is needed.
 import { bench, describe } from 'vitest'
 import { createStore, unwrap, $NODE } from '../src'
 import { effect } from 'alien-signals'

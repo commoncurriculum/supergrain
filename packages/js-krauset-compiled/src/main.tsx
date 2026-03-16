@@ -110,7 +110,7 @@ export interface RowProps {
 
 // --- Store ---
 
-export const [store] = createStore<AppState>({
+const [store] = createStore<AppState>({
   data: [],
   selected: null,
 })

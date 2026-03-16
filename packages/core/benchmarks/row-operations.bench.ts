@@ -1,3 +1,4 @@
+// Table row operations (select, swap, append, delete) — krauset-style benchmarks.
 import { bench, describe } from 'vitest'
 import { createStore, effect } from '../src'
 
