@@ -76,6 +76,17 @@ const ProxyApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) =>
   )}</For></tbody></table>
 })
 
+// --- View App: createView prototype getters for reads, React for rendering ---
+const ViewApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) => void }> = memo(({ store, sel, rem }) => {
+  useReactiveEffect()
+  const view = createView(store) as AppState
+  const hs = useCallback((id: number) => sel(id), [])
+  const hr = useCallback((id: number) => rem(id), [])
+  return <table><tbody><For each={view.data}>{(item: RowData) => (
+    <Row key={item.id} item={item} isSelected={view.selected === item.id} onSelect={hs} onRemove={hr} />
+  )}</For></tbody></table>
+})
+
 // --- Direct DOM App: cloneNode + signal wiring, no React rows ---
 // Builds rows synchronously (no reactive data-watching effect).
 // Per-row effects handle label + selection updates directly.
@@ -319,13 +330,19 @@ function makeSolidBench() {
 // --- Benchmarks ---
 
 describe('Create 1000 rows', () => {
-  bench('proxy (React)', async () => {
+  bench('proxy', async () => {
     const ctx = makeStore()
     render(<ProxyApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
     cleanup(); idCounter = 1
   })
-  bench('direct-dom (cloneNode)', async () => {
+  bench('createView', async () => {
+    const ctx = makeStore()
+    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    cleanup(); idCounter = 1
+  })
+  bench('direct-dom $$', async () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => {
@@ -334,7 +351,7 @@ describe('Create 1000 rows', () => {
     })
     idCounter = 1
   })
-  bench('react-hooks (vanilla)', async () => {
+  bench('react hooks', async () => {
     const ctx = makeHooksApp()
     render(<ctx.HooksApp />)
     await act(async () => { ctx.run(1000) })
@@ -349,14 +366,21 @@ describe('Create 1000 rows', () => {
 })
 
 describe('Select row', () => {
-  bench('proxy (React)', async () => {
+  bench('proxy', async () => {
     const ctx = makeStore()
     render(<ProxyApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
     await act(async () => { ctx.sel(500) })
     cleanup(); idCounter = 1
   })
-  bench('direct-dom (cloneNode)', async () => {
+  bench('createView', async () => {
+    const ctx = makeStore()
+    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.sel(500) })
+    cleanup(); idCounter = 1
+  })
+  bench('direct-dom $$', async () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ;(ctx.store as any).__directBuild(buildData(1000)) })
@@ -366,7 +390,7 @@ describe('Select row', () => {
     })
     idCounter = 1
   })
-  bench('react-hooks (vanilla)', async () => {
+  bench('react hooks', async () => {
     const ctx = makeHooksApp()
     render(<ctx.HooksApp />)
     await act(async () => { ctx.run(1000) })
@@ -383,14 +407,21 @@ describe('Select row', () => {
 })
 
 describe('Swap rows', () => {
-  bench('proxy (React)', async () => {
+  bench('proxy', async () => {
     const ctx = makeStore()
     render(<ProxyApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
     await act(async () => { ctx.swap() })
     cleanup(); idCounter = 1
   })
-  bench('direct-dom (cloneNode)', async () => {
+  bench('createView', async () => {
+    const ctx = makeStore()
+    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.swap() })
+    cleanup(); idCounter = 1
+  })
+  bench('direct-dom $$', async () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ;(ctx.store as any).__directBuild(buildData(1000)) })
@@ -400,7 +431,7 @@ describe('Swap rows', () => {
     })
     idCounter = 1
   })
-  bench('react-hooks (vanilla)', async () => {
+  bench('react hooks', async () => {
     const ctx = makeHooksApp()
     render(<ctx.HooksApp />)
     await act(async () => { ctx.run(1000) })
@@ -417,14 +448,21 @@ describe('Swap rows', () => {
 })
 
 describe('Partial update (100 of 1000)', () => {
-  bench('proxy (React)', async () => {
+  bench('proxy', async () => {
     const ctx = makeStore()
     render(<ProxyApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
     await act(async () => { ctx.update10th() })
     cleanup(); idCounter = 1
   })
-  bench('direct-dom (cloneNode)', async () => {
+  bench('createView', async () => {
+    const ctx = makeStore()
+    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.update10th() })
+    cleanup(); idCounter = 1
+  })
+  bench('direct-dom $$', async () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ;(ctx.store as any).__directBuild(buildData(1000)) })
@@ -434,7 +472,7 @@ describe('Partial update (100 of 1000)', () => {
     })
     idCounter = 1
   })
-  bench('react-hooks (vanilla)', async () => {
+  bench('react hooks', async () => {
     const ctx = makeHooksApp()
     render(<ctx.HooksApp />)
     await act(async () => { ctx.run(1000) })
