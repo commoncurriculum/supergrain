@@ -1,6 +1,7 @@
 // Export the optimized implementation
 export {
   createStore,
+  createView,
   unwrap,
   readSignal,
   readLeaf,

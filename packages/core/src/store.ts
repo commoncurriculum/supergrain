@@ -261,6 +261,48 @@ function initSignals(target: object, visited?: Set<object>): void {
   }
 }
 
+// --- createView: lightweight getter-based view for compiled reads ---
+const viewProtoCache = new Map<string, object>()
+const viewCache = new WeakMap<object, object>()
+
+export function createView<T extends object>(target: T): T {
+  const raw = unwrap(target) as any
+
+  // Return cached view
+  const cached = viewCache.get(raw)
+  if (cached) return cached as T
+
+  const keys = Object.keys(raw)
+  const cacheKey = keys.join(',')
+
+  // Ensure signals exist for all properties
+  const nodes = getNodes(raw)
+  for (const key of keys) {
+    if (!nodes[key]) getNode(nodes, key, raw[key])
+  }
+
+  // Get or create shared prototype with getters
+  let proto = viewProtoCache.get(cacheKey)
+  if (!proto) {
+    proto = {}
+    for (const key of keys) {
+      Object.defineProperty(proto, key, {
+        get() { return this._n[key]() },
+        enumerable: true,
+        configurable: true,
+      })
+    }
+    viewProtoCache.set(cacheKey, proto)
+  }
+
+  // Create view instance backed by the prototype
+  const view = Object.create(proto)
+  view._n = nodes
+  viewCache.set(raw, view)
+
+  return view as T
+}
+
 export function createStore<T extends object>(
   initialState: T
 ): [Branded<T>, SetStoreFunction] {

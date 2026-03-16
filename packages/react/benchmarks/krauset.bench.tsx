@@ -11,7 +11,7 @@
  */
 
 import { bench, describe } from 'vitest'
-import { createStore, $NODE, $RAW, effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
+import { createStore, createView, $NODE, $RAW, effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
 import { signal } from 'alien-signals'
 import { useTracked, For } from '../src/use-store'
 import React, { FC, memo, useCallback, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
@@ -152,6 +152,17 @@ const FineApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) => 
   )}</For></tbody></table>
 })
 
+// createView: App uses createView for prototype-getter reads
+const ViewApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) => void }> = memo(({ store, sel, rem }) => {
+  useReactiveEffect()
+  const view = createView(store) as AppState
+  const hs = useCallback((id: number) => sel(id), [])
+  const hr = useCallback((id: number) => rem(id), [])
+  return <table><tbody><For each={view.data}>{(item: RowData) => (
+    <Row key={item.id} item={item} isSelected={view.selected === item.id} onSelect={hs} onRemove={hr} />
+  )}</For></tbody></table>
+})
+
 function makeStore() {
   const [store, upd] = createStore<AppState>({ data: [], selected: null })
   return {
@@ -191,6 +202,12 @@ describe('Create 1000 rows', () => {
     await act(async () => { ctx.run(1000) })
     cleanup(); idCounter = 1
   })
+  bench('createView', async () => {
+    const ctx = makeStore()
+    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    cleanup(); idCounter = 1
+  })
 })
 
 describe('Select row', () => {
@@ -211,6 +228,13 @@ describe('Select row', () => {
   bench('fine-grained', async () => {
     const ctx = makeStore()
     render(<FineApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.sel(500) })
+    cleanup(); idCounter = 1
+  })
+  bench('createView', async () => {
+    const ctx = makeStore()
+    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
     await act(async () => { ctx.sel(500) })
     cleanup(); idCounter = 1
@@ -239,6 +263,13 @@ describe('Swap rows', () => {
     await act(async () => { ctx.swap() })
     cleanup(); idCounter = 1
   })
+  bench('createView', async () => {
+    const ctx = makeStore()
+    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.swap() })
+    cleanup(); idCounter = 1
+  })
 })
 
 describe('Partial update (100 of 1000)', () => {
@@ -259,6 +290,13 @@ describe('Partial update (100 of 1000)', () => {
   bench('fine-grained', async () => {
     const ctx = makeStore()
     render(<FineApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.update10th() })
+    cleanup(); idCounter = 1
+  })
+  bench('createView', async () => {
+    const ctx = makeStore()
+    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
     await act(async () => { ctx.update10th() })
     cleanup(); idCounter = 1
