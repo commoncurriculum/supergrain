@@ -30,6 +30,33 @@ Behind the scenes, the Vite plugin transforms `$$()` calls into `useRef` + `useD
 
 Without the compiler, `$$()` is an identity function — your code works normally through React, just without the direct DOM optimization.
 
+### createView — Fast Reads via Prototype Getters
+
+`createView(store)` returns a cached view object with prototype getters that read signals directly. V8 inlines these, making reads ~8x faster than proxy.
+
+```tsx
+import { createStore, createView } from '@supergrain/core'
+
+const [store, update] = createStore({ title: 'Hello', count: 0 })
+const view = createView(store)
+view.title  // prototype getter -> signal read (V8 inlined)
+```
+
+Only properties present at creation time get getters. For dynamic properties added later, use the proxy directly.
+
+### createModelStore — Schema-Driven Stores
+
+With ArkType schemas, `createModelStore` pre-builds view prototypes from the schema shape, including nested objects:
+
+```tsx
+import { type } from 'arktype'
+import { createModelStore } from '@supergrain/core'
+
+const TodoSchema = type({ title: 'string', done: 'boolean' })
+const [store, update, view] = createModelStore(TodoSchema, { title: 'Buy milk', done: false })
+view.title  // fast prototype getter read
+```
+
 📚 **[View Full Documentation](https://commoncurriculum.github.io/supergrain/)** | _Core Implementation: [packages/core/src](packages/core/src) | React Integration: [packages/react/src](packages/react/src) | Store: [packages/store/src](packages/store/src) | Examples: [packages/react/examples](packages/react/examples)_
 
 ## Features

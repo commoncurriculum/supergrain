@@ -84,8 +84,6 @@ export function setProperty(
   if (isDelete) delete target[key]
   else {
     target[key] = value
-    // Initialize signals on new wrappable values that don't already have $NODE
-    if (isWrappable(value) && !(value as any)[$NODE]) initSignals(value)
   }
 
   const nodes = (target as any)[$NODE]
@@ -122,6 +120,14 @@ function trackSelf(target: object): void {
   }
 }
 
+/**
+ * Proxy handler for reactive stores.
+ *
+ * The `get` trap has a fast path for re-reads of string properties that
+ * already have a signal in `$NODE`. This avoids the full slow path
+ * (symbol checks, `getCurrentSub()`, `getNodes()`) on subsequent reads
+ * and keeps hot-loop performance close to direct property access.
+ */
 const handler: ProxyHandler<object> = {
   get(target, prop, receiver) {
     // Fast path: already-tracked string property (most common case on re-reads)
@@ -224,32 +230,34 @@ function createReactiveProxy<T extends object>(target: T): T {
 
 export type SetStoreFunction = (operations: UpdateOperations) => void
 
-function initSignals(target: object, visited?: Set<object>): void {
-  if (!isWrappable(target) || Object.isFrozen(target)) return
-  if (!visited) visited = new Set()
-  if (visited.has(target)) return
-  visited.add(target)
+// --- Shared prototype-getter helper ---
 
-  const nodes = getNodes(target)
-  if (Array.isArray(target)) {
-    for (let i = 0; i < target.length; i++) {
-      getNode(nodes, i, target[i])
-      if (isWrappable(target[i])) initSignals(target[i], visited)
-    }
-    getNode(nodes, 'length', target.length)
-  } else {
-    for (const key of Object.keys(target)) {
-      const value = (target as any)[key]
-      getNode(nodes, key, value)
-      if (isWrappable(value)) initSignals(value, visited)
-    }
-  }
+/** Defines a signal-reading getter on a prototype object. */
+function defineSignalGetter(proto: object, key: string): void {
+  Object.defineProperty(proto, key, {
+    get() { return this._n[key]() },
+    enumerable: true,
+    configurable: true,
+  })
 }
 
 // --- createView: lightweight getter-based view for compiled reads ---
 const viewProtoCache = new Map<string, object>()
 const viewCache = new WeakMap<object, object>()
 
+/**
+ * Creates a view with prototype getters for fast signal reads.
+ *
+ * V8 inlines prototype getters, making reads ~8x faster than going through
+ * the Proxy handler. The view is cached per raw object — calling `createView`
+ * twice with the same store returns the same view instance.
+ *
+ * Only properties present on the target at creation time get getters.
+ * For dynamic properties added later, use the proxy directly.
+ *
+ * @param target - A store proxy or raw object to create a view for.
+ * @returns A view object backed by the same signals as the store.
+ */
 export function createView<T extends object>(target: T): T {
   const raw = unwrap(target) as any
 
@@ -271,11 +279,7 @@ export function createView<T extends object>(target: T): T {
   if (!proto) {
     proto = {}
     for (const key of keys) {
-      Object.defineProperty(proto, key, {
-        get() { return this._n[key]() },
-        enumerable: true,
-        configurable: true,
-      })
+      defineSignalGetter(proto, key)
     }
     viewProtoCache.set(cacheKey, proto)
   }
@@ -349,12 +353,8 @@ function buildModelProto(props: readonly SchemaProp[]): ModelProtoEntry {
         configurable: true,
       })
     } else {
-      // Leaf property — direct signal read
-      Object.defineProperty(proto, key, {
-        get() { return this._n[key]() },
-        enumerable: true,
-        configurable: true,
-      })
+      // Leaf property — direct signal read (shared with createView)
+      defineSignalGetter(proto, key)
     }
   }
 
@@ -392,12 +392,23 @@ function createModelView<T extends object>(
   return view as T
 }
 
+/**
+ * Creates a schema-driven store with pre-built view prototypes.
+ *
+ * Uses an ArkType schema to walk the type structure at creation time and
+ * build shared prototype objects with getters for every property (including
+ * nested objects). This avoids per-instance `Object.defineProperty` overhead.
+ *
+ * @param schema - An ArkType schema with `.props` and `.infer`.
+ * @param initialData - Initial data matching the schema.
+ * @returns `[proxy, update, view]` — the reactive proxy, an update function
+ *   accepting MongoDB-style operators, and a fast view with prototype getters.
+ */
 export function createModelStore<S extends SchemaLike>(
   schema: S,
   initialData: S['infer']
 ): [Branded<S['infer']>, SetStoreFunction, S['infer']] {
   const unwrappedState = unwrap(initialData || ({} as any))
-  initSignals(unwrappedState)
   const state = createReactiveProxy(unwrappedState)
 
   const entry = getModelProto(schema)
@@ -419,20 +430,10 @@ export function createModelStore<S extends SchemaLike>(
   return [state as Branded<S['infer']>, updateStore, view]
 }
 
-/**
- * Direct DOM binding sigil. Marks a reactive expression for direct DOM updates.
- * Without the compiler, acts as an identity function (graceful degradation).
- * With the compiler, generates ref + effect that bypasses React re-renders.
- */
-export function $$<T>(value: T): T {
-  return value
-}
-
 export function createStore<T extends object>(
   initialState: T
 ): [Branded<T>, SetStoreFunction] {
   const unwrappedState = unwrap(initialState || ({} as T))
-  initSignals(unwrappedState)
   const state = createReactiveProxy(unwrappedState)
 
   function updateStore(operations: UpdateOperations): void {

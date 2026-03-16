@@ -5,7 +5,6 @@ export {
   createView,
   unwrap,
   setProperty,
-  $$,
   $VERSION,
   $NODE,
   $PROXY,

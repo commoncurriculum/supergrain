@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { createStore, createView, $NODE, $RAW, effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
+import { createStore, createView, $NODE, $RAW, effect, getCurrentSub, setCurrentSub, signal as coreSignal } from '@supergrain/core'
 import { useTracked, For } from '../src/use-store'
 import React, { FC, memo, useCallback, useState, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
 import { render, cleanup, act } from '@testing-library/react'
@@ -26,6 +26,19 @@ function testData(): RowData[] {
 // --- Row template (same as benchmark) ---
 const rowTemplate = document.createElement('tr')
 rowTemplate.innerHTML = `<td class="col-md-1"></td><td class="col-md-4"><a></a></td><td class="col-md-1"><a><span class="glyphicon glyphicon-remove" aria-hidden="true"></span></a></td><td class="col-md-6"></td>`
+
+// Ensure $NODE map exists and has signals for all own keys
+function ensureNodes(raw: any) {
+  let nodes = raw[$NODE]
+  if (!nodes) {
+    Object.defineProperty(raw, $NODE, { value: {}, enumerable: false, configurable: true })
+    nodes = raw[$NODE]
+  }
+  for (const key of Object.keys(raw)) {
+    if (!nodes[key]) nodes[key] = coreSignal(raw[key])
+  }
+  return nodes
+}
 
 // --- Shared helpers ---
 function useReactiveEffect() {
@@ -113,7 +126,7 @@ describe('Direct DOM (supergrain $$) correctness', () => {
 
     useEffect(() => {
       const raw = (store as any)[$RAW] || store
-      const storeNodes = raw[$NODE]
+      const storeNodes = ensureNodes(raw)
 
       const dataCleanup = effect(() => {
         const data: RowData[] = storeNodes.data()
@@ -129,7 +142,7 @@ describe('Direct DOM (supergrain $$) correctness', () => {
           const a1 = (tds[1] as HTMLElement).firstChild as HTMLAnchorElement
           a1.textContent = item.label
 
-          const itemNodes = (item as any)[$NODE]
+          const itemNodes = ensureNodes(item)
           if (itemNodes?.label) {
             const c = effect(() => { a1.textContent = itemNodes.label() })
             cleanups.current.push(c)

@@ -53,7 +53,16 @@ function useReactiveEffect() {
 function useCompiled<T extends object>(store: T) {
   useReactiveEffect()
   const raw = (store as any)[$RAW] || store
-  return raw[$NODE]
+  // Ensure nodes exist (initSignals no longer pre-creates them)
+  let nodes = raw[$NODE]
+  if (!nodes) {
+    Object.defineProperty(raw, $NODE, { value: {}, enumerable: false, configurable: true })
+    nodes = raw[$NODE]
+  }
+  for (const key of Object.keys(raw)) {
+    if (!nodes[key]) nodes[key] = signal(raw[key])
+  }
+  return nodes
 }
 
 // --- Class getter view infrastructure ---

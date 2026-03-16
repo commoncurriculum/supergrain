@@ -12,8 +12,9 @@ function createTestProgram(code: string, options?: { jsx?: boolean }): { sourceF
   const filePath = path.join(tmpDir, ext)
   fs.writeFileSync(filePath, code)
 
-  // Find @supergrain/core types
+  // Find @supergrain/core and @supergrain/react types
   const coreTypesDir = path.resolve(__dirname, '../../core')
+  const reactTypesDir = path.resolve(__dirname, '../../react')
 
   const compilerOptions: ts.CompilerOptions = {
     strict: true,
@@ -22,6 +23,7 @@ function createTestProgram(code: string, options?: { jsx?: boolean }): { sourceF
     moduleResolution: ts.ModuleResolutionKind.Bundler,
     paths: {
       '@supergrain/core': [path.join(coreTypesDir, 'src/index.ts')],
+      '@supergrain/react': [path.join(reactTypesDir, 'src/index.ts')],
     },
     baseUrl: tmpDir,
   }
@@ -41,7 +43,7 @@ function createTestProgram(code: string, options?: { jsx?: boolean }): { sourceF
 describe('supergrain vite plugin: transform', () => {
   it('transforms $$() in text position to ref + useDirectBindings', () => {
     const code = `
-import { $$ } from '@supergrain/core'
+import { $$ } from '@supergrain/react'
 function Row({ item }) {
   return <td><a>{$$(item.label)}</a></td>
 }
@@ -57,7 +59,7 @@ function Row({ item }) {
 
   it('transforms $$() in attribute position', () => {
     const code = `
-import { $$ } from '@supergrain/core'
+import { $$ } from '@supergrain/react'
 function Row({ item, selected }) {
   return <tr className={$$(() => selected === item.id ? 'danger' : '')}></tr>
 }
@@ -71,7 +73,7 @@ function Row({ item, selected }) {
 
   it('handles multiple $$() in one component', () => {
     const code = `
-import { $$ } from '@supergrain/core'
+import { $$ } from '@supergrain/react'
 function Row({ item, selected }) {
   return (
     <tr className={$$(() => selected === item.id ? 'danger' : '')}>

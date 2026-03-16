@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { render, act, cleanup } from '@testing-library/react'
+import { render, act, cleanup, screen } from '@testing-library/react'
 import React, { useRef } from 'react'
 import { createStore } from '@supergrain/core'
 import { useDirectBindings } from '../src'
@@ -132,6 +132,25 @@ describe('useDirectBindings', () => {
     await act(async () => {
       store.label = 'world'
     })
+  })
+
+  it('compiler output pattern works end-to-end', async () => {
+    const [store] = createStore({ label: 'hello' })
+
+    // This is what the compiler generates from {$$(store.label)}
+    function CompiledComponent() {
+      const __$$0 = useRef<HTMLSpanElement>(null)
+      useDirectBindings([{ ref: __$$0, getter: () => store.label }])
+      return <span ref={__$$0}>{store.label}</span>
+    }
+
+    render(<CompiledComponent />)
+    expect(screen.getByText('hello')).toBeInTheDocument()
+
+    await act(async () => {
+      store.label = 'world'
+    })
+    expect(screen.getByText('world')).toBeInTheDocument()
   })
 
   it('works with computed expressions', async () => {
