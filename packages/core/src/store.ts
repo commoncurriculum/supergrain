@@ -258,7 +258,7 @@ const viewCache = new WeakMap<object, object>()
  * @param target - A store proxy or raw object to create a view for.
  * @returns A view object backed by the same signals as the store.
  */
-export function createView<T extends object>(target: T): T {
+export function createView<T extends object>(target: T): Readonly<T> {
   const raw = unwrap(target) as any
 
   // Return cached view
