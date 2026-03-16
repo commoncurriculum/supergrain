@@ -215,47 +215,41 @@ export function transformCode(
 
   if (!hasRewrites) return null
 
-  // Add react imports for $$ transformation.
-  // Note: import injection uses regex matching for simplicity. This works reliably
-  // for the two imports we add (useRef from 'react', useDirectBindings from
-  // '@supergrain/react') since they follow standard named import syntax. A full
-  // AST-based import rewriter would be overkill for just these two cases.
+  // Add react imports for $$ transformation using AST-based import detection.
   if (hasDDBindings) {
+    // Walk top-level statements to find existing import declarations
+    let reactImportDecl: ts.ImportDeclaration | null = null
+    let sgReactImportDecl: ts.ImportDeclaration | null = null
+
+    for (const stmt of sourceFile.statements) {
+      if (ts.isImportDeclaration(stmt) && ts.isStringLiteral(stmt.moduleSpecifier)) {
+        const source = stmt.moduleSpecifier.text
+        if (source === 'react') {
+          reactImportDecl = stmt
+        } else if (source === '@supergrain/react') {
+          sgReactImportDecl = stmt
+        }
+      }
+    }
+
     // Add useRef from react
     if (!code.includes('useRef')) {
-      // Check if there's an existing react import
-      const reactImportRegex = /import\s*\{([^}]+)\}\s*from\s*(['"]react['"])/g
-      let reactMatch: RegExpExecArray | null
-      let foundReact = false
-      while ((reactMatch = reactImportRegex.exec(code)) !== null) {
-        const importStart = reactMatch.index
-        const importEnd = importStart + reactMatch[0].length
-        const existingImports = reactMatch[1]
-        const source = reactMatch[2]
-        s.overwrite(importStart, importEnd, `import {${existingImports}, useRef } from ${source}`)
-        foundReact = true
-        break
-      }
-      if (!foundReact) {
+      if (reactImportDecl?.importClause?.namedBindings && ts.isNamedImports(reactImportDecl.importClause.namedBindings)) {
+        const namedImports = reactImportDecl.importClause.namedBindings
+        const closeBrace = namedImports.getEnd() - 1
+        s.appendLeft(closeBrace, ', useRef')
+      } else {
         s.prepend(`import { useRef } from 'react';\n`)
       }
     }
 
     // Add useDirectBindings from @supergrain/react
     if (!code.includes('useDirectBindings')) {
-      const sgReactImportRegex = /import\s*\{([^}]+)\}\s*from\s*(['"]@supergrain\/react['"])/g
-      let sgReactMatch: RegExpExecArray | null
-      let foundSgReact = false
-      while ((sgReactMatch = sgReactImportRegex.exec(code)) !== null) {
-        const importStart = sgReactMatch.index
-        const importEnd = importStart + sgReactMatch[0].length
-        const existingImports = sgReactMatch[1]
-        const source = sgReactMatch[2]
-        s.overwrite(importStart, importEnd, `import {${existingImports}, useDirectBindings } from ${source}`)
-        foundSgReact = true
-        break
-      }
-      if (!foundSgReact) {
+      if (sgReactImportDecl?.importClause?.namedBindings && ts.isNamedImports(sgReactImportDecl.importClause.namedBindings)) {
+        const namedImports = sgReactImportDecl.importClause.namedBindings
+        const closeBrace = namedImports.getEnd() - 1
+        s.appendLeft(closeBrace, ', useDirectBindings')
+      } else {
         s.prepend(`import { useDirectBindings } from '@supergrain/react';\n`)
       }
     }
@@ -358,7 +352,7 @@ export function supergrain(): Plugin {
 
     transform(code, id) {
       if (!/\.[tj]sx?$/.test(id)) return null
-      if (id.includes('node_modules')) return null
+      if (id.includes('/node_modules/') || id.includes('\\node_modules\\')) return null
 
       // Create a program that includes this specific file with its current content
       const fileContents = new Map<string, string>()

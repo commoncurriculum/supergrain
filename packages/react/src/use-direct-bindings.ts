@@ -78,5 +78,6 @@ export function useDirectBindings(bindings: DirectBinding[]): void {
     return () => {
       for (const c of cleanups) c()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- bindings are stable (compiler-generated)
   }, [])
 }
