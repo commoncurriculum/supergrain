@@ -7,6 +7,7 @@ export {
   readSignal,
   readLeaf,
   setProperty,
+  $$,
   $VERSION,
   $NODE,
   $PROXY,

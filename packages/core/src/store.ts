@@ -434,6 +434,15 @@ export function createModelStore<S extends SchemaLike>(
   return [state as Branded<S['infer']>, updateStore, view]
 }
 
+/**
+ * Direct DOM binding sigil. Marks a reactive expression for direct DOM updates.
+ * Without the compiler, acts as an identity function (graceful degradation).
+ * With the compiler, generates ref + effect that bypasses React re-renders.
+ */
+export function $$<T>(value: T): T {
+  return value
+}
+
 export function createStore<T extends object>(
   initialState: T
 ): [Branded<T>, SetStoreFunction] {
