@@ -122,6 +122,62 @@ const FineRow: FC<{ item: RowData; store: any; onSelect: (id: number) => void; o
   }
 )
 
+// --- Direct DOM Row: subscribes signals to refs, bypasses React for updates ---
+const DirectRow: FC<{ item: any; store: any; onSelect: (id: number) => void; onRemove: (id: number) => void }> = ({ item, store, onSelect, onRemove }) => {
+  const trRef = useRef<HTMLTableRowElement>(null)
+  const labelRef = useRef<HTMLAnchorElement>(null)
+  const id = item.id
+
+  // Subscribe signals directly to DOM — runs once on mount, never re-renders
+  useEffect(() => {
+    const raw = (store as any)[$RAW] || store
+    const storeNodes = raw[$NODE]
+
+    // Subscribe to label signal on this item
+    const itemNodes = item[$NODE]
+    let labelCleanup: (() => void) | null = null
+    if (itemNodes?.label) {
+      labelCleanup = effect(() => {
+        const label = itemNodes.label()
+        if (labelRef.current) labelRef.current.textContent = label
+      })
+    }
+
+    // Subscribe to selected signal
+    let selCleanup: (() => void) | null = null
+    if (storeNodes?.selected) {
+      selCleanup = effect(() => {
+        const selected = storeNodes.selected()
+        if (trRef.current) {
+          trRef.current.className = selected === id ? 'danger' : ''
+        }
+      })
+    }
+
+    return () => { labelCleanup?.(); selCleanup?.() }
+  }, [item, store, id])
+
+  return (
+    <tr ref={trRef}>
+      <td className="col-md-1">{id}</td>
+      <td className="col-md-4"><a ref={labelRef} onClick={() => onSelect(id)}>{item.label}</a></td>
+      <td className="col-md-1"><a onClick={() => onRemove(id)}><span className="glyphicon glyphicon-remove" /></a></td>
+      <td className="col-md-6"></td>
+    </tr>
+  )
+}
+
+// Direct DOM App: initial render through React, updates bypass React entirely
+const DirectApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) => void }> = memo(({ store, sel, rem }) => {
+  useReactiveEffect()
+  const view = createView(store) as AppState
+  const hs = useCallback((id: number) => sel(id), [])
+  const hr = useCallback((id: number) => rem(id), [])
+  return <table><tbody><For each={view.data}>{(item: RowData) => (
+    <DirectRow key={item.id} item={item} store={store} onSelect={hs} onRemove={hr} />
+  )}</For></tbody></table>
+})
+
 // --- Apps ---
 const ProxyApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) => void }> = memo(({ store, sel, rem }) => {
   const state = useTracked(store)
@@ -208,6 +264,12 @@ describe('Create 1000 rows', () => {
     await act(async () => { ctx.run(1000) })
     cleanup(); idCounter = 1
   })
+  bench('direct-dom', async () => {
+    const ctx = makeStore()
+    render(<DirectApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    cleanup(); idCounter = 1
+  })
 })
 
 describe('Select row', () => {
@@ -235,6 +297,13 @@ describe('Select row', () => {
   bench('createView', async () => {
     const ctx = makeStore()
     render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.sel(500) })
+    cleanup(); idCounter = 1
+  })
+  bench('direct-dom', async () => {
+    const ctx = makeStore()
+    render(<DirectApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
     await act(async () => { ctx.sel(500) })
     cleanup(); idCounter = 1
@@ -270,6 +339,13 @@ describe('Swap rows', () => {
     await act(async () => { ctx.swap() })
     cleanup(); idCounter = 1
   })
+  bench('direct-dom', async () => {
+    const ctx = makeStore()
+    render(<DirectApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.swap() })
+    cleanup(); idCounter = 1
+  })
 })
 
 describe('Partial update (100 of 1000)', () => {
@@ -297,6 +373,13 @@ describe('Partial update (100 of 1000)', () => {
   bench('createView', async () => {
     const ctx = makeStore()
     render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.update10th() })
+    cleanup(); idCounter = 1
+  })
+  bench('direct-dom', async () => {
+    const ctx = makeStore()
+    render(<DirectApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
     await act(async () => { ctx.update10th() })
     cleanup(); idCounter = 1
