@@ -44,6 +44,7 @@
     "playwright": "^1.55.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "solid-js": "^1.9.9",
     "typescript": "^5.9.2",
     "vite": "^7.1.5",
     "vitest": "4.1.0"

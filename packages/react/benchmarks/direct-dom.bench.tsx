@@ -10,8 +10,10 @@
 import { bench, describe } from 'vitest'
 import { createStore, createView, $NODE, $RAW, effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
 import { useTracked, For } from '../src/use-store'
-import React, { FC, memo, useCallback, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
+import React, { FC, memo, useCallback, useState, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
 import { render, cleanup, act } from '@testing-library/react'
+import { createRoot as createSolidRoot, createEffect as createSolidEffect, createSignal, batch as solidBatch } from 'solid-js'
+import { createStore as createSolidStore } from 'solid-js/store'
 
 // --- Types & data ---
 interface RowData { id: number; label: string }
@@ -160,6 +162,173 @@ function makeStore() {
   }
 }
 
+// --- React Hooks App (vanilla React, no external store) ---
+const HooksRow: FC<{ item: RowData; isSelected: boolean; onSelect: (id: number) => void; onRemove: (id: number) => void }> = memo(
+  ({ item, isSelected, onSelect, onRemove }) => (
+    <tr className={isSelected ? 'danger' : ''}>
+      <td className="col-md-1">{item.id}</td>
+      <td className="col-md-4"><a onClick={() => onSelect(item.id)}>{item.label}</a></td>
+      <td className="col-md-1"><a onClick={() => onRemove(item.id)}><span className="glyphicon glyphicon-remove" /></a></td>
+      <td className="col-md-6"></td>
+    </tr>
+  )
+)
+
+function makeHooksApp() {
+  let setData: React.Dispatch<React.SetStateAction<RowData[]>>
+  let setSelected: React.Dispatch<React.SetStateAction<number | null>>
+  let getData: () => RowData[]
+
+  const HooksApp: FC = () => {
+    const [data, sd] = useState<RowData[]>([])
+    const [selected, ss] = useState<number | null>(null)
+    setData = sd
+    setSelected = ss
+    // Store a getter via ref so operations can read current data
+    const dataRef = useRef(data)
+    dataRef.current = data
+    getData = () => dataRef.current
+
+    const hs = useCallback((id: number) => ss(id), [])
+    const hr = useCallback((id: number) => sd(d => d.filter(r => r.id !== id)), [])
+
+    return (
+      <table><tbody>
+        {data.map(item => (
+          <HooksRow key={item.id} item={item} isSelected={selected === item.id}
+            onSelect={hs} onRemove={hr} />
+        ))}
+      </tbody></table>
+    )
+  }
+
+  return {
+    HooksApp,
+    run: (n: number) => { setData(buildData(n)); setSelected(null) },
+    sel: (id: number) => { setSelected(id) },
+    update10th: () => {
+      setData(d => d.map((item, i) =>
+        i % 10 === 0 ? { ...item, label: item.label + ' !!!' } : item
+      ))
+    },
+    swap: () => {
+      setData(d => {
+        if (d.length <= 998) return d
+        const next = [...d]
+        const t = next[1]; next[1] = next[998]; next[998] = t
+        return next
+      })
+    },
+  }
+}
+
+// --- Solid.js implementation (imperative DOM, no JSX) ---
+function makeSolidBench() {
+  let dispose: (() => void) | null = null
+  let container: HTMLElement | null = null
+  let _setStore: any
+  let _store: any
+  let _setDataLen: ((n: number) => void) | null = null
+
+  function mount() {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+
+    createSolidRoot(d => {
+      dispose = d
+      const [s, ss] = createSolidStore<{ data: RowData[]; selected: number | null }>({ data: [], selected: null })
+      _store = s
+      _setStore = ss
+
+      const table = document.createElement('table')
+      const tbody = document.createElement('tbody')
+      table.appendChild(tbody)
+      container!.appendChild(table)
+
+      // Use a signal to trigger full rebuilds when data array is replaced
+      const [dataLen, setDataLen] = createSignal(0)
+      _setDataLen = setDataLen
+      let rowCleanups: (() => void)[] = []
+
+      createSolidEffect(() => {
+        const len = dataLen()
+        // Tear down old row effects
+        for (const c of rowCleanups) c()
+        rowCleanups = []
+        tbody.textContent = ''
+
+        for (let idx = 0; idx < len; idx++) {
+          const item = s.data[idx]
+          const tr = rowTemplate.cloneNode(true) as HTMLTableRowElement
+          const tds = tr.children
+          const td0 = tds[0] as HTMLElement
+          const a1 = (tds[1] as HTMLElement).firstChild as HTMLAnchorElement
+          const a2 = (tds[2] as HTMLElement).firstChild as HTMLAnchorElement
+
+          td0.textContent = String(item.id)
+          a1.textContent = item.label
+
+          const itemId = item.id
+          a1.onclick = () => ss('selected', itemId)
+          a2.onclick = () => {} // no-op for bench
+
+          // Fine-grained: track label at this index via store proxy
+          const capturedIdx = idx
+          createSolidRoot(dRow => {
+            rowCleanups.push(dRow)
+            createSolidEffect(() => {
+              a1.textContent = s.data[capturedIdx].label
+            })
+            createSolidEffect(() => {
+              tr.className = s.selected === itemId ? 'danger' : ''
+            })
+          })
+
+          tbody.appendChild(tr)
+        }
+      })
+    })
+  }
+
+  function unmount() {
+    if (dispose) dispose()
+    if (container) { container.remove(); container = null }
+    dispose = null
+    _setDataLen = null
+  }
+
+  return {
+    mount,
+    unmount,
+    run: (n: number) => {
+      const data = buildData(n)
+      solidBatch(() => {
+        _setStore('data', data)
+        _setStore('selected', null)
+      })
+      _setDataLen!(data.length)
+    },
+    sel: (id: number) => { _setStore('selected', id) },
+    update10th: () => {
+      solidBatch(() => {
+        for (let i = 0; i < _store.data.length; i += 10) {
+          _setStore('data', i, 'label', (l: string) => l + ' !!!')
+        }
+      })
+    },
+    swap: () => {
+      if (_store.data.length > 998) {
+        solidBatch(() => {
+          const a = { ..._store.data[1] }
+          const b = { ..._store.data[998] }
+          _setStore('data', 1, b)
+          _setStore('data', 998, a)
+        })
+      }
+    },
+  }
+}
+
 // --- Benchmarks ---
 
 describe('Create 1000 rows', () => {
@@ -174,6 +343,18 @@ describe('Create 1000 rows', () => {
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
     await act(async () => { ctx.run(1000) })
     cleanup(); idCounter = 1
+  })
+  bench('react-hooks (vanilla)', async () => {
+    const ctx = makeHooksApp()
+    render(<ctx.HooksApp />)
+    await act(async () => { ctx.run(1000) })
+    cleanup(); idCounter = 1
+  })
+  bench('solid-js', () => {
+    const ctx = makeSolidBench()
+    ctx.mount()
+    ctx.run(1000)
+    ctx.unmount(); idCounter = 1
   })
 })
 
@@ -192,6 +373,20 @@ describe('Select row', () => {
     await act(async () => { ctx.sel(500) })
     cleanup(); idCounter = 1
   })
+  bench('react-hooks (vanilla)', async () => {
+    const ctx = makeHooksApp()
+    render(<ctx.HooksApp />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.sel(500) })
+    cleanup(); idCounter = 1
+  })
+  bench('solid-js', () => {
+    const ctx = makeSolidBench()
+    ctx.mount()
+    ctx.run(1000)
+    ctx.sel(500)
+    ctx.unmount(); idCounter = 1
+  })
 })
 
 describe('Swap rows', () => {
@@ -209,6 +404,20 @@ describe('Swap rows', () => {
     await act(async () => { ctx.swap() })
     cleanup(); idCounter = 1
   })
+  bench('react-hooks (vanilla)', async () => {
+    const ctx = makeHooksApp()
+    render(<ctx.HooksApp />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.swap() })
+    cleanup(); idCounter = 1
+  })
+  bench('solid-js', () => {
+    const ctx = makeSolidBench()
+    ctx.mount()
+    ctx.run(1000)
+    ctx.swap()
+    ctx.unmount(); idCounter = 1
+  })
 })
 
 describe('Partial update (100 of 1000)', () => {
@@ -225,5 +434,19 @@ describe('Partial update (100 of 1000)', () => {
     await act(async () => { ctx.run(1000) })
     await act(async () => { ctx.update10th() })
     cleanup(); idCounter = 1
+  })
+  bench('react-hooks (vanilla)', async () => {
+    const ctx = makeHooksApp()
+    render(<ctx.HooksApp />)
+    await act(async () => { ctx.run(1000) })
+    await act(async () => { ctx.update10th() })
+    cleanup(); idCounter = 1
+  })
+  bench('solid-js', () => {
+    const ctx = makeSolidBench()
+    ctx.mount()
+    ctx.run(1000)
+    ctx.update10th()
+    ctx.unmount(); idCounter = 1
   })
 })
