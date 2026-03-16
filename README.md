@@ -2,6 +2,34 @@
 
 A reactive store library with super fine-grained reactivity powered by alien-signals. Create stores that track property access and update components with surgical precision using MongoDB-style update operators.
 
+Supergrain's `$$()` direct DOM mode achieves solid-js level performance while running inside React.
+
+### Benchmark: krauset (1000 rows, chromium)
+
+| Operation | React Hooks | Supergrain Proxy | Supergrain `$$()` | Solid-js |
+|---|---|---|---|---|
+| Create 1000 rows | 53ms | 69ms | **3.4ms** | 7.1ms |
+| Select row | 57ms | 75ms | **11ms** | 7.6ms |
+| Swap rows | 77ms | 101ms | **10ms** | 11ms |
+| Partial update | 60ms | 75ms | **10ms** | 12ms |
+
+`$$()` marks reactive expressions for direct DOM binding. The compiler wires signals straight to DOM nodes, bypassing React's reconciliation for updates. React handles the initial render; signal changes update `textContent` and `className` directly via refs.
+
+```tsx
+function Row({ item, store }) {
+  return (
+    <tr className={$$(() => store.selected === item.id ? 'danger' : '')}>
+      <td>{item.id}</td>
+      <td><a>{$$(item.label)}</a></td>
+    </tr>
+  )
+}
+```
+
+Behind the scenes, the Vite plugin transforms `$$()` calls into `useRef` + `useDirectBindings` — each marked expression gets a ref on its parent DOM element and an alien-signals `effect()` that updates the node when the signal changes. No component re-render, no VDOM diff, no reconciliation. Just `node.textContent = newValue`.
+
+Without the compiler, `$$()` is an identity function — your code works normally through React, just without the direct DOM optimization.
+
 📚 **[View Full Documentation](https://commoncurriculum.github.io/supergrain/)** | _Core Implementation: [packages/core/src](packages/core/src) | React Integration: [packages/react/src](packages/react/src) | Store: [packages/store/src](packages/store/src) | Examples: [packages/react/examples](packages/react/examples)_
 
 ## Features
@@ -12,6 +40,7 @@ A reactive store library with super fine-grained reactivity powered by alien-sig
 - ⚛️ **React integration** - Simple hooks for reactive components
 - 📝 **Full TypeScript support** - Complete type safety and inference
 - 🗂️ **Document-oriented store** - App-level store for document management with promise-like API
+- ⚡ **`$$()` direct DOM** - Solid-js level performance within React via compiler-optimized signal-to-DOM bindings
 
 ## Table of Contents
 
