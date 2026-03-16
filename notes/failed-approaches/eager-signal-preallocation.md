@@ -44,4 +44,4 @@ Lazy signal creation (the default) works fine. The proxy or readSignal creates s
 
 ## Note
 
-`initSignals` is still in the codebase (called from `createStore`) for the compiled mode's inlined `$NODE` access to work. It should be removed if the compiled `readSignal` approach is deprecated in favor of `createView` + `$$()`.
+`initSignals` was removed from the codebase after readSignal was removed. createView handles its own signal creation for the properties it needs.

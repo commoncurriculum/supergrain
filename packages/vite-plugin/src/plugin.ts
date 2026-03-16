@@ -149,14 +149,19 @@ export function transformCode(
     rewrites.push({ start: callStart, end: callEnd, replacement: replacementExpr })
   }
 
-  // Track elements that already have a ref added (to avoid duplicates)
-  const elementsWithRef = new Set<ts.Node>()
+  // Track which ref index was assigned to each element (reuse for multiple bindings)
+  const elementRefIndex = new Map<ts.Node, number>()
 
-  // Add ref attributes to target elements
+  // Assign ref indices: reuse existing ref when element already has one
   for (const binding of ddBindings) {
     const el = binding.targetElement
-    if (elementsWithRef.has(el)) continue
-    elementsWithRef.add(el)
+    const existingIndex = elementRefIndex.get(el)
+    if (existingIndex !== undefined) {
+      // Reuse the same ref index for subsequent bindings on the same element
+      binding.index = existingIndex
+      continue
+    }
+    elementRefIndex.set(el, binding.index)
 
     // Insert ref={__$$N} before the closing > of the opening tag
     const tagEnd = el.getEnd()

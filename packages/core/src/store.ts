@@ -266,7 +266,7 @@ export function createView<T extends object>(target: T): T {
   if (cached) return cached as T
 
   const keys = Object.keys(raw)
-  const cacheKey = keys.join(',')
+  const cacheKey = keys.join('\0')
 
   // Ensure signals exist for all properties
   const nodes = getNodes(raw)

@@ -150,6 +150,7 @@ function makeStore() {
     store, upd,
     run: (n: number) => { store.data = buildData(n); store.selected = null },
     sel: (id: number) => { store.selected = id },
+    rem: (id: number) => { upd({ $pull: { data: { id } } }) },
     update10th: () => { for (let i = 0; i < store.data.length; i += 10) store.data[i].label += ' !!!' },
     swap: () => {
       if (store.data.length > 998) {

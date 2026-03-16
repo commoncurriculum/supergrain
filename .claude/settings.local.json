@@ -67,7 +67,8 @@
       "Bash(pnpm --filter js-framework-benchmark-react-supergrain-compiled run build-prod)",
       "Bash(pnpm --filter @supergrain/react run build)",
       "Bash(/usr/bin/grep -rl 'useTrackedStore' --include='*.ts' --include='*.tsx' --include='*.md' . | xargs sed -i '' 's/useTrackedStore/useTracked/g')",
-      "Bash(pnpm:*)"
+      "Bash(pnpm:*)",
+      "Bash(gh api:*)"
     ],
     "deny": [],
     "ask": []

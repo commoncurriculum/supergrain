@@ -4,9 +4,9 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { createStore, createView, $NODE, $RAW, effect, getCurrentSub, setCurrentSub, signal as coreSignal } from '@supergrain/core'
+import { createStore, $NODE, $RAW, effect, getCurrentSub, setCurrentSub, signal as coreSignal } from '@supergrain/core'
 import { useTracked, For } from '../src/use-store'
-import React, { FC, memo, useCallback, useState, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
+import React, { FC, memo, useCallback, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
 import { render, cleanup, act } from '@testing-library/react'
 import { createRoot as createSolidRoot, createEffect as createSolidEffect, createSignal, batch as solidBatch } from 'solid-js'
 import { createStore as createSolidStore } from 'solid-js/store'

@@ -252,7 +252,7 @@ Initial benchmarks showed direct-dom at 25ms vs solid at 6ms. Investigation reve
 ## File Reference
 
 ### Working code
-- `packages/core/src/store.ts` — createView, createModelStore, $$, proxy fast path
+- `packages/core/src/store.ts` — createView, createModelStore, proxy fast path
 - `packages/vite-plugin/src/plugin.ts` — $$() JSX transformation
 - `packages/react/src/use-direct-bindings.ts` — useDirectBindings hook
 
