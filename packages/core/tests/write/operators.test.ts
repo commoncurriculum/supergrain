@@ -60,6 +60,41 @@ describe('MongoDB Style Operators', () => {
     expect(state.users).toEqual([{ id: 2, name: 'B' }])
   })
 
+  it('$pull: should invalidate array structure subscribers', () => {
+    const [state, update] = createStore({ scores: [1, 2, 3] })
+    let keys: string[] = []
+
+    effect(() => {
+      keys = Object.keys(state.scores)
+    })
+
+    expect(keys).toEqual(['0', '1', '2'])
+    update({ $pull: { scores: 2 } })
+    expect(keys).toEqual(['0', '1'])
+  })
+
+  it('should handle sparse array writes and later pulls consistently', () => {
+    const [state, update] = createStore<{ scores: number[] }>({ scores: [1] })
+
+    update({ $set: { 'scores.3': 4 } })
+    expect(state.scores.length).toBe(4)
+    expect(1 in state.scores).toBe(false)
+    expect(state.scores[3]).toBe(4)
+
+    update({ $pull: { scores: 4 } })
+    expect(state.scores).toEqual([1, undefined, undefined])
+  })
+
+  it('should allow direct mutations and operator updates to compose on arrays', () => {
+    const [state, update] = createStore({ scores: [1, 2] })
+
+    state.scores[0] = 3
+    update({ $push: { scores: 4 } })
+    update({ $pull: { scores: 2 } })
+
+    expect(state.scores).toEqual([3, 4])
+  })
+
   it('$addToSet: should add unique elements to an array', () => {
     const [state, update] = createStore({ tags: ['a', 'b'] })
     update({ $addToSet: { tags: 'c' } })
@@ -150,5 +185,45 @@ describe('MongoDB Style Operators', () => {
     expect((secondUser as any).profile).toBeUndefined()
 
     expect(state.meta.lastUpdated).toBe(12345)
+  })
+
+  it('should reject empty or malformed update paths', () => {
+    const [state, update] = createStore({ user: { name: 'John' } })
+
+    expect(() => update({ $set: { '': 'Jane' } as any })).toThrow(
+      /must not be empty/i
+    )
+    expect(() => update({ $set: { 'user..name': 'Jane' } as any })).toThrow(
+      /empty path segments/i
+    )
+    expect(state.user.name).toBe('John')
+  })
+
+  it('should reject array operators on non-array paths', () => {
+    const [, update] = createStore({ user: { name: 'John' } })
+
+    expect(() => update({ $push: { user: 'x' } as any })).toThrow(/array/i)
+    expect(() => update({ $pull: { user: 'x' } as any })).toThrow(/array/i)
+    expect(() => update({ $addToSet: { user: 'x' } as any })).toThrow(/array/i)
+  })
+
+  it('should reject numeric operators on non-number paths', () => {
+    const [, update] = createStore({ user: { name: 'John' } })
+
+    expect(() => update({ $inc: { 'user.name': 1 } as any })).toThrow(/number/i)
+    expect(() => update({ $min: { 'user.name': 1 } as any })).toThrow(/number/i)
+    expect(() => update({ $max: { 'user.name': 1 } as any })).toThrow(/number/i)
+  })
+
+  it('should reject conflicting rename destinations', () => {
+    const [state, update] = createStore({
+      user: { firstName: 'John', fullName: 'John Doe' },
+    })
+
+    expect(() =>
+      update({ $rename: { 'user.firstName': 'user.fullName' } })
+    ).toThrow(/already exists/i)
+    expect(state.user.firstName).toBe('John')
+    expect(state.user.fullName).toBe('John Doe')
   })
 })

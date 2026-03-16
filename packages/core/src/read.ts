@@ -13,6 +13,8 @@ import {
 import { writeHandler } from './write'
 
 const proxyCache = new WeakMap<object, object>()
+const signalGetterCache = new Map<string, (this: any) => any>()
+const viewDescriptorCache = new Map<string, PropertyDescriptorMap>()
 
 const isWrappable = (value: unknown): value is object =>
   value !== null &&
@@ -129,18 +131,55 @@ export function createReactiveProxy<T extends object>(target: T): T {
   return proxy as T
 }
 
+export function getSignalGetter(key: string): (this: any) => any {
+  const cached = signalGetterCache.get(key)
+  if (cached) return cached
+
+  const getter = function (this: any) {
+    return this._n[key]()
+  }
+
+  signalGetterCache.set(key, getter)
+  return getter
+}
+
 export function defineSignalGetter(proto: object, key: string): void {
   Object.defineProperty(proto, key, {
-    get() {
-      return this._n[key]()
-    },
+    get: getSignalGetter(key),
     enumerable: true,
     configurable: true,
   })
 }
 
-const viewProtoCache = new Map<string, object>()
+function getViewDescriptors(keys: string[]): PropertyDescriptorMap {
+  const cacheKey = keys.join('\0')
+  const cached = viewDescriptorCache.get(cacheKey)
+  if (cached) return cached
+
+  const descriptors: PropertyDescriptorMap = {}
+  for (const key of keys) {
+    descriptors[key] = {
+      get: getSignalGetter(key),
+      enumerable: true,
+      configurable: true,
+    }
+  }
+
+  viewDescriptorCache.set(cacheKey, descriptors)
+  return descriptors
+}
+
 const viewCache = new WeakMap<object, object>()
+
+// Compiled views keep their signal table on a hidden slot so the public object
+// surface still behaves like a normal readonly object.
+export function attachViewNodes(target: object, nodes: object): void {
+  Object.defineProperty(target, '_n', {
+    value: nodes,
+    enumerable: false,
+    configurable: true,
+  })
+}
 
 export function createView<T extends object>(target: T): Readonly<T> {
   const raw = unwrap(target) as any
@@ -149,24 +188,16 @@ export function createView<T extends object>(target: T): Readonly<T> {
   if (cached) return cached as T
 
   const keys = Object.keys(raw)
-  const cacheKey = keys.join('\0')
 
   const nodes = getNodes(raw)
   for (const key of keys) {
     if (!nodes[key]) getNode(nodes, key, raw[key])
   }
 
-  let proto = viewProtoCache.get(cacheKey)
-  if (!proto) {
-    proto = {}
-    for (const key of keys) {
-      defineSignalGetter(proto, key)
-    }
-    viewProtoCache.set(cacheKey, proto)
-  }
-
-  const view = Object.create(proto)
-  view._n = nodes
+  const view = {}
+  attachViewNodes(view, nodes)
+  Object.defineProperties(view, getViewDescriptors(keys))
+  Object.freeze(view)
   viewCache.set(raw, view)
 
   return view as T

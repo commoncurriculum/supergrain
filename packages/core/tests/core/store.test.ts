@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createStore, effect, unwrap } from '../../src'
+import { $VERSION } from '../../src/internal'
 
 describe('Store', () => {
   describe('createStore', () => {
@@ -81,6 +82,11 @@ describe('Store', () => {
   })
 
   describe('Edge Cases', () => {
+    it('should reject non-object root state', () => {
+      expect(() => createStore(0 as any)).toThrow(/requires the root state/i)
+      expect(() => createStore('x' as any)).toThrow(/requires the root state/i)
+    })
+
     it('should handle frozen objects gracefully', () => {
       const frozen = Object.freeze({ value: 1 })
       const [state] = createStore({ frozen })
@@ -175,6 +181,17 @@ describe('Store', () => {
       update({ $unset: { b: 1 } })
       expect(keys.sort()).toEqual(['a'])
       expect(state.b).toBeUndefined()
+    })
+
+    it('should increment version for writes even before a property is tracked', () => {
+      const [state, update] = createStore<any>({ a: 1 })
+
+      expect(state[$VERSION]).toBe(0)
+      state.b = 2
+      expect(state[$VERSION]).toBe(1)
+
+      update({ $set: { a: 3 } })
+      expect(state[$VERSION]).toBe(2)
     })
   })
 })

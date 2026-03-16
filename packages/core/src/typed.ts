@@ -1,19 +1,20 @@
 import { getNode, getNodes } from './core'
-import { defineSignalGetter } from './read'
+import { attachViewNodes } from './read'
 
 interface SchemaProp {
   readonly key: string
   readonly value: any
 }
 
-export interface SchemaLike {
+export interface SchemaLike<TInferred extends object = any> {
   readonly props: readonly SchemaProp[]
-  readonly infer: any
+  readonly infer: TInferred
   (data: unknown): any
 }
 
 type ModelProtoEntry = {
-  proto: object
+  props: readonly SchemaProp[]
+  defineProperties(target: object): void
 }
 
 function safeGetProps(typeValue: any): readonly SchemaProp[] | null {
@@ -27,7 +28,7 @@ function safeGetProps(typeValue: any): readonly SchemaProp[] | null {
 }
 
 function buildModelProto(props: readonly SchemaProp[]): ModelProtoEntry {
-  const proto = {}
+  const descriptors: PropertyDescriptorMap = {}
 
   for (const prop of props) {
     const key = prop.key
@@ -35,38 +36,50 @@ function buildModelProto(props: readonly SchemaProp[]): ModelProtoEntry {
 
     if (childProps && childProps.length > 0) {
       const childEntry = buildModelProto(childProps)
-      Object.defineProperty(proto, key, {
-        get() {
+      descriptors[key] = {
+        get: function (this: any) {
           const raw = this._n[key]()
           if (raw === null || raw === undefined) return raw
 
-          const cached = modelViewCache.get(raw)
-          if (cached) return cached
-
-          const nodes = getNodes(raw)
-          for (const childProp of childProps) {
-            if (!nodes[childProp.key])
-              getNode(nodes, childProp.key, raw[childProp.key])
-          }
-
-          const view = Object.create(childEntry.proto)
-          view._n = nodes
-          modelViewCache.set(raw, view)
-          return view
+          return createModelViewFromEntry(raw, childEntry)
         },
         enumerable: true,
         configurable: true,
-      })
+      }
     } else {
-      defineSignalGetter(proto, key)
+      descriptors[key] = {
+        get: function (this: any) {
+          return this._n[key]()
+        },
+        enumerable: true,
+        configurable: true,
+      }
     }
   }
 
-  return { proto }
+  return {
+    props,
+    defineProperties(target: object) {
+      Object.defineProperties(target, descriptors)
+    },
+  }
 }
 
 const modelProtoCache = new WeakMap<object, ModelProtoEntry>()
 const modelViewCache = new WeakMap<object, object>()
+const modelEntryCache = new WeakMap<object, ModelProtoEntry>()
+
+function assertCompatibleTypedSchema(
+  raw: object,
+  entry: ModelProtoEntry
+): void {
+  const cachedEntry = modelEntryCache.get(raw)
+  if (cachedEntry && cachedEntry !== entry) {
+    throw new Error(
+      'A raw object cannot be used with multiple typed store schemas.'
+    )
+  }
+}
 
 function getModelProto(schema: SchemaLike): ModelProtoEntry {
   let entry = modelProtoCache.get(schema)
@@ -77,21 +90,40 @@ function getModelProto(schema: SchemaLike): ModelProtoEntry {
   return entry
 }
 
+function createModelViewFromEntry<T extends object>(
+  raw: any,
+  entry: ModelProtoEntry
+): T {
+  const cached = modelViewCache.get(raw)
+  if (cached) {
+    assertCompatibleTypedSchema(raw, entry)
+    return cached as T
+  }
+
+  const view = {}
+  const nodes = getNodes(raw)
+  for (const prop of entry.props) {
+    if (!nodes[prop.key]) getNode(nodes, prop.key, raw[prop.key])
+  }
+  attachViewNodes(view, nodes)
+  entry.defineProperties(view)
+  Object.freeze(view)
+  modelEntryCache.set(raw, entry)
+  modelViewCache.set(raw, view)
+  return view as T
+}
+
 export function createModelView<T extends object>(
   raw: any,
   schema: SchemaLike
 ): T {
-  const cached = modelViewCache.get(raw)
-  if (cached) return cached as T
+  const entry = getModelProto(schema)
+  assertCompatibleTypedSchema(raw, entry)
 
   const nodes = getNodes(raw)
   for (const prop of schema.props) {
     if (!nodes[prop.key]) getNode(nodes, prop.key, raw[prop.key])
   }
 
-  const entry = getModelProto(schema)
-  const view = Object.create(entry.proto)
-  view._n = nodes
-  modelViewCache.set(raw, view)
-  return view as T
+  return createModelViewFromEntry(raw, entry)
 }

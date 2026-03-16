@@ -1,12 +1,17 @@
 // @ts-nocheck — benchmark file, sink variables prevent dead code elimination
 // Per-operation cost isolation: proxy vs cached $NODE vs bare signal.
 import { bench, describe } from 'vitest'
-import { createStore, unwrap, $NODE } from '../src'
+import { createStore, unwrap } from '../src'
+import { $NODE } from '../src/internal'
 import { effect } from 'alien-signals'
 
 const [store] = createStore({ title: 'Buy milk', count: 0, done: false })
 const raw = unwrap(store) as any
-effect(() => { store.title; store.count; store.done })
+effect(() => {
+  store.title
+  store.count
+  store.done
+})
 
 // Use a sink to prevent dead code elimination
 let _sink: any
@@ -15,7 +20,9 @@ describe('Single property read, 100k iterations (reactive)', () => {
   bench('proxy', () => {
     let acc = ''
     const dispose = effect(() => {
-      for (let i = 0; i < 100_000; i++) { acc = store.title as string }
+      for (let i = 0; i < 100_000; i++) {
+        acc = store.title as string
+      }
     })
     _sink = acc
     dispose()
@@ -25,7 +32,9 @@ describe('Single property read, 100k iterations (reactive)', () => {
     const n = raw[$NODE]
     let acc = ''
     const dispose = effect(() => {
-      for (let i = 0; i < 100_000; i++) { acc = n['title']() }
+      for (let i = 0; i < 100_000; i++) {
+        acc = n['title']()
+      }
     })
     _sink = acc
     dispose()
@@ -35,7 +44,9 @@ describe('Single property read, 100k iterations (reactive)', () => {
     const r = raw
     let acc = ''
     const dispose = effect(() => {
-      for (let i = 0; i < 100_000; i++) { acc = r[$NODE]['title']() }
+      for (let i = 0; i < 100_000; i++) {
+        acc = r[$NODE]['title']()
+      }
     })
     _sink = acc
     dispose()
@@ -47,7 +58,9 @@ describe('3 property reads, 100k iterations (reactive)', () => {
     let a: any, b: any, c: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        a = store.title; b = store.count; c = store.done
+        a = store.title
+        b = store.count
+        c = store.done
       }
     })
     _sink = [a, b, c]
@@ -59,7 +72,9 @@ describe('3 property reads, 100k iterations (reactive)', () => {
     let a: any, b: any, c: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        a = n['title'](); b = n['count'](); c = n['done']()
+        a = n['title']()
+        b = n['count']()
+        c = n['done']()
       }
     })
     _sink = [a, b, c]
@@ -71,7 +86,9 @@ describe('3 property reads, 100k iterations (reactive)', () => {
     let a: any, b: any, c: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        a = r[$NODE]['title'](); b = r[$NODE]['count'](); c = r[$NODE]['done']()
+        a = r[$NODE]['title']()
+        b = r[$NODE]['count']()
+        c = r[$NODE]['done']()
       }
     })
     _sink = [a, b, c]

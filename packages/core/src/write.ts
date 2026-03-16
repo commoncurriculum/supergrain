@@ -1,5 +1,35 @@
 import { $NODE, $OWN_KEYS, $VERSION, unwrap } from './core'
 
+export function bumpVersion(target: object): void {
+  if ($VERSION in target) {
+    ;(target as any)[$VERSION] = ((target as any)[$VERSION] || 0) + 1
+    return
+  }
+
+  try {
+    Object.defineProperty(target, $VERSION, {
+      value: 1,
+      writable: true,
+      enumerable: false,
+    })
+  } catch {
+    // Frozen objects can't be modified.
+  }
+}
+
+export function bumpOwnKeysSignal(
+  target: object,
+  nodes?: Record<PropertyKey, any>
+): void {
+  const resolvedNodes = nodes ?? (target as any)[$NODE]
+  if (!resolvedNodes) return
+
+  const ownKeysSignal = resolvedNodes[$OWN_KEYS]
+  if (ownKeysSignal) {
+    ownKeysSignal(ownKeysSignal() + 1)
+  }
+}
+
 export function setProperty(
   target: any,
   key: PropertyKey,
@@ -15,15 +45,16 @@ export function setProperty(
     target[key] = value
   }
 
+  const didChange = isDelete ? hadKey : unwrap(oldValue) !== unwrap(value)
+  if (didChange) {
+    bumpVersion(target)
+  }
+
   const nodes = (target as any)[$NODE]
   if (nodes) {
     const node = nodes[key]
-    if (node && unwrap(oldValue) !== unwrap(value)) {
+    if (node && didChange) {
       node(isDelete ? undefined : value)
-      if ($VERSION in target) {
-        const currentVersion = (target as any)[$VERSION] || 0
-        ;(target as any)[$VERSION] = currentVersion + 1
-      }
     }
     if (Array.isArray(target) && key !== 'length') {
       const lengthNode = nodes['length']
@@ -33,11 +64,8 @@ export function setProperty(
 
   const wasAdded = !hadKey && !isDelete
   const wasDeleted = hadKey && isDelete
-  if ((wasAdded || wasDeleted) && nodes) {
-    const ownKeysSignal = nodes[$OWN_KEYS]
-    if (ownKeysSignal) {
-      ownKeysSignal(ownKeysSignal() + 1)
-    }
+  if (wasAdded || wasDeleted) {
+    bumpOwnKeysSignal(target, nodes)
   }
 }
 

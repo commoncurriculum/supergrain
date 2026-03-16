@@ -1,51 +1,60 @@
 import { startBatch, endBatch } from 'alien-signals'
 import type { Branded } from './core'
+import { $BRAND, type Signal, unwrap } from './core'
 import {
-  $BRAND,
-  $NODE,
-  $OWN_KEYS,
-  $PROXY,
-  $RAW,
-  $VERSION,
-  type Signal,
-  unwrap,
-} from './core'
-import { update as applyUpdate, type UpdateOperations } from './operators'
+  update as applyUpdate,
+  type LooseUpdateOperations,
+  type StrictUpdateOperations,
+} from './operators'
 import { createReactiveProxy, createView } from './read'
 import { createModelView, type SchemaLike } from './typed'
-import { setProperty } from './write'
 
 export {
   $BRAND,
-  $NODE,
-  $OWN_KEYS,
-  $PROXY,
-  $RAW,
-  $VERSION,
   type Branded,
   type Signal,
   unwrap,
   createView,
-  setProperty,
 }
 
-export type SetStoreFunction = (operations: UpdateOperations) => void
+export type SetStoreFunction = (
+  operations: LooseUpdateOperations
+) => void
 
-export function createStore<S extends SchemaLike>(
+export type StrictSetStoreFunction<T extends object> = (
+  operations: StrictUpdateOperations<T>
+) => void
+
+function normalizeInitialState(initialState: unknown): object {
+  if (initialState === null || initialState === undefined) {
+    return {}
+  }
+
+  const unwrapped = unwrap(initialState)
+  if (typeof unwrapped !== 'object') {
+    throw new Error(
+      'createStore() requires the root state to be a plain object or array.'
+    )
+  }
+
+  return unwrapped as object
+}
+
+export function createStore<S extends SchemaLike<any>>(
   initialState: S['infer'],
   schema: S
-): [Branded<S['infer']>, SetStoreFunction, Readonly<S['infer']>]
+): [Branded<S['infer']>, StrictSetStoreFunction<S['infer']>, Readonly<S['infer']>]
 export function createStore<T extends object>(
   initialState: T
 ): [Branded<T>, SetStoreFunction]
 export function createStore(
   initialState: any,
   schema?: SchemaLike
-): [any, SetStoreFunction, any?] {
-  const unwrappedState = unwrap(initialState || {})
+): [any, SetStoreFunction | StrictSetStoreFunction<any>, any?] {
+  const unwrappedState = normalizeInitialState(initialState)
   const state = createReactiveProxy(unwrappedState)
 
-  function updateStore(operations: UpdateOperations): void {
+  function updateStore(operations: LooseUpdateOperations): void {
     startBatch()
     try {
       applyUpdate(unwrappedState, operations)

@@ -3,21 +3,18 @@ export {
   createStore,
   createView,
   unwrap,
-  setProperty,
-  $VERSION,
-  $NODE,
-  $PROXY,
-  $RAW,
-  $OWN_KEYS,
   $BRAND,
   type Signal,
   type SetStoreFunction,
+  type StrictSetStoreFunction,
   type Branded,
 } from './store'
 
 // Export MongoDB-style update operators
 export {
   update,
+  type LooseUpdateOperations,
+  type StrictUpdateOperations,
   type UpdateOperations,
 } from './operators'
 

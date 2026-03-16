@@ -1,28 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
 import { type } from 'arktype'
 import { createStore, effect } from '../../src'
-
-const TodoSchema = type({
-  id: 'number',
-  title: 'string',
-  completed: 'boolean',
-  assignee: {
-    name: 'string',
-    avatar: 'string',
-  },
-})
+import { createTodo, TodoSchema } from '../../test-support/todo-model'
 
 describe('createStore with schema', () => {
   it('should create a store with view from schema', () => {
-    const [_store, _update, view] = createStore(
-      {
-        id: 1,
-        title: 'Buy milk',
-        completed: false,
-        assignee: { name: 'Scott', avatar: 'scott.png' },
-      },
-      TodoSchema
-    )
+    const [_store, _update, view] = createStore(createTodo(), TodoSchema)
 
     expect(view.title).toBe('Buy milk')
     expect(view.id).toBe(1)
@@ -30,15 +13,7 @@ describe('createStore with schema', () => {
   })
 
   it('should return reactive view reads inside effects', () => {
-    const [_store, update, view] = createStore(
-      {
-        id: 1,
-        title: 'Buy milk',
-        completed: false,
-        assignee: { name: 'Scott', avatar: 'scott.png' },
-      },
-      TodoSchema
-    )
+    const [_store, update, view] = createStore(createTodo(), TodoSchema)
 
     let title = ''
     const effectFn = vi.fn(() => {
@@ -55,15 +30,7 @@ describe('createStore with schema', () => {
   })
 
   it('should allow writes through the update function', () => {
-    const [_store, update, view] = createStore(
-      {
-        id: 1,
-        title: 'Buy milk',
-        completed: false,
-        assignee: { name: 'Scott', avatar: 'scott.png' },
-      },
-      TodoSchema
-    )
+    const [_store, update, view] = createStore(createTodo(), TodoSchema)
 
     expect(view.completed).toBe(false)
     update({ $set: { completed: true } })
@@ -71,15 +38,7 @@ describe('createStore with schema', () => {
   })
 
   it('should handle nested object views', () => {
-    const [_store, _update, view] = createStore(
-      {
-        id: 1,
-        title: 'Buy milk',
-        completed: false,
-        assignee: { name: 'Scott', avatar: 'scott.png' },
-      },
-      TodoSchema
-    )
+    const [_store, _update, view] = createStore(createTodo(), TodoSchema)
 
     const assigneeView = view.assignee
     expect(assigneeView.name).toBe('Scott')
@@ -87,15 +46,7 @@ describe('createStore with schema', () => {
   })
 
   it('should reactively track nested object properties', () => {
-    const [_store, update, view] = createStore(
-      {
-        id: 1,
-        title: 'Buy milk',
-        completed: false,
-        assignee: { name: 'Scott', avatar: 'scott.png' },
-      },
-      TodoSchema
-    )
+    const [_store, update, view] = createStore(createTodo(), TodoSchema)
 
     let name = ''
     const effectFn = vi.fn(() => {
@@ -112,15 +63,7 @@ describe('createStore with schema', () => {
   })
 
   it('should handle sub-tree replacement for nested objects', () => {
-    const [_store, update, view] = createStore(
-      {
-        id: 1,
-        title: 'Buy milk',
-        completed: false,
-        assignee: { name: 'Scott', avatar: 'scott.png' },
-      },
-      TodoSchema
-    )
+    const [_store, update, view] = createStore(createTodo(), TodoSchema)
 
     let name = ''
     const effectFn = vi.fn(() => {
@@ -136,15 +79,7 @@ describe('createStore with schema', () => {
   })
 
   it('should only re-run effects when tracked properties change', () => {
-    const [_store, update, view] = createStore(
-      {
-        id: 1,
-        title: 'Buy milk',
-        completed: false,
-        assignee: { name: 'Scott', avatar: 'scott.png' },
-      },
-      TodoSchema
-    )
+    const [_store, update, view] = createStore(createTodo(), TodoSchema)
 
     let title = ''
     const titleEffect = vi.fn(() => {
@@ -163,18 +98,16 @@ describe('createStore with schema', () => {
   })
 
   it('should share view prototype across instances with the same schema', () => {
-    const data1 = {
-      id: 1,
+    const data1 = createTodo({
       title: 'A',
-      completed: false,
       assignee: { name: 'X', avatar: 'x.png' },
-    }
-    const data2 = {
+    })
+    const data2 = createTodo({
       id: 2,
       title: 'B',
       completed: true,
       assignee: { name: 'Y', avatar: 'y.png' },
-    }
+    })
 
     const [, , view1] = createStore(data1, TodoSchema)
     const [, , view2] = createStore(data2, TodoSchema)
@@ -209,5 +142,59 @@ describe('createStore with schema', () => {
     update({ $set: { label: 'moved' } })
     expect(label).toBe('moved')
     expect(effectFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('should enumerate and spread typed views like normal objects', () => {
+    const [_store, _update, view] = createStore(createTodo(), TodoSchema)
+
+    expect(Object.keys(view).sort()).toEqual([
+      'assignee',
+      'completed',
+      'createdAt',
+      'dueDate',
+      'id',
+      'notes',
+      'title',
+      'updatedAt',
+    ])
+    expect({ ...view }).toEqual({
+      assignee: view.assignee,
+      completed: false,
+      createdAt: '2026-03-01',
+      dueDate: '2026-03-15',
+      id: 1,
+      notes: 'Get 2% milk',
+      title: 'Buy milk',
+      updatedAt: '2026-03-13',
+    })
+    expect(Object.keys(view.assignee).sort()).toEqual(['avatar', 'name'])
+  })
+
+  it('should reject reusing the same raw object with a different schema', () => {
+    const shared = createTodo()
+
+    createStore(shared, TodoSchema)
+
+    const AlternateSchema = type({
+      id: 'number',
+      title: 'string',
+    })
+
+    expect(() => createStore(shared, AlternateSchema)).toThrow(
+      /multiple typed store schemas/i
+    )
+  })
+
+  it('should reject direct mutation attempts on typed views', () => {
+    const [_store, _update, view] = createStore(createTodo(), TodoSchema)
+
+    expect(Object.isFrozen(view)).toBe(true)
+    expect(Object.isFrozen(view.assignee)).toBe(true)
+    expect(() => {
+      ;(view as any).title = 'Buy eggs'
+    }).toThrow()
+    expect(() => {
+      ;(view.assignee as any).name = 'Alice'
+    }).toThrow()
   })
 })

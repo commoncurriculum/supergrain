@@ -8,7 +8,8 @@
  */
 
 import { bench, describe } from 'vitest'
-import { createStore, unwrap, $NODE, $RAW } from '../src'
+import { createStore, unwrap } from '../src'
+import { $NODE, $RAW } from '../src/internal'
 import { effect, signal as alienSignal } from 'alien-signals'
 
 // Shared setup
@@ -16,7 +17,9 @@ const [store] = createStore({ title: 'Buy milk' })
 const raw = unwrap(store) as any
 
 // Force signal creation by reading in a reactive context
-const initDispose = effect(() => { store.title })
+const initDispose = effect(() => {
+  store.title
+})
 initDispose()
 
 // Pre-cache references for patterns that need them
@@ -24,24 +27,34 @@ const nodes = raw[$NODE]
 const titleSignal = nodes['title']
 
 // A minimal 2-line function
-function rs(r: any, p: string) { return r[$NODE][p]() }
+function rs(r: any, p: string) {
+  return r[$NODE][p]()
+}
 
 // For pattern 12: getter via defineProperty
 const getterObj = Object.create(null)
 Object.defineProperty(getterObj, 'title', {
-  get() { return titleSignal() },
+  get() {
+    return titleSignal()
+  },
   enumerable: true,
   configurable: true,
 })
 
 // For pattern 13: class with getter
 class StoreView {
-  get title() { return titleSignal() }
+  get title() {
+    return titleSignal()
+  }
 }
 const classView = new StoreView()
 
 // For pattern 14: preact-style .value wrapper
-const preactStyle = { get value() { return titleSignal() } }
+const preactStyle = {
+  get value() {
+    return titleSignal()
+  },
+}
 
 // For pattern: string property instead of symbol
 raw.__nodes = nodes
@@ -131,10 +144,15 @@ describe('Exhaustive Read Patterns (100k reads inside effect)', () => {
         const r = (store as any)[$RAW] || store
         let n = (r as any)[$NODE]
         if (!n) {
-          Object.defineProperty(r, $NODE, { value: {}, enumerable: false, configurable: true })
+          Object.defineProperty(r, $NODE, {
+            value: {},
+            enumerable: false,
+            configurable: true,
+          })
           n = (r as any)[$NODE]
         }
-        const node = n['title'] || (n['title'] = alienSignal((r as any)['title']))
+        const node =
+          n['title'] || (n['title'] = alienSignal((r as any)['title']))
         _acc = node()
       }
     })

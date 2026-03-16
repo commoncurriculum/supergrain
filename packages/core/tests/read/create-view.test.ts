@@ -49,4 +49,33 @@ describe('createView', () => {
     const view = createView(store)
     expect(view.items).toEqual([1, 2, 3])
   })
+
+  it('behaves like a normal readonly object for enumeration and spread', () => {
+    const [store] = createStore({ title: 'hello', count: 0 })
+    const view = createView(store)
+
+    expect(Object.keys(view)).toEqual(['title', 'count'])
+    expect({ ...view }).toEqual({ title: 'hello', count: 0 })
+    expect(JSON.parse(JSON.stringify(view))).toEqual({
+      title: 'hello',
+      count: 0,
+    })
+  })
+
+  it('is frozen to enforce the readonly facade contract', () => {
+    const [store] = createStore({ title: 'hello' })
+    const view = createView(store)
+
+    expect(Object.isFrozen(view)).toBe(true)
+  })
+
+  it('rejects direct mutation attempts on the readonly facade', () => {
+    const [store] = createStore({ title: 'hello' })
+    const view = createView(store)
+
+    expect(() => {
+      ;(view as any).title = 'world'
+    }).toThrow()
+    expect(store.title).toBe('hello')
+  })
 })
