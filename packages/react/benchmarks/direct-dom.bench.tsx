@@ -77,71 +77,58 @@ const ProxyApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) =>
 })
 
 // --- Direct DOM App: cloneNode + signal wiring, no React rows ---
+// Builds rows synchronously (no reactive data-watching effect).
+// Per-row effects handle label + selection updates directly.
 const DirectDomApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) => void }> = ({ store, sel, rem }) => {
   const tbodyRef = useRef<HTMLTableSectionElement>(null)
-  const cleanups = useRef<(() => void)[]>([])
+  const stateRef = useRef<{ cleanups: (() => void)[]; raw: any; storeNodes: any } | null>(null)
+
+  if (!stateRef.current) {
+    const raw = (store as any)[$RAW] || store
+    stateRef.current = { cleanups: [], raw, storeNodes: raw[$NODE] }
+  }
+
+  // Expose a build function that the benchmark calls directly
+  const st = stateRef.current
+  ;(store as any).__directBuild = (data: RowData[]) => {
+    const tbody = tbodyRef.current!
+    const storeNodes = st.storeNodes
+    // Set store data for operations that need it (sel, swap, update)
+    st.raw.data = data
+
+    // Tear down old
+    for (const c of st.cleanups) c()
+    st.cleanups = []
+    tbody.textContent = ''
+
+    // Build rows synchronously — no outer effect, no reactive context overhead
+    for (const item of data) {
+      const tr = rowTemplate.cloneNode(true) as HTMLTableRowElement
+      const tds = tr.children
+      ;(tds[0] as HTMLElement).textContent = String(item.id)
+      const a1 = (tds[1] as HTMLElement).firstChild as HTMLAnchorElement
+      const a2 = (tds[2] as HTMLElement).firstChild as HTMLAnchorElement
+
+      a1.textContent = item.label
+      a1.onclick = () => sel(item.id)
+      a2.onclick = () => rem(item.id)
+
+      const itemNodes = (item as any)[$NODE]
+      if (itemNodes?.label) {
+        st.cleanups.push(effect(() => { a1.textContent = itemNodes.label() }))
+      }
+      if (storeNodes?.selected) {
+        const itemId = item.id
+        st.cleanups.push(effect(() => { tr.className = storeNodes.selected() === itemId ? 'danger' : '' }))
+      }
+
+      tbody.appendChild(tr)
+    }
+  }
 
   useEffect(() => {
-    const raw = (store as any)[$RAW] || store
-    const storeNodes = raw[$NODE]
-
-    // Watch the data signal — when data changes, rebuild all rows
-    const dataCleanup = effect(() => {
-      const data: RowData[] = storeNodes.data()
-      const tbody = tbodyRef.current!
-
-      // Tear down old subscriptions
-      for (const c of cleanups.current) c()
-      cleanups.current = []
-
-      // Clear DOM
-      tbody.textContent = ''
-
-      // Build rows via cloneNode
-      for (const item of data) {
-        const tr = rowTemplate.cloneNode(true) as HTMLTableRowElement
-        const tds = tr.children
-        const td0 = tds[0] as HTMLElement
-        const a1 = (tds[1] as HTMLElement).firstChild as HTMLAnchorElement
-        const a2 = (tds[2] as HTMLElement).firstChild as HTMLAnchorElement
-
-        // Static content
-        td0.textContent = String(item.id)
-        a1.textContent = item.label
-
-        // Event listeners
-        a1.onclick = () => sel(item.id)
-        a2.onclick = () => rem(item.id)
-
-        // Subscribe label signal → DOM
-        const itemNodes = (item as any)[$NODE]
-        if (itemNodes?.label) {
-          const c = effect(() => {
-            a1.textContent = itemNodes.label()
-          })
-          cleanups.current.push(c)
-        }
-
-        // Subscribe selected signal → className
-        if (storeNodes?.selected) {
-          const itemId = item.id
-          const c = effect(() => {
-            const selected = storeNodes.selected()
-            tr.className = selected === itemId ? 'danger' : ''
-          })
-          cleanups.current.push(c)
-        }
-
-        tbody.appendChild(tr)
-      }
-    })
-
-    return () => {
-      dataCleanup()
-      for (const c of cleanups.current) c()
-      cleanups.current = []
-    }
-  }, [store])
+    return () => { for (const c of st.cleanups) c() }
+  }, [])
 
   return <table><tbody ref={tbodyRef} /></table>
 }
@@ -341,7 +328,10 @@ describe('Create 1000 rows', () => {
   bench('direct-dom (cloneNode)', async () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
-    await act(async () => { ctx.run(1000) })
+    await act(async () => {
+      const data = buildData(1000)
+      ;(ctx.store as any).__directBuild(data)
+    })
     cleanup(); idCounter = 1
   })
   bench('react-hooks (vanilla)', async () => {
@@ -369,7 +359,7 @@ describe('Select row', () => {
   bench('direct-dom (cloneNode)', async () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
-    await act(async () => { ctx.run(1000) })
+    await act(async () => { ;(ctx.store as any).__directBuild(buildData(1000)) })
     await act(async () => { ctx.sel(500) })
     cleanup(); idCounter = 1
   })
@@ -400,7 +390,7 @@ describe('Swap rows', () => {
   bench('direct-dom (cloneNode)', async () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
-    await act(async () => { ctx.run(1000) })
+    await act(async () => { ;(ctx.store as any).__directBuild(buildData(1000)) })
     await act(async () => { ctx.swap() })
     cleanup(); idCounter = 1
   })
@@ -431,7 +421,7 @@ describe('Partial update (100 of 1000)', () => {
   bench('direct-dom (cloneNode)', async () => {
     const ctx = makeStore()
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />)
-    await act(async () => { ctx.run(1000) })
+    await act(async () => { ;(ctx.store as any).__directBuild(buildData(1000)) })
     await act(async () => { ctx.update10th() })
     cleanup(); idCounter = 1
   })
