@@ -189,3 +189,4 @@ es/
 **/__screenshots__/
 .DS_Store
 .vitest-attachments/
+/packages/react/.vitest-attachments

@@ -11,7 +11,8 @@
  */
 
 import { bench, describe } from 'vitest'
-import { createStore, $NODE, $RAW, effect } from '@supergrain/core'
+import { createStore, effect } from '@supergrain/core'
+import { $NODE, $RAW } from '@supergrain/core/internal'
 import React, { useRef, useEffect } from 'react'
 import { render, cleanup, act } from '@testing-library/react'
 

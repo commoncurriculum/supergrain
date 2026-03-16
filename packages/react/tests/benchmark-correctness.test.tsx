@@ -4,7 +4,8 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { createStore, $NODE, $RAW, effect, getCurrentSub, setCurrentSub, signal as coreSignal } from '@supergrain/core'
+import { createStore, effect, getCurrentSub, setCurrentSub, signal as coreSignal } from '@supergrain/core'
+import { $NODE, $RAW } from '@supergrain/core/internal'
 import { useTracked, For } from '../src/use-store'
 import React, { FC, memo, useCallback, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
 import { render, cleanup, act } from '@testing-library/react'

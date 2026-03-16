@@ -6,7 +6,8 @@
  */
 
 import { bench, describe } from 'vitest'
-import { createStore, $NODE, $RAW, effect } from '@supergrain/core'
+import { createStore, effect } from '@supergrain/core'
+import { $NODE, $RAW } from '@supergrain/core/internal'
 import { signal as alienSignal } from 'alien-signals'
 import {
   createRoot as createSolidRoot,

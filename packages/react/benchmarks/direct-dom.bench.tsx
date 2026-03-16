@@ -8,7 +8,8 @@
  */
 
 import { bench, describe } from 'vitest'
-import { createStore, createView, $NODE, $RAW, effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
+import { createStore, createView, effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
+import { $NODE, $RAW } from '@supergrain/core/internal'
 import { useTracked, For } from '../src/use-store'
 import React, { FC, memo, useCallback, useState, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
 import { render, cleanup, act } from '@testing-library/react'

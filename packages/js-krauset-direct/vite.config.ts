@@ -1,19 +1,9 @@
-import dts from 'vite-plugin-dts'
-/// <reference types="vitest" />
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
-import { supergrain } from '../vite-plugin/src/index'
 import react from '@vitejs/plugin-react'
 
-// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [
-    dts({
-      insertTypesEntry: true,
-    }),
-    // supergrain() plugin removed — this file IS the hand-written compiled output
-    react(),
-  ],
+  plugins: [react()],
 
   // This is the key change:
   // We use aliasing to tell Vite to bundle the local supergrain packages

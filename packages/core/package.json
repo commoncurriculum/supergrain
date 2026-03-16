@@ -20,6 +20,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.es.js",
       "require": "./dist/index.cjs.js"
+    },
+    "./internal": {
+      "types": "./internal.d.ts",
+      "import": "./src/internal.ts"
     }
   },
   "files": [
