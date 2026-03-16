@@ -303,6 +303,137 @@ export function createView<T extends object>(target: T): T {
   return view as T
 }
 
+// --- createModelStore: schema-driven store with pre-built view prototypes ---
+
+interface SchemaProp {
+  readonly key: string
+  readonly value: any
+}
+
+interface SchemaLike {
+  readonly props: readonly SchemaProp[]
+  readonly infer: any
+  (data: unknown): any
+}
+
+type ModelProtoEntry = {
+  proto: object
+  nested: Map<string, ModelProtoEntry>
+}
+
+function safeGetProps(typeValue: any): readonly SchemaProp[] | null {
+  try {
+    const p = typeValue?.props
+    if (Array.isArray(p) && p.length > 0) return p
+  } catch {
+    // .props throws for non-object types (e.g., string, number)
+  }
+  return null
+}
+
+function buildModelProto(props: readonly SchemaProp[]): ModelProtoEntry {
+  const proto = {}
+  const nested = new Map<string, ModelProtoEntry>()
+
+  for (const prop of props) {
+    const key = prop.key
+    const childProps = safeGetProps(prop.value)
+
+    if (childProps && childProps.length > 0) {
+      // Nested object — build its prototype recursively
+      const childEntry = buildModelProto(childProps)
+      nested.set(key, childEntry)
+      Object.defineProperty(proto, key, {
+        get() {
+          const raw = this._n[key]()
+          if (raw === null || raw === undefined) return raw
+          // Check cache first
+          const cached = modelViewCache.get(raw)
+          if (cached) return cached
+          // Create nested view
+          const nodes = getNodes(raw)
+          for (const cp of childProps) {
+            if (!nodes[cp.key]) getNode(nodes, cp.key, raw[cp.key])
+          }
+          const view = Object.create(childEntry.proto)
+          view._n = nodes
+          modelViewCache.set(raw, view)
+          return view
+        },
+        enumerable: true,
+        configurable: true,
+      })
+    } else {
+      // Leaf property — direct signal read
+      Object.defineProperty(proto, key, {
+        get() { return this._n[key]() },
+        enumerable: true,
+        configurable: true,
+      })
+    }
+  }
+
+  return { proto, nested }
+}
+
+const modelProtoCache = new WeakMap<object, ModelProtoEntry>()
+const modelViewCache = new WeakMap<object, object>()
+
+function getModelProto(schema: SchemaLike): ModelProtoEntry {
+  let entry = modelProtoCache.get(schema)
+  if (!entry) {
+    entry = buildModelProto(schema.props)
+    modelProtoCache.set(schema, entry)
+  }
+  return entry
+}
+
+function createModelView<T extends object>(
+  raw: any,
+  entry: ModelProtoEntry,
+  props: readonly SchemaProp[]
+): T {
+  const cached = modelViewCache.get(raw)
+  if (cached) return cached as T
+
+  const nodes = getNodes(raw)
+  for (const prop of props) {
+    if (!nodes[prop.key]) getNode(nodes, prop.key, raw[prop.key])
+  }
+
+  const view = Object.create(entry.proto)
+  view._n = nodes
+  modelViewCache.set(raw, view)
+  return view as T
+}
+
+export function createModelStore<S extends SchemaLike>(
+  schema: S,
+  initialData: S['infer']
+): [Branded<S['infer']>, SetStoreFunction, S['infer']] {
+  const unwrappedState = unwrap(initialData || ({} as any))
+  initSignals(unwrappedState)
+  const state = createReactiveProxy(unwrappedState)
+
+  const entry = getModelProto(schema)
+  const view = createModelView<S['infer']>(
+    unwrappedState,
+    entry,
+    schema.props
+  )
+
+  function updateStore(operations: UpdateOperations): void {
+    startBatch()
+    try {
+      applyUpdate(unwrappedState, operations)
+    } finally {
+      endBatch()
+    }
+  }
+
+  return [state as Branded<S['infer']>, updateStore, view]
+}
+
 export function createStore<T extends object>(
   initialState: T
 ): [Branded<T>, SetStoreFunction] {

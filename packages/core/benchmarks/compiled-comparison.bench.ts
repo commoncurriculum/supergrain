@@ -6,7 +6,8 @@
  */
 
 import { bench, describe } from 'vitest'
-import { createStore, readLeaf, unwrap, $NODE } from '../src'
+import { type } from 'arktype'
+import { createStore, createModelStore, readLeaf, unwrap, $NODE } from '../src'
 import { effect, signal } from 'alien-signals'
 
 const data = () => ({
@@ -17,6 +18,16 @@ const data = () => ({
   notes: 'Get 2% milk',
   createdAt: '2026-03-01',
   updatedAt: '2026-03-13',
+})
+
+const TodoSchema = type({
+  title: 'string',
+  completed: 'boolean',
+  assignee: { name: 'string', avatar: 'string' },
+  dueDate: 'string',
+  notes: 'string',
+  createdAt: 'string',
+  updatedAt: 'string',
 })
 
 // Class getter view — what the compiler should generate
@@ -46,6 +57,8 @@ describe('Reactive Leaf Reads (100k inside effect)', () => {
   const viewRaw = unwrap(createStore(data())[0]) as any
   const view = new StoreView(viewRaw)
 
+  const [, , modelView] = createModelStore(TodoSchema, data())
+
   bench('proxy', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { proxyStore.title }
@@ -63,6 +76,13 @@ describe('Reactive Leaf Reads (100k inside effect)', () => {
   bench('class getter', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { view.title }
+    })
+    dispose()
+  })
+
+  bench('model store (schema-driven)', () => {
+    const dispose = effect(() => {
+      for (let i = 0; i < 100_000; i++) { modelView.title }
     })
     dispose()
   })
@@ -102,6 +122,15 @@ describe('Reactive Updates (1000 mutations)', () => {
     const raw = unwrap(store) as any
     const v = new StoreView(raw)
     const dispose = effect(() => { v.title })
+    for (let i = 0; i < 1000; i++) {
+      update({ $set: { title: `Title ${i}` } })
+    }
+    dispose()
+  })
+
+  bench('model store (schema-driven)', () => {
+    const [, update, mv] = createModelStore(TodoSchema, data())
+    const dispose = effect(() => { mv.title })
     for (let i = 0; i < 1000; i++) {
       update({ $set: { title: `Title ${i}` } })
     }
@@ -147,6 +176,18 @@ describe('Component Render: 6 leaf reads (10k renders)', () => {
     })
     dispose()
   })
+
+  const [, , modelView6] = createModelStore(TodoSchema, data())
+
+  bench('model store (schema-driven)', () => {
+    const dispose = effect(() => {
+      for (let i = 0; i < 10_000; i++) {
+        modelView6.title; modelView6.completed; modelView6.dueDate
+        modelView6.notes; modelView6.createdAt; modelView6.updatedAt
+      }
+    })
+    dispose()
+  })
 })
 
 // --- Batched updates ---
@@ -171,6 +212,19 @@ describe('Batched Updates: 5 fields (1000 batches)', () => {
     const v = new StoreView(raw)
     const dispose = effect(() => {
       v.title; v.completed; v.notes; v.dueDate; v.updatedAt
+    })
+    for (let i = 0; i < 1000; i++) {
+      update({
+        $set: { title: `T${i}`, completed: i % 2 === 0, notes: `N${i}`, dueDate: `D${i}`, updatedAt: `U${i}` },
+      })
+    }
+    dispose()
+  })
+
+  bench('model store (schema-driven)', () => {
+    const [, update, mv] = createModelStore(TodoSchema, data())
+    const dispose = effect(() => {
+      mv.title; mv.completed; mv.notes; mv.dueDate; mv.updatedAt
     })
     for (let i = 0; i < 1000; i++) {
       update({
