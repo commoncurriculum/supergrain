@@ -14,7 +14,6 @@ import { writeHandler } from './write'
 
 const proxyCache = new WeakMap<object, object>()
 const signalGetterCache = new Map<string, (this: any) => any>()
-const viewDescriptorCache = new Map<string, PropertyDescriptorMap>()
 
 const isWrappable = (value: unknown): value is object =>
   value !== null &&
@@ -151,24 +150,6 @@ export function defineSignalGetter(proto: object, key: string): void {
   })
 }
 
-function getViewDescriptors(keys: string[]): PropertyDescriptorMap {
-  const cacheKey = keys.join('\0')
-  const cached = viewDescriptorCache.get(cacheKey)
-  if (cached) return cached
-
-  const descriptors: PropertyDescriptorMap = {}
-  for (const key of keys) {
-    descriptors[key] = {
-      get: getSignalGetter(key),
-      enumerable: true,
-      configurable: true,
-    }
-  }
-
-  viewDescriptorCache.set(cacheKey, descriptors)
-  return descriptors
-}
-
 const viewCache = new WeakMap<object, object>()
 
 // Compiled views keep their signal table on a hidden slot so the public object
@@ -196,7 +177,9 @@ export function createView<T extends object>(target: T): Readonly<T> {
 
   const view = {}
   attachViewNodes(view, nodes)
-  Object.defineProperties(view, getViewDescriptors(keys))
+  for (const key of keys) {
+    defineSignalGetter(view, key)
+  }
   Object.freeze(view)
   viewCache.set(raw, view)
 
