@@ -1,13 +1,22 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterAll } from 'vitest'
 import ts from 'typescript'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import { transformCode } from '../src/plugin'
 
+const tmpDirs: string[] = []
+
+afterAll(() => {
+  for (const dir of tmpDirs) {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 function createTestProgram(code: string, options?: { jsx?: boolean }): { sourceFile: ts.SourceFile; checker: ts.TypeChecker } {
   // Write temp file
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'supergrain-test-'))
+  tmpDirs.push(tmpDir)
   const ext = options?.jsx ? 'test.tsx' : 'test.ts'
   const filePath = path.join(tmpDir, ext)
   fs.writeFileSync(filePath, code)

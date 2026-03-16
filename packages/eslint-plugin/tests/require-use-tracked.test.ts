@@ -10,20 +10,19 @@ const ruleTester = new RuleTester({
 })
 
 describe('require-use-tracked', () => {
-  it('passes valid and catches invalid cases', () => {
+  it('is a no-op (readSignal was removed)', () => {
     ruleTester.run('require-use-tracked', rule, {
       valid: [
-        // Has useTracked before readSignal — OK
+        // Previously invalid, now passes because the rule is a no-op
         {
           code: `
             function TodoItem({ item }) {
-              item = useTracked(item)
               const title = readSignal(item, 'title')()
               return title
             }
           `,
         },
-        // No readSignal — OK (not a compiled component)
+        // Normal component — always valid
         {
           code: `
             function PlainComponent() {
@@ -31,82 +30,8 @@ describe('require-use-tracked', () => {
             }
           `,
         },
-        // readSignal in a non-component helper is fine if useTracked is present
-        {
-          code: `
-            function useCustomHook(store) {
-              const tracked = useTracked(store)
-              return readSignal(tracked, 'count')()
-            }
-          `,
-        },
-        // Arrow function with useTracked
-        {
-          code: `
-            const TodoItem = ({ item }) => {
-              item = useTracked(item)
-              return readSignal(item, 'title')()
-            }
-          `,
-        },
-        // readSignal in .map() callback, useTracked in parent component
-        {
-          code: `
-            function TodoList({ store }) {
-              store = useTracked(store)
-              return readSignal(store, 'items')().map((item) => {
-                return readSignal(item, 'title')()
-              })
-            }
-          `,
-        },
       ],
-      invalid: [
-        // readSignal without useTracked — ERROR
-        {
-          code: `
-            function TodoItem({ item }) {
-              const title = readSignal(item, 'title')()
-              return title
-            }
-          `,
-          errors: [{ messageId: 'missingUseTracked' }],
-        },
-        // Arrow function missing useTracked
-        {
-          code: `
-            const TodoItem = ({ item }) => {
-              return readSignal(item, 'title')()
-            }
-          `,
-          errors: [{ messageId: 'missingUseTracked' }],
-        },
-        // Multiple readSignal calls, no useTracked
-        {
-          code: `
-            function TodoItem({ item }) {
-              const title = readSignal(item, 'title')()
-              const done = readSignal(item, 'completed')()
-              return title
-            }
-          `,
-          errors: [{ messageId: 'missingUseTracked' }],
-        },
-        // readSignal in .map() callback, NO useTracked anywhere
-        {
-          code: `
-            function TodoList({ store }) {
-              return readSignal(store, 'items')().map((item) => {
-                return readSignal(item, 'title')()
-              })
-            }
-          `,
-          errors: [
-            { messageId: 'missingUseTracked' },
-            { messageId: 'missingUseTracked' },
-          ],
-        },
-      ],
+      invalid: [],
     })
   })
 })

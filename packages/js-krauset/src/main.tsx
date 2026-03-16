@@ -1,7 +1,7 @@
 import { FC, memo, useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
 import { useTracked, For } from '@supergrain/react'
-import { createStore, $BRAND, type Branded } from '@supergrain/core'
+import { createStore } from '@supergrain/core'
 
 // --- Data Generation ---
 

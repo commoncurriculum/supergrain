@@ -57,6 +57,9 @@ export function transformCode(
       if (ts.isJsxSelfClosingElement(current)) {
         return current
       }
+      if (ts.isJsxFragment(current)) {
+        return null // Can't attach ref to a fragment
+      }
       current = current.parent
     }
     return null
@@ -163,21 +166,13 @@ export function transformCode(
     }
     elementRefIndex.set(el, binding.index)
 
-    // Insert ref={__$$N} before the closing > of the opening tag
-    const tagEnd = el.getEnd()
-    // For JsxOpeningElement, the tag ends with >
-    // For JsxSelfClosingElement, it ends with />
+    // Insert ref={__$$N} after the last attribute, before the closing > or />
+    // Uses el.attributes.end (AST position) instead of string search, which is
+    // safe even when attribute values contain '>' characters.
+    const insertPos = el.attributes.end
     if (ts.isJsxSelfClosingElement(el)) {
-      // Insert before />
-      const tagText = code.slice(el.getStart(sourceFile), tagEnd)
-      const slashPos = tagText.lastIndexOf('/>')
-      const insertPos = el.getStart(sourceFile) + slashPos
-      rewrites.push({ start: insertPos, end: insertPos, replacement: ` ref={__$$${binding.index}} ` })
+      rewrites.push({ start: insertPos, end: insertPos, replacement: ` ref={__$$${binding.index}}` })
     } else {
-      // JsxOpeningElement: insert before >
-      const tagText = code.slice(el.getStart(sourceFile), tagEnd)
-      const gtPos = tagText.lastIndexOf('>')
-      const insertPos = el.getStart(sourceFile) + gtPos
       rewrites.push({ start: insertPos, end: insertPos, replacement: ` ref={__$$${binding.index}}` })
     }
   }
@@ -220,7 +215,11 @@ export function transformCode(
 
   if (!hasRewrites) return null
 
-  // Add react imports for $$ transformation
+  // Add react imports for $$ transformation.
+  // Note: import injection uses regex matching for simplicity. This works reliably
+  // for the two imports we add (useRef from 'react', useDirectBindings from
+  // '@supergrain/react') since they follow standard named import syntax. A full
+  // AST-based import rewriter would be overkill for just these two cases.
   if (hasDDBindings) {
     // Add useRef from react
     if (!code.includes('useRef')) {
