@@ -78,7 +78,7 @@ This is safe because: symbol properties (`$RAW`, etc.) are never in the `$NODE` 
 
 **Why class getters work:** V8 treats `class Foo { get x() { ... } }` as a stable hidden class with a known getter. TurboFan can inline the getter body after a few calls. Proxy traps and regular function calls go through V8's generic call path, which can't be inlined.
 
-**This is the same reason preact signals are 2-4x faster than alien-signals on reads.** Preact uses `signal.value` — a class prototype getter. Alien-signals uses `signal()` — a function call. V8 optimizes the getter better.
+**Note:** Earlier benchmarks suggested preact signals were 2-4x faster than alien-signals on reads, but those benchmarks were not run inside an effect (no reactive tracking context). The comparison was invalid — preact was just returning `this._value` without tracking overhead. The class getter finding is based on our own benchmarks with proper reactive context.
 
 #### How to implement
 
@@ -176,12 +176,10 @@ Does 10x faster reads translate to visible improvement in the krauset benchmark?
 2. Plugin replaces useTracked with useCompiled + ViewClass
 3. Plugin rewrites property reads to use the view
 
-## Open Questions
+## Resolved Questions
 
-1. **Preact signals**: They're 2-4x faster at reads than alien-signals because of `.value` getter vs function call. If we switched to preact/signals-core, would that compound with the class getter approach? Or would the class getter already achieve the same speed?
+1. **React tax**: The gap analysis proved React mount + act() is <0.1ms. The bottleneck was nested effect creation in reactive cycles, not React. The supergrain store itself runs at ~5ms — matching solid-js.
 
-2. **Nested views**: How to handle `view.user.name` where `user` returns a nested view? The outer getter has to cache the inner view instance and invalidate on sub-tree replacement. This adds a branch.
+2. **Nested views**: `createView` handles nested objects via `createModelStore` with ArkType schemas. Nested views are cached per raw object via WeakMap.
 
-3. **Array items**: `view.data[0]` — the getter returns the raw array, bracket access returns a raw element. Does each element need its own view? Can the For component handle this?
-
-4. **React tax**: What fraction of krauset benchmark time is React overhead vs store reads? If it's 90% React, even 10x faster reads only gives ~1.1x total improvement.
+3. **Array items**: The `$$()` direct DOM approach handles arrays via cloneNode + per-item signal subscriptions, matching solid's pattern.
