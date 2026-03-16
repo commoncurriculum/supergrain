@@ -292,7 +292,7 @@ export function createView<T extends object>(target: T): Readonly<T> {
   return view as T
 }
 
-// --- createModelStore: schema-driven store with pre-built view prototypes ---
+// --- Schema-driven store: pre-built view prototypes from ArkType ---
 
 interface SchemaProp {
   readonly key: string

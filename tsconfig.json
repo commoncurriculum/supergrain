@@ -9,5 +9,5 @@
     "forceConsistentCasingInFileNames": true
   },
   "files": [],
-  "references": [{ "path": "packages/core" }, { "path": "packages/react" }, { "path": "packages/vite-plugin" }, { "path": "packages/eslint-plugin" }]
+  "references": [{ "path": "packages/core" }, { "path": "packages/react" }, { "path": "packages/vite-plugin" }]
 }

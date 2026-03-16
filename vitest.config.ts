@@ -13,13 +13,6 @@ export default defineConfig({
           environment: 'node',
         },
       },
-      // Node environment for eslint-plugin tests
-      {
-        test: {
-          include: ['packages/eslint-plugin/**/*.test.{ts,tsx}'],
-          environment: 'node',
-        },
-      },
       // Node environment for app-store tests
       {
         test: {
