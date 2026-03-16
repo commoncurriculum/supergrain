@@ -1,3 +1,4 @@
+// @ts-nocheck — benchmark file, sink variables prevent dead code elimination
 import { bench, describe } from 'vitest'
 import { createStore, unwrap, $NODE } from '../src'
 import { effect } from 'alien-signals'
@@ -7,7 +8,7 @@ const raw = unwrap(store) as any
 effect(() => { store.title; store.count; store.done })
 
 // Use a sink to prevent dead code elimination
-let sink: any
+let _sink: any
 
 describe('Single property read, 100k iterations (reactive)', () => {
   bench('proxy', () => {
@@ -15,7 +16,7 @@ describe('Single property read, 100k iterations (reactive)', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { acc = store.title as string }
     })
-    sink = acc
+    _sink = acc
     dispose()
   })
 
@@ -25,7 +26,7 @@ describe('Single property read, 100k iterations (reactive)', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { acc = n['title']() }
     })
-    sink = acc
+    _sink = acc
     dispose()
   })
 
@@ -35,7 +36,7 @@ describe('Single property read, 100k iterations (reactive)', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { acc = r[$NODE]['title']() }
     })
-    sink = acc
+    _sink = acc
     dispose()
   })
 })
@@ -48,7 +49,7 @@ describe('3 property reads, 100k iterations (reactive)', () => {
         a = store.title; b = store.count; c = store.done
       }
     })
-    sink = [a, b, c]
+    _sink = [a, b, c]
     dispose()
   })
 
@@ -60,7 +61,7 @@ describe('3 property reads, 100k iterations (reactive)', () => {
         a = n['title'](); b = n['count'](); c = n['done']()
       }
     })
-    sink = [a, b, c]
+    _sink = [a, b, c]
     dispose()
   })
 
@@ -72,7 +73,7 @@ describe('3 property reads, 100k iterations (reactive)', () => {
         a = r[$NODE]['title'](); b = r[$NODE]['count'](); c = r[$NODE]['done']()
       }
     })
-    sink = [a, b, c]
+    _sink = [a, b, c]
     dispose()
   })
 })

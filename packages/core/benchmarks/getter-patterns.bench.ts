@@ -1,3 +1,4 @@
+// @ts-nocheck — benchmark file, sink variables prevent dead code elimination
 import { bench, describe } from 'vitest'
 import { createStore, unwrap, $NODE } from '../src'
 import { effect } from 'alien-signals'
@@ -8,8 +9,7 @@ const raw = unwrap(store) as any
 effect(() => { store.title })
 const nodes = raw[$NODE]
 
-// Use a sink to prevent dead code elimination
-let sink: any
+// @ts-nocheck — benchmark file, sink variables prevent dead code elimination
 
 // --- Pattern 1: Static class getter (baseline) ---
 class StaticView {
@@ -63,7 +63,7 @@ describe('Getter patterns: 100k reads inside effect()', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { acc = view.title }
     })
-    sink = acc
+    _sink = acc
     dispose()
   })
 
@@ -73,7 +73,7 @@ describe('Getter patterns: 100k reads inside effect()', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { acc = view.title }
     })
-    sink = acc
+    _sink = acc
     dispose()
   })
 
@@ -84,7 +84,7 @@ describe('Getter patterns: 100k reads inside effect()', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { acc = obj.title }
     })
-    sink = acc
+    _sink = acc
     dispose()
   })
 
@@ -94,7 +94,7 @@ describe('Getter patterns: 100k reads inside effect()', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { acc = view.title }
     })
-    sink = acc
+    _sink = acc
     dispose()
   })
 
@@ -104,7 +104,7 @@ describe('Getter patterns: 100k reads inside effect()', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { acc = obj.title }
     })
-    sink = acc
+    _sink = acc
     dispose()
   })
 
@@ -113,7 +113,7 @@ describe('Getter patterns: 100k reads inside effect()', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { acc = store.title }
     })
-    sink = acc
+    _sink = acc
     dispose()
   })
 
@@ -122,7 +122,7 @@ describe('Getter patterns: 100k reads inside effect()', () => {
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) { acc = nodes.title() }
     })
-    sink = acc
+    _sink = acc
     dispose()
   })
 })

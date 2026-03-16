@@ -1,3 +1,4 @@
+// @ts-nocheck — benchmark file, acc variables prevent dead code elimination
 /**
  * Exhaustive benchmark of every possible read pattern for reactive signals.
  *
@@ -49,50 +50,50 @@ describe('Exhaustive Read Patterns (100k reads inside effect)', () => {
   // ========== DIRECT PATTERNS (no function call) ==========
 
   bench('1. proxy.title (baseline)', () => {
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        acc = store.title
+        _acc = store.title
       }
     })
     dispose()
   })
 
   bench('2. nodes[title]() — cached $NODE map', () => {
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        acc = nodes['title']()
+        _acc = nodes['title']()
       }
     })
     dispose()
   })
 
   bench('3. raw[$NODE][title]() — uncached symbol lookup', () => {
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        acc = raw[$NODE]['title']()
+        _acc = raw[$NODE]['title']()
       }
     })
     dispose()
   })
 
   bench('4. raw.__nodes[title]() — string prop instead of symbol', () => {
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        acc = raw.__nodes['title']()
+        _acc = raw.__nodes['title']()
       }
     })
     dispose()
   })
 
   bench('5. titleSignal() — direct signal ref in local var', () => {
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        acc = titleSignal()
+        _acc = titleSignal()
       }
     })
     dispose()
@@ -101,10 +102,10 @@ describe('Exhaustive Read Patterns (100k reads inside effect)', () => {
   // ========== FUNCTION CALL PATTERNS ==========
 
   bench('6. rs(raw, title) — minimal 2-line function', () => {
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        acc = rs(raw, 'title')
+        _acc = rs(raw, 'title')
       }
     })
     dispose()
@@ -113,17 +114,17 @@ describe('Exhaustive Read Patterns (100k reads inside effect)', () => {
   // ========== OBJECT METHOD PATTERNS ==========
 
   bench('7. raw[$NODE].title() — dot access on nodes', () => {
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        acc = raw[$NODE].title()
+        _acc = raw[$NODE].title()
       }
     })
     dispose()
   })
 
   bench('8. inlined readSignal body (no function call)', () => {
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
         // Inline the full signal read logic — no function call overhead
@@ -134,7 +135,7 @@ describe('Exhaustive Read Patterns (100k reads inside effect)', () => {
           n = (r as any)[$NODE]
         }
         const node = n['title'] || (n['title'] = alienSignal((r as any)['title']))
-        acc = node()
+        _acc = node()
       }
     })
     dispose()
@@ -143,20 +144,20 @@ describe('Exhaustive Read Patterns (100k reads inside effect)', () => {
   // ========== GETTER / PROPERTY DESCRIPTOR PATTERNS ==========
 
   bench('9. Object.defineProperty getter', () => {
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        acc = getterObj.title
+        _acc = getterObj.title
       }
     })
     dispose()
   })
 
   bench('10. class with getter method', () => {
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        acc = classView.title
+        _acc = classView.title
       }
     })
     dispose()
@@ -165,10 +166,10 @@ describe('Exhaustive Read Patterns (100k reads inside effect)', () => {
   // ========== PREACT-STYLE PATTERN ==========
 
   bench('11. preact-style .value getter', () => {
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        acc = preactStyle.value
+        _acc = preactStyle.value
       }
     })
     dispose()
@@ -178,10 +179,10 @@ describe('Exhaustive Read Patterns (100k reads inside effect)', () => {
 
   bench('12. raw alien signal() — absolute ceiling', () => {
     const sig = alienSignal('Buy milk')
-    let acc: any
+    let _acc: any
     const dispose = effect(() => {
       for (let i = 0; i < 100_000; i++) {
-        acc = sig()
+        _acc = sig()
       }
     })
     dispose()

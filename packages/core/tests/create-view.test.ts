@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createStore, createView, unwrap, effect } from '../src'
+import { createStore, createView, effect } from '../src'
 
 describe('createView', () => {
   it('creates a view with getters for all properties', () => {
