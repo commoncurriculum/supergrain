@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { createStore } from '../../src/store'
+import { createStore } from '../../src'
 import { effect, getCurrentSub, setCurrentSub } from 'alien-signals'
 
 describe('Tracking Isolation Analysis', () => {
