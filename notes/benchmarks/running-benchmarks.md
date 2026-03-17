@@ -1,6 +1,6 @@
-# Core Benchmarks README
+# Running Benchmarks
 
-> **Status**: Current. Detailed benchmark structure documentation. Overlaps with [benchmarks.md](./benchmarks.md) which is a shorter version.
+> **Status**: Current. How to run benchmarks and what each file measures. See [README.md](./README.md) for the full document index.
 > **TL;DR**: Two benchmark files -- `core-comparison.bench.ts` (~30s, run during dev) and `additional.bench.ts` (1-2 min, deep analysis). Both include reactive context validation.
 
 ## Commands
