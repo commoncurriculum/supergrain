@@ -5,9 +5,9 @@
  * solid-js-level list rendering with cloneNode + signal bindings.
  */
 
-import React from 'react'
+import React, { useRef, useReducer, useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
-import { createStore } from '@supergrain/core'
+import { createStore, effect as alienEffect } from '@supergrain/core'
 import { DirectFor } from '@supergrain/react'
 
 // --- Data Generation ---
@@ -105,29 +105,34 @@ const select = (id: number) => {
 const rowTemplate = document.createElement('tr')
 rowTemplate.innerHTML = `<td class="col-md-1"></td><td class="col-md-4"><a></a></td><td class="col-md-1"><a><span class="glyphicon glyphicon-remove" aria-hidden="true"></span></a></td><td class="col-md-6"></td>`
 
-// --- App using DirectFor ---
+// --- App using DirectFor, mounting into existing tbody ---
 
-function App() {
+function App({ tbodyRef }: { tbodyRef: React.RefObject<HTMLElement> }) {
+  // Subscribe to store.data changes so DirectFor gets updated `each` prop
+  const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
+  useLayoutEffect(() => {
+    return alienEffect(() => {
+      store.data // read to subscribe
+      forceUpdate()
+    })
+  }, [])
+
   return (
     <DirectFor
       each={store.data}
       template={rowTemplate}
-      container="tbody"
+      containerRef={tbodyRef}
       setup={(item: RowData, row, addEffect) => {
         const tds = row.children
         const td0 = tds[0] as HTMLElement
         const a1 = (tds[1] as HTMLElement).firstChild as HTMLAnchorElement
         const a2 = (tds[2] as HTMLElement).firstChild as HTMLAnchorElement
 
-        // Static content
         td0.textContent = String(item.id)
         a1.textContent = item.label
-
-        // Events
         a1.onclick = () => select(item.id)
         a2.onclick = () => remove(item.id)
 
-        // Reactive bindings — reads through proxy, tracked by alien-signals
         addEffect(() => { a1.textContent = (item as any).label })
         addEffect(() => {
           row.className = store.selected === item.id ? 'danger' : ''
@@ -148,8 +153,15 @@ if (typeof window !== 'undefined' && document.getElementById('run')) {
 }
 
 // --- Mount ---
+// Pass a ref to the existing tbody so DirectFor appends rows directly into it
 if (typeof window !== 'undefined' && document.getElementById('tbody')) {
-  const container = document.getElementById('tbody')!
-  const root = createRoot(container)
-  root.render(<App />)
+  const tbody = document.getElementById('tbody')!
+  const tbodyRef = { current: tbody } as React.RefObject<HTMLElement>
+
+  // Mount React on a separate div (not the tbody) — App renders null,
+  // DirectFor uses the tbodyRef to append rows directly
+  const mountPoint = document.createElement('div')
+  document.body.appendChild(mountPoint)
+  const root = createRoot(mountPoint)
+  root.render(<App tbodyRef={tbodyRef} />)
 }

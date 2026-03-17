@@ -1,10 +1,10 @@
-import React, { useRef, useLayoutEffect } from 'react'
-import { effect } from '@supergrain/core'
+import React, { useRef, useLayoutEffect, useReducer } from 'react'
+import { effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
 
 type EffectRegistrar = (fn: () => void) => void
 
 interface DirectForProps<T> {
-  /** The reactive array to iterate */
+  /** The reactive array to iterate. Can be a store proxy array. */
   each: T[]
   /** HTML template element to clone for each item */
   template: HTMLElement
@@ -14,37 +14,16 @@ interface DirectForProps<T> {
   container?: string
   /** Optional wrapper element around the container */
   wrapper?: string
-  /** Key function to identify items (default: index) */
-  keyFn?: (item: T) => string | number
+  /** Ref to an existing DOM element to append rows into */
+  containerRef?: React.RefObject<HTMLElement>
 }
 
 /**
- * Renders a list by cloning a DOM template for each item and wiring signal
- * effects directly to the cloned nodes — bypassing React reconciliation
- * entirely for row rendering and updates.
+ * Renders a list via cloneNode + direct signal bindings, bypassing React.
  *
- * The `setup` callback receives each item, the cloned DOM element, and an
- * `addEffect` helper. Effects registered via `addEffect` are automatically
- * cleaned up when `each` changes or the component unmounts.
- *
- * @example
- * ```tsx
- * const rowTemplate = document.createElement('tr')
- * rowTemplate.innerHTML = '<td></td><td><a></a></td>'
- *
- * <DirectFor
- *   each={store.data}
- *   template={rowTemplate}
- *   setup={(item, row, addEffect) => {
- *     row.querySelector('td')!.textContent = String(item.id)
- *     const a = row.querySelector('a')!
- *     a.textContent = item.label
- *     addEffect(() => { a.textContent = item[$NODE]?.label?.() ?? item.label })
- *   }}
- *   container="tbody"
- *   wrapper="table"
- * />
- * ```
+ * Handles two kinds of changes:
+ * 1. Array replacement (store.data = newArray) — detected via React re-render
+ * 2. In-place mutations (splice, push, swap) — detected via alien-signals effect
  */
 export function DirectFor<T>({
   each,
@@ -52,39 +31,74 @@ export function DirectFor<T>({
   setup,
   container = 'div',
   wrapper,
+  containerRef: externalRef,
 }: DirectForProps<T>) {
-  const containerRef = useRef<HTMLElement>(null)
-  const cleanupsRef = useRef<(() => void)[]>([])
+  const internalRef = useRef<HTMLElement>(null)
+  const ref = externalRef || internalRef
+  const cleanupsRef = useRef<{
+    outer: (() => void) | null
+    rows: (() => void)[]
+  }>({ outer: null, rows: [] })
 
-  useLayoutEffect(() => {
-    const el = containerRef.current
+  // rebuild: tear down old rows, build new ones from current array
+  const buildRef = useRef<() => void>(() => {})
+  buildRef.current = () => {
+    const el = ref.current
     if (!el) return
 
-    // Tear down old effects
-    for (const c of cleanupsRef.current) c()
-    cleanupsRef.current = []
+    // Tear down old row effects
+    for (const c of cleanupsRef.current.rows) c()
+    cleanupsRef.current.rows = []
     el.textContent = ''
 
-    // Build rows
+    // Exit reactive context so row effects aren't nested
+    const prevSub = getCurrentSub()
+    setCurrentSub(undefined as any)
+
     for (const item of each) {
       const row = template.cloneNode(true) as HTMLElement
-
       const addEffect: EffectRegistrar = (fn) => {
-        const dispose = effect(fn)
-        cleanupsRef.current.push(dispose)
+        cleanupsRef.current.rows.push(effect(fn))
       }
-
       setup(item, row, addEffect)
       el.appendChild(row)
     }
 
-    return () => {
-      for (const c of cleanupsRef.current) c()
-      cleanupsRef.current = []
-    }
-  }, [each, template, setup])
+    setCurrentSub(prevSub)
+  }
 
-  const containerEl = React.createElement(container, { ref: containerRef })
+  useLayoutEffect(() => {
+    // Clean up previous outer effect
+    if (cleanupsRef.current.outer) {
+      cleanupsRef.current.outer()
+      cleanupsRef.current.outer = null
+    }
+
+    // Create an alien-signals effect that watches the array structure.
+    // When elements are swapped, pushed, spliced, etc., this re-runs.
+    cleanupsRef.current.outer = effect(() => {
+      // Subscribe to array length + every element reference
+      const len = each.length
+      for (let i = 0; i < len; i++) {
+        each[i] // subscribes to each index signal
+      }
+      // Rebuild DOM (outside this reactive context)
+      buildRef.current()
+    })
+
+    return () => {
+      if (cleanupsRef.current.outer) {
+        cleanupsRef.current.outer()
+        cleanupsRef.current.outer = null
+      }
+      for (const c of cleanupsRef.current.rows) c()
+      cleanupsRef.current.rows = []
+    }
+  }, [each]) // Re-run when array REFERENCE changes (store.data = newArray)
+
+  if (externalRef) return null
+
+  const containerEl = React.createElement(container, { ref: internalRef })
   if (wrapper) {
     return React.createElement(wrapper, null, containerEl)
   }
