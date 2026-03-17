@@ -118,6 +118,86 @@ describe('Proxy (React) correctness', () => {
     expect(rows[0].className).toBe('')
     expect(rows[1].className).toBe('danger')
   })
+
+  it('swaps rows correctly', async () => {
+    const data = Array.from({ length: 1000 }, (_, i) => ({ id: i + 1, label: `item ${i + 1}` }))
+    const [store] = createStore<AppState>({ data, selected: null })
+    const { container } = render(<App store={store} />)
+
+    await act(async () => {
+      const a = store.data[1]
+      const b = store.data[998]
+      store.data[1] = b
+      store.data[998] = a
+    })
+
+    const rows = getRowsFromTbody(container.querySelector('tbody')!)
+    expect(rows[1].id).toBe('999')
+    expect(rows[998].id).toBe('2')
+    expect(rows[0].id).toBe('1')
+    expect(rows[999].id).toBe('1000')
+  })
+
+  it('removes row via splice', async () => {
+    const [store] = createStore<AppState>({ data: testData(), selected: null })
+    const { container } = render(<App store={store} />)
+
+    await act(async () => {
+      const index = store.data.findIndex((item: any) => item.id === 2)
+      store.data.splice(index, 1)
+    })
+
+    const rows = getRowsFromTbody(container.querySelector('tbody')!)
+    expect(rows).toHaveLength(2)
+    expect(rows[0].id).toBe('1')
+    expect(rows[1].id).toBe('3')
+  })
+
+  it('appends rows via push', async () => {
+    const [store] = createStore<AppState>({ data: testData(), selected: null })
+    const { container } = render(<App store={store} />)
+
+    await act(async () => {
+      store.data.push(
+        ...Array.from({ length: 3 }, (_, i) => ({ id: 10 + i, label: `new ${10 + i}` }))
+      )
+    })
+
+    const rows = getRowsFromTbody(container.querySelector('tbody')!)
+    expect(rows).toHaveLength(6)
+    expect(rows[3].id).toBe('10')
+    expect(rows[5].id).toBe('12')
+  })
+
+  it('clears all rows', async () => {
+    const [store] = createStore<AppState>({ data: testData(), selected: null })
+    const { container } = render(<App store={store} />)
+    expect(getRowsFromTbody(container.querySelector('tbody')!)).toHaveLength(3)
+
+    await act(async () => {
+      store.data = []
+      store.selected = null
+    })
+
+    expect(getRowsFromTbody(container.querySelector('tbody')!)).toHaveLength(0)
+  })
+
+  it('partial update modifies every 10th row', async () => {
+    const data = Array.from({ length: 100 }, (_, i) => ({ id: i + 1, label: `item ${i + 1}` }))
+    const [store] = createStore<AppState>({ data, selected: null })
+    const { container } = render(<App store={store} />)
+
+    await act(async () => {
+      for (let i = 0; i < store.data.length; i += 10) {
+        store.data[i].label = store.data[i].label + ' !!!'
+      }
+    })
+
+    const rows = getRowsFromTbody(container.querySelector('tbody')!)
+    expect(rows[0].label).toBe('item 1 !!!')
+    expect(rows[1].label).toBe('item 2')
+    expect(rows[10].label).toBe('item 11 !!!')
+  })
 })
 
 describe('Direct DOM (supergrain $$) correctness', () => {

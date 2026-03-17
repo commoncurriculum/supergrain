@@ -29,21 +29,21 @@ const nouns = [
   'sandwich', 'burger', 'pizza', 'mouse', 'keyboard',
 ]
 
-function _random(max: number): number {
+export function _random(max: number): number {
   return Math.round(Math.random() * 1000) % max
 }
 
-interface RowData {
+export interface RowData {
   id: number
   label: string
 }
 
-interface AppState {
+export interface AppState {
   data: RowData[]
   selected: number | null
 }
 
-function buildData(count: number): RowData[] {
+export function buildData(count: number): RowData[] {
   const data: RowData[] = new Array(count)
   for (let i = 0; i < count; i++) {
     data[i] = {
@@ -56,32 +56,32 @@ function buildData(count: number): RowData[] {
 
 // --- Store ---
 
-const [store] = createStore<AppState>({
+export const [store] = createStore<AppState>({
   data: [],
   selected: null,
 })
 
-const run = (count: number) => {
+export const run = (count: number) => {
   store.data = buildData(count)
   store.selected = null
 }
 
-const add = () => {
+export const add = () => {
   store.data.push(...buildData(1000))
 }
 
-const update = () => {
+export const update = () => {
   for (let i = 0; i < store.data.length; i += 10) {
     store.data[i].label = store.data[i].label + ' !!!'
   }
 }
 
-const clear = () => {
+export const clear = () => {
   store.data = []
   store.selected = null
 }
 
-const swapRows = () => {
+export const swapRows = () => {
   if (store.data.length > 998) {
     const row1 = store.data[1]
     const row998 = store.data[998]
@@ -90,24 +90,24 @@ const swapRows = () => {
   }
 }
 
-const remove = (id: number) => {
+export const remove = (id: number) => {
   const index = store.data.findIndex(item => item.id === id)
   if (index !== -1) {
     store.data.splice(index, 1)
   }
 }
 
-const select = (id: number) => {
+export const select = (id: number) => {
   store.selected = id
 }
 
 // --- Row template ---
-const rowTemplate = document.createElement('tr')
+export const rowTemplate = document.createElement('tr')
 rowTemplate.innerHTML = `<td class="col-md-1"></td><td class="col-md-4"><a></a></td><td class="col-md-1"><a><span class="glyphicon glyphicon-remove" aria-hidden="true"></span></a></td><td class="col-md-6"></td>`
 
 // --- App using DirectFor, mounting into existing tbody ---
 
-function App({ tbodyRef }: { tbodyRef: React.RefObject<HTMLElement> }) {
+export function App({ tbodyRef }: { tbodyRef: React.RefObject<HTMLElement> }) {
   // Subscribe to store.data changes so DirectFor gets updated `each` prop
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
   useLayoutEffect(() => {
@@ -122,7 +122,7 @@ function App({ tbodyRef }: { tbodyRef: React.RefObject<HTMLElement> }) {
       each={store.data}
       template={rowTemplate}
       containerRef={tbodyRef}
-      setup={(item: RowData, row, addEffect) => {
+      setup={(item: RowData, row: HTMLElement, addEffect: (fn: () => void) => void) => {
         const tds = row.children
         const td0 = tds[0] as HTMLElement
         const a1 = (tds[1] as HTMLElement).firstChild as HTMLAnchorElement

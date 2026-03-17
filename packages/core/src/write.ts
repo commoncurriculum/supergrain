@@ -1,20 +1,13 @@
-import { $NODE, $OWN_KEYS, $VERSION, unwrap } from './core'
+import { $NODE, $OWN_KEYS, $VERSION, unwrap, getNodes } from './core'
 
 export function bumpVersion(target: object): void {
-  if ($VERSION in target) {
-    ;(target as any)[$VERSION] = ((target as any)[$VERSION] || 0) + 1
-    return
+  let nodes = (target as any)[$NODE]
+  if (!nodes) {
+    // Lazily create nodes + version signal on first mutation
+    nodes = getNodes(target)
   }
-
-  try {
-    Object.defineProperty(target, $VERSION, {
-      value: 1,
-      writable: true,
-      enumerable: false,
-    })
-  } catch {
-    // Frozen objects can't be modified.
-  }
+  const v = nodes[$VERSION]
+  if (v) v(v() + 1)
 }
 
 export function bumpOwnKeysSignal(
@@ -78,7 +71,18 @@ export const writeHandler: Pick<
     return true
   },
 
-  deleteProperty() {
+  deleteProperty(target: any, prop: PropertyKey): boolean {
+    if (Array.isArray(target)) {
+      // Silent delete for signal values: splice/pop/shift handle element
+      // moves via set(). But bump ownKeys so structural subscribers
+      // (like useView's $TRACK) detect the change.
+      const hadKey = Object.prototype.hasOwnProperty.call(target, prop)
+      delete target[prop as any]
+      if (hadKey) {
+        bumpOwnKeysSignal(target)
+      }
+      return true
+    }
     throw new Error(
       'Direct deletion of store state is not allowed. Use the "$unset" operator in the update function.'
     )

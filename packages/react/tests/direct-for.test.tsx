@@ -174,6 +174,83 @@ describe('DirectFor', () => {
     expect(container.querySelectorAll('tr').length).toBe(0)
   })
 
+  it('remove row via splice shifts remaining rows up', async () => {
+    const [store] = createStore({
+      data: Array.from({ length: 10 }, (_, i) => ({ id: i + 1, label: `item ${i + 1}` })),
+    })
+    const App = makeApp(store, defaultSetup)
+    const { container } = render(<App />)
+    expect(getRows(container)).toHaveLength(10)
+
+    await act(async () => {
+      const index = store.data.findIndex((item: any) => item.id === 3)
+      store.data.splice(index, 1)
+    })
+
+    const rows = getRows(container)
+    expect(rows).toHaveLength(9)
+    expect(rows[0]).toEqual({ id: '1', label: 'item 1' })
+    expect(rows[1]).toEqual({ id: '2', label: 'item 2' })
+    // id=3 is gone, id=4 should now be at index 2
+    expect(rows[2]).toEqual({ id: '4', label: 'item 4' })
+    expect(rows[8]).toEqual({ id: '10', label: 'item 10' })
+  })
+
+  it('partial update modifies every 10th row', async () => {
+    const [store] = createStore({
+      data: Array.from({ length: 100 }, (_, i) => ({ id: i + 1, label: `item ${i + 1}` })),
+    })
+    const App = makeApp(store, defaultSetup)
+    const { container } = render(<App />)
+
+    await act(async () => {
+      for (let i = 0; i < store.data.length; i += 10) {
+        store.data[i].label = store.data[i].label + ' !!!'
+      }
+    })
+
+    const rows = getRows(container)
+    expect(rows[0].label).toBe('item 1 !!!')
+    expect(rows[1].label).toBe('item 2')
+    expect(rows[10].label).toBe('item 11 !!!')
+    expect(rows[11].label).toBe('item 12')
+    expect(rows[90].label).toBe('item 91 !!!')
+  })
+
+  it('select row applies className via effect', async () => {
+    const [store] = createStore<{ data: { id: number; label: string }[]; selected: number | null }>({
+      data: [{ id: 1, label: 'one' }, { id: 2, label: 'two' }, { id: 3, label: 'three' }],
+      selected: null,
+    })
+
+    const selectSetup = (item: any, row: HTMLElement, addEffect: any) => {
+      row.querySelector('td')!.textContent = String(item.id)
+      const a = row.querySelector('a')!
+      a.textContent = item.label
+      addEffect(() => { a.textContent = item.label })
+      addEffect(() => { row.className = store.selected === item.id ? 'danger' : '' })
+    }
+
+    const App = makeApp(store, selectSetup)
+    const { container } = render(<App />)
+
+    // No selection initially
+    const trs = container.querySelectorAll('tr')
+    expect(trs[0].className).toBe('')
+    expect(trs[1].className).toBe('')
+
+    // Select row 2
+    await act(async () => { store.selected = 2 })
+    expect(trs[0].className).toBe('')
+    expect(trs[1].className).toBe('danger')
+    expect(trs[2].className).toBe('')
+
+    // Change selection to row 3
+    await act(async () => { store.selected = 3 })
+    expect(trs[1].className).toBe('')
+    expect(trs[2].className).toBe('danger')
+  })
+
   it('cleans up effects on unmount', () => {
     const [store] = createStore({ data: [{ id: 1, label: 'one' }] })
     let effectCount = 0

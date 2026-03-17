@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "vite",
     "build-prod": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --passWithNoTests",
+    "test:performance": "vitest src/performance.test.tsx"
   },
   "dependencies": {
     "@supergrain/core": "workspace:*",

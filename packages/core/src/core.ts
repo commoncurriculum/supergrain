@@ -39,14 +39,13 @@ export function getNodes(target: object): DataNodes {
         enumerable: false,
         configurable: true,
       })
-      Object.defineProperty(target, $VERSION, {
-        value: 0,
-        writable: true,
-        enumerable: false,
-      })
     } catch {
       // Frozen objects can't be modified.
     }
+  }
+  // Ensure version signal exists (lazy creation)
+  if (!nodes[$VERSION]) {
+    nodes[$VERSION] = signal(0) as Signal<any>
   }
   return nodes
 }

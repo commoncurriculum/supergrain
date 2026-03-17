@@ -43,7 +43,19 @@ const readHandler: Pick<
         const tracked = existingNodes[prop]
         if (tracked) {
           const value = tracked()
-          return isWrappable(value) ? createReactiveProxy(value) : value
+          if (isWrappable(value)) {
+            const proxy = createReactiveProxy(value)
+            // When returning an array with an active subscriber, subscribe
+            // to the array's version signal so any mutation (splice, push,
+            // swap) triggers a re-render. Version is cheaper than ownKeys
+            // because alien-signals deduplicates dirty-marking.
+            if (Array.isArray(value) && getCurrentSub()) {
+              const arrayNodes = getNodes(value)
+              if (arrayNodes[$VERSION]) arrayNodes[$VERSION]()
+            }
+            return proxy
+          }
+          return value
         }
       }
     }
@@ -54,12 +66,15 @@ const readHandler: Pick<
       trackSelf(target)
       return receiver
     }
-    if (prop === $VERSION) return (target as any)[$VERSION] || 0
+    if (prop === $VERSION) {
+      const nodes = (target as any)[$NODE]
+      return nodes?.[$VERSION] ? nodes[$VERSION]() : 0
+    }
 
     const value = (target as any)[prop]
 
     if (typeof value === 'function') {
-      if (Array.isArray(target) && prop === Symbol.iterator) trackSelf(target)
+      if (Array.isArray(target) && getCurrentSub()) trackSelf(target)
       return value
     }
 
@@ -135,7 +150,8 @@ export function getSignalGetter(key: string): (this: any) => any {
   if (cached) return cached
 
   const getter = function (this: any) {
-    return this._n[key]()
+    const value = this._n[key]()
+    return isWrappable(value) ? createReactiveProxy(value) : value
   }
 
   signalGetterCache.set(key, getter)

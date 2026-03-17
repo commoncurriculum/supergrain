@@ -10,7 +10,7 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
       name: '@supergrain/vite-plugin',
-      fileName: format => `index.${format}.js`,
+      fileName: format => format === 'cjs' ? 'index.cjs' : `index.${format}.js`,
       formats: ['es', 'cjs'],
     },
     rollupOptions: {
