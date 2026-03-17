@@ -8,13 +8,18 @@
 | Document | What It Covers | Status |
 |----------|---------------|--------|
 | [findings-summary.md](./findings-summary.md) | Full performance journey: discovery of direct mutation 6x speedup, all key numbers | **Primary reference** |
+| [performance-analysis.md](./performance-analysis.md) | Corrected benchmark methodology (createComputed vs createEffect bug) | Reference |
+| [results.md](./results.md) | Proxy vs direct signal access comparison (2-15x faster) | Reference |
+| [direct-mutation-breakthrough.md](./direct-mutation-breakthrough.md) | How direct mutations achieved 6x improvement | Reference |
 
 ### Benchmark Code Archives
 | Document | What It Contains |
 |----------|-----------------|
 | [proxy-overhead-analysis.md](./proxy-overhead-analysis.md) | Proxy vs direct object access analysis + results |
+| [proxy-overhead-benchmark.md](./proxy-overhead-benchmark.md) | Benchmark code for proxy overhead measurements |
 | [allocation-analysis-benchmark.md](./allocation-analysis-benchmark.md) | Allocation/overhead source identification benchmark code + results |
 | [safe-optimizations-benchmark.md](./safe-optimizations-benchmark.md) | Micro-optimization benchmark code + results (led to 2.64x improvement) |
+| [signal-pooling.md](./signal-pooling.md) | Signal pooling benchmark code and results |
 | [reactivity-validation-tests.md](./reactivity-validation-tests.md) | Test suite ensuring optimizations preserve reactivity contracts |
 
 ### Specific Investigations
@@ -22,6 +27,14 @@
 |----------|---------------|
 | [foreach-analysis.md](./foreach-analysis.md) | Why exposing signals doesn't prevent React re-renders |
 | [isEqual-threshold-analysis.md](./isEqual-threshold-analysis.md) | Set vs Array.includes() crossover at 50 keys |
+
+### Results Data
+| Document | What It Covers |
+|----------|---------------|
+| [results/core-comparison.md](./results/core-comparison.md) | Core vs solid-js comparison |
+| [results/state-libraries.md](./results/state-libraries.md) | Comparison across state libraries |
+| [results/row-operations.md](./results/row-operations.md) | Row operation benchmarks |
+| [results/additional.md](./results/additional.md) | Additional benchmark results |
 
 ### How-To / Setup
 | Document | What It Covers | Status |
