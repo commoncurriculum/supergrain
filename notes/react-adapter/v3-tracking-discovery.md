@@ -40,4 +40,4 @@ The effect has an empty callback, so it never establishes dependencies.
 
 The discovery led to the proxy-based approach (v4/v5): wrap each property access to temporarily set the correct effect as current subscriber, making the access effectively happen "inside" the tracking context.
 
-This is documented fully in [v4-nested-components.md](v4-nested-components.md) and [v5-final.md](v5-final.md).
+This is documented fully in [v4-nested-components.md](v4-nested-components.md) and [useTracked.md](useTracked.md).

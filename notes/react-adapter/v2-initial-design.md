@@ -1,6 +1,6 @@
 # React Adapter v2: Initial Design
 
-> **Status:** HISTORICAL -- superseded by v3, v4, and v5. The shipped solution is `useTracked` (see [v5-final.md](v5-final.md)).
+> **Status:** HISTORICAL -- superseded by v3, v4, and v5. The shipped solution is `useTracked` (see [useTracked.md](useTracked.md)).
 >
 > **What this doc captured:** Early architecture exploration based on Preact Signals and alien-signals patterns. Many APIs proposed here (selectors, computed hooks, DevTools, SSR) were never built.
 

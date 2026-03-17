@@ -4,7 +4,7 @@
 >
 > - `Branded<T>` type: DONE (in `@supergrain/core`)
 > - Vite plugin scaffold: DONE (in `@supergrain/vite-plugin`)
-> - `readSignal` compilation: ABANDONED -- proven slower than proxy (see [compiled-reads-investigation.md](../research/compiled-reads-investigation.md))
+> - `readSignal` compilation: ABANDONED -- proven slower than proxy (see [compiled-reads-investigation.md](../performance/compiled-reads-investigation.md))
 > - What actually shipped: `createView()` prototype getters + `$$()` direct DOM bindings
 >
 > **TL;DR:** Attempted to compile `store.prop` reads into direct `readSignal()` calls to bypass proxy overhead. Early prototype benchmarks looked promising (1.2-3x faster than solid-js/store), but those numbers came from a flat signal map architecture. The per-level `readSignal` approach that this plan describes does NOT achieve those numbers. Proxy reads turned out to be fast enough.

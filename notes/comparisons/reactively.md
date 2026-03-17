@@ -1,22 +1,28 @@
 # Reactively Comparison
 
-> **Status:** Reference analysis. Reactively is a pure reactive computation library (<1KB) with no store API or React integration.
+> **Status:** Analysis complete. Reactively is a pure reactive computation library (<1KB) with no store API or React integration.
 >
-> **Key difference:** Reactively exposes raw signal primitives with manual setup; Supergrain wraps them in an automatic proxy-based store. Reactively is orders of magnitude faster for raw operations but requires manual wiring for every property.
+> **TL;DR:** Reactively's 5000x faster reads come from explicit manual reactivity (direct `signal.value` access), not from techniques transferable to supergrain's automatic proxy-based tracking. The performance gap is architectural and cannot be closed without abandoning automatic reactivity. Viable gains are limited to micro-optimizations (5-25% range). For solid-js-level performance, the path forward is `$$()` direct DOM bindings and `createView` prototype getters (see `compiled-reads-investigation.md`).
 
-## Architecture
+---
+
+## What Is Reactively
+
+Reactively is a minimal (<1KB gzipped) reactive computation library using a hybrid push-pull execution model with three-phase updates: mark dirty, check stale, update if necessary. Each `Reactive<T>` instance maintains its own sources/observers arrays for dependency tracking. It exposes raw signal primitives with manual setup -- every property needs explicit `reactive()` wrapping.
+
+## Architectural Comparison
 
 | Aspect | Reactively | Supergrain |
 |--------|------------|-----------|
-| Reactivity Model | Explicit signal nodes | Proxy-based automatic tracking |
+| Reactivity Model | Explicit signal nodes (`signal.value`) | Proxy-based automatic tracking |
 | Object Handling | Manual wrapping required | Automatic proxy wrapping |
 | Bundle Size | <1KB gzipped | ~8KB (with alien-signals) |
 | Memory per Property | ~109 bytes | ~200 bytes (with proxy overhead) |
-| React Integration | None (manual required) | Built-in `useTracked` hook |
+| React Integration | None | Built-in `useTracked` hook |
 
-Reactively uses a hybrid push-pull execution model with three-phase updates: mark dirty, check stale, update if necessary. Each `Reactive<T>` instance maintains its own sources/observers arrays for dependency tracking.
+**Core insight:** Every property access in supergrain must register dependencies via proxy traps. Attempts to skip this infrastructure break the automatic tracking that is supergrain's core value proposition.
 
-## Performance Comparison
+## Performance
 
 | Operation | Reactively | Supergrain | Factor |
 |-----------|------------|-----------|--------|
@@ -30,31 +36,58 @@ The massive read performance gap comes from direct `.value` access vs proxy trap
 ## Memory
 
 - Reactively: ~109 bytes per reactive node (value + fn + observers + sources + state + cleanups)
-- Supergrain: ~200 bytes per object (proxy + signal + handler + WeakMap)
+- Supergrain: ~200 bytes per object (proxy + signal + handler + WeakMap), scales with object count not property count
 
 For a 4-level nested object with 10 properties per level:
 - Reactively: ~1.21 MB for 11,110 manually wrapped nodes
-- Supergrain: Scales with object count, not property count
+- Supergrain: significantly less due to object-level (not property-level) tracking
 
-## Trade-offs
+## Viable Optimizations (within reactive constraints)
 
-**Reactively advantages:**
-- Raw performance (5000x faster reads)
-- Minimal memory per node
-- Tiny bundle size
-- Pure reactive system (no framework coupling)
+### 1. Proxy Handler Symbol Checks (implemented)
 
-**Reactively disadvantages:**
-- Every property needs explicit `reactive()` wrapping
-- No React integration
-- No store abstraction or update operators
-- Verbose for complex object hierarchies
+Single `typeof` guard short-circuits for string properties instead of sequential `===` checks on every access.
 
-**Supergrain advantages:**
-- Automatic reactivity for nested objects
-- Built-in React integration
-- MongoDB-style update operators
-- Natural object syntax
+### 2. Array Length Handling in setProperty (implemented)
+
+Cache length values instead of repeated property access.
+
+### 3. Signal Micro-optimizations
+
+- Arrays instead of Sets for dependency registration where appropriate
+- Optimized equality checks for common types
+- Better memory layout to reduce per-signal overhead
+- Batch subscription updates
+
+**Expected impact:** 10-20% improvement
+
+### 4. Memory Layout / Object Pooling
+
+- Pool frequently created objects in proxy traps
+- Reduce allocation frequency in hot paths
+
+**Expected impact:** 15-25% memory reduction
+
+### 5. Bundle Size
+
+- Tree shaking via package splitting (`@supergrain/core`, `@supergrain/react`, `@supergrain/dev`)
+- Bit flags instead of objects where possible
+
+**Expected impact:** 20-30% size reduction
+
+### Rejected Optimizations (would break reactivity)
+
+- Property access caching that bypasses signals
+- Fast path proxy handling that skips dependency registration
+- Lazy signal creation with inconsistent identity
+
+## Implementation Priority
+
+| Phase | Focus | Risk |
+|---|---|---|
+| 1 | Signal micro-optimizations, observer data structures, allocation reduction, bundle splitting | Low |
+| 2 | Optimized WeakMap alternatives, memory layout, batch dependency registration, object pooling | Medium |
+| 3 | Custom signal implementation, V8-specific proxy optimizations | High |
 
 ## When to Choose Reactively
 

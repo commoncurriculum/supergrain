@@ -44,4 +44,4 @@ it('should handle nested components with proper isolation', async () => {
 
 ## Resolution
 
-Solved by proxy-based per-access subscriber swapping in [v5-final.md](v5-final.md), shipped as `useTracked`.
+Solved by proxy-based per-access subscriber swapping in [useTracked.md](useTracked.md), shipped as `useTracked`.

@@ -1,6 +1,6 @@
 # Safe Compile-Time Optimizations for @supergrain/core
 
-> **Status:** Design document -- not implemented. Superseded in part by the Vite compiler plugin investigation (see [vite-compiler-plugin-plan.md](./vite-compiler-plugin-plan.md)), which pursued a narrower version of these ideas and found that compiled `readSignal` calls were slower than proxy reads in practice (see [compiled-reads-investigation.md](../research/compiled-reads-investigation.md)).
+> **Status:** Design document -- not implemented. Superseded in part by the Vite compiler plugin investigation (see [vite-compiler-plugin-plan.md](./vite-compiler-plugin-plan.md)), which pursued a narrower version of these ideas and found that compiled `readSignal` calls were slower than proxy reads in practice (see [compiled-reads-investigation.md](../performance/compiled-reads-investigation.md)).
 >
 > **TL;DR:** Four compile-time optimization strategies that specialize runtime code paths using static type information, without breaking reactivity. Estimated 30-60% combined improvement. All remain theoretical -- no benchmarks were run on these specific strategies.
 
