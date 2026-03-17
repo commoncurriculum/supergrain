@@ -45,6 +45,8 @@ export function useTracked<T extends object>(store: T): T {
     stateRef.current = { cleanup, effectNode, proxy }
   }
 
+  useEffect(() => () => { stateRef.current?.cleanup?.(); stateRef.current = null }, [])
+
   return stateRef.current.proxy!
 }
 ```

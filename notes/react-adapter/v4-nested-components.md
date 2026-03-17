@@ -42,21 +42,6 @@ it('should handle nested components with proper isolation', async () => {
 })
 ```
 
-## Proposed Solutions (at the time)
-
-1. **Immediate context restoration** -- Didn't work (need subscriber during render)
-2. **Proxy-based isolation** -- This was the winner (became v5)
-3. **Stack-based subscriber management** -- Too complex for concurrent mode
-4. **React Context** -- Added overhead without solving timing issue
-
-## Requirements
-
-1. Maintain fine-grained reactivity
-2. Handle arbitrary nesting depth
-3. Don't break existing tests
-4. Minimal performance overhead
-5. No babel transform or wrapper components required
-
 ## Resolution
 
-Solved by the proxy-based approach in [v5-final.md](v5-final.md) and shipped as `useTracked`.
+Solved by proxy-based per-access subscriber swapping in [v5-final.md](v5-final.md), shipped as `useTracked`.
