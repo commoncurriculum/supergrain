@@ -1,10 +1,7 @@
 # Proxy Overhead Benchmark Code
 
-This document contains the benchmark code that was used to measure @supergrain/core's proxy overhead compared to direct object access.
-
-## Purpose
-
-Measures the fundamental overhead of proxy access vs direct object access, specifically addressing the question: "What is our overhead?" compared to the baseline 4-5x overhead of basic proxy access.
+> **Status**: Historical. Benchmark code archive measuring proxy overhead vs direct access.
+> **TL;DR**: Simple reads 188.5x slower, nested 990.9x slower, arrays 161.3x slower, store creation 51.2x slower than direct. Overhead compounds from proxy traps (45-83x), getCurrentSub (14x), signal creation (18.8x), symbol access (37x), and Reflect.get/hasOwnProperty (3-15x).
 
 ## Benchmark Code
 
@@ -265,29 +262,23 @@ describe('Proxy Overhead: Memory Allocation Analysis', () => {
 })
 ```
 
-## Key Results
+## Results
 
-- **Simple property access**: 188.5x slower than direct access
-- **Nested object access**: 990.9x slower than direct access
-- **Array operations**: 161.3x slower than direct access
-- **Store creation**: 51.2x slower than direct object creation
+| Operation | vs Direct Access |
+|-----------|-----------------|
+| Simple property access | 188.5x slower |
+| Nested object access | 990.9x slower |
+| Array operations | 161.3x slower |
+| Store creation | 51.2x slower |
 
-## Analysis
+## Overhead Sources (Compounding)
 
-The overhead stems from multiple compounding factors:
-1. **Proxy handler complexity**: 45-83x overhead from proxy traps
-2. **getCurrentSub() calls**: 14x overhead for reactivity checks
-3. **Signal creation patterns**: 18.8x overhead in getNode() function
-4. **Symbol property access**: 37x overhead for $NODE/$RAW lookups
-5. **Function call overhead**: 3-15x per operation (Reflect.get, hasOwnProperty)
+| Factor | Overhead |
+|--------|----------|
+| Proxy handler complexity | 45-83x |
+| getCurrentSub() calls | 14x |
+| Signal creation (getNode()) | 18.8x |
+| Symbol property access ($NODE/$RAW) | 37x |
+| Function calls (Reflect.get, hasOwnProperty) | 3-15x |
 
-## Usage
-
-This benchmark was originally created as `packages/core/benchmarks/proxy-overhead.bench.ts` but has been moved to documentation format per project maintainer request.
-
-To run similar benchmarks:
-```bash
-cd packages/core
-# Create a temporary .bench.ts file with the above code
-pnpm run bench your-benchmark.bench.ts
-```
+Originally `packages/core/benchmarks/proxy-overhead.bench.ts`, moved to doc format.

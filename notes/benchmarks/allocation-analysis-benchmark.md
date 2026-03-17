@@ -1,10 +1,7 @@
 # Allocation Analysis Benchmark Code
 
-This document contains the benchmark code that was used to identify specific allocations and overhead sources contributing to @supergrain/core performance degradation.
-
-## Purpose
-
-Focuses on identifying the specific allocations and overhead sources that contribute to the performance degradation in @supergrain/core, allowing for targeted optimization efforts.
+> **Status**: Historical. Benchmark code archive -- identifies allocation/overhead sources in @supergrain/core.
+> **TL;DR**: Measured function call overhead (Reflect.get 22x, getCurrentSub 14x, hasOwnProperty 3x), symbol access (37x), signal creation (18x), and per-object memory costs (~430+ bytes). Findings fed into the 4 optimizations in [safe-optimizations-benchmark.md](./safe-optimizations-benchmark.md).
 
 ## Benchmark Code
 
@@ -295,39 +292,39 @@ describe('Allocation Analysis: Memory Allocation Patterns', () => {
 })
 ```
 
-## Key Findings
+## Results Summary
 
-From these allocation analysis benchmarks, the major overhead sources were identified:
+### Function Call Overhead (1M calls each)
+| Operation | vs Direct Access |
+|-----------|-----------------|
+| Reflect.get | ~22x slower |
+| getCurrentSub | ~14x slower |
+| hasOwnProperty | ~3x slower |
 
-### Function Call Overhead
-- **Direct property access**: Baseline performance
-- **Reflect.get calls**: ~22x slower than direct access
-- **getCurrentSub calls**: ~14x overhead for reactivity checks
-- **hasOwnProperty calls**: ~3x slower than direct checks
+### Symbol Access (1M calls each)
+| Operation | vs Regular Property |
+|-----------|-------------------|
+| Symbol property access | ~37x slower |
 
-### Symbol Access Performance
-- **Regular property access**: Baseline
-- **Symbol property access**: ~37x slower than regular properties
-- Multiple symbol lookups compound the overhead
+### Signal Creation (100k each)
+| Operation | vs Plain Object |
+|-----------|----------------|
+| Signal creation | ~18x slower |
+| Signal + $ property | Additional closure overhead |
+| DataNodes (Object.create(null)) | Additional overhead |
 
-### Signal Creation Overhead
-- **Plain objects**: Baseline creation speed
-- **Signal creation**: ~18x slower than plain objects
-- **Signals with $ property**: Additional closure overhead
-- **DataNodes with Object.create(null)**: Additional overhead
+### Memory Per Wrapped Object
+| Component | Bytes |
+|-----------|-------|
+| Total per object | ~430+ |
+| Per-property signal | ~200 |
+| WeakMap entry | ~30 |
+| Symbol properties | ~50 |
 
-### Memory Allocation Patterns
-- Each @supergrain/core wrapped object: ~430+ bytes overhead
-- Per-property signal tracking: ~200 bytes each
-- WeakMap caching: ~30 bytes per cached object
-- Symbol properties: ~50 bytes per object
-
-## Usage
-
-This benchmark was originally created as `packages/core/benchmarks/allocation-analysis.bench.ts` but has been moved to documentation format per project maintainer request.
-
-The analysis from these benchmarks directly informed the 4 optimization strategies that were successfully implemented:
+## Optimizations Derived From This Analysis
 1. Direct property access instead of Reflect.get (22x improvement potential)
 2. Object literal instead of Object.create(null) (2.19x improvement)
 3. Optimized signal $ method assignment (1.43x improvement)
 4. Simplified proxy handler logic (reduced function call overhead)
+
+Originally `packages/core/benchmarks/allocation-analysis.bench.ts`, moved to doc format.

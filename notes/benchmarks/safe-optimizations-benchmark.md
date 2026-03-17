@@ -1,10 +1,7 @@
 # Safe Optimization Benchmarks Code
 
-This document contains the benchmark code that was used to test safe optimizations that preserve reactivity guarantees in @supergrain/core.
-
-## Purpose
-
-These benchmarks test optimizations that preserve reactivity guarantees. Based on analysis of failed approaches in `/notes/failed-approaches/`, we focus on micro-optimizations within the reactive model rather than architectural changes that could break automatic reactivity.
+> **Status**: Historical. Benchmark code archive -- tested micro-optimizations that preserve reactivity.
+> **TL;DR**: Identified 4 safe optimizations yielding 2.64x total improvement: (1) direct property access over Reflect.get (2.69x), (2) object literal over Object.create(null) (2.19x), (3) pre-bound $ function (1.43x), (4) simplified proxy handler. All validated via [reactivity-validation-tests.md](./reactivity-validation-tests.md).
 
 ## Benchmark Code
 
@@ -285,43 +282,39 @@ describe('Safe Optimizations: Object.create(null) vs Object Literal', () => {
 })
 ```
 
-## Key Findings
-
-These benchmarks identified several safe micro-optimizations:
+## Results Summary
 
 ### Direct vs Reflect.get Access
-- **Target[prop] with type safety**: 22x improvement over Reflect.get
-- **Direct property access**: Equivalent performance to indexed access
-- **Reflect.get calls**: Significant overhead that can be eliminated
+| Method | vs Reflect.get |
+|--------|---------------|
+| `target[prop]` (indexed) | 22x faster |
+| Direct property access | Equivalent to indexed |
 
-### Signal $ Method Assignment  
-- **Optimized pre-bound function**: 1.35x improvement over closure creation
-- **Current closure approach**: Creates unnecessary function objects
-- **Safe approach**: Direct function reference without breaking signal identity
+### Signal $ Method Assignment
+| Method | vs Closure |
+|--------|-----------|
+| Pre-bound function reference | 1.35x faster |
 
 ### Object.create(null) vs Object Literal
-- **Object literal {}**: 2.19x faster than Object.create(null)
-- **Map approach**: Similar performance to Object.create(null)
-- **Safe replacement**: Object literals with type assertion
+| Method | Speed |
+|--------|-------|
+| Object literal `{}` | 2.19x faster than Object.create(null) |
+| Map | Similar to Object.create(null) |
 
 ### Proxy Handler Optimization
-- **Simplified handler logic**: Marginal improvements through reduced branching
-- **getCurrentSub caching**: Minimal improvement (already mostly optimal)
-- **Early returns**: Slight performance gains from fast-path optimizations
+- Simplified handler logic: marginal improvement
+- getCurrentSub caching: minimal (already near-optimal)
+- Early returns: slight gains
 
-## Implementation Results
+## Implemented Optimizations (2.64x Total Improvement)
 
-Based on these benchmarks, 4 optimizations were successfully implemented:
+| Optimization | Change | Improvement |
+|-------------|--------|-------------|
+| Direct Property Access | `Reflect.get(target, prop, receiver)` -> `(target as any)[prop]` | 2.69x |
+| Object Literal for Nodes | `Object.create(null)` -> `{} as DataNodes` | 2.19x |
+| Signal $ Method Assignment | Closure -> direct function reference | 1.43x |
+| Simplified Proxy Handler | Removed redundant ownership checks | marginal |
 
-1. **Direct Property Access** (2.69x improvement): Replaced `Reflect.get(target, prop, receiver)` with `(target as any)[prop]`
-2. **Object Literal for Nodes**: Replaced `Object.create(null)` with `{} as DataNodes`  
-3. **Signal $ Method Assignment** (1.43x improvement): Replaced closure with direct function reference
-4. **Simplified Proxy Handler Logic**: Removed redundant property ownership checks
+All validated via [reactivity-validation-tests.md](./reactivity-validation-tests.md).
 
-**Total Performance Improvement**: 2.64x faster overall while preserving all reactivity guarantees.
-
-## Usage
-
-This benchmark was originally created as `packages/core/benchmarks/safe-optimizations.bench.ts` but has been moved to documentation format per project maintainer request.
-
-All optimizations were validated through comprehensive reactivity contract tests to ensure no breaking changes to automatic reactivity behavior.
+Originally `packages/core/benchmarks/safe-optimizations.bench.ts`, moved to doc format.

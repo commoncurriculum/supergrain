@@ -1,16 +1,7 @@
-# isEqual Function Threshold Analysis
+# isEqual Function: Set vs Array.includes() Threshold Analysis
 
-## Summary
-
-Performance benchmarking was conducted to determine the optimal threshold for switching from `array.includes()` to `Set.has()` in the `isEqual` function for object key lookups.
-
-## Key Findings
-
-**Crossover Point: ~50 keys**
-
-- `array.includes()` is faster for objects with fewer than 50 keys
-- `Set.has()` becomes faster for objects with 50+ keys
-- The performance difference is significant enough to justify the optimization
+> **Status**: Current. Determined the 50-key threshold used in production `isEqual`.
+> **TL;DR**: `array.includes()` wins below 50 keys, `Set.has()` wins above. Threshold set to 50 in implementation. Set creation is 31x slower than array creation but amortized over multiple lookups.
 
 ## Benchmark Results
 
@@ -32,31 +23,17 @@ Performance benchmarking was conducted to determine the optimal threshold for sw
 | 100  | 102                       | 144                | Set     | 1.41x faster         |
 
 ### Set Creation Overhead
-
-Set creation has significant overhead compared to array operations:
-
 - Set creation (20 keys): ~170 ops/sec
 - Array creation (20 keys): ~5,240 ops/sec
-- **Array creation is ~31x faster than Set creation**
+- Array creation is ~31x faster
 
-This overhead is amortized when the Set is used for multiple lookups, which happens in the `isEqual` function when comparing all keys.
-
-## Implementation Decision
-
-Based on the benchmark results, the threshold was set to **50 keys**:
+## Implementation
 
 ```typescript
-// Use Set for keysB to avoid quadratic time complexity, but only for large objects
-// Benchmark testing shows Set becomes faster than array.includes() at around 50 keys
 const keysBSet = keysB.length >= 50 ? new Set(keysB) : null
 ```
 
-## Reasoning
-
-1. **Performance**: `array.includes()` is consistently faster for small to medium objects (< 50 keys)
-2. **Memory efficiency**: Arrays have lower memory overhead than Sets for small collections
-3. **Real-world usage**: Most objects in typical applications have fewer than 50 properties
-4. **Safety margin**: The 50-key threshold provides a conservative approach, ensuring we only use Sets when they provide clear performance benefits
+Set creation is ~31x slower than array creation but amortized across multiple lookups in `isEqual`. Most real-world objects have <50 properties, so the array path dominates.
 
 ## Benchmark Code
 
@@ -303,11 +280,6 @@ describe('isEqual: Fine-grained crossover analysis', () => {
 })
 ```
 
-## Running the Benchmarks
+## Running
 
-To reproduce these results, save either benchmark code section to a `.bench.ts` file and run:
-
-```bash
-cd packages/core
-pnpm bench path/to/benchmark-file.bench.ts
-```
+Save benchmark code to a `.bench.ts` file and run `pnpm bench path/to/file.bench.ts` from `packages/core`.
