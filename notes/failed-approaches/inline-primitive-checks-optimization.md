@@ -1,44 +1,36 @@
-# Failed Optimization: Inline Primitive Checks in Hot Paths
+# FAILED: Inline Primitive Checks in Hot Paths
 
-**Date:** March 2026
-**Optimization Attempted:** Skip `wrap()` and `unwrap()` function calls for primitive values using inline `typeof` checks
-**Result:** No improvement or regression, reverted
-**Key Lesson:** V8's JIT already inlines small functions like `wrap()` and `unwrap()` effectively. Adding `typeof` branches to hot paths gives the JIT more speculation work without measurable benefit.
+> **Status:** FAILED — Reverted
+> **Date:** March 2026
+> **TL;DR:** Adding `typeof` checks to skip `wrap()`/`unwrap()` for primitives provides no improvement or causes regression. V8's JIT already inlines these small functions. Extra branches add polymorphism that hurts tight loops (up to -99% in deep updates, -16.6% in granular reactivity).
+
+## Goal
+
+Skip `wrap()` and `unwrap()` function calls for primitive values using inline `typeof` checks to reduce overhead in the proxy get trap and `setProperty`.
 
 ## Background
 
-Cross-library benchmarks (supergrain vs zustand, jotai, valtio, mobx) showed supergrain 6-25x slower than zustand in property reads and updates. Analysis identified two function calls in the hot path that do unnecessary work for primitive values:
+Cross-library benchmarks showed supergrain 6-25x slower than zustand in property reads/updates. Two function calls in the hot path do unnecessary work for primitives:
 
-1. `wrap(value)` in the proxy `get` trap — calls `isWrappable()` which checks `typeof === 'object'` and `constructor`. For primitives (numbers, strings, booleans), this always returns the value unchanged.
-2. `unwrap(oldValue) !== unwrap(value)` in `setProperty()` — calls `unwrap()` which does `(value && value[$RAW]) || value`. For primitives, the `$RAW` symbol lookup is unnecessary.
+1. **`wrap(value)`** in proxy `get` trap — calls `isWrappable()` which checks `typeof === 'object'` and `constructor`. For primitives, always returns the value unchanged.
+2. **`unwrap(oldValue) !== unwrap(value)`** in `setProperty()` — calls `unwrap()` which does `(value && value[$RAW]) || value`. For primitives, the `$RAW` symbol lookup is unnecessary.
 
-## Changes Attempted
+## What Was Tried
 
 ### Change 1: Inline primitive check in proxy get trap
 
 ```typescript
-// Before (lines 128-136 of store.ts)
-if (!getCurrentSub()) {
-  return wrap(value)
-}
-const nodes = getNodes(target)
-const node = getNode(nodes, prop, value)
-return wrap(node())
+// Before
+return wrap(value)
 
 // After
-if (!getCurrentSub()) {
-  return typeof value === 'object' && value !== null ? wrap(value) : value
-}
-const nodes = getNodes(target)
-const node = getNode(nodes, prop, value)
-const tracked = node()
-return typeof tracked === 'object' && tracked !== null ? wrap(tracked) : tracked
+return typeof value === 'object' && value !== null ? wrap(value) : value
 ```
 
 ### Change 2: Skip unwrap for primitives in setProperty
 
 ```typescript
-// Before (line 79 of store.ts)
+// Before
 if (node && unwrap(oldValue) !== unwrap(value)) {
 
 // After
@@ -47,11 +39,11 @@ const val = typeof value === 'object' && value ? unwrap(value) : value
 if (node && old !== val) {
 ```
 
-## Results
+All 117 tests passed with both changes.
 
-All 117 tests passed with both changes. Benchmarks told a different story.
+## Why It Failed
 
-### Both changes applied together
+### Both changes together
 
 | Benchmark | Before (ops/sec) | After (ops/sec) | Change |
 |---|---:|---:|---|
@@ -60,34 +52,34 @@ All 117 tests passed with both changes. Benchmarks told a different story.
 | Non-reactive Updates | 5,500 | 5,520 | ~same |
 | Reactive Updates | 3,929 | 3,996 | +1.7% |
 | Batch Update | 260,284 | 246,144 | **-5.4%** |
-| Deep Updates | 13,576 | 16,787 | **+23.6%** |
+| Deep Updates | 13,576 | 16,787 | +23.6% |
 | Array Pushes | 22,082 | 21,662 | ~same |
 | Granular Reactivity | 208,021 | 173,490 | **-16.6%** |
 
-Deep updates improved, but granular reactivity regressed significantly.
-
-### Only setProperty change (get trap reverted)
+### setProperty change alone (get trap reverted)
 
 | Benchmark | Before (ops/sec) | After (ops/sec) | Change |
 |---|---:|---:|---|
 | Deep Updates | 13,576 | 122 | **-99.1%** |
 | Batch Update | 260,284 | 140,611 | **-46%** |
 
-Catastrophic regression in deep updates. The `typeof` branching in `setProperty` interacted badly with V8's optimization of the hot loop — likely deoptimizing the entire function due to the new polymorphic comparison path.
+Catastrophic regression. The `typeof` branching in `setProperty` deoptimized the entire function — likely due to the new polymorphic comparison path in V8's tight loop optimization.
 
-## Analysis
+## Root Cause Analysis
 
-1. **V8 already inlines `wrap()` and `unwrap()`**: These are small, monomorphic functions called millions of times. V8's JIT compiles them into the caller. Adding a `typeof` branch before the call doesn't save work — it adds a branch the JIT must speculate on.
+1. **V8 already inlines `wrap()` and `unwrap()`:** These are small, monomorphic functions called millions of times. V8's JIT compiles them into the caller. Adding a `typeof` branch before the call doesn't save work — it adds a branch the JIT must speculate on.
 
-2. **`typeof` checks add polymorphism**: The original `unwrap(oldValue) !== unwrap(value)` is a clean monomorphic comparison. Replacing it with `typeof` checks creates polymorphic paths that V8 handles less efficiently in tight loops.
+2. **`typeof` checks add polymorphism:** The original `unwrap(oldValue) !== unwrap(value)` is a clean monomorphic comparison. Replacing it with `typeof` checks creates polymorphic paths V8 handles less efficiently in tight loops.
 
-3. **The improvement in deep updates (both-changes variant) was likely noise**: When isolated, the setProperty change alone caused a 99% regression. The apparent +23.6% gain was likely masked by benchmark variance or a lucky JIT compilation.
+3. **The +23.6% deep update improvement was noise:** When isolated, the setProperty change alone caused -99% regression. The apparent gain was masked by benchmark variance.
 
-4. **Granular reactivity regression**: The get-trap `typeof` check adds overhead to every property read inside effects. With 10 effects each tracking a property, the extra branch per read accumulates.
+4. **Granular reactivity regression:** The get-trap `typeof` check adds overhead to every property read inside effects. With 10 effects each tracking a property, the extra branch per read accumulates.
 
-## Conclusion
+## Key Learnings
 
-This follows the same pattern as other failed optimizations documented in this project: micro-optimizations that look good on paper but hurt in practice because they fight V8's existing optimization strategies. The proxy overhead is architectural, not implementational — V8 is already doing its best with the current code shape.
+- Micro-optimizations that look good on paper can hurt in practice because they fight V8's existing optimization strategies.
+- The proxy overhead is architectural, not implementational — V8 is already doing its best with the current code shape.
+- Always benchmark changes in isolation, not just combined.
 
 ## Related
 

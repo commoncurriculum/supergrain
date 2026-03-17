@@ -1,9 +1,12 @@
-# Failed Approach: Eager Signal Pre-allocation at createStore Time
+# FAILED: Eager Signal Pre-allocation at createStore Time
 
-**Date:** March 2026
-**Approach:** Walk the initial data recursively at `createStore()` time and pre-create signals for every property
-**Result:** Unnecessary overhead, doesn't help with sub-tree replacement
-**Key Lesson:** Pre-allocation costs O(total properties) upfront and wastes work for properties that are never read. It also breaks when sub-trees are replaced from the wire — new data doesn't have pre-allocated signals.
+> **Status:** FAILED — Abandoned
+> **Date:** March 2026
+> **TL;DR:** Pre-allocating signals for every property at `createStore()` time costs O(total properties) upfront, wastes work for unread properties, and breaks when sub-trees are replaced from the wire. Lazy signal creation is strictly better.
+
+## Goal
+
+Eliminate lazy signal creation overhead by walking initial data recursively at `createStore()` time and pre-creating signals for every property.
 
 ## What Was Tried
 
@@ -30,18 +33,20 @@ Called in `createStore()` and `setProperty()` for new wrappable values.
 
 ## Why It Failed
 
-1. **Sub-tree replacement**: Documents receive updates from the wire. `$set` replaces entire sub-trees. Pre-allocated signals on the old sub-tree are wasted. New sub-tree data doesn't have signals.
+1. **Sub-tree replacement breaks it:** Documents receive updates from the wire. `$set` replaces entire sub-trees. Pre-allocated signals on the old sub-tree are wasted, and new sub-tree data has no signals — they must be created lazily anyway.
 
-2. **Large arrays**: Pre-allocating signals for 10,000 array elements at creation time is expensive and unnecessary if only a few are ever read.
+2. **Large arrays are expensive:** Pre-allocating signals for 10,000 array elements at creation time is costly and pointless if only a few are ever read.
 
-3. **setProperty overhead**: Calling `initSignals` inside `setProperty` for every new wrappable value added O(properties) work to every write.
+3. **setProperty overhead:** Calling `initSignals` inside `setProperty` for every new wrappable value added O(properties) work to every write.
 
-4. **Proxy invariant violations**: `Object.defineProperty` for $NODE with `configurable: false` (the default) caused proxy invariant errors when the proxy handler returned different values.
+4. **Proxy invariant violations:** `Object.defineProperty` for $NODE with `configurable: false` (the default) caused proxy invariant errors when the proxy handler returned different values.
 
-## What Actually Works
+## What Works Instead
 
-Lazy signal creation (the default) works fine. The proxy or readSignal creates signals on first read. The `createView` prototype getter approach ensures signals exist for known properties when building the view, which is O(properties of this view) — not O(entire document).
+Lazy signal creation (the default). The proxy creates signals on first read. `createView` uses prototype getters to ensure signals exist for the properties it needs — O(properties of this view), not O(entire document).
 
-## Note
+## Key Learnings
 
-`initSignals` was removed from the codebase after readSignal was removed. createView handles its own signal creation for the properties it needs.
+- Do not pay upfront costs for data that may never be read.
+- Any pre-allocation strategy breaks in the presence of sub-tree replacement (common in document sync scenarios).
+- `initSignals` was removed from the codebase after `readSignal` was removed. `createView` handles its own signal creation for the properties it needs.

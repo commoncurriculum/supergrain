@@ -1,12 +1,12 @@
-# App-Level Store Planning Document
+# App-Level Store Design
 
-## Overview
+> **Status:** Implemented as `@supergrain/store`.
+>
+> **TL;DR:** A document-oriented store built on `@supergrain/core` that provides `findDoc`/`insertDocument` by type and ID, with full TypeScript safety via a global type registry. Uses a single unified store (not Map<string, Store>) for cross-document reactivity, atomic batched updates, and simpler state management.
 
-This document outlines the design for a new app-level store that builds on top of the existing Supergrain library. The goal is to create a document-oriented store that provides a simple API for finding and inserting documents by type and ID, with full TypeScript support and reactive capabilities.
+## Goal
 
-## API Requirements
-
-The desired API should look like this:
+Create a simple, type-safe, reactive document store for local-first apps. The API should feel like a promise-based document lookup:
 
 ```typescript
 function MyComponent() {
@@ -20,27 +20,18 @@ function MyComponent() {
 }
 ```
 
-Where `findDoc` returns a promise-like object with:
+## Key Design Decisions
 
-- `content`: The actual document data (or undefined if not loaded/found)
-- `isPending`: Boolean indicating if the request is in progress
-- `isSettled`: Boolean indicating if the request has completed (success or failure)
-- `isRejected`: Boolean indicating if the request failed
-- `isFulfilled`: Boolean indicating if the request succeeded
+### Single Store (not Map<string, Store>)
 
-## Architecture Decision: Store Structure
+All documents live in one Supergrain store. Rationale:
 
-After analyzing the requirements, I recommend **Option 2: Single Supergrain Store** over a Map<string, Store> approach.
+1. **Unified reactivity** -- cross-document dependencies work naturally
+2. **Better performance** -- single subscription system
+3. **Atomic operations** -- update multiple document types in one batch
+4. **Simpler testing** -- one store to mock
 
-### Why Single Store Approach?
-
-1. **Unified Reactivity**: All documents live in one reactive store, enabling cross-document dependencies
-2. **Better Performance**: Single subscription system instead of managing multiple store subscriptions
-3. **Simpler State Management**: One update function, one source of truth
-4. **Atomic Operations**: Can update multiple document types in a single batched operation
-5. **Easier Testing**: Single store to mock and test
-
-### Store Structure
+### Store Shape
 
 ```typescript
 interface AppStoreState {
@@ -54,9 +45,7 @@ interface AppStoreState {
       }
     }
   }
-  // Future: could add global app state here
-  // ui: { ... }
-  // settings: { ... }
+  // Extensible: ui, settings, etc.
 }
 ```
 
@@ -78,10 +67,11 @@ Example state:
 
 ## TypeScript Integration
 
-### Model Type Registry
+### Global Type Registry
+
+Users declare their document types once:
 
 ```typescript
-// User defines their models
 interface User {
   id: number
   firstName: string
@@ -97,17 +87,15 @@ interface Post {
   likes: number
 }
 
-// Global type registry - user declares this in their app
 interface DocumentTypes {
   users: User
   posts: Post
-  // ... other models
 }
-
-// This provides full type safety
 ```
 
-### Promise-like Return Type
+### DocumentPromise Return Type
+
+`findDoc` returns a reactive promise-like wrapper:
 
 ```typescript
 interface DocumentPromise<T> {
@@ -118,62 +106,18 @@ interface DocumentPromise<T> {
   isFulfilled: boolean
 }
 
-// Type-safe findDoc function
 function findDoc<K extends keyof DocumentTypes>(
   modelType: K,
   id: string | number
 ): DocumentPromise<DocumentTypes[K]>
 ```
 
-## Implementation Plan
-
-### Phase 1: Core Store Structure
-
-1. **Create AppStore class**
-   - Wraps the core Supergrain store
-   - Manages document lifecycle (pending -> fulfilled/rejected)
-   - Handles type mapping and validation
-
-2. **Implement DocumentPromise wrapper**
-   - Reactive object that tracks document state
-   - Automatically updates when document changes
-   - Provides clean promise-like API
-
-3. **Basic findDoc implementation**
-   - Returns immediately with cached data if available
-   - Returns pending state for uncached data
-   - Triggers fetch process (placeholder for now)
-
-### Phase 2: Document Operations
-
-1. **Implement insertDocument**
-
-   ```typescript
-   insertDocument('users', { firstName: 'John', lastName: 'Doe' })
-   ```
-
-2. **Handle optimistic updates for insertDocument**
-   - Immediate UI updates
-   - Rollback on failure
-
-### Phase 3: Advanced Features (Future)
-
-1. **Caching and persistence**
-   - TTL for documents
-   - Local storage integration
-   - Cache invalidation strategies
-
-2. **Optimistic updates**
-   - Immediate UI updates for insertDocument
-   - Rollback on failure
-
-## Detailed Implementation
+## Implementation Details
 
 ### Core AppStore Class
 
 ```typescript
-import { createStore } from '@supergrain/core'
-import { computed } from '@supergrain/core'
+import { createStore, computed } from '@supergrain/core'
 
 class AppStore {
   private store: AppStoreState
@@ -193,7 +137,6 @@ class AppStore {
   ): DocumentPromise<DocumentTypes[K]> {
     const key = String(id)
 
-    // Create reactive computed that tracks this document
     const documentState = computed(() => {
       return this.store.documents[modelType]?.[key]
     })
@@ -211,7 +154,6 @@ class AppStore {
       })
     }
 
-    // Return promise-like interface
     return new DocumentPromise(documentState)
   }
 
@@ -219,13 +161,11 @@ class AppStore {
     modelType: K,
     data: Partial<DocumentTypes[K]>
   ): Promise<DocumentTypes[K]> {
-    // Implementation will handle optimistic updates
-    // and actual insertion logic
+    // Handles optimistic updates and actual insertion
   }
 
   private triggerFetch(modelType: string, id: string | number) {
-    // Placeholder - user will implement actual fetching
-    // This could dispatch to a fetch queue, call APIs, etc.
+    // Placeholder -- user implements actual fetching
   }
 }
 ```
@@ -266,14 +206,12 @@ class DocumentPromise<T> {
 ### React Integration
 
 ```typescript
-// Hook for using the app store
 function useAppStore() {
   return useTracked(appStore.store)
 }
 
-// Usage in components
 function MyComponent() {
-  useAppStore() // Track changes
+  useAppStore()
 
   const post = findDoc("posts", 1)
   const user = findDoc("users", post.content?.userId)
@@ -297,7 +235,7 @@ packages/
   store/
     src/
       index.ts              # Main exports
-      store.ts          # AppStore class
+      store.ts              # AppStore class
       document-promise.ts   # DocumentPromise implementation
       types.ts              # TypeScript interfaces
       react.ts              # React integration hooks
@@ -307,33 +245,23 @@ packages/
     package.json
 ```
 
-## Benefits of This Approach
+## Implementation Phases
 
-1. **Type Safety**: Full TypeScript support with model registry
-2. **Reactive**: Built on proven Supergrain reactivity system
-3. **Performance**: Fine-grained updates, only affected components re-render
-4. **Simple**: Focused API - just findDoc by ID and insertDocument
-5. **Familiar**: Promise-like API that developers expect
-6. **Testable**: Clear separation of concerns, easy to mock
+### Phase 1: Core Store Structure
+- AppStore class wrapping Supergrain core
+- DocumentPromise reactive wrapper
+- Basic `findDoc` with caching and pending states
 
-## Potential Challenges
+### Phase 2: Document Operations
+- `insertDocument` with optimistic updates and rollback
 
-1. **Memory Usage**: Storing all documents in one store could grow large
-   - Mitigation: Add TTL and cache eviction strategies
+### Phase 3: Advanced Features (Future)
+- TTL and cache eviction
+- Local storage integration
+- Cache invalidation strategies
 
-2. **Complex State Updates**: Cross-document updates might be complex
-   - Mitigation: Use MongoDB-style operators for atomic updates
+## Known Risks
 
-3. **Developer Experience**: Need good error messages and debugging
-   - Mitigation: Add developer tools and clear error handling
-
-## Next Steps
-
-1. Create the basic AppStore implementation
-2. Implement DocumentPromise with core reactive features
-3. Add React hooks for integration
-4. Create comprehensive tests
-5. Build example application to validate API
-6. Add caching and persistence as needed
-
-This approach provides a focused, simple document store for local-first apps while leveraging the existing Supergrain library's proven reactivity system. The API is intentionally minimal - just fetching documents by ID and inserting new ones.
+1. **Memory** -- single store with all documents could grow large (mitigate with TTL/eviction)
+2. **Complex cross-document updates** -- mitigate with MongoDB-style operators
+3. **DX** -- needs good error messages and debugging tools

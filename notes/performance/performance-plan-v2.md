@@ -1,36 +1,12 @@
 # Performance Plan V2: Achieving Parity with Solid.js Store
 
-## Executive Summary
+> **Status:** Phases 1-4 COMPLETED. Phase 5 not started.
+> **Outcome:** Reactive read overhead reduced from 5,878x to 1.5x vs Solid.js. Primary goals achieved.
+> **Key insight:** Adopting Solid.js patterns (direct object mutation, lazy signals, dual proxy caching, batch updates) eliminated nearly all overhead.
 
-Despite implementing the optimizations from PLAN_FOR_PERF.md, our benchmarks show we're still **5,878x slower** than Solid.js for reactive property reads. This document outlines a complete architectural overhaul based on deep analysis of Solid.js's implementation.
+---
 
-## Implementation Status
-
-**Phase 1**: ✅ COMPLETED
-**Phase 2**: ✅ COMPLETED
-**Phase 3**: ✅ COMPLETED
-**Phase 4**: ✅ COMPLETED
-**Phase 5**: ⏳ NOT STARTED
-
-### Latest Updates (Phase 2 Complete)
-
-- Implemented lazy signal initialization with no equality checking
-- Added descriptor caching for hot paths
-- Optimized array method handlers with specialized implementations
-- Removed all legacy code (ReactiveStore, isTracking)
-- Fixed circular reference issues in unwrap function
-- Added proper handling for frozen/sealed objects
-
-### Performance Results After Phase 2
-
-- **Reactive overhead: 1.5x** (down from 5,878x!) ✅
-- Non-reactive read: 0.067µs per read
-- Reactive read: 0.097µs per read
-- Signal creation overhead: 3.0x
-- Memory per store: ~0.94 KB
-- Array operations now batched properly with efficient updates
-
-## Current Performance Gaps
+## Performance Results
 
 ### Before Optimization
 
@@ -45,393 +21,161 @@ Despite implementing the optimizations from PLAN_FOR_PERF.md, our benchmarks sho
 
 | Operation               | Performance   | vs Baseline        | Status        |
 | ----------------------- | ------------- | ------------------ | ------------- |
-| Reactive reads          | 0.097µs/read  | 1.5x overhead      | ✅ OPTIMIZED  |
-| Non-reactive reads      | 0.067µs/read  | Baseline           | ✅ OPTIMIZED  |
-| Array push (100 items)  | 0.52ms        | Efficient batching | ✅ OPTIMIZED  |
-| Array splice (50 items) | 1.26ms        | Efficient updates  | ✅ OPTIMIZED  |
-| Signal creation         | 3.0x overhead | First access only  | ✅ ACCEPTABLE |
-| Memory usage            | 0.94 KB/store | Minimal footprint  | ✅ OPTIMIZED  |
+| Reactive reads          | 0.097us/read  | 1.5x overhead      | OPTIMIZED     |
+| Non-reactive reads      | 0.067us/read  | Baseline           | OPTIMIZED     |
+| Array push (100 items)  | 0.52ms        | Efficient batching | OPTIMIZED     |
+| Array splice (50 items) | 1.26ms        | Efficient updates  | OPTIMIZED     |
+| Signal creation         | 3.0x overhead | First access only  | ACCEPTABLE    |
+| Memory usage            | 0.94 KB/store | Minimal footprint  | OPTIMIZED     |
+
+---
 
 ## Root Cause Analysis
 
-After analyzing Solid.js's implementation, we've identified critical architectural differences:
+Five architectural differences from Solid.js explained the performance gap:
 
 ### 1. Tracking Context Detection
-
-- **Solid.js**: Uses `getListener()` from the core reactive system - a direct pointer check
-- **@supergrain/core**: Uses manual `effectDepth` counting with try/finally blocks
-- **Impact**: Every property read pays the overhead of our tracking check
+- **Solid.js:** `getListener()` -- a direct pointer check.
+- **Supergrain:** Manual `effectDepth` counting with try/finally blocks.
+- **Impact:** Every property read paid unnecessary tracking overhead.
 
 ### 2. Proxy Creation Strategy
-
-- **Solid.js**: Proxies wrap the **original object** directly, no copying
-- **@supergrain/core**: Creates a **copy** (`[...array]` or `{...object}`) before wrapping
-- **Impact**: Unnecessary memory allocation and copying on every proxy creation
+- **Solid.js:** Proxies wrap the original object directly, no copying.
+- **Supergrain:** Created a copy (`[...array]` or `{...object}`) before wrapping.
+- **Impact:** Unnecessary memory allocation on every proxy creation.
 
 ### 3. Signal Storage & Access
-
-- **Solid.js**: Direct property access on a hidden object with no intermediate checks
-- **@supergrain/core**: Multiple function calls (`getSignal` → `createSignalFor`) even for hot paths
-- **Impact**: Function call overhead on every reactive read
+- **Solid.js:** Direct property access on a hidden object, no intermediate checks.
+- **Supergrain:** Multiple function calls (`getSignal` -> `createSignalFor`) on hot paths.
+- **Impact:** Function call overhead on every reactive read.
 
 ### 4. Proxy Caching
-
-- **Solid.js**: Stores proxy reference **directly on the object** via `$PROXY` symbol
-- **@supergrain/core**: Only uses WeakMap lookup
-- **Impact**: WeakMap lookup overhead on every proxy access
+- **Solid.js:** Stores proxy reference directly on the object via `$PROXY` symbol.
+- **Supergrain:** Only used WeakMap lookup.
+- **Impact:** WeakMap lookup overhead on every proxy access.
 
 ### 5. Array Operations
+- **Solid.js:** Optimized array reconciliation with minimal signal updates.
+- **Supergrain:** Triggered shape change signals on every array mutation.
+- **Impact:** 716x slower for array removals.
 
-- **Solid.js**: Optimized array reconciliation with minimal signal updates
-- **@supergrain/core**: Triggers shape change signals on every array mutation
-- **Impact**: Massive overhead for array operations (716x slower for removals)
+---
 
-## The New Architecture
+## Implementation Phases
 
-### Phase 1: Core Infrastructure Alignment
+### Phase 1: Core Infrastructure Alignment -- COMPLETED
 
-#### 1.1 Integrate with alien-signals' getListener
+**Goal:** Align proxy and tracking architecture with Solid.js patterns.
 
-```typescript
-// Instead of manual tracking, use the library's built-in mechanism
-import { getListener } from 'alien-signals'
+Changes made:
+- Integrated with alien-signals' `getListener()` (replaced manual tracking)
+- Eliminated object copying in proxy creation (proxy original objects directly)
+- Implemented dual caching strategy (`$PROXY` symbol + WeakMap)
+- Added `batch()` to all mutations
 
-// Remove the entire isTracking.ts file and its effect wrapper
-// Use getListener() directly in proxy handlers
-```
-
-#### 1.2 Eliminate Object Copying
-
-```typescript
-function createReactiveProxy<T extends object>(target: T): T {
-  // Check if already proxied via symbol
-  let p = target[$PROXY]
-  if (p) return p
-
-  // Check WeakMap cache (for external references)
-  if (proxyCache.has(target)) {
-    p = proxyCache.get(target)
-    target[$PROXY] = p // Store on object for faster access
-    return p
-  }
-
-  // Create proxy for ORIGINAL object, not a copy
-  p = new Proxy(target, handler)
-
-  // Dual caching strategy
-  Object.defineProperty(target, $PROXY, {
-    value: p,
-    configurable: true,
-    writable: false,
-    enumerable: false,
-  })
-  proxyCache.set(target, p)
-
-  return p
-}
-```
-
-#### 1.3 Optimize Signal Access Pattern
+Key code patterns adopted:
 
 ```typescript
-const $NODE = Symbol('store-node')
-const $PROXY = Symbol('store-proxy')
-const $TRACK = Symbol('store-track')
-
-// Inline signal access for hot path
-const handler: ProxyHandler<object> = {
-  get(target, property, receiver) {
-    // Special symbols fast path
-    if (property === $PROXY) return receiver
-    if (property === $TRACK) {
-      trackSelf(target)
-      return receiver
-    }
-
-    // Non-reactive fast path
-    const listener = getListener()
-    if (!listener) {
-      const value = target[property]
-      return isWrappable(value) ? wrap(value) : value
-    }
-
-    // Hot path: existing signal
-    const nodes = target[$NODE]
-    const tracked = nodes?.[property]
-    let value = tracked ? tracked() : target[property]
-
-    // Cold path: create signal on first reactive access
-    if (!tracked && listener) {
-      const desc = Object.getOwnPropertyDescriptor(target, property)
-      if (typeof value !== 'function' || target.hasOwnProperty(property)) {
-        if (!desc?.get) {
-          value = getNode(nodes || getNodes(target), property, value)()
-        }
-      }
-    }
-
-    return isWrappable(value) ? wrap(value) : value
-  },
-}
-```
-
-### Phase 2: Signal System Optimization
-
-#### 2.1 Lazy Signal Initialization
-
-```typescript
-function getNodes(target: object): DataNodes {
-  let nodes = target[$NODE]
-  if (!nodes) {
-    nodes = Object.create(null)
-    Object.defineProperty(target, $NODE, {
-      value: nodes,
-      configurable: true,
-    })
-  }
-  return nodes
+// Direct listener check instead of manual tracking
+const listener = getListener()
+if (!listener) {
+  // Non-reactive fast path
+  const value = target[property]
+  return isWrappable(value) ? wrap(value) : value
 }
 
+// Dual caching for proxy identity
+Object.defineProperty(target, $PROXY, {
+  value: p, configurable: true, writable: false, enumerable: false,
+})
+proxyCache.set(target, p)
+```
+
+### Phase 2: Signal System Optimization -- COMPLETED
+
+**Goal:** Minimize signal creation and access overhead.
+
+Changes made:
+- Lazy signal initialization (signals created on first reactive access only)
+- No equality checking in signals for maximum speed
+- Descriptor caching for hot paths
+- Optimized array method handlers with specialized implementations
+- Removed all legacy code (ReactiveStore, isTracking)
+- Fixed circular reference issues in unwrap function
+- Proper handling for frozen/sealed objects
+
+```typescript
 function getNode(nodes: DataNodes, property: PropertyKey, value?: any) {
   if (nodes[property]) return nodes[property]
-
-  // Create signal with no equality checking for maximum speed
+  // No equality checking for maximum speed
   const [read, write] = createSignal(value, { equals: false })
-  read.$ = write // Store writer on reader for Solid compatibility
+  read.$ = write
   nodes[property] = read
   return read
 }
 ```
 
-#### 2.2 Batch All Mutations
+### Phase 3: Array Operation Optimization -- COMPLETED
 
-```typescript
-import { batch } from 'alien-signals'
+**Goal:** Bring array operations to parity with Solid.js.
 
-const handler: ProxyHandler<object> = {
-  set(target, property, value) {
-    batch(() => setProperty(target, property, value))
-    return true
-  },
+Changes made:
+- Implemented Solid-style array reconciliation (only update changed indices)
+- Optimized array method binding (batch native methods)
+- Specialized handlers for push, pop, shift, unshift, splice
+- Efficient batching of array mutations
 
-  deleteProperty(target, property) {
-    batch(() => setProperty(target, property, undefined, true))
-    return true
-  },
-}
-```
+### Phase 4: ReactiveStore Redesign -- COMPLETED
 
-### Phase 3: Array Operation Optimization
+**Goal:** Simplify API, remove intermediate abstractions.
 
-#### 3.1 Implement Solid's Array Reconciliation
+Changes made:
+- Created `createStore` function (replaces `ReactiveStore` class)
+- Removed `ReactiveStore` class entirely (no legacy users)
+- Clean API with no legacy compatibility needed
+- Benchmarks partially updated
 
-```typescript
-function updateArray(current: any[], next: any[]) {
-  if (current === next) return
+### Phase 5: Additional Optimizations -- NOT STARTED
 
-  let i = 0
-  const len = next.length
+Descriptor caching and property access inlining remain available if benchmarks reveal specific bottlenecks.
 
-  // Update existing indices
-  for (; i < len; i++) {
-    if (current[i] !== next[i]) {
-      setProperty(current, i, next[i])
-    }
-  }
-
-  // Only update length if it changed
-  if (current.length !== len) {
-    setProperty(current, 'length', len)
-  }
-}
-```
-
-#### 3.2 Optimize Array Methods
-
-```typescript
-// For array methods that don't need tracking, return bound native methods
-if (
-  value != null &&
-  typeof value === 'function' &&
-  value === Array.prototype[property]
-) {
-  return (...args: unknown[]) =>
-    batch(() => Array.prototype[property].apply(receiver, args))
-}
-```
-
-### Phase 4: ReactiveStore Redesign
-
-#### 4.1 Remove Intermediate Abstractions
-
-Instead of `ReactiveStore` with collections and signals, implement a simpler `createStore` function that directly returns proxied objects:
-
-```typescript
-export function createStore<T extends object>(
-  initialState?: T
-): [T, SetStoreFunction<T>] {
-  const unwrapped = unwrap(initialState || {})
-  const wrapped = wrap(unwrapped)
-
-  function setStore(...args: any[]) {
-    batch(() => {
-      Array.isArray(unwrapped) && args.length === 1
-        ? updateArray(unwrapped, args[0])
-        : updatePath(unwrapped, args)
-    })
-  }
-
-  return [wrapped, setStore]
-}
-```
-
-### Phase 5: Additional Optimizations
-
-#### 5.1 Descriptor Caching
-
-```typescript
-const descriptorCache = new WeakMap<
-  object,
-  Map<PropertyKey, PropertyDescriptor>
->()
-
-function getCachedDescriptor(target: object, property: PropertyKey) {
-  let cache = descriptorCache.get(target)
-  if (!cache) {
-    cache = new Map()
-    descriptorCache.set(target, cache)
-  }
-
-  let desc = cache.get(property)
-  if (!desc) {
-    desc = Object.getOwnPropertyDescriptor(target, property)
-    if (desc) cache.set(property, desc)
-  }
-  return desc
-}
-```
-
-#### 5.2 Property Access Inlining
-
-For critical hot paths, consider using a generated accessor pattern:
-
-```typescript
-function createAccessor(target: object, property: PropertyKey) {
-  const node = getNode(getNodes(target), property)
-  return {
-    get: () => node(),
-    set: (v: any) => batch(() => node.$(v)),
-  }
-}
-```
-
-## Implementation Timeline
-
-### Week 1: Core Infrastructure
-
-- [x] Integrate with alien-signals' `getListener()`
-- [x] Remove object copying in proxy creation
-- [x] Implement dual caching strategy (symbol + WeakMap)
-- [x] Add batch() to all mutations
-
-### Week 2: Signal Optimization (COMPLETED)
-
-- [x] Optimize signal access pattern
-- [x] Implement lazy signal initialization
-- [x] Add descriptor caching
-- [x] Remove equality checking from signals
-
-### Week 3: Array Operations (COMPLETED)
-
-- [x] Implement Solid's array reconciliation
-- [x] Optimize array method binding
-- [x] Fix array length tracking
-- [x] Specialized handlers for push, pop, shift, unshift, splice
-- [x] Efficient batching of array mutations
-
-### Week 4: API Redesign (COMPLETED)
-
-- [x] Create `createStore` function
-- [x] Remove `ReactiveStore` class (no legacy users)
-- [x] Clean API with no legacy compatibility needed
-- [ ] Update benchmarks (partially complete)
+---
 
 ## Success Metrics
 
-### Primary Goals
-
-- ✅ Reactive property reads: Achieve within **10x** of Solid.js (**ACHIEVED: 1.5x overhead**)
-- ✅ Array operations: Achieve within **2x** of Solid.js (**ACHIEVED: Efficient batching**)
+### Primary Goals -- ACHIEVED
+- Reactive property reads within 10x of Solid.js: **Achieved 1.5x overhead**
+- Array operations within 2x of Solid.js: **Achieved with efficient batching**
 
 ### Secondary Goals
+- Entity operations: Parity with Solid.js (in progress)
+- Memory usage: 0.94 KB/store (minimal footprint maintained)
+- API simplicity: Reduced surface area with `createStore`
 
-- Entity operations: Achieve parity with Solid.js
-- Memory usage: Maintain or improve current memory profile
-- API simplicity: Reduce API surface area while maintaining functionality
+---
 
-## Risk Mitigation
-
-### Breaking Changes
-
-- Provide migration guide from ReactiveStore to createStore
-- Implement compatibility layer for gradual migration
-- Version as major release (1.0.0)
-
-### Performance Regression
-
-- Benchmark after each phase
-- Keep old implementation available as fallback
-- A/B test in production before full rollout
-
-### Complexity
-
-- Maintain clear separation between hot and cold paths
-- Document performance-critical sections
-- Add inline comments explaining optimizations
-
-## Alternative Approaches Considered
-
-### 1. Use Solid.js Store Directly
-
-- **Pros**: Immediate performance parity, battle-tested
-- **Cons**: Loses custom features, breaks existing API
-- **Decision**: Not viable due to API compatibility requirements
-
-### 2. Fork Solid.js Store
-
-- **Pros**: Start with optimized base, customize as needed
-- **Cons**: Licensing concerns, maintenance burden
-- **Decision**: Use as reference but implement from scratch
-
-### 3. Switch to Different Signals Library
-
-- **Pros**: Might have better integration points
-- **Cons**: alien-signals is already highly optimized
-- **Decision**: Stay with alien-signals but use it correctly
-
-## Conclusion
-
-✅ **Phase 2 SUCCESS**: We have successfully achieved our performance goals!
-
-The implementation now shows:
-
-- **1.5x reactive overhead** (down from 5,878x)
-- **Efficient array operations** with proper batching
-- **Minimal memory footprint** (~1KB per store)
-- **Lazy signal creation** reducing cold-start overhead
-
-By adopting Solid.js's proven patterns—direct object mutation, lazy signal creation, efficient proxy caching, and proper batch updates—we have achieved performance parity while maintaining a clean API.
-
-The key optimizations that made the difference:
+## Key Optimizations That Made the Difference
 
 1. Using `getCurrentSub()` directly instead of manual tracking
 2. Proxying original objects without copying
 3. Dual caching strategy (symbol + WeakMap)
 4. Specialized array method handlers
-5. No equality checking in signals for maximum speed
+5. No equality checking in signals
 
-### Next Steps
+---
 
-- Phase 5: Additional optimizations (if benchmarks reveal specific bottlenecks)
+## Alternatives Considered
+
+| Approach | Pros | Cons | Decision |
+|----------|------|------|----------|
+| Use Solid.js store directly | Immediate parity, battle-tested | Loses custom features, breaks API | Not viable |
+| Fork Solid.js store | Optimized base to customize | Licensing, maintenance burden | Used as reference only |
+| Switch signals library | Better integration points possible | alien-signals already highly optimized | Stayed with alien-signals |
+
+---
+
+## Next Steps
+
+- Phase 5 optimizations if benchmarks reveal specific bottlenecks
 - Production testing and monitoring
 - Documentation and migration guides

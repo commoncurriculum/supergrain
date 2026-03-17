@@ -1,87 +1,65 @@
 # NPM Publishing Checklist
 
-This checklist will help you get your `@supergrain` packages published to NPM.
+> **Status:** Setup guide. Follow these steps to publish `@supergrain` packages to NPM for the first time.
 
-## ✅ Already Configured (No Action Needed)
+## Already Configured
 
-The repository is already configured with:
+- Scoped package names: `@supergrain/core`, `@supergrain/react`, `@supergrain/store`
+- Public access: all packages have `publishConfig.access: "public"`
+- Root package marked private (prevents accidental publish)
+- Changesets configuration (`.changeset/config.json`)
+- GitHub Actions workflow (`.github/workflows/publish.yml`)
+- Package exports (ESM/CJS) and TypeScript types
 
-- ✅ **Scoped package names**: `@supergrain/core`, `@supergrain/react`, `@supergrain/store`
-- ✅ **Public access configuration**: All packages have `publishConfig.access: "public"`
-- ✅ **Root package marked private**: Root `package.json` has `"private": true` to prevent publishing
-- ✅ **Changesets configuration**: `.changeset/config.json` is properly configured
-- ✅ **GitHub Actions workflow**: `.github/workflows/publish.yml` is ready to publish
-- ✅ **Package exports**: All packages properly configured with ESM/CJS exports
-- ✅ **Build configuration**: Packages build successfully with TypeScript types
+## Steps
 
-## 🔧 What You Need to Do
+### 1. Create or Access NPM Organization
 
-Follow these steps to complete the NPM publishing setup:
+- Log in to https://www.npmjs.com/
+- Verify `@supergrain` org exists or create it at https://www.npmjs.com/org/create
+- Ensure admin/owner access
 
-### Step 1: Create or Access NPM Organization
+### 2. Create NPM Automation Token
 
-- [ ] Log in to https://www.npmjs.com/
-- [ ] Verify the `@supergrain` organization exists or create it at https://www.npmjs.com/org/create
-- [ ] Ensure you have admin/owner access to the organization
+- Profile -> Access Tokens -> Generate New Token -> "Automation" type
+- Permissions: Read and Write
+- Scope: `@supergrain` organization
+- Copy the token immediately
 
-### Step 2: Create NPM Automation Token
+### 3. Add Token to GitHub
 
-- [ ] Go to your NPM profile → **Access Tokens**
-- [ ] Click **"Generate New Token"** → Select **"Automation"** type
-- [ ] Ensure the token has:
-  - ✓ **Read and Write** permissions
-  - ✓ Access to the `@supergrain` organization
-- [ ] Copy the token (you won't see it again!)
+- Go to `https://github.com/commoncurriculum/supergrain/settings/secrets/actions`
+- New repository secret: Name = `NPM_TOKEN`, Value = your token
 
-### Step 3: Add Token to GitHub
+### 4. Test Publishing
 
-- [ ] Go to https://github.com/commoncurriculum/supergrain/settings/secrets/actions
-- [ ] Click **"New repository secret"**
-- [ ] Name: `NPM_TOKEN` (exactly this name)
-- [ ] Value: Paste your automation token
-- [ ] Click **"Add secret"**
+```bash
+pnpm changeset
+# Select: all packages, Type: patch, Summary: "Initial NPM publication setup"
+```
 
-### Step 4: Test Publishing
-
-- [ ] Create a test changeset:
-  ```bash
-  pnpm changeset
-  # Select: all packages
-  # Type: patch
-  # Summary: "Initial NPM publication setup"
-  ```
-- [ ] Commit and push to main
-- [ ] Wait for GitHub Actions to create a "Release: Version Packages" PR
-- [ ] Review the PR (check version bumps and changelogs)
-- [ ] Merge the PR
-- [ ] Verify packages appear on NPM:
+- Commit and push to main
+- Wait for "Release: Version Packages" PR
+- Review and merge
+- Verify packages at:
   - https://www.npmjs.com/package/@supergrain/core
   - https://www.npmjs.com/package/@supergrain/react
   - https://www.npmjs.com/package/@supergrain/store
 
-## 📚 Reference Documentation
+## Troubleshooting
 
-- **[NPM_SETUP.md](NPM_SETUP.md)** - Comprehensive setup guide with troubleshooting
-- **[RELEASING.md](RELEASING.md)** - Step-by-step release instructions
-- **[README.md](README.md)** - Main project documentation
+| Error | Cause | Fix |
+|-------|-------|-----|
+| 402 Payment Required | Missing NPM org or token permissions | Verify org + token access |
+| 403 Forbidden | Auth failure | Check NPM_TOKEN secret, token expiration |
+| 404 Not Found (install) | Package not public | Verify `publishConfig.access: "public"` |
 
-## 🆘 Troubleshooting
+See [npm-setup.md](npm-setup.md) and [releasing.md](releasing.md) for detailed guides.
 
-If something goes wrong, check:
+## After Setup
 
-1. **GitHub Actions tab** - View workflow logs for errors
-2. **NPM organization** - Verify you have correct permissions
-3. **Token expiration** - Check if your NPM token is still valid
-4. **NPM_SETUP.md** - Review the troubleshooting section
-
-Common issues and solutions are documented in [NPM_SETUP.md](NPM_SETUP.md#troubleshooting).
-
-## 🎉 Success!
-
-Once you complete these steps, your packages will be published to NPM and anyone can install them with:
+Future releases are automatic: create changesets, merge the release PR, packages publish.
 
 ```bash
 npm install @supergrain/core @supergrain/react @supergrain/store
 ```
-
-Future releases will be automatic - just create changesets and merge the release PRs!

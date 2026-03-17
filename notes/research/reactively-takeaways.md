@@ -1,314 +1,92 @@
 # Reactively Takeaways for Supergrain
 
-## Overview
+> **TL;DR:** Reactively's 5000x faster reads come from its explicit manual reactivity model (direct `signal.value` access), not from techniques transferable to supergrain's automatic proxy-based tracking. Most initially proposed optimizations would break reactivity. Viable gains are limited to micro-optimizations (5-25% range) and bundle size improvements.
 
-Based on the comprehensive analysis of Reactively, several optimization strategies and architectural insights could potentially improve Supergrain's performance while maintaining its developer-friendly automatic proxy wrapping.
+**Status:** Analysis complete. Conclusion: the performance gap is architectural and cannot be closed without abandoning automatic reactivity. Focus shifted to `$$()` direct DOM and `createView` prototype getters instead (see `compiled-reads-investigation.md`).
 
-## Concrete Optimization Opportunities in Supergrain
+---
 
-Based on analysis of the current Supergrain implementation in `/packages/core/src/store.ts`, here are specific optimizations grounded in actual code:
+## Core Insight
 
-### 1. Optimize Proxy Handler Symbol Checks - Line 110 ✅
+Reactively uses explicit reactivity (`signal.value`). Supergrain uses automatic reactivity (proxy traps). Every property access in supergrain must register dependencies, creating unavoidable overhead. Attempts to skip this infrastructure break the automatic tracking that is supergrain's core value proposition.
 
-**Current Implementation:**
-```typescript
-const handler: ProxyHandler<object> = {
-  get(target, property, receiver) {
-    if (property === $RAW) return target
-    if (property === $PROXY) return receiver  
-    if (property === $TRACK) {
-      trackSelf(target)
-      return receiver
-    }
-    // ... rest of logic
-  }
-}
-```
+---
 
-**Concrete Optimization:**
-```typescript
-// Pre-compute symbol set for faster lookups
-const SPECIAL_SYMBOLS = new Set([$RAW, $PROXY, $TRACK, $NODE])
+## Viable Optimizations (within reactive constraints)
 
-const handler: ProxyHandler<object> = {
-  get(target, property, receiver) {
-    // Single Set lookup instead of multiple === comparisons
-    if (typeof property === 'symbol' && SPECIAL_SYMBOLS.has(property)) {
-      if (property === $RAW) return target
-      if (property === $PROXY) return receiver  
-      if (property === $TRACK) {
-        trackSelf(target)
-        return receiver
-      }
-    }
-    // ... rest of logic
-  }
-}
-```
+### 1. Proxy Handler Symbol Checks (implemented)
 
-**Performance Impact:** Reduces symbol comparison overhead in hot path
-
-### 2. Optimize `setProperty()` Array Length Handling - Line 83 ✅
-
-**Current Implementation:**
-```typescript
-if (Array.isArray(target) && property !== 'length') {
-  const lengthNode = nodes['length']
-  if (lengthNode && target.length !== (oldValue as any)?.length) {
-    lengthNode(target.length)  // Multiple property access
-  }
-}
-```
-
-**Concrete Optimization:**
-```typescript
-if (Array.isArray(target) && property !== 'length') {
-  const lengthNode = nodes['length']
-  if (lengthNode) {
-    const newLength = target.length
-    const oldLength = Array.isArray(oldValue) ? oldValue.length : undefined
-    if (newLength !== oldLength) {
-      lengthNode(newLength)  // Cache length values
-    }
-  }
-}
-```
-
-**Performance Impact:** Eliminates repeated array length property access
-
-## Viable Optimization Opportunities
-
-**IMPORTANT:** After analysis, many initially proposed optimizations would break Supergrain's automatic reactivity. The following optimizations maintain reactivity while improving performance within system constraints.
-
-### 1. Signal Implementation Optimizations
-
-**Target:** Optimize `signal.get()` and `signal.set()` calls themselves, not skip them
+Reduce symbol comparison overhead by checking `typeof property === 'symbol'` before individual comparisons:
 
 ```typescript
-// Current alien-signals approach (simplified)
-class Signal {
-  get() {
-    if (getCurrentSub()) {
-      // Register dependency - CANNOT skip this
-      registerDependency(this)
-    }
-    return this.value
-  }
-}
+// Before: 3 sequential === checks on every property access
+if (property === $RAW) return target
+if (property === $PROXY) return receiver
+if (property === $TRACK) { ... }
 
-// Optimized signal internals
-class OptimizedSignal {
-  get() {
-    // Same dependency registration (required for reactivity)
-    if (getCurrentSub()) {
-      // Optimize the registration process itself
-      fastRegisterDependency(this) // Faster data structures
-    }
-    
-    // Optimize the value retrieval
-    return this.cachedValue // Pre-computed, but still reactive
-  }
-}
+// After: single typeof guard short-circuits for string properties
+if (typeof property === 'symbol' && SPECIAL_SYMBOLS.has(property)) { ... }
 ```
 
-**Potential Improvements:**
-- **Faster dependency registration**: Arrays instead of Sets where appropriate
-- **Optimized equality checks**: Custom comparisons for common types  
-- **Better memory layout**: Reduce object overhead per signal
-- **Batch subscription updates**: Group multiple dependency registrations
+### 2. Array Length Handling in setProperty (implemented)
 
-### 2. Proxy Trap Micro-optimizations
-
-**Target:** Make the required proxy trap execution faster, not bypass it
+Cache length values instead of repeated property access:
 
 ```typescript
-// Current proxy handler
-const handler: ProxyHandler<object> = {
-  get(target, property, receiver) {
-    // Optimize these required steps, don't skip them
-    const nodes = getNodes(target)           // ~0.020ms - can optimize
-    const nodeSignal = getNode(nodes, property, value) // ~0.030ms - can optimize  
-    return wrap(nodeSignal())               // ~0.034ms - must keep reactivity
-  }
+// Before: multiple property accesses
+if (lengthNode && target.length !== (oldValue as any)?.length) {
+  lengthNode(target.length)
 }
 
-// Optimized proxy handler (maintains reactivity)
-const optimizedHandler: ProxyHandler<object> = {
-  get(target, property, receiver) {
-    // Faster property key handling
-    if (typeof property === 'symbol') {
-      return handleSymbolProperty(target, property, receiver)
-    }
-    
-    // Optimized node storage access
-    const nodes = getFasterNodes(target)     // Improved WeakMap or other storage
-    const nodeSignal = getFasterNode(nodes, property, value) // Pool reuse, faster creation
-    
-    // Required for reactivity - optimize execution, not skip
-    return wrap(nodeSignal())               // Still calls signal, but optimized wrap()
-  }
-}
+// After: cached values
+const newLength = target.length
+const oldLength = Array.isArray(oldValue) ? oldValue.length : undefined
+if (newLength !== oldLength) { lengthNode(newLength) }
 ```
 
-### 3. Memory Layout Optimizations
+### 3. Signal Implementation Micro-optimizations
 
-**Target:** Reduce memory overhead and allocation frequency
+- Faster dependency registration (arrays instead of Sets where appropriate)
+- Optimized equality checks for common types
+- Better memory layout to reduce per-signal object overhead
+- Batch subscription updates
 
-```typescript
-// Object pooling for temporary objects
-class ObjectPool<T> {
-  private pool: T[] = []
-  
-  get(): T {
-    return this.pool.pop() ?? this.create()
-  }
-  
-  release(obj: T): void {
-    this.reset(obj)
-    this.pool.push(obj)
-  }
-}
+**Expected impact:** 10-20% improvement
 
-// Use pools for frequently created objects in proxy traps
-const nodeAccessPool = new ObjectPool<NodeAccess>()
+### 4. Memory Layout / Object Pooling
 
-function optimizedGetNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<any> {
-  if (nodes[property]) {
-    return nodes[property]!
-  }
-  
-  // Still must create signal for reactivity, but optimize the creation
-  const newSignal = createOptimizedSignal(value) // Pooled or pre-allocated
-  nodes[property] = newSignal
-  return newSignal
-}
-```
+- Pool frequently created objects in proxy traps
+- Reduce allocation frequency in hot paths
 
-## Bundle Size Optimizations
+**Expected impact:** 15-25% memory reduction
 
-### 1. Tree Shaking Improvements
+### 5. Bundle Size
 
-**Reactively's Minimalism:**
-- Core library: <1KB gzipped
-- No React dependencies in core
-- Minimal API surface
+- Tree shaking improvements via package splitting (`@supergrain/core`, `@supergrain/react`, `@supergrain/dev`)
+- Bit flags instead of objects where possible
 
-**Supergrain Optimization:**
-```typescript
-// Split packages like Reactively
-// @supergrain/core - Pure reactive logic
-// @supergrain/react - React integration only
-// @supergrain/dev - Development tools
+**Expected impact:** 20-30% size reduction
 
-// Enable better tree shaking
-export { createStore } from './store'
-export { useStore } from './react' // Separate chunk
-export { devtools } from './dev'   // Development only
-```
+---
 
-### 2. Micro-optimizations
+## Rejected Optimizations (would break reactivity)
 
-```typescript
-// Use bit flags instead of objects where possible
-const CACHE_CLEAN = 0b001
-const CACHE_CHECK = 0b010  
-const CACHE_DIRTY = 0b100
+- Property access caching that bypasses signals
+- Fast path proxy handling that skips dependency registration
+- Lazy signal creation with inconsistent identity
 
-// Inline small functions in hot paths
-const getCleanValue = (cache) => cache.value // Inline candidate
-const isDirty = (state) => (state & CACHE_DIRTY) !== 0 // Bit operation
-```
+---
 
-## Implementation Priorities
+## Implementation Priority
 
-**IMPORTANT:** After analysis, caching optimizations that skip signal calls would break reactivity. Revised priorities focus on optimizations within reactive system constraints.
+| Phase | Focus | Risk |
+|---|---|---|
+| 1 | Signal micro-optimizations, observer data structures, allocation reduction, bundle splitting | Low |
+| 2 | Optimized WeakMap alternatives, memory layout, batch dependency registration, object pooling | Medium |
+| 3 | Custom signal implementation, V8-specific proxy optimizations | High |
 
-### Phase 1: Low-Risk Performance Wins
-1. **Signal implementation micro-optimizations** in alien-signals
-2. **Observer data structure improvements** (arrays vs Sets where appropriate)
-3. **Reduce object allocations** through pooling in hot paths  
-4. **Bundle splitting** for better tree shaking (@supergrain/core, @supergrain/react)
-
-### Phase 2: Data Structure Optimizations  
-1. **Optimized WeakMap alternatives** for node storage (if faster than current approach)
-2. **Memory layout improvements** for signal objects
-3. **Batch dependency registration** to reduce overhead
-4. **Object pooling** for temporary objects in proxy traps
-
-### Phase 3: Advanced Optimizations (Within Reactive Constraints)
-1. **Custom signal implementation** optimized for Supergrain's specific patterns
-2. **V8-specific optimizations** for proxy trap performance
-3. **Advanced bundler optimizations** and dead code elimination
-4. **Memory usage profiling** and targeted optimizations
-
-**Removed from consideration:**
-- ~~Property access caching that bypasses signals~~ (breaks reactivity)
-- ~~Fast path proxy handling~~ (breaks reactivity)  
-- ~~Lazy signal creation with inconsistent identity~~ (breaks reactivity)
-
-## Validation Strategy
-
-### Performance Benchmarking
-```typescript
-// Measure improvement in key scenarios (revised realistic targets)
-const benchmarks = [
-  'signal-get-performance',   // Target: 10-20% improvement (optimize alien-signals)
-  'proxy-trap-overhead',      // Target: 5-15% improvement (micro-optimizations)
-  'memory-allocations',       // Target: 15-25% reduction (object pooling)
-  'bundle-size',              // Target: 20-30% reduction (tree shaking)
-]
-```
-
-### Compatibility Testing
-- Ensure all existing Supergrain tests pass
-- Validate React integration remains seamless
-- Test edge cases (frozen objects, circular references)
-- Measure bundle size impact
-
-## Risk Assessment
-
-**Low Risk Optimizations:**
-- Bundle splitting ✅
-- Object pooling for temporary objects ✅  
-- Micro-optimizations that don't affect reactivity ✅
-- Data structure improvements (arrays vs Sets) ✅
-
-**Medium Risk Optimizations:**
-- Custom alien-signals optimizations ⚠️
-- WeakMap storage alternatives ⚠️
-- Signal internal implementation changes ⚠️
-
-**High Risk Optimizations:**
-- Custom signal implementation replacing alien-signals ❌
-- Proxy trap bypassing (breaks reactivity) ❌
-- Breaking API changes ❌
-
-**Previously Considered But Rejected (Break Reactivity):**
-- Property access caching that skips signals ❌
-- Fast path proxy handling ❌
-- Lazy signal creation with inconsistent identity ❌
+---
 
 ## Conclusion
 
-After deeper analysis, Reactively's performance advantages come primarily from its **explicit manual reactivity model**, not from techniques that can be directly applied to Supergrain's automatic system.
-
-**Key Insights:**
-
-1. **Performance gap is architectural**: Reactively's 5000x faster reads come from direct `signal.value` access vs Supergrain's proxy trap overhead
-2. **Automatic reactivity has inherent costs**: Every property access must register dependencies, creating unavoidable overhead  
-3. **Optimization constraints are fundamental**: Attempts to skip reactivity infrastructure break the automatic tracking that is Supergrain's core value
-
-**Viable Optimizations for Supergrain:**
-
-1. **Signal implementation micro-optimizations** (10-20% improvements possible)
-2. **Data structure improvements** (arrays vs Sets, better memory layout)
-3. **Object pooling and allocation reduction** (15-25% memory improvements)
-4. **Bundle splitting** (20-30% size reduction)
-5. **Proxy trap micro-optimizations** (5-15% speed improvements)
-
-**The Trade-off Reality:**
-
-- **Reactively**: Maximum performance through explicit reactivity (user controls what's tracked)
-- **Supergrain**: Developer experience through automatic reactivity (system tracks everything transparently)
-
-The performance difference isn't a bug to fix - it's the cost of automatic transparency. Supergrain's optimization opportunities lie in making the required reactive infrastructure as efficient as possible, not in trying to bypass it.
+The performance difference between Reactively and Supergrain is not a bug to fix -- it's the cost of automatic transparency. Optimization efforts within reactive constraints yield 5-25% improvements. For solid-js-level performance, the path forward is `$$()` direct DOM bindings and `createView` prototype getters, not micro-optimizing the proxy path.

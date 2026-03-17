@@ -1,11 +1,14 @@
-# Failed Approach: Creating Effects Inside a Running Effect
+# FAILED: Creating Effects Inside a Running Effect
 
-**Date:** March 2026
-**Approach:** Watch the data signal with an outer effect, rebuild all rows (including per-row effects) when data changes
-**Result:** 5x slower than creating effects outside reactive context
-**Key Lesson:** Creating alien-signals effects inside a running effect triggers expensive reactive graph bookkeeping. Build DOM and subscribe signals outside the reactive transaction.
+> **Status:** FAILED — Fixed by restructuring
+> **Date:** March 2026
+> **TL;DR:** Creating alien-signals effects inside a running effect is 5x slower than creating them outside the reactive context. The reactive graph bookkeeping for 2000 nested effects (2 per row x 1000 rows) adds ~20ms overhead. Build DOM and subscribe signals synchronously, outside any effect.
 
-## The Pattern
+## Goal
+
+Watch a data signal with an outer effect and rebuild all rows (including per-row effects) when data changes.
+
+## What Was Tried
 
 ```typescript
 // SLOW: ~25ms for 1000 rows
@@ -22,6 +25,27 @@ const dataCleanup = effect(() => {
 })
 ```
 
+## Why It Failed
+
+When `effect()` is called inside a running effect, alien-signals must:
+1. Track the new effect as potentially dependent on the outer effect's dependencies
+2. Update the reactive dependency graph
+3. Handle cleanup scheduling for inner effects when the outer re-runs
+
+This bookkeeping multiplied by 2000 effects (2 per row x 1000 rows) adds ~20ms.
+
+## Benchmark Evidence
+
+From `gap-analysis.bench.tsx`:
+
+| Approach | Time (1000 rows) |
+|---|---|
+| Pure DOM + alien-signals (effects outside) | 2.5ms |
+| Pure DOM + alien-signals + supergrain store (effects outside) | 5.1ms |
+| DirectDomApp (effects inside outer effect) | 25.2ms |
+
+The 5x overhead is entirely from nested effect creation.
+
 ## The Fix
 
 ```typescript
@@ -36,24 +60,8 @@ for (const item of data) {
 }
 ```
 
-## Benchmark Evidence
+## Key Learnings
 
-From gap-analysis.bench.tsx:
-- Pure DOM + alien-signals (effects created outside): **2.5ms**
-- Pure DOM + alien-signals + supergrain store (effects outside): **5.1ms**
-- DirectDomApp (effects inside outer effect): **25.2ms**
-
-The 5x overhead is entirely from nested effect creation.
-
-## Why It's Slow
-
-When `effect()` is called inside a running effect, alien-signals must:
-1. Track the new effect as potentially dependent on the outer effect's dependencies
-2. Update the reactive dependency graph
-3. Handle cleanup scheduling for the inner effects when the outer re-runs
-
-This bookkeeping multiplied by 2000 effects (2 per row × 1000 rows) adds ~20ms.
-
-## How to Avoid
-
-Build DOM and create signal subscriptions synchronously, not inside a data-watching effect. Use the data-watching effect only for detecting WHEN to rebuild, then exit the reactive context before doing the work.
+- Build DOM and create signal subscriptions synchronously, not inside a data-watching effect.
+- Use the data-watching effect only to detect WHEN to rebuild, then exit the reactive context before doing the work.
+- Nested effect creation overhead is per-effect, so it scales linearly with row count.
