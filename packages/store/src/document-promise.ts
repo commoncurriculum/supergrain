@@ -11,6 +11,10 @@ export class DocumentPromiseImpl<T> implements DocumentPromise<T> {
     return this.documentState()?.content;
   }
 
+  get error(): string | undefined {
+    return this.documentState()?.error;
+  }
+
   get isPending(): boolean {
     return this.documentState()?.status === "pending";
   }

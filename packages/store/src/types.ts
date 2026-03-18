@@ -11,6 +11,7 @@ export interface StoreState {
 
 export interface DocumentPromise<T> {
   content: T | undefined;
+  error: string | undefined;
   isPending: boolean;
   isSettled: boolean;
   isRejected: boolean;

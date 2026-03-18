@@ -1,4 +1,3 @@
-import { $NODE } from "./core";
 import {
   type ArrayPullOperations,
   type ArrayWriteOperations,
@@ -9,6 +8,7 @@ import {
   setValueAtPath,
   type UnsetPathOperations,
 } from "./path";
+import { $NODE } from "./core";
 import { bumpOwnKeysSignal, bumpVersion, setProperty } from "./write";
 
 /**
@@ -148,37 +148,31 @@ function syncIndexedSignals(nodes: any, arr: any[]): void {
   }
 }
 
-// Precise function for array pull operations
-// OPTIMIZATION: Uses splice for atomic modification then manually triggers signals
+// Operates on the RAW (unwrapped) array, not through the proxy.
+// Must manually manage signals since proxy handlers aren't involved.
 function pullFromArray(arr: any[], condition: any): boolean {
   let removed = false;
   const originalLength = arr.length;
 
-  // Remove items from end to beginning to avoid index shifting issues
   for (let i = arr.length - 1; i >= 0; i--) {
     if (isObjectMatch(arr[i], condition)) {
-      // Use native splice for atomic array modification
       arr.splice(i, 1);
       removed = true;
     }
   }
 
-  // If we removed items, update the array signals
   if (removed && arr.length !== originalLength) {
     bumpVersion(arr);
 
-    // Access the array's signal nodes to manually trigger updates
     const nodes = (arr as any)[$NODE];
     if (nodes) {
       bumpOwnKeysSignal(arr, nodes);
 
-      // Update the length signal if it exists
       const lengthSignal = nodes["length"];
       if (lengthSignal && lengthSignal() !== arr.length) {
         lengthSignal(arr.length);
       }
 
-      // Update any indexed signals that may have changed
       syncIndexedSignals(nodes, arr);
     }
   }

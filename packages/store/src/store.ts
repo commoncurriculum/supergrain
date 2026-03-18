@@ -6,6 +6,7 @@ export class Store<T extends DocumentTypes = DocumentTypes> {
   private store: StoreState;
   private update: SetStoreFunction;
   private fetchHandler?: FetchHandler;
+  private promiseCache = new Map<string, DocumentPromise<any>>();
 
   constructor(fetchHandler?: FetchHandler) {
     const [store, update] = createStore<StoreState>({
@@ -19,30 +20,36 @@ export class Store<T extends DocumentTypes = DocumentTypes> {
   findDoc<K extends keyof T>(modelType: K, id: string | number): DocumentPromise<T[K]> {
     const key = String(id);
     const modelTypeStr = String(modelType);
+    const cacheKey = `${modelTypeStr}:${key}`;
 
-    // Check if document already exists
+    // Return cached promise if it exists
+    const cached = this.promiseCache.get(cacheKey);
+    if (cached) {
+      return cached as DocumentPromise<T[K]>;
+    }
+
+    // Check if document already exists in the store
     const existingDoc = this.store.documents[modelTypeStr]?.[key];
 
     if (!existingDoc) {
       this.triggerFetch(modelTypeStr, id);
 
-      // Ensure the nested path exists before setting the document
+      // Set just this document's state without copying the entire map
       this.update({
         $set: {
-          [`documents.${modelTypeStr}`]: {
-            ...this.store.documents[modelTypeStr],
-            [key]: {
-              content: undefined,
-              status: "pending" as const,
-            },
+          [`documents.${modelTypeStr}.${key}`]: {
+            content: undefined,
+            status: "pending" as const,
           },
         },
       });
     }
 
     const documentState = computed(() => this.store.documents[modelTypeStr]?.[key]);
+    const promise = new DocumentPromiseImpl<T[K]>(documentState);
+    this.promiseCache.set(cacheKey, promise);
 
-    return new DocumentPromiseImpl(documentState);
+    return promise;
   }
 
   setDocument<K extends keyof T>(modelType: K, id: string | number, data: T[K]): void {
