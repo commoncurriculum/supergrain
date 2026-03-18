@@ -83,6 +83,8 @@ The proxy `set` trap is `setProperty(target, prop, value)` -- one function call,
 
 ## React Compatibility
 
+> **Note:** `useTracked` has been superseded by `tracked()`. The references below are historical and describe the design as originally planned.
+
 Compiled reads (`readSignal(x, 'prop')()`) check `getCurrentSub()` when invoking the signal. In React, `useTracked` sets `currentSub` once and returns the branded value:
 
 ```ts

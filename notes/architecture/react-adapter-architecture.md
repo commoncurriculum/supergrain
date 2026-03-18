@@ -1,6 +1,6 @@
 # React Adapter Architecture
 
-> **Status:** Partially superseded. The core design was implemented in `@supergrain/react`, but the actual API diverged significantly. The implemented API uses `useTracked` + `For` (not `useStore`/`useStoreValue`/`useComputed`). See `packages/react/src/` for current implementation.
+> **Status:** Partially superseded. The core design was implemented in `@supergrain/react`, but the actual API diverged significantly. The current API uses `tracked()` + `For` + `$$` + `DirectFor`. The earlier `useTracked` hook has been superseded by `tracked()`. See `packages/react/src/` for current implementation.
 > **Still valuable:** The design rationale, benchmark findings, and implementation patterns below remain useful reference.
 
 ## Goal
@@ -27,8 +27,8 @@ trackedEffect._callback = () => {
 ## Implemented API (actual)
 
 ```tsx
-// useTracked — returns stable proxy that tracks dependencies per component
-const state = useTracked(store)
+// tracked() — returns stable proxy that tracks dependencies per component (formerly useTracked)
+const state = tracked(store)
 
 // For — list rendering with automatic version prop injection for memo
 <For each={state.items}>
@@ -76,7 +76,7 @@ function createEffectStore() {
 }
 ```
 
-Note: The actual implementation in `useTracked` uses `useReducer` + `effect()` from `@supergrain/core` rather than this `useSyncExternalStore` pattern.
+Note: The actual implementation in `tracked()` (formerly `useTracked`) uses `useReducer` + `effect()` from `@supergrain/core` rather than this `useSyncExternalStore` pattern.
 
 ## Benchmark Findings
 
@@ -91,7 +91,7 @@ Server-side: return non-reactive version (skip effect tracking when `typeof wind
 
 ## Remaining Checklist
 
-- [x] `useTracked` hook with effect-based tracking
+- [x] `tracked()` (formerly `useTracked`) with effect-based tracking
 - [x] `For` component for list rendering
 - [x] `$$` / `useDirectBindings` for direct DOM bindings
 - [x] `DirectFor` for template-based lists

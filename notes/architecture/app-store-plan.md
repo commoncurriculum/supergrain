@@ -207,7 +207,7 @@ class DocumentPromise<T> {
 
 ```typescript
 function useAppStore() {
-  return useTracked(appStore.store)
+  return tracked(appStore.store)
 }
 
 function MyComponent() {

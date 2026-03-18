@@ -11,7 +11,7 @@
 | State Model | Immutable streams | Mutable proxy objects |
 | Update Pattern | Event dispatch -> stream transformation | Direct mutation or operators |
 | Memory Pattern | New objects per change | In-place modifications |
-| React Integration | `useStateObservable` (react-rxjs) | `useTracked` |
+| React Integration | `useStateObservable` (react-rxjs) | `tracked()` |
 | Bundle Size | ~45KB (RxJS + react-rxjs) | ~8KB (core + react + alien-signals) |
 
 ## Krauset Benchmark Analysis

@@ -10,7 +10,7 @@
 |--------|-------|-----------|
 | State Model | Individual atoms | Unified proxy objects |
 | Reactivity | Per-atom subscriptions | Proxy-based signal tracking |
-| React Integration | `useAtomValue`/`useSetAtom` | `useTracked` |
+| React Integration | `useAtomValue`/`useSetAtom` | `tracked()` |
 | Deep Nesting | Requires atomic decomposition | Automatic proxy wrapping |
 | Memory Pattern | Many small objects | Few large objects |
 | GC Pressure | High (many objects) | Low (fewer objects) |
@@ -20,7 +20,7 @@
 
 Jotai uses `useAtomValue` backed by `useReducer` + `useEffect` for per-atom subscriptions. Each hook subscribes to a single atom via `store.sub()`. Built-in support for async atoms and Suspense.
 
-Supergrain uses `useTracked` with a proxy that auto-tracks accessed properties during render.
+Supergrain uses `tracked()` (formerly `useTracked`) with a proxy that auto-tracks accessed properties during render.
 
 ## Memory Comparison
 

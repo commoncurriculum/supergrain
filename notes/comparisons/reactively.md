@@ -18,7 +18,7 @@ Reactively is a minimal (<1KB gzipped) reactive computation library using a hybr
 | Object Handling | Manual wrapping required | Automatic proxy wrapping |
 | Bundle Size | <1KB gzipped | ~8KB (with alien-signals) |
 | Memory per Property | ~109 bytes | ~200 bytes (with proxy overhead) |
-| React Integration | None | Built-in `useTracked` hook |
+| React Integration | None | Built-in `tracked()` (formerly `useTracked`) |
 
 **Core insight:** Every property access in supergrain must register dependencies via proxy traps. Attempts to skip this infrastructure break the automatic tracking that is supergrain's core value proposition.
 

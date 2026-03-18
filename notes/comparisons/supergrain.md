@@ -11,7 +11,7 @@ Supergrain is a proxy-based reactive store with automatic fine-grained reactivit
 | Aspect | Details |
 |--------|---------|
 | Reactivity | Proxy traps + alien-signals |
-| React Integration | `useTracked` hook with per-component proxy isolation |
+| React Integration | `tracked()` with per-component proxy isolation |
 | Nested Objects | Automatic lazy proxy wrapping via `wrap()` |
 | Updates | Direct mutation or MongoDB-style operators (`$set`, `$push`, `$inc`, etc.) |
 | Batching | Automatic via `startBatch`/`endBatch` |

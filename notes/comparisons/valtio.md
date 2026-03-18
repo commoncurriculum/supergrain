@@ -2,14 +2,14 @@
 
 > **Status:** Reference analysis. Valtio is the most architecturally similar competitor -- both use JavaScript Proxy for reactive state.
 >
-> **Key difference:** Valtio uses direct mutation + snapshot immutability for React; Supergrain uses proxy-based signal tracking with `useTracked`. Valtio has faster reads via snapshots; Supergrain has faster updates via in-place mutations.
+> **Key difference:** Valtio uses direct mutation + snapshot immutability for React; Supergrain uses proxy-based signal tracking with `tracked()`. Valtio has faster reads via snapshots; Supergrain has faster updates via in-place mutations.
 
 ## Architecture
 
 | Aspect | Valtio | Supergrain |
 |--------|--------|-----------|
 | Proxy Creation | Manual via `proxy()` | Automatic in `createStore()` |
-| React Integration | `useSnapshot` + `useSyncExternalStore` | `useTracked` with per-component proxy |
+| React Integration | `useSnapshot` + `useSyncExternalStore` | `tracked()` with per-component proxy |
 | Fine-grained Updates | `proxy-compare` library | alien-signals |
 | Memory Model | Proxy + immutable snapshots | Single reactive proxy with signal nodes |
 | Nested Objects | Auto-proxied on mutation | Auto-proxied via `wrap()` |
@@ -19,7 +19,7 @@
 
 Valtio's `useSnapshot` creates an immutable snapshot and wraps it in a tracking proxy (via `proxy-compare`) to detect which properties were accessed during render. This means reads go through plain frozen objects (fast) but snapshot creation adds overhead per update.
 
-Supergrain's `useTracked` wraps the store in a proxy that swaps the active subscriber during each property access, providing per-component isolation without snapshot creation.
+Supergrain's `tracked()` (formerly `useTracked`) wraps the store in a proxy that swaps the active subscriber during each property access, providing per-component isolation without snapshot creation.
 
 ## Memory Comparison
 

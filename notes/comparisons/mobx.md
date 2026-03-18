@@ -9,7 +9,7 @@
 | Aspect | MobX | Supergrain |
 |--------|------|-----------|
 | Observable Creation | Explicit via `observable()` or decorators | Automatic in `createStore()` |
-| React Integration | `observer` HOC + `useSyncExternalStore` | `useTracked` hook |
+| React Integration | `observer` HOC + `useSyncExternalStore` | `tracked()` |
 | Dependency Tracking | Reaction-based observer pattern | Proxy traps + signal subscriptions |
 | Nested Objects | Requires explicit `observable()` calls | Auto-proxied via `wrap()` |
 | State Updates | Actions + direct mutation | Direct mutation or MongoDB operators |
@@ -20,7 +20,7 @@
 
 MobX wraps components with `observer()` HOC, which uses `useSyncExternalStore` internally. During render, a `Reaction` tracks observable dependencies. Each observable maintains an `observers_` set and propagates changes through `propagateChanged()`.
 
-Supergrain's `useTracked` creates a per-component proxy that swaps the active subscriber during each property access for perfect nested component isolation.
+Supergrain's `tracked()` (formerly `useTracked`) creates a per-component proxy that swaps the active subscriber during each property access for perfect nested component isolation.
 
 ## Memory Comparison
 

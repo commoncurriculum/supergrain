@@ -100,8 +100,8 @@ store.user.profile.address.coordinates = { lat, lng }
 // Zustand: manual selector (fires all listeners, selector bails out)
 const coordinates = useStore((state) => state.user.profile.address.coordinates)
 
-// Supergrain: automatic tracking (only fires affected effect)
-const state = useTracked(store)
+// Supergrain: automatic tracking via tracked() (only fires affected effect)
+const state = tracked(store)
 const coordinates = state.user.profile.address.coordinates
 ```
 

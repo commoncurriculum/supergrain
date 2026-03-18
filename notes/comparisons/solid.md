@@ -22,4 +22,4 @@ Each store property is backed by a signal. Updating a property calls the signal'
 
 ## Relevance to Supergrain
 
-Supergrain uses the same proxy + signal architecture but cannot rely on compilation for DOM targeting because React owns the render cycle. This is why Supergrain needs `useTracked` / version-based subscriptions to bridge signals into React's reconciliation model. See `react-adapter-architecture.md` for details.
+Supergrain uses the same proxy + signal architecture but cannot rely on compilation for DOM targeting because React owns the render cycle. This is why Supergrain needs `tracked()` (formerly `useTracked`) / version-based subscriptions to bridge signals into React's reconciliation model. See `react-adapter-architecture.md` for details.
