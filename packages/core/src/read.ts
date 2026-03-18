@@ -135,7 +135,7 @@ export function createReactiveProxy<T extends object>(target: T): T {
   try {
     Object.defineProperty(target, $PROXY, { value: proxy, enumerable: false });
   } catch {
-    // Fails for frozen objects, which is expected.
+    // Fails for sealed or non-configurable objects.
   }
 
   return proxy as T;

@@ -13,7 +13,6 @@ export type Branded<T> = T extends (infer U)[]
 export interface Signal<T> {
   (): T;
   (value: T): void;
-  $?: (value: T) => void;
 }
 
 export const $NODE = Symbol.for("supergrain:node");
@@ -55,7 +54,6 @@ export function getNode(nodes: DataNodes, property: PropertyKey, value?: any): S
     return nodes[property]!;
   }
   const newSignal = signal(value) as Signal<any>;
-  newSignal.$ = newSignal as (v: any) => void;
   nodes[property] = newSignal;
   return newSignal;
 }

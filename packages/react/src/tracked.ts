@@ -65,6 +65,7 @@ export function tracked<P extends object>(Component: FC<P>) {
     useEffect(
       () => () => {
         ref.current?.cleanup?.();
+        ref.current = null;
       },
       [],
     );
