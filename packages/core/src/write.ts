@@ -74,8 +74,8 @@ export const writeHandler: Pick<
   deleteProperty(target: any, prop: PropertyKey): boolean {
     if (Array.isArray(target)) {
       // Silent delete for signal values: splice/pop/shift handle element
-      // moves via set(). But bump ownKeys so structural subscribers
-      // (like useView's $TRACK) detect the change.
+      // moves via set(). Bump ownKeys so structural subscribers detect
+      // the change.
       const hadKey = Object.prototype.hasOwnProperty.call(target, prop)
       delete target[prop as any]
       if (hadKey) {

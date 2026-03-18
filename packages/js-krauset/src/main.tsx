@@ -161,19 +161,7 @@ if (typeof window !== 'undefined' && document.getElementById('run')) {
 
 // --- React Components ---
 
-/**
- * Optimized Row component using tracked() for maximum performance.
- *
- * Thanks to the <For> component automatically handling version props:
- * - The <For> component detects changes in proxy objects and passes version info
- * - tracked() includes memo behavior to properly detect when props haven't changed
- * - Only rows that actually need to update will re-render
- *
- * This provides massive performance improvements for large lists:
- * - Before: All rows re-render on any change (1-2% efficient)
- * - After: Only changed rows re-render with <For> component (98%+ efficient)
- */
-export const Row = (tracked as any)(
+export const Row = tracked(
   ({ item, isSelected, onSelect, onRemove }: RowProps) => {
     return (
       <tr className={isSelected ? 'danger' : ''}>
@@ -195,7 +183,7 @@ export const Row = (tracked as any)(
   }
 )
 
-export const App = (tracked as any)(() => {
+export const App = tracked(() => {
   const handleSelect = useCallback((id: number) => select(id), [])
   const handleRemove = useCallback((id: number) => remove(id), [])
 
