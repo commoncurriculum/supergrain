@@ -2,20 +2,20 @@
 export {
   createStore,
   unwrap,
-  $VERSION,
-  $NODE,
-  $PROXY,
-  $RAW,
-  $OWN_KEYS,
+  $BRAND,
   type Signal,
   type SetStoreFunction,
-} from './store'
+  type StrictSetStoreFunction,
+  type Branded,
+} from "./store";
 
 // Export MongoDB-style update operators
 export {
   update,
+  type LooseUpdateOperations,
+  type StrictUpdateOperations,
   type UpdateOperations,
-} from './operators'
+} from "./operators";
 
 // Re-export signals primitives from alien-signals for convenience
 export {
@@ -26,4 +26,4 @@ export {
   endBatch,
   getCurrentSub,
   setCurrentSub,
-} from 'alien-signals'
+} from "alien-signals";

@@ -1,15 +1,18 @@
 # Reactivity Contract Validation Tests
 
-These tests ensure that any optimizations preserve the fundamental reactivity guarantees of @supergrain/core. Based on the failed approaches documented in `/notes/failed-approaches/`, we validate:
+> **Status**: Current. Test code archive -- used to validate that optimizations preserve reactivity.
+> **TL;DR**: 11 tests covering: dependency registration, signal identity, nested access, arrays, symbol properties, conditional access, error conditions, and the "never skip tracking for performance" contract. All passed for each of the 4 optimizations in [safe-optimizations-benchmark.md](./safe-optimizations-benchmark.md).
+
+Guarantees validated:
 
 1. Every property access in reactive context registers dependencies
-2. Signal identity consistency for update propagation  
+2. Signal identity consistency for update propagation
 3. Automatic dependency tracking without manual setup
 4. Transparent object mutations that propagate reactively
 
 ## Test Code
 
-```typescript
+````typescript
 
 ```typescript
 import { describe, it, expect } from 'vitest'
@@ -49,7 +52,7 @@ describe('Reactivity Contract: Basic Property Access', () => {
 
   it('should not register dependencies when outside reactive context', () => {
     const [store, setStore] = createStore({ count: 0 })
-    
+
     // Access outside reactive context
     const initialValue = store.count
     expect(initialValue).toBe(0)
@@ -128,7 +131,7 @@ describe('Reactivity Contract: Nested Object Access', () => {
     // Update should trigger both effects (signal identity must be consistent)
     // This is the critical test from signal-prototype-optimization.md
     setStore({ $set: { 'data.value': 100 } })
-    
+
     // Both effects should have run again
     expect(runs1).toBe(2)
     expect(runs2).toBe(2)
@@ -191,18 +194,18 @@ describe('Reactivity Contract: Array Operations', () => {
 describe('Reactivity Contract: Symbol Properties', () => {
   it('should handle symbol property access without breaking reactivity', () => {
     const [store, setStore] = createStore({ count: 0 })
-    
+
     let effectRuns = 0
     let lastCount = 0
 
     const dispose = effect(() => {
       effectRuns++
       lastCount = store.count
-      
+
       // Access symbol properties (these should not interfere with reactivity)
       // const raw = (store as any)['$RAW']
       // const proxy = (store as any)['$PROXY']
-      
+
       // These should not affect the reactivity of store.count
     })
 
@@ -361,7 +364,7 @@ export function validateReactivityContract(
   describe(`Reactivity Validation: ${testName}`, () => {
     it('should maintain basic reactivity', () => {
       const [store, setStore] = createOptimizedStore({ count: 0 })
-      
+
       let effectRuns = 0
       let lastCount = 0
 
@@ -384,7 +387,7 @@ export function validateReactivityContract(
       const [store, setStore] = createOptimizedStore({
         nested: { value: 42 }
       })
-      
+
       let effectRuns = 0
       let lastValue = 0
 
@@ -404,36 +407,17 @@ export function validateReactivityContract(
     })
   })
 }
-```
+````
 
-## Purpose
+## Optimizations Validated
 
-These tests were created to validate that the 4 performance optimizations implemented in this PR preserved all reactivity guarantees:
+| Optimization                 | What Could Break        |
+| ---------------------------- | ----------------------- |
+| Reflect.get -> direct access | Dependency registration |
+| Object.create(null) -> {}    | Signal identity         |
+| Closure -> direct reference  | Signal behavior         |
+| Removed redundant checks     | Dependency tracking     |
 
-1. **Direct Property Access**: Ensures Reflect.get → direct access doesn't break reactivity
-2. **Object Literal for Nodes**: Ensures Object.create(null) → {} doesn't break signal identity
-3. **Signal $ Method Assignment**: Ensures closure → direct reference doesn't break signal behavior  
-4. **Simplified Proxy Handler Logic**: Ensures removing redundant checks doesn't break dependency tracking
+All 11 tests passed for each optimization.
 
-## Test Results
-
-All 11 tests passed for each optimization, confirming:
-- ✅ Every property access in reactive context registers dependencies
-- ✅ Signal identity consistency is maintained across access patterns
-- ✅ Automatic dependency tracking works without manual setup
-- ✅ Transparent object mutations propagate reactively
-- ✅ No optimization skips dependency registration for performance
-- ✅ Complex update patterns and error conditions work correctly
-
-## Usage
-
-This test suite was originally created as `packages/core/tests/reactivity-validation.test.ts` but has been moved to documentation format per project maintainer request.
-
-To run similar validation:
-```bash
-cd packages/core  
-# Create a temporary test file with the above code
-pnpm test your-validation.test.ts
-```
-
-The `validateReactivityContract` helper function can be used to test any optimized proxy implementations against the same reactivity guarantees.
+Originally `packages/core/tests/reactivity-validation.test.ts`, moved to doc format. The `validateReactivityContract` helper can test any optimized proxy implementation against these guarantees.

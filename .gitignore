@@ -188,3 +188,7 @@ es/
 # Test screenshots
 **/__screenshots__/
 .DS_Store
+.vitest-attachments/
+
+# Claude Code local settings
+.claude/settings.local.json

@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap");
 
 /* ============================================
    SUPERGRAIN THEME
@@ -13,22 +13,22 @@
   --sg-gold-dark: #d97706;
   --sg-cream: #fef3c7;
   --sg-earth: #78350f;
-  
+
   /* VitePress overrides */
   --vp-c-brand-1: #d97706;
   --vp-c-brand-2: #f59e0b;
   --vp-c-brand-3: #fbbf24;
   --vp-c-brand-soft: rgba(245, 158, 11, 0.14);
-  
+
   /* Warm light mode */
   --vp-c-bg: #fffbeb;
   --vp-c-bg-alt: #fef3c7;
   --vp-c-bg-elv: #ffffff;
   --vp-c-bg-soft: #fde68a;
-  
+
   /* Typography */
-  --vp-font-family-base: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --vp-font-family-mono: 'IBM Plex Mono', Consolas, monospace;
+  --vp-font-family-base: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --vp-font-family-mono: "IBM Plex Mono", Consolas, monospace;
 }
 
 .dark {
@@ -36,7 +36,7 @@
   --vp-c-brand-2: #f59e0b;
   --vp-c-brand-3: #d97706;
   --vp-c-brand-soft: rgba(251, 191, 36, 0.14);
-  
+
   --vp-c-bg: #1c1917;
   --vp-c-bg-alt: #292524;
   --vp-c-bg-elv: #1c1917;
@@ -86,12 +86,17 @@
 }
 
 @keyframes fly {
-  0%, 100% { transform: translateY(0px) rotate(-3deg); }
-  50% { transform: translateY(-25px) rotate(3deg); }
+  0%,
+  100% {
+    transform: translateY(0px) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-25px) rotate(3deg);
+  }
 }
 
 .hero-image::before {
-  content: '';
+  content: "";
   position: absolute;
   width: 520px;
   height: 520px;
@@ -138,24 +143,24 @@
     padding: 40px 24px;
     min-height: auto;
   }
-  
+
   .hero-content {
     max-width: 100%;
   }
-  
+
   .hero-image {
     min-height: 280px;
   }
-  
+
   .mascot {
     width: 280px;
     height: 280px;
   }
-  
+
   .hero-title {
     font-size: 3.5rem;
   }
-  
+
   .hero-actions {
     justify-content: center;
   }
@@ -320,7 +325,7 @@
     padding: 0 24px 48px;
     gap: 32px;
   }
-  
+
   .showcase-stats {
     flex-direction: row;
     gap: 32px;
@@ -512,7 +517,7 @@
     margin: 0 24px 48px;
     padding: 24px;
   }
-  
+
   .perf-label {
     width: 80px;
     font-size: 0.8rem;

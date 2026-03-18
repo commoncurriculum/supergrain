@@ -27,6 +27,6 @@
     "sourceMap": true,
     "outDir": "dist"
   },
-  "include": ["src", "tests", "benchmarks"],
+  "include": ["src", "tests", "benchmarks", "test-support"],
   "exclude": ["node_modules", "dist"]
 }

@@ -17,5 +17,9 @@
     "rxjs": "^7.8.2",
     "valtio": "^2.1.7",
     "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@vitest/browser": "4.1.0",
+    "vitest": "4.1.0"
   }
 }

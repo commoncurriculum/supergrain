@@ -43,12 +43,12 @@ layout: page
 
 ```tsx
 // Create a store
-const store = createStore({ count: 0, user: { name: 'Jane' } })
+const store = createStore({ count: 0, user: { name: "Jane" } });
 
 // Use it in React
 function Counter() {
-  const state = useStore(store)
-  return <button onClick={() => state.count++}>{state.count}</button>
+  const state = useStore(store);
+  return <button onClick={() => state.count++}>{state.count}</button>;
 }
 
 // That's it. When count changes, only Counter re-renders.
@@ -76,7 +76,7 @@ function Counter() {
 <div class="perf-comparison">
   <h3>Performance: Solid.js-level speed</h3>
   <p class="perf-subtitle">Reactive property reads at scale (10K operations)</p>
-  
+
   <div class="perf-bars">
     <div class="perf-row">
       <span class="perf-label">Supergrain</span>
@@ -93,9 +93,9 @@ function Counter() {
       </div>
     </div>
   </div>
-  
+
   <p class="perf-overhead"><strong>1.5x overhead</strong> — near-native performance with full reactivity</p>
-  
+
   <div class="perf-table">
     <table>
       <thead>
@@ -124,7 +124,7 @@ function Counter() {
       </tbody>
     </table>
   </div>
-  
+
   <div class="perf-explanation">
     <p><strong>Why is it fast?</strong> We use the same techniques as Solid.js:</p>
     <ul>
@@ -134,7 +134,7 @@ function Counter() {
       <li>Dual caching — symbol + WeakMap for instant proxy lookups</li>
     </ul>
   </div>
-  
+
   <p class="perf-source">Source: <a href="https://github.com/commoncurriculum/supergrain/blob/main/notes/planning/performance-plan-v2.md">notes/planning/performance-plan-v2.md</a></p>
 </div>
 -->

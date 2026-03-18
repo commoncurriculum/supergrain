@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["unicorn", "typescript"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "pedantic": "error",
+    "style": "error"
+  },
+  "rules": {
+    "unicorn/no-null": "off",
+    "no-magic-numbers": "off",
+    "no-ternary": "off",
+    "sort-keys": "off",
+    "sort-imports": "off",
+    "func-style": "off",
+    "id-length": "off",
+    "max-lines": "off",
+    "max-lines-per-function": "off"
+  }
+}

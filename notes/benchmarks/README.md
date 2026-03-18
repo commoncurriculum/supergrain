@@ -1,111 +1,71 @@
-# Supergrain Benchmark Documentation
+# Benchmark Documentation Index
 
-This directory contains comprehensive performance analysis and benchmarking documentation for `@supergrain/core`.
+> **Status**: Current. This is the index for all benchmark docs in this directory.
 
-## Quick Navigation
+## Document Map
 
-### 📊 Key Documents
+### Summary & Findings
 
-- **[Consolidated Findings](./consolidated-findings.md)** - Complete performance journey and breakthrough discoveries
-- **[Performance Analysis](./performance-analysis.md)** - Corrected benchmark methodology and accurate results
-- **[Analysis Report](./analysis.md)** - Detailed comparison with solid-js across all operations
+| Document                                                             | What It Covers                                                                     | Status                |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------- |
+| [findings-summary.md](./findings-summary.md)                         | Full performance journey: discovery of direct mutation 6x speedup, all key numbers | **Primary reference** |
+| [performance-analysis.md](./performance-analysis.md)                 | Corrected benchmark methodology (createComputed vs createEffect bug)               | Reference             |
+| [results.md](./results.md)                                           | Proxy vs direct signal access comparison (2-15x faster)                            | Reference             |
+| [direct-mutation-breakthrough.md](./direct-mutation-breakthrough.md) | How direct mutations achieved 6x improvement                                       | Reference             |
 
-### 🔧 Benchmark Setup
+### Benchmark Code Archives
 
-- **[Benchmarks Guide](./benchmarks.md)** - How to run and interpret benchmarks
-- **[Core Benchmarks README](./core-benchmarks-readme.md)** - Detailed benchmark structure documentation
+| Document                                                               | What It Contains                                                       |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [proxy-overhead-analysis.md](./proxy-overhead-analysis.md)             | Proxy vs direct object access analysis + results                       |
+| [proxy-overhead-benchmark.md](./proxy-overhead-benchmark.md)           | Benchmark code for proxy overhead measurements                         |
+| [allocation-analysis-benchmark.md](./allocation-analysis-benchmark.md) | Allocation/overhead source identification benchmark code + results     |
+| [safe-optimizations-benchmark.md](./safe-optimizations-benchmark.md)   | Micro-optimization benchmark code + results (led to 2.64x improvement) |
+| [signal-pooling.md](./signal-pooling.md)                               | Signal pooling benchmark code and results                              |
+| [reactivity-validation-tests.md](./reactivity-validation-tests.md)     | Test suite ensuring optimizations preserve reactivity contracts        |
 
-### 🧪 Specific Investigations
+### Specific Investigations
 
-- **[Proxy vs Direct Signals](./results.md)** - Performance comparison of different API approaches
-- **[ForEach Analysis](./foreach-analysis.md)** - Why exposing signals doesn't prevent React re-renders
-- **[JS Framework Benchmark Plan](./js-benchmark-plan.md)** - Guide for krauset benchmark integration
+| Document                                                         | What It Covers                                        |
+| ---------------------------------------------------------------- | ----------------------------------------------------- |
+| [foreach-analysis.md](./foreach-analysis.md)                     | Why exposing signals doesn't prevent React re-renders |
+| [isEqual-threshold-analysis.md](./isEqual-threshold-analysis.md) | Set vs Array.includes() crossover at 50 keys          |
 
-## Executive Summary
+### Results Data
 
-**The Big Discovery**: Enabling direct mutations provided **6x performance improvement**:
-- **Before**: 25.4x slower than RxJS
-- **After**: 4.34x slower than RxJS
-- **Method**: `store.data[X].label = "..."` vs `updateStore({ $set: { "data.X.label": "..." } })`
+| Document                                                   | What It Covers                    |
+| ---------------------------------------------------------- | --------------------------------- |
+| [results/core-comparison.md](./results/core-comparison.md) | Core vs solid-js comparison       |
+| [results/state-libraries.md](./results/state-libraries.md) | Comparison across state libraries |
+| [results/row-operations.md](./results/row-operations.md)   | Row operation benchmarks          |
+| [results/additional.md](./results/additional.md)           | Additional benchmark results      |
 
-## Performance at a Glance
+### How-To / Setup
 
-### vs RxJS/solid-js
-| Operation | Supergrain Performance | Gap |
-|-----------|---------------------|-----|
-| Property Updates | ~1.06x slower | ✅ Competitive |
-| Store Creation | 82x faster | ✅ Excellent |
-| Reactive Reads | 27x slower | ⚠️ Significant |
-| Non-reactive Reads | 66x slower | ⚠️ Significant |
+| Document                                         | What It Covers                                        | Status  |
+| ------------------------------------------------ | ----------------------------------------------------- | ------- |
+| [running-benchmarks.md](./running-benchmarks.md) | How to run benchmarks, structure, targets             | Current |
+| [krausest-setup.md](./krausest-setup.md)         | Guide for krausest/js-framework-benchmark integration | Current |
 
-### Proxy Overhead
-| Operation | Overhead vs Plain Objects |
-|-----------|---------------------------|
-| Property Read | 58x slower |
-| Deep Property Read | 411x slower |
-| Array Push | 14x slower |
+## Key Numbers
 
-## Key Insights
+| Operation          | vs solid-js/RxJS | vs Plain Objects            |
+| ------------------ | ---------------- | --------------------------- |
+| Property Updates   | ~1.06x slower    | --                          |
+| Store Creation     | 82x faster       | --                          |
+| Reactive Reads     | 27x slower       | --                          |
+| Non-reactive Reads | 66x slower       | --                          |
+| Property Read      | --               | 58x slower (proxy overhead) |
+| Deep Property Read | --               | 411x slower                 |
+| Array Push         | --               | 14x slower                  |
 
-### ✅ What Supergrain Does Well
-1. **Write Performance**: Nearly matches solid-js
-2. **Developer Experience**: Clean, intuitive proxy-based API
-3. **MongoDB Operators**: Unique, well-optimized feature set
-4. **Direct Mutations**: 6x performance improvement available
-5. **Store Creation**: Significantly faster than competitors
-
-### ⚠️ Performance Limitations
-1. **Proxy Overhead**: Fundamental ~60x slowdown for reads
-2. **Deep Nesting**: Multiplicative performance cost
-3. **Read-Heavy Applications**: 27-66x slower than solid-js
-4. **Cannot Bypass React**: Reconciliation limits optimization potential
-
-## When to Use Supergrain
-
-### ✅ Great Choice For:
-- CRUD applications (forms, dashboards, admin panels)
-- Applications prioritizing developer experience
-- MongoDB-familiar teams wanting similar update syntax
-- Apps with more writes than reads
-- Teams wanting automatic dependency tracking
-
-### ⚠️ Consider Alternatives For:
-- Read-heavy applications with performance requirements
-- Real-time visualizations (60 FPS animations)
-- Large data grids with complex nested access
-- Games with frame-critical updates
+**Key discovery**: Direct mutations (`store.data[X].label = "..."`) are 6x faster than MongoDB operators (`updateStore({ $set: { "data.X.label": "..." } })`).
 
 ## Running Benchmarks
 
 ```bash
-# Quick development benchmarks (~30 seconds)
 cd packages/core
-pnpm bench:core
-
-# Comprehensive analysis (1-2 minutes)
-pnpm bench:all
-
-# Krauset benchmark comparison
-cd packages/js-krauset
-npm run build-prod
-# Then run in js-framework-benchmark
+pnpm bench:core        # Quick (~30s, for development)
+pnpm bench:all         # Full suite (1-2 min, before commits)
+pnpm bench:additional  # Detailed analysis only
 ```
-
-## Key Metrics to Track
-
-1. **Relative Performance**: vs solid-js/RxJS
-2. **Direct Mutation Impact**: New vs old approaches
-3. **Memory Usage**: Avoid leaks in create/dispose cycles
-4. **Consistency**: Low standard deviation in results
-
-## Document History
-
-This documentation captures the complete performance analysis journey, including:
-- Initial incorrect assumptions about bottlenecks
-- Discovery of proxy traversal overhead as real issue
-- Breakthrough enabling of direct mutations (6x improvement)
-- Comprehensive comparison with solid-js and RxJS
-- Failed experiments (ForEach, signal exposure) and learnings
-- Realistic performance expectations and use case guidance
-
-All benchmark results have been verified with corrected methodologies to ensure accuracy.

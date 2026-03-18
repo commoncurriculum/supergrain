@@ -1,25 +1,28 @@
 {
   "name": "@supergrain/core",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Core reactive store implementation for Supergrain.",
   "keywords": [
-    "supergrain",
     "core",
     "reactive",
+    "signals",
     "store",
-    "signals"
+    "supergrain"
   ],
+  "homepage": "https://commoncurriculum.github.io/supergrain/",
+  "bugs": {
+    "url": "https://github.com/commoncurriculum/supergrain/issues"
+  },
   "license": "MIT",
-  "author": "Scott Ames-Messinger",
+  "author": "Scott Messinger",
   "repository": {
     "type": "git",
     "url": "https://github.com/commoncurriculum/supergrain.git",
     "directory": "packages/core"
   },
-  "homepage": "https://commoncurriculum.github.io/supergrain/",
-  "bugs": {
-    "url": "https://github.com/commoncurriculum/supergrain/issues"
-  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "main": "./dist/index.cjs.js",
   "module": "./dist/index.es.js",
@@ -29,31 +32,50 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.es.js",
       "require": "./dist/index.cjs.js"
+    },
+    "./internal": {
+      "types": "./internal.d.ts",
+      "import": "./src/internal.ts"
     }
   },
-  "files": [
-    "dist"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "lint": "oxlint .",
+    "lint": "oxlint -c ../../.oxlintrc.json src/",
     "test": "vitest run",
     "bench": "vitest bench",
     "bench:core": "vitest bench benchmarks/core-comparison.bench.ts",
     "bench:all": "vitest bench benchmarks/*.bench.ts",
     "bench:additional": "vitest bench benchmarks/additional.bench.ts",
+    "bench:libraries": "vitest bench benchmarks/state-libraries.bench.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "alien-signals": "^2.0.7"
   },
   "devDependencies": {
+    "@preact/signals-core": "^1.14.0",
     "@solidjs/testing-library": "^0.8.10",
+    "@vitest/browser": "4.1.0",
+    "arktype": "^2.2.0",
+    "jotai": "^2.14.0",
+    "magic-string": "^0.30.17",
+    "mobx": "^6.13.7",
     "solid-js": "^1.9.9",
-    "vitest": "^3.2.4"
+    "typescript": "^5.9.2",
+    "valtio": "^2.1.7",
+    "vitest": "4.1.0",
+    "zustand": "^5.0.8"
   },
-  "publishConfig": {
-    "access": "public"
+  "peerDependencies": {
+    "arktype": ">=2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "arktype": {
+      "optional": true
+    }
   }
 }

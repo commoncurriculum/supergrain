@@ -2,15 +2,11 @@
   "name": "js-framework-benchmark-react-supergrain",
   "version": "1.0.0",
   "private": true,
-  "js-framework-benchmark": {
-    "frameworkVersionFromPackage": "react",
-    "frameworkHomeURL": "https://reactjs.org/"
-  },
   "scripts": {
     "dev": "vite",
     "build-prod": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest",
+    "test": "vitest --passWithNoTests",
     "test:performance": "vitest src/performance.test.tsx"
   },
   "dependencies": {
@@ -20,14 +16,18 @@
     "react-dom": "19.0.0"
   },
   "devDependencies": {
-    "@types/react": "19.0.0",
-    "@types/react-dom": "19.0.0",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^4.7.0",
-    "@vitest/browser": "^3.2.4",
+    "@vitest/browser": "4.1.0",
     "playwright": "^1.55.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.5",
     "vite-plugin-dts": "^4.5.4",
-    "vitest": "^3.2.4"
+    "vitest": "4.1.0"
+  },
+  "js-framework-benchmark": {
+    "frameworkVersionFromPackage": "react",
+    "frameworkHomeURL": "https://reactjs.org/"
   }
 }

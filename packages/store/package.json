@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "description": "Document-oriented store for Supergrain with TypeScript support",
   "keywords": [
-    "supergrain",
-    "store",
     "document",
     "reactive",
+    "store",
+    "supergrain",
     "typescript"
   ],
+  "homepage": "https://commoncurriculum.github.io/supergrain/",
+  "bugs": {
+    "url": "https://github.com/commoncurriculum/supergrain/issues"
+  },
   "license": "MIT",
   "author": "Scott Messinger",
   "repository": {
@@ -16,10 +20,9 @@
     "url": "https://github.com/commoncurriculum/supergrain.git",
     "directory": "packages/store"
   },
-  "homepage": "https://commoncurriculum.github.io/supergrain/",
-  "bugs": {
-    "url": "https://github.com/commoncurriculum/supergrain/issues"
-  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -31,13 +34,13 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": [
-    "dist"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "lint": "oxlint .",
+    "lint": "oxlint -c ../../.oxlintrc.json src/",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -45,9 +48,7 @@
     "@supergrain/core": "workspace:*"
   },
   "devDependencies": {
-    "vitest": "^3.2.4"
-  },
-  "publishConfig": {
-    "access": "public"
+    "@vitest/browser": "4.1.0",
+    "vitest": "4.1.0"
   }
 }

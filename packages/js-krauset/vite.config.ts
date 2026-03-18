@@ -1,8 +1,8 @@
-import dts from 'vite-plugin-dts'
+import react from "@vitejs/plugin-react";
 /// <reference types="vitest" />
-import { resolve } from 'path'
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { resolve } from "path";
+import { defineConfig } from "vite";
+import dts from "vite-plugin-dts";
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -19,8 +19,8 @@ export default defineConfig({
   // and removes the need for a pnpm workspace when you copy this package.
   resolve: {
     alias: {
-      '@supergrain/core': resolve(__dirname, '../core/src/index.ts'),
-      '@supergrain/react': resolve(__dirname, '../react/src/index.ts'),
+      "@supergrain/core": resolve(__dirname, "../core/src/index.ts"),
+      "@supergrain/react": resolve(__dirname, "../react/src/index.ts"),
     },
   },
 
@@ -36,5 +36,5 @@ export default defineConfig({
   },
 
   // The base path must be relative for the benchmark server to find assets correctly.
-  base: '',
-})
+  base: "",
+});

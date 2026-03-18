@@ -1,118 +1,120 @@
-import { bench, describe } from 'vitest'
-import { createStore } from '../src'
-import { effect } from 'alien-signals'
+import { effect } from "alien-signals";
+// Proxy overhead analysis, effect lifecycle, and complex reactive scenarios.
+import { bench, describe } from "vitest";
 
-describe('Additional: Plain vs Proxy Performance', () => {
-  describe('Property Access', () => {
-    const plainObject = { name: 'John Doe', age: 30 }
-    const [proxyObject] = createStore({ name: 'John Doe', age: 30 })
+import { createStore } from "../src";
 
-    bench('plain object: 100k property reads', () => {
-      let value
+describe("Additional: Plain vs Proxy Performance", () => {
+  describe("Property Access", () => {
+    const plainObject = { name: "John Doe", age: 30 };
+    const [proxyObject] = createStore({ name: "John Doe", age: 30 });
+
+    bench("plain object: 100k property reads", () => {
+      let value;
       for (let i = 0; i < 100000; i++) {
-        value = plainObject.name
+        value = plainObject.name;
       }
-      void value
-    })
+      void value;
+    });
 
-    bench('proxy object: 100k property reads', () => {
-      let value
+    bench("proxy object: 100k property reads", () => {
+      let value;
       for (let i = 0; i < 100000; i++) {
-        value = proxyObject.name
+        value = proxyObject.name;
       }
-      void value
-    })
-  })
+      void value;
+    });
+  });
 
-  describe('Property Set', () => {
-    bench('plain object: 100k property sets', () => {
-      const plainObject = { value: 0 }
+  describe("Property Set", () => {
+    bench("plain object: 100k property sets", () => {
+      const plainObject = { value: 0 };
       for (let i = 0; i < 100000; i++) {
-        plainObject.value = i
+        plainObject.value = i;
       }
-    })
+    });
 
-    bench('proxy object: 100k property sets', () => {
-      const [_proxyObject, setProxyObject] = createStore({ value: 0 })
+    bench("proxy object: 100k property sets", () => {
+      const [_proxyObject, setProxyObject] = createStore({ value: 0 });
       for (let i = 0; i < 100000; i++) {
-        setProxyObject({ $set: { value: i } })
+        setProxyObject({ $set: { value: i } });
       }
-    })
-  })
+    });
+  });
 
-  describe('Deep Property Access', () => {
-    const plainDeep = { level1: { level2: { level3: { value: 'test' } } } }
+  describe("Deep Property Access", () => {
+    const plainDeep = { level1: { level2: { level3: { value: "test" } } } };
     const [proxyDeep] = createStore({
-      level1: { level2: { level3: { value: 'test' } } },
-    })
+      level1: { level2: { level3: { value: "test" } } },
+    });
 
-    bench('plain object: deep property read', () => {
-      let value
+    bench("plain object: deep property read", () => {
+      let value;
       for (let i = 0; i < 100000; i++) {
-        value = plainDeep.level1.level2.level3.value
+        value = plainDeep.level1.level2.level3.value;
       }
-      void value
-    })
+      void value;
+    });
 
-    bench('proxy object: deep property read', () => {
-      let value
+    bench("proxy object: deep property read", () => {
+      let value;
       for (let i = 0; i < 100000; i++) {
-        value = proxyDeep.level1.level2.level3.value
+        value = proxyDeep.level1.level2.level3.value;
       }
-      void value
-    })
-  })
-})
+      void value;
+    });
+  });
+});
 
-describe('Additional: Effect Creation and Destruction', () => {
-  bench('create/dispose 1000 effects for one signal', () => {
-    const [store] = createStore({ value: 0 })
-    let totalTracked = 0
-    const disposers = []
+describe("Additional: Effect Creation and Destruction", () => {
+  bench("create/dispose 1000 effects for one signal", () => {
+    const [store] = createStore({ value: 0 });
+    let totalTracked = 0;
+    const disposers = [];
 
     for (let i = 0; i < 1000; i++) {
       disposers.push(
         effect(() => {
-          store.value
-          totalTracked++
-        })
-      )
+          store.value;
+          totalTracked++;
+        }),
+      );
     }
 
     for (const dispose of disposers) {
-      dispose()
+      dispose();
     }
-  })
+  });
 
-  bench('create/dispose one effect 10000 times', () => {
-    const [store] = createStore({ counter: 0 })
-    let totalTracked = 0
+  bench("create/dispose one effect 10000 times", () => {
+    const [store] = createStore({ counter: 0 });
+    let totalTracked = 0;
 
     for (let i = 0; i < 10000; i++) {
       const dispose = effect(() => {
-        store.counter
-        totalTracked++
-      })
-      dispose()
+        store.counter;
+        totalTracked++;
+      });
+      dispose();
     }
-  })
-})
+  });
+});
 
-describe('Additional: Signal Subscription/Unsubscription', () => {
-  bench('subscribe/unsubscribe 10k listeners to one signal', () => {
-    const [store] = createStore({ value: 0 })
-    const disposers = []
+describe("Additional: Signal Subscription/Unsubscription", () => {
+  bench("subscribe/unsubscribe 10k listeners to one signal", () => {
+    const [store] = createStore({ value: 0 });
+    const disposers = [];
     for (let i = 0; i < 10000; i++) {
-      disposers.push(effect(() => store.value))
+      disposers.push(effect(() => store.value));
     }
     for (const d of disposers) {
-      d()
+      d();
     }
-  })
-})
+  });
+});
 
-describe('Additional: Batched vs Unbatched Updates', () => {
-  bench('10 unbatched updates triggering one effect', () => {
+describe("Additional: Batched vs Unbatched Updates", () => {
+  bench("10 unbatched updates triggering one effect", () => {
     const [store, setStore] = createStore({
       a: 0,
       b: 0,
@@ -124,11 +126,11 @@ describe('Additional: Batched vs Unbatched Updates', () => {
       h: 0,
       i: 0,
       j: 10,
-    })
-    let total = 0
-    let effectRan = false
+    });
+    let total = 0;
+    let effectRan = false;
     const dispose = effect(() => {
-      effectRan = true
+      effectRan = true;
       total =
         store.a +
         store.b +
@@ -139,26 +141,26 @@ describe('Additional: Batched vs Unbatched Updates', () => {
         store.g +
         store.h +
         store.i +
-        store.j
-    })
+        store.j;
+    });
 
-    setStore({ $set: { a: 1 } })
-    setStore({ $set: { b: 2 } })
-    setStore({ $set: { c: 3 } })
-    setStore({ $set: { d: 4 } })
-    setStore({ $set: { e: 5 } })
-    setStore({ $set: { f: 6 } })
-    setStore({ $set: { g: 7 } })
-    setStore({ $set: { h: 8 } })
-    setStore({ $set: { i: 9 } })
-    setStore({ $set: { j: 10 } })
+    setStore({ $set: { a: 1 } });
+    setStore({ $set: { b: 2 } });
+    setStore({ $set: { c: 3 } });
+    setStore({ $set: { d: 4 } });
+    setStore({ $set: { e: 5 } });
+    setStore({ $set: { f: 6 } });
+    setStore({ $set: { g: 7 } });
+    setStore({ $set: { h: 8 } });
+    setStore({ $set: { i: 9 } });
+    setStore({ $set: { j: 10 } });
 
-    void total
-    void effectRan
-    dispose()
-  })
+    void total;
+    void effectRan;
+    dispose();
+  });
 
-  bench('10 batched updates triggering one effect', () => {
+  bench("10 batched updates triggering one effect", () => {
     const [store, setStore] = createStore({
       a: 0,
       b: 0,
@@ -170,11 +172,11 @@ describe('Additional: Batched vs Unbatched Updates', () => {
       h: 0,
       i: 0,
       j: 10,
-    })
-    let total = 0
-    let effectRan = false
+    });
+    let total = 0;
+    let effectRan = false;
     const initDispose = effect(() => {
-      effectRan = true
+      effectRan = true;
       total =
         store.a +
         store.b +
@@ -185,14 +187,14 @@ describe('Additional: Batched vs Unbatched Updates', () => {
         store.g +
         store.h +
         store.i +
-        store.j
-    })
-    initDispose()
+        store.j;
+    });
+    initDispose();
 
     // Now measure subsequent access
-    let secondRan = false
+    let secondRan = false;
     const dispose = effect(() => {
-      secondRan = true
+      secondRan = true;
       total =
         store.a +
         store.b +
@@ -203,8 +205,8 @@ describe('Additional: Batched vs Unbatched Updates', () => {
         store.g +
         store.h +
         store.i +
-        store.j
-    })
+        store.j;
+    });
 
     setStore({
       $set: {
@@ -219,223 +221,223 @@ describe('Additional: Batched vs Unbatched Updates', () => {
         i: 9,
         j: 10,
       },
-    })
+    });
 
-    void total
-    void effectRan
-    void secondRan
-    dispose()
-  })
-})
+    void total;
+    void effectRan;
+    void secondRan;
+    dispose();
+  });
+});
 
-describe('Additional: Array Operations (Non-Reactive)', () => {
-  bench('Array.push: 1000 items', () => {
-    const [_store, setStore] = createStore({ items: [] as number[] })
+describe("Additional: Array Operations (Non-Reactive)", () => {
+  bench("Array.push: 1000 items", () => {
+    const [_store, setStore] = createStore({ items: [] as number[] });
     for (let i = 0; i < 1000; i++) {
-      setStore({ $push: { items: i } })
+      setStore({ $push: { items: i } });
     }
-  })
+  });
 
-  bench('Array.pop: 1000 items', () => {
-    const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store, setStore] = createStore({ items: initial })
+  bench("Array.pop: 1000 items", () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i);
+    const [store, setStore] = createStore({ items: initial });
     for (let i = 0; i < 1000; i++) {
-      const items = [...store.items]
-      items.pop()
-      setStore({ $set: { items } })
+      const items = [...store.items];
+      items.pop();
+      setStore({ $set: { items } });
     }
-  })
+  });
 
-  bench('Array.shift: 1000 items', () => {
-    const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store, setStore] = createStore({ items: initial })
+  bench("Array.shift: 1000 items", () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i);
+    const [store, setStore] = createStore({ items: initial });
     for (let i = 0; i < 1000; i++) {
-      const items = [...store.items]
-      items.shift()
-      setStore({ $set: { items } })
+      const items = [...store.items];
+      items.shift();
+      setStore({ $set: { items } });
     }
-  })
+  });
 
-  bench('Array.unshift: 1000 items', () => {
-    const [store, setStore] = createStore({ items: [] as number[] })
+  bench("Array.unshift: 1000 items", () => {
+    const [store, setStore] = createStore({ items: [] as number[] });
     for (let i = 0; i < 1000; i++) {
-      const items = [i, ...store.items]
-      setStore({ $set: { items } })
+      const items = [i, ...store.items];
+      setStore({ $set: { items } });
     }
-  })
+  });
 
-  bench('Array.splice: remove 500 from 1000', () => {
-    const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store, setStore] = createStore({ items: initial })
-    const items = [...store.items]
-    items.splice(250, 500)
-    setStore({ $set: { items } })
-  })
+  bench("Array.splice: remove 500 from 1000", () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i);
+    const [store, setStore] = createStore({ items: initial });
+    const items = [...store.items];
+    items.splice(250, 500);
+    setStore({ $set: { items } });
+  });
 
-  bench('Array.splice: add 500 to 1000', () => {
-    const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store, setStore] = createStore({ items: initial })
-    const newItems = Array.from({ length: 500 }, (_, i) => i + 1000)
-    const items = [...store.items]
-    items.splice(500, 0, ...newItems)
-    setStore({ $set: { items } })
-  })
+  bench("Array.splice: add 500 to 1000", () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i);
+    const [store, setStore] = createStore({ items: initial });
+    const newItems = Array.from({ length: 500 }, (_, i) => i + 1000);
+    const items = [...store.items];
+    items.splice(500, 0, ...newItems);
+    setStore({ $set: { items } });
+  });
 
-  bench('Array.sort: 1000 items', () => {
-    const initial = Array.from({ length: 1000 }, () => Math.random())
-    const [store, setStore] = createStore({ items: initial })
-    const items = [...store.items].sort((a, b) => a - b)
-    setStore({ $set: { items } })
-  })
-})
+  bench("Array.sort: 1000 items", () => {
+    const initial = Array.from({ length: 1000 }, () => Math.random());
+    const [store, setStore] = createStore({ items: initial });
+    const items = [...store.items].sort((a, b) => a - b);
+    setStore({ $set: { items } });
+  });
+});
 
-describe('Additional: Array Iteration Methods (Reactive)', () => {
-  bench('Array.map: 1000 items, 10 times', () => {
-    const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store] = createStore({ items: initial })
+describe("Additional: Array Iteration Methods (Reactive)", () => {
+  bench("Array.map: 1000 items, 10 times", () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i);
+    const [store] = createStore({ items: initial });
     effect(() => {
       // Benchmark the reactive read of the array
       for (let i = 0; i < 10; i++) {
-        store.items.map(x => x * 2)
+        store.items.map((x) => x * 2);
       }
-    })
-  })
+    });
+  });
 
-  bench('Array.filter: 1000 items, 10 times', () => {
-    const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store] = createStore({ items: initial })
+  bench("Array.filter: 1000 items, 10 times", () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i);
+    const [store] = createStore({ items: initial });
     effect(() => {
       for (let i = 0; i < 10; i++) {
-        store.items.filter(x => x % 2 === 0)
+        store.items.filter((x) => x % 2 === 0);
       }
-    })
-  })
+    });
+  });
 
-  bench('Array.reduce: 1000 items, 10 times', () => {
-    const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store] = createStore({ items: initial })
+  bench("Array.reduce: 1000 items, 10 times", () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i);
+    const [store] = createStore({ items: initial });
     effect(() => {
       for (let i = 0; i < 10; i++) {
-        store.items.reduce((acc, x) => acc + x, 0)
+        store.items.reduce((acc, x) => acc + x, 0);
       }
-    })
-  })
+    });
+  });
 
-  bench('Array.find/findIndex: 1000 items, 100 times', () => {
-    const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store] = createStore({ items: initial })
+  bench("Array.find/findIndex: 1000 items, 100 times", () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i);
+    const [store] = createStore({ items: initial });
     effect(() => {
       for (let i = 0; i < 100; i++) {
-        store.items.find(x => x === 50)
-        store.items.findIndex(x => x === 50)
+        store.items.find((x) => x === 50);
+        store.items.findIndex((x) => x === 50);
       }
-    })
-  })
+    });
+  });
 
-  bench('Array.some/every: 1000 items, 100 times', () => {
-    const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store] = createStore({ items: initial })
+  bench("Array.some/every: 1000 items, 100 times", () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i);
+    const [store] = createStore({ items: initial });
     effect(() => {
       for (let i = 0; i < 100; i++) {
-        store.items.some(x => x % 2 === 0)
-        store.items.every(x => x >= 0)
+        store.items.some((x) => x % 2 === 0);
+        store.items.every((x) => x >= 0);
       }
-    })
-  })
+    });
+  });
 
-  bench('Array.includes/indexOf: 1000 items, 100 times', () => {
-    const initial = Array.from({ length: 1000 }, (_, i) => i)
-    const [store] = createStore({ items: initial })
+  bench("Array.includes/indexOf: 1000 items, 100 times", () => {
+    const initial = Array.from({ length: 1000 }, (_, i) => i);
+    const [store] = createStore({ items: initial });
     effect(() => {
       for (let i = 0; i < 100; i++) {
-        store.items.includes(50)
-        store.items.indexOf(50)
+        store.items.includes(50);
+        store.items.indexOf(50);
       }
-    })
-  })
-})
+    });
+  });
+});
 
-describe('Additional: Complex Scenarios', () => {
+describe("Additional: Complex Scenarios", () => {
   interface Row {
-    id: number
-    name: string
-    value: number
-    category: string
-    selected: boolean
-    visible: boolean
+    id: number;
+    name: string;
+    value: number;
+    category: string;
+    selected: boolean;
+    visible: boolean;
   }
 
   interface GridState {
-    rows: Row[]
-    sortColumn: keyof Row | null
-    sortDirection: 'asc' | 'desc'
+    rows: Row[];
+    sortColumn: keyof Row | null;
+    sortDirection: "asc" | "desc";
   }
 
-  bench('Data Grid Simulation: 100 rows', () => {
+  bench("Data Grid Simulation: 100 rows", () => {
     const [grid, setGrid] = createStore<GridState>({
       rows: Array.from({ length: 100 }, (_, i) => ({
         id: i,
         name: `Row ${i}`,
         value: Math.random() * 1000,
-        category: 'Category ' + (i % 10),
+        category: "Category " + (i % 10),
         selected: false,
         visible: true,
       })),
       sortColumn: null,
-      sortDirection: 'asc',
-    })
+      sortDirection: "asc",
+    });
 
-    let visibleRowCount = 0
+    let visibleRowCount = 0;
     effect(() => {
-      visibleRowCount = grid.rows.filter(r => r.visible).length
-    })
+      visibleRowCount = grid.rows.filter((r) => r.visible).length;
+    });
 
     // Sort by value
     setGrid({
       $set: {
         rows: [...grid.rows].sort((a, b) => (a.value > b.value ? 1 : -1)),
       },
-    })
+    });
 
     // Filter by category
-    const categoryToFilter = 'Category 5'
+    const categoryToFilter = "Category 5";
     const updatedRows = grid.rows.map((row, _i) => ({
       ...row,
       visible: row.category === categoryToFilter,
-    }))
-    setGrid({ $set: { rows: updatedRows } })
+    }));
+    setGrid({ $set: { rows: updatedRows } });
 
     // Bulk update values
     const rowsWithUpdatedValues = grid.rows.map((row, i) =>
-      i < 50 ? { ...row, value: row.value * 1.1 } : row
-    )
-    setGrid({ $set: { rows: rowsWithUpdatedValues } })
+      i < 50 ? { ...row, value: row.value * 1.1 } : row,
+    );
+    setGrid({ $set: { rows: rowsWithUpdatedValues } });
 
     // Toggle selection
     const rowsWithToggledSelection = grid.rows.map((row, i) =>
-      i % 5 === 0 ? { ...row, selected: !row.selected } : row
-    )
-    setGrid({ $set: { rows: rowsWithToggledSelection } })
-    void visibleRowCount
-  })
+      i % 5 === 0 ? { ...row, selected: !row.selected } : row,
+    );
+    setGrid({ $set: { rows: rowsWithToggledSelection } });
+    void visibleRowCount;
+  });
 
   interface CartItem {
-    id: number
-    name: string
-    price: number
-    quantity: number
-    discount: number
-    subtotal: number
+    id: number;
+    name: string;
+    price: number;
+    quantity: number;
+    discount: number;
+    subtotal: number;
   }
 
   interface CartState {
-    items: CartItem[]
-    globalDiscount: number
-    taxRate: number
-    total: number
+    items: CartItem[];
+    globalDiscount: number;
+    taxRate: number;
+    total: number;
   }
 
-  bench('Shopping Cart Simulation: 50 items', () => {
+  bench("Shopping Cart Simulation: 50 items", () => {
     const [cart, setCart] = createStore<CartState>({
       items: Array.from({ length: 50 }, (_, i) => ({
         id: i,
@@ -448,21 +450,21 @@ describe('Additional: Complex Scenarios', () => {
       globalDiscount: 0,
       taxRate: 0.08,
       total: 0,
-    })
+    });
 
     effect(() => {
-      const subtotal = cart.items.reduce((acc, item) => acc + item.subtotal, 0)
-      const discounted = subtotal * (1 - cart.globalDiscount)
-      setCart({ $set: { total: discounted * (1 + cart.taxRate) } })
-    })
+      const subtotal = cart.items.reduce((acc, item) => acc + item.subtotal, 0);
+      const discounted = subtotal * (1 - cart.globalDiscount);
+      setCart({ $set: { total: discounted * (1 + cart.taxRate) } });
+    });
 
     // Update quantities and calculate subtotals
-    const itemsWithQuantity = cart.items.map(item => ({
+    const itemsWithQuantity = cart.items.map((item) => ({
       ...item,
       quantity: 2,
       subtotal: item.price * 2,
-    }))
-    setCart({ $set: { items: itemsWithQuantity } })
+    }));
+    setCart({ $set: { items: itemsWithQuantity } });
 
     // Apply item-level discounts
     const itemsWithDiscounts = cart.items.map((item, i) =>
@@ -472,158 +474,152 @@ describe('Additional: Complex Scenarios', () => {
             discount: 0.1,
             subtotal: item.price * item.quantity * 0.9,
           }
-        : item
-    )
-    setCart({ $set: { items: itemsWithDiscounts } })
+        : item,
+    );
+    setCart({ $set: { items: itemsWithDiscounts } });
 
     // Apply global discount
-    setCart({ $set: { globalDiscount: 0.05 } }) // 5% off everything
+    setCart({ $set: { globalDiscount: 0.05 } }); // 5% off everything
 
     // Remove some items
-    setCart({ $set: { items: cart.items.slice(0, 40) } })
-  })
+    setCart({ $set: { items: cart.items.slice(0, 40) } });
+  });
 
   interface TreeNode {
-    id: string
-    name: string
-    selected: boolean
-    children: TreeNode[]
+    id: string;
+    name: string;
+    selected: boolean;
+    children: TreeNode[];
   }
 
-  bench('Tree Structure Simulation: 5 levels deep', () => {
-    const createNode = (
-      id: string,
-      level: number,
-      maxLevel: number
-    ): TreeNode => ({
+  bench("Tree Structure Simulation: 5 levels deep", () => {
+    const createNode = (id: string, level: number, maxLevel: number): TreeNode => ({
       id,
       name: `Node ${id}`,
       selected: false,
       children:
         level >= maxLevel
           ? []
-          : Array.from({ length: 3 }, (_, i) =>
-              createNode(`${id}-${i}`, level + 1, maxLevel)
-            ),
-    })
+          : Array.from({ length: 3 }, (_, i) => createNode(`${id}-${i}`, level + 1, maxLevel)),
+    });
 
-    const [tree, setTree] = createStore({ root: createNode('root', 1, 5) })
+    const [tree, setTree] = createStore({ root: createNode("root", 1, 5) });
 
     // Count selected nodes reactively
     function countSelected(node: TreeNode): number {
       return (
         (node.selected ? 1 : 0) +
         node.children.reduce((acc, child) => acc + countSelected(child), 0)
-      )
+      );
     }
 
     effect(() => {
-      countSelected(tree.root)
-    })
+      countSelected(tree.root);
+    });
 
     // Toggle a deep node
-    const rootCopy = JSON.parse(JSON.stringify(tree.root))
-    const deepNode = rootCopy.children[0]?.children[1]?.children[2]
+    const rootCopy = JSON.parse(JSON.stringify(tree.root));
+    const deepNode = rootCopy.children[0]?.children[1]?.children[2];
     if (deepNode) {
-      deepNode.selected = true
+      deepNode.selected = true;
     }
-    setTree({ $set: { root: rootCopy } })
+    setTree({ $set: { root: rootCopy } });
 
     // Collapse leaf nodes
     function collapseLeaves(node: TreeNode) {
       if (node.children.length === 0) {
-        return
+        return;
       }
-      if (node.children.every(c => c.children.length === 0)) {
-        node.children = []
+      if (node.children.every((c) => c.children.length === 0)) {
+        node.children = [];
       } else {
-        node.children.forEach(collapseLeaves)
+        node.children.forEach(collapseLeaves);
       }
     }
-    const rootCopy2 = JSON.parse(JSON.stringify(tree.root))
-    collapseLeaves(rootCopy2)
-    setTree({ $set: { root: rootCopy2 } })
-  })
-})
+    const rootCopy2 = JSON.parse(JSON.stringify(tree.root));
+    collapseLeaves(rootCopy2);
+    setTree({ $set: { root: rootCopy2 } });
+  });
+});
 
-describe('Additional: Mixed Read/Write Loads', () => {
-  bench('100 reads and 100 writes on a single property', () => {
-    const [store, setStore] = createStore({ count: 0 })
-    let effectRuns = 0
+describe("Additional: Mixed Read/Write Loads", () => {
+  bench("100 reads and 100 writes on a single property", () => {
+    const [store, setStore] = createStore({ count: 0 });
+    let effectRuns = 0;
 
     const dispose = effect(() => {
-      store.count
-      effectRuns++
-    })
+      store.count;
+      effectRuns++;
+    });
 
     for (let i = 0; i < 100; i++) {
-      setStore({ $set: { count: i } })
-      store.count // Read after write
+      setStore({ $set: { count: i } });
+      store.count; // Read after write
     }
 
-    dispose()
-  })
-})
+    dispose();
+  });
+});
 
-describe('Additional: Complex Object Structures', () => {
+describe("Additional: Complex Object Structures", () => {
   interface User {
-    id: number
-    name: string
+    id: number;
+    name: string;
     profile: {
-      email: string
-      age: number
+      email: string;
+      age: number;
       settings: {
-        theme: 'dark' | 'light'
-        notifications: boolean
-      }
-    }
-    posts: { id: number; title: string; likes: number }[]
+        theme: "dark" | "light";
+        notifications: boolean;
+      };
+    };
+    posts: { id: number; title: string; likes: number }[];
   }
 
-  bench('Nested object and array updates', () => {
+  bench("Nested object and array updates", () => {
     const [user, setUser] = createStore<User>({
       id: 1,
-      name: 'John Doe',
+      name: "John Doe",
       profile: {
-        email: 'john@example.com',
+        email: "john@example.com",
         age: 30,
-        settings: { theme: 'light', notifications: true },
+        settings: { theme: "light", notifications: true },
       },
       posts: [
-        { id: 1, title: 'First Post', likes: 10 },
-        { id: 2, title: 'Second Post', likes: 25 },
+        { id: 1, title: "First Post", likes: 10 },
+        { id: 2, title: "Second Post", likes: 25 },
       ],
-    })
+    });
 
-    let totalLikes = 0
+    let totalLikes = 0;
     effect(() => {
-      totalLikes = user.posts.reduce((acc, p) => acc + p.likes, 0)
-    })
+      totalLikes = user.posts.reduce((acc, p) => acc + p.likes, 0);
+    });
 
     // Update nested property
-    setUser({ $set: { 'profile.settings.theme': 'dark' } })
+    setUser({ $set: { "profile.settings.theme": "dark" } });
 
     // Add a new post
-    setUser({ $push: { posts: { id: 3, title: 'Third Post', likes: 5 } } })
+    setUser({ $push: { posts: { id: 3, title: "Third Post", likes: 5 } } });
 
     // Update an item in the array
-    setUser({ $inc: { 'posts.0.likes': 1 } })
+    setUser({ $inc: { "posts.0.likes": 1 } });
 
     // Replace a nested object
-    setUser({ $set: { 'profile.age': 31 } })
-    void totalLikes
-  })
-})
+    setUser({ $set: { "profile.age": 31 } });
+    void totalLikes;
+  });
+});
 
-describe('Additional: Circular Dependencies', () => {
+describe("Additional: Circular Dependencies", () => {
   interface CircularNode {
-    id: number
-    value: number
-    next: CircularNode | null
-    prev: CircularNode | null
+    id: number;
+    value: number;
+    next: CircularNode | null;
+    prev: CircularNode | null;
   }
 
-  bench('Create and update circular list', () => {
+  bench("Create and update circular list", () => {
     const [store, setStore] = createStore({
       nodes: Array.from(
         { length: 10 },
@@ -632,27 +628,27 @@ describe('Additional: Circular Dependencies', () => {
           value: i,
           next: null,
           prev: null,
-        })
+        }),
       ),
-    })
+    });
 
     // Link nodes circularly
     const linkedNodes = store.nodes.map((node, i) => ({
       ...node,
       next: store.nodes[(i + 1) % 10] || null,
       prev: store.nodes[(i + 9) % 10] || null,
-    }))
-    setStore({ $set: { nodes: linkedNodes } })
+    }));
+    setStore({ $set: { nodes: linkedNodes } });
 
     // Traverse and update
-    let current = store.nodes[0]
-    const updates: Record<string, number> = {}
+    let current = store.nodes[0];
+    const updates: Record<string, number> = {};
     for (let i = 0; i < 100; i++) {
       if (current) {
-        updates[`nodes.${current.id}.value`] = current.value + 1
-        current = current.next! // We know it's not null in a circular list
+        updates[`nodes.${current.id}.value`] = current.value + 1;
+        current = current.next!; // We know it's not null in a circular list
       }
     }
-    setStore({ $inc: updates })
-  })
-})
+    setStore({ $inc: updates });
+  });
+});

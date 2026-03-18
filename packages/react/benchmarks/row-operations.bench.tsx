@@ -1,14 +1,8 @@
-import { bench, describe, afterEach } from 'vitest'
-import { createStore } from '@supergrain/core'
-import { useTrackedStore } from '@supergrain/react'
-import React, { FC } from 'react'
-import {
-  render,
-  fireEvent,
-  act,
-  renderHook,
-  cleanup,
-} from '@testing-library/react'
+import { createStore } from "@supergrain/core";
+import { tracked } from "@supergrain/react";
+import { render, fireEvent, act, cleanup } from "@testing-library/react";
+import React, { FC } from "react";
+import { bench, describe, afterEach } from "vitest";
 
 /**
  * React Adapter Benchmarks: Row Operations
@@ -31,101 +25,96 @@ import {
  */
 
 // --- Data Generation Utilities ---
-let idCounter = 1
+let idCounter = 1;
 const adjectives = [
-  'pretty',
-  'large',
-  'big',
-  'small',
-  'tall',
-  'short',
-  'long',
-  'handsome',
-  'plain',
-  'quaint',
-  'clean',
-  'elegant',
-  'easy',
-  'angry',
-  'crazy',
-  'helpful',
-  'mushy',
-  'odd',
-  'unsightly',
-  'adorable',
-  'important',
-  'inexpensive',
-  'cheap',
-  'expensive',
-  'fancy',
-]
+  "pretty",
+  "large",
+  "big",
+  "small",
+  "tall",
+  "short",
+  "long",
+  "handsome",
+  "plain",
+  "quaint",
+  "clean",
+  "elegant",
+  "easy",
+  "angry",
+  "crazy",
+  "helpful",
+  "mushy",
+  "odd",
+  "unsightly",
+  "adorable",
+  "important",
+  "inexpensive",
+  "cheap",
+  "expensive",
+  "fancy",
+];
 const colours = [
-  'red',
-  'yellow',
-  'blue',
-  'green',
-  'pink',
-  'brown',
-  'purple',
-  'brown',
-  'white',
-  'black',
-  'orange',
-]
+  "red",
+  "yellow",
+  "blue",
+  "green",
+  "pink",
+  "brown",
+  "purple",
+  "brown",
+  "white",
+  "black",
+  "orange",
+];
 const nouns = [
-  'table',
-  'chair',
-  'house',
-  'bbq',
-  'desk',
-  'car',
-  'pony',
-  'cookie',
-  'sandwich',
-  'burger',
-  'pizza',
-  'mouse',
-  'keyboard',
-]
-const _random = (max: number) => Math.round(Math.random() * 1000) % max
+  "table",
+  "chair",
+  "house",
+  "bbq",
+  "desk",
+  "car",
+  "pony",
+  "cookie",
+  "sandwich",
+  "burger",
+  "pizza",
+  "mouse",
+  "keyboard",
+];
+const _random = (max: number) => Math.round(Math.random() * 1000) % max;
 interface RowData {
-  id: number
-  label: string
+  id: number;
+  label: string;
 }
 const buildData = (count = 1000): RowData[] => {
-  const data: RowData[] = new Array(count)
+  const data: RowData[] = new Array(count);
   for (let i = 0; i < count; i++) {
     data[i] = {
       id: idCounter++,
       label: `${adjectives[_random(adjectives.length)]} ${
         colours[_random(colours.length)]
       } ${nouns[_random(nouns.length)]}`,
-    }
+    };
   }
-  idCounter = 1 // Reset for consistency
-  return data
-}
+  idCounter = 1; // Reset for consistency
+  return data;
+};
 
 // --- Component and State Structure ---
 interface AppState {
-  data: RowData[]
-  selected: number | null
+  data: RowData[];
+  selected: number | null;
 }
 
-const BenchmarkComponent: FC<{
-  store: any
-  updateStore: any
-}> = ({ store, updateStore }) => {
-  const state = useTrackedStore(store)
-
-  const selectRow = (id: number) => updateStore({ $set: { selected: id } })
+const BenchmarkComponent = tracked(({ store, updateStore }: { store: any; updateStore: any }) => {
+  const selectRow = (id: number) => updateStore({ $set: { selected: id } });
   const swapRows = () => {
-    if (state.data.length > 998) {
-      const row1 = state.data[1]
-      const row998 = state.data[998]
-      updateStore({ $set: { 'data.1': row998, 'data.998': row1 } })
+    if (store.data.length > 998) {
+      const row1 = store.data[1];
+      const row998 = store.data[998];
+      updateStore({ $set: { "data.1": row998, "data.998": row1 } });
     }
-  }
+  };
 
   return (
     <div>
@@ -134,26 +123,17 @@ const BenchmarkComponent: FC<{
       </button>
       <table>
         <tbody data-testid="tbody">
-          {state.data.map((row: RowData) => (
-            <tr
-              key={row.id}
-              className={row.id === state.selected ? 'danger' : ''}
-            >
+          {store.data.map((row: RowData) => (
+            <tr key={row.id} className={row.id === store.selected ? "danger" : ""}>
               <td className="col-md-1">{row.id}</td>
               <td className="col-md-4">
-                <a
-                  data-testid={`select-row-${row.id}`}
-                  onClick={() => selectRow(row.id)}
-                >
+                <a data-testid={`select-row-${row.id}`} onClick={() => selectRow(row.id)}>
                   {row.label}
                 </a>
               </td>
               <td className="col-md-1">
                 <a data-testid={`delete-row-${row.id}`}>
-                  <span
-                    className="glyphicon glyphicon-remove"
-                    aria-hidden="true"
-                  ></span>
+                  <span className="glyphicon glyphicon-remove" aria-hidden="true"></span>
                 </a>
               </td>
               <td className="col-md-6"></td>
@@ -162,12 +142,12 @@ const BenchmarkComponent: FC<{
         </tbody>
       </table>
     </div>
-  )
-}
+  );
+});
 
 // --- Benchmark Implementation ---
-describe('React Adapter: Row Operations', () => {
-  afterEach(cleanup)
+describe("React Adapter: Row Operations", () => {
+  afterEach(cleanup);
 
   // ==============================================================
   // Hook-only benchmarks (fastest, measuring pure React integration)
@@ -176,74 +156,74 @@ describe('React Adapter: Row Operations', () => {
   // ==============================================================
 
   bench(
-    'hook only - select row: state update + hook re-render',
+    "tracked - select row: state update + component re-render",
     () => {
-      const data = buildData(1000)
+      const data = buildData(1000);
       const [store, updateStore] = createStore<AppState>({
         data,
         selected: null,
-      })
+      });
 
-      // Use renderHook to test the hook directly without DOM
-      const { result } = renderHook(() => useTrackedStore(store))
+      let lastSelected: number | null = null;
+      const MinimalComponent = tracked(() => {
+        lastSelected = store.selected;
+        return <div>{store.selected}</div>;
+      });
 
-      // Measure the state update and React re-render
+      render(<MinimalComponent />);
+
       act(() => {
-        updateStore({ $set: { selected: data[500].id } })
-      })
+        updateStore({ $set: { selected: data[500].id } });
+      });
 
-      // Access the state to ensure the hook tracked the change
-      const selectedId = result.current.selected
-      if (selectedId !== data[500].id) {
-        throw new Error('State update not reflected')
+      if (lastSelected !== data[500].id) {
+        throw new Error("State update not reflected");
       }
     },
     {
       warmupIterations: 5,
       iterations: 20,
-    }
-  )
+    },
+  );
 
   bench(
-    'hook only - swap rows: array update + hook re-render',
+    "tracked - swap rows: array update + component re-render",
     () => {
-      const data = buildData(1000)
+      const data = buildData(1000);
       const [store, updateStore] = createStore<AppState>({
         data,
         selected: null,
-      })
+      });
 
-      // Use renderHook to test the hook directly without DOM
-      const { result } = renderHook(() => useTrackedStore(store))
+      let lastData: RowData[] = [];
+      const MinimalComponent = tracked(() => {
+        lastData = store.data;
+        return <div>{store.data.length}</div>;
+      });
 
-      // Capture original values
-      const originalRow1 = data[1]
-      const originalRow998 = data[998]
+      render(<MinimalComponent />);
 
-      // Measure the state update and React re-render
+      const originalRow1 = data[1];
+      const originalRow998 = data[998];
+
       act(() => {
         updateStore({
           $set: {
-            'data.1': originalRow998,
-            'data.998': originalRow1,
+            "data.1": originalRow998,
+            "data.998": originalRow1,
           },
-        })
-      })
+        });
+      });
 
-      // Access the state to ensure the hook tracked the change
-      const updatedData = result.current.data
-      if (
-        updatedData[1].id !== originalRow998.id ||
-        updatedData[998].id !== originalRow1.id
-      ) {
-        throw new Error('Row swap not reflected')
+      if (lastData[1].id !== originalRow998.id || lastData[998].id !== originalRow1.id) {
+        throw new Error("Row swap not reflected");
       }
     },
     {
       warmupIterations: 5,
       iterations: 20,
-    }
-  )
+    },
+  );
 
   // ==============================================================
   // Full DOM rendering benchmarks (measuring complete React + DOM cycle)
@@ -253,73 +233,67 @@ describe('React Adapter: Row Operations', () => {
   // ==============================================================
 
   bench(
-    'full DOM - select row: component render + DOM update',
+    "full DOM - select row: component render + DOM update",
     () => {
-      const data = buildData(1000)
+      const data = buildData(1000);
       const [store, updateStore] = createStore<AppState>({
         data,
         selected: null,
-      })
+      });
 
       // Initial render (not measured)
-      const { container } = render(
-        <BenchmarkComponent store={store} updateStore={updateStore} />
-      )
+      const { container } = render(<BenchmarkComponent store={store} updateStore={updateStore} />);
 
       // The benchmark measurement: select row and re-render entire DOM
       act(() => {
-        const rowToSelect = container.querySelector(
-          'tbody tr:nth-child(500) a'
-        ) as HTMLElement
-        fireEvent.click(rowToSelect)
-      })
+        const rowToSelect = container.querySelector("tbody tr:nth-child(500) a") as HTMLElement;
+        fireEvent.click(rowToSelect);
+      });
 
       // Verify the update was applied
-      const selectedRow = container.querySelector('tbody tr:nth-child(500)')
-      if (!selectedRow?.classList.contains('danger')) {
-        throw new Error('Row selection was not reflected in the DOM.')
+      const selectedRow = container.querySelector("tbody tr:nth-child(500)");
+      if (!selectedRow?.classList.contains("danger")) {
+        throw new Error("Row selection was not reflected in the DOM.");
       }
     },
     {
       warmupIterations: 3,
       iterations: 10,
-    }
-  )
+    },
+  );
 
   bench(
-    'full DOM - swap rows: component render + DOM update',
+    "full DOM - swap rows: component render + DOM update",
     () => {
-      const data = buildData(1000)
+      const data = buildData(1000);
       const [store, updateStore] = createStore<AppState>({
         data,
         selected: null,
-      })
+      });
 
       // Initial render (not measured)
-      const { container } = render(
-        <BenchmarkComponent store={store} updateStore={updateStore} />
-      )
+      const { container } = render(<BenchmarkComponent store={store} updateStore={updateStore} />);
 
       // The benchmark measurement: direct state update instead of button click
       act(() => {
         if (data.length > 998) {
-          const row1 = data[1]
-          const row998 = data[998]
-          updateStore({ $set: { 'data.1': row998, 'data.998': row1 } })
+          const row1 = data[1];
+          const row998 = data[998];
+          updateStore({ $set: { "data.1": row998, "data.998": row1 } });
         }
-      })
+      });
 
       // Simple verification
-      const tbody = container.querySelector('tbody')
+      const tbody = container.querySelector("tbody");
       if (!tbody || tbody.children.length !== 1000) {
-        throw new Error('DOM structure invalid after swap.')
+        throw new Error("DOM structure invalid after swap.");
       }
     },
     {
       warmupIterations: 3,
       iterations: 10,
-    }
-  )
+    },
+  );
 
   // ==============================================================
   // Large dataset benchmarks (scalability testing)
@@ -328,65 +302,72 @@ describe('React Adapter: Row Operations', () => {
   // ==============================================================
 
   bench(
-    'large dataset - hook only: 10K rows select',
+    "large dataset - tracked: 10K rows select",
     () => {
-      const data = buildData(10000)
+      const data = buildData(10000);
       const [store, updateStore] = createStore<AppState>({
         data,
         selected: null,
-      })
+      });
 
-      const { result } = renderHook(() => useTrackedStore(store))
+      let lastSelected: number | null = null;
+      const MinimalComponent = tracked(() => {
+        lastSelected = store.selected;
+        return <div>{store.selected}</div>;
+      });
+
+      render(<MinimalComponent />);
 
       act(() => {
-        updateStore({ $set: { selected: data[5000].id } })
-      })
+        updateStore({ $set: { selected: data[5000].id } });
+      });
 
-      const selectedId = result.current.selected
-      if (selectedId !== data[5000].id) {
-        throw new Error('State update not reflected')
+      if (lastSelected !== data[5000].id) {
+        throw new Error("State update not reflected");
       }
     },
     {
       warmupIterations: 3,
       iterations: 10,
-    }
-  )
+    },
+  );
 
   bench(
-    'large dataset - hook only: 10K rows swap',
+    "large dataset - tracked: 10K rows swap",
     () => {
-      const data = buildData(10000)
+      const data = buildData(10000);
       const [store, updateStore] = createStore<AppState>({
         data,
         selected: null,
-      })
+      });
 
-      const { result } = renderHook(() => useTrackedStore(store))
+      let lastData: RowData[] = [];
+      const MinimalComponent = tracked(() => {
+        lastData = store.data;
+        return <div>{store.data.length}</div>;
+      });
 
-      const originalRow1 = data[1]
-      const originalRow9998 = data[9998]
+      render(<MinimalComponent />);
+
+      const originalRow1 = data[1];
+      const originalRow9998 = data[9998];
 
       act(() => {
         updateStore({
           $set: {
-            'data.1': originalRow9998,
-            'data.9998': originalRow1,
+            "data.1": originalRow9998,
+            "data.9998": originalRow1,
           },
-        })
-      })
+        });
+      });
 
-      const updatedData = result.current.data
-      if (
-        updatedData[1].id !== originalRow9998.id ||
-        updatedData[9998].id !== originalRow1.id
-      ) {
-        throw new Error('Row swap not reflected')
+      if (lastData[1].id !== originalRow9998.id || lastData[9998].id !== originalRow1.id) {
+        throw new Error("Row swap not reflected");
       }
     },
     {
       warmupIterations: 3,
       iterations: 10,
-    }
-  )
-})
+    },
+  );
+});

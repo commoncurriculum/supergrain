@@ -7,6 +7,7 @@ This document provides instructions for AI agents working in this repository.
 This project uses `pnpm` for package management. Do not use `npm` or `yarn`. All package installation, removal, or script execution should be done using `pnpm`.
 
 **Examples:**
+
 - `pnpm install`
 - `pnpm add <package-name>`
 - `pnpm run <script-name>`
@@ -31,9 +32,9 @@ When adding a new code example to README.md:
 1. **Add the identifier**: Include `// [#DOC_TEST_XX](packages/documentation/tests/appropriate-test-file.ts)` at the top of the code block
 2. **Create the test**: Add a corresponding test case in the appropriate test file:
    ```typescript
-   it('#DOC_TEST_XX', () => {
+   it("#DOC_TEST_XX", () => {
      // Test implementation that matches the README example
-   })
+   });
    ```
 3. **Validate**: Run `pnpm test:validate` to ensure all DOC_TEST identifiers have corresponding tests
 
