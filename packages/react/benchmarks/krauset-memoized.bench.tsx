@@ -1,8 +1,8 @@
-import { bench, describe } from "vitest";
 import { createStore } from "@supergrain/core";
 import { tracked } from "@supergrain/react";
-import React, { FC, memo, useCallback } from "react";
 import { render, act } from "@testing-library/react";
+import React, { FC, memo, useCallback } from "react";
+import { bench, describe } from "vitest";
 
 /**
  * Krauset-style Benchmark: Memoized vs Unmemoized Rows

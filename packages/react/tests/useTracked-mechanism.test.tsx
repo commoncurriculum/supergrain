@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { createStore, effect } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
 import React, { memo, useState, useEffect } from "react";
-import { createStore, effect } from "@supergrain/core";
+import { describe, it, expect, beforeEach } from "vitest";
+
 import { tracked } from "../src";
 import { flushMicrotasks } from "./test-utils";
 

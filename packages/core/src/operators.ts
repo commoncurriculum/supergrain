@@ -1,3 +1,4 @@
+import { $NODE } from "./core";
 import {
   type ArrayPullOperations,
   type ArrayWriteOperations,
@@ -8,7 +9,6 @@ import {
   setValueAtPath,
   type UnsetPathOperations,
 } from "./path";
-import { $NODE } from "./core";
 import { bumpOwnKeysSignal, bumpVersion, setProperty } from "./write";
 
 /**

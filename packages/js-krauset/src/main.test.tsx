@@ -1,3 +1,5 @@
+import { render, cleanup, act } from "@testing-library/react";
+import React from "react";
 /**
  * Krauset benchmark compliance tests.
  *
@@ -5,8 +7,7 @@
  * matching js-framework-benchmark expectations.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import React from "react";
-import { render, cleanup, act } from "@testing-library/react";
+
 import { run, add, update, clear, swapRows, remove, select, App, buildData } from "./main";
 
 function getRows(container: HTMLElement) {

@@ -10,8 +10,8 @@
  * - Computed values (DOC_TEST_20)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createStore, effect, computed } from "@supergrain/core";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 describe("README Core Examples", () => {
   describe("Creating Stores", () => {

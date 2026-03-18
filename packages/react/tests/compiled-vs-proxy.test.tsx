@@ -7,11 +7,10 @@
  * - Class Getter: useClassView(store, ViewClass) — V8-inlined getters (10x faster reads)
  */
 
-import { describe, it, expect, afterEach } from "vitest";
 import { createStore, effect, getCurrentSub, setCurrentSub } from "@supergrain/core";
 import { $NODE, $RAW } from "@supergrain/core/internal";
+import { render, act, cleanup } from "@testing-library/react";
 import { signal } from "alien-signals";
-import { tracked, For } from "../src";
 import React, {
   FC,
   memo,
@@ -21,7 +20,9 @@ import React, {
   useEffect,
   useLayoutEffect,
 } from "react";
-import { render, act, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach } from "vitest";
+
+import { tracked, For } from "../src";
 import { flushMicrotasks } from "./test-utils";
 
 // --- Shared effect setup for compiled/class-getter modes ---

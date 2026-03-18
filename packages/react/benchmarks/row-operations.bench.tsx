@@ -1,8 +1,8 @@
-import { bench, describe, afterEach } from "vitest";
 import { createStore } from "@supergrain/core";
 import { tracked } from "@supergrain/react";
-import React, { FC } from "react";
 import { render, fireEvent, act, cleanup } from "@testing-library/react";
+import React, { FC } from "react";
+import { bench, describe, afterEach } from "vitest";
 
 /**
  * React Adapter Benchmarks: Row Operations

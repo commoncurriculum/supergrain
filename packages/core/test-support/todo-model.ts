@@ -1,5 +1,6 @@
-import { type } from "arktype";
 import { signal } from "alien-signals";
+import { type } from "arktype";
+
 import { $NODE } from "../src/internal";
 
 export const TodoSchema = type({

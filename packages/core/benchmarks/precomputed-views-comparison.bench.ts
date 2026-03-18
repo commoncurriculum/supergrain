@@ -4,9 +4,10 @@
  * Class getters are V8's sweet spot — inlined to near-bare-signal speed.
  */
 
-import { bench, describe } from "vitest";
-import { createStore, unwrap } from "../src";
 import { effect, signal } from "alien-signals";
+import { bench, describe } from "vitest";
+
+import { createStore, unwrap } from "../src";
 import { createTodo, StoreView, TodoSchema } from "../test-support/todo-model";
 
 // --- Reactive leaf reads ---

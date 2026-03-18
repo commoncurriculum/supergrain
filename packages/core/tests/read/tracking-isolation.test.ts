@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { createStore } from "../../src";
 import { effect, getCurrentSub, setCurrentSub } from "alien-signals";
+import { describe, it, expect } from "vitest";
+
+import { createStore } from "../../src";
 
 describe("Tracking Isolation Analysis", () => {
   it("demonstrates perfect isolation with per-render pattern (tracked style)", () => {

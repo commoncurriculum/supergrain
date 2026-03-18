@@ -1,15 +1,16 @@
-import { bench, describe } from "vitest";
-import { createStore } from "../src";
-import { effect } from "alien-signals";
-import { createStore as createZustandStore } from "zustand/vanilla";
-import { createStore as createJotaiStore, atom } from "jotai/vanilla";
-import { observable, autorun, runInAction } from "mobx";
-import { proxy, subscribe, snapshot } from "valtio/vanilla";
 import {
   signal as preactSignal,
   effect as preactEffect,
   batch as preactBatch,
 } from "@preact/signals-core";
+import { effect } from "alien-signals";
+import { createStore as createJotaiStore, atom } from "jotai/vanilla";
+import { observable, autorun, runInAction } from "mobx";
+import { proxy, subscribe, snapshot } from "valtio/vanilla";
+import { bench, describe } from "vitest";
+import { createStore as createZustandStore } from "zustand/vanilla";
+
+import { createStore } from "../src";
 
 /**
  * Cross-library benchmarks comparing @supergrain/core against

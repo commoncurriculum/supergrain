@@ -1,3 +1,5 @@
+import { render, cleanup, act } from "@testing-library/react";
+import React from "react";
 /**
  * Krauset performance tests — react-supergrain (For + React).
  *
@@ -5,8 +7,7 @@
  * These are NOT strict assertions — they report numbers for comparison.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import React from "react";
-import { render, cleanup, act } from "@testing-library/react";
+
 import { run, add, update, clear, swapRows, remove, select, App } from "./main";
 
 function getRowCount(container: HTMLElement) {

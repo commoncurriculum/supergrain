@@ -1,8 +1,9 @@
-import { describe, it, expect, afterEach } from "vitest";
 import { createStore } from "@supergrain/core";
-import { tracked } from "../src";
-import React, { FC, memo, useCallback } from "react";
 import { render, act, cleanup } from "@testing-library/react";
+import React, { FC, memo, useCallback } from "react";
+import { describe, it, expect, afterEach } from "vitest";
+
+import { tracked } from "../src";
 
 /**
  * Render Analysis Tests

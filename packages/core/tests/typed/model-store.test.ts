@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
 import { type } from "arktype";
+import { describe, it, expect, vi } from "vitest";
+
 import { createStore, effect } from "../../src";
 import { createTodo, TodoSchema } from "../../test-support/todo-model";
 

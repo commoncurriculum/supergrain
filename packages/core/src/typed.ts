@@ -39,7 +39,7 @@ function buildModelProto(props: readonly SchemaProp[]): ModelProtoEntry {
     if (childProps && childProps.length > 0) {
       const childEntry = buildModelProto(childProps);
       descriptors[key] = {
-        get: function (this: any) {
+        get: function getModelChild(this: any) {
           const raw = this._n[key]();
           if (raw === null || raw === undefined) {
             return raw;
@@ -52,7 +52,7 @@ function buildModelProto(props: readonly SchemaProp[]): ModelProtoEntry {
       };
     } else {
       descriptors[key] = {
-        get: function (this: any) {
+        get: function getModelLeaf(this: any) {
           return this._n[key]();
         },
         enumerable: true,

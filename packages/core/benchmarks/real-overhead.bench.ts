@@ -1,9 +1,10 @@
 // @ts-nocheck — benchmark file, sink variables prevent dead code elimination
 // Per-operation cost isolation: proxy vs cached $NODE vs bare signal.
+import { effect } from "alien-signals";
 import { bench, describe } from "vitest";
+
 import { createStore, unwrap } from "../src";
 import { $NODE } from "../src/internal";
-import { effect } from "alien-signals";
 
 const [store] = createStore({ title: "Buy milk", count: 0, done: false });
 const raw = unwrap(store) as any;

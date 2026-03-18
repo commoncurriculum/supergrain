@@ -6,9 +6,9 @@
  * - All DOC_TEST identifiers have corresponding tests in the test suite
  */
 
-import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
+import { describe, it, expect } from "vitest";
 
 describe("README Documentation Validation", () => {
   const readmeContent = readFileSync(join(__dirname, "../../../README.md"), "utf-8");

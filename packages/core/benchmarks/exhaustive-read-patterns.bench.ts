@@ -7,10 +7,11 @@
  * The question is whether any compiled pattern can approach that speed.
  */
 
+import { effect, signal as alienSignal } from "alien-signals";
 import { bench, describe } from "vitest";
+
 import { createStore, unwrap } from "../src";
 import { $NODE, $RAW } from "../src/internal";
-import { effect, signal as alienSignal } from "alien-signals";
 
 // Shared setup
 const [store] = createStore({ title: "Buy milk" });

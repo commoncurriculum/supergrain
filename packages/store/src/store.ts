@@ -1,6 +1,8 @@
-import { createStore, computed, type SetStoreFunction } from "@supergrain/core";
-import { DocumentPromiseImpl } from "./document-promise";
 import type { StoreState, DocumentPromise, DocumentTypes, FetchHandler } from "./types";
+
+import { createStore, computed, type SetStoreFunction } from "@supergrain/core";
+
+import { DocumentPromiseImpl } from "./document-promise";
 
 export class Store<T extends DocumentTypes = DocumentTypes> {
   private store: StoreState;

@@ -5,10 +5,11 @@
  * Run: pnpm --filter @supergrain/react exec npx vitest bench --config vitest.bench.config.ts benchmarks/gap-analysis.bench.tsx
  */
 
-import { bench, describe } from "vitest";
 import { createStore, effect } from "@supergrain/core";
 import { $NODE, $RAW } from "@supergrain/core/internal";
+import { render, cleanup, act } from "@testing-library/react";
 import { signal as alienSignal } from "alien-signals";
+import React from "react";
 import {
   createRoot as createSolidRoot,
   createEffect as createSolidEffect,
@@ -16,8 +17,7 @@ import {
   batch as solidBatch,
 } from "solid-js";
 import { createStore as createSolidStore } from "solid-js/store";
-import React from "react";
-import { render, cleanup, act } from "@testing-library/react";
+import { bench, describe } from "vitest";
 
 // --- Types & data (copied from direct-dom.bench.tsx) ---
 interface RowData {

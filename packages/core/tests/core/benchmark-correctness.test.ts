@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
 import { effect } from "alien-signals";
+import { describe, expect, it } from "vitest";
+
 import { createStore, unwrap } from "../../src";
 import { createTodo, StoreView, TodoSchema, type Todo } from "../../test-support/todo-model";
 

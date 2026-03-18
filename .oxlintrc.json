@@ -8,21 +8,14 @@
     "style": "error"
   },
   "rules": {
+    "unicorn/no-null": "off",
     "no-magic-numbers": "off",
-    "id-length": "off",
     "no-ternary": "off",
     "sort-keys": "off",
     "sort-imports": "off",
     "func-style": "off",
-    "unicorn/no-null": "off",
-    "func-names": "off",
-    "init-declarations": "off",
+    "id-length": "off",
     "max-lines": "off",
-    "max-lines-per-function": "off",
-    "new-cap": "off",
-    "require-await": "off",
-    "unicorn/text-encoding-identifier-case": "off",
-    "unicorn/prefer-global-this": "off",
-    "unicorn/no-useless-undefined": "off"
+    "max-lines-per-function": "off"
   }
 }

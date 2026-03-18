@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { createStore } from "@supergrain/core";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
-import { createStore } from "@supergrain/core";
+import { describe, it, expect } from "vitest";
+
 import { tracked } from "../src";
 
 describe("Direct Mutation with React Integration", () => {

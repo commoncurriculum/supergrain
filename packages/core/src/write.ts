@@ -76,7 +76,7 @@ export function deleteProperty(target: any, key: PropertyKey): void {
     if (nodes) {
       const node = nodes[key];
       if (node) {
-        node(undefined);
+        node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
       }
     }
     bumpSignals(target, key, prevLen);

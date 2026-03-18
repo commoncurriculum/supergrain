@@ -8,12 +8,12 @@
  * - For Component (DOC_TEST_10)
  */
 
-import { describe, it, expect } from "vitest";
-import { render, screen, act } from "@testing-library/react";
-import { userEvent } from "vitest/browser";
 import { createStore } from "@supergrain/core";
 import { tracked, For } from "@supergrain/react";
+import { render, screen, act } from "@testing-library/react";
 import { memo } from "react";
+import { describe, it, expect } from "vitest";
+import { userEvent } from "vitest/browser";
 
 describe("README React Examples", () => {
   describe("tracked() Component Wrapper", () => {

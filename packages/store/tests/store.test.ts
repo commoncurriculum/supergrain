@@ -1,6 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
-import { Store } from "../src/store";
 import type { DocumentTypes } from "../src/types";
+
+import { describe, it, expect, vi } from "vitest";
+
+import { Store } from "../src/store";
 
 interface User {
   id: number;

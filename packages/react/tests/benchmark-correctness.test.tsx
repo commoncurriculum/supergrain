@@ -3,7 +3,6 @@
  * This ensures benchmark numbers reflect real work, not no-ops.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
 import {
   createStore,
   effect,
@@ -12,7 +11,7 @@ import {
   signal as coreSignal,
 } from "@supergrain/core";
 import { $NODE, $RAW } from "@supergrain/core/internal";
-import { tracked, For } from "../src";
+import { render, cleanup, act } from "@testing-library/react";
 import React, {
   FC,
   memo,
@@ -22,7 +21,6 @@ import React, {
   useEffect,
   useLayoutEffect,
 } from "react";
-import { render, cleanup, act } from "@testing-library/react";
 import {
   createRoot as createSolidRoot,
   createEffect as createSolidEffect,
@@ -30,6 +28,9 @@ import {
   batch as solidBatch,
 } from "solid-js";
 import { createStore as createSolidStore } from "solid-js/store";
+import { describe, it, expect, afterEach } from "vitest";
+
+import { tracked, For } from "../src";
 
 // --- Shared data ---
 interface RowData {

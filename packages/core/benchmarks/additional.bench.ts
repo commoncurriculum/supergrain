@@ -1,7 +1,8 @@
+import { effect } from "alien-signals";
 // Proxy overhead analysis, effect lifecycle, and complex reactive scenarios.
 import { bench, describe } from "vitest";
+
 import { createStore } from "../src";
-import { effect } from "alien-signals";
 
 describe("Additional: Plain vs Proxy Performance", () => {
   describe("Property Access", () => {

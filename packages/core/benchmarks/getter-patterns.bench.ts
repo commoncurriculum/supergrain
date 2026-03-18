@@ -1,9 +1,10 @@
 // @ts-nocheck — benchmark file, sink variables prevent dead code elimination
 // Dynamic vs static prototype getters — tests whether a compiler is needed.
+import { effect } from "alien-signals";
 import { bench, describe } from "vitest";
+
 import { createStore, unwrap } from "../src";
 import { $NODE } from "../src/internal";
-import { effect } from "alien-signals";
 
 const [store] = createStore({ title: "Buy milk" });
 const raw = unwrap(store) as any;

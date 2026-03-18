@@ -1,5 +1,5 @@
-import { type FC, memo, useReducer, useRef, useEffect } from "react";
 import { effect, getCurrentSub, setCurrentSub } from "@supergrain/core";
+import { type FC, memo, useReducer, useRef, useEffect } from "react";
 
 /**
  * Wraps a React component with per-component signal scoping.
@@ -72,7 +72,7 @@ export function tracked<P extends object>(Component: FC<P>) {
 
     const prev = getCurrentSub();
     setCurrentSub(ref.current.effectNode);
-    const result = Component(props);
+    const result = Component(props); // eslint-disable-line new-cap -- React function component call
     setCurrentSub(prev);
     return result;
   };

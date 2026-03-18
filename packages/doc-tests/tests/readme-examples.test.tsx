@@ -8,13 +8,13 @@
  * - TypeScript (DOC_TEST_27)
  */
 
-import { describe, it, expect } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
-import { userEvent } from "vitest/browser";
 import { createStore } from "@supergrain/core";
 import { tracked } from "@supergrain/react";
 import { Store } from "@supergrain/store";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { useState } from "react";
+import { describe, it, expect } from "vitest";
+import { userEvent } from "vitest/browser";
 
 describe("README Complex Examples", () => {
   describe("Quick Start", () => {

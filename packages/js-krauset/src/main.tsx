@@ -1,7 +1,7 @@
+import { createStore } from "@supergrain/core";
+import { tracked, For } from "@supergrain/react";
 import { useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import { tracked, For } from "@supergrain/react";
-import { createStore } from "@supergrain/core";
 
 // --- Data Generation ---
 

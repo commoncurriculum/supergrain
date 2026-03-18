@@ -1,8 +1,8 @@
-import { bench, describe, afterEach } from "vitest";
 import { createStore } from "@supergrain/core";
 import { tracked } from "@supergrain/react";
-import React, { FC, memo, useState, useRef } from "react";
 import { render, fireEvent, act, renderHook, cleanup } from "@testing-library/react";
+import React, { FC, memo, useState, useRef } from "react";
+import { bench, describe, afterEach } from "vitest";
 
 /**
  * For Component Analysis Benchmarks

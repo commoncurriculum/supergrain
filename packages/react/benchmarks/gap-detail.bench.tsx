@@ -10,11 +10,11 @@
  * Run: pnpm --filter @supergrain/react exec npx vitest bench --config vitest.bench.config.ts benchmarks/gap-detail.bench.tsx
  */
 
-import { bench, describe } from "vitest";
 import { createStore, effect } from "@supergrain/core";
 import { $NODE, $RAW } from "@supergrain/core/internal";
-import React, { useRef, useEffect } from "react";
 import { render, cleanup, act } from "@testing-library/react";
+import React, { useRef, useEffect } from "react";
+import { bench, describe } from "vitest";
 
 // --- Types & data ---
 interface RowData {

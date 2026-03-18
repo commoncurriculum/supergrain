@@ -7,12 +7,10 @@
  * Run: cd packages/react && npx vitest bench --config vitest.bench.config.ts benchmarks/direct-dom.bench.tsx
  */
 
-import { bench, describe } from "vitest";
 import { createStore, effect } from "@supergrain/core";
 import { $NODE, $RAW } from "@supergrain/core/internal";
-import { tracked, For } from "../src";
-import React, { FC, memo, useCallback, useState, useRef, useEffect } from "react";
 import { render, cleanup, act } from "@testing-library/react";
+import React, { FC, memo, useCallback, useState, useRef, useEffect } from "react";
 import {
   createRoot as createSolidRoot,
   createEffect as createSolidEffect,
@@ -20,6 +18,9 @@ import {
   batch as solidBatch,
 } from "solid-js";
 import { createStore as createSolidStore } from "solid-js/store";
+import { bench, describe } from "vitest";
+
+import { tracked, For } from "../src";
 
 // --- Types & data ---
 interface RowData {

@@ -1,7 +1,8 @@
-import { describe, it, expect, afterEach } from "vitest";
-import React, { useCallback } from "react";
-import { render, cleanup, act } from "@testing-library/react";
 import { createStore } from "@supergrain/core";
+import { render, cleanup, act } from "@testing-library/react";
+import React, { useCallback } from "react";
+import { describe, it, expect, afterEach } from "vitest";
+
 import { tracked, For } from "../src/index";
 
 afterEach(() => cleanup());
