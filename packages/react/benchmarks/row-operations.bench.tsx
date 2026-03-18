@@ -1,12 +1,11 @@
 import { bench, describe, afterEach } from 'vitest'
 import { createStore } from '@supergrain/core'
-import { useTracked } from '@supergrain/react'
+import { tracked } from '@supergrain/react'
 import React, { FC } from 'react'
 import {
   render,
   fireEvent,
   act,
-  renderHook,
   cleanup,
 } from '@testing-library/react'
 
@@ -112,17 +111,18 @@ interface AppState {
   selected: number | null
 }
 
-const BenchmarkComponent: FC<{
+const BenchmarkComponent = tracked(({
+  store,
+  updateStore,
+}: {
   store: any
   updateStore: any
-}> = ({ store, updateStore }) => {
-  const state = useTracked(store)
-
+}) => {
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
   const swapRows = () => {
-    if (state.data.length > 998) {
-      const row1 = state.data[1]
-      const row998 = state.data[998]
+    if (store.data.length > 998) {
+      const row1 = store.data[1]
+      const row998 = store.data[998]
       updateStore({ $set: { 'data.1': row998, 'data.998': row1 } })
     }
   }
@@ -134,10 +134,10 @@ const BenchmarkComponent: FC<{
       </button>
       <table>
         <tbody data-testid="tbody">
-          {state.data.map((row: RowData) => (
+          {store.data.map((row: RowData) => (
             <tr
               key={row.id}
-              className={row.id === state.selected ? 'danger' : ''}
+              className={row.id === store.selected ? 'danger' : ''}
             >
               <td className="col-md-1">{row.id}</td>
               <td className="col-md-4">
@@ -163,7 +163,7 @@ const BenchmarkComponent: FC<{
       </table>
     </div>
   )
-}
+})
 
 // --- Benchmark Implementation ---
 describe('React Adapter: Row Operations', () => {
@@ -176,7 +176,7 @@ describe('React Adapter: Row Operations', () => {
   // ==============================================================
 
   bench(
-    'hook only - select row: state update + hook re-render',
+    'tracked - select row: state update + component re-render',
     () => {
       const data = buildData(1000)
       const [store, updateStore] = createStore<AppState>({
@@ -184,17 +184,19 @@ describe('React Adapter: Row Operations', () => {
         selected: null,
       })
 
-      // Use renderHook to test the hook directly without DOM
-      const { result } = renderHook(() => useTracked(store))
+      let lastSelected: number | null = null
+      const MinimalComponent = tracked(() => {
+        lastSelected = store.selected
+        return <div>{store.selected}</div>
+      })
 
-      // Measure the state update and React re-render
+      render(<MinimalComponent />)
+
       act(() => {
         updateStore({ $set: { selected: data[500].id } })
       })
 
-      // Access the state to ensure the hook tracked the change
-      const selectedId = result.current.selected
-      if (selectedId !== data[500].id) {
+      if (lastSelected !== data[500].id) {
         throw new Error('State update not reflected')
       }
     },
@@ -205,7 +207,7 @@ describe('React Adapter: Row Operations', () => {
   )
 
   bench(
-    'hook only - swap rows: array update + hook re-render',
+    'tracked - swap rows: array update + component re-render',
     () => {
       const data = buildData(1000)
       const [store, updateStore] = createStore<AppState>({
@@ -213,14 +215,17 @@ describe('React Adapter: Row Operations', () => {
         selected: null,
       })
 
-      // Use renderHook to test the hook directly without DOM
-      const { result } = renderHook(() => useTracked(store))
+      let lastData: RowData[] = []
+      const MinimalComponent = tracked(() => {
+        lastData = store.data
+        return <div>{store.data.length}</div>
+      })
 
-      // Capture original values
+      render(<MinimalComponent />)
+
       const originalRow1 = data[1]
       const originalRow998 = data[998]
 
-      // Measure the state update and React re-render
       act(() => {
         updateStore({
           $set: {
@@ -230,11 +235,9 @@ describe('React Adapter: Row Operations', () => {
         })
       })
 
-      // Access the state to ensure the hook tracked the change
-      const updatedData = result.current.data
       if (
-        updatedData[1].id !== originalRow998.id ||
-        updatedData[998].id !== originalRow1.id
+        lastData[1].id !== originalRow998.id ||
+        lastData[998].id !== originalRow1.id
       ) {
         throw new Error('Row swap not reflected')
       }
@@ -328,7 +331,7 @@ describe('React Adapter: Row Operations', () => {
   // ==============================================================
 
   bench(
-    'large dataset - hook only: 10K rows select',
+    'large dataset - tracked: 10K rows select',
     () => {
       const data = buildData(10000)
       const [store, updateStore] = createStore<AppState>({
@@ -336,14 +339,19 @@ describe('React Adapter: Row Operations', () => {
         selected: null,
       })
 
-      const { result } = renderHook(() => useTracked(store))
+      let lastSelected: number | null = null
+      const MinimalComponent = tracked(() => {
+        lastSelected = store.selected
+        return <div>{store.selected}</div>
+      })
+
+      render(<MinimalComponent />)
 
       act(() => {
         updateStore({ $set: { selected: data[5000].id } })
       })
 
-      const selectedId = result.current.selected
-      if (selectedId !== data[5000].id) {
+      if (lastSelected !== data[5000].id) {
         throw new Error('State update not reflected')
       }
     },
@@ -354,7 +362,7 @@ describe('React Adapter: Row Operations', () => {
   )
 
   bench(
-    'large dataset - hook only: 10K rows swap',
+    'large dataset - tracked: 10K rows swap',
     () => {
       const data = buildData(10000)
       const [store, updateStore] = createStore<AppState>({
@@ -362,7 +370,13 @@ describe('React Adapter: Row Operations', () => {
         selected: null,
       })
 
-      const { result } = renderHook(() => useTracked(store))
+      let lastData: RowData[] = []
+      const MinimalComponent = tracked(() => {
+        lastData = store.data
+        return <div>{store.data.length}</div>
+      })
+
+      render(<MinimalComponent />)
 
       const originalRow1 = data[1]
       const originalRow9998 = data[9998]
@@ -376,10 +390,9 @@ describe('React Adapter: Row Operations', () => {
         })
       })
 
-      const updatedData = result.current.data
       if (
-        updatedData[1].id !== originalRow9998.id ||
-        updatedData[9998].id !== originalRow1.id
+        lastData[1].id !== originalRow9998.id ||
+        lastData[9998].id !== originalRow1.id
       ) {
         throw new Error('Row swap not reflected')
       }

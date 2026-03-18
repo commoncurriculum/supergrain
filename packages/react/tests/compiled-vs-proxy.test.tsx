@@ -2,7 +2,7 @@
  * Proxy vs Compiled vs Class Getter: End-to-end comparison
  *
  * Three approaches tested across all krauset benchmark operations:
- * - Proxy: useTracked(store) — current production path
+ * - Proxy: tracked(() => store.xxx) — current production path
  * - Compiled: useCompiled(store) + direct $NODE reads
  * - Class Getter: useClassView(store, ViewClass) — V8-inlined getters (10x faster reads)
  */
@@ -11,7 +11,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { createStore, effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
 import { $NODE, $RAW } from '@supergrain/core/internal'
 import { signal } from 'alien-signals'
-import { useTracked, For } from '../src/use-store'
+import { tracked, For } from '../src'
 import React, { FC, memo, useCallback, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
 import { render, act, cleanup } from '@testing-library/react'
 import { flushMicrotasks } from './test-utils'
@@ -133,8 +133,8 @@ let appRenderCount = 0
 function resetTracking() { rowRenderCount = 0; renderedRowIds.clear(); appRenderCount = 0 }
 
 // --- Shared Row component (all modes pass plain props) ---
-const Row: FC<{ item: RowData; isSelected: boolean; onSelect: (id: number) => void; onRemove: (id: number) => void }> = memo(
-  ({ item, isSelected, onSelect, onRemove }) => {
+const Row = tracked(
+  ({ item, isSelected, onSelect, onRemove }: { item: RowData; isSelected: boolean; onSelect: (id: number) => void; onRemove: (id: number) => void }) => {
     rowRenderCount++
     renderedRowIds.add(item.id)
     return (
@@ -150,17 +150,17 @@ const Row: FC<{ item: RowData; isSelected: boolean; onSelect: (id: number) => vo
 
 // --- App components for each mode ---
 
-const ProxyApp: FC<{ store: any; updateStore: any; removeFn: (id: number) => void; selectFn: (id: number) => void }> = memo(
-  ({ store, removeFn, selectFn }) => {
+const ProxyApp = tracked(
+  ({ store, removeFn, selectFn }: { store: any; updateStore: any; removeFn: (id: number) => void; selectFn: (id: number) => void }) => {
     appRenderCount++
-    const state = useTracked(store)
+    const selected = store.selected
     const handleSelect = useCallback((id: number) => selectFn(id), [])
     const handleRemove = useCallback((id: number) => removeFn(id), [])
     return (
       <table><tbody>
-        <For each={state.data}>
+        <For each={store.data}>
           {(item: RowData) => (
-            <Row key={item.id} item={item} isSelected={state.selected === item.id}
+            <Row key={item.id} item={item} isSelected={selected === item.id}
               onSelect={handleSelect} onRemove={handleRemove} />
           )}
         </For>

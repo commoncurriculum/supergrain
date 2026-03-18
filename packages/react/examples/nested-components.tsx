@@ -1,6 +1,6 @@
 import React from 'react'
 import { createStore } from '../../core/src/index'
-import { useTracked } from '../src/index'
+import { tracked } from '../src/index'
 
 // Create a store with separate properties for different component levels
 const [store, update] = createStore({
@@ -28,8 +28,7 @@ let parentRenders = 0
 let childRenders = 0
 
 // Child component - only tracks child.value
-function Child() {
-  const state = useTracked(store)
+const Child = tracked(() => {
   childRenders++
 
   return (
@@ -42,22 +41,21 @@ function Child() {
       }}
     >
       <h3>Child Component</h3>
-      <p>Value: {state.child.value}</p>
+      <p>Value: {store.child.value}</p>
       <p>Render count: {childRenders}</p>
       <button
         onClick={() =>
-          update({ $set: { 'child.value': state.child.value + 1 } })
+          update({ $set: { 'child.value': store.child.value + 1 } })
         }
       >
         Increment Child
       </button>
     </div>
   )
-}
+})
 
 // Parent component - tracks parent.value and renders Child
-function Parent() {
-  const state = useTracked(store)
+const Parent = tracked(() => {
   parentRenders++
 
   return (
@@ -70,11 +68,11 @@ function Parent() {
       }}
     >
       <h2>Parent Component</h2>
-      <p>Value: {state.parent.value}</p>
+      <p>Value: {store.parent.value}</p>
       <p>Render count: {parentRenders}</p>
       <button
         onClick={() =>
-          update({ $set: { 'parent.value': state.parent.value + 10 } })
+          update({ $set: { 'parent.value': store.parent.value + 10 } })
         }
       >
         Increment Parent
@@ -82,11 +80,10 @@ function Parent() {
       <Child />
     </div>
   )
-}
+})
 
 // Grandparent component - tracks grandparent.value and renders Parent
-function GrandParent() {
-  const state = useTracked(store)
+const GrandParent = tracked(() => {
   grandparentRenders++
 
   return (
@@ -99,13 +96,13 @@ function GrandParent() {
       }}
     >
       <h1>Grandparent Component</h1>
-      <p>Value: {state.grandparent.value}</p>
+      <p>Value: {store.grandparent.value}</p>
       <p>Render count: {grandparentRenders}</p>
-      <p>Theme: {state.shared.theme}</p>
+      <p>Theme: {store.shared.theme}</p>
       <button
         onClick={() =>
           update({
-            $set: { 'grandparent.value': state.grandparent.value + 100 },
+            $set: { 'grandparent.value': store.grandparent.value + 100 },
           })
         }
       >
@@ -113,7 +110,7 @@ function GrandParent() {
       </button>
       <button
         onClick={() => {
-          const newTheme = state.shared.theme === 'light' ? 'dark' : 'light'
+          const newTheme = store.shared.theme === 'light' ? 'dark' : 'light'
           update({ $set: { 'shared.theme': newTheme } })
         }}
       >
@@ -122,11 +119,10 @@ function GrandParent() {
       <Parent />
     </div>
   )
-}
+})
 
 // Sibling components example - demonstrating independent tracking
-function SiblingA() {
-  const state = useTracked(store)
+const SiblingA = tracked(() => {
   return (
     <div
       style={{
@@ -136,13 +132,12 @@ function SiblingA() {
       }}
     >
       <h3>Sibling A</h3>
-      <p>Parent Value: {state.parent.value}</p>
+      <p>Parent Value: {store.parent.value}</p>
     </div>
   )
-}
+})
 
-function SiblingB() {
-  const state = useTracked(store)
+const SiblingB = tracked(() => {
   return (
     <div
       style={{
@@ -152,10 +147,10 @@ function SiblingB() {
       }}
     >
       <h3>Sibling B</h3>
-      <p>Child Value: {state.child.value}</p>
+      <p>Child Value: {store.child.value}</p>
     </div>
   )
-}
+})
 
 function SiblingContainer() {
   return (

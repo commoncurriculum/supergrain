@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { userEvent } from 'vitest/browser'
 import { createStore } from '@supergrain/core'
-import { useTracked } from '@supergrain/react'
+import { tracked } from '@supergrain/react'
 import { Store } from '@supergrain/store'
 import { useState } from 'react'
 
@@ -26,9 +26,7 @@ describe('README Complex Examples', () => {
       })
 
       // Use in React components
-      function TodoApp() {
-        const state = useTracked(store)
-
+      const TodoApp = tracked(() => {
         // Updates MUST use the update function with operators
         const addTodo = (text: string) => {
           update({
@@ -40,7 +38,7 @@ describe('README Complex Examples', () => {
 
         return (
           <div>
-            <h1>Count: {state.count}</h1>
+            <h1>Count: {store.count}</h1>
             <button onClick={() => update({ $inc: { count: 1 } })}>
               Increment
             </button>
@@ -53,12 +51,12 @@ describe('README Complex Examples', () => {
               placeholder="Add todo..."
             />
 
-            {state.todos.map(todo => (
+            {store.todos.map(todo => (
               <div key={todo.id}>{todo.text}</div>
             ))}
           </div>
         )
-      }
+      })
 
       // Test the component
       render(<TodoApp />)
@@ -295,8 +293,7 @@ describe('README Complex Examples', () => {
       })
 
       // Main component
-      function TodoApp() {
-        const state = useTracked(todoStore)
+      const TodoApp = tracked(() => {
         const [inputText, setInputText] = useState('')
 
         const addTodo = () => {
@@ -316,11 +313,11 @@ describe('README Complex Examples', () => {
         }
 
         const toggleTodo = (id: number) => {
-          const index = state.todos.findIndex(t => t.id === id)
+          const index = todoStore.todos.findIndex(t => t.id === id)
           if (index !== -1) {
             updateTodos({
               $set: {
-                [`todos.${index}.completed`]: !state.todos[index].completed,
+                [`todos.${index}.completed`]: !todoStore.todos[index].completed,
               },
             })
           }
@@ -333,16 +330,16 @@ describe('README Complex Examples', () => {
         }
 
         const clearCompleted = () => {
-          const activeTodos = state.todos.filter(t => !t.completed)
+          const activeTodos = todoStore.todos.filter(t => !t.completed)
           updateTodos({
             $set: { todos: activeTodos },
           })
         }
 
         // Filter todos
-        const filteredTodos = state.todos.filter(todo => {
-          if (state.filter === 'active') return !todo.completed
-          if (state.filter === 'completed') return todo.completed
+        const filteredTodos = todoStore.todos.filter(todo => {
+          if (todoStore.filter === 'active') return !todo.completed
+          if (todoStore.filter === 'completed') return todo.completed
           return true
         })
 
@@ -366,7 +363,7 @@ describe('README Complex Examples', () => {
               {(['all', 'active', 'completed'] as const).map(filterType => (
                 <button
                   key={filterType}
-                  className={state.filter === filterType ? 'active' : ''}
+                  className={todoStore.filter === filterType ? 'active' : ''}
                   onClick={() => updateTodos({ $set: { filter: filterType } })}
                 >
                   {filterType}
@@ -396,12 +393,12 @@ describe('README Complex Examples', () => {
             </ul>
 
             {/* Clear completed */}
-            {state.todos.some(t => t.completed) && (
+            {todoStore.todos.some(t => t.completed) && (
               <button onClick={clearCompleted}>Clear Completed</button>
             )}
           </div>
         )
-      }
+      })
 
       render(<TodoApp />)
 
@@ -490,21 +487,19 @@ describe('README Complex Examples', () => {
         items: [{ title: 'First Item' }],
       })
 
-      function MyComponent() {
-        const state = useTracked(store) // Creates reactive proxy
-
+      const MyComponent = tracked(() => {
         // This creates a subscription to 'user.profile.name'
-        const name = state.user.profile.name
+        const name = store.user.profile.name
 
         // This creates a subscription to 'items[0].title'
-        const firstTitle = state.items[0].title
+        const firstTitle = store.items[0].title
 
         return (
           <div>
             {name}: {firstTitle}
           </div>
         )
-      }
+      })
 
       render(<MyComponent />)
 
@@ -533,12 +528,12 @@ describe('README Complex Examples', () => {
         },
       })
 
-      function TestComponent() {
-        // ✅ Storable: just access the data normally
-        const userName = useTracked(store).user.name // Automatically subscribed!
+      const TestComponent = tracked(() => {
+        // Storable: just access the data normally
+        const userName = store.user.name // Automatically subscribed!
 
         return <div>User: {userName}</div>
-      }
+      })
 
       render(<TestComponent />)
 
@@ -604,16 +599,14 @@ describe('README Complex Examples', () => {
       })
 
       // Component usage is also type-safe
-      function UserProfile() {
-        const state = useTracked(store)
-
+      const UserProfile = tracked(() => {
         return (
           <div>
-            <h1>{state.user.name}</h1>
-            <p>Age: {state.user.age}</p>
+            <h1>{store.user.name}</h1>
+            <p>Age: {store.user.age}</p>
           </div>
         )
-      }
+      })
 
       // Test the component
       render(<UserProfile />)

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { createStore } from '@supergrain/core'
-import { useTracked, For } from '../src/use-store'
+import { tracked, For } from '../src'
 import React, { FC, memo } from 'react'
 import { render, act, cleanup } from '@testing-library/react'
 
@@ -41,10 +41,13 @@ const resetRenderTracking = () => {
 
 // --- Components ---
 
-const TrackingRow: FC<{
+const TrackingRow = tracked(({
+  item,
+  isSelected,
+}: {
   item: RowData
   isSelected: boolean
-}> = memo(({ item, isSelected }) => {
+}) => {
   renderCount++
   renderedRowIds.add(item.id)
 
@@ -58,27 +61,29 @@ const TrackingRow: FC<{
   )
 })
 
-const App: FC<{
+const App = tracked(({
+  store,
+}: {
   store: any
-}> = ({ store }) => {
-  const state = useTracked(store)
+}) => {
+  const selected = store.selected
 
   return (
     <table>
       <tbody>
-        <For each={state.data}>
+        <For each={store.data}>
           {(row: RowData) => (
             <TrackingRow
               key={row.id}
               item={row}
-              isSelected={row.id === state.selected}
+              isSelected={row.id === selected}
             />
           )}
         </For>
       </tbody>
     </table>
   )
-}
+})
 
 describe('Performance Analysis', () => {
   afterEach(() => {

@@ -2,19 +2,17 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { createStore } from '@supergrain/core'
-import { useTracked } from '../src/use-store'
+import { tracked } from '../src'
 
 describe('Direct Mutation with React Integration', () => {
   it('should work with click handlers and direct mutations', () => {
     const [store] = createStore({ count: 0, message: 'Hello' })
 
-    function App() {
-      const { count, message } = useTracked(store)
-
+    const App = tracked(() => {
       return (
         <div>
-          <div data-testid="count">{count}</div>
-          <div data-testid="message">{message}</div>
+          <div data-testid="count">{store.count}</div>
+          <div data-testid="message">{store.message}</div>
           <button
             data-testid="increment"
             onClick={() => {
@@ -33,7 +31,7 @@ describe('Direct Mutation with React Integration', () => {
           </button>
         </div>
       )
-    }
+    })
 
     render(<App />)
 
@@ -60,15 +58,13 @@ describe('Direct Mutation with React Integration', () => {
       nested: { directProp: 'direct', operatorProp: 'operator' },
     })
 
-    function App() {
-      const state = useTracked(store)
-
+    const App = tracked(() => {
       return (
         <div>
-          <div data-testid="direct-value">{state.directValue}</div>
-          <div data-testid="operator-value">{state.operatorValue}</div>
-          <div data-testid="direct-prop">{state.nested.directProp}</div>
-          <div data-testid="operator-prop">{state.nested.operatorProp}</div>
+          <div data-testid="direct-value">{store.directValue}</div>
+          <div data-testid="operator-value">{store.operatorValue}</div>
+          <div data-testid="direct-prop">{store.nested.directProp}</div>
+          <div data-testid="operator-prop">{store.nested.operatorProp}</div>
           <button
             data-testid="direct-button"
             onClick={() => {
@@ -93,7 +89,7 @@ describe('Direct Mutation with React Integration', () => {
           </button>
         </div>
       )
-    }
+    })
 
     render(<App />)
 
@@ -131,12 +127,10 @@ describe('Direct Mutation with React Integration', () => {
       ],
     })
 
-    function TodoList() {
-      const { items } = useTracked(store)
-
+    const TodoList = tracked(() => {
       return (
         <div>
-          {items.map((item, index) => (
+          {store.items.map((item, index) => (
             <div key={item.id}>
               <span data-testid={`item-${index}-name`}>{item.name}</span>
               <span data-testid={`item-${index}-completed`}>
@@ -162,7 +156,7 @@ describe('Direct Mutation with React Integration', () => {
           ))}
         </div>
       )
-    }
+    })
 
     render(<TodoList />)
 
@@ -194,18 +188,16 @@ describe('Direct Mutation with React Integration', () => {
       todos: [{ id: 1, text: 'Learn Storable', done: false }],
     })
 
-    function App() {
-      const state = useTracked(store)
-
+    const App = tracked(() => {
       return (
         <div>
-          <div data-testid="counter">{state.counter}</div>
+          <div data-testid="counter">{store.counter}</div>
           <div data-testid="user-info">
-            {state.user.name} ({state.user.age})
+            {store.user.name} ({store.user.age})
           </div>
-          <div data-testid="todo-text">{state.todos[0].text}</div>
+          <div data-testid="todo-text">{store.todos[0].text}</div>
           <div data-testid="todo-status">
-            {state.todos[0].done ? 'Done' : 'Pending'}
+            {store.todos[0].done ? 'Done' : 'Pending'}
           </div>
 
           <button
@@ -241,7 +233,7 @@ describe('Direct Mutation with React Integration', () => {
           </button>
         </div>
       )
-    }
+    })
 
     render(<App />)
 

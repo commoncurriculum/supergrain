@@ -6,7 +6,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { createStore, effect, getCurrentSub, setCurrentSub, signal as coreSignal } from '@supergrain/core'
 import { $NODE, $RAW } from '@supergrain/core/internal'
-import { useTracked, For } from '../src/use-store'
+import { tracked, For } from '../src'
 import React, { FC, memo, useCallback, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
 import { render, cleanup, act } from '@testing-library/react'
 import { createRoot as createSolidRoot, createEffect as createSolidEffect, createSignal, batch as solidBatch } from 'solid-js'
@@ -77,19 +77,23 @@ function getRowsFromTbody(tbody: HTMLElement): { id: string; label: string; clas
 afterEach(() => cleanup())
 
 describe('Proxy (React) correctness', () => {
-  const Row: FC<{ item: RowData; isSelected: boolean }> = memo(({ item, isSelected }) => (
+  const Row = tracked(({ item, isSelected }: { item: RowData; isSelected: boolean }) => (
     <tr className={isSelected ? 'danger' : ''}>
       <td>{item.id}</td>
       <td><a>{item.label}</a></td>
     </tr>
   ))
 
-  const App: FC<{ store: any }> = ({ store }) => {
-    const state = useTracked(store)
-    return <table><tbody data-testid="tbody"><For each={state.data}>{(item: RowData) => (
-      <Row key={item.id} item={item} isSelected={state.selected === item.id} />
-    )}</For></tbody></table>
-  }
+  const App = tracked(({ store }: { store: AppState }) => {
+    const selected = store.selected
+    // Iterate data in App's tracked scope so array mutations trigger re-render
+    const data = store.data
+    return <table><tbody data-testid="tbody">
+      {data.map((item: RowData) => (
+        <Row key={item.id} item={item} isSelected={selected === item.id} />
+      ))}
+    </tbody></table>
+  })
 
   it('renders rows correctly', async () => {
     const [store] = createStore<AppState>({ data: testData(), selected: null })

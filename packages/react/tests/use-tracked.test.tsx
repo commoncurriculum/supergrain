@@ -2,17 +2,15 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import React from 'react'
 import { createStore } from '@supergrain/core'
-import { useTracked } from '../src'
+import { tracked } from '../src'
 
-describe('useTracked', () => {
-  it('returns a proxy that provides access to store values', () => {
+describe('tracked()', () => {
+  it('returns a component that provides access to store values', () => {
     const [store] = createStore({ title: 'hello' })
 
-    function TestComponent() {
-      const tracked = useTracked(store)
-      // useTracked returns a proxy wrapping the store
-      return <div data-testid="title">{tracked.title}</div>
-    }
+    const TestComponent = tracked(() => {
+      return <div data-testid="title">{store.title}</div>
+    })
 
     render(<TestComponent />)
     expect(screen.getByTestId('title').textContent).toBe('hello')
@@ -22,13 +20,11 @@ describe('useTracked', () => {
     const [store] = createStore({ title: 'hello' })
     let renderCount = 0
 
-    function TestComponent() {
+    const TestComponent = tracked(() => {
       renderCount++
-      const tracked = useTracked(store)
-      // Access through proxy to establish tracking
-      const title = tracked.title
+      const title = store.title
       return <div data-testid="title">{title}</div>
-    }
+    })
 
     render(<TestComponent />)
     expect(screen.getByTestId('title').textContent).toBe('hello')
@@ -46,13 +42,11 @@ describe('useTracked', () => {
     const [store] = createStore({ title: 'hello', count: 0 })
     let renderCount = 0
 
-    function TestComponent() {
+    const TestComponent = tracked(() => {
       renderCount++
-      const tracked = useTracked(store)
-      // Only access title — count is not tracked
-      const title = tracked.title
+      const title = store.title
       return <div data-testid="title">{title}</div>
-    }
+    })
 
     render(<TestComponent />)
     expect(renderCount).toBe(1)

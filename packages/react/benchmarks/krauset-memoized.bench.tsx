@@ -1,6 +1,6 @@
 import { bench, describe } from 'vitest'
 import { createStore } from '@supergrain/core'
-import { useTracked } from '@supergrain/react'
+import { tracked } from '@supergrain/react'
 import React, { FC, memo, useCallback } from 'react'
 import { render, act } from '@testing-library/react'
 
@@ -141,23 +141,24 @@ const MemoizedRow: FC<{
 })
 
 // App with Unmemoized Rows
-const UnmemoizedApp: FC<{
+const UnmemoizedApp = tracked(({
+  store,
+  updateStore,
+}: {
   store: any
   updateStore: any
-}> = ({ store, updateStore }) => {
-  const state = useTracked(store)
-
+}) => {
   const select = (id: number) => updateStore({ $set: { selected: id } })
   const remove = (id: number) => updateStore({ $pull: { data: { id } } })
 
   return (
     <table>
       <tbody>
-        {state.data.map((item: RowData) => (
+        {store.data.map((item: RowData) => (
           <UnmemoizedRow
             key={item.id}
             item={item}
-            isSelected={state.selected === item.id}
+            isSelected={store.selected === item.id}
             onSelect={select}
             onRemove={remove}
           />
@@ -165,15 +166,16 @@ const UnmemoizedApp: FC<{
       </tbody>
     </table>
   )
-}
+})
 
 // App with Memoized Rows and Stable Callbacks
-const MemoizedApp: FC<{
+const MemoizedApp = tracked(({
+  store,
+  updateStore,
+}: {
   store: any
   updateStore: any
-}> = ({ store, updateStore }) => {
-  const state = useTracked(store)
-
+}) => {
   // Stable callbacks prevent unnecessary re-renders
   const select = useCallback(
     (id: number) => updateStore({ $set: { selected: id } }),
@@ -187,11 +189,11 @@ const MemoizedApp: FC<{
   return (
     <table>
       <tbody>
-        {state.data.map((item: RowData) => (
+        {store.data.map((item: RowData) => (
           <MemoizedRow
             key={item.id}
-            item={item} // ← Stable proxy reference enables React.memo!
-            isSelected={state.selected === item.id}
+            item={item} // Stable proxy reference enables React.memo!
+            isSelected={store.selected === item.id}
             onSelect={select}
             onRemove={remove}
           />
@@ -199,7 +201,7 @@ const MemoizedApp: FC<{
       </tbody>
     </table>
   )
-}
+})
 
 // --- Benchmark Suite ---
 

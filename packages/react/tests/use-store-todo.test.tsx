@@ -2,7 +2,7 @@ import React from 'react'
 import { render, screen, act } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { createStore } from '@supergrain/core'
-import { useTracked } from '../src'
+import { tracked } from '../src'
 import { flushMicrotasks } from './test-utils'
 
 // --- Test Setup ---
@@ -19,37 +19,34 @@ interface UserTaskList {
   tasks: Array<Task>
 }
 
-const TodoItem = ({ task }: { task: Task }) => {
-  const trackedTask = useTracked(task)
+const TodoItem = tracked(({ task }: { task: Task }) => {
   return (
     <li
       style={{
-        textDecoration: trackedTask.isCompleted ? 'line-through' : 'none',
+        textDecoration: task.isCompleted ? 'line-through' : 'none',
       }}
     >
-      {trackedTask.text}
+      {task.text}
     </li>
   )
-}
+})
 
-const TodoListComponent = ({ store }: { store: UserTaskList }) => {
-  const trackedStore = useTracked(store)
-
+const TodoListComponent = tracked(({ store }: { store: UserTaskList }) => {
   return (
     <div>
-      <h1>{trackedStore.firstName}'s Tasks</h1>
+      <h1>{store.firstName}'s Tasks</h1>
       <ul>
-        {trackedStore.tasks.map(task => (
+        {store.tasks.map(task => (
           <TodoItem key={task.id} task={task} />
         ))}
       </ul>
     </div>
   )
-}
+})
 
 // --- Tests ---
 
-describe('useTracked Hook for Todo App', () => {
+describe('tracked() for Todo App', () => {
   it('should re-render the component when a new todo is added', async () => {
     const initialState: UserTaskList = {
       id: 'user-1',

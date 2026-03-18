@@ -1,6 +1,6 @@
 import { bench, describe, afterEach } from 'vitest'
 import { createStore } from '@supergrain/core'
-import { useTracked } from '@supergrain/react'
+import { tracked } from '@supergrain/react'
 import React, { FC, memo, useState, useRef } from 'react'
 import {
   render,
@@ -200,71 +200,74 @@ const OptimizedFor: FC<{
 }
 
 // Test Components
-const RegularMapComponent: FC<{
+const RegularMapComponent = tracked(({
+  store,
+  updateStore,
+}: {
   store: any
   updateStore: any
-}> = ({ store, updateStore }) => {
-  const state = useTracked(store)
-
+}) => {
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
 
   return (
     <table>
       <tbody>
-        {state.data.map((row: RowData) => (
+        {store.data.map((row: RowData) => (
           <Row
             key={row.id}
             item={row}
-            isSelected={row.id === state.selected}
+            isSelected={row.id === store.selected}
             onClick={selectRow}
           />
         ))}
       </tbody>
     </table>
   )
-}
+})
 
-const MemoizedMapComponent: FC<{
+const MemoizedMapComponent = tracked(({
+  store,
+  updateStore,
+}: {
   store: any
   updateStore: any
-}> = ({ store, updateStore }) => {
-  const state = useTracked(store)
-
+}) => {
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
 
   return (
     <table>
       <tbody>
-        {state.data.map((row: RowData) => (
+        {store.data.map((row: RowData) => (
           <MemoizedRow
             key={row.id}
             item={row}
-            isSelected={row.id === state.selected}
+            isSelected={row.id === store.selected}
             onClick={selectRow}
           />
         ))}
       </tbody>
     </table>
   )
-}
+})
 
-const ForComponent: FC<{
+const ForComponent = tracked(({
+  store,
+  updateStore,
+}: {
   store: any
   updateStore: any
-}> = ({ store, updateStore }) => {
-  const state = useTracked(store)
-
+}) => {
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
 
   return (
     <table>
       <tbody>
-        <For each={state.data}>
+        <For each={store.data}>
           {row => (
             <Row
               key={row.id}
               item={row}
-              isSelected={row.id === state.selected}
+              isSelected={row.id === store.selected}
               onClick={selectRow}
             />
           )}
@@ -272,20 +275,21 @@ const ForComponent: FC<{
       </tbody>
     </table>
   )
-}
+})
 
-const OptimizedForComponent: FC<{
+const OptimizedForComponent = tracked(({
+  store,
+  updateStore,
+}: {
   store: any
   updateStore: any
-}> = ({ store, updateStore }) => {
-  const state = useTracked(store)
-
+}) => {
   const selectRow = (id: number) => updateStore({ $set: { selected: id } })
 
   return (
     <table>
       <tbody>
-        <OptimizedFor each={state.data} selected={state.selected}>
+        <OptimizedFor each={store.data} selected={store.selected}>
           {(row, index, isSelected) => (
             <Row
               key={row.id}
@@ -298,7 +302,7 @@ const OptimizedForComponent: FC<{
       </tbody>
     </table>
   )
-}
+})
 
 // --- Benchmark Implementation ---
 describe('For Component Analysis', () => {

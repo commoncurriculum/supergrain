@@ -10,7 +10,7 @@
 import { bench, describe } from 'vitest'
 import { createStore, createView, effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
 import { $NODE, $RAW } from '@supergrain/core/internal'
-import { useTracked, For } from '../src/use-store'
+import { tracked, For } from '../src'
 import React, { FC, memo, useCallback, useState, useReducer, useRef, useEffect, useLayoutEffect } from 'react'
 import { render, cleanup, act } from '@testing-library/react'
 import { createRoot as createSolidRoot, createEffect as createSolidEffect, createSignal, batch as solidBatch } from 'solid-js'
@@ -57,8 +57,8 @@ function useReactiveEffect() {
   useEffect(() => { return () => { stateRef.current?.cleanup?.(); } }, [])
 }
 
-const Row: FC<{ item: RowData; isSelected: boolean; onSelect: (id: number) => void; onRemove: (id: number) => void }> = memo(
-  ({ item, isSelected, onSelect, onRemove }) => (
+const Row = tracked(
+  ({ item, isSelected, onSelect, onRemove }: { item: RowData; isSelected: boolean; onSelect: (id: number) => void; onRemove: (id: number) => void }) => (
     <tr className={isSelected ? 'danger' : ''}>
       <td className="col-md-1">{item.id}</td>
       <td className="col-md-4"><a onClick={() => onSelect(item.id)}>{item.label}</a></td>
@@ -68,12 +68,12 @@ const Row: FC<{ item: RowData; isSelected: boolean; onSelect: (id: number) => vo
   )
 )
 
-const ProxyApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) => void }> = memo(({ store, sel, rem }) => {
-  const state = useTracked(store)
+const ProxyApp = tracked(({ store, sel, rem }: { store: any; sel: (id: number) => void; rem: (id: number) => void }) => {
+  const selected = store.selected
   const hs = useCallback((id: number) => sel(id), [])
   const hr = useCallback((id: number) => rem(id), [])
-  return <table><tbody><For each={state.data}>{(item: RowData) => (
-    <Row key={item.id} item={item} isSelected={state.selected === item.id} onSelect={hs} onRemove={hr} />
+  return <table><tbody><For each={store.data}>{(item: RowData) => (
+    <Row key={item.id} item={item} isSelected={selected === item.id} onSelect={hs} onRemove={hr} />
   )}</For></tbody></table>
 })
 

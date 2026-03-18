@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, act, cleanup } from '@testing-library/react'
 import React from 'react'
 import { createStore, effect, computed } from '@supergrain/core'
-import { useTracked } from '../src/use-store'
+import { tracked } from '../src'
 import { flushMicrotasks } from './test-utils'
 
 describe('Deep Nesting Operations in React Components', () => {
@@ -96,17 +96,17 @@ describe('Deep Nesting Operations in React Components', () => {
     return { state, update }
   }
 
-  // React components for testing deep nesting display
-  function TaskComponent({
-    state,
+  // React components for testing deep nesting display - all wrapped in tracked()
+  const TaskComponent = tracked(({
+    store,
     deptIndex,
     teamIndex,
     memberIndex,
     projectIndex,
     taskIndex,
-  }: any) {
+  }: any) => {
     const task = getTask(
-      state,
+      store,
       deptIndex,
       teamIndex,
       memberIndex,
@@ -121,17 +121,17 @@ describe('Deep Nesting Operations in React Components', () => {
         </span>
       </div>
     )
-  }
+  })
 
-  function ProjectComponent({
-    state,
+  const ProjectComponent = tracked(({
+    store,
     deptIndex,
     teamIndex,
     memberIndex,
     projectIndex,
-  }: any) {
+  }: any) => {
     const project = getProject(
-      state,
+      store,
       deptIndex,
       teamIndex,
       memberIndex,
@@ -149,7 +149,7 @@ describe('Deep Nesting Operations in React Components', () => {
         {project.tasks.map((_: any, taskIndex: number) => (
           <TaskComponent
             key={taskIndex}
-            state={state}
+            store={store}
             deptIndex={deptIndex}
             teamIndex={teamIndex}
             memberIndex={memberIndex}
@@ -159,10 +159,10 @@ describe('Deep Nesting Operations in React Components', () => {
         ))}
       </div>
     )
-  }
+  })
 
-  function MemberComponent({ state, deptIndex, teamIndex, memberIndex }: any) {
-    const member = getMember(state, deptIndex, teamIndex, memberIndex)
+  const MemberComponent = tracked(({ store, deptIndex, teamIndex, memberIndex }: any) => {
+    const member = getMember(store, deptIndex, teamIndex, memberIndex)
     return (
       <div data-testid={`member-${member.id}`}>
         <h3 data-testid={`member-name-${member.id}`}>{member.name}</h3>
@@ -173,7 +173,7 @@ describe('Deep Nesting Operations in React Components', () => {
         {member.projects.map((_: any, projectIndex: number) => (
           <ProjectComponent
             key={projectIndex}
-            state={state}
+            store={store}
             deptIndex={deptIndex}
             teamIndex={teamIndex}
             memberIndex={memberIndex}
@@ -182,17 +182,17 @@ describe('Deep Nesting Operations in React Components', () => {
         ))}
       </div>
     )
-  }
+  })
 
-  function TeamComponent({ state, deptIndex, teamIndex }: any) {
-    const team = getTeam(state, deptIndex, teamIndex)
+  const TeamComponent = tracked(({ store, deptIndex, teamIndex }: any) => {
+    const team = getTeam(store, deptIndex, teamIndex)
     return (
       <div data-testid={`team-${team.id}`}>
         <h2 data-testid={`team-name-${team.id}`}>{team.name}</h2>
         {team.members.map((_: any, memberIndex: number) => (
           <MemberComponent
             key={memberIndex}
-            state={state}
+            store={store}
             deptIndex={deptIndex}
             teamIndex={teamIndex}
             memberIndex={memberIndex}
@@ -200,10 +200,10 @@ describe('Deep Nesting Operations in React Components', () => {
         ))}
       </div>
     )
-  }
+  })
 
-  function DepartmentComponent({ state, deptIndex }: any) {
-    const dept = getDept(state, deptIndex)
+  const DepartmentComponent = tracked(({ store, deptIndex }: any) => {
+    const dept = getDept(store, deptIndex)
     return (
       <div data-testid={`dept-${dept.id}`}>
         <h1 data-testid={`dept-name-${dept.id}`}>{dept.name}</h1>
@@ -211,32 +211,31 @@ describe('Deep Nesting Operations in React Components', () => {
         {dept.teams.map((_: any, teamIndex: number) => (
           <TeamComponent
             key={teamIndex}
-            state={state}
+            store={store}
             deptIndex={deptIndex}
             teamIndex={teamIndex}
           />
         ))}
       </div>
     )
-  }
+  })
 
-  function OrganizationComponent({ store }: any) {
-    const state = useTracked(store)
+  const OrganizationComponent = tracked(({ store }: any) => {
     return (
-      <div data-testid={`org-${state.organization.id}`}>
-        <h1 data-testid={`org-name-${state.organization.id}`}>
-          {state.organization.name}
+      <div data-testid={`org-${store.organization.id}`}>
+        <h1 data-testid={`org-name-${store.organization.id}`}>
+          {store.organization.name}
         </h1>
-        {state.organization.departments.map((_: any, deptIndex: number) => (
+        {store.organization.departments.map((_: any, deptIndex: number) => (
           <DepartmentComponent
             key={deptIndex}
-            state={state}
+            store={store}
             deptIndex={deptIndex}
           />
         ))}
       </div>
     )
-  }
+  })
 
   it('should display deeply nested organizational data in React components', async () => {
     const { state, update } = createComplexStore()
@@ -425,17 +424,16 @@ describe('Deep Nesting Operations in React Components', () => {
     const { state, update } = createComplexStore()
     let computedValue = 0
 
-    function ComputedComponent() {
-      const stateValue = useTracked(state)
+    const ComputedComponent = tracked(() => {
       const totalBudget = computed(() => {
-        return stateValue.organization.departments.reduce(
+        return state.organization.departments.reduce(
           (sum: number, dept: any) => sum + dept.budget,
           0
         )
       })
       computedValue = totalBudget()
       return <div data-testid="total-budget">{totalBudget()}</div>
-    }
+    })
 
     const { container } = render(<ComputedComponent />)
 
@@ -468,12 +466,11 @@ describe('Deep Nesting Operations in React Components', () => {
     const { state, update } = createComplexStore()
     let renderCount = 0
 
-    function TaskOnlyComponent() {
-      const stateValue = useTracked(state)
+    const TaskOnlyComponent = tracked(() => {
       renderCount++
-      const task = getTask(stateValue, 0, 0, 0, 0, 0)
+      const task = getTask(state, 0, 0, 0, 0, 0)
       return <div data-testid="task-only">{task.title}</div>
-    }
+    })
 
     const { container } = render(<TaskOnlyComponent />)
     expect(renderCount).toBe(1)
@@ -507,7 +504,7 @@ describe('Deep Nesting Operations in React Components', () => {
     ).toBe('Updated Task')
   })
 
-  it('should work correctly with memoized components and deep nesting', async () => {
+  it('should work correctly with tracked components and deep nesting', async () => {
     const { state, update } = createComplexStore()
     let orgRenderCount = 0
     let deptRenderCount = 0
@@ -516,7 +513,7 @@ describe('Deep Nesting Operations in React Components', () => {
     let projectRenderCount = 0
     let taskRenderCount = 0
 
-    const MemoizedTaskComponent = React.memo(
+    const TrackedTaskComponent = tracked(
       ({
         store,
         deptIndex,
@@ -526,9 +523,8 @@ describe('Deep Nesting Operations in React Components', () => {
         taskIndex,
       }: any) => {
         taskRenderCount++
-        const state = useTracked(store)
         const task = getTask(
-          state,
+          store,
           deptIndex,
           teamIndex,
           memberIndex,
@@ -548,12 +544,11 @@ describe('Deep Nesting Operations in React Components', () => {
       }
     )
 
-    const MemoizedProjectComponent = React.memo(
+    const TrackedProjectComponent = tracked(
       ({ store, deptIndex, teamIndex, memberIndex, projectIndex }: any) => {
         projectRenderCount++
-        const state = useTracked(store)
         const project = getProject(
-          state,
+          store,
           deptIndex,
           teamIndex,
           memberIndex,
@@ -568,7 +563,7 @@ describe('Deep Nesting Operations in React Components', () => {
               {project.status}
             </span>
             {project.tasks.map((_: any, taskIndex: number) => (
-              <MemoizedTaskComponent
+              <TrackedTaskComponent
                 key={taskIndex}
                 store={store}
                 deptIndex={deptIndex}
@@ -583,11 +578,10 @@ describe('Deep Nesting Operations in React Components', () => {
       }
     )
 
-    const MemoizedMemberComponent = React.memo(
+    const TrackedMemberComponent = tracked(
       ({ store, deptIndex, teamIndex, memberIndex }: any) => {
         memberRenderCount++
-        const state = useTracked(store)
-        const member = getMember(state, deptIndex, teamIndex, memberIndex)
+        const member = getMember(store, deptIndex, teamIndex, memberIndex)
         return (
           <div data-testid={`memoized-member-${member.id}`}>
             <h3 data-testid={`memoized-member-name-${member.id}`}>
@@ -597,7 +591,7 @@ describe('Deep Nesting Operations in React Components', () => {
               {member.role}
             </span>
             {member.projects.map((_: any, projectIndex: number) => (
-              <MemoizedProjectComponent
+              <TrackedProjectComponent
                 key={projectIndex}
                 store={store}
                 deptIndex={deptIndex}
@@ -611,16 +605,15 @@ describe('Deep Nesting Operations in React Components', () => {
       }
     )
 
-    const MemoizedTeamComponent = React.memo(
+    const TrackedTeamComponent = tracked(
       ({ store, deptIndex, teamIndex }: any) => {
         teamRenderCount++
-        const state = useTracked(store)
-        const team = getTeam(state, deptIndex, teamIndex)
+        const team = getTeam(store, deptIndex, teamIndex)
         return (
           <div data-testid={`memoized-team-${team.id}`}>
             <h2 data-testid={`memoized-team-name-${team.id}`}>{team.name}</h2>
             {team.members.map((_: any, memberIndex: number) => (
-              <MemoizedMemberComponent
+              <TrackedMemberComponent
                 key={memberIndex}
                 store={store}
                 deptIndex={deptIndex}
@@ -633,11 +626,10 @@ describe('Deep Nesting Operations in React Components', () => {
       }
     )
 
-    const MemoizedDepartmentComponent = React.memo(
+    const TrackedDepartmentComponent = tracked(
       ({ store, deptIndex }: any) => {
         deptRenderCount++
-        const state = useTracked(store)
-        const dept = getDept(state, deptIndex)
+        const dept = getDept(store, deptIndex)
         return (
           <div data-testid={`memoized-dept-${dept.id}`}>
             <h1 data-testid={`memoized-dept-name-${dept.id}`}>{dept.name}</h1>
@@ -645,7 +637,7 @@ describe('Deep Nesting Operations in React Components', () => {
               {dept.budget}
             </span>
             {dept.teams.map((_: any, teamIndex: number) => (
-              <MemoizedTeamComponent
+              <TrackedTeamComponent
                 key={teamIndex}
                 store={store}
                 deptIndex={deptIndex}
@@ -657,16 +649,15 @@ describe('Deep Nesting Operations in React Components', () => {
       }
     )
 
-    const MemoizedOrganizationComponent = React.memo(({ store }: any) => {
+    const TrackedOrganizationComponent = tracked(({ store }: any) => {
       orgRenderCount++
-      const state = useTracked(store)
       return (
-        <div data-testid={`memoized-org-${state.organization.id}`}>
-          <h1 data-testid={`memoized-org-name-${state.organization.id}`}>
-            {state.organization.name}
+        <div data-testid={`memoized-org-${store.organization.id}`}>
+          <h1 data-testid={`memoized-org-name-${store.organization.id}`}>
+            {store.organization.name}
           </h1>
-          {state.organization.departments.map((_: any, deptIndex: number) => (
-            <MemoizedDepartmentComponent
+          {store.organization.departments.map((_: any, deptIndex: number) => (
+            <TrackedDepartmentComponent
               key={deptIndex}
               store={store}
               deptIndex={deptIndex}
@@ -677,7 +668,7 @@ describe('Deep Nesting Operations in React Components', () => {
     })
 
     const { container } = render(
-      <MemoizedOrganizationComponent store={state} />
+      <TrackedOrganizationComponent store={state} />
     )
 
     // Initial render - all components should render once
@@ -705,7 +696,7 @@ describe('Deep Nesting Operations in React Components', () => {
       await flushMicrotasks()
     })
 
-    // With useTracked in each component, only components that access the changed data should re-render
+    // With tracked() in each component, only components that access the changed data should re-render
     expect(orgRenderCount).toBe(1) // Org doesn't access task data directly
     expect(deptRenderCount).toBe(1) // Dept doesn't access task data
     expect(teamRenderCount).toBe(1) // Team doesn't access task data

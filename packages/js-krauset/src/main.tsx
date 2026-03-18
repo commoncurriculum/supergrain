@@ -1,6 +1,6 @@
-import { FC, memo, useCallback } from 'react'
+import { useCallback } from 'react'
 import { createRoot } from 'react-dom/client'
-import { useTracked, For } from '@supergrain/react'
+import { tracked, For } from '@supergrain/react'
 import { createStore } from '@supergrain/core'
 
 // --- Data Generation ---
@@ -162,19 +162,19 @@ if (typeof window !== 'undefined' && document.getElementById('run')) {
 // --- React Components ---
 
 /**
- * Optimized Row component using React.memo for maximum performance.
+ * Optimized Row component using tracked() for maximum performance.
  *
  * Thanks to the <For> component automatically handling version props:
  * - The <For> component detects changes in proxy objects and passes version info
- * - React.memo can properly detect when props haven't changed
+ * - tracked() includes memo behavior to properly detect when props haven't changed
  * - Only rows that actually need to update will re-render
  *
  * This provides massive performance improvements for large lists:
  * - Before: All rows re-render on any change (1-2% efficient)
  * - After: Only changed rows re-render with <For> component (98%+ efficient)
  */
-export const Row: FC<RowProps> = memo(
-  ({ item, isSelected, onSelect, onRemove }) => {
+export const Row = (tracked as any)(
+  ({ item, isSelected, onSelect, onRemove }: RowProps) => {
     return (
       <tr className={isSelected ? 'danger' : ''}>
         <td className="col-md-1">{item.id}</td>
@@ -195,19 +195,19 @@ export const Row: FC<RowProps> = memo(
   }
 )
 
-export const App = memo(() => {
+export const App = (tracked as any)(() => {
   const handleSelect = useCallback((id: number) => select(id), [])
   const handleRemove = useCallback((id: number) => remove(id), [])
 
-  const state = useTracked(store)
+  const selected = store.selected
 
   return (
-    <For each={state.data}>
+    <For each={store.data}>
       {(item: RowData) => (
         <Row
           key={item.id}
           item={item}
-          isSelected={state.selected === item.id}
+          isSelected={selected === item.id}
           onSelect={handleSelect}
           onRemove={handleRemove}
         />

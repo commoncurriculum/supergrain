@@ -2,7 +2,7 @@
  * README React Examples Tests
  *
  * Tests for React integration examples from the README:
- * - useTracked Hook (DOC_TEST_6)  
+ * - tracked() Component Wrapper (DOC_TEST_6)  
  * - Fine-grained Reactivity (DOC_TEST_8)
  * - Memoized Components (DOC_TEST_9)
  * - For Component (DOC_TEST_10)
@@ -12,27 +12,25 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import { userEvent } from 'vitest/browser'
 import { createStore } from '@supergrain/core'
-import { useTracked, For } from '@supergrain/react'
+import { tracked, For } from '@supergrain/react'
 import { memo } from 'react'
 
 describe('README React Examples', () => {
-  describe('useTracked Hook', () => {
+  describe('tracked() Component Wrapper', () => {
     it('#DOC_TEST_6', async () => {
       const [store, update] = createStore({ count: 0 })
 
       // The primary way to use stores in React:
-      function Counter() {
-        const state = useTracked(store)
-
+      const Counter = tracked(() => {
         return (
           <div>
-            <p>Count: {state.count}</p>
+            <p>Count: {store.count}</p>
             <button onClick={() => update({ $inc: { count: 1 } })}>
               Increment
             </button>
           </div>
         )
-      }
+      })
 
       render(<Counter />)
 
@@ -47,17 +45,15 @@ describe('README React Examples', () => {
     it('#DOC_TEST_8', async () => {
       const [store, update] = createStore({ x: 1, y: 2, z: 3 })
 
-      function ComponentA() {
-        const state = useTracked(store)
+      const ComponentA = tracked(() => {
         // Only re-renders when 'x' changes
-        return <div>X: {state.x}</div>
-      }
+        return <div>X: {store.x}</div>
+      })
 
-      function ComponentB() {
-        const state = useTracked(store)
+      const ComponentB = tracked(() => {
         // Only re-renders when 'y' changes
-        return <div>Y: {state.y}</div>
-      }
+        return <div>Y: {store.y}</div>
+      })
 
       function App() {
         return (
@@ -102,11 +98,10 @@ describe('README React Examples', () => {
         project: { taskIds: [1, 2] },
       })
 
-      // ✅ Correct - useTracked inside memoized component
-      const TaskComponent = memo(
+      // Correct - tracked() wraps the component
+      const TaskComponent = tracked(
         ({ store, taskId }: { store: any; taskId: number }) => {
-          const state = useTracked(store)
-          const task = state.tasks.find((t: any) => t.id === taskId)
+          const task = store.tasks.find((t: any) => t.id === taskId)
 
           return (
             <div>
@@ -118,17 +113,15 @@ describe('README React Examples', () => {
       )
 
       // Usage
-      function ProjectView() {
-        const state = useTracked(store)
-
+      const ProjectView = tracked(() => {
         return (
           <div>
-            {state.project.taskIds.map(taskId => (
+            {store.project.taskIds.map(taskId => (
               <TaskComponent key={taskId} store={store} taskId={taskId} />
             ))}
           </div>
         )
-      }
+      })
 
       render(<ProjectView />)
 
@@ -156,15 +149,13 @@ describe('README React Examples', () => {
         </div>
       ))
 
-      function TodoList() {
-        const state = useTracked(store)
-
+      const TodoList = tracked(() => {
         return (
-          <For each={state.todos} fallback={<div>No todos yet</div>}>
+          <For each={store.todos} fallback={<div>No todos yet</div>}>
             {(todo, index) => <TodoItem key={todo.id} todo={todo} />}
           </For>
         )
-      }
+      })
 
       render(<TodoList />)
 
