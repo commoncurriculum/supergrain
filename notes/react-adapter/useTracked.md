@@ -1,8 +1,10 @@
-# React Adapter v5: Final Solution
+# React Adapter v5: useTracked (Superseded)
 
-> **Status:** Shipped as `useTracked`. This is the definitive solution for React integration with alien-signals-based stores.
+> **Status:** SUPERSEDED by `tracked()`. The per-access proxy swap approach described here was replaced by a simpler per-render subscriber swap in March 2026. See [../failed-approaches/react-optimization-experiments-2026-03.md](../failed-approaches/react-optimization-experiments-2026-03.md) for why.
 >
-> **Key insight:** Wrap each property access in a subscriber swap so that alien-signals sees the correct effect at the exact moment of access, providing perfect nested component isolation without a build step.
+> **Original key insight:** Wrap each property access in a subscriber swap so that alien-signals sees the correct effect at the exact moment of access, providing perfect nested component isolation without a build step.
+>
+> **Why it was superseded:** Per-access proxy swaps (O(n) per property access) caused parent over-subscription — all reads through the proxy tree, including children's, routed to one stored effectNode. `tracked()` wraps the component render instead (O(1) per component), achieving true per-component isolation.
 
 ## The Problem (Recap)
 

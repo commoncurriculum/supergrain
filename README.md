@@ -64,7 +64,7 @@ view.title  // fast prototype getter read
 - 🎯 **Super fine-grained reactivity** - Only components using changed data re-render
 - 🔄 **MongoDB-style operators** - Powerful update operations with automatic batching
 - 📦 **Zero boilerplate** - No actions, reducers, or decorators required
-- ⚛️ **React integration** - Simple hooks for reactive components
+- ⚛️ **React integration** - Simple `tracked()` wrapper for reactive components
 - 📝 **Full TypeScript support** - Complete type safety and inference
 - 🗂️ **Document-oriented store** - App-level store for document management with promise-like API
 - ⚡ **`$$()` direct DOM** - Solid-js level performance within React via compiler-optimized signal-to-DOM bindings
@@ -108,7 +108,7 @@ _Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/t
 // [#DOC_TEST_3](packages/documentation/tests/quick-start.test.tsx)
 
 import { createStore } from '@supergrain/core'
-import { useTracked } from '@supergrain/react'
+import { tracked } from '@supergrain/react'
 
 // Create a store with initial state
 const [store, update] = createStore({
@@ -117,9 +117,7 @@ const [store, update] = createStore({
 })
 
 // Use in React components
-function TodoApp() {
-  const state = useTracked(store)
-
+const TodoApp = tracked(() => {
   // Use update function with MongoDB-style operators
   const addTodo = (text: string) => {
     update({
@@ -131,7 +129,7 @@ function TodoApp() {
 
   return (
     <div>
-      <h1>Count: {state.count}</h1>
+      <h1>Count: {store.count}</h1>
       <button onClick={() => update({ $inc: { count: 1 } })}>
         Increment
       </button>
@@ -141,41 +139,41 @@ function TodoApp() {
         placeholder="Add todo..."
       />
 
-      {state.todos.map(todo => (
+      {store.todos.map(todo => (
         <div key={todo.id}>{todo.text}</div>
       ))}
     </div>
   )
-}
+})
 ```
 
 ## How It Works
 
 Supergrain uses **super fine-grained reactivity** powered by `alien-signals` to automatically track which components access which data, creating subscriptions only to properties that are actually used.
 
-### The Magic of `useTracked`
+### The Magic of `tracked()`
 
-When you call `useTracked(store)` in a React component, it:
+When you wrap a component with `tracked()`, it:
 
 1. **Creates an effect context** using `alien-signals`
-2. **Returns a proxy** of your store that tracks property access
+2. **Tracks property access** on any store read during render
 3. **Automatically subscribes** to any properties accessed during render
 4. **Re-renders the component** only when subscribed properties change
+
+Each component independently subscribes to only the signals it reads. A label change deep in a list only re-renders the affected row, not the parent.
 
 ```typescript
 // [#DOC_TEST_28](packages/documentation/tests/readme-examples.test.tsx)
 
-function MyComponent() {
-  const state = useTracked(store) // Creates reactive proxy
-
+const MyComponent = tracked(() => {
   // This creates a subscription to 'user.profile.name'
-  const name = state.user.profile.name
+  const name = store.user.profile.name
 
   // This creates a subscription to 'items[0].title'
-  const firstTitle = state.items[0].title
+  const firstTitle = store.items[0].title
 
   return <div>{name}: {firstTitle}</div>
-}
+})
 
 // Later, when you update:
 update({ $set: { 'user.profile.name': 'Jane' } }) // Only this component re-renders
@@ -186,10 +184,10 @@ update({ $set: { 'user.profile.age': 30 } })     // This component does NOT re-r
 
 Every property you access during render creates a subscription. The reactivity system:
 
-- ✅ `state.items[0].name` creates subscription to ONLY the `name` property
-- ✅ `state.items.map(item => item.title)` creates subscriptions to each item's `title` property
-- ✅ Deeply nested access like `state.a.b.c.d.e` works perfectly
-- ✅ Accessing `state.items[0].name` will NOT re-render when `state.items[0].age` changes (property-level granularity)
+- ✅ `store.items[0].name` creates subscription to ONLY the `name` property
+- ✅ `store.items.map(item => item.title)` creates subscriptions to each item's `title` property
+- ✅ Deeply nested access like `store.a.b.c.d.e` works perfectly
+- ✅ Accessing `store.items[0].name` will NOT re-render when `store.items[0].age` changes (property-level granularity)
 
 ### No Manual Subscription Management
 
@@ -202,8 +200,8 @@ Unlike other reactive systems, you never need to manually subscribe or unsubscri
 const unsubscribe = store.subscribe('user.name', callback)
 useEffect(() => unsubscribe, [])
 
-// ✅ Supergrain: just access the data normally
-const userName = useTracked(store).user.name // Automatically subscribed!
+// ✅ Supergrain: just access the data inside tracked()
+const userName = store.user.name // Automatically subscribed!
 ```
 
 ## Creating Stores
@@ -332,27 +330,25 @@ update({
 
 _Links: [Source Code](packages/react/src/use-store.ts). [Tests](packages/react/tests/use-store.test.tsx). [Examples](packages/react/examples/nested-components.tsx)._
 
-### useTracked Hook
+### tracked() — Reactive Components
 
-The primary way to use stores in React:
+The primary way to use stores in React. `tracked()` wraps a component so it automatically subscribes to any store properties read during render:
 
 ```typescript
 // [#DOC_TEST_6](packages/documentation/tests/react-integration.test.tsx)
 
-import { useTracked } from '@supergrain/react'
+import { tracked } from '@supergrain/react'
 
-function Counter() {
-  const state = useTracked(store)
-
+const Counter = tracked(() => {
   return (
     <div>
-      <p>Count: {state.count}</p>
+      <p>Count: {store.count}</p>
       <button onClick={() => update({ $inc: { count: 1 } })}>
         Increment
       </button>
     </div>
   )
-}
+})
 ```
 
 ### Super Fine-grained Reactivity
@@ -362,41 +358,36 @@ Components only re-render when properties they access change:
 ```typescript
 // [#DOC_TEST_8](packages/documentation/tests/react-integration.test.tsx)
 
-const [state, update] = createStore({
+const [store, update] = createStore({
   x: 1,
   y: 2,
   z: 3
 })
 
-function ComponentA() {
-  const state = useTracked(store)
+const ComponentA = tracked(() => {
   // Only re-renders when 'x' changes
-  return <div>X: {state.x}</div>
-}
+  return <div>X: {store.x}</div>
+})
 
-function ComponentB() {
-  const state = useTracked(store)
+const ComponentB = tracked(() => {
   // Only re-renders when 'y' changes
-  return <div>Y: {state.y}</div>
-}
+  return <div>Y: {store.y}</div>
+})
 
 // Updating 'z' won't re-render ComponentA or ComponentB
 update({ $set: { z: 10 } })
 ```
 
-### Using with Memoized Components
+### Using tracked() Instead of memo()
 
-Because values are proxies and they're stable across renders, passing them will break memoized components (as the proxy won't change when the values do). To solve this, call `useTracked` inside each memoized component rather than passing state as props:
+`tracked()` includes `memo()` behavior, so you don't need `React.memo()`. Each `tracked()` component independently subscribes to only the signals it reads:
 
 ```typescript
 // [#DOC_TEST_9](packages/documentation/tests/react-integration.test.tsx)
 
-import React, { memo } from 'react'
-
-// ✅ Correct - useTracked inside memoized component
-const TaskComponent = memo(({ store, taskId }) => {
-  const state = useTracked(store)
-  const task = state.tasks.find(t => t.id === taskId)
+// ✅ tracked() includes memo behavior — no need for React.memo
+const TaskComponent = tracked(({ taskId }) => {
+  const task = store.tasks.find(t => t.id === taskId)
 
   return (
     <div>
@@ -407,17 +398,15 @@ const TaskComponent = memo(({ store, taskId }) => {
 })
 
 // Usage
-function ProjectView() {
-  const state = useTracked(store)
-
+const ProjectView = tracked(() => {
   return (
     <div>
-      {state.project.taskIds.map(taskId => (
-        <TaskComponent key={taskId} store={store} taskId={taskId} />
+      {store.project.taskIds.map(taskId => (
+        <TaskComponent key={taskId} taskId={taskId} />
       ))}
     </div>
   )
-}
+})
 ```
 
 ### For Component - Optimized Array Rendering
@@ -439,17 +428,15 @@ const TodoItem = memo(({ todo }) => (
   </div>
 ))
 
-function TodoList() {
-  const state = useTracked(store)
-
+const TodoList = tracked(() => {
   return (
-    <For each={state.todos} fallback={<div>No todos yet</div>}>
+    <For each={store.todos} fallback={<div>No todos yet</div>}>
       {(todo, index) => (
         <TodoItem key={todo.id} todo={todo} />
       )}
     </For>
   )
-}
+})
 ```
 
 ## Effects and Computed Values
@@ -642,8 +629,7 @@ Here's a complete TODO application demonstrating Supergrain's features:
 // [#DOC_TEST_26](packages/documentation/tests/todo-app.test.tsx)
 
 import { createStore } from '@supergrain/core'
-import { useTracked, For } from '@supergrain/react'
-import { memo } from 'react'
+import { tracked, For } from '@supergrain/react'
 
 interface Todo {
   id: number
@@ -658,8 +644,8 @@ const [store, update] = createStore({
   newTodoText: '',
 })
 
-// Memoized todo item component
-const TodoItem = memo(({ todo }: { todo: Todo }) => {
+// tracked() includes memo behavior
+const TodoItem = tracked(({ todo }: { todo: Todo }) => {
   const toggleTodo = () => {
     const index = store.todos.findIndex(t => t.id === todo.id)
     update({
@@ -684,16 +670,14 @@ const TodoItem = memo(({ todo }: { todo: Todo }) => {
   )
 })
 
-function TodoApp() {
-  const state = useTracked(store)
-
+const TodoApp = tracked(() => {
   const addTodo = () => {
-    if (state.newTodoText.trim()) {
+    if (store.newTodoText.trim()) {
       update({
         $push: {
           todos: {
             id: Date.now(),
-            text: state.newTodoText,
+            text: store.newTodoText,
             completed: false
           }
         },
@@ -702,9 +686,9 @@ function TodoApp() {
     }
   }
 
-  const filteredTodos = state.todos.filter(todo => {
-    if (state.filter === 'active') return !todo.completed
-    if (state.filter === 'completed') return todo.completed
+  const filteredTodos = store.todos.filter(todo => {
+    if (store.filter === 'active') return !todo.completed
+    if (store.filter === 'completed') return todo.completed
     return true
   })
 
@@ -714,7 +698,7 @@ function TodoApp() {
 
       <div>
         <input
-          value={state.newTodoText}
+          value={store.newTodoText}
           onChange={e => update({ $set: { newTodoText: e.target.value } })}
           onKeyPress={e => e.key === 'Enter' && addTodo()}
           placeholder="What needs to be done?"
@@ -726,7 +710,7 @@ function TodoApp() {
         {['all', 'active', 'completed'].map(filter => (
           <button
             key={filter}
-            className={state.filter === filter ? 'active' : ''}
+            className={store.filter === filter ? 'active' : ''}
             onClick={() => update({ $set: { filter } })}
           >
             {filter}
@@ -739,13 +723,13 @@ function TodoApp() {
       </For>
 
       <div>
-        Total: {state.todos.length} |
-        Active: {state.todos.filter(t => !t.completed).length} |
-        Completed: {state.todos.filter(t => t.completed).length}
+        Total: {store.todos.length} |
+        Active: {store.todos.filter(t => !t.completed).length} |
+        Completed: {store.todos.filter(t => t.completed).length}
       </div>
     </div>
   )
-}
+})
 ```
 
 ## TypeScript
@@ -795,21 +779,19 @@ update({
 })
 
 // Component usage is also type-safe
-function UserProfile() {
-  const state = useTracked(store)
-
+const UserProfile = tracked(() => {
   return (
     <div>
-      <h1>{state.user.name}</h1>        {/* ✅ TypeScript knows this is string */}
-      <p>Age: {state.user.age}</p>       {/* ✅ TypeScript knows this is number */}
+      <h1>{store.user.name}</h1>        {/* ✅ TypeScript knows this is string */}
+      <p>Age: {store.user.age}</p>       {/* ✅ TypeScript knows this is number */}
     </div>
   )
-}
+})
 ```
 
 ## Performance Tips
 
-1. **Use React.memo for list items** - When rendering arrays, wrap item components with `React.memo` or use the `For` component for automatic optimization
+1. **Use tracked() for list items** - When rendering arrays, wrap item components with `tracked()` (which includes memo behavior) or use the `For` component for automatic optimization
 
 2. **Access only needed properties** - The more specific your property access, the fewer re-renders you'll get
 

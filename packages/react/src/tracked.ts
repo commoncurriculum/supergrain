@@ -43,7 +43,7 @@ import { effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
  * })
  * ```
  */
-export function tracked<P extends object>(Component: FC<P>): FC<P> {
+export function tracked<P extends object>(Component: FC<P>) {
   const Tracked: FC<P> = (props: P) => {
     const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
     const ref = useRef<{ cleanup: (() => void); effectNode: any } | null>(null)
@@ -75,5 +75,5 @@ export function tracked<P extends object>(Component: FC<P>): FC<P> {
     return result
   }
 
-  return memo(Tracked) as unknown as FC<P>
+  return memo(Tracked)
 }
