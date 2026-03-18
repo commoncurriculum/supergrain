@@ -75,15 +75,7 @@ describe('For Component Magic Tests', () => {
     const TestComponent = tracked(() => {
       renderCount++
 
-      // Manually replicate what For does
-      const result = store.data.map((item, index) => {
-        // Get version like For does
-        const versionSymbol = Symbol.for('supergrain:version')
-        const version =
-          item && typeof item === 'object' && versionSymbol in item
-            ? (item as any)[versionSymbol]
-            : undefined
-
+      const result = store.data.map((item) => {
         return <div key={item.id}>{item.label}</div>
       })
 

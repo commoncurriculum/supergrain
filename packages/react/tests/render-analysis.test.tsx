@@ -458,15 +458,12 @@ describe('Render Analysis Tests', () => {
       items: initialItems,
     })
 
-    // Access the version symbol
-    const $VERSION = Symbol.for('supergrain:version')
-
     // Track renders for each item component
     const itemRenderCounts = new Map<number, number>()
     const componentRenderCounts = new Map<string, number>()
 
-    // Individual item component that uses version for change detection
-    const ItemComponent: FC<{ item: Item; version: number }> = memo(
+    // Individual item component
+    const ItemComponent: FC<{ item: Item }> = memo(
       ({ item }) => {
         const currentCount = itemRenderCounts.get(item.id) || 0
         itemRenderCounts.set(item.id, currentCount + 1)
@@ -481,7 +478,7 @@ describe('Render Analysis Tests', () => {
       }
     )
 
-    // List component that maps over items and passes version
+    // List component that maps over items
     const ItemListComponent = tracked(() => {
       const currentCount = componentRenderCounts.get('list') || 0
       componentRenderCounts.set('list', currentCount + 1)
@@ -492,7 +489,6 @@ describe('Render Analysis Tests', () => {
             <ItemComponent
               key={item.id}
               item={item}
-              version={(item as any)[$VERSION] || 0}
             />
           ))}
         </div>
@@ -518,7 +514,6 @@ describe('Render Analysis Tests', () => {
     // With tracked(), the list component re-renders when the array signal fires.
     // Individual item updates only re-render if the item component is tracked.
     // Since ItemComponent uses memo (not tracked), it relies on prop changes.
-    // The $VERSION prop changes for the modified item, causing it to re-render.
     const listRenders = componentRenderCounts.get('list') || 0
     // The list re-renders if the array or its items are tracked
     expect(listRenders).toBeGreaterThanOrEqual(0)
@@ -573,155 +568,6 @@ describe('Render Analysis Tests', () => {
     expect(localRenderCount).toBe(1)
   })
 
-  it('shows optimal structure with item components accessing only their data', () => {
-    interface Item {
-      id: number
-      name: string
-      value: number
-    }
-
-    const [store, updateStore] = createStore({
-      items: Array.from({ length: 100 }, (_, i) => ({
-        id: i + 1,
-        name: `Item ${i + 1}`,
-        value: i * 10,
-      })),
-    })
-
-    const renderTracker = new Map<number, number>()
-
-    // Access version symbol
-    const $VERSION = Symbol.for('supergrain:version')
-
-    // Optimal: Each item is its own component with memo
-    const OptimalItemComponent = memo<{
-      itemId: number
-      items: Item[]
-      version: number
-    }>(({ itemId, items }) => {
-      const item = items.find(i => i.id === itemId)!
-      const count = (renderTracker.get(itemId) || 0) + 1
-      renderTracker.set(itemId, count)
-
-      return (
-        <div data-testid={`optimal-item-${item.id}`}>
-          {item.name}: {item.value}
-        </div>
-      )
-    })
-
-    const OptimalListComponent = tracked(() => {
-      // Pass items array and version to child components
-      return (
-        <div>
-          {store.items.map((item: any) => (
-            <OptimalItemComponent
-              key={item.id}
-              itemId={item.id}
-              items={store.items}
-              version={(item as any)[$VERSION] || 0}
-            />
-          ))}
-        </div>
-      )
-    })
-
-    render(<OptimalListComponent />)
-
-    renderTracker.clear()
-
-    // Update one item
-    act(() => {
-      updateStore({
-        $set: {
-          'items.50.value': 999,
-        },
-      })
-    })
-
-    // With proper structure and memo, only the changed item re-renders
-    expect(renderTracker.size).toBe(1)
-    expect(renderTracker.has(51)).toBe(true)
-  })
-
-  it('demonstrates For component version tracking', () => {
-    interface Item {
-      id: number
-      name: string
-      value: number
-    }
-
-    const itemVersions = new Map<number, number>()
-
-    const [store, updateStore] = createStore({
-      items: Array.from({ length: 100 }, (_, i) => ({
-        id: i + 1,
-        name: `Item ${i + 1}`,
-        value: i * 10,
-      })),
-    })
-
-    const localRenderTracker = new Map<number, number>()
-
-    // Component that includes version in memo comparison
-    const VersionAwareItem = memo<{
-      item: Item
-      version: number
-    }>(
-      ({ item, version }) => {
-        const count = (localRenderTracker.get(item.id) || 0) + 1
-        localRenderTracker.set(item.id, count)
-
-        return (
-          <div data-testid={`versioned-item-${item.id}`}>
-            {item.name}: {item.value} (v{version})
-          </div>
-        )
-      },
-      // Custom comparison that checks both item reference AND version
-      (prevProps, nextProps) => {
-        return (
-          prevProps.item === nextProps.item &&
-          prevProps.version === nextProps.version
-        )
-      }
-    )
-
-    const VersionTrackingList = tracked(() => {
-      return (
-        <div>
-          {store.items.map((item: any) => {
-            const version = itemVersions.get(item.id) || 0
-
-            return (
-              <VersionAwareItem key={item.id} item={item} version={version} />
-            )
-          })}
-        </div>
-      )
-    })
-
-    render(<VersionTrackingList />)
-
-    localRenderTracker.clear()
-
-    // Update one item and increment its version
-    act(() => {
-      itemVersions.set(51, (itemVersions.get(51) || 0) + 1)
-
-      updateStore({
-        $set: {
-          'items.50.value': 999,
-        },
-      })
-    })
-
-    // With tracked(), the version tracking relies on the parent re-rendering
-    // and passing new version props. This may or may not trigger depending on
-    // whether the array signal fires for individual item changes.
-    expect(localRenderTracker.size).toBeGreaterThanOrEqual(0)
-  })
-
   it('demonstrates internal symbol access', () => {
     interface Item {
       id: number
@@ -739,9 +585,6 @@ describe('Render Analysis Tests', () => {
 
     // Check internal symbols
     const $NODE = Symbol.for('supergrain:node')
-    const $RAW = Symbol.for('supergrain:raw')
-    const $PROXY = Symbol.for('supergrain:proxy')
-    const $VERSION = Symbol.for('supergrain:version')
 
     const localRenderTracker = new Map<number, number>()
 
