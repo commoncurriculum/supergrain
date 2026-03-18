@@ -1,7 +1,6 @@
 // Export the optimized implementation
 export {
   createStore,
-  createView,
   unwrap,
   $BRAND,
   type Signal,

@@ -10,7 +10,6 @@
   "ignore": [
     "@supergrain/documentation",
     "js-framework-benchmark-react-supergrain",
-    "@supergrain/react-example",
     "@supergrain/comparisons"
   ]
 }

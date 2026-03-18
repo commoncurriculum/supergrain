@@ -40,7 +40,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "lint": "oxlint -D correctness -D suspicious src/",
+    "lint": "oxlint -D correctness -D suspicious -D pedantic -D style src/",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { effect } from "alien-signals";
-import { createStore, createView, unwrap } from "../../src";
+import { createStore, unwrap } from "../../src";
 import { createTodo, StoreView, TodoSchema, type Todo } from "../../test-support/todo-model";
 
 function readSnapshot(subject: {
@@ -22,34 +22,27 @@ function readSnapshot(subject: {
 }
 
 describe("benchmark correctness", () => {
-  it("proxy, createView, class getter, and typed view agree on leaf reads", () => {
+  it("proxy, class getter, and typed view agree on leaf reads", () => {
     const [proxyStore] = createStore(createTodo());
-    const view = createView(proxyStore);
     const classView = new StoreView(unwrap(createStore(createTodo())[0]));
     const [, , typedView] = createStore(createTodo(), TodoSchema);
 
     const expected = readSnapshot(proxyStore);
-    expect(readSnapshot(view)).toEqual(expected);
     expect(readSnapshot(classView)).toEqual(expected);
     expect(readSnapshot(typedView)).toEqual(expected);
   });
 
   it("benchmark read models observe the same reactive updates", () => {
     const [proxyStore, update] = createStore(createTodo());
-    const view = createView(proxyStore);
     const classView = new StoreView(unwrap(proxyStore));
     const [, typedUpdate, typedView] = createStore(createTodo(), TodoSchema);
 
     let proxyTitle = "";
-    let viewTitle = "";
     let classTitle = "";
     let typedTitle = "";
 
     const disposeProxy = effect(() => {
       proxyTitle = proxyStore.title;
-    });
-    const disposeView = effect(() => {
-      viewTitle = view.title;
     });
     const disposeClass = effect(() => {
       classTitle = classView.title;
@@ -62,12 +55,10 @@ describe("benchmark correctness", () => {
     typedUpdate({ $set: { title: "Buy eggs" } });
 
     expect(proxyTitle).toBe("Buy eggs");
-    expect(viewTitle).toBe("Buy eggs");
     expect(classTitle).toBe("Buy eggs");
     expect(typedTitle).toBe("Buy eggs");
 
     disposeProxy();
-    disposeView();
     disposeClass();
     disposeTyped();
   });

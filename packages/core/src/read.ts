@@ -1,19 +1,8 @@
 import { getCurrentSub } from "alien-signals";
-import {
-  $NODE,
-  $OWN_KEYS,
-  $PROXY,
-  $RAW,
-  $TRACK,
-  $VERSION,
-  getNode,
-  getNodes,
-  unwrap,
-} from "./core";
+import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes } from "./core";
 import { writeHandler } from "./write";
 
 const proxyCache = new WeakMap<object, object>();
-const signalGetterCache = new Map<string, (this: any) => any>();
 
 const isWrappable = (value: unknown): value is object =>
   value !== null &&
@@ -140,29 +129,6 @@ export function createReactiveProxy<T extends object>(target: T): T {
   return proxy as T;
 }
 
-export function getSignalGetter(key: string): (this: any) => any {
-  const cached = signalGetterCache.get(key);
-  if (cached) return cached;
-
-  const getter = function (this: any) {
-    const value = this._n[key]();
-    return isWrappable(value) ? createReactiveProxy(value) : value;
-  };
-
-  signalGetterCache.set(key, getter);
-  return getter;
-}
-
-export function defineSignalGetter(proto: object, key: string): void {
-  Object.defineProperty(proto, key, {
-    get: getSignalGetter(key),
-    enumerable: true,
-    configurable: true,
-  });
-}
-
-const viewCache = new WeakMap<object, object>();
-
 // Compiled views keep their signal table on a hidden slot so the public object
 // surface still behaves like a normal readonly object.
 export function attachViewNodes(target: object, nodes: object): void {
@@ -171,28 +137,4 @@ export function attachViewNodes(target: object, nodes: object): void {
     enumerable: false,
     configurable: true,
   });
-}
-
-export function createView<T extends object>(target: T): Readonly<T> {
-  const raw = unwrap(target) as any;
-
-  const cached = viewCache.get(raw);
-  if (cached) return cached as T;
-
-  const keys = Object.keys(raw);
-
-  const nodes = getNodes(raw);
-  for (const key of keys) {
-    if (!nodes[key]) getNode(nodes, key, raw[key]);
-  }
-
-  const view = {};
-  attachViewNodes(view, nodes);
-  for (const key of keys) {
-    defineSignalGetter(view, key);
-  }
-  Object.freeze(view);
-  viewCache.set(raw, view);
-
-  return view as T;
 }

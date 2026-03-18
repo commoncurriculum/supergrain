@@ -30,10 +30,7 @@ export default defineConfig({
       {
         plugins: [react()],
         test: {
-          include: [
-            "packages/react/**/*.test.{ts,tsx}",
-            "packages/react-example/**/*.test.{ts,tsx}",
-          ],
+          include: ["packages/react/**/*.test.{ts,tsx}"],
           browser: {
             enabled: true,
             provider: playwright(),

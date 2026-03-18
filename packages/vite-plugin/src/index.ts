@@ -1,1 +1,0 @@
-export { supergrain } from "./plugin";

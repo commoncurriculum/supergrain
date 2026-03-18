@@ -8,19 +8,10 @@
  */
 
 import { bench, describe } from "vitest";
-import { createStore, createView, effect, getCurrentSub, setCurrentSub } from "@supergrain/core";
+import { createStore, effect } from "@supergrain/core";
 import { $NODE, $RAW } from "@supergrain/core/internal";
 import { tracked, For } from "../src";
-import React, {
-  FC,
-  memo,
-  useCallback,
-  useState,
-  useReducer,
-  useRef,
-  useEffect,
-  useLayoutEffect,
-} from "react";
+import React, { FC, memo, useCallback, useState, useRef, useEffect } from "react";
 import { render, cleanup, act } from "@testing-library/react";
 import {
   createRoot as createSolidRoot,
@@ -95,34 +86,6 @@ const rowTemplate = document.createElement("tr");
 rowTemplate.innerHTML = `<td class="col-md-1"></td><td class="col-md-4"><a></a></td><td class="col-md-1"><a><span class="glyphicon glyphicon-remove" aria-hidden="true"></span></a></td><td class="col-md-6"></td>`;
 
 // --- Proxy App (baseline — standard React) ---
-function useReactiveEffect() {
-  const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
-  const stateRef = useRef<{ cleanup: (() => void) | null; effectNode: any } | null>(null);
-  if (!stateRef.current) {
-    let effectNode: any = null;
-    let isFirstRun = true;
-    const c = effect(() => {
-      if (isFirstRun) {
-        effectNode = getCurrentSub();
-        isFirstRun = false;
-        return;
-      }
-      forceUpdate();
-    });
-    stateRef.current = { cleanup: c, effectNode };
-  }
-  const prevSub = getCurrentSub();
-  setCurrentSub(stateRef.current.effectNode);
-  useLayoutEffect(() => {
-    setCurrentSub(prevSub);
-  });
-  useEffect(() => {
-    return () => {
-      stateRef.current?.cleanup?.();
-    };
-  }, []);
-}
-
 const Row = tracked(
   ({
     item,
@@ -164,33 +127,6 @@ const ProxyApp = tracked(
                 key={item.id}
                 item={item}
                 isSelected={selected === item.id}
-                onSelect={hs}
-                onRemove={hr}
-              />
-            )}
-          </For>
-        </tbody>
-      </table>
-    );
-  },
-);
-
-// --- View App: createView prototype getters for reads, React for rendering ---
-const ViewApp: FC<{ store: any; sel: (id: number) => void; rem: (id: number) => void }> = memo(
-  ({ store, sel, rem }) => {
-    useReactiveEffect();
-    const view = createView(store) as AppState;
-    const hs = useCallback((id: number) => sel(id), []);
-    const hr = useCallback((id: number) => rem(id), []);
-    return (
-      <table>
-        <tbody>
-          <For each={view.data}>
-            {(item: RowData) => (
-              <Row
-                key={item.id}
-                item={item}
-                isSelected={view.selected === item.id}
                 onSelect={hs}
                 onRemove={hr}
               />
@@ -516,15 +452,6 @@ describe("Create 1000 rows", () => {
     cleanup();
     idCounter = 1;
   });
-  bench("createView", async () => {
-    const ctx = makeStore();
-    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />);
-    await act(async () => {
-      ctx.run(1000);
-    });
-    cleanup();
-    idCounter = 1;
-  });
   bench("direct-dom $$", async () => {
     const ctx = makeStore();
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />);
@@ -556,18 +483,6 @@ describe("Select row", () => {
   bench("proxy", async () => {
     const ctx = makeStore();
     render(<ProxyApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />);
-    await act(async () => {
-      ctx.run(1000);
-    });
-    await act(async () => {
-      ctx.sel(500);
-    });
-    cleanup();
-    idCounter = 1;
-  });
-  bench("createView", async () => {
-    const ctx = makeStore();
-    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />);
     await act(async () => {
       ctx.run(1000);
     });
@@ -624,18 +539,6 @@ describe("Swap rows", () => {
     cleanup();
     idCounter = 1;
   });
-  bench("createView", async () => {
-    const ctx = makeStore();
-    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />);
-    await act(async () => {
-      ctx.run(1000);
-    });
-    await act(async () => {
-      ctx.swap();
-    });
-    cleanup();
-    idCounter = 1;
-  });
   bench("direct-dom $$", async () => {
     const ctx = makeStore();
     render(<DirectDomApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />);
@@ -674,18 +577,6 @@ describe("Partial update (100 of 1000)", () => {
   bench("proxy", async () => {
     const ctx = makeStore();
     render(<ProxyApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />);
-    await act(async () => {
-      ctx.run(1000);
-    });
-    await act(async () => {
-      ctx.update10th();
-    });
-    cleanup();
-    idCounter = 1;
-  });
-  bench("createView", async () => {
-    const ctx = makeStore();
-    render(<ViewApp store={ctx.store} sel={ctx.sel} rem={ctx.rem} />);
     await act(async () => {
       ctx.run(1000);
     });

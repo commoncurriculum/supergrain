@@ -6,10 +6,10 @@ import {
   type LooseUpdateOperations,
   type StrictUpdateOperations,
 } from "./operators";
-import { createReactiveProxy, createView } from "./read";
+import { createReactiveProxy } from "./read";
 import { createModelView, type SchemaLike } from "./typed";
 
-export { $BRAND, type Branded, type Signal, unwrap, createView };
+export { $BRAND, type Branded, type Signal, unwrap };
 
 export type SetStoreFunction = (operations: LooseUpdateOperations) => void;
 
