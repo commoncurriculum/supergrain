@@ -34,22 +34,25 @@ Covers: proxy overhead (raw proxy vs plain object), memory/GC patterns, signal c
 4. Include plain JS baseline when measuring overhead
 
 ```typescript
-bench('my reactive test', () => {
-  const [store] = createStore({ value: 0 })
-  let effectRuns = 0
-  const dispose = effect(() => { effectRuns++; const _ = store.value })
-  if (effectRuns === 0) throw new Error('Effect did not run')
+bench("my reactive test", () => {
+  const [store] = createStore({ value: 0 });
+  let effectRuns = 0;
+  const dispose = effect(() => {
+    effectRuns++;
+    const _ = store.value;
+  });
+  if (effectRuns === 0) throw new Error("Effect did not run");
   // benchmark work...
-  dispose()
-})
+  dispose();
+});
 ```
 
 ## Performance Targets (vs solid-js/store)
 
-| Operation | Target | Acceptable |
-|-----------|--------|------------|
-| Store creation | Within 1.5x | Within 2x |
-| Property access | Within 2x | Within 3x |
-| Property updates | Within 2x | Within 3x |
-| Array operations | Within 3x | Within 4x |
-| Memory usage | Within 1.5x | Within 2x |
+| Operation        | Target      | Acceptable |
+| ---------------- | ----------- | ---------- |
+| Store creation   | Within 1.5x | Within 2x  |
+| Property access  | Within 2x   | Within 3x  |
+| Property updates | Within 2x   | Within 3x  |
+| Array operations | Within 3x   | Within 4x  |
+| Memory usage     | Within 1.5x | Within 2x  |

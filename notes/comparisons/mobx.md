@@ -6,15 +6,15 @@
 
 ## Architecture
 
-| Aspect | MobX | Supergrain |
-|--------|------|-----------|
-| Observable Creation | Explicit via `observable()` or decorators | Automatic in `createStore()` |
-| React Integration | `observer` HOC + `useSyncExternalStore` | `tracked()` |
-| Dependency Tracking | Reaction-based observer pattern | Proxy traps + signal subscriptions |
-| Nested Objects | Requires explicit `observable()` calls | Auto-proxied via `wrap()` |
-| State Updates | Actions + direct mutation | Direct mutation or MongoDB operators |
-| Batching | Manual `runInAction` or automatic in actions | Automatic via `startBatch`/`endBatch` |
-| Type System | Class-based + functional | Functional with proxies |
+| Aspect              | MobX                                         | Supergrain                            |
+| ------------------- | -------------------------------------------- | ------------------------------------- |
+| Observable Creation | Explicit via `observable()` or decorators    | Automatic in `createStore()`          |
+| React Integration   | `observer` HOC + `useSyncExternalStore`      | `tracked()`                           |
+| Dependency Tracking | Reaction-based observer pattern              | Proxy traps + signal subscriptions    |
+| Nested Objects      | Requires explicit `observable()` calls       | Auto-proxied via `wrap()`             |
+| State Updates       | Actions + direct mutation                    | Direct mutation or MongoDB operators  |
+| Batching            | Manual `runInAction` or automatic in actions | Automatic via `startBatch`/`endBatch` |
+| Type System         | Class-based + functional                     | Functional with proxies               |
 
 ## React Integration
 
@@ -25,30 +25,31 @@ Supergrain's `tracked()` (formerly `useTracked`) creates a per-component proxy t
 ## Memory Comparison
 
 | Nesting Level | MobX (Manual) | MobX (Auto Deep) | Supergrain |
-|---------------|---------------|------------------|-----------|
-| 1 level | ~180 bytes | ~234 bytes | ~200 bytes |
-| 3 levels | ~540 bytes | ~702 bytes | ~600 bytes |
-| 6 levels | ~1.08KB | ~1.4KB | ~1.2KB |
-| 10 levels | ~1.8KB | ~2.34KB | ~2.0KB |
+| ------------- | ------------- | ---------------- | ---------- |
+| 1 level       | ~180 bytes    | ~234 bytes       | ~200 bytes |
+| 3 levels      | ~540 bytes    | ~702 bytes       | ~600 bytes |
+| 6 levels      | ~1.08KB       | ~1.4KB           | ~1.2KB     |
+| 10 levels     | ~1.8KB        | ~2.34KB          | ~2.0KB     |
 
 Memory overhead is comparable. MobX can be slightly lower with manual observables but higher with `deep: true`.
 
 ## Performance Comparison
 
-| Operation | MobX | Supergrain | Notes |
-|-----------|------|-----------|-------|
-| Creation | ~1-2ms per observable | ~1.3ms (store) | MobX ~2-4x slower for deep setup |
-| Simple reads | ~0.05ms | ~0.08ms | MobX ~37% faster |
-| Deep reads | ~0.2ms | ~0.13ms | Supergrain faster |
-| Simple updates | ~0.5ms | ~0.5ms | Similar |
-| Deep updates | ~1.2ms | ~1.0ms | Similar |
-| Batched actions | ~0.6ms | ~0.7ms | Similar |
+| Operation       | MobX                  | Supergrain     | Notes                            |
+| --------------- | --------------------- | -------------- | -------------------------------- |
+| Creation        | ~1-2ms per observable | ~1.3ms (store) | MobX ~2-4x slower for deep setup |
+| Simple reads    | ~0.05ms               | ~0.08ms        | MobX ~37% faster                 |
+| Deep reads      | ~0.2ms                | ~0.13ms        | Supergrain faster                |
+| Simple updates  | ~0.5ms                | ~0.5ms         | Similar                          |
+| Deep updates    | ~1.2ms                | ~1.0ms         | Similar                          |
+| Batched actions | ~0.6ms                | ~0.7ms         | Similar                          |
 
 In state library benchmarks, supergrain is 1.5-3x faster than mobx across most categories.
 
 ## Key Differences
 
 **MobX advantages:**
+
 - Selective observability (choose which properties are reactive)
 - Mature ecosystem with excellent DevTools
 - Computed values with automatic memoization
@@ -56,6 +57,7 @@ In state library benchmarks, supergrain is 1.5-3x faster than mobx across most c
 - Class-based state support
 
 **Supergrain advantages:**
+
 - Automatic deep reactivity without explicit declarations
 - Lower setup complexity for nested structures
 - Faster in benchmarks (1.5-3x across categories)

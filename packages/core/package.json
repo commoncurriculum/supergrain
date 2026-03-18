@@ -3,14 +3,26 @@
   "version": "0.0.1",
   "description": "Core reactive store implementation for Supergrain.",
   "keywords": [
-    "supergrain",
     "core",
     "reactive",
+    "signals",
     "store",
-    "signals"
+    "supergrain"
   ],
+  "homepage": "https://commoncurriculum.github.io/supergrain/",
+  "bugs": {
+    "url": "https://github.com/commoncurriculum/supergrain/issues"
+  },
   "license": "MIT",
   "author": "Scott Messinger",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/commoncurriculum/supergrain.git",
+    "directory": "packages/core"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "main": "./dist/index.cjs.js",
   "module": "./dist/index.es.js",
@@ -26,13 +38,13 @@
       "import": "./src/internal.ts"
     }
   },
-  "files": [
-    "dist"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "lint": "oxlint .",
+    "lint": "oxlint -D correctness -D suspicious src/",
     "test": "vitest run",
     "bench": "vitest bench",
     "bench:core": "vitest bench benchmarks/core-comparison.bench.ts",
@@ -43,14 +55,6 @@
   },
   "dependencies": {
     "alien-signals": "^2.0.7"
-  },
-  "peerDependencies": {
-    "arktype": ">=2.0.0"
-  },
-  "peerDependenciesMeta": {
-    "arktype": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@preact/signals-core": "^1.14.0",
@@ -66,16 +70,12 @@
     "vitest": "4.1.0",
     "zustand": "^5.0.8"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/commoncurriculum/supergrain.git",
-    "directory": "packages/core"
+  "peerDependencies": {
+    "arktype": ">=2.0.0"
   },
-  "homepage": "https://commoncurriculum.github.io/supergrain/",
-  "bugs": {
-    "url": "https://github.com/commoncurriculum/supergrain/issues"
-  },
-  "publishConfig": {
-    "access": "public"
+  "peerDependenciesMeta": {
+    "arktype": {
+      "optional": true
+    }
   }
 }

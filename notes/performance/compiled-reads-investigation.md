@@ -19,10 +19,10 @@ The Vite plugin used TypeScript's type checker to detect property reads on `Bran
 
 ```typescript
 // Input:
-store.user.address.city
+store.user.address.city;
 
 // Plugin output (nested compilation):
-readSignal(readSignal(readSignal(store, 'user'), 'address'), 'city')
+readSignal(readSignal(readSignal(store, "user"), "address"), "city");
 ```
 
 **Bug 1 -- Dual-module imports:** The plugin added `import { readSignal } from '@supergrain/core'` but test files imported from `../src`. Two module instances meant two signal systems. Fix: plugin adds `readSignal` to the existing import source.
@@ -45,10 +45,10 @@ Created `readLeaf` that skips `wrap()` for primitive reads:
 
 ```typescript
 export function readLeaf(target: any, prop: PropertyKey): any {
-  const raw = (target as any)[$RAW] || target
-  const node = (raw as any)[$NODE]?.[prop]
-  if (node) return node()
-  return getNode(getNodes(raw as object), prop, (raw as any)[prop])()
+  const raw = (target as any)[$RAW] || target;
+  const node = (raw as any)[$NODE]?.[prop];
+  if (node) return node();
+  return getNode(getNodes(raw as object), prop, (raw as any)[prop])();
 }
 ```
 
@@ -71,19 +71,19 @@ Plugin generates direct signal access instead of a function call:
 
 Tested 15 read patterns (all inside `effect()`, 100k iterations):
 
-| Pattern | ops/s | vs Proxy |
-|---|---|---|
-| Direct local signal: `sig()` | 4,828 | 10.8x faster |
+| Pattern                                  | ops/s     | vs Proxy         |
+| ---------------------------------------- | --------- | ---------------- |
+| Direct local signal: `sig()`             | 4,828     | 10.8x faster     |
 | **Class prototype getter**: `view.title` | **4,474** | **10.0x faster** |
-| Cached $NODE: `nodes['title']()` | 4,176 | 9.3x faster |
-| String prop: `raw.__nodes['title']()` | 4,137 | 9.2x faster |
-| Preact `.value` getter | 1,145 | 2.6x faster |
-| Object.defineProperty getter | 1,142 | 2.6x faster |
-| Minimal 2-line function | 541 | 1.2x faster |
-| Proxy baseline | 447 | 1.0x |
-| readSignal(proxy) | 267 | 0.6x (slower) |
-| readLeaf(proxy) | 266 | 0.6x (slower) |
-| Inlined readSignal body | 178 | 0.4x (slower) |
+| Cached $NODE: `nodes['title']()`         | 4,176     | 9.3x faster      |
+| String prop: `raw.__nodes['title']()`    | 4,137     | 9.2x faster      |
+| Preact `.value` getter                   | 1,145     | 2.6x faster      |
+| Object.defineProperty getter             | 1,142     | 2.6x faster      |
+| Minimal 2-line function                  | 541       | 1.2x faster      |
+| Proxy baseline                           | 447       | 1.0x             |
+| readSignal(proxy)                        | 267       | 0.6x (slower)    |
+| readLeaf(proxy)                          | 266       | 0.6x (slower)    |
+| Inlined readSignal body                  | 178       | 0.4x (slower)    |
 
 **Critical V8 insight:** V8 inlines class prototype getters but NOT function calls, `Object.defineProperty` getters on instances, or proxy traps. Dynamic prototype getters (via `Object.defineProperty` on a prototype) are just as fast as static class getters -- no compile-time class generation needed.
 
@@ -96,9 +96,9 @@ export function createView<T extends object>(target: T): T {
   // Build prototype with getters (cached per key set)
   // Object.defineProperty on proto: get() { return this._n[key]() }
   // V8 inlines this!
-  const view = Object.create(proto)
-  view._n = nodes
-  return view as T
+  const view = Object.create(proto);
+  view._n = nodes;
+  return view as T;
 }
 ```
 
@@ -135,12 +135,12 @@ useDirectBindings([{ ref: __$$0, getter: () => item.label }])
 
 **Final results (chromium, verified by correctness tests):**
 
-| Operation | React Hooks | Proxy | createView | **Direct DOM $$** | **Solid-js** |
-|---|---|---|---|---|---|
-| Create 1000 | 53ms | 69ms | 61ms | **3.2ms** | 7.6ms |
-| Select | 70ms | 62ms | 58ms | **17ms** | 6.9ms |
-| Swap | 70ms | 100ms | 63ms | **7.5ms** | 11.6ms |
-| Partial update | 64ms | 68ms | 53ms | **12ms** | 11ms |
+| Operation      | React Hooks | Proxy | createView | **Direct DOM $$** | **Solid-js** |
+| -------------- | ----------- | ----- | ---------- | ----------------- | ------------ |
+| Create 1000    | 53ms        | 69ms  | 61ms       | **3.2ms**         | 7.6ms        |
+| Select         | 70ms        | 62ms  | 58ms       | **17ms**          | 6.9ms        |
+| Swap           | 70ms        | 100ms | 63ms       | **7.5ms**         | 11.6ms       |
+| Partial update | 64ms        | 68ms  | 53ms       | **12ms**          | 11ms         |
 
 ---
 

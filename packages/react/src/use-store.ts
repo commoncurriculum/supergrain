@@ -1,9 +1,9 @@
-import React from 'react'
+import React from "react";
 
 interface ForProps<T> {
-  each: T[]
-  children: (item: T, index: number) => React.ReactNode
-  fallback?: React.ReactNode
+  each: T[];
+  children: (item: T, index: number) => React.ReactNode;
+  fallback?: React.ReactNode;
 }
 
 /**
@@ -21,29 +21,26 @@ interface ForProps<T> {
  * ```
  */
 export function For<T>(props: ForProps<T>): React.JSX.Element | null {
-  const { each, children, fallback } = props
+  const { each, children, fallback } = props;
 
   if (!each || each.length === 0) {
-    return fallback ? React.createElement(React.Fragment, null, fallback) : null
+    return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
 
   return React.createElement(
     React.Fragment,
     null,
     each.map((item, index) => {
-      const child = children(item, index)
+      const child = children(item, index);
 
       // Assign stable key from item.id if available
       if (React.isValidElement(child)) {
-        const key =
-          item && typeof item === 'object' && 'id' in item
-            ? (item as any).id
-            : index
+        const key = item && typeof item === "object" && "id" in item ? (item as any).id : index;
 
-        return React.cloneElement(child, { key } as any)
+        return React.cloneElement(child, { key } as any);
       }
 
-      return child
-    })
-  )
+      return child;
+    }),
+  );
 }

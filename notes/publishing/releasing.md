@@ -50,10 +50,10 @@ pnpm changeset  # major for @supergrain/store (breaking change)
 
 ## Version Bump Types
 
-| Type | When | Example |
-|------|------|---------|
-| `patch` | Bug fixes | 1.0.0 -> 1.0.1 |
-| `minor` | New features | 1.0.0 -> 1.1.0 |
+| Type    | When             | Example        |
+| ------- | ---------------- | -------------- |
+| `patch` | Bug fixes        | 1.0.0 -> 1.0.1 |
+| `minor` | New features     | 1.0.0 -> 1.1.0 |
 | `major` | Breaking changes | 1.0.0 -> 2.0.0 |
 
 ## Manual Publishing (Emergency)
@@ -66,11 +66,11 @@ pnpm release
 
 ## Troubleshooting
 
-| Issue | Fix |
-|-------|-----|
-| "No changeset files found" | Run `pnpm changeset` first |
-| NPM publish fails | Check `NPM_TOKEN` secret in GitHub settings |
-| Wrong version bump | Delete changeset file in `.changeset/`, create a new one |
+| Issue                      | Fix                                                      |
+| -------------------------- | -------------------------------------------------------- |
+| "No changeset files found" | Run `pnpm changeset` first                               |
+| NPM publish fails          | Check `NPM_TOKEN` secret in GitHub settings              |
+| Wrong version bump         | Delete changeset file in `.changeset/`, create a new one |
 
 ## Resources
 

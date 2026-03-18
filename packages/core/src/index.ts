@@ -8,7 +8,7 @@ export {
   type SetStoreFunction,
   type StrictSetStoreFunction,
   type Branded,
-} from './store'
+} from "./store";
 
 // Export MongoDB-style update operators
 export {
@@ -16,7 +16,7 @@ export {
   type LooseUpdateOperations,
   type StrictUpdateOperations,
   type UpdateOperations,
-} from './operators'
+} from "./operators";
 
 // Re-export signals primitives from alien-signals for convenience
 export {
@@ -27,4 +27,4 @@ export {
   endBatch,
   getCurrentSub,
   setCurrentSub,
-} from 'alien-signals'
+} from "alien-signals";

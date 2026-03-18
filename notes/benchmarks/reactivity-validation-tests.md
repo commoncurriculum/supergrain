@@ -4,6 +4,7 @@
 > **TL;DR**: 11 tests covering: dependency registration, signal identity, nested access, arrays, symbol properties, conditional access, error conditions, and the "never skip tracking for performance" contract. All passed for each of the 4 optimizations in [safe-optimizations-benchmark.md](./safe-optimizations-benchmark.md).
 
 Guarantees validated:
+
 1. Every property access in reactive context registers dependencies
 2. Signal identity consistency for update propagation
 3. Automatic dependency tracking without manual setup
@@ -11,7 +12,7 @@ Guarantees validated:
 
 ## Test Code
 
-```typescript
+````typescript
 
 ```typescript
 import { describe, it, expect } from 'vitest'
@@ -51,7 +52,7 @@ describe('Reactivity Contract: Basic Property Access', () => {
 
   it('should not register dependencies when outside reactive context', () => {
     const [store, setStore] = createStore({ count: 0 })
-    
+
     // Access outside reactive context
     const initialValue = store.count
     expect(initialValue).toBe(0)
@@ -130,7 +131,7 @@ describe('Reactivity Contract: Nested Object Access', () => {
     // Update should trigger both effects (signal identity must be consistent)
     // This is the critical test from signal-prototype-optimization.md
     setStore({ $set: { 'data.value': 100 } })
-    
+
     // Both effects should have run again
     expect(runs1).toBe(2)
     expect(runs2).toBe(2)
@@ -193,18 +194,18 @@ describe('Reactivity Contract: Array Operations', () => {
 describe('Reactivity Contract: Symbol Properties', () => {
   it('should handle symbol property access without breaking reactivity', () => {
     const [store, setStore] = createStore({ count: 0 })
-    
+
     let effectRuns = 0
     let lastCount = 0
 
     const dispose = effect(() => {
       effectRuns++
       lastCount = store.count
-      
+
       // Access symbol properties (these should not interfere with reactivity)
       // const raw = (store as any)['$RAW']
       // const proxy = (store as any)['$PROXY']
-      
+
       // These should not affect the reactivity of store.count
     })
 
@@ -363,7 +364,7 @@ export function validateReactivityContract(
   describe(`Reactivity Validation: ${testName}`, () => {
     it('should maintain basic reactivity', () => {
       const [store, setStore] = createOptimizedStore({ count: 0 })
-      
+
       let effectRuns = 0
       let lastCount = 0
 
@@ -386,7 +387,7 @@ export function validateReactivityContract(
       const [store, setStore] = createOptimizedStore({
         nested: { value: 42 }
       })
-      
+
       let effectRuns = 0
       let lastValue = 0
 
@@ -406,16 +407,16 @@ export function validateReactivityContract(
     })
   })
 }
-```
+````
 
 ## Optimizations Validated
 
-| Optimization | What Could Break |
-|-------------|-----------------|
+| Optimization                 | What Could Break        |
+| ---------------------------- | ----------------------- |
 | Reflect.get -> direct access | Dependency registration |
-| Object.create(null) -> {} | Signal identity |
-| Closure -> direct reference | Signal behavior |
-| Removed redundant checks | Dependency tracking |
+| Object.create(null) -> {}    | Signal identity         |
+| Closure -> direct reference  | Signal behavior         |
+| Removed redundant checks     | Dependency tracking     |
 
 All 11 tests passed for each optimization.
 

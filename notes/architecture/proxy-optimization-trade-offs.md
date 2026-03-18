@@ -7,13 +7,14 @@
 
 ```typescript
 // Before
-const value = Reflect.get(target, prop, receiver)
+const value = Reflect.get(target, prop, receiver);
 
 // After
-const value = (target as any)[prop]
+const value = (target as any)[prop];
 ```
 
 **What was dropped:**
+
 - Receiver parameter handling (getter `this` binding)
 - Proxy chain handling (nested proxy scenarios)
 - Custom property descriptor getter context
@@ -26,17 +27,22 @@ const value = (target as any)[prop]
 
 ```typescript
 // Before: two existence checks per access
-const own = Object.prototype.hasOwnProperty.call(target, prop)
-if (own) { /* ... */ }
-if (prop in target) { /* ... */ }
+const own = Object.prototype.hasOwnProperty.call(target, prop);
+if (own) {
+  /* ... */
+}
+if (prop in target) {
+  /* ... */
+}
 
 // After: direct signal creation
-const nodes = getNodes(target)
-const node = getNode(nodes, prop, value)
-return wrap(node())
+const nodes = getNodes(target);
+const node = getNode(nodes, prop, value);
+return wrap(node());
 ```
 
 **What was dropped:**
+
 - Inherited vs own property distinction
 - Prototype chain awareness
 - Property existence gating before signal creation
@@ -46,6 +52,7 @@ return wrap(node())
 ## Architecture Assumptions (Safety Contract)
 
 These optimizations rely on:
+
 1. **Plain data objects only** — JSON literals, no class instances, no custom prototypes
 2. **No prototype chain manipulation** — no `Object.setPrototypeOf()`, no inheritance mixing
 3. **No proxy composition** — single-layer proxy wrapping only
@@ -53,10 +60,10 @@ These optimizations rely on:
 
 ## Risk Summary
 
-| Risk Level | Scenario |
-|------------|----------|
-| Low | Plain data, nested objects, arrays, standard reactive patterns |
-| Medium | Mixed class+store patterns, dynamic property manipulation |
-| High | Custom getters on store objects, proxy-wrapping-proxy, complex `this` binding |
+| Risk Level | Scenario                                                                      |
+| ---------- | ----------------------------------------------------------------------------- |
+| Low        | Plain data, nested objects, arrays, standard reactive patterns                |
+| Medium     | Mixed class+store patterns, dynamic property manipulation                     |
+| High       | Custom getters on store objects, proxy-wrapping-proxy, complex `this` binding |
 
 High-risk scenarios are outside @supergrain/core's design intent. Users needing complex object behavior should use class-based patterns outside the reactive store.

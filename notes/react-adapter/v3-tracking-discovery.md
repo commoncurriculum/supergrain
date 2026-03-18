@@ -18,12 +18,12 @@
 function useStore(store) {
   const effect = createEffect(() => {
     // Empty callback -- no store access here
-  })
-  setCurrentSub(effect)  // Set for entire render
+  });
+  setCurrentSub(effect); // Set for entire render
 
   // Component accesses store HERE (outside effect callback)
   // Dependencies NOT established because we're outside the effect callback
-  return store
+  return store;
 }
 ```
 

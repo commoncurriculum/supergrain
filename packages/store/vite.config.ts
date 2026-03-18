@@ -1,19 +1,19 @@
-import { defineConfig } from 'vite'
-import dts from 'vite-plugin-dts'
+import { defineConfig } from "vite";
+import dts from "vite-plugin-dts";
 
 export default defineConfig({
   build: {
     lib: {
-      entry: 'src/index.ts',
-      name: 'SupergrainStore',
-      formats: ['es', 'cjs'],
-      fileName: 'index',
+      entry: "src/index.ts",
+      name: "SupergrainStore",
+      formats: ["es", "cjs"],
+      fileName: "index",
     },
     rollupOptions: {
-      external: ['@supergrain/core'],
+      external: ["@supergrain/core"],
       output: {
         globals: {
-          '@supergrain/core': 'SupergrainCore',
+          "@supergrain/core": "SupergrainCore",
         },
       },
     },
@@ -21,7 +21,7 @@ export default defineConfig({
   plugins: [
     dts({
       rollupTypes: true,
-      tsconfigPath: './tsconfig.json',
+      tsconfigPath: "./tsconfig.json",
     }),
   ],
-})
+});

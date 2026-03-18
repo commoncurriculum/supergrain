@@ -16,46 +16,53 @@ Each component gets a proxy that temporarily swaps `getCurrentSub()` during ever
 
 ```typescript
 export function useTracked<T extends object>(store: T): T {
-  const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
-  const stateRef = useRef<{ cleanup: (() => void) | null; effectNode: any; proxy: T | null }>()
+  const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+  const stateRef = useRef<{ cleanup: (() => void) | null; effectNode: any; proxy: T | null }>();
 
   if (!stateRef.current) {
-    let effectNode: any = null
-    let isFirstRun = true
+    let effectNode: any = null;
+    let isFirstRun = true;
 
     const cleanup = effect(() => {
       if (isFirstRun) {
-        effectNode = getCurrentSub()  // Capture node INSIDE callback
-        isFirstRun = false
-        return
+        effectNode = getCurrentSub(); // Capture node INSIDE callback
+        isFirstRun = false;
+        return;
       }
-      forceUpdate()  // Trigger re-render on dependency changes
-    })
+      forceUpdate(); // Trigger re-render on dependency changes
+    });
 
     const proxy = new Proxy(store, {
       get(target, prop, receiver) {
-        const prevSub = getCurrentSub()
-        setCurrentSub(effectNode)
+        const prevSub = getCurrentSub();
+        setCurrentSub(effectNode);
         try {
-          return Reflect.get(target, prop, receiver)
+          return Reflect.get(target, prop, receiver);
         } finally {
-          setCurrentSub(prevSub)
+          setCurrentSub(prevSub);
         }
       },
-    }) as T
+    }) as T;
 
-    stateRef.current = { cleanup, effectNode, proxy }
+    stateRef.current = { cleanup, effectNode, proxy };
   }
 
-  useEffect(() => () => { stateRef.current?.cleanup?.(); stateRef.current = null }, [])
+  useEffect(
+    () => () => {
+      stateRef.current?.cleanup?.();
+      stateRef.current = null;
+    },
+    [],
+  );
 
-  return stateRef.current.proxy!
+  return stateRef.current.proxy!;
 }
 ```
 
 ### Why It Works
 
 **Two-proxy architecture:**
+
 - Supergrain's proxy tracks dependencies for whoever is currently listening (`getCurrentSub()`)
 - The `useTracked` proxy ensures the RIGHT component is listening during each specific property access
 
@@ -66,49 +73,54 @@ export function useTracked<T extends object>(store: T): T {
 ```tsx
 // Recommended: useTracked returns a proxy with automatic tracking
 function Parent() {
-  const state = useTracked(store)
-  return <div>{state.parent}<Child /></div>
+  const state = useTracked(store);
+  return (
+    <div>
+      {state.parent}
+      <Child />
+    </div>
+  );
 }
 
 function Child() {
-  const state = useTracked(store)
-  return <div>{state.child}</div>
+  const state = useTracked(store);
+  return <div>{state.child}</div>;
 }
 ```
 
 ## All Approaches Tried (8 total)
 
-| # | Approach | Result | Why |
-|---|----------|--------|-----|
-| 1 | Global subscriber during render | Failed | Child overwrites parent context |
-| 2 | Immediate context restoration | Failed | Render is synchronous, Promise.resolve too late |
-| 3 | Stack-based subscriber management | Partial | Concurrent mode and error boundaries break stack |
-| 4 | React Context for isolation | Failed | Added complexity, timing still wrong |
-| 5 | Manual track function | Worked | Poor DX (verbose `track(() => store.x)` syntax) |
-| 6 | Finish/restore pattern | Failed | `finish()` not called at right time, fragile |
-| 7 | Effect with tracked callback | Failed | Can't predict which properties component will access |
-| 8 | **Proxy-based isolation** | **Shipped** | Perfect isolation, good DX, no build step |
+| #   | Approach                          | Result      | Why                                                  |
+| --- | --------------------------------- | ----------- | ---------------------------------------------------- |
+| 1   | Global subscriber during render   | Failed      | Child overwrites parent context                      |
+| 2   | Immediate context restoration     | Failed      | Render is synchronous, Promise.resolve too late      |
+| 3   | Stack-based subscriber management | Partial     | Concurrent mode and error boundaries break stack     |
+| 4   | React Context for isolation       | Failed      | Added complexity, timing still wrong                 |
+| 5   | Manual track function             | Worked      | Poor DX (verbose `track(() => store.x)` syntax)      |
+| 6   | Finish/restore pattern            | Failed      | `finish()` not called at right time, fragile         |
+| 7   | Effect with tracked callback      | Failed      | Can't predict which properties component will access |
+| 8   | **Proxy-based isolation**         | **Shipped** | Perfect isolation, good DX, no build step            |
 
 ## Performance
 
-| Metric | Cost |
-|--------|------|
-| Per component | 1 proxy + 1 effect + 1 ref (first render only) |
-| Per property access | getCurrentSub + setCurrentSub + Reflect.get + restore (~0.001ms) |
-| 100 nested components | ~20% overhead vs untracked |
-| 1,000 property accesses | ~50% overhead vs untracked |
-| Typical real-world app | <5% of render time |
+| Metric                  | Cost                                                             |
+| ----------------------- | ---------------------------------------------------------------- |
+| Per component           | 1 proxy + 1 effect + 1 ref (first render only)                   |
+| Per property access     | getCurrentSub + setCurrentSub + Reflect.get + restore (~0.001ms) |
+| 100 nested components   | ~20% overhead vs untracked                                       |
+| 1,000 property accesses | ~50% overhead vs untracked                                       |
+| Typical real-world app  | <5% of render time                                               |
 
 ## Comparison with Preact Signals
 
 Preact Signals avoids this problem via two modes:
 
-| Aspect | Preact (Unmanaged) | Preact (Managed) | Supergrain |
-|--------|-------------------|-----------------|-----------|
-| Setup | Zero-config | Requires Babel | Requires `useTracked` |
-| Build step | None | Required | None |
-| Nested components | Timing issues | Perfect | Perfect via proxy |
-| Accidental tracking | Can happen | Prevented | Prevented |
+| Aspect              | Preact (Unmanaged) | Preact (Managed) | Supergrain            |
+| ------------------- | ------------------ | ---------------- | --------------------- |
+| Setup               | Zero-config        | Requires Babel   | Requires `useTracked` |
+| Build step          | None               | Required         | None                  |
+| Nested components   | Timing issues      | Perfect          | Perfect via proxy     |
+| Accidental tracking | Can happen         | Prevented        | Prevented             |
 
 Preact's unmanaged mode has subtle bugs (signals in `useLayoutEffect` get incorrectly tracked, effects may not close at the right time). Their managed mode requires a Babel transform to wrap components in `try/finally`.
 
@@ -120,14 +132,14 @@ Supergrain's approach sits between these: no build step required, but provides t
 
 ```typescript
 export async function flushMicrotasks(): Promise<void> {
-  await Promise.resolve()
-  await Promise.resolve()  // Double flush for chained effects
+  await Promise.resolve();
+  await Promise.resolve(); // Double flush for chained effects
 }
 
 await act(async () => {
-  update({ $set: { value: 2 } })
-  await flushMicrotasks()
-})
+  update({ $set: { value: 2 } });
+  await flushMicrotasks();
+});
 ```
 
 ## Migration from useStore
@@ -135,13 +147,13 @@ await act(async () => {
 ```tsx
 // Before (broken for nested components)
 function Component() {
-  const state = useStore(store)
-  return <div>{state.value}</div>
+  const state = useStore(store);
+  return <div>{state.value}</div>;
 }
 
 // After (works everywhere)
 function Component() {
-  const state = useTracked(store)
-  return <div>{state.value}</div>
+  const state = useTracked(store);
+  return <div>{state.value}</div>;
 }
 ```

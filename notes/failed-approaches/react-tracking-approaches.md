@@ -8,14 +8,16 @@
 
 ```typescript
 // DOESN'T WORK -- effect has no dependencies
-const cleanup = effect(() => { /* empty callback */ })
-setCurrentSub(effectInstance)
-const value = store.property  // Outside effect callback -- not tracked!
+const cleanup = effect(() => {
+  /* empty callback */
+});
+setCurrentSub(effectInstance);
+const value = store.property; // Outside effect callback -- not tracked!
 
 // WORKS -- effect tracks dependencies
 const cleanup = effect(() => {
-  const value = store.property  // Inside callback -- tracked!
-})
+  const value = store.property; // Inside callback -- tracked!
+});
 ```
 
 ## Failed Approaches
@@ -71,6 +73,7 @@ The key insight: instead of trying to make the entire render happen "inside" an 
 ## Evolution
 
 The full design evolution is documented in the react-adapter folder:
+
 - [v2-initial-design.md](../react-adapter/v2-initial-design.md) — Preact-inspired architecture, discovered the alien-signals limitation
 - [v3-tracking-discovery.md](../react-adapter/v3-tracking-discovery.md) — Isolated the core problem
 - [v4-nested-components.md](../react-adapter/v4-nested-components.md) — Identified the nested component bug

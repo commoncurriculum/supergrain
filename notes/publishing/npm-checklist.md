@@ -48,11 +48,11 @@ pnpm changeset
 
 ## Troubleshooting
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| 402 Payment Required | Missing NPM org or token permissions | Verify org + token access |
-| 403 Forbidden | Auth failure | Check NPM_TOKEN secret, token expiration |
-| 404 Not Found (install) | Package not public | Verify `publishConfig.access: "public"` |
+| Error                   | Cause                                | Fix                                      |
+| ----------------------- | ------------------------------------ | ---------------------------------------- |
+| 402 Payment Required    | Missing NPM org or token permissions | Verify org + token access                |
+| 403 Forbidden           | Auth failure                         | Check NPM_TOKEN secret, token expiration |
+| 404 Not Found (install) | Package not public                   | Verify `publishConfig.access: "public"`  |
 
 See [npm-setup.md](npm-setup.md) and [releasing.md](releasing.md) for detailed guides.
 

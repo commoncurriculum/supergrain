@@ -6,6 +6,7 @@
 ## Architecture Summary
 
 The Ember `store/` folder implements a real-time collaborative data system with:
+
 - Real-time sync via WebSockets (long-polling fallback)
 - Offline-first with local caching
 - Optimistic updates with server reconciliation
@@ -15,12 +16,15 @@ The Ember `store/` folder implements a real-time collaborative data system with:
 ## Service Components
 
 ### Store Service (`store.ts`)
+
 Central orchestrator. Three-stage action dispatch pipeline:
+
 1. `dispatch()` — validate action exists
 2. `dispatchAction()` — assemble with patches/undo/narrative
 3. `dispatchPreparedAction()` — persist and apply
 
 Key behaviors:
+
 - **Optimistic queues** track unconfirmed patches per model
 - **Server reconciliation**: rewind optimistic changes, apply server changes, replay optimistic changes
 - Redux DevTools + Sentry integration
@@ -33,17 +37,20 @@ Conflict Resolution (if needed)
 ```
 
 ### MemoryEngine (`memory-engine.ts`)
+
 In-memory document store (`__store__[type][id]`) with patch-based updates and undo/redo.
 
 Supported patch operations: `set`, `unset`, `inc`, `push` (with `$each`), `pull`, `pullAll`, `addToSet`
 
 Key details:
+
 - Each patch application returns a **rewind function** for rollback
 - Auto-creates nested paths; deep-clones to prevent cross-patch contamination
 - Internal versioning for conflict detection
 - FastBoot shoebox integration
 
 ### Socket Service (`socket.ts`)
+
 WebSocket connection management with automatic reconnection.
 
 - Falls back from WebSocket to long-polling
@@ -52,6 +59,7 @@ WebSocket connection management with automatic reconnection.
 - Monitors online/offline status
 
 ### Finder Service (`finder.js`)
+
 Batch document fetching.
 
 ```
@@ -63,6 +71,7 @@ Document Insertion → Promise Resolution
 Deduplicates requests. Exponential backoff on failure.
 
 ### SocketSubscriber (`socket-subscriber.ts`)
+
 Incoming real-time update handler.
 
 - Sequence number validation (requests missing patches on gaps)
@@ -79,12 +88,14 @@ Incoming real-time update handler.
 ## Key Patterns Worth Preserving
 
 ### Optimistic Updates with Server Reconciliation
+
 1. Apply changes locally (immediate)
 2. Send to server async
 3. Server detects conflicts via version comparison
 4. On conflict: rewind local, apply server, replay local
 
 ### Action Structure
+
 ```javascript
 {
   name: "UPDATE_DOCUMENT",
@@ -95,11 +106,13 @@ Incoming real-time update handler.
 ```
 
 ### Request Batching
+
 - 15ms collection window balances latency vs efficiency
 - 60-document chunk limit prevents server overload
 - Deduplication avoids redundant fetches
 
 ### Resilience Patterns
+
 - Sequence number tracking for ordered patch application
 - Missing patch recovery (automatic request on gaps)
 - Periodic staleness checks (every 10 minutes)
@@ -107,4 +120,5 @@ Incoming real-time update handler.
 - Unsaved work protection before navigation
 
 ## External Integrations
+
 Sentry (errors), Redux DevTools (debugging), FullStory (session recording), Amplitude (analytics)

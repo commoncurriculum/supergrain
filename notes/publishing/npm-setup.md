@@ -71,12 +71,12 @@ GitHub Action publishes to NPM + creates GitHub releases
 
 ## Troubleshooting
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| **402 Payment Required** | Missing org or token permissions | Verify @supergrain org exists, token has org access |
-| **403 Forbidden** | Auth failure | Check NPM_TOKEN secret, expiration, R/W permissions |
-| **404 Not Found** (install) | Not public | Verify `publishConfig.access: "public"` in each package.json |
-| **Workflow doesn't run** | Missing file or wrong branch | Check `.github/workflows/publish.yml` exists, push is to `main` |
+| Error                       | Cause                            | Fix                                                             |
+| --------------------------- | -------------------------------- | --------------------------------------------------------------- |
+| **402 Payment Required**    | Missing org or token permissions | Verify @supergrain org exists, token has org access             |
+| **403 Forbidden**           | Auth failure                     | Check NPM_TOKEN secret, expiration, R/W permissions             |
+| **404 Not Found** (install) | Not public                       | Verify `publishConfig.access: "public"` in each package.json    |
+| **Workflow doesn't run**    | Missing file or wrong branch     | Check `.github/workflows/publish.yml` exists, push is to `main` |
 
 ## Manual Publishing (Emergency Only)
 

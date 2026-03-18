@@ -23,17 +23,17 @@ set(target: any, prop: PropertyKey, value: any): boolean {
 
 ### Krauset Benchmark
 
-| Metric | Before | After |
-|--------|--------|-------|
-| vs RxJS | 25.4x slower | 4.34x slower |
-| Improvement | -- | **6x faster** (83% reduction in gap) |
+| Metric      | Before       | After                                |
+| ----------- | ------------ | ------------------------------------ |
+| vs RxJS     | 25.4x slower | 4.34x slower                         |
+| Improvement | --           | **6x faster** (83% reduction in gap) |
 
 ### Bulk Operations (1,000 items)
 
-| Approach | Time | Savings |
-|----------|------|---------|
-| `updateStore({ $set: { "data.X.label": "..." } })` | 31.0ms | -- |
-| `store.data[X].label = "..."` | 24.6ms | 20.6% faster |
+| Approach                                           | Time   | Savings      |
+| -------------------------------------------------- | ------ | ------------ |
+| `updateStore({ $set: { "data.X.label": "..." } })` | 31.0ms | --           |
+| `store.data[X].label = "..."`                      | 24.6ms | 20.6% faster |
 
 ## Why It Works
 
@@ -42,8 +42,8 @@ Path-based updates (`"data.123.label"`) require string parsing, proxy traversal 
 Both approaches produce identical reactive behavior:
 
 ```typescript
-updateStore({ $set: { "user.name": "John" } })  // path-based
-store.user.name = "John"                         // direct -- 6x faster
+updateStore({ $set: { "user.name": "John" } }); // path-based
+store.user.name = "John"; // direct -- 6x faster
 ```
 
 ## Backward Compatibility
@@ -51,10 +51,10 @@ store.user.name = "John"                         // direct -- 6x faster
 100% compatible. All existing `updateStore` calls continue to work. Direct mutation is additive.
 
 ```javascript
-updateStore({ $inc: { count: 1 } })           // MongoDB style
-updateStore({ $set: { "user.name": "Bob" } }) // path-based
-store.count = 42                              // direct mutation
-store.user.name = "Charlie"                   // direct mutation
+updateStore({ $inc: { count: 1 } }); // MongoDB style
+updateStore({ $set: { "user.name": "Bob" } }); // path-based
+store.count = 42; // direct mutation
+store.user.name = "Charlie"; // direct mutation
 ```
 
 ## When to Use Each Approach
@@ -63,7 +63,7 @@ store.user.name = "Charlie"                   // direct mutation
 
 ```javascript
 for (let i = 0; i < 1000; i++) {
-  store.data[i].selected = false  // 6x faster
+  store.data[i].selected = false; // 6x faster
 }
 ```
 
@@ -73,8 +73,8 @@ for (let i = 0; i < 1000; i++) {
 updateStore({
   $push: { items: newItem },
   $inc: { totalCount: 1 },
-  $set: { lastModified: Date.now() }
-})
+  $set: { lastModified: Date.now() },
+});
 ```
 
 ## Validation

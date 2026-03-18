@@ -11,6 +11,7 @@ useTracked solved the nested component problem via per-access proxy swaps (see [
 `createStableProxy` stores ONE effectNode per proxy in a global `proxyEffectMap`. When App creates a proxy for `store.data[5]` and passes it to Row, the proxy's effectNode is App's. Row's reads of `item.label` go through the same proxy → subscribed to App's effect.
 
 **What happens on a label change**:
+
 1. `store.data[5].label = "new"` — label signal fires
 2. App's effect fires (createStableProxy routed Row's label read to App)
 3. App re-renders → For iterates all 1000 items
@@ -52,10 +53,12 @@ deleteProperty(target: any, prop: PropertyKey): boolean {
 
 ```tsx
 cleanupsRef.current.outer = effect(() => {
-  const len = each.length
-  for (let i = 0; i < len; i++) { each[i] }
-  buildRef.current() // tears down ALL rows and rebuilds
-})
+  const len = each.length;
+  for (let i = 0; i < len; i++) {
+    each[i];
+  }
+  buildRef.current(); // tears down ALL rows and rebuilds
+});
 ```
 
 **Result**: Fast for value updates (partial 0.5ms, select 0.8ms) but catastrophic for structural mutations. Remove: 5,287ms. Append: 5,474ms.
@@ -106,15 +109,17 @@ Four sub-attempts:
 function createScopedProxy<T>(target: T, effectNode: any): T {
   return new Proxy(target, {
     get(obj, prop, receiver) {
-      const prev = getCurrentSub()
-      setCurrentSub(effectNode)
+      const prev = getCurrentSub();
+      setCurrentSub(effectNode);
       try {
-        const value = Reflect.get(obj, prop, receiver)
-        if (Array.isArray(value)) return wrapArray(value, effectNode)
-        return value
-      } finally { setCurrentSub(prev) }
+        const value = Reflect.get(obj, prop, receiver);
+        if (Array.isArray(value)) return wrapArray(value, effectNode);
+        return value;
+      } finally {
+        setCurrentSub(prev);
+      }
     },
-  })
+  });
 }
 ```
 
@@ -141,37 +146,48 @@ This is the same problem useTracked solved with per-access proxy swaps, but solv
 ```tsx
 function tracked<P extends object>(Component: FC<P>): FC<P> {
   const Tracked: FC<P> = (props: P) => {
-    const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
-    const ref = useRef<{ cleanup: (() => void); effectNode: any } | null>(null)
+    const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+    const ref = useRef<{ cleanup: () => void; effectNode: any } | null>(null);
     if (!ref.current) {
-      let effectNode: any = null
-      let firstRun = true
+      let effectNode: any = null;
+      let firstRun = true;
       const cleanup = effect(() => {
-        if (firstRun) { effectNode = getCurrentSub(); firstRun = false; return }
-        forceUpdate()
-      })
-      ref.current = { cleanup, effectNode }
+        if (firstRun) {
+          effectNode = getCurrentSub();
+          firstRun = false;
+          return;
+        }
+        forceUpdate();
+      });
+      ref.current = { cleanup, effectNode };
     }
-    useEffect(() => () => { ref.current?.cleanup?.() }, [])
+    useEffect(
+      () => () => {
+        ref.current?.cleanup?.();
+      },
+      [],
+    );
 
-    const prev = getCurrentSub()
-    setCurrentSub(ref.current.effectNode)
-    const result = Component(props)
-    setCurrentSub(prev)
-    return result
-  }
-  return memo(Tracked) as unknown as FC<P>
+    const prev = getCurrentSub();
+    setCurrentSub(ref.current.effectNode);
+    const result = Component(props);
+    setCurrentSub(prev);
+    return result;
+  };
+  return memo(Tracked) as unknown as FC<P>;
 }
 ```
 
 ### What happens during a label change: old vs new
 
 **useTracked (old)**:
+
 1. Label signal fires → App's effect fires (createStableProxy routed Row's read to App)
 2. App re-renders → For iterates 1000 items → 999 memo skips + 1 Row re-render
 3. **Total**: 1 App render + 1000 memo checks + 1 Row render
 
 **tracked() (new)**:
+
 1. Label signal fires → Row 5's effect fires (it subscribed during its own render)
 2. Row 5 re-renders
 3. **Total**: 1 Row render
@@ -180,22 +196,24 @@ function tracked<P extends object>(Component: FC<P>): FC<P> {
 
 ```tsx
 const App = tracked(() => {
-  const selected = store.selected  // explicit read in App's render body
+  const selected = store.selected; // explicit read in App's render body
   return (
     <For each={store.data}>
       {(item) => <Row key={item.id} item={item} isSelected={selected === item.id} />}
     </For>
-  )
-})
+  );
+});
 
 const Row = tracked(({ item, isSelected }) => {
   return (
-    <tr className={isSelected ? 'danger' : ''}>
+    <tr className={isSelected ? "danger" : ""}>
       <td>{item.id}</td>
-      <td><a>{item.label}</a></td>
+      <td>
+        <a>{item.label}</a>
+      </td>
     </tr>
-  )
-})
+  );
+});
 ```
 
 **Why `const selected = store.selected` is in App's body**: The For callback runs inside For's render, not App's. By that point, App's `currentSub` has been restored. To subscribe App to selection changes, `store.selected` must be read where App's `currentSub` is active — in App's own render body.
@@ -218,8 +236,8 @@ For creates a render boundary: App reads `store.data` (subscribes to structure),
 
 ```tsx
 if (Array.isArray(value) && getCurrentSub()) {
-  const arrayNodes = getNodes(value)
-  if (arrayNodes[$VERSION]) arrayNodes[$VERSION]()
+  const arrayNodes = getNodes(value);
+  if (arrayNodes[$VERSION]) arrayNodes[$VERSION]();
 }
 ```
 
@@ -249,17 +267,17 @@ Edge case: if two signals change between renders, the first fires the effect (de
 
 ### Final results (apples-to-apples, same Row template, fresh store per test)
 
-| Operation | useTracked (old) | tracked() (new) | delta |
-|---|---|---|---|
-| create 1000 | 57.9ms | 40.3ms | **30% faster** |
-| replace all | 61.7ms | 52.0ms | **16% faster** |
-| partial update | 18.0ms | 2.4ms | **7.5x faster** |
-| select row | 5.6ms | 3.8ms | **32% faster** |
-| swap rows | 40.6ms | 8.7ms | **4.7x faster** |
-| remove row | 7.6ms | 6.0ms | **21% faster** |
-| create 10000 | 759ms | 615ms | **19% faster** |
-| append 1000 | 51.0ms | 55.5ms | ~same |
-| clear | 10.7ms | 10.5ms | same |
+| Operation      | useTracked (old) | tracked() (new) | delta           |
+| -------------- | ---------------- | --------------- | --------------- |
+| create 1000    | 57.9ms           | 40.3ms          | **30% faster**  |
+| replace all    | 61.7ms           | 52.0ms          | **16% faster**  |
+| partial update | 18.0ms           | 2.4ms           | **7.5x faster** |
+| select row     | 5.6ms            | 3.8ms           | **32% faster**  |
+| swap rows      | 40.6ms           | 8.7ms           | **4.7x faster** |
+| remove row     | 7.6ms            | 6.0ms           | **21% faster**  |
+| create 10000   | 759ms            | 615ms           | **19% faster**  |
+| append 1000    | 51.0ms           | 55.5ms          | ~same           |
+| clear          | 10.7ms           | 10.5ms          | same            |
 
 Faster or equal on every operation. Zero regressions.
 
@@ -268,6 +286,7 @@ Faster or equal on every operation. Zero regressions.
 ## What Ships, What Doesn't
 
 ### Ships (committed)
+
 - **splice/pop/shift fix**: `deleteProperty` on arrays
 - **$VERSION as signal**: efficient structural subscriptions
 - **Array version auto-subscribe**: splice/push detection
@@ -276,9 +295,11 @@ Faster or equal on every operation. Zero regressions.
 - **Vite plugin CJS fix**
 
 ### Ships next
+
 - **tracked()**: replaces `useTracked` + `createStableProxy` + `globalProxyCache` + `proxyEffectMap`
 
 ### Doesn't ship
+
 - **DirectFor**: full DOM rebuild, broken for structural mutations
 - **createView / useView**: marginal improvement, not worth the complexity
 - **$$()**: double work or store-coupled components

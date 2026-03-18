@@ -27,32 +27,32 @@ Preact creates an effect that runs during the render phase, not in `useEffect`. 
 
 ```typescript
 function createEffectStore() {
-  let effectInstance: Effect
-  let version = 0
-  let onChangeNotifyReact: (() => void) | undefined
+  let effectInstance: Effect;
+  let version = 0;
+  let onChangeNotifyReact: (() => void) | undefined;
 
   let unsubscribe = effect(function (this: Effect) {
-    effectInstance = this
-  })
+    effectInstance = this;
+  });
 
   effectInstance._callback = function () {
-    version = (version + 1) | 0  // 32-bit int for V8 SMI optimization
-    if (onChangeNotifyReact) onChangeNotifyReact()
-  }
+    version = (version + 1) | 0; // 32-bit int for V8 SMI optimization
+    if (onChangeNotifyReact) onChangeNotifyReact();
+  };
 
   return {
     subscribe(onStoreChange) {
-      onChangeNotifyReact = onStoreChange
+      onChangeNotifyReact = onStoreChange;
       return () => {
-        version = (version + 1) | 0
-        onChangeNotifyReact = undefined
-        unsubscribe()
-      }
+        version = (version + 1) | 0;
+        onChangeNotifyReact = undefined;
+        unsubscribe();
+      };
     },
     getSnapshot() {
-      return version
+      return version;
     },
-  }
+  };
 }
 ```
 
@@ -68,15 +68,15 @@ This was the central blocker that drove v3/v4/v5:
 // DOESN'T WORK -- effect has no dependencies
 const cleanup = effect(() => {
   // Empty callback
-})
-setCurrentSub(effectInstance)
-const value = store.property  // Outside effect callback -- no tracking!
-setCurrentSub(prevSub)
+});
+setCurrentSub(effectInstance);
+const value = store.property; // Outside effect callback -- no tracking!
+setCurrentSub(prevSub);
 
 // WORKS -- effect tracks dependencies
 const cleanup = effect(() => {
-  const value = store.property  // Inside callback -- tracked!
-})
+  const value = store.property; // Inside callback -- tracked!
+});
 ```
 
 ### Approaches Considered
@@ -97,6 +97,7 @@ const cleanup = effect(() => {
 ## What Was Cut From This Design
 
 The original v2 doc proposed Phase 2/3 features that were never built:
+
 - `useStoreSelector`, `useComputed`, `useStoreEffect` hooks
 - DevTools integration and dependency graph visualization
 - SSR/hydration support

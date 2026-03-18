@@ -10,18 +10,20 @@ Integrate Supergrain's proxy-based reactivity with React without a Babel transfo
 ## Key Design Decisions
 
 ### Store-centric, not signal-centric
+
 - Users interact with proxied state, not raw signals
 - Dependency tracking is automatic via proxies
 - Batching is built-in at microtask level
 
 ### Version-based subscription pattern
+
 From Preact's signals-react adapter: increment a 32-bit integer version on any tracked signal change, trigger React re-render via `useSyncExternalStore`.
 
 ```javascript
 trackedEffect._callback = () => {
-  version = (version + 1) | 0  // 32-bit integer increment
-  if (onChangeNotifyReact) onChangeNotifyReact()
-}
+  version = (version + 1) | 0; // 32-bit integer increment
+  if (onChangeNotifyReact) onChangeNotifyReact();
+};
 ```
 
 ## Implemented API (actual)
@@ -54,25 +56,34 @@ These were designed but not built. Preserved for future reference:
 
 ```javascript
 function createEffectStore() {
-  let version = 0
-  let onChangeNotifyReact = null
+  let version = 0;
+  let onChangeNotifyReact = null;
 
-  const trackedEffect = effect(function () {})
+  const trackedEffect = effect(function () {});
 
   trackedEffect._callback = () => {
-    version = (version + 1) | 0
-    if (onChangeNotifyReact) onChangeNotifyReact()
-  }
+    version = (version + 1) | 0;
+    if (onChangeNotifyReact) onChangeNotifyReact();
+  };
 
   return {
     subscribe(onStoreChange) {
-      onChangeNotifyReact = onStoreChange
-      return () => { onChangeNotifyReact = null; version++ }
+      onChangeNotifyReact = onStoreChange;
+      return () => {
+        onChangeNotifyReact = null;
+        version++;
+      };
     },
-    getSnapshot() { return version },
-    startTracking() { /* start alien-signals effect */ },
-    stopTracking() { /* dispose effect */ },
-  }
+    getSnapshot() {
+      return version;
+    },
+    startTracking() {
+      /* start alien-signals effect */
+    },
+    stopTracking() {
+      /* dispose effect */
+    },
+  };
 }
 ```
 

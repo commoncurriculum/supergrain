@@ -12,10 +12,10 @@ Use the Vite plugin to compile store property reads into `readSignal()` calls th
 
 ```typescript
 export function readSignal(target: any, prop: PropertyKey): any {
-  const raw = unwrap(target)
-  const nodes = getNodes(raw)
-  const node = getNode(nodes, prop, raw[prop])
-  return wrap(node())
+  const raw = unwrap(target);
+  const nodes = getNodes(raw);
+  const node = getNode(nodes, prop, raw[prop]);
+  return wrap(node());
 }
 ```
 
@@ -23,11 +23,11 @@ This does the same work as the proxy get trap: unwrap -> get nodes -> get signal
 
 ## Benchmark Results
 
-| Scenario | Proxy | readSignal | readSignal vs Proxy |
-|---|---|---|---|
-| Reactive leaf reads (100k) | 472 hz | 267 hz | **0.57x (slower)** |
-| Component render (6 props) | 502 hz | 320 hz | **0.64x (slower)** |
-| Reactive updates | 3,552 hz | 3,350 hz | 0.94x (tied) |
+| Scenario                   | Proxy    | readSignal | readSignal vs Proxy |
+| -------------------------- | -------- | ---------- | ------------------- |
+| Reactive leaf reads (100k) | 472 hz   | 267 hz     | **0.57x (slower)**  |
+| Component render (6 props) | 502 hz   | 320 hz     | **0.64x (slower)**  |
+| Reactive updates           | 3,552 hz | 3,350 hz   | 0.94x (tied)        |
 
 ## Why It Failed
 

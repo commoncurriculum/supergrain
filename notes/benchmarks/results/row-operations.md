@@ -4,10 +4,10 @@
 
 ## Results
 
-| Benchmark | ops/sec | Mean (ms) | p75 (ms) | p99 (ms) |
-|---|---:|---:|---:|---:|
-| Select row (highlight in 1,000 rows) | 8,032 | 0.125 | 0.098 | 0.193 |
-| Swap rows (swap 2 rows in 1,000 rows) | 7,971 | 0.126 | 0.098 | 0.205 |
+| Benchmark                             | ops/sec | Mean (ms) | p75 (ms) | p99 (ms) |
+| ------------------------------------- | ------: | --------: | -------: | -------: |
+| Select row (highlight in 1,000 rows)  |   8,032 |     0.125 |    0.098 |    0.193 |
+| Swap rows (swap 2 rows in 1,000 rows) |   7,971 |     0.126 |    0.098 |    0.205 |
 
 ## Notes
 

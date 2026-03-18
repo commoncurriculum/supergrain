@@ -1,21 +1,21 @@
-import React, { useRef, useLayoutEffect, useReducer } from 'react'
-import { effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
+import React, { useRef, useLayoutEffect } from "react";
+import { effect, getCurrentSub, setCurrentSub } from "@supergrain/core";
 
-type EffectRegistrar = (fn: () => void) => void
+type EffectRegistrar = (fn: () => void) => void;
 
 interface DirectForProps<T> {
   /** The reactive array to iterate. Can be a store proxy array. */
-  each: T[]
+  each: T[];
   /** HTML template element to clone for each item */
-  template: HTMLElement
+  template: HTMLElement;
   /** Called for each item to set up DOM content, events, and signal bindings */
-  setup: (item: T, element: HTMLElement, addEffect: EffectRegistrar) => void
+  setup: (item: T, element: HTMLElement, addEffect: EffectRegistrar) => void;
   /** Container element type (default: 'div') */
-  container?: string
+  container?: string;
   /** Optional wrapper element around the container */
-  wrapper?: string
+  wrapper?: string;
   /** Ref to an existing DOM element to append rows into */
-  containerRef?: React.RefObject<HTMLElement>
+  containerRef?: React.RefObject<HTMLElement>;
 }
 
 /**
@@ -29,78 +29,78 @@ export function DirectFor<T>({
   each,
   template,
   setup,
-  container = 'div',
+  container = "div",
   wrapper,
   containerRef: externalRef,
 }: DirectForProps<T>) {
-  const internalRef = useRef<HTMLElement>(null)
-  const ref = externalRef || internalRef
+  const internalRef = useRef<HTMLElement>(null);
+  const ref = externalRef || internalRef;
   const cleanupsRef = useRef<{
-    outer: (() => void) | null
-    rows: (() => void)[]
-  }>({ outer: null, rows: [] })
+    outer: (() => void) | null;
+    rows: (() => void)[];
+  }>({ outer: null, rows: [] });
 
   // rebuild: tear down old rows, build new ones from current array
-  const buildRef = useRef<() => void>(() => {})
+  const buildRef = useRef<() => void>(() => {});
   buildRef.current = () => {
-    const el = ref.current
-    if (!el) return
+    const el = ref.current;
+    if (!el) return;
 
     // Tear down old row effects
-    for (const c of cleanupsRef.current.rows) c()
-    cleanupsRef.current.rows = []
-    el.textContent = ''
+    for (const c of cleanupsRef.current.rows) c();
+    cleanupsRef.current.rows = [];
+    el.textContent = "";
 
     // Exit reactive context so row effects aren't nested
-    const prevSub = getCurrentSub()
-    setCurrentSub(undefined as any)
+    const prevSub = getCurrentSub();
+    setCurrentSub(undefined as any);
 
     for (const item of each) {
-      const row = template.cloneNode(true) as HTMLElement
+      const row = template.cloneNode(true) as HTMLElement;
       const addEffect: EffectRegistrar = (fn) => {
-        cleanupsRef.current.rows.push(effect(fn))
-      }
-      setup(item, row, addEffect)
-      el.appendChild(row)
+        cleanupsRef.current.rows.push(effect(fn));
+      };
+      setup(item, row, addEffect);
+      el.appendChild(row);
     }
 
-    setCurrentSub(prevSub)
-  }
+    setCurrentSub(prevSub);
+  };
 
   useLayoutEffect(() => {
     // Clean up previous outer effect
     if (cleanupsRef.current.outer) {
-      cleanupsRef.current.outer()
-      cleanupsRef.current.outer = null
+      cleanupsRef.current.outer();
+      cleanupsRef.current.outer = null;
     }
 
     // Create an alien-signals effect that watches the array structure.
     // When elements are swapped, pushed, spliced, etc., this re-runs.
     cleanupsRef.current.outer = effect(() => {
       // Subscribe to array length + every element reference
-      const len = each.length
+      const len = each.length;
       for (let i = 0; i < len; i++) {
-        each[i] // subscribes to each index signal
+        each[i]; // subscribes to each index signal
       }
       // Rebuild DOM (outside this reactive context)
-      buildRef.current()
-    })
+      buildRef.current();
+    });
 
     return () => {
       if (cleanupsRef.current.outer) {
-        cleanupsRef.current.outer()
-        cleanupsRef.current.outer = null
+        cleanupsRef.current.outer();
+        cleanupsRef.current.outer = null;
       }
-      for (const c of cleanupsRef.current.rows) c()
-      cleanupsRef.current.rows = []
-    }
-  }, [each]) // Re-run when array REFERENCE changes (store.data = newArray)
+      for (const c of cleanupsRef.current.rows) c();
+      cleanupsRef.current.rows = [];
+    };
+  }, [each]); // Re-run when array REFERENCE changes (store.data = newArray)
 
-  if (externalRef) return null
+  if (externalRef) return null;
 
-  const containerEl = React.createElement(container, { ref: internalRef })
+  const containerEl = React.createElement(container, { ref: internalRef });
   if (wrapper) {
-    return React.createElement(wrapper, null, containerEl)
+    return React.createElement(wrapper, null, containerEl);
   }
-  return containerEl
+  return containerEl;
 }

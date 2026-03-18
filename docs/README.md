@@ -5,6 +5,7 @@ This directory contains the documentation site for Supergrain, built with [ViteP
 ## How It Works
 
 The documentation site features:
+
 - A hero section with the Supergrain logo (superhero grain)
 - Feature highlights on the home page
 - A quick start guide and installation instructions
@@ -32,6 +33,7 @@ The docs are automatically deployed to GitHub Pages when changes are pushed to t
 ## Configuration
 
 The VitePress configuration is in `.vitepress/config.mjs`. You can customize:
+
 - Site title and description
 - Navigation and sidebar
 - Theme settings

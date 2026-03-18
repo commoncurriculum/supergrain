@@ -1,16 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { render, act, cleanup } from '@testing-library/react'
-import React from 'react'
-import { createStore } from '@supergrain/core'
-import { tracked, For } from '../src'
-import { flushMicrotasks } from './test-utils'
+import { describe, it, expect, beforeEach } from "vitest";
+import { render, act, cleanup } from "@testing-library/react";
+import React from "react";
+import { createStore } from "@supergrain/core";
+import { tracked, For } from "../src";
+import { flushMicrotasks } from "./test-utils";
 
-describe('Deep Nested Array Item Tests', () => {
+describe("Deep Nested Array Item Tests", () => {
   beforeEach(() => {
-    cleanup()
-  })
+    cleanup();
+  });
 
-  it('should test updating deeply nested property in array item - items[0].obj.objTwo.objThree', async () => {
+  it("should test updating deeply nested property in array item - items[0].obj.objTwo.objThree", async () => {
     // Create store with exact structure you specified
     const [store, update] = createStore({
       items: [
@@ -23,120 +23,119 @@ describe('Deep Nested Array Item Tests', () => {
           },
         },
       ],
-    })
+    });
 
-    let componentRenderCount = 0
+    let componentRenderCount = 0;
 
     // Single component that accesses the deeply nested structure
     const DeepNestedComponent = tracked(() => {
-      componentRenderCount++
+      componentRenderCount++;
 
       // Access the deeply nested value
-      const deepValue = store.items[0].obj.objTwo.objThree
+      const deepValue = store.items[0].obj.objTwo.objThree;
 
-      return <div data-testid="deep-nested-value">Deep value: {deepValue}</div>
-    })
+      return <div data-testid="deep-nested-value">Deep value: {deepValue}</div>;
+    });
 
-    const { container } = render(<DeepNestedComponent />)
+    const { container } = render(<DeepNestedComponent />);
 
     // Verify initial render
-    expect(componentRenderCount).toBe(1)
-    expect(
-      container.querySelector('[data-testid="deep-nested-value"]')?.textContent
-    ).toBe('Deep value: 1')
+    expect(componentRenderCount).toBe(1);
+    expect(container.querySelector('[data-testid="deep-nested-value"]')?.textContent).toBe(
+      "Deep value: 1",
+    );
 
     // Test 1: Update the deeply nested objThree value
     await act(async () => {
       update({
         $set: {
-          'items.0.obj.objTwo.objThree': 42,
+          "items.0.obj.objTwo.objThree": 42,
         },
-      })
-      await flushMicrotasks()
-    })
+      });
+      await flushMicrotasks();
+    });
 
-    const rendersAfterDeepUpdate = componentRenderCount
+    const rendersAfterDeepUpdate = componentRenderCount;
 
     // Test 2: Update a different deep property to test specificity
     await act(async () => {
       update({
         $set: {
-          'items.0.obj.objTwo.newProp': 'hello',
+          "items.0.obj.objTwo.newProp": "hello",
         },
-      })
-      await flushMicrotasks()
-    })
+      });
+      await flushMicrotasks();
+    });
 
     // Test 3: Update a completely different part of the structure
     await act(async () => {
       update({
         $set: {
-          'items.0.differentProp': 'unrelated',
+          "items.0.differentProp": "unrelated",
         },
-      })
-      await flushMicrotasks()
-    })
+      });
+      await flushMicrotasks();
+    });
 
     if (rendersAfterDeepUpdate > 1) {
       // Verify the value actually updated in the UI
-      expect(
-        container.querySelector('[data-testid="deep-nested-value"]')
-          ?.textContent
-      ).toBe('Deep value: 42')
+      expect(container.querySelector('[data-testid="deep-nested-value"]')?.textContent).toBe(
+        "Deep value: 42",
+      );
     }
-  })
+  });
 
-  it('should test array iteration with deep nested properties', async () => {
+  it("should test array iteration with deep nested properties", async () => {
     const [store, update] = createStore({
       items: [
         {
           id: 1,
-          obj: { objTwo: { objThree: 'A' } },
+          obj: { objTwo: { objThree: "A" } },
         },
         {
           id: 2,
-          obj: { objTwo: { objThree: 'B' } },
+          obj: { objTwo: { objThree: "B" } },
         },
       ],
-    })
+    });
 
-    let componentRenderCount = 0
+    let componentRenderCount = 0;
 
     const ArrayIterationComponent = tracked(() => {
-      componentRenderCount++
+      componentRenderCount++;
 
       return (
         <div>
-          {store.items.map(item => (
+          {store.items.map((item) => (
             <div key={item.id} data-testid={`item-${item.id}`}>
               Item {item.id}: {item.obj.objTwo.objThree}
             </div>
           ))}
         </div>
-      )
-    })
+      );
+    });
 
-    const { container } = render(<ArrayIterationComponent />)
+    const { container } = render(<ArrayIterationComponent />);
 
     // Update deeply nested property in first item
     await act(async () => {
       update({
         $set: {
-          'items.0.obj.objTwo.objThree': 'A-UPDATED',
+          "items.0.obj.objTwo.objThree": "A-UPDATED",
         },
-      })
-      await flushMicrotasks()
-    })
+      });
+      await flushMicrotasks();
+    });
 
     // Check if the UI actually updated
-    const firstItem = container.querySelector('[data-testid="item-1"]')
+    const firstItem = container.querySelector('[data-testid="item-1"]');
 
     if (componentRenderCount > 1) {
-      expect(firstItem?.textContent).toBe('Item 1: A-UPDATED')
+      expect(firstItem?.textContent).toBe("Item 1: A-UPDATED");
     }
-  })
+  });
 
-  it('should test with For component and deep nesting', async () => {
+  it("should test with For component and deep nesting", async () => {
     const [store, update] = createStore({
       items: [
         {
@@ -144,12 +143,12 @@ describe('Deep Nested Array Item Tests', () => {
           obj: { objTwo: { objThree: 100 } },
         },
       ],
-    })
+    });
 
-    let componentRenderCount = 0
+    let componentRenderCount = 0;
 
     const ForComponent = tracked(() => {
-      componentRenderCount++
+      componentRenderCount++;
 
       return (
         <div>
@@ -161,24 +160,24 @@ describe('Deep Nested Array Item Tests', () => {
             )}
           </For>
         </div>
-      )
-    })
+      );
+    });
 
-    const { container } = render(<ForComponent />)
+    const { container } = render(<ForComponent />);
 
     await act(async () => {
       update({
         $set: {
-          'items.0.obj.objTwo.objThree': 200,
+          "items.0.obj.objTwo.objThree": 200,
         },
-      })
-      await flushMicrotasks()
-    })
+      });
+      await flushMicrotasks();
+    });
 
-    const forItem = container.querySelector('[data-testid="for-item-1"]')
+    const forItem = container.querySelector('[data-testid="for-item-1"]');
 
     if (componentRenderCount > 1) {
-      expect(forItem?.textContent).toBe('For Item 1: 200')
+      expect(forItem?.textContent).toBe("For Item 1: 200");
     }
-  })
-})
+  });
+});

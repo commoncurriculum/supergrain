@@ -4,4 +4,4 @@
 // In vitest 4+, browser matchers are built-in and no longer need manual setup.
 
 // Export to make this a module
-export {}
+export {};

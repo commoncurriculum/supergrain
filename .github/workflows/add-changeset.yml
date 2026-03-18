@@ -7,18 +7,18 @@ on:
         description: 'Packages to release (comma-separated: core, react, store, or "all")'
         required: true
         type: string
-        default: 'all'
+        default: "all"
       bump:
-        description: 'Version bump type'
+        description: "Version bump type"
         required: true
         type: choice
         options:
           - patch
           - minor
           - major
-        default: 'patch'
+        default: "patch"
       message:
-        description: 'Changelog message (describe your changes)'
+        description: "Changelog message (describe your changes)"
         required: true
         type: string
 
@@ -29,7 +29,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: 'pnpm'
+          cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -53,14 +53,14 @@ jobs:
           # Generate a random ID for the changeset file
           CHANGESET_ID=$(date +%s)-$(openssl rand -hex 4)
           CHANGESET_FILE=".changeset/${CHANGESET_ID}.md"
-          
+
           # Determine which packages to include
           PACKAGES_INPUT="${{ github.event.inputs.packages }}"
           BUMP_TYPE="${{ github.event.inputs.bump }}"
-          
+
           # Start the changeset file with frontmatter
           echo "---" > "$CHANGESET_FILE"
-          
+
           # Add packages based on input
           if [ "$PACKAGES_INPUT" = "all" ]; then
             echo "\"@supergrain/core\": $BUMP_TYPE" >> "$CHANGESET_FILE"
@@ -88,13 +88,13 @@ jobs:
               esac
             done
           fi
-          
+
           echo "---" >> "$CHANGESET_FILE"
           echo "" >> "$CHANGESET_FILE"
-          
+
           # Add the message
           echo "${{ github.event.inputs.message }}" >> "$CHANGESET_FILE"
-          
+
           echo "Created changeset file: $CHANGESET_FILE"
           cat "$CHANGESET_FILE"
 
@@ -106,15 +106,15 @@ jobs:
           title: "Add changeset: ${{ github.event.inputs.message }}"
           body: |
             ## Changeset Details
-            
+
             **Packages**: `${{ github.event.inputs.packages }}`
             **Bump type**: `${{ github.event.inputs.bump }}`
             **Changes**: ${{ github.event.inputs.message }}
-            
+
             ---
-            
+
             This changeset was created via GitHub Actions.
-            
+
             Once this PR is merged, the Release workflow will create a "Release: Version Packages" PR with the version bumps and changelog entries.
           branch: changeset-${{ github.run_id }}
           delete-branch: true

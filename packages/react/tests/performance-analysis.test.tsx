@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from 'vitest'
-import { createStore } from '@supergrain/core'
-import { tracked, For } from '../src'
-import React, { FC, memo } from 'react'
-import { render, act, cleanup } from '@testing-library/react'
+import { describe, it, expect, afterEach } from "vitest";
+import { createStore } from "@supergrain/core";
+import { tracked, For } from "../src";
+import React, { FC, memo } from "react";
+import { render, act, cleanup } from "@testing-library/react";
 
 /**
  * Performance Analysis Tests
@@ -14,133 +14,119 @@ import { render, act, cleanup } from '@testing-library/react'
 
 // --- Data Generation ---
 interface RowData {
-  id: number
-  label: string
+  id: number;
+  label: string;
 }
 
 const buildData = (count: number): RowData[] => {
   return Array.from({ length: count }, (_, i) => ({
     id: i + 1,
     label: `Item ${i + 1}`,
-  }))
-}
+  }));
+};
 
 interface AppState {
-  data: RowData[]
-  selected: number | null
+  data: RowData[];
+  selected: number | null;
 }
 
 // --- Render Tracking ---
-let renderCount = 0
-let renderedRowIds: Set<number> = new Set()
+let renderCount = 0;
+let renderedRowIds: Set<number> = new Set();
 
 const resetRenderTracking = () => {
-  renderCount = 0
-  renderedRowIds.clear()
-}
+  renderCount = 0;
+  renderedRowIds.clear();
+};
 
 // --- Components ---
 
-const TrackingRow = tracked(({
-  item,
-  isSelected,
-}: {
-  item: RowData
-  isSelected: boolean
-}) => {
-  renderCount++
-  renderedRowIds.add(item.id)
+const TrackingRow = tracked(({ item, isSelected }: { item: RowData; isSelected: boolean }) => {
+  renderCount++;
+  renderedRowIds.add(item.id);
 
   return (
-    <tr className={isSelected ? 'danger' : ''}>
+    <tr className={isSelected ? "danger" : ""}>
       <td>{item.id}</td>
       <td>
         <a>{item.label}</a>
       </td>
     </tr>
-  )
-})
+  );
+});
 
-const App = tracked(({
-  store,
-}: {
-  store: any
-}) => {
-  const selected = store.selected
+const App = tracked(({ store }: { store: any }) => {
+  const selected = store.selected;
 
   return (
     <table>
       <tbody>
         <For each={store.data}>
           {(row: RowData) => (
-            <TrackingRow
-              key={row.id}
-              item={row}
-              isSelected={row.id === selected}
-            />
+            <TrackingRow key={row.id} item={row} isSelected={row.id === selected} />
           )}
         </For>
       </tbody>
     </table>
-  )
-})
+  );
+});
 
-describe('Performance Analysis', () => {
+describe("Performance Analysis", () => {
   afterEach(() => {
-    cleanup()
-    resetRenderTracking()
-  })
+    cleanup();
+    resetRenderTracking();
+  });
 
-  it('should only re-render the selected and previously selected rows when selecting a row', () => {
-    const data = buildData(100)
+  it("should only re-render the selected and previously selected rows when selecting a row", () => {
+    const data = buildData(100);
     const [store, updateStore] = createStore<AppState>({
       data,
       selected: null,
-    })
+    });
 
-    render(<App store={store} />)
-    resetRenderTracking()
+    render(<App store={store} />);
+    resetRenderTracking();
 
     // Select row 25
     act(() => {
-      updateStore({ $set: { selected: data[24].id } })
-    })
+      updateStore({ $set: { selected: data[24].id } });
+    });
 
     // The parent component re-renders, and the <For> component will re-render the row
     // because the isSelected prop changes.
-    expect(renderedRowIds.size).toBe(1)
-    expect(renderedRowIds.has(25)).toBe(true)
+    expect(renderedRowIds.size).toBe(1);
+    expect(renderedRowIds.has(25)).toBe(true);
 
-    resetRenderTracking()
+    resetRenderTracking();
 
     // Select row 50
     act(() => {
-      updateStore({ $set: { selected: data[49].id } })
-    })
+      updateStore({ $set: { selected: data[49].id } });
+    });
 
     // The previously selected row (25) and the new one (50) should re-render
-    expect(renderedRowIds.size).toBe(2)
-    expect(renderedRowIds.has(25)).toBe(true)
-    expect(renderedRowIds.has(50)).toBe(true)
-  })
+    expect(renderedRowIds.size).toBe(2);
+    expect(renderedRowIds.has(25)).toBe(true);
+    expect(renderedRowIds.has(50)).toBe(true);
+  });
 
-  it('should only re-render the updated row on a partial update', () => {
-    const data = buildData(100)
+  it("should only re-render the updated row on a partial update", () => {
+    const data = buildData(100);
     const [store, updateStore] = createStore<AppState>({
       data,
       selected: null,
-    })
+    });
 
-    render(<App store={store} />)
-    resetRenderTracking()
+    render(<App store={store} />);
+    resetRenderTracking();
 
     // Update the label of row 42
     act(() => {
-      updateStore({ $set: { 'data.41.label': 'Updated Label' } })
-    })
+      updateStore({ $set: { "data.41.label": "Updated Label" } });
+    });
 
     // Only the updated row should re-render
-    expect(renderedRowIds.size).toBe(1)
-    expect(renderedRowIds.has(42)).toBe(true)
-  })
-})
+    expect(renderedRowIds.size).toBe(1);
+    expect(renderedRowIds.has(42)).toBe(true);
+  });
+});

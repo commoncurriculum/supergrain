@@ -21,10 +21,10 @@ Cross-library benchmarks showed supergrain 6-25x slower than zustand in property
 
 ```typescript
 // Before
-return wrap(value)
+return wrap(value);
 
 // After
-return typeof value === 'object' && value !== null ? wrap(value) : value
+return typeof value === "object" && value !== null ? wrap(value) : value;
 ```
 
 ### Change 2: Skip unwrap for primitives in setProperty
@@ -45,23 +45,23 @@ All 117 tests passed with both changes.
 
 ### Both changes together
 
-| Benchmark | Before (ops/sec) | After (ops/sec) | Change |
-|---|---:|---:|---|
-| Store Creation | 1,634 | 1,637 | ~same |
-| Property Read (1M) | 20.19 | 20.07 | ~same |
-| Non-reactive Updates | 5,500 | 5,520 | ~same |
-| Reactive Updates | 3,929 | 3,996 | +1.7% |
-| Batch Update | 260,284 | 246,144 | **-5.4%** |
-| Deep Updates | 13,576 | 16,787 | +23.6% |
-| Array Pushes | 22,082 | 21,662 | ~same |
-| Granular Reactivity | 208,021 | 173,490 | **-16.6%** |
+| Benchmark            | Before (ops/sec) | After (ops/sec) | Change     |
+| -------------------- | ---------------: | --------------: | ---------- |
+| Store Creation       |            1,634 |           1,637 | ~same      |
+| Property Read (1M)   |            20.19 |           20.07 | ~same      |
+| Non-reactive Updates |            5,500 |           5,520 | ~same      |
+| Reactive Updates     |            3,929 |           3,996 | +1.7%      |
+| Batch Update         |          260,284 |         246,144 | **-5.4%**  |
+| Deep Updates         |           13,576 |          16,787 | +23.6%     |
+| Array Pushes         |           22,082 |          21,662 | ~same      |
+| Granular Reactivity  |          208,021 |         173,490 | **-16.6%** |
 
 ### setProperty change alone (get trap reverted)
 
-| Benchmark | Before (ops/sec) | After (ops/sec) | Change |
-|---|---:|---:|---|
-| Deep Updates | 13,576 | 122 | **-99.1%** |
-| Batch Update | 260,284 | 140,611 | **-46%** |
+| Benchmark    | Before (ops/sec) | After (ops/sec) | Change     |
+| ------------ | ---------------: | --------------: | ---------- |
+| Deep Updates |           13,576 |             122 | **-99.1%** |
+| Batch Update |          260,284 |         140,611 | **-46%**   |
 
 Catastrophic regression. The `typeof` branching in `setProperty` deoptimized the entire function — likely due to the new polymorphic comparison path in V8's tight loop optimization.
 

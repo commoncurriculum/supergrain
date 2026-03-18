@@ -6,13 +6,13 @@
 
 ## Architecture
 
-| Aspect | RxJS | Supergrain |
-|--------|------|-----------|
-| State Model | Immutable streams | Mutable proxy objects |
-| Update Pattern | Event dispatch -> stream transformation | Direct mutation or operators |
-| Memory Pattern | New objects per change | In-place modifications |
-| React Integration | `useStateObservable` (react-rxjs) | `tracked()` |
-| Bundle Size | ~45KB (RxJS + react-rxjs) | ~8KB (core + react + alien-signals) |
+| Aspect            | RxJS                                    | Supergrain                          |
+| ----------------- | --------------------------------------- | ----------------------------------- |
+| State Model       | Immutable streams                       | Mutable proxy objects               |
+| Update Pattern    | Event dispatch -> stream transformation | Direct mutation or operators        |
+| Memory Pattern    | New objects per change                  | In-place modifications              |
+| React Integration | `useStateObservable` (react-rxjs)       | `tracked()`                         |
+| Bundle Size       | ~45KB (RxJS + react-rxjs)               | ~8KB (core + react + alien-signals) |
 
 ## Krauset Benchmark Analysis
 
@@ -20,12 +20,12 @@
 
 Through empirical benchmarking, the real performance difference was isolated:
 
-| Test | Time | Notes |
-|------|------|-------|
-| Alien-signals direct | 0.006ms | Core reactive systems equivalent |
-| RxJS Subject + scan | 0.008ms | Actually slightly slower |
-| Direct signal updates | 0.016ms | Fast |
-| Storable `updateStore` | 0.161ms | **26.83x slower** |
+| Test                   | Time    | Notes                            |
+| ---------------------- | ------- | -------------------------------- |
+| Alien-signals direct   | 0.006ms | Core reactive systems equivalent |
+| RxJS Subject + scan    | 0.008ms | Actually slightly slower         |
+| Direct signal updates  | 0.016ms | Fast                             |
+| Storable `updateStore` | 0.161ms | **26.83x slower**                |
 
 The bottleneck is **path processing overhead**, not the signal system.
 
@@ -34,15 +34,15 @@ The bottleneck is **path processing overhead**, not the signal system.
 **RxJS:** Direct array operations, single stream emission.
 
 ```javascript
-const newData = data.slice()
-newData[i] = { id: r.id, label: r.label + " !!!" }
+const newData = data.slice();
+newData[i] = { id: r.id, label: r.label + " !!!" };
 // One emission -> one React update
 ```
 
 **Supergrain:** Path parsing + individual signal updates.
 
 ```javascript
-updateStore({ $set: { 'data.0.label': '...', 'data.10.label': '...' } })
+updateStore({ $set: { "data.0.label": "...", "data.10.label": "..." } });
 // Each path: string parsing + traversal + individual setProperty
 ```
 
@@ -54,11 +54,11 @@ updateStore({ $set: { 'data.0.label': '...', 'data.10.label': '...' } })
 
 ### Isolated State Update Comparison
 
-| Approach | Time |
-|----------|------|
-| React-hooks style (direct mutations) | 0.042ms |
-| RxJS-style (object recreation) | 0.052ms |
-| Supergrain `updateStore` | 0.153ms (3.19x slower) |
+| Approach                             | Time                   |
+| ------------------------------------ | ---------------------- |
+| React-hooks style (direct mutations) | 0.042ms                |
+| RxJS-style (object recreation)       | 0.052ms                |
+| Supergrain `updateStore`             | 0.153ms (3.19x slower) |
 
 ### What Was Ruled Out
 
@@ -68,17 +68,18 @@ updateStore({ $set: { 'data.0.label': '...', 'data.10.label': '...' } })
 
 ## Performance Comparison
 
-| Operation | RxJS | Supergrain | Notes |
-|-----------|------|-----------|-------|
-| Stream/store creation | ~0.45ms | ~1.3ms | RxJS ~3x faster |
-| Simple reads | ~0.06ms | ~0.08ms | Similar |
-| Simple updates | ~0.5ms | ~0.5ms | Similar |
-| Complex transformations | ~8-20ms (large datasets) | ~2ms | Supergrain faster for in-place |
-| Bulk partial updates | Faster (direct ops) | Slower (path resolution) | RxJS wins in krauset |
+| Operation               | RxJS                     | Supergrain               | Notes                          |
+| ----------------------- | ------------------------ | ------------------------ | ------------------------------ |
+| Stream/store creation   | ~0.45ms                  | ~1.3ms                   | RxJS ~3x faster                |
+| Simple reads            | ~0.06ms                  | ~0.08ms                  | Similar                        |
+| Simple updates          | ~0.5ms                   | ~0.5ms                   | Similar                        |
+| Complex transformations | ~8-20ms (large datasets) | ~2ms                     | Supergrain faster for in-place |
+| Bulk partial updates    | Faster (direct ops)      | Slower (path resolution) | RxJS wins in krauset           |
 
 ## Key Differences
 
 **RxJS advantages:**
+
 - Event-driven architecture with powerful stream composition
 - Built-in time-based operations (debounce, throttle)
 - First-class async/Promise handling
@@ -86,12 +87,14 @@ updateStore({ $set: { 'data.0.label': '...', 'data.10.label': '...' } })
 - Bypasses path-processing overhead for direct operations
 
 **RxJS disadvantages:**
+
 - High memory overhead (immutable state recreation)
 - Large bundle size (~45KB)
 - Steep learning curve
 - No fine-grained property-level reactivity
 
 **Supergrain advantages:**
+
 - Fine-grained property-level reactivity
 - In-place mutations (lower memory, less GC)
 - Smaller bundle (~8KB)

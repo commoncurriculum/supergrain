@@ -17,11 +17,13 @@ Supergrain is a reactive store library with fine-grained reactivity. The project
 **IMPORTANT**: After making any code changes, you MUST run both tests and type checks:
 
 ### 1. Run Tests
+
 ```bash
 pnpm test
 ```
 
 ### 2. Run Type Checks
+
 ```bash
 pnpm run typecheck
 ```
@@ -45,6 +47,7 @@ pnpm run typecheck
 ## CI/CD
 
 The project uses GitHub Actions CI that runs:
+
 1. `pnpm test` - All tests across all packages
 2. `pnpm run test:validate` - README documentation validation
 3. `pnpm run typecheck` - Type checking across all packages
@@ -52,6 +55,7 @@ The project uses GitHub Actions CI that runs:
 ## Documentation Tests
 
 The documentation package (`@supergrain/documentation`) contains special tests that validate README examples:
+
 - Tests are linked to README code blocks via `#DOC_TEST_XX` identifiers
 - All React state updates in tests must be wrapped in `act()` to prevent warnings
 - Tests run in browser environment using Vitest + Playwright

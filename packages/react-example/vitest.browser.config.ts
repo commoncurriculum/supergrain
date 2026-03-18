@@ -1,7 +1,7 @@
-import { defineConfig } from 'vitest/config'
-import react from '@vitejs/plugin-react'
-import { resolve } from 'path'
-import { playwright } from '@vitest/browser-playwright'
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
+import { resolve } from "path";
+import { playwright } from "@vitest/browser-playwright";
 
 export default defineConfig({
   plugins: [react()],
@@ -12,7 +12,7 @@ export default defineConfig({
       headless: true,
       instances: [
         {
-          browser: 'chromium',
+          browser: "chromium",
         },
       ],
     },
@@ -21,8 +21,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@supergrain/core': resolve(__dirname, '../core/src'),
-      '@supergrain/react': resolve(__dirname, '../react/src'),
+      "@supergrain/core": resolve(__dirname, "../core/src"),
+      "@supergrain/react": resolve(__dirname, "../react/src"),
     },
   },
-})
+});

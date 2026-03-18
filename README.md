@@ -6,23 +6,25 @@ Supergrain's `$$()` direct DOM mode achieves solid-js level performance while ru
 
 ### Benchmark: krauset (1000 rows, chromium)
 
-| Operation | React Hooks | Supergrain Proxy | Supergrain `$$()` | Solid-js |
-|---|---|---|---|---|
-| Create 1000 rows | 53ms | 69ms | **3.4ms** | 7.1ms |
-| Select row | 57ms | 75ms | **11ms** | 7.6ms |
-| Swap rows | 77ms | 101ms | **10ms** | 11ms |
-| Partial update | 60ms | 75ms | **10ms** | 12ms |
+| Operation        | React Hooks | Supergrain Proxy | Supergrain `$$()` | Solid-js |
+| ---------------- | ----------- | ---------------- | ----------------- | -------- |
+| Create 1000 rows | 53ms        | 69ms             | **3.4ms**         | 7.1ms    |
+| Select row       | 57ms        | 75ms             | **11ms**          | 7.6ms    |
+| Swap rows        | 77ms        | 101ms            | **10ms**          | 11ms     |
+| Partial update   | 60ms        | 75ms             | **10ms**          | 12ms     |
 
 `$$()` marks reactive expressions for direct DOM binding. The compiler wires signals straight to DOM nodes, bypassing React's reconciliation for updates. React handles the initial render; signal changes update `textContent` and `className` directly via refs.
 
 ```tsx
 function Row({ item, store }) {
   return (
-    <tr className={$$(() => store.selected === item.id ? 'danger' : '')}>
+    <tr className={$$(() => (store.selected === item.id ? "danger" : ""))}>
       <td>{item.id}</td>
-      <td><a>{$$(item.label)}</a></td>
+      <td>
+        <a>{$$(item.label)}</a>
+      </td>
     </tr>
-  )
+  );
 }
 ```
 
@@ -35,11 +37,11 @@ Without the compiler, `$$()` is an identity function — your code works normall
 `createView(store)` returns a cached view object with prototype getters that read signals directly. V8 inlines these, making reads ~8x faster than proxy.
 
 ```tsx
-import { createStore, createView } from '@supergrain/core'
+import { createStore, createView } from "@supergrain/core";
 
-const [store, update] = createStore({ title: 'Hello', count: 0 })
-const view = createView(store)
-view.title  // prototype getter -> signal read (V8 inlined)
+const [store, update] = createStore({ title: "Hello", count: 0 });
+const view = createView(store);
+view.title; // prototype getter -> signal read (V8 inlined)
 ```
 
 Only properties present at creation time get getters. For dynamic properties added later, use the proxy directly.
@@ -49,12 +51,12 @@ Only properties present at creation time get getters. For dynamic properties add
 Pass an ArkType schema as the second argument to `createStore` to get a pre-built view with nested prototype getters:
 
 ```tsx
-import { type } from 'arktype'
-import { createStore } from '@supergrain/core'
+import { type } from "arktype";
+import { createStore } from "@supergrain/core";
 
-const TodoSchema = type({ title: 'string', done: 'boolean' })
-const [store, update, view] = createStore({ title: 'Buy milk', done: false }, TodoSchema)
-view.title  // fast prototype getter read
+const TodoSchema = type({ title: "string", done: "boolean" });
+const [store, update, view] = createStore({ title: "Buy milk", done: false }, TodoSchema);
+view.title; // fast prototype getter read
 ```
 
 📚 **[View Full Documentation](https://commoncurriculum.github.io/supergrain/)** | _Core Implementation: [packages/core/src](packages/core/src) | React Integration: [packages/react/src](packages/react/src) | Store: [packages/store/src](packages/store/src) | Examples: [packages/react/examples](packages/react/examples)_
@@ -197,11 +199,11 @@ Unlike other reactive systems, you never need to manually subscribe or unsubscri
 // [#DOC_TEST_29](packages/documentation/tests/readme-examples.test.tsx)
 
 // ❌ Other libraries require manual subscriptions
-const unsubscribe = store.subscribe('user.name', callback)
-useEffect(() => unsubscribe, [])
+const unsubscribe = store.subscribe("user.name", callback);
+useEffect(() => unsubscribe, []);
 
 // ✅ Supergrain: just access the data inside tracked()
-const userName = store.user.name // Automatically subscribed!
+const userName = store.user.name; // Automatically subscribed!
 ```
 
 ## Creating Stores
@@ -213,12 +215,12 @@ _Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/s
 ```typescript
 // [#DOC_TEST_1](packages/documentation/tests/creating-stores.test.ts)
 
-import { createStore } from '@supergrain/core'
+import { createStore } from "@supergrain/core";
 
 const [state, update] = createStore({
   count: 0,
-  name: 'John',
-})
+  name: "John",
+});
 ```
 
 **With nested objects:**
@@ -226,32 +228,32 @@ const [state, update] = createStore({
 ```typescript
 // [#DOC_TEST_2](packages/documentation/tests/creating-stores.test.ts)
 
-import { createStore } from '@supergrain/core'
+import { createStore } from "@supergrain/core";
 
 const [state, update] = createStore({
   users: [
     {
       id: 1,
-      name: 'Alice',
+      name: "Alice",
       todos: [
         {
           id: 1,
-          text: 'Use Supergrain.',
+          text: "Use Supergrain.",
           tags: [
             {
               id: 1,
-              title: 'Urgent.',
+              title: "Urgent.",
             },
           ],
         },
       ],
       address: {
-        city: 'New York',
-        zip: '10001',
+        city: "New York",
+        zip: "10001",
       },
     },
   ],
-})
+});
 ```
 
 ## Reading State
@@ -263,18 +265,18 @@ The state object is a reactive proxy that tracks property access:
 ```typescript
 // [#DOC_TEST_4](packages/documentation/tests/read-only-state.test.ts)
 
-const [state, update] = createStore({ count: 0, name: 'John' })
+const [state, update] = createStore({ count: 0, name: "John" });
 
 // You can read properties normally
-console.log(state.count) // 0
-console.log(state.name) // 'John'
+console.log(state.count); // 0
+console.log(state.name); // 'John'
 
 // Direct mutations are supported
-state.count = 5 // ✅ Works fine!
-state.name = 'Jane' // ✅ Works fine!
+state.count = 5; // ✅ Works fine!
+state.name = "Jane"; // ✅ Works fine!
 
 // Update function also works
-update({ $set: { count: 10, name: 'Bob' } })
+update({ $set: { count: 10, name: "Bob" } });
 ```
 
 ## Updating State
@@ -290,15 +292,15 @@ State can be updated in two ways: direct mutations or the `update` function with
 
 const [state, update] = createStore({
   count: 0,
-  user: { name: 'John', age: 30 },
-  items: ['a', 'b', 'c'],
-})
+  user: { name: "John", age: 30 },
+  items: ["a", "b", "c"],
+});
 
 // Direct mutations work perfectly
-state.count = 5
-state.user.name = 'Jane'
-state.user.age = 35
-state.items.push('d')
+state.count = 5;
+state.user.name = "Jane";
+state.user.age = 35;
+state.items.push("d");
 ```
 
 **Option 2: Update function with MongoDB-style operators**
@@ -307,23 +309,23 @@ state.items.push('d')
 // [#DOC_TEST_5](packages/documentation/tests/mongodb-operators.test.ts)
 
 // Set values
-update({ $set: { count: 5 } })
-update({ $set: { 'user.name': 'Jane' } }) // Dot notation for nested
+update({ $set: { count: 5 } });
+update({ $set: { "user.name": "Jane" } }); // Dot notation for nested
 
 // Increment numbers
-update({ $inc: { count: 1 } })
-update({ $inc: { 'user.age': 5 } })
+update({ $inc: { count: 1 } });
+update({ $inc: { "user.age": 5 } });
 
 // Array operations
-update({ $push: { items: 'd' } })
-update({ $pull: { items: 'b' } })
+update({ $push: { items: "d" } });
+update({ $pull: { items: "b" } });
 
 // Multiple operations in one call (batched)
 update({
-  $set: { 'user.name': 'Bob' },
+  $set: { "user.name": "Bob" },
   $inc: { count: 2 },
-  $push: { items: 'e' },
-})
+  $push: { items: "e" },
+});
 ```
 
 ## React Integration
@@ -450,19 +452,19 @@ React to state changes with `effect`:
 ```typescript
 // [#DOC_TEST_19](packages/documentation/tests/effects.test.ts)
 
-import { effect } from '@supergrain/core'
+import { effect } from "@supergrain/core";
 
-const [state, update] = createStore({ count: 0 })
+const [state, update] = createStore({ count: 0 });
 
 // This runs whenever count changes
 effect(() => {
-  console.log('Count changed to:', state.count)
-})
+  console.log("Count changed to:", state.count);
+});
 
 // Save to localStorage on change
 effect(() => {
-  localStorage.setItem('count', String(state.count))
-})
+  localStorage.setItem("count", String(state.count));
+});
 ```
 
 ### Computed Values
@@ -472,27 +474,25 @@ Derive values that update automatically:
 ```typescript
 // [#DOC_TEST_20](packages/documentation/tests/computed.test.ts)
 
-import { computed } from '@supergrain/core'
+import { computed } from "@supergrain/core";
 
 const [state, update] = createStore({
   todos: [
-    { id: 1, text: 'Task 1', completed: false },
-    { id: 2, text: 'Task 2', completed: true },
+    { id: 1, text: "Task 1", completed: false },
+    { id: 2, text: "Task 2", completed: true },
   ],
-})
+});
 
-const completedCount = computed(
-  () => state.todos.filter(t => t.completed).length
-)
+const completedCount = computed(() => state.todos.filter((t) => t.completed).length);
 
-console.log(completedCount()) // 1
+console.log(completedCount()); // 1
 
 // Updates automatically when todos change
 update({
-  $set: { 'todos.0.completed': true },
-})
+  $set: { "todos.0.completed": true },
+});
 
-console.log(completedCount()) // 2
+console.log(completedCount()); // 2
 ```
 
 ## Store - Document Management
@@ -508,31 +508,31 @@ Define your document types and create a Store:
 ```typescript
 // [#DOC_TEST_21](packages/documentation/tests/store.test.tsx)
 
-import { Store } from '@supergrain/store'
+import { Store } from "@supergrain/store";
 
 interface DocumentTypes {
   users: {
-    id: number
-    firstName: string
-    lastName: string
-    email: string
-  }
+    id: number;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
   posts: {
-    id: number
-    title: string
-    content: string
-    userId: number
-  }
+    id: number;
+    title: string;
+    content: string;
+    userId: number;
+  };
 }
 
 // Create store with optional fetch handler
 const store = new Store<DocumentTypes>(async (modelType, id) => {
-  const response = await fetch(`/api/${modelType}/${id}`)
-  return response.json()
-})
+  const response = await fetch(`/api/${modelType}/${id}`);
+  return response.json();
+});
 
 // Or without fetch handler (manual data management)
-const store = new Store<DocumentTypes>()
+const store = new Store<DocumentTypes>();
 ```
 
 ### Finding Documents
@@ -541,14 +541,14 @@ const store = new Store<DocumentTypes>()
 // [#DOC_TEST_22](packages/documentation/tests/store.test.tsx)
 
 // Get a document (returns immediately, fetches if not cached)
-const doc = store.findDoc('posts', 1)
+const doc = store.findDoc("posts", 1);
 
 // Document States - Documents have a promise-like API with these properties:
-doc.content // T | undefined - The document data
-doc.isPending // boolean - Request in progress
-doc.isSettled // boolean - Request completed (success or failure)
-doc.isRejected // boolean - Request failed
-doc.isFulfilled // boolean - Request succeeded
+doc.content; // T | undefined - The document data
+doc.isPending; // boolean - Request in progress
+doc.isSettled; // boolean - Request completed (success or failure)
+doc.isRejected; // boolean - Request failed
+doc.isFulfilled; // boolean - Request succeeded
 ```
 
 ### Manual Document Management
@@ -557,21 +557,21 @@ doc.isFulfilled // boolean - Request succeeded
 // [#DOC_TEST_23](packages/documentation/tests/store.test.tsx)
 
 // Set document directly
-store.setDocument('users', 1, {
+store.setDocument("users", 1, {
   id: 1,
-  firstName: 'Jane',
-  lastName: 'Smith',
-  email: 'jane@example.com',
-})
+  firstName: "Jane",
+  lastName: "Smith",
+  email: "jane@example.com",
+});
 
-const user = store.findDoc('users', 1)
-console.log(user.isFulfilled) // true
-console.log(user.content) // { id: 1, firstName: 'Jane', ... }
+const user = store.findDoc("users", 1);
+console.log(user.isFulfilled); // true
+console.log(user.content); // { id: 1, firstName: 'Jane', ... }
 
 // Handle errors
-store.setDocumentError('users', 999, 'User not found')
-const errorUser = store.findDoc('users', 999)
-console.log(errorUser.isRejected) // true
+store.setDocumentError("users", 999, "User not found");
+const errorUser = store.findDoc("users", 999);
+console.log(errorUser.isRejected); // true
 ```
 
 ### Inserting Documents
@@ -580,19 +580,19 @@ console.log(errorUser.isRejected) // true
 // [#DOC_TEST_24](packages/documentation/tests/store.test.tsx)
 
 // Shows as pending immediately, then fulfilled when complete
-const newUserPromise = store.insertDocument('users', {
+const newUserPromise = store.insertDocument("users", {
   id: 123,
-  firstName: 'John',
-  lastName: 'Doe',
-  email: 'john@example.com',
-})
+  firstName: "John",
+  lastName: "Doe",
+  email: "john@example.com",
+});
 
 // Document is immediately available to other components
-const user = store.findDoc('users', 123)
-console.log(user.isPending) // true initially
+const user = store.findDoc("users", 123);
+console.log(user.isPending); // true initially
 
-const newUser = await newUserPromise
-console.log(user.isFulfilled) // true after promise resolves
+const newUser = await newUserPromise;
+console.log(user.isFulfilled); // true after promise resolves
 ```
 
 ### React Integration
@@ -818,15 +818,15 @@ For complex updates, you can use MongoDB-style operators. These are especially u
 ```typescript
 // [#DOC_TEST_11](packages/documentation/tests/mongodb-operators.test.ts)
 
-update({ $set: { count: 10 } })
-update({ $set: { 'user.name': 'Alice' } }) // Nested with dot notation
+update({ $set: { count: 10 } });
+update({ $set: { "user.name": "Alice" } }); // Nested with dot notation
 update({
   $set: {
-    'user.name': 'Bob',
-    'user.age': 25,
-    'settings.theme': 'dark',
+    "user.name": "Bob",
+    "user.age": 25,
+    "settings.theme": "dark",
   },
-})
+});
 ```
 
 ### $unset - Remove fields
@@ -834,8 +834,8 @@ update({
 ```typescript
 // [#DOC_TEST_12](packages/documentation/tests/mongodb-operators.test.ts)
 
-update({ $unset: { temporaryField: 1 } })
-update({ $unset: { 'user.middleName': 1 } })
+update({ $unset: { temporaryField: 1 } });
+update({ $unset: { "user.middleName": 1 } });
 ```
 
 ### $inc - Increment numeric values
@@ -843,9 +843,9 @@ update({ $unset: { 'user.middleName': 1 } })
 ```typescript
 // [#DOC_TEST_13](packages/documentation/tests/mongodb-operators.test.ts)
 
-update({ $inc: { count: 1 } })
-update({ $inc: { count: -5 } }) // Decrement
-update({ $inc: { 'stats.views': 10 } })
+update({ $inc: { count: 1 } });
+update({ $inc: { count: -5 } }); // Decrement
+update({ $inc: { "stats.views": 10 } });
 ```
 
 ### $push - Add to arrays
@@ -853,14 +853,14 @@ update({ $inc: { 'stats.views': 10 } })
 ```typescript
 // [#DOC_TEST_14](packages/documentation/tests/mongodb-operators.test.ts)
 
-update({ $push: { items: 'newItem' } })
+update({ $push: { items: "newItem" } });
 
 // Add multiple items with $each
 update({
   $push: {
-    items: { $each: ['item1', 'item2', 'item3'] },
+    items: { $each: ["item1", "item2", "item3"] },
   },
-})
+});
 ```
 
 ### $pull - Remove from arrays
@@ -869,14 +869,14 @@ update({
 // [#DOC_TEST_15](packages/documentation/tests/mongodb-operators.test.ts)
 
 // Remove by value
-update({ $pull: { items: 'itemToRemove' } })
+update({ $pull: { items: "itemToRemove" } });
 
 // Remove objects by matching properties
 update({
   $pull: {
-    users: { id: 123, name: 'John' },
+    users: { id: 123, name: "John" },
   },
-})
+});
 ```
 
 ### $addToSet - Add unique elements to arrays
@@ -884,14 +884,14 @@ update({
 ```typescript
 // [#DOC_TEST_16](packages/documentation/tests/mongodb-operators.test.ts)
 
-update({ $addToSet: { tags: 'newTag' } }) // Won't add if already exists
+update({ $addToSet: { tags: "newTag" } }); // Won't add if already exists
 
 // Add multiple unique items
 update({
   $addToSet: {
-    tags: { $each: ['tag1', 'tag2', 'tag3'] },
+    tags: { $each: ["tag1", "tag2", "tag3"] },
   },
-})
+});
 ```
 
 ### $rename - Rename fields
@@ -899,8 +899,8 @@ update({
 ```typescript
 // [#DOC_TEST_17](packages/documentation/tests/mongodb-operators.test.ts)
 
-update({ $rename: { oldFieldName: 'newFieldName' } })
-update({ $rename: { 'user.firstName': 'user.name' } })
+update({ $rename: { oldFieldName: "newFieldName" } });
+update({ $rename: { "user.firstName": "user.name" } });
 ```
 
 ### $min/$max - Conditional updates
@@ -909,10 +909,10 @@ update({ $rename: { 'user.firstName': 'user.name' } })
 // [#DOC_TEST_18](packages/documentation/tests/mongodb-operators.test.ts)
 
 // Only updates if new value is smaller
-update({ $min: { lowestScore: 50 } })
+update({ $min: { lowestScore: 50 } });
 
 // Only updates if new value is larger
-update({ $max: { highestScore: 100 } })
+update({ $max: { highestScore: 100 } });
 ```
 
 ---
@@ -944,12 +944,14 @@ pnpm run typecheck
 ### Publishing Releases
 
 This project uses [Changesets](https://github.com/changesets/changesets) for automated releases. You can create changesets via:
+
 - **GitHub UI**: Use the [Add Changeset workflow](https://github.com/commoncurriculum/supergrain/actions/workflows/add-changeset.yml) (no terminal needed!)
 - **Terminal**: Run `pnpm changeset`
 
 GitHub Actions automatically handles versioning, changelogs, and publishing to NPM.
 
 **Documentation:**
+
 - [NPM_SETUP.md](NPM_SETUP.md) - Complete guide for setting up NPM publishing (tokens, scoped packages, troubleshooting)
 - [RELEASING.md](RELEASING.md) - Step-by-step instructions for creating releases
 

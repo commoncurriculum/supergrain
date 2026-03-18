@@ -1,1 +1,1 @@
-export { supergrain } from './plugin'
+export { supergrain } from "./plugin";

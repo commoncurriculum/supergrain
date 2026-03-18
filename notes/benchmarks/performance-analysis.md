@@ -8,12 +8,12 @@ After correcting the benchmark methodology to ensure Solid.js effects run synchr
 
 ### Real Performance Comparison
 
-| Operation                             | @supergrain/core  | solid-js        | Performance Gap  |
-| ------------------------------------- | --------------- | --------------- | ---------------- |
-| **Reactive reads (10k in effect)**    | 2,377 ops/sec   | 63,955 ops/sec  | **27x slower**   |
-| **Non-reactive reads (100k)**         | 376 ops/sec     | 24,964 ops/sec  | **66x slower**   |
-| **Property updates (1k with effect)** | ~11,000 ops/sec | ~11,700 ops/sec | **1.06x slower** |
-| **Store creation (1k stores)**        | Fast            | Slower          | **82x faster**   |
+| Operation                             | @supergrain/core | solid-js        | Performance Gap  |
+| ------------------------------------- | ---------------- | --------------- | ---------------- |
+| **Reactive reads (10k in effect)**    | 2,377 ops/sec    | 63,955 ops/sec  | **27x slower**   |
+| **Non-reactive reads (100k)**         | 376 ops/sec      | 24,964 ops/sec  | **66x slower**   |
+| **Property updates (1k with effect)** | ~11,000 ops/sec  | ~11,700 ops/sec | **1.06x slower** |
+| **Store creation (1k stores)**        | Fast             | Slower          | **82x faster**   |
 
 ## Key Findings
 
@@ -128,7 +128,7 @@ Given the architecture:
 
    ```typescript
    // Re-enable no equality checking
-   const sig = signal(value, { equals: false })
+   const sig = signal(value, { equals: false });
    ```
 
 2. **Optimize Hot Paths**

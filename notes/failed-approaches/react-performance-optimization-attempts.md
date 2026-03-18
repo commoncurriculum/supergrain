@@ -11,20 +11,21 @@ Achieve "theoretical maximum" React performance by subscribing individual compon
 ## Baseline
 
 Supergrain + `<For>` component:
+
 - 1K rows: ~64ms
 - 10K rows: ~679ms
 - Updates: ~30ms
 
 ## Results Summary
 
-| Implementation | 10K rows | vs Supergrain | Verdict |
-|----------------|----------|---------------|---------|
-| **Supergrain + For** | **666ms** | **baseline** | **Winner** |
-| React Context | 765ms | 15% slower | Best alternative |
-| Minimal For (no Supergrain) | 787ms | 18% slower | Library "overhead" is optimization |
-| Direct Subscriptions | 1094ms | 64% slower | Doesn't scale |
-| Direct Subscriptions (no startTransition) | 1274ms | 91% slower | Even worse |
-| useSyncExternalStore | 1161ms | 74% slower | Wrong tool |
+| Implementation                            | 10K rows  | vs Supergrain | Verdict                            |
+| ----------------------------------------- | --------- | ------------- | ---------------------------------- |
+| **Supergrain + For**                      | **666ms** | **baseline**  | **Winner**                         |
+| React Context                             | 765ms     | 15% slower    | Best alternative                   |
+| Minimal For (no Supergrain)               | 787ms     | 18% slower    | Library "overhead" is optimization |
+| Direct Subscriptions                      | 1094ms    | 64% slower    | Doesn't scale                      |
+| Direct Subscriptions (no startTransition) | 1274ms    | 91% slower    | Even worse                         |
+| useSyncExternalStore                      | 1161ms    | 74% slower    | Wrong tool                         |
 
 ## What Was Tried
 
@@ -34,9 +35,9 @@ Each Row subscribes to its specific item via custom store. Updates wrapped in `s
 
 ```typescript
 const Row = memo(({ itemId }) => {
-  const [item, setItem] = useState(() => store.getItem(itemId))
-  useEffect(() => store.subscribeToItem(itemId, setItem), [itemId])
-})
+  const [item, setItem] = useState(() => store.getItem(itemId));
+  useEffect(() => store.subscribeToItem(itemId, setItem), [itemId]);
+});
 ```
 
 **Result:** 10K rows 61% slower. 10,000 individual subscriptions + useState calls + useEffect cleanups > 1 shared reconciliation pass.
@@ -55,9 +56,9 @@ React 18's official external store hook.
 const Row = memo(({ itemId }) => {
   const item = useSyncExternalStore(
     (cb) => store.subscribeItem(itemId, cb),
-    () => store.getItemSnapshot(itemId)
-  )
-})
+    () => store.getItemSnapshot(itemId),
+  );
+});
 ```
 
 **Result:** 71% slower. Still 10,000 individual subscriptions. `useSyncExternalStore` adds more overhead than plain `useState`.
@@ -77,10 +78,12 @@ Stripped out Supergrain, used plain JS store with same `<For>` pattern.
 ## Why Individual Subscriptions Don't Scale
 
 **The math:**
+
 - Shared state: 1 update → React diffs N components → O(N) with small constant
 - Individual subscriptions: N subscriptions + N useState + N useEffect cleanups → O(N) with large constant
 
 **Memory overhead for 10K rows:**
+
 - 10,000 `useState` hooks
 - 10,000 `useEffect` cleanup functions
 - 10,000 subscription entries in Maps/Sets
@@ -92,9 +95,11 @@ Initial "optimized" results showed suspiciously fast times (25ms for 10K rows). 
 
 ```typescript
 function validateRowCount(container, expected, testName) {
-  const rows = container.querySelectorAll('tbody tr')
+  const rows = container.querySelectorAll("tbody tr");
   if (rows.length !== expected) {
-    throw new Error(`VALIDATION FAILED: ${testName} expected ${expected} rows but found ${rows.length}`)
+    throw new Error(
+      `VALIDATION FAILED: ${testName} expected ${expected} rows but found ${rows.length}`,
+    );
   }
 }
 ```

@@ -1,7 +1,7 @@
-import { defineConfig } from 'vitest/config'
-import react from '@vitejs/plugin-react'
-import { resolve } from 'path'
-import { playwright } from '@vitest/browser-playwright'
+import { defineConfig } from "vitest/config";
+import react from "@vitejs/plugin-react";
+import { resolve } from "path";
+import { playwright } from "@vitest/browser-playwright";
 
 export default defineConfig({
   plugins: [react()],
@@ -12,22 +12,22 @@ export default defineConfig({
       headless: true,
       instances: [
         {
-          browser: 'chromium',
+          browser: "chromium",
         },
       ],
     },
-    setupFiles: ['./tests/setup.ts'],
+    setupFiles: ["./tests/setup.ts"],
     globals: true,
-    include: ['**/*.bench.{ts,tsx}'],
+    include: ["**/*.bench.{ts,tsx}"],
     benchmark: {
-      include: ['**/*.bench.{ts,tsx}'],
-      reporters: ['verbose'],
+      include: ["**/*.bench.{ts,tsx}"],
+      reporters: ["verbose"],
     },
   },
   resolve: {
     alias: {
-      '@supergrain/core': resolve(__dirname, '../core/src'),
-      '@supergrain/react': resolve(__dirname, './src'),
+      "@supergrain/core": resolve(__dirname, "../core/src"),
+      "@supergrain/react": resolve(__dirname, "./src"),
     },
   },
-})
+});

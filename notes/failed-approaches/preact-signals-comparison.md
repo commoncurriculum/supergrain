@@ -12,12 +12,12 @@ Switch from alien-signals to @preact/signals-core based on benchmarks showing pr
 
 Versions: alien-signals 2.0.7, @preact/signals-core 1.14.0
 
-| Benchmark | alien-signals | preact | Apparent Winner |
-|---|---:|---:|---|
-| Single signal read (100k) | 1,519 ops/s | 4,608 ops/s | preact 3.0x |
-| Multiple signals (10x10k) | 1,059 ops/s | 4,085 ops/s | preact 3.9x |
-| 10-deep computed chain (100k) | 1,477 ops/s | 3,136 ops/s | preact 2.1x |
-| Propagation (100 effects, 1k) | 439 ops/s | 389 ops/s | alien 1.13x |
+| Benchmark                     | alien-signals |      preact | Apparent Winner |
+| ----------------------------- | ------------: | ----------: | --------------- |
+| Single signal read (100k)     |   1,519 ops/s | 4,608 ops/s | preact 3.0x     |
+| Multiple signals (10x10k)     |   1,059 ops/s | 4,085 ops/s | preact 3.9x     |
+| 10-deep computed chain (100k) |   1,477 ops/s | 3,136 ops/s | preact 2.1x     |
+| Propagation (100 effects, 1k) |     439 ops/s |   389 ops/s | alien 1.13x     |
 
 ## Why the Benchmarks Were Wrong
 
@@ -32,22 +32,26 @@ The 2-4x "advantage" was measuring **V8's optimization of property getters vs fu
 
 ```typescript
 // WRONG — no reactive context, measures getter vs function call
-bench('preact', () => { for (let i = 0; i < 100_000; i++) sig.value })
-bench('alien', () => { for (let i = 0; i < 100_000; i++) sig() })
+bench("preact", () => {
+  for (let i = 0; i < 100_000; i++) sig.value;
+});
+bench("alien", () => {
+  for (let i = 0; i < 100_000; i++) sig();
+});
 
 // RIGHT — inside effect, with reactive tracking
-bench('preact', () => {
+bench("preact", () => {
   const dispose = preactEffect(() => {
-    for (let i = 0; i < 100_000; i++) sig.value
-  })
-  dispose()
-})
-bench('alien', () => {
+    for (let i = 0; i < 100_000; i++) sig.value;
+  });
+  dispose();
+});
+bench("alien", () => {
   const dispose = alienEffect(() => {
-    for (let i = 0; i < 100_000; i++) sig()
-  })
-  dispose()
-})
+    for (let i = 0; i < 100_000; i++) sig();
+  });
+  dispose();
+});
 ```
 
 ## What We Actually Found

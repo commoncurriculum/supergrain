@@ -11,30 +11,34 @@ Replace `Object.defineProperty(target, $NODE, ...)` with `WeakMap` for storing r
 ## What Was Tried
 
 **Before (Object.defineProperty):**
+
 ```typescript
 function getNodes(target: object): DataNodes {
-  let nodes = (target as any)[$NODE]
+  let nodes = (target as any)[$NODE];
   if (!nodes) {
-    nodes = Object.create(null)
+    nodes = Object.create(null);
     try {
-      Object.defineProperty(target, $NODE, { value: nodes, enumerable: false })
-    } catch { /* frozen objects */ }
+      Object.defineProperty(target, $NODE, { value: nodes, enumerable: false });
+    } catch {
+      /* frozen objects */
+    }
   }
-  return nodes
+  return nodes;
 }
 ```
 
 **After (WeakMap):**
+
 ```typescript
-const objectNodes = new WeakMap<object, DataNodes>()
+const objectNodes = new WeakMap<object, DataNodes>();
 
 function getNodes(target: object): DataNodes {
-  let nodes = objectNodes.get(target)
+  let nodes = objectNodes.get(target);
   if (!nodes) {
-    nodes = Object.create(null)
-    objectNodes.set(target, nodes)
+    nodes = Object.create(null);
+    objectNodes.set(target, nodes);
   }
-  return nodes
+  return nodes;
 }
 ```
 
@@ -42,16 +46,16 @@ All 80 tests passed. No API changes. Cleaner code.
 
 ## Benchmark Results
 
-| Benchmark | Before (hz) | After (hz) | Change |
-|-----------|-------------|------------|--------|
-| **Store Creation (1000 stores)** | 1,723 | 926 | **-46%** |
-| **Mixed Read/Write** | 17,275 | 15,234 | **-12%** |
-| **Batch Updates** | 356,247 | 294,597 | **-17%** |
-| Property Access | 373 | 376 | +1% |
-| Property Set | 47 | 44 | -7% |
-| Deep Property | 73 | 73 | 0% |
-| Shopping Cart (complex) | 941 | 1,523 | +62% |
-| Data Grid | 855 | 761 | -11% |
+| Benchmark                        | Before (hz) | After (hz) | Change   |
+| -------------------------------- | ----------- | ---------- | -------- |
+| **Store Creation (1000 stores)** | 1,723       | 926        | **-46%** |
+| **Mixed Read/Write**             | 17,275      | 15,234     | **-12%** |
+| **Batch Updates**                | 356,247     | 294,597    | **-17%** |
+| Property Access                  | 373         | 376        | +1%      |
+| Property Set                     | 47          | 44         | -7%      |
+| Deep Property                    | 73          | 73         | 0%       |
+| Shopping Cart (complex)          | 941         | 1,523      | +62%     |
+| Data Grid                        | 855         | 761        | -11%     |
 
 Shopping Cart was the sole meaningful win, but core operations regressed badly.
 

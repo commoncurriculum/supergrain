@@ -1,10 +1,10 @@
-import { useLayoutEffect } from 'react'
-import { effect } from '@supergrain/core'
+import { useLayoutEffect } from "react";
+import { effect } from "@supergrain/core";
 
 export interface DirectBinding {
-  ref: React.RefObject<HTMLElement | null>
-  getter: () => any
-  attr?: string
+  ref: React.RefObject<HTMLElement | null>;
+  getter: () => any;
+  attr?: string;
 }
 
 /**
@@ -27,7 +27,7 @@ export interface DirectBinding {
  * ```
  */
 export function $$<T>(value: T): T {
-  return value
+  return value;
 }
 
 /**
@@ -65,19 +65,19 @@ export function useDirectBindings(bindings: DirectBinding[]): void {
   useLayoutEffect(() => {
     const cleanups = bindings.map(({ ref, getter, attr }) => {
       return effect(() => {
-        const el = ref.current
-        if (!el) return
-        const value = getter()
+        const el = ref.current;
+        if (!el) return;
+        const value = getter();
         if (attr) {
-          ;(el as any)[attr] = value
+          (el as any)[attr] = value;
         } else {
-          el.textContent = String(value)
+          el.textContent = String(value);
         }
-      })
-    })
+      });
+    });
     return () => {
-      for (const c of cleanups) c()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- bindings are stable (compiler-generated)
-  }, [])
+      for (const c of cleanups) c();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bindings are stable (compiler-generated)
+  }, []);
 }

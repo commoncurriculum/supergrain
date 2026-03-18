@@ -13,43 +13,49 @@ Reduce context switches from N×3 (per property access) to 2 per render (once at
 ```typescript
 const proxy = new Proxy(store, {
   get(obj, prop, receiver) {
-    const prevSub = getCurrentSub()     // Context switch #1
-    setCurrentSub(effectNode)           // Context switch #2
+    const prevSub = getCurrentSub(); // Context switch #1
+    setCurrentSub(effectNode); // Context switch #2
     try {
-      const value = Reflect.get(obj, prop, receiver)
-      return createProxy(value)
+      const value = Reflect.get(obj, prop, receiver);
+      return createProxy(value);
     } finally {
-      setCurrentSub(prevSub)           // Context switch #3
+      setCurrentSub(prevSub); // Context switch #3
     }
-  }
-})
+  },
+});
 ```
 
 **Attempted optimization:** Set context once before render, restore in `useLayoutEffect`:
 
 ```typescript
 export function useOptimizedTrackedStore<T extends object>(store: T): T {
-  const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
-  const stateRef = useRef<{ cleanup: (() => void) | null; effectNode: any; prevSub: any } | null>(null)
+  const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+  const stateRef = useRef<{ cleanup: (() => void) | null; effectNode: any; prevSub: any } | null>(
+    null,
+  );
 
   if (!stateRef.current) {
-    let effectNode: any = null
-    let isFirstRun = true
-    const prevSub = getCurrentSub()
+    let effectNode: any = null;
+    let isFirstRun = true;
+    const prevSub = getCurrentSub();
     const cleanup = effect(() => {
-      if (isFirstRun) { effectNode = getCurrentSub(); isFirstRun = false; return }
-      forceUpdate()
-    })
-    stateRef.current = { cleanup, effectNode, prevSub }
+      if (isFirstRun) {
+        effectNode = getCurrentSub();
+        isFirstRun = false;
+        return;
+      }
+      forceUpdate();
+    });
+    stateRef.current = { cleanup, effectNode, prevSub };
   }
 
-  setCurrentSub(stateRef.current.effectNode)  // Context switch #1
+  setCurrentSub(stateRef.current.effectNode); // Context switch #1
 
   useIsomorphicLayoutEffect(() => {
-    setCurrentSub(stateRef.current.prevSub)   // Context switch #2
-  })
+    setCurrentSub(stateRef.current.prevSub); // Context switch #2
+  });
 
-  return store
+  return store;
 }
 ```
 

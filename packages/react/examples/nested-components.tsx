@@ -1,98 +1,90 @@
-import React from 'react'
-import { createStore } from '../../core/src/index'
-import { tracked } from '../src/index'
+import React from "react";
+import { createStore } from "../../core/src/index";
+import { tracked } from "../src/index";
 
 // Create a store with separate properties for different component levels
 const [store, update] = createStore({
   grandparent: {
     value: 1,
-    label: 'Grandparent',
+    label: "Grandparent",
   },
   parent: {
     value: 10,
-    label: 'Parent',
+    label: "Parent",
   },
   child: {
     value: 100,
-    label: 'Child',
+    label: "Child",
   },
   shared: {
-    theme: 'light',
+    theme: "light",
     fontSize: 14,
   },
-})
+});
 
 // Track render counts for demonstration
-let grandparentRenders = 0
-let parentRenders = 0
-let childRenders = 0
+let grandparentRenders = 0;
+let parentRenders = 0;
+let childRenders = 0;
 
 // Child component - only tracks child.value
 const Child = tracked(() => {
-  childRenders++
+  childRenders++;
 
   return (
     <div
       style={{
-        padding: '10px',
-        margin: '10px',
-        border: '1px solid blue',
-        borderRadius: '4px',
+        padding: "10px",
+        margin: "10px",
+        border: "1px solid blue",
+        borderRadius: "4px",
       }}
     >
       <h3>Child Component</h3>
       <p>Value: {store.child.value}</p>
       <p>Render count: {childRenders}</p>
-      <button
-        onClick={() =>
-          update({ $set: { 'child.value': store.child.value + 1 } })
-        }
-      >
+      <button onClick={() => update({ $set: { "child.value": store.child.value + 1 } })}>
         Increment Child
       </button>
     </div>
-  )
-})
+  );
+});
 
 // Parent component - tracks parent.value and renders Child
 const Parent = tracked(() => {
-  parentRenders++
+  parentRenders++;
 
   return (
     <div
       style={{
-        padding: '10px',
-        margin: '10px',
-        border: '1px solid green',
-        borderRadius: '4px',
+        padding: "10px",
+        margin: "10px",
+        border: "1px solid green",
+        borderRadius: "4px",
       }}
     >
       <h2>Parent Component</h2>
       <p>Value: {store.parent.value}</p>
       <p>Render count: {parentRenders}</p>
-      <button
-        onClick={() =>
-          update({ $set: { 'parent.value': store.parent.value + 10 } })
-        }
-      >
+      <button onClick={() => update({ $set: { "parent.value": store.parent.value + 10 } })}>
         Increment Parent
       </button>
       <Child />
     </div>
-  )
-})
+  );
+});
 
 // Grandparent component - tracks grandparent.value and renders Parent
 const GrandParent = tracked(() => {
-  grandparentRenders++
+  grandparentRenders++;
 
   return (
     <div
       style={{
-        padding: '10px',
-        margin: '10px',
-        border: '1px solid red',
-        borderRadius: '4px',
+        padding: "10px",
+        margin: "10px",
+        border: "1px solid red",
+        borderRadius: "4px",
       }}
     >
       <h1>Grandparent Component</h1>
@@ -102,7 +94,7 @@ const GrandParent = tracked(() => {
       <button
         onClick={() =>
           update({
-            $set: { 'grandparent.value': store.grandparent.value + 100 },
+            $set: { "grandparent.value": store.grandparent.value + 100 },
           })
         }
       >
@@ -110,95 +102,87 @@ const GrandParent = tracked(() => {
       </button>
       <button
         onClick={() => {
-          const newTheme = store.shared.theme === 'light' ? 'dark' : 'light'
-          update({ $set: { 'shared.theme': newTheme } })
+          const newTheme = store.shared.theme === "light" ? "dark" : "light";
+          update({ $set: { "shared.theme": newTheme } });
         }}
       >
         Toggle Theme (affects only Grandparent)
       </button>
       <Parent />
     </div>
-  )
-})
+  );
+});
 
 // Sibling components example - demonstrating independent tracking
 const SiblingA = tracked(() => {
   return (
     <div
       style={{
-        padding: '10px',
-        border: '1px solid purple',
-        borderRadius: '4px',
+        padding: "10px",
+        border: "1px solid purple",
+        borderRadius: "4px",
       }}
     >
       <h3>Sibling A</h3>
       <p>Parent Value: {store.parent.value}</p>
     </div>
-  )
-})
+  );
+});
 
 const SiblingB = tracked(() => {
   return (
     <div
       style={{
-        padding: '10px',
-        border: '1px solid orange',
-        borderRadius: '4px',
+        padding: "10px",
+        border: "1px solid orange",
+        borderRadius: "4px",
       }}
     >
       <h3>Sibling B</h3>
       <p>Child Value: {store.child.value}</p>
     </div>
-  )
-})
+  );
+});
 
 function SiblingContainer() {
   return (
     <div
       style={{
-        display: 'flex',
-        gap: '10px',
-        margin: '10px',
-        padding: '10px',
-        border: '1px solid gray',
-        borderRadius: '4px',
+        display: "flex",
+        gap: "10px",
+        margin: "10px",
+        padding: "10px",
+        border: "1px solid gray",
+        borderRadius: "4px",
       }}
     >
       <SiblingA />
       <SiblingB />
     </div>
-  )
+  );
 }
 
 // Main App component
 export function NestedComponentsExample() {
   return (
-    <div style={{ fontFamily: 'Arial, sans-serif', padding: '20px' }}>
+    <div style={{ fontFamily: "Arial, sans-serif", padding: "20px" }}>
       <h1>Nested Components with Isolated Tracking</h1>
 
       <div
         style={{
-          marginBottom: '20px',
-          padding: '10px',
-          background: '#f0f0f0',
-          borderRadius: '4px',
+          marginBottom: "20px",
+          padding: "10px",
+          background: "#f0f0f0",
+          borderRadius: "4px",
         }}
       >
         <h3>Instructions:</h3>
         <ul>
           <li>Click buttons to update different properties</li>
-          <li>
-            Notice that only components tracking the changed property re-render
-          </li>
+          <li>Notice that only components tracking the changed property re-render</li>
           <li>Child updates don't cause parent re-renders</li>
-          <li>
-            Parent updates cause child re-renders (due to React's component
-            tree)
-          </li>
-          <li>
-            Theme toggle only affects Grandparent (the only component accessing
-            it)
-          </li>
+          <li>Parent updates cause child re-renders (due to React's component tree)</li>
+          <li>Theme toggle only affects Grandparent (the only component accessing it)</li>
         </ul>
       </div>
 
@@ -209,10 +193,10 @@ export function NestedComponentsExample() {
 
       <div
         style={{
-          marginTop: '20px',
-          padding: '10px',
-          background: '#e0e0e0',
-          borderRadius: '4px',
+          marginTop: "20px",
+          padding: "10px",
+          background: "#e0e0e0",
+          borderRadius: "4px",
         }}
       >
         <h3>Global Actions:</h3>
@@ -221,25 +205,25 @@ export function NestedComponentsExample() {
             // Reset all values
             update({
               $set: {
-                'grandparent.value': 1,
-                'parent.value': 10,
-                'child.value': 100,
-                'shared.theme': 'light',
+                "grandparent.value": 1,
+                "parent.value": 10,
+                "child.value": 100,
+                "shared.theme": "light",
               },
-            })
-            grandparentRenders = 0
-            parentRenders = 0
-            childRenders = 0
+            });
+            grandparentRenders = 0;
+            parentRenders = 0;
+            childRenders = 0;
           }}
         >
           Reset All Values and Counters
         </button>
       </div>
     </div>
-  )
+  );
 }
 
 // Export a standalone app for testing
 export default function App() {
-  return <NestedComponentsExample />
+  return <NestedComponentsExample />;
 }

@@ -28,6 +28,7 @@ const dataCleanup = effect(() => {
 ## Why It Failed
 
 When `effect()` is called inside a running effect, alien-signals must:
+
 1. Track the new effect as potentially dependent on the outer effect's dependencies
 2. Update the reactive dependency graph
 3. Handle cleanup scheduling for inner effects when the outer re-runs
@@ -38,11 +39,11 @@ This bookkeeping multiplied by 2000 effects (2 per row x 1000 rows) adds ~20ms.
 
 From `gap-analysis.bench.tsx`:
 
-| Approach | Time (1000 rows) |
-|---|---|
-| Pure DOM + alien-signals (effects outside) | 2.5ms |
-| Pure DOM + alien-signals + supergrain store (effects outside) | 5.1ms |
-| DirectDomApp (effects inside outer effect) | 25.2ms |
+| Approach                                                      | Time (1000 rows) |
+| ------------------------------------------------------------- | ---------------- |
+| Pure DOM + alien-signals (effects outside)                    | 2.5ms            |
+| Pure DOM + alien-signals + supergrain store (effects outside) | 5.1ms            |
+| DirectDomApp (effects inside outer effect)                    | 25.2ms           |
 
 The 5x overhead is entirely from nested effect creation.
 

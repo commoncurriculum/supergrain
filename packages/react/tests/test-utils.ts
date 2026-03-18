@@ -1,4 +1,4 @@
-import { startBatch, endBatch } from '@supergrain/core'
+import { startBatch, endBatch } from "@supergrain/core";
 
 /**
  * Flushes pending microtasks to ensure batched updates complete.
@@ -6,9 +6,9 @@ import { startBatch, endBatch } from '@supergrain/core'
  */
 export async function flushMicrotasks(): Promise<void> {
   // Wait for microtasks to run
-  await Promise.resolve()
+  await Promise.resolve();
   // Double flush to catch any effects that schedule more microtasks
-  await Promise.resolve()
+  await Promise.resolve();
 }
 
 /**
@@ -20,8 +20,8 @@ export async function flushMicrotasks(): Promise<void> {
  */
 export function flushSync(): void {
   // Start and immediately end a batch to force flush
-  startBatch()
-  endBatch()
+  startBatch();
+  endBatch();
 }
 
 /**
@@ -29,21 +29,19 @@ export function flushSync(): void {
  * This is the synchronous version - use for non-async operations.
  */
 export function actWithEffects<T>(callback: () => T): T {
-  const result = callback()
-  flushSync()
-  return result
+  const result = callback();
+  flushSync();
+  return result;
 }
 
 /**
  * Runs an async callback and ensures all microtasks/effects are flushed.
  * This is the preferred way to test async operations with stores.
  */
-export async function actWithEffectsAsync<T>(
-  callback: () => T | Promise<T>
-): Promise<T> {
-  const result = await callback()
-  await flushMicrotasks()
-  return result
+export async function actWithEffectsAsync<T>(callback: () => T | Promise<T>): Promise<T> {
+  const result = await callback();
+  await flushMicrotasks();
+  return result;
 }
 
 /**
@@ -51,7 +49,7 @@ export async function actWithEffectsAsync<T>(
  * Useful for ensuring async operations have completed.
  */
 export function nextTick(): Promise<void> {
-  return Promise.resolve()
+  return Promise.resolve();
 }
 
 /**
@@ -60,10 +58,10 @@ export function nextTick(): Promise<void> {
  */
 export function withAutoFlush<T extends (...args: any[]) => any>(fn: T): T {
   return (async (...args: Parameters<T>) => {
-    const result = fn(...args)
-    await flushMicrotasks()
-    return result
-  }) as T
+    const result = fn(...args);
+    await flushMicrotasks();
+    return result;
+  }) as T;
 }
 
 /**
@@ -72,20 +70,20 @@ export function withAutoFlush<T extends (...args: any[]) => any>(fn: T): T {
  */
 export async function waitFor(
   condition: () => boolean,
-  options: { timeout?: number; interval?: number } = {}
+  options: { timeout?: number; interval?: number } = {},
 ): Promise<void> {
-  const { timeout = 1000, interval = 10 } = options
-  const startTime = Date.now()
+  const { timeout = 1000, interval = 10 } = options;
+  const startTime = Date.now();
 
   while (!condition()) {
     if (Date.now() - startTime > timeout) {
-      throw new Error(`Timeout waiting for condition after ${timeout}ms`)
+      throw new Error(`Timeout waiting for condition after ${timeout}ms`);
     }
 
-    await flushMicrotasks()
+    await flushMicrotasks();
 
     if (!condition()) {
-      await new Promise(resolve => setTimeout(resolve, interval))
+      await new Promise((resolve) => setTimeout(resolve, interval));
     }
   }
 }
@@ -95,10 +93,10 @@ export async function waitFor(
  * Useful for understanding the timing of reactive updates in tests.
  */
 export async function flushWithLogging(label?: string): Promise<void> {
-  const prefix = label ? `[${label}] ` : ''
-  console.log(`${prefix}Flushing microtasks...`)
-  await flushMicrotasks()
-  console.log(`${prefix}Microtasks flushed`)
+  const prefix = label ? `[${label}] ` : "";
+  console.log(`${prefix}Flushing microtasks...`);
+  await flushMicrotasks();
+  console.log(`${prefix}Microtasks flushed`);
 }
 
 /**
@@ -108,31 +106,29 @@ export async function flushWithLogging(label?: string): Promise<void> {
 export function createTestWrapper() {
   return {
     async run<T>(callback: () => T | Promise<T>): Promise<T> {
-      return actWithEffectsAsync(callback)
+      return actWithEffectsAsync(callback);
     },
 
     async update<T>(updateFn: () => T): Promise<T> {
-      const result = updateFn()
-      await flushMicrotasks()
-      return result
+      const result = updateFn();
+      await flushMicrotasks();
+      return result;
     },
 
     async waitFor(condition: () => boolean, timeout?: number): Promise<void> {
-      await waitFor(condition, { timeout })
+      await waitFor(condition, { timeout });
     },
-  }
+  };
 }
 
 /**
  * Test helper to ensure a component update and effect flush.
  * Combines React's act() with effect flushing.
  */
-export async function actAndFlush(
-  callback: () => void | Promise<void>
-): Promise<void> {
-  const { act } = await import('@testing-library/react')
+export async function actAndFlush(callback: () => void | Promise<void>): Promise<void> {
+  const { act } = await import("@testing-library/react");
   await act(async () => {
-    await callback()
-    await flushMicrotasks()
-  })
+    await callback();
+    await flushMicrotasks();
+  });
 }

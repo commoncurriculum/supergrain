@@ -19,6 +19,7 @@
 ## Supergrain's Performance Profile
 
 ### Bottlenecks
+
 1. **Proxy overhead:** 60x slower than plain objects (primary issue)
    - Plain object: 20,824 ops/sec
    - Proxy object: 258 ops/sec
@@ -26,6 +27,7 @@
 3. **Memory allocation:** New signal objects created frequently
 
 ### Strong Areas (No Optimization Needed)
+
 - Store creation: 1,723 Hz (82x faster than solid-js)
 - Batch updates: 356,247 Hz
 - Write operations: Near solid-js performance
@@ -34,13 +36,13 @@
 
 ## Data Structure Assessment
 
-| Data Structure | Assessment | Benchmark Result | Decision |
-|----------------|------------|------------------|----------|
-| Pool | TESTED | 1.5x slower allocation | Do not implement |
-| SortedArray | MARGINAL | Minor cache benefits | Not worth complexity |
-| BitField/BitArray | N/A | No applicability | Not applicable |
-| Binary Protocol | INCOMPATIBLE | Breaks JS interop | Architecture mismatch |
-| Graph/Grid | N/A | No relevance | Wrong use case |
+| Data Structure    | Assessment   | Benchmark Result       | Decision              |
+| ----------------- | ------------ | ---------------------- | --------------------- |
+| Pool              | TESTED       | 1.5x slower allocation | Do not implement      |
+| SortedArray       | MARGINAL     | Minor cache benefits   | Not worth complexity  |
+| BitField/BitArray | N/A          | No applicability       | Not applicable        |
+| Binary Protocol   | INCOMPATIBLE | Breaks JS interop      | Architecture mismatch |
+| Graph/Grid        | N/A          | No relevance           | Wrong use case        |
 
 ### Pool -- TESTED, REJECTED
 
@@ -49,6 +51,7 @@ Signal pooling was the highest-potential optimization. Pre-allocate signal objec
 **Hypothesis:** Reduce GC pressure and improve memory locality.
 
 **Benchmark results:**
+
 ```
 Regular signal allocation:  12,407 ops/sec  FASTER
 Pooled signal allocation:    8,334 ops/sec  SLOWER (-1.5x)
@@ -60,6 +63,7 @@ Memory pressure (pooled):      682 ops/sec  SLOWER (-1.73x)
 See [signal-pooling.md](../benchmarks/signal-pooling.md) for full benchmark code.
 
 **Why pooling failed:**
+
 1. **Pool lookup costs more than direct allocation** -- V8 is highly optimized for small object creation
 2. **State reset overhead** -- resetting pooled signals adds work that fresh signals don't need
 3. **Wrong lifecycle pattern** -- signals are typically long-lived, not rapidly allocated/deallocated
@@ -79,32 +83,36 @@ Could replace `Record<PropertyKey, Signal>` with sorted key lookup for better ca
 
 ## Performance Projections vs Reality
 
-| Metric | Estimated Impact | Actual Result |
-|--------|-----------------|---------------|
+| Metric                       | Estimated Impact | Actual Result                 |
+| ---------------------------- | ---------------- | ----------------------------- |
 | Property access with pooling | +10% improvement | -33% regression (1.5x slower) |
-| Memory allocation reduction | -70% | N/A (not implemented) |
-| GC pressure reduction | Significant | N/A (pooling rejected) |
+| Memory allocation reduction  | -70%             | N/A (not implemented)         |
+| GC pressure reduction        | Significant      | N/A (pooling rejected)        |
 
 ---
 
 ## Key Learnings
 
 ### Why Data Structures Can't Solve This
+
 1. **Proxy overhead dominates** -- 60x overhead cannot be solved with data structures
 2. **Architecture mismatch** -- reactivity requires object reference semantics that binary/view structures break
 3. **Access pattern mismatch** -- most structures are designed for different workloads
 
 ### What Has Worked (Elsewhere)
+
 - Micro-optimizations in hot paths (symbol checks, property access patterns)
 - Algorithm improvements (batch updates, reconciliation strategies)
 - Memory layout choices (`Object.create(null)` for DataNodes)
 
 ### What Has Not Worked
+
 - Better data structures alone (core bottleneck is proxy, not data structure)
 - Object pooling (overhead exceeds benefits for typical signal lifecycle)
 - Complex caching strategies (previous WeakMap attempt also showed limited gains)
 
 ### Recommended Focus Areas
+
 1. **Proxy alternatives:** Compile-time transformations, selective non-proxy paths
 2. **Algorithm optimization:** Continue micro-optimizations in proven hot paths
 3. **Bundle splitting:** Better tree shaking for performance-critical code paths

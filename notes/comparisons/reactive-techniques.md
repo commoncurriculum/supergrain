@@ -6,16 +6,16 @@
 
 ## Read Performance Comparison
 
-| Library | Simple Read | Deep Read | Key Advantage |
-|---------|-------------|-----------|---------------|
-| Redux Toolkit | ~0.011ms | ~0.011ms | Plain object access |
-| Zustand | ~0.011ms | ~0.016ms | Plain object access |
-| Valtio (Snapshot) | ~0.016ms | ~0.016ms | Consistent performance |
-| MobX | ~0.05ms | ~0.2ms | Auto dependency tracking |
-| Supergrain | ~0.08ms | ~0.13ms | Auto reactivity |
-| Jotai | ~0.1ms | ~1ms* | Atomic granularity |
+| Library           | Simple Read | Deep Read | Key Advantage            |
+| ----------------- | ----------- | --------- | ------------------------ |
+| Redux Toolkit     | ~0.011ms    | ~0.011ms  | Plain object access      |
+| Zustand           | ~0.011ms    | ~0.016ms  | Plain object access      |
+| Valtio (Snapshot) | ~0.016ms    | ~0.016ms  | Consistent performance   |
+| MobX              | ~0.05ms     | ~0.2ms    | Auto dependency tracking |
+| Supergrain        | ~0.08ms     | ~0.13ms   | Auto reactivity          |
+| Jotai             | ~0.1ms      | ~1ms\*    | Atomic granularity       |
 
-*Jotai deep reads require atomic decomposition.
+\*Jotai deep reads require atomic decomposition.
 
 Plain-object libraries (Redux, Zustand) have fastest reads but no automatic reactivity. Supergrain's proxy overhead (~0.08ms) is reasonable for automatic fine-grained reactivity.
 
@@ -109,21 +109,22 @@ TypeScript-powered autocompletion for nested property paths.
 
 ## Priority Matrix
 
-| Priority | Technique | Creation | Reads | Memory | Complexity |
-|----------|-----------|----------|-------|--------|------------|
-| **High** | Lazy Proxy Creation | +300-500% | +300% | -50-70% | Medium |
-| **High** | Property Access Caching | -- | +500-800% | +5-10% | Low |
-| **High** | WeakRef Cleanup | -- | -- | -10-30% | Low |
-| **High** | DevTools Integration | -- | -- | +5% | Medium |
-| **Medium** | Computed Properties | -- | Variable | +10-20% | Medium |
-| **Medium** | Snapshot Caching | -- | -- | -- | Medium |
-| **Medium** | Selective Reactivity | +100-200% | +200-400% | -20-40% | High |
-| **Lower** | Atomic Granularity | -- | -- | -- | High |
-| **Lower** | Manual Batching API | -- | -- | -- | Low |
+| Priority   | Technique               | Creation  | Reads     | Memory  | Complexity |
+| ---------- | ----------------------- | --------- | --------- | ------- | ---------- |
+| **High**   | Lazy Proxy Creation     | +300-500% | +300%     | -50-70% | Medium     |
+| **High**   | Property Access Caching | --        | +500-800% | +5-10%  | Low        |
+| **High**   | WeakRef Cleanup         | --        | --        | -10-30% | Low        |
+| **High**   | DevTools Integration    | --        | --        | +5%     | Medium     |
+| **Medium** | Computed Properties     | --        | Variable  | +10-20% | Medium     |
+| **Medium** | Snapshot Caching        | --        | --        | --      | Medium     |
+| **Medium** | Selective Reactivity    | +100-200% | +200-400% | -20-40% | High       |
+| **Lower**  | Atomic Granularity      | --        | --        | --      | High       |
+| **Lower**  | Manual Batching API     | --        | --        | --      | Low        |
 
 ## Combined Impact Estimate
 
 Implementing lazy proxying + property access caching could make Supergrain:
+
 - **Creation:** Competitive with Valtio (~2-5ms)
 - **Cached reads:** Competitive with plain-object libraries (~0.01ms)
 - **Memory:** More efficient baseline

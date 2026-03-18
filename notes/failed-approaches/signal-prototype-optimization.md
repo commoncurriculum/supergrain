@@ -12,10 +12,10 @@ Reduce per-signal memory by moving the `$` setter from a per-instance closure to
 
 ```typescript
 function getNode(nodes, property, value) {
-  const newSignal = signal(value)
-  newSignal.$ = (v) => newSignal(v)  // Per-instance closure, bound to this specific signal
-  nodes[property] = newSignal
-  return newSignal
+  const newSignal = signal(value);
+  newSignal.$ = (v) => newSignal(v); // Per-instance closure, bound to this specific signal
+  nodes[property] = newSignal;
+  return newSignal;
 }
 ```
 
@@ -26,7 +26,7 @@ Each signal gets its own `$` function that captures the specific signal in a clo
 ```typescript
 class EnhancedSignal<T> extends Signal<T> {
   $(value: T): void {
-    return this(value)  // Relies on `this` binding
+    return this(value); // Relies on `this` binding
   }
 }
 ```
@@ -37,18 +37,18 @@ class EnhancedSignal<T> extends Signal<T> {
 
 ```typescript
 // Current (works):
-const setter = nameSignal.$   // Closure captures nameSignal
-setter('Jane')                // Updates nameSignal correctly
+const setter = nameSignal.$; // Closure captures nameSignal
+setter("Jane"); // Updates nameSignal correctly
 
 // Prototype (breaks):
-const setter = nameSignal.$   // Unbound method
-setter('Jane')                // `this` is undefined or wrong
+const setter = nameSignal.$; // Unbound method
+setter("Jane"); // `this` is undefined or wrong
 ```
 
 ### 2. `.bind()` defeats the purpose
 
 ```typescript
-const setter = nameSignal.$.bind(nameSignal)  // Creates new function = same memory as closure
+const setter = nameSignal.$.bind(nameSignal); // Creates new function = same memory as closure
 ```
 
 ### 3. API contract violation
@@ -56,19 +56,19 @@ const setter = nameSignal.$.bind(nameSignal)  // Creates new function = same mem
 Existing code depends on `signal.$` being a standalone callable:
 
 ```typescript
-const setter1 = signal1.$
-const setter2 = signal2.$
-setter1('a')  // Must update signal1 only
-setter2('b')  // Must update signal2 only
+const setter1 = signal1.$;
+const setter2 = signal2.$;
+setter1("a"); // Must update signal1 only
+setter2("b"); // Must update signal2 only
 ```
 
 ## Alternatives Considered (All Failed)
 
-| Approach | Problem |
-|----------|---------|
-| Lazy `$` via `Object.defineProperty` getter | Still creates per-instance function + adds getter overhead |
-| Shared function with context param: `sharedSetter(signal, value)` | Changes API, breaks existing code |
-| WeakMap-based method storage | More memory (WeakMap + getter + function), not less |
+| Approach                                                          | Problem                                                    |
+| ----------------------------------------------------------------- | ---------------------------------------------------------- |
+| Lazy `$` via `Object.defineProperty` getter                       | Still creates per-instance function + adds getter overhead |
+| Shared function with context param: `sharedSetter(signal, value)` | Changes API, breaks existing code                          |
+| WeakMap-based method storage                                      | More memory (WeakMap + getter + function), not less        |
 
 ## Key Learnings
 

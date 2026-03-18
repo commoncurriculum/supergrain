@@ -38,13 +38,13 @@ interface AppStoreState {
   documents: {
     [modelType: string]: {
       [id: string]: {
-        content: any
-        status: 'pending' | 'fulfilled' | 'rejected'
-        error?: string
-        lastFetched?: number
-      }
-    }
-  }
+        content: any;
+        status: "pending" | "fulfilled" | "rejected";
+        error?: string;
+        lastFetched?: number;
+      };
+    };
+  };
   // Extensible: ui, settings, etc.
 }
 ```
@@ -73,23 +73,23 @@ Users declare their document types once:
 
 ```typescript
 interface User {
-  id: number
-  firstName: string
-  lastName: string
-  email: string
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
 }
 
 interface Post {
-  id: number
-  title: string
-  content: string
-  userId: number
-  likes: number
+  id: number;
+  title: string;
+  content: string;
+  userId: number;
+  likes: number;
 }
 
 interface DocumentTypes {
-  users: User
-  posts: Post
+  users: User;
+  posts: Post;
 }
 ```
 
@@ -99,17 +99,17 @@ interface DocumentTypes {
 
 ```typescript
 interface DocumentPromise<T> {
-  content: T | undefined
-  isPending: boolean
-  isSettled: boolean
-  isRejected: boolean
-  isFulfilled: boolean
+  content: T | undefined;
+  isPending: boolean;
+  isSettled: boolean;
+  isRejected: boolean;
+  isFulfilled: boolean;
 }
 
 function findDoc<K extends keyof DocumentTypes>(
   modelType: K,
-  id: string | number
-): DocumentPromise<DocumentTypes[K]>
+  id: string | number,
+): DocumentPromise<DocumentTypes[K]>;
 ```
 
 ## Implementation Details
@@ -117,49 +117,49 @@ function findDoc<K extends keyof DocumentTypes>(
 ### Core AppStore Class
 
 ```typescript
-import { createStore, computed } from '@supergrain/core'
+import { createStore, computed } from "@supergrain/core";
 
 class AppStore {
-  private store: AppStoreState
-  private update: (ops: any) => void
+  private store: AppStoreState;
+  private update: (ops: any) => void;
 
   constructor() {
     const [store, update] = createStore<AppStoreState>({
       documents: {},
-    })
-    this.store = store
-    this.update = update
+    });
+    this.store = store;
+    this.update = update;
   }
 
   findDoc<K extends keyof DocumentTypes>(
     modelType: K,
-    id: string | number
+    id: string | number,
   ): DocumentPromise<DocumentTypes[K]> {
-    const key = String(id)
+    const key = String(id);
 
     const documentState = computed(() => {
-      return this.store.documents[modelType]?.[key]
-    })
+      return this.store.documents[modelType]?.[key];
+    });
 
     // If document doesn't exist, trigger fetch and create pending entry
     if (!documentState()?.value) {
-      this.triggerFetch(modelType, id)
+      this.triggerFetch(modelType, id);
       this.update({
         $set: {
           [`documents.${modelType}.${key}`]: {
             content: undefined,
-            status: 'pending',
+            status: "pending",
           },
         },
-      })
+      });
     }
 
-    return new DocumentPromise(documentState)
+    return new DocumentPromise(documentState);
   }
 
   insertDocument<K extends keyof DocumentTypes>(
     modelType: K,
-    data: Partial<DocumentTypes[K]>
+    data: Partial<DocumentTypes[K]>,
   ): Promise<DocumentTypes[K]> {
     // Handles optimistic updates and actual insertion
   }
@@ -174,31 +174,31 @@ class AppStore {
 
 ```typescript
 class DocumentPromise<T> {
-  private documentState: () => DocumentState<T> | undefined
+  private documentState: () => DocumentState<T> | undefined;
 
   constructor(documentState: () => DocumentState<T> | undefined) {
-    this.documentState = documentState
+    this.documentState = documentState;
   }
 
   get content(): T | undefined {
-    return this.documentState()?.content
+    return this.documentState()?.content;
   }
 
   get isPending(): boolean {
-    return this.documentState()?.status === 'pending'
+    return this.documentState()?.status === "pending";
   }
 
   get isSettled(): boolean {
-    const status = this.documentState()?.status
-    return status === 'fulfilled' || status === 'rejected'
+    const status = this.documentState()?.status;
+    return status === "fulfilled" || status === "rejected";
   }
 
   get isRejected(): boolean {
-    return this.documentState()?.status === 'rejected'
+    return this.documentState()?.status === "rejected";
   }
 
   get isFulfilled(): boolean {
-    return this.documentState()?.status === 'fulfilled'
+    return this.documentState()?.status === "fulfilled";
   }
 }
 ```
@@ -248,14 +248,17 @@ packages/
 ## Implementation Phases
 
 ### Phase 1: Core Store Structure
+
 - AppStore class wrapping Supergrain core
 - DocumentPromise reactive wrapper
 - Basic `findDoc` with caching and pending states
 
 ### Phase 2: Document Operations
+
 - `insertDocument` with optimistic updates and rollback
 
 ### Phase 3: Advanced Features (Future)
+
 - TTL and cache eviction
 - Local storage integration
 - Cache invalidation strategies

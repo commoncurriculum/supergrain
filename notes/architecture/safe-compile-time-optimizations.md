@@ -24,28 +24,28 @@ Generate optimized proxy handlers for known object shapes at compile time.
 **Optimized handler** (for known shape `{ count: number, name: string }`):
 
 ```typescript
-const optimizedHandler: ProxyHandler<{ count: number, name: string }> = {
+const optimizedHandler: ProxyHandler<{ count: number; name: string }> = {
   get(target, prop, receiver) {
-    if (prop === $RAW) return target
-    if (prop === $PROXY) return receiver
+    if (prop === $RAW) return target;
+    if (prop === $PROXY) return receiver;
 
-    const value = Reflect.get(target, prop, receiver)
-    if (typeof value === 'function') return value
+    const value = Reflect.get(target, prop, receiver);
+    if (typeof value === "function") return value;
 
-    const currentSub = getCurrentSub() // Cache the call
-    if (!currentSub) return wrap(value)
+    const currentSub = getCurrentSub(); // Cache the call
+    if (!currentSub) return wrap(value);
 
     // Shape-specific fast path
-    if (prop === 'count' || prop === 'name') {
-      const nodes = getNodes(target)
-      const node = getNode(nodes, prop, value)
-      return wrap(node())
+    if (prop === "count" || prop === "name") {
+      const nodes = getNodes(target);
+      const node = getNode(nodes, prop, value);
+      return wrap(node());
     }
 
     // Fallback for unexpected properties
-    return genericGet(target, prop, receiver)
-  }
-}
+    return genericGet(target, prop, receiver);
+  },
+};
 ```
 
 **Expected improvement:** 15-25%. Eliminates unnecessary checks for known properties, caches `getCurrentSub()`.
@@ -60,18 +60,18 @@ Pre-allocate signal data structures based on TypeScript interfaces instead of la
 
 ```typescript
 function createUserStore(initialData: UserStore) {
-  const rootNodes = Object.create(null)
-  rootNodes.count = signal(initialData.count)
-  rootNodes.name = signal(initialData.name)
-  rootNodes.nested = signal(initialData.nested)
+  const rootNodes = Object.create(null);
+  rootNodes.count = signal(initialData.count);
+  rootNodes.name = signal(initialData.name);
+  rootNodes.nested = signal(initialData.nested);
 
-  const nestedNodes = Object.create(null)
-  nestedNodes.value = signal(initialData.nested.value)
+  const nestedNodes = Object.create(null);
+  nestedNodes.value = signal(initialData.nested.value);
 
-  Object.defineProperty(initialData, $NODE, { value: rootNodes })
-  Object.defineProperty(initialData.nested, $NODE, { value: nestedNodes })
+  Object.defineProperty(initialData, $NODE, { value: rootNodes });
+  Object.defineProperty(initialData.nested, $NODE, { value: nestedNodes });
 
-  return createReactiveProxy(initialData)
+  return createReactiveProxy(initialData);
 }
 ```
 
@@ -84,12 +84,12 @@ Generate specialized `wrap()` functions that skip `isWrappable()` runtime checks
 ```typescript
 // Generic (current)
 function wrap<T>(value: T): T {
-  return isWrappable(value) ? createReactiveProxy(value) : value
+  return isWrappable(value) ? createReactiveProxy(value) : value;
 }
 
 // Generated for known nested type
 function wrapNestedValue(value: { value: number }) {
-  return createReactiveProxy(value) // Known wrappable at compile time
+  return createReactiveProxy(value); // Known wrappable at compile time
 }
 ```
 
@@ -101,15 +101,15 @@ Generate optimized update functions for common operator patterns instead of runt
 
 ```typescript
 function updateUserStore(target: UserStore, operations: UserStoreOperations) {
-  if ('$set' in operations) {
-    const setOps = operations.$set
-    if ('count' in setOps) setProperty(target, 'count', setOps.count)
-    if ('name' in setOps) setProperty(target, 'name', setOps.name)
-    if ('nested.value' in setOps) setProperty(target.nested, 'value', setOps['nested.value'])
+  if ("$set" in operations) {
+    const setOps = operations.$set;
+    if ("count" in setOps) setProperty(target, "count", setOps.count);
+    if ("name" in setOps) setProperty(target, "name", setOps.name);
+    if ("nested.value" in setOps) setProperty(target.nested, "value", setOps["nested.value"]);
   }
 
   if (hasOtherOperations(operations)) {
-    return genericUpdate(target, operations)
+    return genericUpdate(target, operations);
   }
 }
 ```
@@ -118,12 +118,12 @@ function updateUserStore(target: UserStore, operations: UserStoreOperations) {
 
 ## Expected Combined Impact
 
-| Optimization | Expected Improvement | Safety Level |
-|---|---|---|
-| Proxy Handler Specialization | 15-25% | High -- preserves all behavior |
-| Signal Pre-allocation | 10-20% | High -- same signals, pre-created |
-| Type-Aware Wrapping | 5-15% | High -- equivalent runtime behavior |
-| Operator Specialization | 20-30% | High -- same operations, optimized |
+| Optimization                 | Expected Improvement | Safety Level                        |
+| ---------------------------- | -------------------- | ----------------------------------- |
+| Proxy Handler Specialization | 15-25%               | High -- preserves all behavior      |
+| Signal Pre-allocation        | 10-20%               | High -- same signals, pre-created   |
+| Type-Aware Wrapping          | 5-15%                | High -- equivalent runtime behavior |
+| Operator Specialization      | 20-30%               | High -- same operations, optimized  |
 
 **Combined:** 30-60% improvement with 100% reactivity compatibility.
 
@@ -132,12 +132,15 @@ function updateUserStore(target: UserStore, operations: UserStoreOperations) {
 ## Implementation Strategy
 
 ### Phase 1: Babel Plugin for Shape Analysis
+
 Identify `createStore` calls with type annotations; generate optimized handlers and pre-allocation factories.
 
 ### Phase 2: TypeScript Transformer
+
 Use actual interface definitions via the TypeChecker API for deeper type analysis.
 
 ### Phase 3: Runtime Fallbacks
+
 All optimized paths fall back to generic implementations for unknown patterns, dynamic access, and complex operations.
 
 ## Safety Guarantees
@@ -155,11 +158,11 @@ All optimized paths fall back to generic implementations for unknown patterns, d
 
 ## Implementation Timeline (Estimated)
 
-| Phase | Duration | Scope |
-|---|---|---|
-| Foundation | 2-3 weeks | Shape analysis, proxy handler codegen, basic TS transformer, validation framework |
-| Optimization Engine | 2-3 weeks | Signal pre-allocation, type-aware wrapping, operator specialization, runtime fallbacks |
-| Integration & Testing | 1-2 weeks | Babel plugin integration, benchmarks, safety testing, docs |
+| Phase                 | Duration  | Scope                                                                                  |
+| --------------------- | --------- | -------------------------------------------------------------------------------------- |
+| Foundation            | 2-3 weeks | Shape analysis, proxy handler codegen, basic TS transformer, validation framework      |
+| Optimization Engine   | 2-3 weeks | Signal pre-allocation, type-aware wrapping, operator specialization, runtime fallbacks |
+| Integration & Testing | 1-2 weeks | Babel plugin integration, benchmarks, safety testing, docs                             |
 
 ---
 

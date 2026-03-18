@@ -28,12 +28,12 @@ Investigate whether a special `<For>` React component for array iteration could 
 
 ### Performance Benchmarks (ops/sec)
 
-| Approach | Performance (ops/sec) | Re-renders | Efficiency |
-|---|---:|---|---|
-| Regular Map | 318.73 | All rows | 2% |
-| React.memo | 273.84 | All rows | 2% |
-| For Component | 278.77 | All rows | 2% |
-| DOM Rendering | 34.81 | All rows | 2% |
+| Approach      | Performance (ops/sec) | Re-renders | Efficiency |
+| ------------- | --------------------: | ---------- | ---------- |
+| Regular Map   |                318.73 | All rows   | 2%         |
+| React.memo    |                273.84 | All rows   | 2%         |
+| For Component |                278.77 | All rows   | 2%         |
+| DOM Rendering |                 34.81 | All rows   | 2%         |
 
 ### Scalability Results
 
@@ -48,14 +48,16 @@ Investigate whether a special `<For>` React component for array iteration could 
 `useTracked` creates new proxy objects for array items on each render, producing different object references. This defeats React.memo's shallow comparison.
 
 ```tsx
-{state.data.map((row: RowData) => (
-  <MemoizedRow
-    key={row.id}
-    item={row}       // New proxy reference every render — memo always re-renders
-    isSelected={row.id === state.selected}  // Only changes for 2 rows
-    onClick={selectRow}                     // Stable reference
-  />
-))}
+{
+  state.data.map((row: RowData) => (
+    <MemoizedRow
+      key={row.id}
+      item={row} // New proxy reference every render — memo always re-renders
+      isSelected={row.id === state.selected} // Only changes for 2 rows
+      onClick={selectRow} // Stable reference
+    />
+  ));
+}
 ```
 
 ```typescript
@@ -68,7 +70,7 @@ Row 3: Original vs Proxied = DIFFERENT
 ### React Reconciliation is the Bottleneck
 
 ```jsx
-<For each={state.comments}>{comment => <Comment comment={comment} />}</For>
+<For each={state.comments}>{(comment) => <Comment comment={comment} />}</For>
 // React still: calls render, maps all items, creates elements, reconciles entire tree
 ```
 

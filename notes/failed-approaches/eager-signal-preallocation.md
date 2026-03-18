@@ -12,18 +12,18 @@ Eliminate lazy signal creation overhead by walking initial data recursively at `
 
 ```typescript
 function initSignals(target: object, visited?: Set<object>): void {
-  if (!isWrappable(target) || Object.isFrozen(target)) return
-  const nodes = getNodes(target)
+  if (!isWrappable(target) || Object.isFrozen(target)) return;
+  const nodes = getNodes(target);
   if (Array.isArray(target)) {
     for (let i = 0; i < target.length; i++) {
-      getNode(nodes, i, target[i])
-      if (isWrappable(target[i])) initSignals(target[i], visited)
+      getNode(nodes, i, target[i]);
+      if (isWrappable(target[i])) initSignals(target[i], visited);
     }
-    getNode(nodes, 'length', target.length)
+    getNode(nodes, "length", target.length);
   } else {
     for (const key of Object.keys(target)) {
-      getNode(nodes, key, target[key])
-      if (isWrappable(value)) initSignals(value, visited)
+      getNode(nodes, key, target[key]);
+      if (isWrappable(value)) initSignals(value, visited);
     }
   }
 }

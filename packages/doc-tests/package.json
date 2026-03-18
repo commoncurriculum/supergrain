@@ -1,14 +1,22 @@
 {
   "name": "@supergrain/doc-tests",
   "version": "0.1.0",
-  "description": "Documentation tests for Supergrain examples",
   "private": true,
+  "description": "Documentation tests for Supergrain examples",
+  "keywords": [
+    "documentation",
+    "examples",
+    "supergrain",
+    "tests"
+  ],
+  "license": "MIT",
+  "author": "Scott Messinger",
   "type": "module",
   "scripts": {
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "test:validate": "vitest run --config vitest.node.config.ts",
-    "lint": "oxlint .",
+    "lint": "oxlint -D correctness -D suspicious tests/",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -30,13 +38,5 @@
     "typescript": "^5.9.2",
     "vite": "^7.1.5",
     "vitest": "4.1.0"
-  },
-  "keywords": [
-    "supergrain",
-    "documentation",
-    "tests",
-    "examples"
-  ],
-  "author": "Scott Messinger",
-  "license": "MIT"
+  }
 }

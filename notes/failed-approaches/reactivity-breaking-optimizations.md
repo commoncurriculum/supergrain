@@ -31,8 +31,8 @@ function handler.get(target, property, receiver) {
 Promote frequently-accessed properties to a fast path after N accesses:
 
 ```typescript
-if (cached.accessCount > 10 && cached.state === 'clean') {
-  return cached.value // BREAKS REACTIVITY
+if (cached.accessCount > 10 && cached.state === "clean") {
+  return cached.value; // BREAKS REACTIVITY
 }
 ```
 
@@ -45,19 +45,19 @@ Only create full signals when a reactive context exists; use lightweight proxies
 ```typescript
 function getNode(nodes, property, value) {
   if (!getCurrentSub()) {
-    return createLazySignal(value) // BREAKS REACTIVITY
+    return createLazySignal(value); // BREAKS REACTIVITY
   }
-  return signal(value)
+  return signal(value);
 }
 ```
 
 **Why it breaks:** Creates different signal instances for the same property depending on context. Updates to one instance don't propagate to observers of the other.
 
 ```typescript
-console.log(store.count)         // Creates lazy signal
-const doubled = reactive(() => store.count * 2)  // Creates full signal
-setStore({ count: 5 })           // Which signal gets notified?
-console.log(doubled())           // Still 0, not 10
+console.log(store.count); // Creates lazy signal
+const doubled = reactive(() => store.count * 2); // Creates full signal
+setStore({ count: 5 }); // Which signal gets notified?
+console.log(doubled()); // Still 0, not 10
 ```
 
 ## The Fundamental Constraint
@@ -65,6 +65,7 @@ console.log(doubled())           // Still 0, not 10
 All three approaches share the same flawed assumption: **some property accesses can safely skip signal infrastructure.**
 
 In Supergrain's automatic reactive system:
+
 - Every property access in a reactive context MUST call `signal.get()` to register a dependency
 - Every property MUST have exactly one signal instance for its entire lifetime
 - There is no heuristic (access count, cache state, context presence) that can safely bypass this
@@ -72,17 +73,21 @@ In Supergrain's automatic reactive system:
 ## Why Reactively Can Optimize But Supergrain Cannot
 
 **Reactively (manual/explicit):**
+
 ```typescript
-const counter = reactive(0)           // User declares what's reactive
-const doubled = reactive(() => counter.value * 2)  // Explicit dependency
+const counter = reactive(0); // User declares what's reactive
+const doubled = reactive(() => counter.value * 2); // Explicit dependency
 ```
+
 User controls boundaries. Library can optimize within known constraints.
 
 **Supergrain (automatic/transparent):**
+
 ```typescript
-const [store] = createStore({ count: 0 })
-const doubled = reactive(() => store.count * 2)   // System must auto-detect
+const [store] = createStore({ count: 0 });
+const doubled = reactive(() => store.count * 2); // System must auto-detect
 ```
+
 System must intercept ALL property access. Cannot skip tracking because dependencies aren't declared.
 
 **The performance gap is architectural, not implementational.**
@@ -90,12 +95,14 @@ System must intercept ALL property access. Cannot skip tracking because dependen
 ## Valid vs Invalid Optimizations
 
 **Valid (optimize the reactive path itself):**
+
 - Faster signal implementation internals
 - Optimized proxy trap execution
 - Better memory layout and data structures
 - Adopting alien-signals' Clean/Check/Dirty state machine
 
 **Invalid (skip the reactive path):**
+
 - Cache property values without dependency tracking
 - Create inconsistent signal instances
 - Fast paths that bypass signal.get() in reactive contexts

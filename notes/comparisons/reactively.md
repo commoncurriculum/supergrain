@@ -12,24 +12,24 @@ Reactively is a minimal (<1KB gzipped) reactive computation library using a hybr
 
 ## Architectural Comparison
 
-| Aspect | Reactively | Supergrain |
-|--------|------------|-----------|
-| Reactivity Model | Explicit signal nodes (`signal.value`) | Proxy-based automatic tracking |
-| Object Handling | Manual wrapping required | Automatic proxy wrapping |
-| Bundle Size | <1KB gzipped | ~8KB (with alien-signals) |
-| Memory per Property | ~109 bytes | ~200 bytes (with proxy overhead) |
-| React Integration | None | Built-in `tracked()` (formerly `useTracked`) |
+| Aspect              | Reactively                             | Supergrain                                   |
+| ------------------- | -------------------------------------- | -------------------------------------------- |
+| Reactivity Model    | Explicit signal nodes (`signal.value`) | Proxy-based automatic tracking               |
+| Object Handling     | Manual wrapping required               | Automatic proxy wrapping                     |
+| Bundle Size         | <1KB gzipped                           | ~8KB (with alien-signals)                    |
+| Memory per Property | ~109 bytes                             | ~200 bytes (with proxy overhead)             |
+| React Integration   | None                                   | Built-in `tracked()` (formerly `useTracked`) |
 
 **Core insight:** Every property access in supergrain must register dependencies via proxy traps. Attempts to skip this infrastructure break the automatic tracking that is supergrain's core value proposition.
 
 ## Performance
 
-| Operation | Reactively | Supergrain | Factor |
-|-----------|------------|-----------|--------|
-| Property creation | ~0.0003ms | ~0.001ms | Reactively 3x faster |
-| Property reads | ~0.000017ms | ~0.084ms | Reactively ~5000x faster |
-| Property updates | ~0.0001ms | ~0.001ms | Reactively 10x faster |
-| Object creation | ~0.5ms (manual) | ~1.3ms (auto) | Reactively 2.6x faster |
+| Operation         | Reactively      | Supergrain    | Factor                   |
+| ----------------- | --------------- | ------------- | ------------------------ |
+| Property creation | ~0.0003ms       | ~0.001ms      | Reactively 3x faster     |
+| Property reads    | ~0.000017ms     | ~0.084ms      | Reactively ~5000x faster |
+| Property updates  | ~0.0001ms       | ~0.001ms      | Reactively 10x faster    |
+| Object creation   | ~0.5ms (manual) | ~1.3ms (auto) | Reactively 2.6x faster   |
 
 The massive read performance gap comes from direct `.value` access vs proxy trap overhead.
 
@@ -39,6 +39,7 @@ The massive read performance gap comes from direct `.value` access vs proxy trap
 - Supergrain: ~200 bytes per object (proxy + signal + handler + WeakMap), scales with object count not property count
 
 For a 4-level nested object with 10 properties per level:
+
 - Reactively: ~1.21 MB for 11,110 manually wrapped nodes
 - Supergrain: significantly less due to object-level (not property-level) tracking
 
@@ -83,11 +84,11 @@ Cache length values instead of repeated property access.
 
 ## Implementation Priority
 
-| Phase | Focus | Risk |
-|---|---|---|
-| 1 | Signal micro-optimizations, observer data structures, allocation reduction, bundle splitting | Low |
-| 2 | Optimized WeakMap alternatives, memory layout, batch dependency registration, object pooling | Medium |
-| 3 | Custom signal implementation, V8-specific proxy optimizations | High |
+| Phase | Focus                                                                                        | Risk   |
+| ----- | -------------------------------------------------------------------------------------------- | ------ |
+| 1     | Signal micro-optimizations, observer data structures, allocation reduction, bundle splitting | Low    |
+| 2     | Optimized WeakMap alternatives, memory layout, batch dependency registration, object pooling | Medium |
+| 3     | Custom signal implementation, V8-specific proxy optimizations                                | High   |
 
 ## When to Choose Reactively
 

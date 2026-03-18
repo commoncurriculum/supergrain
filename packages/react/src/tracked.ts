@@ -1,5 +1,5 @@
-import { type FC, memo, useReducer, useRef, useEffect } from 'react'
-import { effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
+import { type FC, memo, useReducer, useRef, useEffect } from "react";
+import { effect, getCurrentSub, setCurrentSub } from "@supergrain/core";
 
 /**
  * Wraps a React component with per-component signal scoping.
@@ -45,35 +45,35 @@ import { effect, getCurrentSub, setCurrentSub } from '@supergrain/core'
  */
 export function tracked<P extends object>(Component: FC<P>) {
   const Tracked: FC<P> = (props: P) => {
-    const [, forceUpdate] = useReducer((x: number) => x + 1, 0)
-    const ref = useRef<{ cleanup: (() => void); effectNode: any } | null>(null)
+    const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+    const ref = useRef<{ cleanup: () => void; effectNode: any } | null>(null);
 
     if (!ref.current) {
-      let effectNode: any = null
-      let firstRun = true
+      let effectNode: any = null;
+      let firstRun = true;
       const cleanup = effect(() => {
         if (firstRun) {
-          effectNode = getCurrentSub()
-          firstRun = false
-          return
+          effectNode = getCurrentSub();
+          firstRun = false;
+          return;
         }
-        forceUpdate()
-      })
-      ref.current = { cleanup, effectNode }
+        forceUpdate();
+      });
+      ref.current = { cleanup, effectNode };
     }
 
     useEffect(() => {
       return () => {
-        ref.current?.cleanup?.()
-      }
-    }, [])
+        ref.current?.cleanup?.();
+      };
+    }, []);
 
-    const prev = getCurrentSub()
-    setCurrentSub(ref.current.effectNode)
-    const result = Component(props)
-    setCurrentSub(prev)
-    return result
-  }
+    const prev = getCurrentSub();
+    setCurrentSub(ref.current.effectNode);
+    const result = Component(props);
+    setCurrentSub(prev);
+    return result;
+  };
 
-  return memo(Tracked)
+  return memo(Tracked);
 }

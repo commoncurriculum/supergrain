@@ -2,6 +2,28 @@
   "name": "@supergrain/react",
   "version": "0.3.0",
   "description": "React adapter for Supergrain",
+  "keywords": [
+    "hooks",
+    "react",
+    "reactive",
+    "signals",
+    "state-management",
+    "supergrain"
+  ],
+  "homepage": "https://commoncurriculum.github.io/supergrain/",
+  "bugs": {
+    "url": "https://github.com/commoncurriculum/supergrain/issues"
+  },
+  "license": "MIT",
+  "author": "Scott Messinger",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/commoncurriculum/supergrain.git",
+    "directory": "packages/react"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.es.js",
@@ -13,20 +35,17 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": [
-    "dist"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vite build",
     "bench": "vitest bench --config vitest.bench.config.ts",
     "dev": "vite build --watch",
-    "lint": "oxlint .",
+    "lint": "oxlint -D correctness -D suspicious src/",
     "test": "vitest run --config vitest.browser.config.ts",
     "test:watch": "vitest --config vitest.browser.config.ts",
     "typecheck": "tsc --noEmit"
-  },
-  "peerDependencies": {
-    "react": "^18.2.0 || ^19.0.0"
   },
   "dependencies": {
     "@supergrain/core": "workspace:*",
@@ -49,26 +68,7 @@
     "vite": "^7.1.5",
     "vitest": "4.1.0"
   },
-  "keywords": [
-    "supergrain",
-    "react",
-    "hooks",
-    "state-management",
-    "reactive",
-    "signals"
-  ],
-  "author": "Scott Messinger",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/commoncurriculum/supergrain.git",
-    "directory": "packages/react"
-  },
-  "homepage": "https://commoncurriculum.github.io/supergrain/",
-  "bugs": {
-    "url": "https://github.com/commoncurriculum/supergrain/issues"
-  },
-  "publishConfig": {
-    "access": "public"
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0"
   }
 }
