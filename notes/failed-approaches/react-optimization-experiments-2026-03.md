@@ -1,286 +1,109 @@
 # React Optimization Experiments → tracked() Architecture (March 2026)
 
-A comprehensive record of approaches tried to achieve supergrain's core React goal: **minimal renders**. When a value deep in the store changes, only the component that reads that specific value should re-render. No parent cascade, no sibling re-renders.
+Five approaches tried to achieve supergrain's minimal-render goal. Four failed. The fifth — `tracked()` — succeeded and replaces `useTracked`.
 
-Five approaches were tried. Four failed. The fifth — `tracked()` — succeeded and became the new architecture.
+> **Background**: The nested component problem and useTracked's per-access proxy swap solution are documented in [react-tracking-approaches.md](react-tracking-approaches.md), [useTracked.md](../react-adapter/useTracked.md), and [v4-nested-components.md](../react-adapter/v4-nested-components.md).
 
-## Background: How alien-signals Tracking Works
+## The useTracked Problem
 
-alien-signals uses a global variable `currentSub` (accessed via `getCurrentSub()` / `setCurrentSub()`) to track which effect is currently executing. When a signal is read, it checks `currentSub` and adds itself to that effect's dependency list. When the signal's value changes, all subscribed effects are notified.
+useTracked solved the nested component problem via per-access proxy swaps (see [useTracked.md](../react-adapter/useTracked.md)). But it introduced a different problem: **parent over-subscription**.
 
-The core challenge in React: React components are functions that React calls. There's no built-in way to say "reads during THIS component's render should subscribe to THIS effect." The various experiments below are different attempts to bridge this gap.
+`createStableProxy` stores ONE effectNode per proxy in a global `proxyEffectMap`. When App creates a proxy for `store.data[5]` and passes it to Row, the proxy's effectNode is App's. Row's reads of `item.label` go through the same proxy → subscribed to App's effect.
+
+**What happens on a label change**:
+1. `store.data[5].label = "new"` — label signal fires
+2. App's effect fires (createStableProxy routed Row's label read to App)
+3. App re-renders → For iterates all 1000 items
+4. 999 memo checks return true, Row 5 returns false (version changed)
+5. Row 5 re-renders
+6. **Total work**: 1 App render + 1000 memo checks + 1 Row render
+
+**What should happen**: label change → only Row 5 re-renders. App doesn't know or care.
 
 ## Starting Point
 
-The krauset (js-framework-benchmark) showed:
-- react-supergrain (proxy + For): 1.61x geometric mean vs solid-store at 1.00x
-- react-supergrain-direct (DirectFor): catastrophic failures on remove (788x slower) and append (161x slower)
-
-Neither benchmark package had any tests. The implementations had never been validated against the benchmark's expected behavior.
-
-### The useTracked problem
-
-The existing `useTracked` hook uses `createStableProxy` — a proxy wrapper that stores a single `effectNode` per proxy object in a global `proxyEffectMap`. On every property access, it sets `currentSub` to this stored effectNode:
-
-```tsx
-const proxy = new Proxy(target, {
-  get(obj, prop, receiver) {
-    const currentEffectNode = proxyEffectMap.get(proxy)
-    const prevSub = getCurrentSub()
-    setCurrentSub(currentEffectNode) // always routes to ONE effect
-    try {
-      const value = Reflect.get(obj, prop, receiver)
-      if (value && typeof value === 'object') {
-        return createStableProxy(value, currentEffectNode) // wraps children too
-      }
-      return value
-    } finally {
-      setCurrentSub(prevSub)
-    }
-  },
-})
-```
-
-The problem: when App creates a proxy and For passes items to Row components, ALL reads through the proxy tree route to App's effect. When Row reads `item.label`, it goes through the same proxy chain → subscribed to App's effect. A label change on any row triggers App to re-render, which triggers For to iterate all 1000 items, which triggers 1000 memo comparisons. Only 1 row actually needs to re-render.
-
-**What should happen**: label change on row 5 → only Row 5 re-renders. App doesn't know or care.
+The krauset benchmark showed react-supergrain at 1.61x geometric mean. react-supergrain-direct (DirectFor) had catastrophic remove (788x) and append (161x). Neither package had tests.
 
 ## Bug Discovery: splice Completely Broken
 
-Before any optimization work, we discovered that `Array.prototype.splice` was completely broken on store proxies. The `deleteProperty` handler in `write.ts` threw unconditionally:
+`deleteProperty` in `write.ts` threw unconditionally. Since `splice` internally calls `deleteProperty` to remove out-of-range indices, `store.data.splice(index, 1)` always threw. Same for `pop()` and `shift()`. Real production bug.
 
-```tsx
-// write.ts — the bug
-deleteProperty() {
-  throw new Error(
-    'Direct deletion of store state is not allowed. Use the "$unset" operator in the update function.'
-  )
-}
-```
-
-When `splice` removes an element, JavaScript internally calls `deleteProperty` on the array to remove the now-out-of-range index. This meant `store.data.splice(index, 1)` always threw. Same for `pop()` and `shift()`.
-
-**Fix**: Allow silent deletes on arrays, bump ownKeys for structural subscribers:
+**Fix**: Allow silent deletes on arrays with ownKeys bump:
 
 ```tsx
 deleteProperty(target: any, prop: PropertyKey): boolean {
   if (Array.isArray(target)) {
     const hadKey = Object.prototype.hasOwnProperty.call(target, prop)
     delete target[prop as any]
-    if (hadKey) {
-      bumpOwnKeysSignal(target)
-    }
+    if (hadKey) bumpOwnKeysSignal(target)
     return true
   }
   throw new Error('Direct deletion of store state is not allowed...')
 }
 ```
 
-This was a real production bug, not just a benchmark issue. Any code using `splice`, `pop`, or `shift` on a store array would crash.
-
 ---
 
 ## Experiment 1: DirectFor (Full DOM Rebuild)
 
-**Hypothesis**: Bypass React entirely with `cloneNode` + direct signal bindings for maximum performance.
+**Hypothesis**: Bypass React with `cloneNode` + direct signal bindings.
 
-**Architecture**: `DirectFor` subscribes to every array index via an alien-signals effect. When any index changes, it tears down ALL DOM rows and rebuilds from scratch.
+**Architecture**: Subscribes to every array index. On any change, tears down ALL rows and rebuilds from scratch.
 
 ```tsx
-// direct-for.tsx — the outer effect
 cleanupsRef.current.outer = effect(() => {
   const len = each.length
-  for (let i = 0; i < len; i++) {
-    each[i] // subscribes to each index signal
-  }
+  for (let i = 0; i < len; i++) { each[i] }
   buildRef.current() // tears down ALL rows and rebuilds
 })
 ```
 
-Each row gets per-field effects for label updates and selection:
+**Result**: Fast for value updates (partial 0.5ms, select 0.8ms) but catastrophic for structural mutations. Remove: 5,287ms. Append: 5,474ms.
 
-```tsx
-setup={(item: RowData, row, addEffect) => {
-  const tds = row.children
-  const td0 = tds[0] as HTMLElement
-  const a1 = (tds[1] as HTMLElement).firstChild as HTMLAnchorElement
-
-  td0.textContent = String(item.id)
-  a1.textContent = item.label
-
-  addEffect(() => { a1.textContent = (item as any).label })
-  addEffect(() => {
-    row.className = store.selected === item.id ? 'danger' : ''
-  })
-}
-```
-
-**Result**: Fast for fine-grained updates (partial update 0.5ms, select 0.8ms) but catastrophically slow for structural mutations. Remove: 5,287ms (788x). Append: 5,474ms (161x). Full DOM rebuild on every splice/push.
-
-**Why it failed**: The architecture has no concept of incremental DOM updates. Any structural change triggers a full teardown and rebuild of all rows. Fixing this would require implementing a DOM reconciliation algorithm — essentially reimplementing what React already does.
-
-**Verdict**: Failed. The approach is fundamentally incompatible with in-place array mutations at scale.
+**Verdict**: Failed. No incremental DOM updates. Fixing requires reimplementing React's reconciler.
 
 ---
 
 ## Experiment 2: createView / useView
 
-**Hypothesis**: Getter-based signal reads (via `createView`) are faster than proxy trap reads (via `useTracked`), giving the 50% speedup seen in isolated benchmarks.
+**Hypothesis**: Getter-based reads (via `createView`) are faster than proxy traps (via `useTracked`), giving the 50% speedup seen in isolated benchmarks.
 
-**Architecture**: `createView(store)` returns a frozen object with getter-defined properties. Each getter calls `this._n[key]()` — a direct signal read with no proxy trap overhead.
+**Why 50% didn't materialize in React**: Isolated benchmarks measured only the read path. In a full 1000-row render, there are 2 top-level reads where getters help vs 3000+ nested reads that go through reactive proxies regardless. The getter advantage applies to 0.07% of reads.
 
-**Why isolated benchmarks showed 50% faster**: Those benchmarks measured only the read path — how fast you can read a signal value. A getter call (`this._n[key]()`) is cheaper than a proxy trap (handler lookup → Reflect.get → signal read → isWrappable check → proxy wrap). But in a full React render with 1000 rows, there are only 2 top-level reads where getters help (store.data, store.selected). The other 3000+ reads (each row's id, label, isSelected) go through reactive proxies regardless. The getter advantage applies to 0.07% of total reads — noise.
+Four sub-attempts:
 
-### Attempt 2a: createView with immutable-style updates
+**2a: Immutable updates** — createView returned raw values for nested properties, requiring `map`/`filter`/`slice` for mutations. O(n) copies on every operation. Failed.
 
-Since createView returned raw values (not reactive proxies) for nested properties, in-place mutations didn't work. Had to use immutable-style updates:
+**2b: Fix getSignalGetter to return reactive proxies** — Made createView wrap nested values in reactive proxies. But then nested reads cost the same as the proxy approach. 10-30% improvement — marginal.
 
-```tsx
-export const add = () => {
-  store.data = [...store.data, ...buildData(1000)]
-}
-export const update = () => {
-  store.data = store.data.map((item, i) =>
-    i % 10 === 0 ? { ...item, label: item.label + ' !!!' } : item
-  )
-}
-export const remove = (id: number) => {
-  store.data = store.data.filter(item => item.id !== id)
-}
-```
+**2c: useView with global currentSub** — Set `currentSub` for the entire render, restore in `useLayoutEffect`. Bug: leaked into children's `useLayoutEffect` (React fires them children-first during commit). App subscribed to ALL row-level signals.
 
-**Result**: Slower than proxy on most operations due to O(n) array copies on every mutation.
+**2d: Per-getter tracking wrapper** — Scoped `currentSub` to each getter call. Fixed the leak but only top-level reads were tracked. Array iteration by For happened with `currentSub` restored, so splice/push weren't detected.
 
-**Verdict**: Failed.
-
-### Attempt 2b: Fix getSignalGetter to return reactive proxies
-
-Added reactive proxy wrapping to `getSignalGetter` in `read.ts` so nested values from createView are reactive:
-
-```tsx
-// Before: returns raw value
-const getter = function (this: any) { return this._n[key]() }
-
-// After: wraps objects/arrays in reactive proxies
-const getter = function (this: any) {
-  const value = this._n[key]()
-  return isWrappable(value) ? createReactiveProxy(value) : value
-}
-```
-
-**Result**: 10-30% improvement. But nested reads now go through reactive proxies — the same cost as the proxy approach. The getter advantage only helps 2 out of 3000+ reads.
-
-**Verdict**: Marginal. Not worth the added complexity.
-
-### Attempt 2c: useView hook with global currentSub
-
-Set `currentSub` for the entire render so all signal reads are tracked:
-
-```tsx
-export function useView<T extends object>(store: T): Readonly<T> {
-  // ... effect setup ...
-  const prev = getCurrentSub()
-  setCurrentSub(stateRef.current.effectNode)
-  useLayoutEffect(() => { setCurrentSub(prev) }) // restore after commit
-  return stateRef.current.view
-}
-```
-
-**Bug**: `setCurrentSub` leaked into children's `useLayoutEffect` calls. React fires `useLayoutEffect` children-first during the commit phase. When Row components created their own effects (via `useDirectBindings`), those effects ran while `currentSub` was still App's effectNode. Result: App subscribed to ALL row-level signals.
-
-### Attempt 2d: useView with per-getter tracking
-
-Scoped currentSub to each getter call instead of the entire render:
-
-```tsx
-Object.defineProperty(wrapper, key, {
-  get() {
-    const prev = getCurrentSub()
-    setCurrentSub(effectNode)
-    try { return (baseView as any)[key] }
-    finally { setCurrentSub(prev) }
-  },
-})
-```
-
-**Result**: Fixed the leak but only top-level reads were tracked. Array iteration by For happened with currentSub already restored, so structural mutations weren't detected.
-
-**Verdict**: Failed. createView in React can't achieve both per-component scoping AND nested reactivity without either a global currentSub leak or missing structural subscriptions.
+**Verdict**: Failed. createView can't achieve both per-component scoping AND nested reactivity in React.
 
 ---
 
 ## Experiment 3: $$() Direct DOM Bindings
 
-**Hypothesis**: Skip React re-rendering for value updates. The Vite compiler transforms `$$()` into `useRef` + `useDirectBindings` that wire alien-signals effects straight to DOM nodes.
+**Hypothesis**: Skip React re-rendering. The Vite compiler transforms `$$()` into `useRef` + `useDirectBindings` that wire effects straight to DOM nodes.
 
-### How the compiler transforms $$()
+**3a: With standard memo — double work**: The $$() effect updates the DOM, then useTracked triggers a React re-render of the same component. The React diff finds DOM already correct — wasted work. Net slower due to effect setup cost.
 
-```tsx
-// Developer writes:
-<a>{$$(item.label)}</a>
-<tr className={$$(() => isSelected ? 'danger' : '')}>
+**3b: With `memo(() => true)` — store coupling**: Prevents all React re-renders so only effects handle updates. But requires the Row to read `store.selected` directly instead of receiving `isSelected` as a prop — closures over props go stale when the component never re-renders. The Row becomes unusable outside the benchmark. Rejected as benchmark hacking.
 
-// Compiler generates:
-const __$$0 = useRef(null)
-const __$$1 = useRef(null)
-useDirectBindings([
-  { ref: __$$0, getter: () => item.label },
-  { ref: __$$1, getter: () => isSelected ? 'danger' : '', attr: 'className' },
-])
-<a ref={__$$0}>{item.label}</a>
-<tr ref={__$$1} className={isSelected ? 'danger' : ''}>
-```
+**Alternative considered**: Per-field components (`const Label = tracked(({ item }) => <a>{item.label}</a>)`). Works for text content, not for attributes (className). With tracked() (Experiment 5), largely unnecessary.
 
-### Attempt 3a: $$() with standard memo — double work
-
-The $$() effect updates the DOM directly, but React ALSO re-renders the component through the normal `useTracked` → For → version-based-memo path. Sequence for a label change:
-
-1. `store.data[5].label = "new"` — label signal fires
-2. $$() effect fires → `el.textContent = "new"` (direct DOM write)
-3. App re-renders (useTracked's createStableProxy subscribes App to label)
-4. For detects version change → Row re-renders via React → diffs → no-op (DOM already correct)
-
-The effect did the work, then React re-rendered and diffed for nothing. Net result: slower than plain proxy due to effect setup/teardown cost (~25ms for 1000 rows on replace-all).
-
-### Attempt 3b: $$() with memo(() => true) — store coupling
-
-Prevent React re-renders so only $$() effects handle updates:
-
-```tsx
-const Row = memo(({ item, onSelect, onRemove }) => {
-  return (
-    <tr className={$$(() => store.selected === item.id ? 'danger' : '')}>
-      <td>{item.id}</td>
-      <td><a>{$$(item.label)}</a></td>
-    </tr>
-  )
-}, () => true) // Never re-render
-```
-
-This required the Row to read `store.selected` directly instead of receiving `isSelected` as a prop. With `memo(() => true)`, the component never re-renders, so any prop-based value (a closure over a boolean) goes stale immediately. Only direct signal reads in $$() getters work.
-
-**Result**: Fast (swap 0.3ms, select 1.9ms) but the Row was coupled to a specific store and unusable outside the benchmark. This was rejected as benchmark hacking.
-
-### Alternative: per-field components
-
-Instead of bypassing React with $$(), make each dynamic value its own tracked() component:
-
-```tsx
-const Label = tracked(({ item }) => <a>{item.label}</a>)
-```
-
-Works for text content (label change re-renders only the Label component). Doesn't work for attributes (className) — you can't make a component that just manages an attribute on a parent element. With tracked() (Experiment 5), this becomes largely unnecessary because the Row itself only re-renders when its specific data changes.
-
-**Verdict**: $$() failed. Either double-work or store-coupled components. The per-component scoping from tracked() makes it unnecessary.
+**Verdict**: Failed. Either double-work or store-coupled components.
 
 ---
 
 ## Experiment 4: useScopedTracked (Per-Component Proxy Wrapper)
 
-**Hypothesis**: Give each component its own proxy wrapper that routes signal reads to its own effect. Parent reads don't leak into children.
+**Hypothesis**: Give each component its own proxy wrapper that routes reads to its own effect.
 
 ```tsx
-function createScopedProxy<T extends object>(target: T, effectNode: any): T {
+function createScopedProxy<T>(target: T, effectNode: any): T {
   return new Proxy(target, {
     get(obj, prop, receiver) {
       const prev = getCurrentSub()
@@ -291,14 +114,13 @@ function createScopedProxy<T extends object>(target: T, effectNode: any): T {
         return value
       } finally { setCurrentSub(prev) }
     },
-    // ... has, ownKeys with same save/restore pattern
   })
 }
 ```
 
-**Result**: Label isolation worked (only affected Row re-renders). But the per-access save/restore of `currentSub` in `wrapArray` during For's array iteration added overhead. For 1000 items: 1000 × (save + set + Reflect.get + restore) per `.map()` call. Swap was 2.4x slower.
+**Result**: Label isolation worked. But per-access save/restore during For's 1000-item iteration added significant overhead. Swap was 2.4x slower.
 
-Also tried subscribing to ownKeys instead of wrapping the array. But ownKeys doesn't fire on swap (element reassignment, not add/remove). Adding `bumpOwnKeysSignal` on every array element change caused splice to fire ownKeys 999 times — each element shift is a reassignment.
+Also tried subscribing to ownKeys instead of wrapping arrays. But ownKeys doesn't fire on swap (element reassignment, not add/remove). Adding ownKeys bump on every array element change caused splice to fire ownKeys 999 times.
 
 **Verdict**: Correct concept, wrong mechanism. Wrapping reads (proxy per access) is slower than wrapping renders (set currentSub once per component).
 
@@ -308,9 +130,11 @@ Also tried subscribing to ownKeys instead of wrapping the array. But ownKeys doe
 
 ### The key insight
 
-Experiments 2-4 all tried to control `currentSub` at the **read** level — wrapping each property access with save/restore. This is expensive (many property accesses per render) and complex (proxy wrappers, array wrappers, leaked contexts).
+[react-tracking-approaches.md](react-tracking-approaches.md) documents "global subscriber during render" as failed approach #1, because React renders depth-first and child components overwrite the parent's subscriber.
 
-The breakthrough: control `currentSub` at the **render** level. Set it once before the component function runs, restore once after. The component function is synchronous — it returns JSX, and children render later in separate React calls. No leak, no per-access overhead.
+`tracked()` IS a global subscriber during render — but it works because of one critical property: **`Component(props)` is a synchronous function call that returns JSX without rendering children.** React renders children later, in separate calls. So `currentSub` set before `Component(props)` and restored after does NOT leak into children.
+
+This is the same problem useTracked solved with per-access proxy swaps, but solved more cheaply: O(1) save/restore per component vs O(n) per property access.
 
 ### Implementation
 
@@ -340,32 +164,23 @@ function tracked<P extends object>(Component: FC<P>): FC<P> {
 }
 ```
 
-**Why it doesn't leak**: `Component(props)` is a synchronous function call that returns JSX elements (React.createElement calls). It does NOT render child components — React does that later, in separate function calls. So `currentSub` is only active during THIS component's body. When React later renders a child `tracked()` component, that child sets its own `currentSub`.
-
-This is the fundamental difference from Experiment 2c's `useLayoutEffect` approach, which deferred the restore to the commit phase (after children's effects had already run).
-
 ### What happens during a label change: old vs new
 
-**Old architecture (useTracked + createStableProxy)**:
-1. `store.data[5].label = "new"` — label signal fires
-2. App's effect fires (because createStableProxy routed Row's label read to App's effect)
-3. App re-renders → For iterates all 1000 items
-4. For checks memo on each Row → 999 return true, Row 5 returns false (version changed)
-5. Row 5 re-renders
-6. **Total work**: 1 App render + 1000 memo checks + 1 Row render
+**useTracked (old)**:
+1. Label signal fires → App's effect fires (createStableProxy routed Row's read to App)
+2. App re-renders → For iterates 1000 items → 999 memo skips + 1 Row re-render
+3. **Total**: 1 App render + 1000 memo checks + 1 Row render
 
-**New architecture (tracked())**:
-1. `store.data[5].label = "new"` — label signal fires
-2. Row 5's effect fires (it subscribed to `item.label` during its own render)
-3. Row 5 re-renders
-4. App's effect does NOT fire (App never subscribed to item.label)
-5. **Total work**: 1 Row render
+**tracked() (new)**:
+1. Label signal fires → Row 5's effect fires (it subscribed during its own render)
+2. Row 5 re-renders
+3. **Total**: 1 Row render
 
 ### Usage pattern
 
 ```tsx
 const App = tracked(() => {
-  const selected = store.selected  // explicit read in App's body
+  const selected = store.selected  // explicit read in App's render body
   return (
     <For each={store.data}>
       {(item) => <Row key={item.id} item={item} isSelected={selected === item.id} />}
@@ -383,177 +198,106 @@ const Row = tracked(({ item, isSelected }) => {
 })
 ```
 
-**Why `const selected = store.selected` must be in App's body**: The For callback `{(item) => <Row isSelected={selected === item.id} />}` runs inside For's render, NOT App's. By that point, App's `currentSub` has been restored. If `store.selected` were read inside the For callback, it would subscribe to For's parent (App via the `each` prop read), but the specific `selected` read would not be tracked. Reading it as a local variable in App's body ensures it's read with App's `currentSub` active.
+**Why `const selected = store.selected` is in App's body**: The For callback runs inside For's render, not App's. By that point, App's `currentSub` has been restored. To subscribe App to selection changes, `store.selected` must be read where App's `currentSub` is active — in App's own render body.
 
-**Why For is still needed**: `tracked()` scopes subscriptions per-component, but React still needs keyed reconciliation for structural changes (items added, removed, reordered). For provides this by iterating the array and generating keyed React elements.
+**Why For is still needed**: tracked() scopes subscriptions per-component, but React still needs keyed reconciliation for structural changes. For provides this. Note: For's version-based memo mechanism (passing a `version` prop to detect item changes) becomes redundant — each tracked() Row has its own effect that fires `forceUpdate` when its data changes. For is needed only for keyed reconciliation.
 
-Note: For's version-based memo mechanism (passing a `version` prop to trigger re-renders on proxy changes) becomes redundant with `tracked()`. Each Row has its own effect — when `item.label` changes, Row's effect fires `forceUpdate` directly, bypassing memo entirely. For is needed only for its keyed reconciliation role.
+**Safe on non-reactive components**: No reactive reads → zero dependencies → effect never fires → behaves as `memo()` with ~1-2μs dormant overhead. tracked() can replace both `useTracked()` and `memo()` universally.
 
-**Safe on non-reactive components**: If a `tracked()` component doesn't read any reactive proxies, its effect has zero dependencies and never fires. The component behaves identically to `memo()` with a tiny dormant effect (~1-2μs overhead on mount). This means `tracked()` can safely replace `memo()` as the default component wrapper — no downside.
+### Why not just .map() instead of For?
 
-### Experiment 5b: .map() instead of For
+Tested dropping For and using `.map()` directly. It fixed splice/push detection (iteration happens in App's render with `currentSub` active). But it reintroduced the useTracked problem — `item.label` reads during the `.map()` callback subscribe to App's effect, so label changes trigger App re-renders.
 
-We tested dropping For entirely and using `.map()` directly:
-
-```tsx
-const App = tracked(() => {
-  return <>{store.data.map(item => <Row key={item.id} item={item} />)}</>
-})
-```
-
-This fixed the splice/push detection issue (because `.map()` iterates inside App's render with `currentSub` active, subscribing App to all index signals). But it reintroduced the useTracked problem — `item.label` reads during the `.map()` callback subscribe to App's effect, so label changes trigger App re-renders.
-
-**Verdict**: For is still needed to create a render boundary between App and Row. The combination `tracked()` + `For` gives both per-component scoping AND keyed reconciliation.
+For creates a render boundary: App reads `store.data` (subscribes to structure), For iterates and passes items to Rows, each Row reads its own item fields in its own render scope.
 
 ### Core changes required
 
-Three changes to `@supergrain/core`:
+**1. $VERSION as signal** (`core.ts`, `write.ts`): `bumpVersion` writes to a signal instead of incrementing a plain number. During splice (~999 element shifts), alien-signals deduplicates: first write marks subscriber dirty, remaining ~998 are no-ops. Cost: ~0.2ms for 1000 signal writes vs ~30ms for 999 ownKeys bumps (the alternative approach from Experiment 4).
 
-**1. $VERSION as signal** (`core.ts`): `bumpVersion` writes to a signal stored in the node map instead of incrementing a plain number:
-
-```tsx
-// core.ts — version signal created lazily in getNodes
-if (!nodes[$VERSION]) {
-  nodes[$VERSION] = signal(0) as Signal<any>
-}
-
-// write.ts — bumpVersion writes to the signal
-export function bumpVersion(target: object): void {
-  let nodes = (target as any)[$NODE]
-  if (!nodes) { nodes = getNodes(target) }
-  const v = nodes[$VERSION]
-  if (v) v(v() + 1)
-}
-```
-
-Why a version signal instead of ownKeys: During splice on a 1000-item array, ~999 element shifts call `setProperty`. If each bumped ownKeys (`signal(signal() + 1)` — a read+write), that's 999 full signal read/write cycles with subscriber notification overhead. With the version signal, alien-signals deduplicates: the first write marks the subscriber dirty, remaining ~998 writes see "already dirty" and skip. Cost: ~0.2ms vs ~30ms.
-
-**2. Array version auto-subscribe** (`read.ts`): When the reactive proxy returns an array value with an active subscriber, automatically subscribe to the array's version signal:
+**2. Array version auto-subscribe** (`read.ts`): When the reactive proxy returns an array with an active subscriber, subscribe to the array's version signal:
 
 ```tsx
-if (isWrappable(value)) {
-  const proxy = createReactiveProxy(value)
-  if (Array.isArray(value) && getCurrentSub()) {
-    const arrayNodes = getNodes(value)
-    if (arrayNodes[$VERSION]) arrayNodes[$VERSION]() // subscribe to version
-  }
-  return proxy
+if (Array.isArray(value) && getCurrentSub()) {
+  const arrayNodes = getNodes(value)
+  if (arrayNodes[$VERSION]) arrayNodes[$VERSION]()
 }
 ```
 
-This is the fix for the splice/push bug described below. When App reads `store.data`, the returned array automatically subscribes App to "any mutation on this array."
+When App reads `store.data`, it automatically subscribes to "any mutation on this array." Splice, push, swap — all bump version.
 
-**3. trackSelf on array function access** (`read.ts`): Calling `.map()`, `.forEach()`, etc. on a reactive proxy array subscribes to ownKeys when there's an active subscriber:
+**3. trackSelf on array function access** (`read.ts`): Calling `.map()`, `.forEach()`, etc. subscribes to ownKeys when there's an active subscriber.
 
-```tsx
-if (typeof value === 'function') {
-  if (Array.isArray(target) && getCurrentSub()) trackSelf(target)
-  return value
-}
-```
+### Bug: splice/push not triggering re-render
 
-### Bug encountered and solved: splice/push not triggering re-render
+With tracked() + For, splice and push didn't trigger App re-renders. Tests with `console.log` in the App body passed; identical tests without it failed.
 
-With `tracked()` + `For`, splice and push didn't trigger App re-renders in some test configurations.
+**Diagnosis**: Added effect fire counters. Passing test: `effects=1` after splice. Failing test: `effects=0` — effect never fired.
 
-**Observation**: Tests with `console.log` in the App body passed; identical tests without it failed.
+**Root cause**: App's only subscription was `store.data` (the array reference). Splice mutates in-place without changing the reference. `console.log(store.data.length)` accidentally subscribed App to the length signal (splice changes length → effect fired).
 
-**Diagnosis**: Added effect fire counters to both passing and failing tests:
+**Fix**: Core change #2 — auto-subscribing to the array's version signal when returning an array.
 
-```
-[PASS] after splice: rows=999, effects=1, renders=3  ← effect fired
-[FAIL] after splice: rows=1000, effects=0, renders=2  ← effect never fired
-```
-
-**Root cause**: App's only signal subscription was to `store.data` (the data property signal — the reference to the array). Splice mutates the array in-place without changing its reference. The data signal didn't fire. App had no subscription to detect the in-place mutation.
-
-The `console.log(store.data.length)` in the passing test accidentally read `store.data.length` through the reactive proxy with `currentSub` set, subscribing App to the length signal. Splice changes length → effect fired.
-
-**Fix**: Core change #2 — auto-subscribing to the array's version signal when returning an array value. No explicit `.length` read needed.
-
-**Red herrings tried before diagnosing**: React render bailout (Fragment key trick), queueMicrotask to defer forceUpdate, object-based useReducer state, hidden span elements. None were the cause. The root cause was only found by adding counters that showed `effects=0` — the effect literally never fired.
+**Red herrings tried before diagnosing**: React bailout (Fragment key), queueMicrotask, object-based useReducer. None were the cause. Root cause found by instrumentation showing `effects=0`.
 
 ### Stale dependencies
 
-The alien-signals `effect()` callback only runs `forceUpdate()` — it doesn't read any signals. When the effect re-runs (from a signal change), alien-signals clears the old dependency list and re-tracks during the callback. Since the callback doesn't read signals, the effect ends up with zero dependencies after each re-run.
+The effect callback only runs `forceUpdate()` — no signal reads. When alien-signals re-runs the callback, it clears old deps (since the callback doesn't read signals, deps become empty). Deps are re-established during the next React render when `tracked()` sets `currentSub`.
 
-Dependencies are re-established during the next React render, when `tracked()` sets `currentSub` and the component function reads signals. The lifecycle:
+Lifecycle: `render → deps added → signal change → deps cleared + forceUpdate → render → deps re-added`
 
-```
-render → deps added → signal change → deps cleared + forceUpdate → render → deps re-added
-```
-
-**When stale deps could matter**: If a component conditionally reads different signals:
-
-```tsx
-const App = tracked(() => {
-  if (showDetails) {
-    return <div>{store.user.bio}</div>  // subscribes to user.bio
-  }
-  return <div>{store.user.name}</div>   // subscribes to user.name
-})
-```
-
-After rendering with `showDetails=true`, the effect subscribes to `user.bio`. If `showDetails` becomes `false` (from some external state change that triggers a re-render), the effect re-runs, deps clear, and the next render subscribes to `user.name` only. But if `user.bio` changes AFTER the `showDetails=false` render without triggering a re-render first, the stale `user.bio` dep was already cleared, so no spurious re-render occurs. The deps are always current after each render.
-
-The only edge case: two signals change between renders (e.g., during a batch). The first signal fires the effect → deps cleared → forceUpdate. The second signal change finds no subscriber (deps were cleared). But forceUpdate was already dispatched, so the re-render picks up both changes. No lost updates.
+Edge case: if two signals change between renders, the first fires the effect (deps cleared, forceUpdate dispatched), the second finds no subscriber (deps were cleared). But forceUpdate was already dispatched, so the re-render picks up both changes. No lost updates.
 
 ### Final results (apples-to-apples, same Row template, fresh store per test)
 
-| Operation | Proxy (useTracked) | tracked() | delta |
+| Operation | useTracked (old) | tracked() (new) | delta |
 |---|---|---|---|
-| create 1000 | 57.9ms | 40.3ms | **tracked 30% faster** |
-| replace all | 61.7ms | 52.0ms | **tracked 16% faster** |
-| partial update | 18.0ms | 2.4ms | **tracked 7.5x faster** |
-| select row | 5.6ms | 3.8ms | **tracked 32% faster** |
-| swap rows | 40.6ms | 8.7ms | **tracked 4.7x faster** |
-| remove row | 7.6ms | 6.0ms | **tracked 21% faster** |
-| create 10000 | 759ms | 615ms | **tracked 19% faster** |
+| create 1000 | 57.9ms | 40.3ms | **30% faster** |
+| replace all | 61.7ms | 52.0ms | **16% faster** |
+| partial update | 18.0ms | 2.4ms | **7.5x faster** |
+| select row | 5.6ms | 3.8ms | **32% faster** |
+| swap rows | 40.6ms | 8.7ms | **4.7x faster** |
+| remove row | 7.6ms | 6.0ms | **21% faster** |
+| create 10000 | 759ms | 615ms | **19% faster** |
 | append 1000 | 51.0ms | 55.5ms | ~same |
 | clear | 10.7ms | 10.5ms | same |
 
-**Verdict**: tracked() is faster or equal on every operation, with massive wins on partial update (7.5x) and swap (4.7x). Zero regressions. Achieves the core goal: label change on row 5 re-renders only Row 5.
+Faster or equal on every operation. Zero regressions.
 
 ---
 
-## Summary: What Ships, What Doesn't
+## What Ships, What Doesn't
 
 ### Ships (committed)
-- **splice/pop/shift fix**: `deleteProperty` on arrays — real production bug
-- **$VERSION as signal**: enables efficient structural subscriptions
-- **Array version auto-subscribe**: fixes splice/push detection in tracked() architecture
-- **trackSelf on array function access**: ownKeys subscription on .map()/.forEach()
-- **Krauset benchmark tests**: correctness + performance tests for both packages
-- **Vite plugin CJS fix**: .cjs extension for type: module packages
+- **splice/pop/shift fix**: `deleteProperty` on arrays
+- **$VERSION as signal**: efficient structural subscriptions
+- **Array version auto-subscribe**: splice/push detection
+- **trackSelf on array function access**: ownKeys on .map()/.forEach()
+- **Krauset benchmark tests**: correctness + perf for both packages
+- **Vite plugin CJS fix**
 
 ### Ships next
-- **tracked()**: component wrapper, replaces `useTracked` + `createStableProxy` + `globalProxyCache` + `proxyEffectMap`
+- **tracked()**: replaces `useTracked` + `createStableProxy` + `globalProxyCache` + `proxyEffectMap`
 
 ### Doesn't ship
-- **DirectFor**: full DOM rebuild, fundamentally broken for structural mutations
-- **createView / useView**: marginal improvement, adds complexity for noise-level gains
-- **$$()**: double work with React, or requires store-coupled components
-- **useScopedTracked**: correct concept but proxy wrapper is slower than tracked()
-- **getSignalGetter proxy wrapping**: only useful for createView, not needed for tracked()
+- **DirectFor**: full DOM rebuild, broken for structural mutations
+- **createView / useView**: marginal improvement, not worth the complexity
+- **$$()**: double work or store-coupled components
+- **useScopedTracked**: correct concept, slower than tracked()
 
 ---
 
 ## Key Lessons
 
-1. **Wrap the render, not the reads**: Per-access save/restore of `currentSub` (proxy wrapper approach) adds overhead proportional to the number of property accesses. Setting `currentSub` once per component render is O(1) regardless of how many properties are read.
+1. **Wrap the render, not the reads**: Per-access currentSub swap (useTracked's proxy approach) is O(n) per property access. Per-render swap (tracked()) is O(1) per component. Both solve nested component isolation, but tracked() is cheaper.
 
-2. **React component functions are synchronous boundaries**: `Component(props)` returns JSX without rendering children. Children render in separate React calls later. This means `currentSub` set before `Component(props)` and restored after does NOT leak into children — the critical property that makes tracked() work.
+2. **"Global subscriber during render" works when scoped to the synchronous function call**: [react-tracking-approaches.md](react-tracking-approaches.md) rejected this as approach #1 because children overwrite the parent's subscriber. tracked() avoids this because `Component(props)` returns JSX without rendering children — React renders children in separate calls.
 
-3. **createView is not useful in React**: The getter-vs-proxy advantage applies to 0.07% of reads in a 1000-row render. Noise compared to DOM work.
+3. **Array structural subscriptions need a version signal**: Individual index subscriptions (1000 per array) and ownKeys (fires 999x during splice) are both expensive. A version signal with alien-signals' dirty-marking deduplication fires once per batch.
 
-4. **$$() does double work**: The effect updates DOM, then React re-renders and diffs the same DOM. The only escape (`memo(() => true)`) requires store-coupled components.
+4. **For creates a render boundary, not just keyed reconciliation**: Without For, `.map()` iteration happens in the parent's render scope, subscribing the parent to all child-level signals. For's render boundary is what enables per-component scoping.
 
-5. **Array structural subscriptions need a version signal**: Individual index subscriptions (1000 per array) and ownKeys (fires 999x during splice) are both expensive. A version signal with alien-signals' dirty-marking deduplication fires once per batch.
+5. **tracked() is safe as a universal wrapper**: Non-reactive components get `memo()` behavior with negligible overhead. No reason to keep `useTracked` alongside it.
 
-6. **tracked() is safe as a universal wrapper**: No reactive reads → behaves as `memo()` with ~1-2μs dormant effect. No downside to using it on every component. Replaces both `useTracked()` and `memo()`.
+6. **Validate causes before creating fixes**: The splice/push bug was found by adding effect fire counters, not by guessing at React bailouts or microtask timing.
 
-7. **For is still needed, but for a different reason**: With `useTracked`, For provides version-based memo to detect item changes. With `tracked()`, that role is obsolete — each Row has its own effect. For is still needed for keyed reconciliation (add/remove/reorder), which React requires the full array to perform.
-
-8. **Validate causes before creating fixes**: The splice/push bug was caused by a missing array subscription. Before finding this, multiple wrong fixes were tried (queueMicrotask, React bailout prevention, object-based forceUpdate). The root cause was only found by adding effect fire counters that showed `effects=0`.
-
-9. **Benchmark methodology matters**: Single-run numbers varied 2-3x between runs. Reliable comparisons require: same Row template, fresh store per test, proper cleanup, same test file (for JIT consistency).
+7. **Benchmark methodology**: Same Row template, fresh store per test, proper cleanup, same file for JIT consistency.
