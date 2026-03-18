@@ -7,12 +7,16 @@ export function bumpVersion(target: object): void {
     nodes = getNodes(target);
   }
   const v = nodes[$VERSION];
-  if (v) v(v() + 1);
+  if (v) {
+    v(v() + 1);
+  }
 }
 
 export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, any>): void {
   const resolvedNodes = nodes ?? (target as any)[$NODE];
-  if (!resolvedNodes) return;
+  if (!resolvedNodes) {
+    return;
+  }
 
   const ownKeysSignal = resolvedNodes[$OWN_KEYS];
   if (ownKeysSignal) {
@@ -20,17 +24,27 @@ export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, an
   }
 }
 
-export function setProperty(target: any, key: PropertyKey, value: any, isDelete = false): void {
-  const hadKey = Object.prototype.hasOwnProperty.call(target, key);
+function bumpSignals(target: any, key: PropertyKey, prevLen: number): void {
+  const nodes = (target as any)[$NODE];
+  if (!nodes) {
+    return;
+  }
+  if (Array.isArray(target) && key !== "length") {
+    const lengthNode = nodes["length"];
+    if (lengthNode && target.length !== prevLen) {
+      lengthNode(target.length);
+    }
+  }
+}
+
+export function setProperty(target: any, key: PropertyKey, value: any): void {
+  const hadKey = Object.hasOwn(target, key);
   const prevLen = Array.isArray(target) ? target.length : -1;
   const oldValue = target[key];
 
-  if (isDelete) delete target[key];
-  else {
-    target[key] = value;
-  }
+  target[key] = value;
 
-  const didChange = isDelete ? hadKey : unwrap(oldValue) !== unwrap(value);
+  const didChange = unwrap(oldValue) !== unwrap(value);
   if (didChange) {
     bumpVersion(target);
   }
@@ -39,18 +53,34 @@ export function setProperty(target: any, key: PropertyKey, value: any, isDelete 
   if (nodes) {
     const node = nodes[key];
     if (node && didChange) {
-      node(isDelete ? undefined : value);
-    }
-    if (Array.isArray(target) && key !== "length") {
-      const lengthNode = nodes["length"];
-      if (lengthNode && target.length !== prevLen) lengthNode(target.length);
+      node(value);
     }
   }
+  bumpSignals(target, key, prevLen);
 
-  const wasAdded = !hadKey && !isDelete;
-  const wasDeleted = hadKey && isDelete;
-  if (wasAdded || wasDeleted) {
-    bumpOwnKeysSignal(target, nodes);
+  if (!hadKey) {
+    bumpOwnKeysSignal(target, (target as any)[$NODE]);
+  }
+}
+
+export function deleteProperty(target: any, key: PropertyKey): void {
+  const hadKey = Object.hasOwn(target, key);
+  const prevLen = Array.isArray(target) ? target.length : -1;
+
+  delete target[key];
+
+  if (hadKey) {
+    bumpVersion(target);
+
+    const nodes = (target as any)[$NODE];
+    if (nodes) {
+      const node = nodes[key];
+      if (node) {
+        node(undefined);
+      }
+    }
+    bumpSignals(target, key, prevLen);
+    bumpOwnKeysSignal(target, (target as any)[$NODE]);
   }
 }
 
@@ -65,7 +95,7 @@ export const writeHandler: Pick<ProxyHandler<object>, "set" | "deleteProperty"> 
       // Silent delete for signal values: splice/pop/shift handle element
       // moves via set(). Bump ownKeys so structural subscribers detect
       // the change.
-      const hadKey = Object.prototype.hasOwnProperty.call(target, prop);
+      const hadKey = Object.hasOwn(target, prop);
       delete target[prop as any];
       if (hadKey) {
         bumpOwnKeysSignal(target);

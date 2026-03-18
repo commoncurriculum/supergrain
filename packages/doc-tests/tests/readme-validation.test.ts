@@ -41,7 +41,7 @@ describe("README Documentation Validation", () => {
 
       if (!hasDocTest) {
         const preview =
-          trimmedBlock.split("\n")[0].substring(0, 60) + (trimmedBlock.length > 60 ? "..." : "");
+          trimmedBlock.split("\n")[0].slice(0, 60) + (trimmedBlock.length > 60 ? "..." : "");
         missingIdentifiers.push({ index: index + 1, preview });
       }
     });
@@ -179,7 +179,7 @@ describe("README Documentation Validation", () => {
       testIdCounts.get(testId)!.push(fileInfo.replace(")", ""));
     });
 
-    const duplicates = Array.from(testIdCounts.entries())
+    const duplicates = [...testIdCounts.entries()]
       .filter(([_, files]) => files.length > 1)
       .map(([testId, files]) => `${testId} (in ${files.join(", ")})`);
 

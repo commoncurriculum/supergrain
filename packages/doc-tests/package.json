@@ -16,7 +16,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "test:validate": "vitest run --config vitest.node.config.ts",
-    "lint": "oxlint -D correctness -D suspicious -D pedantic -D style tests/",
+    "lint": "oxlint -c ../../.oxlintrc.json tests/",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

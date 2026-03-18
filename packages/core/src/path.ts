@@ -1,4 +1,4 @@
-import { setProperty } from "./write";
+import { setProperty, deleteProperty } from "./write";
 
 export type PathSegment = string;
 
@@ -12,9 +12,9 @@ type Join<K extends string, P extends string> = `${K}.${P}`;
 
 export type Path<T, D extends Depth = 5> = [D] extends [0]
   ? never
-  : T extends Primitive | Function
+  : T extends Primitive | ((...args: never[]) => unknown)
     ? never
-    : T extends ReadonlyArray<infer U>
+    : T extends readonly (infer U)[]
       ? ArrayKey | Join<ArrayKey, Path<U, PrevDepth[D]>>
       : T extends object
         ? {
@@ -27,14 +27,14 @@ export type Path<T, D extends Depth = 5> = [D] extends [0]
         : never;
 
 export type PathValue<T, P extends string> = P extends `${infer Head}.${infer Tail}`
-  ? T extends ReadonlyArray<infer U>
+  ? T extends readonly (infer U)[]
     ? Head extends ArrayKey
       ? PathValue<U, Tail>
       : never
     : Head extends keyof T
       ? PathValue<T[Head], Tail>
       : never
-  : T extends ReadonlyArray<infer U>
+  : T extends readonly (infer U)[]
     ? P extends ArrayKey
       ? U
       : never
@@ -52,7 +52,7 @@ type KnownPathByValue<T, Value> = Extract<
 export type NumericPath<T> = KnownPathByValue<T, number | null | undefined>;
 export type ArrayPath<T> = Extract<
   {
-    [P in Path<T>]: PathValue<T, P> extends ReadonlyArray<any> ? P : never;
+    [P in Path<T>]: PathValue<T, P> extends readonly any[] ? P : never;
   }[Path<T>],
   string
 >;
@@ -122,8 +122,8 @@ export function setValueAtPath(target: object, path: string, value: unknown): vo
 
 export function deleteValueAtPath(target: object, path: string): void {
   const resolved = resolveParentPath(target, path);
-  if (resolved && Object.prototype.hasOwnProperty.call(resolved.parent, resolved.key)) {
-    setProperty(resolved.parent, resolved.key, undefined, true);
+  if (resolved && Object.hasOwn(resolved.parent, resolved.key)) {
+    deleteProperty(resolved.parent, resolved.key);
   }
 }
 
@@ -138,14 +138,14 @@ export type NumericPathOperations<T extends object> = LoosePathMap<NumericPath<T
 
 export type ArrayWriteOperations<T extends object> = LooseUnknownPathMap<
   ArrayPath<T>,
-  PathValue<T, ArrayPath<T>> extends Array<infer Item> ? Item | ArrayModifiers<Item> : never
+  PathValue<T, ArrayPath<T>> extends (infer Item)[] ? Item | ArrayModifiers<Item> : never
 >;
 
 export type ArrayPullOperations<T extends object> = LooseUnknownPathMap<
   ArrayPath<T>,
-  PathValue<T, ArrayPath<T>> extends Array<infer Item> ? Item | Partial<Item> : never
+  PathValue<T, ArrayPath<T>> extends (infer Item)[] ? Item | Partial<Item> : never
 >;
 
-export type ArrayModifiers<T> = {
+export interface ArrayModifiers<T> {
   $each: T[];
-};
+}

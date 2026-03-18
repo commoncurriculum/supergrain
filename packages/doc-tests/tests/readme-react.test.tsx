@@ -21,14 +21,12 @@ describe("README React Examples", () => {
       const [store, update] = createStore({ count: 0 });
 
       // The primary way to use stores in React:
-      const Counter = tracked(() => {
-        return (
-          <div>
-            <p>Count: {store.count}</p>
-            <button onClick={() => update({ $inc: { count: 1 } })}>Increment</button>
-          </div>
-        );
-      });
+      const Counter = tracked(() => (
+        <div>
+          <p>Count: {store.count}</p>
+          <button onClick={() => update({ $inc: { count: 1 } })}>Increment</button>
+        </div>
+      ));
 
       render(<Counter />);
 
@@ -43,15 +41,11 @@ describe("README React Examples", () => {
     it("#DOC_TEST_8", async () => {
       const [store, update] = createStore({ x: 1, y: 2, z: 3 });
 
-      const ComponentA = tracked(() => {
-        // Only re-renders when 'x' changes
-        return <div>X: {store.x}</div>;
-      });
+      // Only re-renders when 'x' changes
+      const ComponentA = tracked(() => <div>X: {store.x}</div>);
 
-      const ComponentB = tracked(() => {
-        // Only re-renders when 'y' changes
-        return <div>Y: {store.y}</div>;
-      });
+      // Only re-renders when 'y' changes
+      const ComponentB = tracked(() => <div>Y: {store.y}</div>);
 
       render(
         <div>
@@ -105,15 +99,13 @@ describe("README React Examples", () => {
       });
 
       // Usage
-      const ProjectView = tracked(() => {
-        return (
-          <div>
-            {store.project.taskIds.map((taskId) => (
-              <TaskComponent key={taskId} store={store} taskId={taskId} />
-            ))}
-          </div>
-        );
-      });
+      const ProjectView = tracked(() => (
+        <div>
+          {store.project.taskIds.map((taskId) => (
+            <TaskComponent key={taskId} store={store} taskId={taskId} />
+          ))}
+        </div>
+      ));
 
       render(<ProjectView />);
 
@@ -141,13 +133,11 @@ describe("README React Examples", () => {
         </div>
       ));
 
-      const TodoList = tracked(() => {
-        return (
-          <For each={store.todos} fallback={<div>No todos yet</div>}>
-            {(todo, _index) => <TodoItem key={todo.id} todo={todo} />}
-          </For>
-        );
-      });
+      const TodoList = tracked(() => (
+        <For each={store.todos} fallback={<div>No todos yet</div>}>
+          {(todo, _index) => <TodoItem key={todo.id} todo={todo} />}
+        </For>
+      ));
 
       render(<TodoList />);
 

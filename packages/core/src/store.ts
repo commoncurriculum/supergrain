@@ -1,6 +1,5 @@
 import { startBatch, endBatch } from "alien-signals";
-import type { Branded } from "./core";
-import { $BRAND, type Signal, unwrap } from "./core";
+import { $BRAND, type Branded, type Signal, unwrap } from "./core";
 import {
   update as applyUpdate,
   type LooseUpdateOperations,
@@ -24,7 +23,7 @@ function normalizeInitialState(initialState: unknown): object {
 
   const unwrapped = unwrap(initialState);
   if (typeof unwrapped !== "object") {
-    throw new Error("createStore() requires the root state to be a plain object or array.");
+    throw new TypeError("createStore() requires the root state to be a plain object or array.");
   }
 
   return unwrapped as object;

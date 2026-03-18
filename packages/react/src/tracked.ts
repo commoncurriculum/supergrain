@@ -62,11 +62,12 @@ export function tracked<P extends object>(Component: FC<P>) {
       ref.current = { cleanup, effectNode };
     }
 
-    useEffect(() => {
-      return () => {
+    useEffect(
+      () => () => {
         ref.current?.cleanup?.();
-      };
-    }, []);
+      },
+      [],
+    );
 
     const prev = getCurrentSub();
     setCurrentSub(ref.current.effectNode);

@@ -22,7 +22,7 @@ describe("README Complex Examples", () => {
       // Create a store with initial state
       const [store, update] = createStore({
         count: 0,
-        todos: [] as Array<{ id: number; text: string; completed: boolean }>,
+        todos: [] as { id: number; text: string; completed: boolean }[],
       });
 
       // Use in React components
@@ -228,8 +228,12 @@ describe("README Complex Examples", () => {
         const post = store.findDoc("posts", 1);
         const user = store.findDoc("users", post.content?.userId as number);
 
-        if (post.isPending) return <div>Loading post...</div>;
-        if (post.isRejected) return <div>Error loading post</div>;
+        if (post.isPending) {
+          return <div>Loading post...</div>;
+        }
+        if (post.isRejected) {
+          return <div>Error loading post</div>;
+        }
 
         return (
           <article>
@@ -290,7 +294,9 @@ describe("README Complex Examples", () => {
         const [inputText, setInputText] = useState("");
 
         const addTodo = () => {
-          if (!inputText.trim()) return;
+          if (!inputText.trim()) {
+            return;
+          }
 
           updateTodos({
             $push: {
@@ -331,8 +337,12 @@ describe("README Complex Examples", () => {
 
         // Filter todos
         const filteredTodos = todoStore.todos.filter((todo) => {
-          if (todoStore.filter === "active") return !todo.completed;
-          if (todoStore.filter === "completed") return todo.completed;
+          if (todoStore.filter === "active") {
+            return !todo.completed;
+          }
+          if (todoStore.filter === "completed") {
+            return todo.completed;
+          }
           return true;
         });
 
@@ -480,7 +490,7 @@ describe("README Complex Examples", () => {
 
       const MyComponent = tracked(() => {
         // This creates a subscription to 'user.profile.name'
-        const name = store.user.profile.name;
+        const { name } = store.user.profile;
 
         // This creates a subscription to 'items[0].title'
         const firstTitle = store.items[0].title;
@@ -551,7 +561,7 @@ describe("README Complex Examples", () => {
             notifications: boolean;
           };
         };
-        items: Array<{ id: string; title: string; count: number }>;
+        items: { id: string; title: string; count: number }[];
       }
 
       const [store, update] = createStore<AppState>({
@@ -590,14 +600,12 @@ describe("README Complex Examples", () => {
       });
 
       // Component usage is also type-safe
-      const UserProfile = tracked(() => {
-        return (
-          <div>
-            <h1>{store.user.name}</h1>
-            <p>Age: {store.user.age}</p>
-          </div>
-        );
-      });
+      const UserProfile = tracked(() => (
+        <div>
+          <h1>{store.user.name}</h1>
+          <p>Age: {store.user.age}</p>
+        </div>
+      ));
 
       // Test the component
       render(<UserProfile />);

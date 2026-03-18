@@ -21,6 +21,19 @@ function trackSelf(target: object): void {
   }
 }
 
+// When returning an array with an active subscriber, subscribe
+// to the array's version signal so any mutation (splice, push,
+// swap) triggers a re-render. Version is cheaper than ownKeys
+// because alien-signals deduplicates dirty-marking.
+function trackArrayVersion(value: unknown): void {
+  if (Array.isArray(value) && getCurrentSub()) {
+    const arrayNodes = getNodes(value);
+    if (arrayNodes[$VERSION]) {
+      arrayNodes[$VERSION]();
+    }
+  }
+}
+
 const readHandler: Pick<
   ProxyHandler<object>,
   "get" | "ownKeys" | "has" | "getOwnPropertyDescriptor"
@@ -34,14 +47,7 @@ const readHandler: Pick<
           const value = tracked();
           if (isWrappable(value)) {
             const proxy = createReactiveProxy(value);
-            // When returning an array with an active subscriber, subscribe
-            // to the array's version signal so any mutation (splice, push,
-            // swap) triggers a re-render. Version is cheaper than ownKeys
-            // because alien-signals deduplicates dirty-marking.
-            if (Array.isArray(value) && getCurrentSub()) {
-              const arrayNodes = getNodes(value);
-              if (arrayNodes[$VERSION]) arrayNodes[$VERSION]();
-            }
+            trackArrayVersion(value);
             return proxy;
           }
           return value;
@@ -49,8 +55,12 @@ const readHandler: Pick<
       }
     }
 
-    if (prop === $RAW) return target;
-    if (prop === $PROXY) return receiver;
+    if (prop === $RAW) {
+      return target;
+    }
+    if (prop === $PROXY) {
+      return receiver;
+    }
     if (prop === $TRACK) {
       trackSelf(target);
       return receiver;
@@ -63,7 +73,9 @@ const readHandler: Pick<
     const value = (target as any)[prop];
 
     if (typeof value === "function") {
-      if (Array.isArray(target) && getCurrentSub()) trackSelf(target);
+      if (Array.isArray(target) && getCurrentSub()) {
+        trackSelf(target);
+      }
       return value;
     }
 

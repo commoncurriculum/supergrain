@@ -12,15 +12,17 @@ export interface SchemaLike<TInferred extends object = any> {
   (data: unknown): any;
 }
 
-type ModelProtoEntry = {
+interface ModelProtoEntry {
   props: readonly SchemaProp[];
   defineProperties(target: object): void;
-};
+}
 
 function safeGetProps(typeValue: any): readonly SchemaProp[] | null {
   try {
     const props = typeValue?.props;
-    if (Array.isArray(props) && props.length > 0) return props;
+    if (Array.isArray(props) && props.length > 0) {
+      return props;
+    }
   } catch {
     // .props throws for non-object types (e.g., string, number)
   }
@@ -31,7 +33,7 @@ function buildModelProto(props: readonly SchemaProp[]): ModelProtoEntry {
   const descriptors: PropertyDescriptorMap = {};
 
   for (const prop of props) {
-    const key = prop.key;
+    const { key } = prop;
     const childProps = safeGetProps(prop.value);
 
     if (childProps && childProps.length > 0) {
@@ -39,7 +41,9 @@ function buildModelProto(props: readonly SchemaProp[]): ModelProtoEntry {
       descriptors[key] = {
         get: function (this: any) {
           const raw = this._n[key]();
-          if (raw === null || raw === undefined) return raw;
+          if (raw === null || raw === undefined) {
+            return raw;
+          }
 
           return createModelViewFromEntry(raw, childEntry);
         },
@@ -95,7 +99,9 @@ function createModelViewFromEntry<T extends object>(raw: any, entry: ModelProtoE
   const view = {};
   const nodes = getNodes(raw);
   for (const prop of entry.props) {
-    if (!nodes[prop.key]) getNode(nodes, prop.key, raw[prop.key]);
+    if (!nodes[prop.key]) {
+      getNode(nodes, prop.key, raw[prop.key]);
+    }
   }
   attachViewNodes(view, nodes);
   entry.defineProperties(view);
@@ -111,7 +117,9 @@ export function createModelView<T extends object>(raw: any, schema: SchemaLike):
 
   const nodes = getNodes(raw);
   for (const prop of schema.props) {
-    if (!nodes[prop.key]) getNode(nodes, prop.key, raw[prop.key]);
+    if (!nodes[prop.key]) {
+      getNode(nodes, prop.key, raw[prop.key]);
+    }
   }
 
   return createModelViewFromEntry(raw, entry);

@@ -40,9 +40,7 @@ export class Store<T extends DocumentTypes = DocumentTypes> {
       });
     }
 
-    const documentState = computed(() => {
-      return this.store.documents[modelTypeStr]?.[key];
-    });
+    const documentState = computed(() => this.store.documents[modelTypeStr]?.[key]);
 
     return new DocumentPromiseImpl(documentState);
   }

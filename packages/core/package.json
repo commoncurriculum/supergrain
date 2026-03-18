@@ -44,7 +44,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "lint": "oxlint -D correctness -D suspicious -D pedantic -D style src/",
+    "lint": "oxlint -c ../../.oxlintrc.json src/",
     "test": "vitest run",
     "bench": "vitest bench",
     "bench:core": "vitest bench benchmarks/core-comparison.bench.ts",
