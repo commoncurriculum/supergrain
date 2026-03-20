@@ -173,29 +173,6 @@ store.user.profile.name = 'Bob'
 const Counter = observer(() => <p>{store.count}</p>)
 ```
 
-## Fine-Grained Reactivity
-
-`tracked()` subscribes a component to only the specific properties it reads during render — at any depth:
-
-```typescript
-// [#DOC_TEST_35](packages/doc-tests/tests/readme-react.test.tsx)
-
-const [store] = createStore({
-  user: { profile: { name: 'Alice', age: 30 } },
-  items: [{ title: 'Item 1' }, { title: 'Item 2' }],
-})
-
-const Profile = tracked(() => {
-  // Subscribes to ONLY user.profile.name — not age, not items
-  return <h1>{store.user.profile.name}</h1>
-})
-
-store.user.profile.age = 31  // Profile does NOT re-render
-store.user.profile.name = 'Bob'  // Profile re-renders
-```
-
-No manual subscription management. No selectors. Just access the data and the reactivity system handles the rest. `tracked()` also includes `React.memo()` behavior, so you never need both.
-
 ## `<For>` Component
 
 `<For>` optimizes list rendering. With `.map()` + `React.memo()`, React still calls the memo comparison function for every item whenever the array changes. `<For>` tracks which items actually changed and only re-renders those:
@@ -227,9 +204,9 @@ const TodoList = tracked(() => (
 
 ---
 
-## Update Operators
+## Update Operators (Optional)
 
-For complex updates — batched mutations, array manipulations, dot-notation paths — `createStore` returns an `update` function with MongoDB-style operators:
+For complex updates — batched mutations, array manipulations, dot-notation paths — `createStore` also returns an optional `update` function with MongoDB-style operators:
 
 ```typescript
 // [#DOC_TEST_46](packages/doc-tests/tests/readme-core.test.ts)

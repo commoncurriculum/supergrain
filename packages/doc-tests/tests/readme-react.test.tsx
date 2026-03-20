@@ -3,7 +3,6 @@
  *
  * Tests for React integration examples from the README:
  * - Quick Start (DOC_TEST_32)
- * - Fine-grained reactivity (DOC_TEST_35)
  * - For component (DOC_TEST_39)
  */
 
@@ -75,31 +74,6 @@ describe("README React Examples", () => {
 
       expect(screen.getByText("Todos (1)")).toBeInTheDocument();
       expect(titleSpy).toHaveBeenCalledWith("1 items left");
-    });
-  });
-
-  describe("Fine-Grained Reactivity", () => {
-    it("#DOC_TEST_35", () => {
-      const [store] = createStore({
-        user: { profile: { name: "Alice", age: 30 } },
-        items: [{ title: "Item 1" }, { title: "Item 2" }],
-      });
-
-      const Profile = tracked(() => <h1>{store.user.profile.name}</h1>);
-
-      render(<Profile />);
-
-      expect(screen.getByText("Alice")).toBeInTheDocument();
-
-      act(() => {
-        store.user.profile.age = 31;
-      });
-      expect(screen.getByText("Alice")).toBeInTheDocument();
-
-      act(() => {
-        store.user.profile.name = "Bob";
-      });
-      expect(screen.getByText("Bob")).toBeInTheDocument();
     });
   });
 
