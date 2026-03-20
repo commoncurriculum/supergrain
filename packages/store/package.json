@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/store",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Document-oriented store for Supergrain with TypeScript support",
   "keywords": [
     "document",

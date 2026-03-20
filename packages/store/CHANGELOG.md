@@ -1,5 +1,13 @@
 # @supergrain/store
 
+## 1.0.2
+
+### Patch Changes
+
+- 73daaff: Include README in published packages (replace symlinks with copies)
+- Updated dependencies [73daaff]
+  - @supergrain/core@1.0.2
+
 ## 1.0.1
 
 ### Patch Changes
