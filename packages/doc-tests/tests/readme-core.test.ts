@@ -5,6 +5,7 @@
  * - Creating stores (DOC_TEST_1, DOC_TEST_2)
  * - Reading state (DOC_TEST_4)
  * - Direct mutations (DOC_TEST_30)
+ * - Synchronous state (DOC_TEST_31)
  * - Updating state (DOC_TEST_5, DOC_TEST_11-18)
  * - Effects (DOC_TEST_19)
  * - Computed values (DOC_TEST_20)
@@ -140,6 +141,18 @@ describe("README Core Examples", () => {
 
       state.items.push("d");
       expect(state.items).toEqual(["a", "b", "c", "d"]);
+    });
+  });
+
+  describe("Synchronous State", () => {
+    it("#DOC_TEST_31", () => {
+      const [state] = createStore({ count: 0, user: { name: "John" } });
+
+      state.count = 5;
+      expect(state.count).toBe(5);
+
+      state.user.name = "Jane";
+      expect(state.user.name).toBe("Jane");
     });
   });
 

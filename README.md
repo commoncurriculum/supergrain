@@ -150,6 +150,34 @@ useEffect(() => unsubscribe, []);
 const userName = store.user.name; // Automatically subscribed!
 ```
 
+### Synchronous State
+
+With React's `useState`, state updates are deferred until the next render — you can't read back what you just wrote:
+
+```typescript
+// ❌ React useState: state is stale until next render
+const [count, setCount] = useState(0);
+setCount(5);
+console.log(count); // still 0
+```
+
+Supergrain state updates are synchronous. The store always reflects the latest value immediately:
+
+```typescript
+// [#DOC_TEST_31](packages/doc-tests/tests/readme-core.test.ts)
+
+// ✅ Supergrain: state is always current
+const [state] = createStore({ count: 0, user: { name: 'John' } });
+
+state.count = 5;
+console.log(state.count); // 5
+
+state.user.name = 'Jane';
+console.log(state.user.name); // 'Jane'
+```
+
+React components still re-render on React's schedule, but the state itself is never stale. Event handlers, effects, computed values, and other store reads always see the latest value the instant it's written.
+
 ## Creating Stores
 
 _Links: [Source Code](packages/core/src/store.ts). [Tests](packages/core/tests/store.test.ts)._
