@@ -38,6 +38,8 @@
     "access": "public"
   },
   "scripts": {
+    "prepack": "cp ../../README.md .",
+    "postpack": "rm README.md",
     "build": "vite build",
     "dev": "vite build --watch",
     "lint": "oxlint -c ../../.oxlintrc.json src/",
