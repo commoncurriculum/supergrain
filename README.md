@@ -100,10 +100,7 @@ setState(prev => ({
   user: { ...prev.user, profile: { ...prev.user.profile, name: 'Bob' } }
 }))
 
-// Fine-grained — not possible. Re-renders on ANY state change.
-const Counter = () => {
-  return <p>{state.count}</p>
-}
+// Fine-grained — ❌ not possible. Re-renders on ANY state change.
 ```
 
 ### Zustand
