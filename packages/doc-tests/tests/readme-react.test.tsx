@@ -2,10 +2,11 @@
  * README React Examples Tests
  *
  * Tests for React integration examples from the README:
- * - tracked() Component Wrapper (DOC_TEST_6)
- * - Fine-grained Reactivity (DOC_TEST_8)
- * - Memoized Components (DOC_TEST_9)
- * - For Component (DOC_TEST_10)
+ * - Quick Start (DOC_TEST_32)
+ * - Fine-grained reactivity (DOC_TEST_34, DOC_TEST_35)
+ * - tracked() replaces memo() (DOC_TEST_36)
+ * - For component (DOC_TEST_39)
+ * - TypeScript component (DOC_TEST_41)
  */
 
 import { createStore } from "@supergrain/core";
@@ -16,126 +17,135 @@ import { describe, it, expect } from "vitest";
 import { userEvent } from "vitest/browser";
 
 describe("README React Examples", () => {
-  describe("tracked() Component Wrapper", () => {
-    it("#DOC_TEST_6", async () => {
-      const [store, update] = createStore({ count: 0 });
+  describe("Quick Start", () => {
+    it("#DOC_TEST_32", async () => {
+      const [store] = createStore({
+        count: 0,
+        user: { name: "John" },
+      });
 
-      // The primary way to use stores in React:
-      const Counter = tracked(() => (
+      const App = tracked(() => (
         <div>
-          <p>Count: {store.count}</p>
-          <button onClick={() => update({ $inc: { count: 1 } })}>Increment</button>
+          <h1>
+            {store.user.name}: {store.count}
+          </h1>
+          <button onClick={() => store.count++}>Increment</button>
         </div>
       ));
 
-      render(<Counter />);
+      render(<App />);
 
-      expect(screen.getByText("Count: 0")).toBeInTheDocument();
+      expect(screen.getByText("John: 0")).toBeInTheDocument();
 
       await userEvent.click(screen.getByText("Increment"));
-      expect(screen.getByText("Count: 1")).toBeInTheDocument();
+      expect(screen.getByText("John: 1")).toBeInTheDocument();
     });
   });
 
-  describe("Fine-grained Reactivity", () => {
-    it("#DOC_TEST_8", async () => {
-      const [store, update] = createStore({ x: 1, y: 2, z: 3 });
+  describe("Fine-Grained Reactivity", () => {
+    it("#DOC_TEST_34", () => {
+      const [store] = createStore({ x: 1, y: 2, z: 3 });
 
-      // Only re-renders when 'x' changes
-      const ComponentA = tracked(() => <div>X: {store.x}</div>);
-
-      // Only re-renders when 'y' changes
-      const ComponentB = tracked(() => <div>Y: {store.y}</div>);
+      const ShowX = tracked(() => <div>X: {store.x}</div>);
+      const ShowY = tracked(() => <div>Y: {store.y}</div>);
 
       render(
         <div>
-          <ComponentA />
-          <ComponentB />
+          <ShowX />
+          <ShowY />
         </div>,
       );
 
       expect(screen.getByText("X: 1")).toBeInTheDocument();
       expect(screen.getByText("Y: 2")).toBeInTheDocument();
 
-      // Updating 'z' won't re-render ComponentA or ComponentB
+      // Updating z doesn't affect components reading x or y
       act(() => {
-        update({ $set: { z: 10 } });
+        store.z = 10;
       });
 
-      // Components should still show original values
       expect(screen.getByText("X: 1")).toBeInTheDocument();
       expect(screen.getByText("Y: 2")).toBeInTheDocument();
+    });
 
-      // Update x - ComponentA should re-render because it accesses state.x
-      act(() => {
-        update({ $set: { x: 5 } });
+    it("#DOC_TEST_35", () => {
+      const [store] = createStore({
+        user: { profile: { name: "Alice", age: 30 } },
+        items: [{ title: "Item 1" }, { title: "Item 2" }],
       });
-      // ComponentA re-renders with new value, ComponentB stays the same
-      expect(screen.getByText("X: 5")).toBeInTheDocument();
-      expect(screen.getByText("Y: 2")).toBeInTheDocument();
+
+      const Profile = tracked(() => <h1>{store.user.profile.name}</h1>);
+
+      render(<Profile />);
+
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+
+      // Changing age does NOT re-render Profile (it only reads name)
+      act(() => {
+        store.user.profile.age = 31;
+      });
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+
+      // Changing name DOES re-render Profile
+      act(() => {
+        store.user.profile.name = "Bob";
+      });
+      expect(screen.getByText("Bob")).toBeInTheDocument();
     });
   });
 
-  describe("Using with Memoized Components", () => {
-    it("#DOC_TEST_9", async () => {
-      const [store, _update] = createStore({
+  describe("tracked() Replaces memo()", () => {
+    it("#DOC_TEST_36", () => {
+      const [store] = createStore({
         tasks: [
           { id: 1, title: "Task 1", completed: false },
           { id: 2, title: "Task 2", completed: true },
         ],
-        project: { taskIds: [1, 2] },
       });
 
-      // Correct - tracked() wraps the component
-      const TaskComponent = tracked(({ store, taskId }: { store: any; taskId: number }) => {
-        const task = store.tasks.find((t: any) => t.id === taskId);
-
+      const TaskRow = tracked(({ taskId }: { taskId: number }) => {
+        const task = store.tasks.find((t) => t.id === taskId)!;
         return (
           <div>
             <h3>{task.title}</h3>
-            <span>{task.completed ? "✓" : "○"}</span>
+            <span>{task.completed ? "Done" : "Pending"}</span>
           </div>
         );
       });
 
-      // Usage
-      const ProjectView = tracked(() => (
+      const TaskList = tracked(() => (
         <div>
-          {store.project.taskIds.map((taskId) => (
-            <TaskComponent key={taskId} store={store} taskId={taskId} />
+          {store.tasks.map((task) => (
+            <TaskRow key={task.id} taskId={task.id} />
           ))}
         </div>
       ));
 
-      render(<ProjectView />);
+      render(<TaskList />);
 
       expect(screen.getByText("Task 1")).toBeInTheDocument();
       expect(screen.getByText("Task 2")).toBeInTheDocument();
-      expect(screen.getByText("✓")).toBeInTheDocument();
-      expect(screen.getByText("○")).toBeInTheDocument();
+      expect(screen.getByText("Pending")).toBeInTheDocument();
+      expect(screen.getByText("Done")).toBeInTheDocument();
     });
   });
 
-  describe("For Component - Optimized Array Rendering", () => {
-    it("#DOC_TEST_10", async () => {
-      const [store, _update] = createStore({
+  describe("For Component", () => {
+    it("#DOC_TEST_39", () => {
+      const [store] = createStore({
         todos: [
           { id: 1, text: "Task 1", completed: false },
           { id: 2, text: "Task 2", completed: true },
         ],
       });
 
-      // Memoized component for each item
       const TodoItem = memo(({ todo }: { todo: any }) => (
-        <div className={todo.completed ? "completed" : ""}>
-          {todo.text}
-          <button>Toggle</button>
-        </div>
+        <div className={todo.completed ? "completed" : ""}>{todo.text}</div>
       ));
 
       const TodoList = tracked(() => (
         <For each={store.todos} fallback={<div>No todos yet</div>}>
-          {(todo, _index) => <TodoItem key={todo.id} todo={todo} />}
+          {(todo) => <TodoItem key={todo.id} todo={todo} />}
         </For>
       ));
 
@@ -144,9 +154,45 @@ describe("README React Examples", () => {
       expect(screen.getByText("Task 1")).toBeInTheDocument();
       expect(screen.getByText("Task 2")).toBeInTheDocument();
 
-      // Check that completed class is applied
       const task2Container = screen.getByText("Task 2").closest("div");
       expect(task2Container).toHaveClass("completed");
+    });
+  });
+
+  describe("TypeScript Component", () => {
+    it("#DOC_TEST_41", () => {
+      interface AppState {
+        user: {
+          name: string;
+          age: number;
+          preferences: {
+            theme: "light" | "dark";
+            notifications: boolean;
+          };
+        };
+        items: { id: string; title: string; count: number }[];
+      }
+
+      const [store] = createStore<AppState>({
+        user: {
+          name: "John",
+          age: 30,
+          preferences: { theme: "light", notifications: true },
+        },
+        items: [],
+      });
+
+      const UserProfile = tracked(() => (
+        <div>
+          <h1>{store.user.name}</h1>
+          <p>Age: {store.user.age}</p>
+        </div>
+      ));
+
+      render(<UserProfile />);
+
+      expect(screen.getByText("John")).toBeInTheDocument();
+      expect(screen.getByText("Age: 30")).toBeInTheDocument();
     });
   });
 });
