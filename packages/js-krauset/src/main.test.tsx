@@ -8,7 +8,18 @@ import React from "react";
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import { run, add, update, clear, swapRows, remove, select, App, buildData } from "./main";
+import {
+  run,
+  add,
+  update,
+  clear,
+  swapRows,
+  remove,
+  select,
+  App,
+  buildData,
+  resetIdCounter,
+} from "./main";
 
 function getRows(container: HTMLElement) {
   return Array.from(container.querySelectorAll("tr")).map((tr) => {
@@ -161,6 +172,10 @@ describe("krauset compliance: react-supergrain", () => {
   // Mirrors the exact checks from js-framework-benchmark/webdriver-ts/src/isKeyed.ts
 
   describe("isKeyed validation (DOM structure)", () => {
+    beforeEach(() => {
+      resetIdCounter();
+    });
+
     it("TR has correct child element structure", async () => {
       await act(async () => {
         add();
@@ -211,6 +226,10 @@ describe("krauset compliance: react-supergrain", () => {
   });
 
   describe("isKeyed validation (keyed behavior)", () => {
+    beforeEach(() => {
+      resetIdCounter();
+    });
+
     it("after add + swap, row 2 td1 contains '999'", async () => {
       await act(async () => {
         add();

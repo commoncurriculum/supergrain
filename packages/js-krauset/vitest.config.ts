@@ -18,6 +18,7 @@ export default defineConfig({
     },
     globals: true,
     include: ["src/**/*.test.{ts,tsx}"],
+    exclude: ["src/dist.test.ts"],
   },
   resolve: {
     alias: {

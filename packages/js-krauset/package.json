@@ -7,6 +7,7 @@
     "build-prod": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest --passWithNoTests",
+    "test:dist": "vitest run --config vitest.dist.config.ts",
     "test:performance": "vitest src/performance.test.tsx"
   },
   "dependencies": {
@@ -16,6 +17,7 @@
     "react-dom": "19.0.0"
   },
   "devDependencies": {
+    "@types/node": "^22.18.3",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^4.7.0",

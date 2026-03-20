@@ -7,6 +7,11 @@ import { createRoot } from "react-dom/client";
 
 let idCounter = 1;
 
+/** Reset the ID counter (for testing only). */
+export function resetIdCounter() {
+  idCounter = 1;
+}
+
 const adjectives = [
   "pretty",
   "large",
@@ -113,7 +118,7 @@ export const run = (count: number) => {
 };
 
 export const add = () => {
-  store.data.push(...buildData(1000));
+  store.data = [...store.data, ...buildData(1000)];
 };
 
 export const update = () => {
@@ -137,10 +142,7 @@ export const swapRows = () => {
 };
 
 export const remove = (id: number) => {
-  const index = store.data.findIndex((item) => item.id === id);
-  if (index !== -1) {
-    store.data.splice(index, 1);
-  }
+  store.data = store.data.filter((item) => item.id !== id);
 };
 
 export const select = (id: number) => {

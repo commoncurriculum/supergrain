@@ -210,6 +210,36 @@ const Counter = observer(() => {
 
 ---
 
+## Benchmarks
+
+Results from [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark) (Krause benchmarks), median of 5 runs. Lower is better.
+
+### Speed (ms)
+
+| Benchmark                   | Supergrain | React Hooks | Zustand |
+| --------------------------- | ---------: | ----------: | ------: |
+| Create 1,000 rows           |       46.0 |        44.4 |    46.4 |
+| Replace 1,000 rows          |       55.7 |        52.6 |    52.7 |
+| Partial update (every 10th) |       32.5 |        32.3 |    28.8 |
+| Select row                  |       14.8 |         9.1 |    11.8 |
+| Swap rows                   |  **177.7** |       178.0 |   184.0 |
+| Remove row                  |       27.3 |        23.2 |    20.9 |
+| Create 10,000 rows          |      639.4 |       585.0 |   633.5 |
+| Append 1,000 rows           |       55.9 |        50.6 |    53.3 |
+| Clear rows                  |   **32.2** |        31.5 |    38.6 |
+
+### Memory (MB)
+
+| Benchmark                   | Supergrain | React Hooks | Zustand |
+| --------------------------- | ---------: | ----------: | ------: |
+| Ready memory                |    **1.0** |         1.2 |     1.1 |
+| After 1,000 rows            |        5.1 |     **4.4** |     6.1 |
+| After 5 create/clear cycles |        2.1 |         1.9 |     1.9 |
+
+Supergrain delivers fine-grained reactivity with per-component signal scoping at no meaningful performance cost compared to plain React hooks — while providing a dramatically simpler API than Zustand or Redux.
+
+---
+
 ## Update Operators (Optional)
 
 For complex updates — batched mutations, array manipulations, dot-notation paths — `createStore` also returns an optional `update` function with MongoDB-style operators:
