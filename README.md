@@ -2,8 +2,6 @@
 
 A fast, ergonomic reactive store for React. Work with plain objects — read properties, assign values, push to arrays — and get fine-grained reactivity that only re-renders the components that need it. No actions, no reducers, no selectors, no boilerplate.
 
-**[Full Documentation](https://commoncurriculum.github.io/supergrain/)**
-
 ## Install
 
 ```bash
@@ -19,14 +17,12 @@ import { createStore, computed, effect } from '@supergrain/core'
 import { tracked } from '@supergrain/react'
 
 interface Todo { id: number; text: string; completed: boolean }
-interface AppState { todos: Todo[]; newText: string }
 
-const [store] = createStore<AppState>({
+const [store] = createStore<{ todos: Todo[] }>({
   todos: [
     { id: 1, text: 'Learn Supergrain', completed: false },
     { id: 2, text: 'Build something', completed: false },
   ],
-  newText: '',
 })
 
 // Computed values derive from state automatically
@@ -81,110 +77,6 @@ store.user.profile.name = 'Bob'  // Profile re-renders
 ```
 
 No manual subscription management. No selectors. Just access the data and the reactivity system handles the rest. `tracked()` also includes `React.memo()` behavior, so you never need both.
-
-## Effects
-
-```typescript
-// [#DOC_TEST_37](packages/doc-tests/tests/readme-core.test.ts)
-
-import { effect } from '@supergrain/core'
-
-const [state] = createStore({ count: 0 })
-
-effect(() => {
-  console.log('Count changed to:', state.count)
-})
-
-effect(() => {
-  localStorage.setItem('count', String(state.count))
-})
-```
-
-## Computed Values
-
-```typescript
-// [#DOC_TEST_38](packages/doc-tests/tests/readme-core.test.ts)
-
-import { computed } from '@supergrain/core'
-
-const [state] = createStore({
-  todos: [
-    { id: 1, text: 'Task 1', completed: false },
-    { id: 2, text: 'Task 2', completed: true },
-  ],
-})
-
-const completedCount = computed(() =>
-  state.todos.filter(t => t.completed).length
-)
-
-console.log(completedCount()) // 1
-
-state.todos[0].completed = true
-console.log(completedCount()) // 2
-```
-
-## For Component
-
-Optimized array rendering with automatic version tracking for `React.memo` components:
-
-```typescript
-// [#DOC_TEST_39](packages/doc-tests/tests/readme-react.test.tsx)
-
-import { For } from '@supergrain/react'
-import { memo } from 'react'
-
-const [store] = createStore({
-  todos: [
-    { id: 1, text: 'Task 1', completed: false },
-    { id: 2, text: 'Task 2', completed: true },
-  ],
-})
-
-const TodoItem = memo(({ todo }: { todo: any }) => (
-  <div className={todo.completed ? 'completed' : ''}>
-    {todo.text}
-  </div>
-))
-
-const TodoList = tracked(() => (
-  <For each={store.todos} fallback={<div>No todos yet</div>}>
-    {(todo) => <TodoItem key={todo.id} todo={todo} />}
-  </For>
-))
-```
-
-## TypeScript
-
-`createStore` infers the full type from your initial state. Direct mutations are type-checked — you can't assign the wrong type to a property:
-
-```typescript
-// [#DOC_TEST_40](packages/doc-tests/tests/readme-core.test.ts)
-
-interface AppState {
-  user: {
-    name: string
-    age: number
-    preferences: {
-      theme: 'light' | 'dark'
-      notifications: boolean
-    }
-  }
-  items: Array<{ id: string; title: string; count: number }>
-}
-
-const [store] = createStore<AppState>({
-  user: {
-    name: 'John',
-    age: 30,
-    preferences: { theme: 'light', notifications: true }
-  },
-  items: []
-})
-
-store.user.name = 'Jane'           // ✅ string
-store.user.preferences.theme = 'dark'  // ✅ 'light' | 'dark'
-```
 
 ---
 

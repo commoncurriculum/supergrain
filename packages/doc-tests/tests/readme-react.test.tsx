@@ -4,13 +4,11 @@
  * Tests for React integration examples from the README:
  * - Quick Start (DOC_TEST_32)
  * - Fine-grained reactivity (DOC_TEST_35)
- * - For component (DOC_TEST_39)
  */
 
 import { createStore, computed, effect } from "@supergrain/core";
-import { tracked, For } from "@supergrain/react";
+import { tracked } from "@supergrain/react";
 import { render, screen, act } from "@testing-library/react";
-import { memo } from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 describe("README React Examples", () => {
@@ -25,17 +23,12 @@ describe("README React Examples", () => {
         text: string;
         completed: boolean;
       }
-      interface AppState {
-        todos: Todo[];
-        newText: string;
-      }
 
-      const [store] = createStore<AppState>({
+      const [store] = createStore<{ todos: Todo[] }>({
         todos: [
           { id: 1, text: "Learn Supergrain", completed: false },
           { id: 2, text: "Build something", completed: false },
         ],
-        newText: "",
       });
 
       // Computed
@@ -101,46 +94,15 @@ describe("README React Examples", () => {
 
       expect(screen.getByText("Alice")).toBeInTheDocument();
 
-      // Changing age does NOT re-render Profile (it only reads name)
       act(() => {
         store.user.profile.age = 31;
       });
       expect(screen.getByText("Alice")).toBeInTheDocument();
 
-      // Changing name DOES re-render Profile
       act(() => {
         store.user.profile.name = "Bob";
       });
       expect(screen.getByText("Bob")).toBeInTheDocument();
-    });
-  });
-
-  describe("For Component", () => {
-    it("#DOC_TEST_39", () => {
-      const [store] = createStore({
-        todos: [
-          { id: 1, text: "Task 1", completed: false },
-          { id: 2, text: "Task 2", completed: true },
-        ],
-      });
-
-      const TodoItem = memo(({ todo }: { todo: any }) => (
-        <div className={todo.completed ? "completed" : ""}>{todo.text}</div>
-      ));
-
-      const TodoList = tracked(() => (
-        <For each={store.todos} fallback={<div>No todos yet</div>}>
-          {(todo) => <TodoItem key={todo.id} todo={todo} />}
-        </For>
-      ));
-
-      render(<TodoList />);
-
-      expect(screen.getByText("Task 1")).toBeInTheDocument();
-      expect(screen.getByText("Task 2")).toBeInTheDocument();
-
-      const task2Container = screen.getByText("Task 2").closest("div");
-      expect(task2Container).toHaveClass("completed");
     });
   });
 });
