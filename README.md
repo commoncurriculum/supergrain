@@ -60,6 +60,35 @@ const App = tracked(() => {
 
 Checking a todo re-renders only that `TodoItem` — the `App` component and other items don't re-render.
 
+## `<For>` Component
+
+`<For>` optimizes list rendering. With `.map()` + `React.memo()`, React still calls the memo comparison function for every item whenever the array changes. `<For>` tracks which items actually changed and only re-renders those:
+
+```typescript
+// [#DOC_TEST_39](packages/doc-tests/tests/readme-react.test.tsx)
+
+import { For } from '@supergrain/react'
+
+const [store] = createStore({
+  todos: [
+    { id: 1, text: 'Task 1', completed: false },
+    { id: 2, text: 'Task 2', completed: true },
+  ],
+})
+
+const TodoItem = tracked(({ todo }: { todo: any }) => (
+  <div className={todo.completed ? 'completed' : ''}>
+    {todo.text}
+  </div>
+))
+
+const TodoList = tracked(() => (
+  <For each={store.todos} fallback={<div>No todos yet</div>}>
+    {todo => <TodoItem key={todo.id} todo={todo} />}
+  </For>
+))
+```
+
 ## Comparison
 
 The same operations in other React state libraries:
@@ -177,35 +206,6 @@ store.user.profile.name = 'Bob'
 const Counter = observer(() => {
   return <p>{store.count}</p>
 })
-```
-
-## `<For>` Component
-
-`<For>` optimizes list rendering. With `.map()` + `React.memo()`, React still calls the memo comparison function for every item whenever the array changes. `<For>` tracks which items actually changed and only re-renders those:
-
-```typescript
-// [#DOC_TEST_39](packages/doc-tests/tests/readme-react.test.tsx)
-
-import { For } from '@supergrain/react'
-
-const [store] = createStore({
-  todos: [
-    { id: 1, text: 'Task 1', completed: false },
-    { id: 2, text: 'Task 2', completed: true },
-  ],
-})
-
-const TodoItem = tracked(({ todo }: { todo: any }) => (
-  <div className={todo.completed ? 'completed' : ''}>
-    {todo.text}
-  </div>
-))
-
-const TodoList = tracked(() => (
-  <For each={store.todos} fallback={<div>No todos yet</div>}>
-    {todo => <TodoItem key={todo.id} todo={todo} />}
-  </For>
-))
 ```
 
 ---
