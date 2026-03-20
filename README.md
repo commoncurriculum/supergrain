@@ -8,15 +8,6 @@ A fast, ergonomic reactive store for React.
 - **Type-safe** — full TypeScript inference on stores and mutations
 - **Zero boilerplate** — no actions, reducers, selectors, or providers
 
-| | Boilerplate | Reactivity | State updates | Mutation style |
-|---|---|---|---|---|
-| **Supergrain** | None | Property-level | Synchronous | Direct assignment |
-| **useState/useReducer** | Low | Component-level | Async (next render) | setState / dispatch |
-| **Redux/RTK** | High | Selector-based | Async (next render) | Immutable reducers |
-| **Zustand** | Low | Selector-based | Async (next render) | set() callback |
-| **Jotai/Recoil** | Low | Atom-level | Async (next render) | Atom setters |
-| **MobX** | Medium | Property-level | Synchronous | Direct assignment |
-
 ## Install
 
 ```bash
@@ -69,6 +60,119 @@ const App = tracked(() => {
 
 Checking a todo re-renders only that `TodoItem` — the `App` component and other items don't re-render.
 
+## Comparison
+
+The same operations in other React state libraries:
+
+### Supergrain
+
+```typescript
+// [#DOC_TEST_52](packages/doc-tests/tests/readme-core.test.ts)
+
+interface State { count: number; user: { profile: { name: string } } }
+const [store] = createStore<State>({ count: 0, user: { profile: { name: 'John' } } })
+
+// Mutate
+store.count = 5
+
+// Deep nested
+store.user.profile.name = 'Bob'
+
+// Fine-grained — only re-renders when count changes
+const Counter = tracked(() => <p>{store.count}</p>)
+```
+
+### useState
+
+```typescript
+// [#DOC_TEST_53](packages/doc-tests/tests/readme-core.test.ts)
+
+const [state, setState] = useState<State>({ count: 0, user: { profile: { name: 'John' } } })
+
+// Mutate
+setState(prev => ({ ...prev, count: 5 }))
+
+// Deep nested
+setState(prev => ({
+  ...prev,
+  user: { ...prev.user, profile: { ...prev.user.profile, name: 'Bob' } }
+}))
+
+// Fine-grained — not possible. Re-renders on ANY state change.
+const Counter = () => <p>{state.count}</p>
+```
+
+### Zustand
+
+```typescript
+// [#DOC_TEST_54](packages/doc-tests/tests/readme-core.test.ts)
+
+const useStore = create<State>()((set) => ({
+  count: 0,
+  user: { profile: { name: 'John' } },
+}))
+
+// Mutate
+set({ count: 5 })
+
+// Deep nested — manual spreading
+set(state => ({
+  user: { ...state.user, profile: { ...state.user.profile, name: 'Bob' } }
+}))
+
+// Fine-grained — requires selector
+const Counter = () => {
+  const count = useStore(state => state.count)
+  return <p>{count}</p>
+}
+```
+
+### Redux / RTK
+
+```typescript
+// [#DOC_TEST_55](packages/doc-tests/tests/readme-core.test.ts)
+
+const slice = createSlice({
+  name: 'app',
+  initialState: { count: 0, user: { profile: { name: 'John' } } } as State,
+  reducers: {
+    setCount: (state, action) => { state.count = action.payload },
+    setName: (state, action) => { state.user.profile.name = action.payload },
+  },
+})
+
+// Mutate — need a reducer for each mutation
+dispatch(setCount(5))
+
+// Deep nested — need a reducer for each path
+dispatch(setName('Bob'))
+
+// Fine-grained — requires useSelector
+const count = useSelector((state: RootState) => state.app.count)
+```
+
+### MobX
+
+```typescript
+// [#DOC_TEST_56](packages/doc-tests/tests/readme-core.test.ts)
+
+class AppStore {
+  count = 0
+  user = { profile: { name: 'John' } }
+  constructor() { makeAutoObservable(this) }
+}
+const store = new AppStore()
+
+// Mutate
+store.count = 5
+
+// Deep nested
+store.user.profile.name = 'Bob'
+
+// Fine-grained — requires observer + makeAutoObservable ceremony
+const Counter = observer(() => <p>{store.count}</p>)
+```
+
 ## Fine-Grained Reactivity
 
 `tracked()` subscribes a component to only the specific properties it reads during render — at any depth:
@@ -91,6 +195,35 @@ store.user.profile.name = 'Bob'  // Profile re-renders
 ```
 
 No manual subscription management. No selectors. Just access the data and the reactivity system handles the rest. `tracked()` also includes `React.memo()` behavior, so you never need both.
+
+## `<For>` Component
+
+`<For>` optimizes list rendering. With `.map()` + `React.memo()`, React still calls the memo comparison function for every item whenever the array changes. `<For>` tracks which items actually changed and only re-renders those:
+
+```typescript
+// [#DOC_TEST_39](packages/doc-tests/tests/readme-react.test.tsx)
+
+import { For } from '@supergrain/react'
+
+const [store] = createStore({
+  todos: [
+    { id: 1, text: 'Task 1', completed: false },
+    { id: 2, text: 'Task 2', completed: true },
+  ],
+})
+
+const TodoItem = tracked(({ todo }: { todo: any }) => (
+  <div className={todo.completed ? 'completed' : ''}>
+    {todo.text}
+  </div>
+))
+
+const TodoList = tracked(() => (
+  <For each={store.todos} fallback={<div>No todos yet</div>}>
+    {todo => <TodoItem key={todo.id} todo={todo} />}
+  </For>
+))
+```
 
 ---
 

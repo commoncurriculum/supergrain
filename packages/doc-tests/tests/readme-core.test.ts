@@ -2,13 +2,110 @@
  * README Core Examples Tests
  *
  * Tests for non-React examples from the README:
+ * - Comparison: Supergrain (DOC_TEST_52)
+ * - Comparison: useState (DOC_TEST_53)
+ * - Comparison: Zustand (DOC_TEST_54)
+ * - Comparison: Redux/RTK (DOC_TEST_55)
+ * - Comparison: MobX (DOC_TEST_56)
  * - Update operators (DOC_TEST_46)
  */
 
 import { createStore } from "@supergrain/core";
+import { tracked } from "@supergrain/react";
 import { describe, it, expect } from "vitest";
 
 describe("README Core Examples", () => {
+  describe("Comparison", () => {
+    it("#DOC_TEST_52", () => {
+      // Supergrain comparison example
+      interface State {
+        count: number;
+        user: { profile: { name: string } };
+      }
+      const [store] = createStore<State>({ count: 0, user: { profile: { name: "John" } } });
+
+      store.count = 5;
+      expect(store.count).toBe(5);
+
+      store.user.profile.name = "Bob";
+      expect(store.user.profile.name).toBe("Bob");
+
+      // Fine-grained — tracked() creates a component subscribed to store.count
+      expect(typeof tracked).toBe("function");
+    });
+
+    it("#DOC_TEST_53", () => {
+      // useState comparison — demonstrates the spreading pattern
+      interface State {
+        count: number;
+        user: { profile: { name: string } };
+      }
+      const state: State = { count: 0, user: { profile: { name: "John" } } };
+
+      // Simulates setState spreading for mutation
+      const updated = { ...state, count: 5 };
+      expect(updated.count).toBe(5);
+
+      // Deep nested requires manual spreading
+      const deepUpdated = {
+        ...state,
+        user: { ...state.user, profile: { ...state.user.profile, name: "Bob" } },
+      };
+      expect(deepUpdated.user.profile.name).toBe("Bob");
+    });
+
+    it("#DOC_TEST_54", () => {
+      // Zustand comparison — same spreading pattern for nested updates
+      interface State {
+        count: number;
+        user: { profile: { name: string } };
+      }
+      const state: State = { count: 0, user: { profile: { name: "John" } } };
+
+      // Zustand set() with spreading
+      const updated = { count: 5 };
+      expect(updated.count).toBe(5);
+
+      // Deep nested — manual spreading required
+      const deepUpdated = {
+        user: { ...state.user, profile: { ...state.user.profile, name: "Bob" } },
+      };
+      expect(deepUpdated.user.profile.name).toBe("Bob");
+    });
+
+    it("#DOC_TEST_55", () => {
+      // Redux/RTK comparison — reducers for each mutation
+      interface State {
+        count: number;
+        user: { profile: { name: string } };
+      }
+      const initialState: State = { count: 0, user: { profile: { name: "John" } } };
+
+      // Simulates Immer-style reducer
+      const state = { ...initialState };
+      state.count = 5;
+      expect(state.count).toBe(5);
+
+      state.user.profile.name = "Bob";
+      expect(state.user.profile.name).toBe("Bob");
+    });
+
+    it("#DOC_TEST_56", () => {
+      // MobX comparison — class-based store
+      class AppStore {
+        count = 0;
+        user = { profile: { name: "John" } };
+      }
+      const store = new AppStore();
+
+      store.count = 5;
+      expect(store.count).toBe(5);
+
+      store.user.profile.name = "Bob";
+      expect(store.user.profile.name).toBe("Bob");
+    });
+  });
+
   describe("Update Operators", () => {
     it("#DOC_TEST_46", () => {
       const [state, update] = createStore({

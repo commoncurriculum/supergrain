@@ -4,6 +4,7 @@
  * Tests for React integration examples from the README:
  * - Quick Start (DOC_TEST_32)
  * - Fine-grained reactivity (DOC_TEST_35)
+ * - For component (DOC_TEST_39)
  */
 
 import { createStore, computed, effect } from "@supergrain/core";
@@ -68,7 +69,6 @@ describe("README React Examples", () => {
       expect(screen.getByText("Build something")).toBeInTheDocument();
       expect(titleSpy).toHaveBeenCalledWith("2 items left");
 
-      // Mutate directly — completing a todo updates computed and re-renders
       act(() => {
         store.todos[0].completed = true;
       });
@@ -100,6 +100,35 @@ describe("README React Examples", () => {
         store.user.profile.name = "Bob";
       });
       expect(screen.getByText("Bob")).toBeInTheDocument();
+    });
+  });
+
+  describe("For Component", () => {
+    it("#DOC_TEST_39", () => {
+      const [store] = createStore({
+        todos: [
+          { id: 1, text: "Task 1", completed: false },
+          { id: 2, text: "Task 2", completed: true },
+        ],
+      });
+
+      const TodoItem = tracked(({ todo }: { todo: any }) => (
+        <div className={todo.completed ? "completed" : ""}>{todo.text}</div>
+      ));
+
+      const TodoList = tracked(() => (
+        <For each={store.todos} fallback={<div>No todos yet</div>}>
+          {(todo) => <TodoItem key={todo.id} todo={todo} />}
+        </For>
+      ));
+
+      render(<TodoList />);
+
+      expect(screen.getByText("Task 1")).toBeInTheDocument();
+      expect(screen.getByText("Task 2")).toBeInTheDocument();
+
+      const task2Container = screen.getByText("Task 2").closest("div");
+      expect(task2Container).toHaveClass("completed");
     });
   });
 });
