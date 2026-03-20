@@ -21,7 +21,8 @@
     "release": "pnpm -r publish",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "postinstall": "simple-git-hooks"
   },
   "dependencies": {
     "alien-signals": "^2.0.7"
@@ -39,12 +40,16 @@
     "playwright": "^1.55.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "simple-git-hooks": "^2.13.1",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.5",
     "vite-plugin-dts": "^4.5.4",
     "vitepress": "^1.6.4",
     "vitest": "^4.1.0"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm run format:check"
   },
   "packageManager": "pnpm@10.6.3"
 }
