@@ -79,7 +79,9 @@ store.count = 5
 store.user.profile.name = 'Bob'
 
 // Fine-grained — only re-renders when count changes
-const Counter = tracked(() => <p>{store.count}</p>)
+const Counter = tracked(() => {
+  return <p>{store.count}</p>
+})
 ```
 
 ### useState
@@ -99,7 +101,9 @@ setState(prev => ({
 }))
 
 // Fine-grained — not possible. Re-renders on ANY state change.
-const Counter = () => <p>{state.count}</p>
+const Counter = () => {
+  return <p>{state.count}</p>
+}
 ```
 
 ### Zustand
@@ -148,7 +152,10 @@ dispatch(setCount(5))
 dispatch(setName('Bob'))
 
 // Fine-grained — requires useSelector
-const count = useSelector((state: RootState) => state.app.count)
+const Counter = () => {
+  const count = useSelector((state: RootState) => state.app.count)
+  return <p>{count}</p>
+}
 ```
 
 ### MobX
@@ -170,7 +177,9 @@ store.count = 5
 store.user.profile.name = 'Bob'
 
 // Fine-grained — requires observer + makeAutoObservable ceremony
-const Counter = observer(() => <p>{store.count}</p>)
+const Counter = observer(() => {
+  return <p>{store.count}</p>
+})
 ```
 
 ## `<For>` Component
