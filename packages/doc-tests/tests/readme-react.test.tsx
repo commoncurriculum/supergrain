@@ -7,7 +7,7 @@
  */
 
 import { createStore, computed, effect } from "@supergrain/core";
-import { tracked } from "@supergrain/react";
+import { tracked, For } from "@supergrain/react";
 import { render, screen, act } from "@testing-library/react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
@@ -31,18 +31,6 @@ describe("README React Examples", () => {
         ],
       });
 
-      // Computed
-      const remaining = computed(() => store.todos.filter((t) => !t.completed).length);
-      expect(remaining()).toBe(2);
-
-      // Effect
-      const titleSpy = vi.spyOn(document, "title", "set");
-      effect(() => {
-        document.title = `${remaining()} items left`;
-      });
-      expect(titleSpy).toHaveBeenCalledWith("2 items left");
-
-      // tracked components
       const TodoItem = tracked(({ todo }: { todo: Todo }) => (
         <li>
           <input
@@ -54,30 +42,39 @@ describe("README React Examples", () => {
         </li>
       ));
 
-      const App = tracked(() => (
-        <div>
-          <h1>Todos ({remaining()})</h1>
-          <ul>
-            {store.todos.map((todo) => (
-              <TodoItem key={todo.id} todo={todo} />
-            ))}
-          </ul>
-        </div>
-      ));
+      const titleSpy = vi.spyOn(document, "title", "set");
+
+      const App = tracked(() => {
+        const remaining = computed(() => store.todos.filter((t) => !t.completed).length);
+
+        effect(() => {
+          document.title = `${remaining()} items left`;
+        });
+
+        return (
+          <div>
+            <h1>Todos ({remaining()})</h1>
+            <For each={store.todos}>
+              {(todo) => <TodoItem key={todo.id} todo={todo} />}
+            </For>
+          </div>
+        );
+      });
 
       render(<App />);
 
       expect(screen.getByText("Todos (2)")).toBeInTheDocument();
       expect(screen.getByText("Learn Supergrain")).toBeInTheDocument();
       expect(screen.getByText("Build something")).toBeInTheDocument();
+      expect(titleSpy).toHaveBeenCalledWith("2 items left");
 
       // Mutate directly — completing a todo updates computed and re-renders
       act(() => {
         store.todos[0].completed = true;
       });
 
-      expect(remaining()).toBe(1);
       expect(screen.getByText("Todos (1)")).toBeInTheDocument();
+      expect(titleSpy).toHaveBeenCalledWith("1 items left");
     });
   });
 

@@ -1,6 +1,21 @@
 # Supergrain
 
-A fast, ergonomic reactive store for React. Work with plain objects — read properties, assign values, push to arrays — and get fine-grained reactivity that only re-renders the components that need it. No actions, no reducers, no selectors, no boilerplate.
+A fast, ergonomic reactive store for React.
+
+- **Plain objects** — read properties, assign values, push to arrays. No special syntax.
+- **Fine-grained** — only the components that read changed properties re-render
+- **Synchronous** — state updates are immediate, not deferred to the next render
+- **Type-safe** — full TypeScript inference on stores and mutations
+- **Zero boilerplate** — no actions, reducers, selectors, or providers
+
+| | Boilerplate | Reactivity | State updates | Mutation style |
+|---|---|---|---|---|
+| **Supergrain** | None | Property-level | Synchronous | Direct assignment |
+| **useState/useReducer** | Low | Component-level | Async (next render) | setState / dispatch |
+| **Redux/RTK** | High | Selector-based | Async (next render) | Immutable reducers |
+| **Zustand** | Low | Selector-based | Async (next render) | set() callback |
+| **Jotai/Recoil** | Low | Atom-level | Async (next render) | Atom setters |
+| **MobX** | Medium | Property-level | Synchronous | Direct assignment |
 
 ## Install
 
@@ -14,7 +29,7 @@ npm install @supergrain/core @supergrain/react
 // [#DOC_TEST_32](packages/doc-tests/tests/readme-react.test.tsx)
 
 import { createStore, computed, effect } from '@supergrain/core'
-import { tracked } from '@supergrain/react'
+import { tracked, For } from '@supergrain/react'
 
 interface Todo { id: number; text: string; completed: boolean }
 
@@ -25,13 +40,6 @@ const [store] = createStore<{ todos: Todo[] }>({
   ],
 })
 
-// Computed values derive from state automatically
-const remaining = computed(() => store.todos.filter(t => !t.completed).length)
-
-// Effects run when their dependencies change
-effect(() => document.title = `${remaining()} items left`)
-
-// Each tracked component only re-renders when the properties it reads change
 const TodoItem = tracked(({ todo }: { todo: Todo }) => (
   <li>
     <input
@@ -43,14 +51,20 @@ const TodoItem = tracked(({ todo }: { todo: Todo }) => (
   </li>
 ))
 
-const App = tracked(() => (
-  <div>
-    <h1>Todos ({remaining()})</h1>
-    <ul>
-      {store.todos.map(todo => <TodoItem key={todo.id} todo={todo} />)}
-    </ul>
-  </div>
-))
+const App = tracked(() => {
+  const remaining = computed(() => store.todos.filter(t => !t.completed).length)
+
+  effect(() => document.title = `${remaining()} items left`)
+
+  return (
+    <div>
+      <h1>Todos ({remaining()})</h1>
+      <For each={store.todos}>
+        {todo => <TodoItem key={todo.id} todo={todo} />}
+      </For>
+    </div>
+  )
+})
 ```
 
 Checking a todo re-renders only that `TodoItem` — the `App` component and other items don't re-render.
