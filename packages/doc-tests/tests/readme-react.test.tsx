@@ -3,93 +3,92 @@
  *
  * Tests for React integration examples from the README:
  * - Quick Start (DOC_TEST_32)
- * - Fine-grained reactivity (DOC_TEST_34, DOC_TEST_35)
- * - tracked() replaces memo() (DOC_TEST_36)
+ * - Fine-grained reactivity (DOC_TEST_35)
  * - For component (DOC_TEST_39)
- * - TypeScript component (DOC_TEST_41)
  */
 
-import { createStore, effect } from "@supergrain/core";
+import { createStore, computed, effect } from "@supergrain/core";
 import { tracked, For } from "@supergrain/react";
 import { render, screen, act } from "@testing-library/react";
 import { memo } from "react";
-import { describe, it, expect, vi } from "vitest";
-import { userEvent } from "vitest/browser";
+import { describe, it, expect, vi, afterEach } from "vitest";
 
 describe("README React Examples", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe("Quick Start", () => {
     it("#DOC_TEST_32", () => {
-      vi.spyOn(console, "log").mockImplementation(() => {});
-
-      interface State {
-        count: number;
-        user: { name: string };
+      interface Todo {
+        id: number;
+        text: string;
+        completed: boolean;
+      }
+      interface AppState {
+        todos: Todo[];
+        newText: string;
       }
 
-      const [store] = createStore<State>({ count: 0, user: { name: "John" } });
-
-      // Direct mutations — type-checked
-      store.user.name = "Jane";
-      expect(store.user.name).toBe("Jane");
-      store.count = 5;
-      expect(store.count).toBe(5);
-
-      // Effects react to changes
-      const logSpy = vi.spyOn(console, "log");
-      effect(() => console.log("Count:", store.count));
-      expect(logSpy).toHaveBeenCalledWith("Count:", 5);
-
-      // Fine-grained: Name and Count are independent
-      const Name = tracked(() => <h1>{store.user.name}</h1>);
-      const Count = tracked(() => <p>{store.count}</p>);
-
-      render(
-        <div>
-          <Name />
-          <Count />
-        </div>,
-      );
-
-      expect(screen.getByText("Jane")).toBeInTheDocument();
-      expect(screen.getByText("5")).toBeInTheDocument();
-
-      // Changing count doesn't re-render Name
-      act(() => {
-        store.count = 10;
+      const [store] = createStore<AppState>({
+        todos: [
+          { id: 1, text: "Learn Supergrain", completed: false },
+          { id: 2, text: "Build something", completed: false },
+        ],
+        newText: "",
       });
-      expect(screen.getByText("10")).toBeInTheDocument();
-      expect(screen.getByText("Jane")).toBeInTheDocument();
 
-      vi.restoreAllMocks();
+      // Computed
+      const remaining = computed(() => store.todos.filter((t) => !t.completed).length);
+      expect(remaining()).toBe(2);
+
+      // Effect
+      const titleSpy = vi.spyOn(document, "title", "set");
+      effect(() => {
+        document.title = `${remaining()} items left`;
+      });
+      expect(titleSpy).toHaveBeenCalledWith("2 items left");
+
+      // tracked components
+      const TodoItem = tracked(({ todo }: { todo: Todo }) => (
+        <li>
+          <input
+            type="checkbox"
+            checked={todo.completed}
+            onChange={() => (todo.completed = !todo.completed)}
+          />
+          {todo.text}
+        </li>
+      ));
+
+      const App = tracked(() => (
+        <div>
+          <h1>Todos ({remaining()})</h1>
+          <ul>
+            {store.todos.map((todo) => (
+              <TodoItem key={todo.id} todo={todo} />
+            ))}
+          </ul>
+        </div>
+      ));
+
+      render(<App />);
+
+      expect(screen.getByText("Todos (2)")).toBeInTheDocument();
+      expect(screen.getByText("Learn Supergrain")).toBeInTheDocument();
+      expect(screen.getByText("Build something")).toBeInTheDocument();
+
+      // Mutate directly — completing a todo updates computed and re-renders
+      act(() => {
+        store.todos[0].completed = true;
+      });
+
+      expect(remaining()).toBe(1);
+      expect(screen.getByText("Todos (1)")).toBeInTheDocument();
     });
   });
 
   describe("Fine-Grained Reactivity", () => {
-    it("#DOC_TEST_34", () => {
-      const [store] = createStore({ x: 1, y: 2, z: 3 });
-
-      const ShowX = tracked(() => <div>X: {store.x}</div>);
-      const ShowY = tracked(() => <div>Y: {store.y}</div>);
-
-      render(
-        <div>
-          <ShowX />
-          <ShowY />
-        </div>,
-      );
-
-      expect(screen.getByText("X: 1")).toBeInTheDocument();
-      expect(screen.getByText("Y: 2")).toBeInTheDocument();
-
-      // Updating z doesn't affect components reading x or y
-      act(() => {
-        store.z = 10;
-      });
-
-      expect(screen.getByText("X: 1")).toBeInTheDocument();
-      expect(screen.getByText("Y: 2")).toBeInTheDocument();
-    });
-
     it("#DOC_TEST_35", () => {
       const [store] = createStore({
         user: { profile: { name: "Alice", age: 30 } },
@@ -113,42 +112,6 @@ describe("README React Examples", () => {
         store.user.profile.name = "Bob";
       });
       expect(screen.getByText("Bob")).toBeInTheDocument();
-    });
-  });
-
-  describe("tracked() Replaces memo()", () => {
-    it("#DOC_TEST_36", () => {
-      const [store] = createStore({
-        tasks: [
-          { id: 1, title: "Task 1", completed: false },
-          { id: 2, title: "Task 2", completed: true },
-        ],
-      });
-
-      const TaskRow = tracked(({ taskId }: { taskId: number }) => {
-        const task = store.tasks.find((t) => t.id === taskId)!;
-        return (
-          <div>
-            <h3>{task.title}</h3>
-            <span>{task.completed ? "Done" : "Pending"}</span>
-          </div>
-        );
-      });
-
-      const TaskList = tracked(() => (
-        <div>
-          {store.tasks.map((task) => (
-            <TaskRow key={task.id} taskId={task.id} />
-          ))}
-        </div>
-      ));
-
-      render(<TaskList />);
-
-      expect(screen.getByText("Task 1")).toBeInTheDocument();
-      expect(screen.getByText("Task 2")).toBeInTheDocument();
-      expect(screen.getByText("Pending")).toBeInTheDocument();
-      expect(screen.getByText("Done")).toBeInTheDocument();
     });
   });
 
@@ -178,43 +141,6 @@ describe("README React Examples", () => {
 
       const task2Container = screen.getByText("Task 2").closest("div");
       expect(task2Container).toHaveClass("completed");
-    });
-  });
-
-  describe("TypeScript Component", () => {
-    it("#DOC_TEST_41", () => {
-      interface AppState {
-        user: {
-          name: string;
-          age: number;
-          preferences: {
-            theme: "light" | "dark";
-            notifications: boolean;
-          };
-        };
-        items: { id: string; title: string; count: number }[];
-      }
-
-      const [store] = createStore<AppState>({
-        user: {
-          name: "John",
-          age: 30,
-          preferences: { theme: "light", notifications: true },
-        },
-        items: [],
-      });
-
-      const UserProfile = tracked(() => (
-        <div>
-          <h1>{store.user.name}</h1>
-          <p>Age: {store.user.age}</p>
-        </div>
-      ));
-
-      render(<UserProfile />);
-
-      expect(screen.getByText("John")).toBeInTheDocument();
-      expect(screen.getByText("Age: 30")).toBeInTheDocument();
     });
   });
 });

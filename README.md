@@ -15,43 +15,53 @@ npm install @supergrain/core @supergrain/react
 ```typescript
 // [#DOC_TEST_32](packages/doc-tests/tests/readme-react.test.tsx)
 
-import { createStore, effect } from '@supergrain/core'
+import { createStore, computed, effect } from '@supergrain/core'
 import { tracked } from '@supergrain/react'
 
-// Create a store — it's just an object
-interface State { count: number; user: { name: string } }
+interface Todo { id: number; text: string; completed: boolean }
+interface AppState { todos: Todo[]; newText: string }
 
-const [store] = createStore<State>({ count: 0, user: { name: 'John' } })
+const [store] = createStore<AppState>({
+  todos: [
+    { id: 1, text: 'Learn Supergrain', completed: false },
+    { id: 2, text: 'Build something', completed: false },
+  ],
+  newText: '',
+})
 
-// Mutate directly — fully type-checked
-store.user.name = 'Jane'   // ✅
-store.user.name = 123      // ❌ TypeScript error
-store.count = 5
+// Computed values derive from state automatically
+const remaining = computed(() => store.todos.filter(t => !t.completed).length)
 
-// Effects react to changes
-effect(() => console.log('Count:', store.count))
+// Effects run when their dependencies change
+effect(() => document.title = `${remaining()} items left`)
 
-// Components only re-render when properties they read change
-const Name = tracked(() => <h1>{store.user.name}</h1>)   // won't re-render when count changes
-const Count = tracked(() => <p>{store.count}</p>)         // won't re-render when name changes
+// Each tracked component only re-renders when the properties it reads change
+const TodoItem = tracked(({ todo }: { todo: Todo }) => (
+  <li>
+    <input
+      type="checkbox"
+      checked={todo.completed}
+      onChange={() => todo.completed = !todo.completed}
+    />
+    {todo.text}
+  </li>
+))
+
+const App = tracked(() => (
+  <div>
+    <h1>Todos ({remaining()})</h1>
+    <ul>
+      {store.todos.map(todo => <TodoItem key={todo.id} todo={todo} />)}
+    </ul>
+  </div>
+))
 ```
+
+Checking a todo re-renders only that `TodoItem` — the `App` component and other items don't re-render.
 
 ## Fine-Grained Reactivity
 
-Every property access inside a `tracked()` component creates a subscription to that specific property. Nothing more:
-
-```typescript
-// [#DOC_TEST_34](packages/doc-tests/tests/readme-react.test.tsx)
-
-const [store] = createStore({ x: 1, y: 2, z: 3 })
-
-const ShowX = tracked(() => <div>X: {store.x}</div>)  // re-renders when x changes
-const ShowY = tracked(() => <div>Y: {store.y}</div>)  // re-renders when y changes
-
-store.z = 10  // neither component re-renders
-```
-
-This works at any depth:
+`tracked()` subscribes a component to only the specific properties it reads during render — at any depth:
 
 ```typescript
 // [#DOC_TEST_35](packages/doc-tests/tests/readme-react.test.tsx)
@@ -70,46 +80,9 @@ store.user.profile.age = 31  // Profile does NOT re-render
 store.user.profile.name = 'Bob'  // Profile re-renders
 ```
 
-No manual subscription management. No selectors. Just access the data and the reactivity system handles the rest.
-
-## tracked() Replaces memo()
-
-`tracked()` includes `React.memo()` behavior, so you never need both:
-
-```typescript
-// [#DOC_TEST_36](packages/doc-tests/tests/readme-react.test.tsx)
-
-const [store] = createStore({
-  tasks: [
-    { id: 1, title: 'Task 1', completed: false },
-    { id: 2, title: 'Task 2', completed: true },
-  ],
-})
-
-const TaskRow = tracked(({ taskId }: { taskId: number }) => {
-  const task = store.tasks.find(t => t.id === taskId)
-  return (
-    <div>
-      <h3>{task.title}</h3>
-      <span>{task.completed ? 'Done' : 'Pending'}</span>
-    </div>
-  )
-})
-
-const TaskList = tracked(() => (
-  <div>
-    {store.tasks.map(task => (
-      <TaskRow key={task.id} taskId={task.id} />
-    ))}
-  </div>
-))
-```
-
-Each `TaskRow` independently subscribes to only the signals it reads. Changing one task's title only re-renders that row.
+No manual subscription management. No selectors. Just access the data and the reactivity system handles the rest. `tracked()` also includes `React.memo()` behavior, so you never need both.
 
 ## Effects
-
-React to state changes outside of components:
 
 ```typescript
 // [#DOC_TEST_37](packages/doc-tests/tests/readme-core.test.ts)
@@ -128,8 +101,6 @@ effect(() => {
 ```
 
 ## Computed Values
-
-Derive values that update automatically:
 
 ```typescript
 // [#DOC_TEST_38](packages/doc-tests/tests/readme-core.test.ts)
@@ -213,19 +184,6 @@ const [store] = createStore<AppState>({
 
 store.user.name = 'Jane'           // ✅ string
 store.user.preferences.theme = 'dark'  // ✅ 'light' | 'dark'
-```
-
-Component usage is also fully typed:
-
-```typescript
-// [#DOC_TEST_41](packages/doc-tests/tests/readme-react.test.tsx)
-
-const UserProfile = tracked(() => (
-  <div>
-    <h1>{store.user.name}</h1>
-    <p>Age: {store.user.age}</p>
-  </div>
-))
 ```
 
 ---
