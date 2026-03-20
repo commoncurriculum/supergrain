@@ -1,8 +1,6 @@
 # Supergrain
 
-React state updates are asynchronous — you call `setState`, but the value isn't available until the next render, whenever that happens. Re-renders are coarse-grained — change one property and the entire component and its children re-render. And most state management libraries add boilerplate on top of that: actions, reducers, selectors, providers.
-
-Supergrain is a reactive store for React with synchronous state and fine-grained reactivity. Create a store, mutate it directly, and only the components that read the changed properties re-render.
+A fast, ergonomic reactive store for React. Work with plain objects — read properties, assign values, push to arrays — and get fine-grained reactivity that only re-renders the components that need it. No actions, no reducers, no selectors, no boilerplate.
 
 **[Full Documentation](https://commoncurriculum.github.io/supergrain/)**
 
