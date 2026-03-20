@@ -54,9 +54,7 @@ describe("README React Examples", () => {
         return (
           <div>
             <h1>Todos ({remaining()})</h1>
-            <For each={store.todos}>
-              {(todo) => <TodoItem key={todo.id} todo={todo} />}
-            </For>
+            <For each={store.todos}>{(todo) => <TodoItem key={todo.id} todo={todo} />}</For>
           </div>
         );
       });

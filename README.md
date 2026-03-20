@@ -118,16 +118,16 @@ const Counter = tracked(() => {
 ```typescript
 // [#DOC_TEST_53](packages/doc-tests/tests/readme-core.test.ts)
 
-const [state, setState] = useState<State>({ count: 0, user: { profile: { name: 'John' } } })
+const [state, setState] = useState<State>({ count: 0, user: { profile: { name: "John" } } });
 
 // Mutate
-setState(prev => ({ ...prev, count: 5 }))
+setState((prev) => ({ ...prev, count: 5 }));
 
 // Deep nested
-setState(prev => ({
+setState((prev) => ({
   ...prev,
-  user: { ...prev.user, profile: { ...prev.user.profile, name: 'Bob' } }
-}))
+  user: { ...prev.user, profile: { ...prev.user.profile, name: "Bob" } },
+}));
 
 // Fine-grained — ❌ not possible. Re-renders on ANY state change.
 ```
@@ -219,43 +219,43 @@ For complex updates — batched mutations, array manipulations, dot-notation pat
 
 const [state, update] = createStore({
   count: 0,
-  user: { name: 'John', age: 30, middleName: 'M' },
-  items: ['a', 'b', 'c'],
-  tags: ['react'],
+  user: { name: "John", age: 30, middleName: "M" },
+  items: ["a", "b", "c"],
+  tags: ["react"],
   lowestScore: 100,
   highestScore: 50,
-})
+});
 
 // $set — set values (supports dot notation for nested paths)
-update({ $set: { count: 10, 'user.name': 'Alice' } })
+update({ $set: { count: 10, "user.name": "Alice" } });
 
 // $unset — remove fields
-update({ $unset: { 'user.middleName': 1 } })
+update({ $unset: { "user.middleName": 1 } });
 
 // $inc — increment/decrement numbers
-update({ $inc: { count: 1 } })
-update({ $inc: { count: -5 } })
+update({ $inc: { count: 1 } });
+update({ $inc: { count: -5 } });
 
 // $push — add to arrays (with $each for multiple)
-update({ $push: { items: 'd' } })
-update({ $push: { items: { $each: ['e', 'f'] } } })
+update({ $push: { items: "d" } });
+update({ $push: { items: { $each: ["e", "f"] } } });
 
 // $pull — remove from arrays
-update({ $pull: { items: 'b' } })
+update({ $pull: { items: "b" } });
 
 // $addToSet — add only if not already present
-update({ $addToSet: { tags: 'vue' } })
+update({ $addToSet: { tags: "vue" } });
 
 // $min / $max — conditional updates
-update({ $min: { lowestScore: 50 } })
-update({ $max: { highestScore: 100 } })
+update({ $min: { lowestScore: 50 } });
+update({ $max: { highestScore: 100 } });
 
 // Batching — multiple operators in one call
 update({
-  $set: { 'user.name': 'Bob' },
+  $set: { "user.name": "Bob" },
   $inc: { count: 2 },
-  $push: { items: 'g' },
-})
+  $push: { items: "g" },
+});
 ```
 
 ---
