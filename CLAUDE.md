@@ -28,7 +28,13 @@ pnpm test
 pnpm run typecheck
 ```
 
-Both commands must pass before considering any code changes complete.
+### 3. Check Formatting
+
+```bash
+pnpm run format:check
+```
+
+All three commands must pass before considering any code changes complete. Run `pnpm run format` to auto-fix formatting issues.
 
 ## Package-specific Commands
 
@@ -48,9 +54,10 @@ pnpm run typecheck
 
 The project uses GitHub Actions CI that runs:
 
-1. `pnpm test` - All tests across all packages
-2. `pnpm run test:validate` - README documentation validation
-3. `pnpm run typecheck` - Type checking across all packages
+1. `pnpm run format:check` - Formatting via oxfmt
+2. `pnpm test` - All tests across all packages
+3. `pnpm run test:validate` - README documentation validation
+4. `pnpm run typecheck` - Type checking across all packages
 
 ## Documentation Tests
 
