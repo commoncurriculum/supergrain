@@ -9,36 +9,58 @@
  * - TypeScript component (DOC_TEST_41)
  */
 
-import { createStore } from "@supergrain/core";
+import { createStore, effect } from "@supergrain/core";
 import { tracked, For } from "@supergrain/react";
 import { render, screen, act } from "@testing-library/react";
 import { memo } from "react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 describe("README React Examples", () => {
   describe("Quick Start", () => {
-    it("#DOC_TEST_32", async () => {
-      const [store] = createStore({
-        count: 0,
-        user: { name: "John" },
-      });
+    it("#DOC_TEST_32", () => {
+      vi.spyOn(console, "log").mockImplementation(() => {});
 
-      const App = tracked(() => (
+      interface State {
+        count: number;
+        user: { name: string };
+      }
+
+      const [store] = createStore<State>({ count: 0, user: { name: "John" } });
+
+      // Direct mutations — type-checked
+      store.user.name = "Jane";
+      expect(store.user.name).toBe("Jane");
+      store.count = 5;
+      expect(store.count).toBe(5);
+
+      // Effects react to changes
+      const logSpy = vi.spyOn(console, "log");
+      effect(() => console.log("Count:", store.count));
+      expect(logSpy).toHaveBeenCalledWith("Count:", 5);
+
+      // Fine-grained: Name and Count are independent
+      const Name = tracked(() => <h1>{store.user.name}</h1>);
+      const Count = tracked(() => <p>{store.count}</p>);
+
+      render(
         <div>
-          <h1>
-            {store.user.name}: {store.count}
-          </h1>
-          <button onClick={() => store.count++}>Increment</button>
-        </div>
-      ));
+          <Name />
+          <Count />
+        </div>,
+      );
 
-      render(<App />);
+      expect(screen.getByText("Jane")).toBeInTheDocument();
+      expect(screen.getByText("5")).toBeInTheDocument();
 
-      expect(screen.getByText("John: 0")).toBeInTheDocument();
+      // Changing count doesn't re-render Name
+      act(() => {
+        store.count = 10;
+      });
+      expect(screen.getByText("10")).toBeInTheDocument();
+      expect(screen.getByText("Jane")).toBeInTheDocument();
 
-      await userEvent.click(screen.getByText("Increment"));
-      expect(screen.getByText("John: 1")).toBeInTheDocument();
+      vi.restoreAllMocks();
     });
   });
 

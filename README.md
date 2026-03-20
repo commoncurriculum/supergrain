@@ -15,52 +15,26 @@ npm install @supergrain/core @supergrain/react
 ```typescript
 // [#DOC_TEST_32](packages/doc-tests/tests/readme-react.test.tsx)
 
-import { createStore } from '@supergrain/core'
+import { createStore, effect } from '@supergrain/core'
 import { tracked } from '@supergrain/react'
 
-const [store] = createStore({
-  count: 0,
-  user: { name: 'John' },
-})
+// Create a store — it's just an object
+interface State { count: number; user: { name: string } }
 
-const App = tracked(() => (
-  <div>
-    <h1>{store.user.name}: {store.count}</h1>
-    <button onClick={() => store.count++}>Increment</button>
-  </div>
-))
+const [store] = createStore<State>({ count: 0, user: { name: 'John' } })
+
+// Mutate directly — fully type-checked
+store.user.name = 'Jane'   // ✅
+store.user.name = 123      // ❌ TypeScript error
+store.count = 5
+
+// Effects react to changes
+effect(() => console.log('Count:', store.count))
+
+// Components only re-render when properties they read change
+const Name = tracked(() => <h1>{store.user.name}</h1>)   // won't re-render when count changes
+const Count = tracked(() => <p>{store.count}</p>)         // won't re-render when name changes
 ```
-
-That's it. `createStore` wraps your object in a reactive proxy. `tracked()` wraps a React component so it automatically subscribes to the store properties it reads. When those properties change, only that component re-renders.
-
-## Synchronous State
-
-With React's `useState`, state updates are deferred until the next render — you can't read back what you just wrote:
-
-```typescript
-// [#DOC_TEST_33](packages/doc-tests/tests/readme-core.test.ts)
-
-// React useState: state is stale until next render
-const [count, setCount] = useState(0);
-setCount(5);
-console.log(count); // still 0
-```
-
-Supergrain state is synchronous. Mutations are reflected immediately:
-
-```typescript
-// [#DOC_TEST_31](packages/doc-tests/tests/readme-core.test.ts)
-
-const [state] = createStore({ count: 0, user: { name: 'John' } });
-
-state.count = 5;
-console.log(state.count); // 5
-
-state.user.name = 'Jane';
-console.log(state.user.name); // 'Jane'
-```
-
-React components still re-render on React's schedule, but the state itself is never stale. Event handlers, effects, computed values, and other store reads always see the latest value the instant it's written.
 
 ## Fine-Grained Reactivity
 
@@ -256,87 +230,6 @@ const UserProfile = tracked(() => (
 
 ---
 
-## Document Store (`@supergrain/store`)
-
-For app-level data management, `@supergrain/store` provides a document-oriented store with a promise-like reactive API.
-
-```bash
-npm install @supergrain/store
-```
-
-### Setup
-
-```typescript
-// [#DOC_TEST_42](packages/doc-tests/tests/readme-store.test.tsx)
-
-import { Store } from '@supergrain/store'
-
-interface DocumentTypes {
-  users: { id: number; firstName: string; lastName: string; email: string }
-  posts: { id: number; title: string; content: string; userId: number }
-}
-
-const store = new Store<DocumentTypes>(async (modelType, id) => {
-  const response = await fetch(`/api/${modelType}/${id}`)
-  return response.json()
-})
-```
-
-### Finding Documents
-
-```typescript
-// [#DOC_TEST_43](packages/doc-tests/tests/readme-store.test.tsx)
-
-const doc = store.findDoc('posts', 1)
-
-doc.content      // T | undefined — the document data
-doc.isPending    // request in progress
-doc.isFulfilled  // request succeeded
-doc.isRejected   // request failed
-```
-
-### Setting Documents Directly
-
-```typescript
-// [#DOC_TEST_44](packages/doc-tests/tests/readme-store.test.tsx)
-
-store.setDocument('users', 1, {
-  id: 1,
-  firstName: 'Jane',
-  lastName: 'Smith',
-  email: 'jane@example.com',
-})
-
-const user = store.findDoc('users', 1)
-user.isFulfilled  // true
-user.content      // { id: 1, firstName: 'Jane', ... }
-```
-
-### React Usage
-
-```typescript
-// [#DOC_TEST_45](packages/doc-tests/tests/readme-store.test.tsx)
-
-function PostView() {
-  const post = store.findDoc('posts', 1)
-  const user = store.findDoc('users', post.content?.userId)
-
-  if (post.isPending) return <div>Loading...</div>
-  if (post.isRejected) return <div>Error loading post</div>
-
-  return (
-    <article>
-      <h1>{post.content?.title}</h1>
-      {user.content && (
-        <p>By: {user.content.firstName} {user.content.lastName}</p>
-      )}
-    </article>
-  )
-}
-```
-
----
-
 ## Update Operators
 
 For complex updates — batched mutations, array manipulations, dot-notation paths — `createStore` returns an `update` function with MongoDB-style operators:
@@ -346,59 +239,38 @@ For complex updates — batched mutations, array manipulations, dot-notation pat
 
 const [state, update] = createStore({
   count: 0,
-  user: { name: 'John', age: 30 },
+  user: { name: 'John', age: 30, middleName: 'M' },
   items: ['a', 'b', 'c'],
   tags: ['react'],
+  lowestScore: 100,
+  highestScore: 50,
 })
-```
 
-### $set / $unset
+// $set — set values (supports dot notation for nested paths)
+update({ $set: { count: 10, 'user.name': 'Alice' } })
 
-```typescript
-// [#DOC_TEST_47](packages/doc-tests/tests/readme-core.test.ts)
+// $unset — remove fields
+update({ $unset: { 'user.middleName': 1 } })
 
-update({ $set: { count: 10 } })
-update({ $set: { 'user.name': 'Alice' } })           // dot notation
-update({ $unset: { 'user.middleName': 1 } })          // remove field
-```
-
-### $inc
-
-```typescript
-// [#DOC_TEST_48](packages/doc-tests/tests/readme-core.test.ts)
-
+// $inc — increment/decrement numbers
 update({ $inc: { count: 1 } })
-update({ $inc: { count: -5 } })                       // decrement
-```
+update({ $inc: { count: -5 } })
 
-### $push / $pull / $addToSet
-
-```typescript
-// [#DOC_TEST_49](packages/doc-tests/tests/readme-core.test.ts)
-
+// $push — add to arrays (with $each for multiple)
 update({ $push: { items: 'd' } })
-update({ $push: { items: { $each: ['e', 'f'] } } })   // multiple
-update({ $pull: { items: 'b' } })                      // remove by value
-update({ $addToSet: { tags: 'vue' } })                 // add if not present
-```
+update({ $push: { items: { $each: ['e', 'f'] } } })
 
-### $rename / $min / $max
+// $pull — remove from arrays
+update({ $pull: { items: 'b' } })
 
-```typescript
-// [#DOC_TEST_50](packages/doc-tests/tests/readme-core.test.ts)
+// $addToSet — add only if not already present
+update({ $addToSet: { tags: 'vue' } })
 
-update({ $rename: { oldField: 'newField' } })
-update({ $min: { lowestScore: 50 } })                  // only if smaller
-update({ $max: { highestScore: 100 } })                // only if larger
-```
+// $min / $max — conditional updates
+update({ $min: { lowestScore: 50 } })
+update({ $max: { highestScore: 100 } })
 
-### Batching
-
-Multiple operators in a single `update()` call are batched into one synchronous transaction:
-
-```typescript
-// [#DOC_TEST_51](packages/doc-tests/tests/readme-core.test.ts)
-
+// Batching — multiple operators in one call
 update({
   $set: { 'user.name': 'Bob' },
   $inc: { count: 2 },
