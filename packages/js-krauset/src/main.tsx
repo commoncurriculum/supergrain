@@ -118,7 +118,7 @@ export const run = (count: number) => {
 };
 
 export const add = () => {
-  store.data = [...store.data, ...buildData(1000)];
+  store.data.push(...buildData(1000));
 };
 
 export const update = () => {
@@ -142,7 +142,10 @@ export const swapRows = () => {
 };
 
 export const remove = (id: number) => {
-  store.data = store.data.filter((item) => item.id !== id);
+  const index = store.data.findIndex((item) => item.id === id);
+  if (index !== -1) {
+    store.data.splice(index, 1);
+  }
 };
 
 export const select = (id: number) => {

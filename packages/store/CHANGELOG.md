@@ -1,5 +1,16 @@
 # @supergrain/store
 
+## 1.0.3
+
+### Patch Changes
+
+- Fix missed re-renders from array mutation methods
+
+  Wrap array mutation methods (push, pop, shift, unshift, splice, sort, reverse, fill, copyWithin) in startBatch()/endBatch() so all internal proxy set/delete operations are batched into a single notification. Previously, multi-element operations like `push(a, b, c)` or `splice()` would fire effects once per internal operation instead of once for the entire mutation.
+
+- Updated dependencies
+  - @supergrain/core@1.0.3
+
 ## 1.0.2
 
 ### Patch Changes
