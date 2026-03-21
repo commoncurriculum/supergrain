@@ -1,7 +1,19 @@
-import { getCurrentSub } from "alien-signals";
+import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 
 import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes } from "./core";
 import { writeHandler } from "./write";
+
+const ARRAY_MUTATORS = new Set([
+  "push",
+  "pop",
+  "shift",
+  "unshift",
+  "splice",
+  "sort",
+  "reverse",
+  "fill",
+  "copyWithin",
+]);
 
 const proxyCache = new WeakMap<object, object>();
 
@@ -74,8 +86,20 @@ const readHandler: Pick<
     const value = (target as any)[prop];
 
     if (typeof value === "function") {
-      if (Array.isArray(target) && getCurrentSub()) {
-        trackSelf(target);
+      if (Array.isArray(target)) {
+        if (getCurrentSub()) {
+          trackSelf(target);
+        }
+        if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
+          return (...args: any[]) => {
+            startBatch();
+            try {
+              return value.apply(receiver, args);
+            } finally {
+              endBatch();
+            }
+          };
+        }
       }
       return value;
     }
