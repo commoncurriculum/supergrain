@@ -159,6 +159,74 @@ describe("Array mutation methods trigger reactivity", () => {
     expect(effectFn).toHaveBeenCalledTimes(2);
   });
 
+  it("sort() triggers effect", () => {
+    const [store] = createStore({ items: [3, 1, 2] });
+
+    let captured: number[] = [];
+    const effectFn = vi.fn(() => {
+      captured = [...store.items];
+    });
+
+    effect(effectFn);
+    expect(captured).toEqual([3, 1, 2]);
+    expect(effectFn).toHaveBeenCalledTimes(1);
+
+    store.items.sort();
+    expect(captured).toEqual([1, 2, 3]);
+    expect(effectFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("reverse() triggers effect", () => {
+    const [store] = createStore({ items: [1, 2, 3] });
+
+    let captured: number[] = [];
+    const effectFn = vi.fn(() => {
+      captured = [...store.items];
+    });
+
+    effect(effectFn);
+    expect(captured).toEqual([1, 2, 3]);
+    expect(effectFn).toHaveBeenCalledTimes(1);
+
+    store.items.reverse();
+    expect(captured).toEqual([3, 2, 1]);
+    expect(effectFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("fill() triggers effect", () => {
+    const [store] = createStore({ items: [1, 2, 3] });
+
+    let captured: number[] = [];
+    const effectFn = vi.fn(() => {
+      captured = [...store.items];
+    });
+
+    effect(effectFn);
+    expect(captured).toEqual([1, 2, 3]);
+    expect(effectFn).toHaveBeenCalledTimes(1);
+
+    store.items.fill(0);
+    expect(captured).toEqual([0, 0, 0]);
+    expect(effectFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("copyWithin() triggers effect", () => {
+    const [store] = createStore({ items: [1, 2, 3, 4, 5] });
+
+    let captured: number[] = [];
+    const effectFn = vi.fn(() => {
+      captured = [...store.items];
+    });
+
+    effect(effectFn);
+    expect(captured).toEqual([1, 2, 3, 4, 5]);
+    expect(effectFn).toHaveBeenCalledTimes(1);
+
+    store.items.copyWithin(0, 3);
+    expect(captured).toEqual([4, 5, 3, 4, 5]);
+    expect(effectFn).toHaveBeenCalledTimes(2);
+  });
+
   it("splice() triggers effect tracking iteration", () => {
     const [store] = createStore({
       items: [
