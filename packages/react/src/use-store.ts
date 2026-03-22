@@ -23,29 +23,31 @@ interface ForProps<T> {
  * </For>
  * ```
  */
-export const For: <T>(props: ForProps<T>) => React.JSX.Element | null = tracked(
-  <T>(props: ForProps<T>): React.JSX.Element | null => {
-    const { each, children, fallback } = props;
+// tracked() erases the generic <T>, so we cast through unknown to restore it.
+export const For = tracked((props: ForProps<unknown>) => {
+  const { each, children, fallback } = props;
 
-    if (!each || each.length === 0) {
-      return fallback ? React.createElement(React.Fragment, null, fallback) : null;
-    }
+  if (!each || each.length === 0) {
+    return fallback ? React.createElement(React.Fragment, null, fallback) : null;
+  }
 
-    return React.createElement(
-      React.Fragment,
-      null,
-      each.map((item, index) => {
-        const child = children(item, index);
+  return React.createElement(
+    React.Fragment,
+    null,
+    each.map((item, index) => {
+      const child = children(item, index);
 
-        // Assign stable key from item.id if available
-        if (React.isValidElement(child)) {
-          const key = item && typeof item === "object" && "id" in item ? (item as any).id : index;
+      // Assign stable key from item.id if available
+      if (React.isValidElement(child)) {
+        const key =
+          item && typeof item === "object" && "id" in item
+            ? (item as Record<string, unknown>).id
+            : index;
 
-          return React.cloneElement(child, { key } as any);
-        }
+        return React.cloneElement(child, { key } as any);
+      }
 
-        return child;
-      }),
-    );
-  },
-) as any;
+      return child;
+    }),
+  );
+}) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;
