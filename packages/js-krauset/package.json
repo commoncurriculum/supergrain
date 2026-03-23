@@ -6,9 +6,8 @@
     "dev": "vite",
     "build-prod": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest --passWithNoTests",
-    "test:dist": "vitest run --config vitest.dist.config.ts",
-    "test:performance": "vitest src/performance.test.tsx"
+    "test": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/dist.test.ts",
+    "test:perf": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/perf.test.ts --reporter=verbose 2>&1 | tee perf-results.txt"
   },
   "dependencies": {
     "@supergrain/core": "workspace:*",
