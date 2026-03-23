@@ -1,9 +1,10 @@
 import { unwrap } from "@supergrain/core";
-import React from "react";
+import React, { useRef } from "react";
 
 import { tracked } from "./tracked";
 
 const $TRACK = Symbol.for("supergrain:track");
+const $NODE = Symbol.for("supergrain:node");
 
 interface ForProps<T> {
   each: T[];
@@ -57,6 +58,7 @@ const ForItem = tracked(
 // tracked() erases the generic <T>, so we cast through unknown to restore it.
 export const For = tracked((props: ForProps<unknown>) => {
   const { each, children, fallback } = props;
+  const initialized = useRef(false);
 
   // Subscribe to structural changes (ownKeys: add, remove, splice).
   void (each as any)?.[$TRACK];
@@ -64,21 +66,30 @@ export const For = tracked((props: ForProps<unknown>) => {
   const raw = unwrap(each);
 
   if (!raw || raw.length === 0) {
+    initialized.current = false;
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
 
-  // Read each element through the proxy to subscribe to per-index signals.
-  // This ensures For re-renders on swap (element identity change at an index),
-  // which is required for correct keyed reconciliation (DOM node moves).
-  // Per-index signals do NOT fire on property updates (e.g., label change),
-  // so For stays quiet for those — ForItem handles property reactivity.
-  for (let i = 0; i < raw.length; i++) {
-    void each[i];
-  }
-
-  // Build slot list from raw array for key extraction.
+  // Subscribe to per-index signals so For re-renders on swap (element identity
+  // change at an index). This is required for correct keyed reconciliation —
+  // React must see updated keys to move DOM nodes instead of recreating them.
+  // Per-index signals do NOT fire on property updates (same object at same
+  // index), so For stays quiet for those — ForItem handles property reactivity.
+  //
+  // On first render, read through the proxy to create signal nodes.
+  // On subsequent renders, read signals directly (skip proxy overhead).
+  const nodes = (raw as any)[$NODE];
   const slots = [];
   for (let i = 0; i < raw.length; i++) {
+    // Subscribe to per-index signal
+    const existingNode = initialized.current && nodes?.[i];
+    if (existingNode) {
+      existingNode(); // direct signal read — fast, no proxy overhead
+    } else {
+      void each[i]; // proxy read — creates signal node if needed
+    }
+
+    // Build slot with key from raw item
     const rawItem = raw[i];
     const key =
       rawItem && typeof rawItem === "object" && "id" in rawItem
@@ -94,6 +105,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       }),
     );
   }
+  initialized.current = true;
 
   return React.createElement(React.Fragment, null, ...slots);
 }) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;
