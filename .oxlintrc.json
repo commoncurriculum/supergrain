@@ -16,6 +16,7 @@
     "func-style": "off",
     "id-length": "off",
     "max-lines": "off",
-    "max-lines-per-function": "off"
+    "max-lines-per-function": "off",
+    "curly": "off"
   }
 }
