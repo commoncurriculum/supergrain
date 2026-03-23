@@ -240,6 +240,50 @@ Supergrain delivers fine-grained reactivity with per-component signal scoping at
 
 ---
 
+## Synchronous Writes and Batching
+
+Supergrain writes are **synchronous** — you can always read your own writes:
+
+```typescript
+store.count = 5;
+console.log(store.count); // 5 — immediately available
+```
+
+This means there is no auto-batching via microtask or deferred update queue. Each write fires its reactive effects immediately. For single mutations this is ideal — the state is always consistent and readable.
+
+When you need to make **multiple mutations atomically**, use `startBatch` / `endBatch` to group them. Without batching, each write triggers effects independently, which means:
+
+1. Subscribers may see **intermediate state** between writes
+2. Effects and computed signals run multiple times instead of once
+
+```typescript
+import { createStore, startBatch, endBatch } from "@supergrain/core";
+
+const [store] = createStore({
+  data: [
+    { id: 1, label: "A" },
+    { id: 2, label: "B" },
+    { id: 3, label: "C" },
+  ],
+});
+
+// ❌ Without batching — effects fire twice, once after each write
+const tmp = store.data[0];
+store.data[0] = store.data[2]; // effects fire here (intermediate state!)
+store.data[2] = tmp; // effects fire again
+
+// ✅ With batching — effects fire once, after both writes
+startBatch();
+const tmp2 = store.data[0];
+store.data[0] = store.data[2];
+store.data[2] = tmp2;
+endBatch(); // effects fire here, seeing final state
+```
+
+> **Note:** The `update()` function returned by `createStore` already batches internally — you only need `startBatch` / `endBatch` when doing multiple direct proxy mutations.
+
+---
+
 ## Update Operators (Optional)
 
 For complex updates — batched mutations, array manipulations, dot-notation paths — `createStore` also returns an optional `update` function with MongoDB-style operators:
