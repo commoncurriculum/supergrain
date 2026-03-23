@@ -1,6 +1,7 @@
 import { createStore, startBatch, endBatch } from "@supergrain/core";
 import { tracked, For } from "@supergrain/react";
 import { useCallback, useRef } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 
 // --- Data Generation ---
@@ -155,21 +156,23 @@ export const remove = (id: number) => {
 };
 
 export const select = (id: number) => {
-  startBatch();
-  // Deselect old
-  if (store.selected !== null) {
-    const old = store.data.find((d) => d.id === store.selected);
-    if (old) {
-      old.isSelected = false;
+  flushSync(() => {
+    startBatch();
+    // Deselect old
+    if (store.selected !== null) {
+      const old = store.data.find((d) => d.id === store.selected);
+      if (old) {
+        old.isSelected = false;
+      }
     }
-  }
-  // Select new
-  const item = store.data.find((d) => d.id === id);
-  if (item) {
-    item.isSelected = true;
-  }
-  store.selected = id;
-  endBatch();
+    // Select new
+    const item = store.data.find((d) => d.id === id);
+    if (item) {
+      item.isSelected = true;
+    }
+    store.selected = id;
+    endBatch();
+  });
 };
 
 // --- React Components ---
