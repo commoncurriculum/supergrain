@@ -180,6 +180,7 @@ describe("Render Analysis Tests", () => {
 
     // The key insight: React re-renders ALL row components even though only selection changed
     expect(renderedRowIds.size).toBeGreaterThan(1);
+    expect(renderCount).toBe(renderedRowIds.size);
   });
 
   it("analyzes React.memo rendering behavior", () => {
