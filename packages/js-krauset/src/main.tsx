@@ -1,6 +1,6 @@
 import { createStore, startBatch, endBatch } from "@supergrain/core";
 import { tracked, For } from "@supergrain/react";
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { createRoot } from "react-dom/client";
 
 // --- Data Generation ---
@@ -186,7 +186,6 @@ export const Row = tracked(({ item, isSelected, onSelect, onRemove }: RowProps) 
 });
 
 export const App = tracked(() => {
-  const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const handleSelect = useCallback((id: number) => select(id), []);
   const handleRemove = useCallback((id: number) => remove(id), []);
 
@@ -212,8 +211,8 @@ export const App = tracked(() => {
         </div>
       </div>
       <table className="table table-hover table-striped test-data">
-        <tbody ref={tbodyRef}>
-          <For each={store.data} container={tbodyRef}>
+        <tbody>
+          <For each={store.data}>
             {(item: RowData) => (
               <Row
                 key={item.id}
