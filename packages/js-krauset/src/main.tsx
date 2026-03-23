@@ -1,6 +1,6 @@
-import { createStore, startBatch, endBatch, computed } from "@supergrain/core";
+import { createStore, startBatch, endBatch } from "@supergrain/core";
 import { tracked, For } from "@supergrain/react";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
 // --- Data Generation ---
@@ -77,10 +77,10 @@ export function buildData(count: number): RowData[] {
   for (let i = 0; i < count; i++) {
     data[i] = {
       id: idCounter++,
-
       label: `${adjectives[_random(adjectives.length)]} ${
         colours[_random(colours.length)]
       } ${nouns[_random(nouns.length)]}`,
+      isSelected: false,
     };
   }
   return data;
@@ -91,6 +91,7 @@ export function buildData(count: number): RowData[] {
 export interface RowData {
   id: number;
   label: string;
+  isSelected: boolean;
 }
 
 export interface AppState {
@@ -154,7 +155,21 @@ export const remove = (id: number) => {
 };
 
 export const select = (id: number) => {
+  startBatch();
+  // Deselect old
+  if (store.selected !== null) {
+    const old = store.data.find((d) => d.id === store.selected);
+    if (old) {
+      old.isSelected = false;
+    }
+  }
+  // Select new
+  const item = store.data.find((d) => d.id === id);
+  if (item) {
+    item.isSelected = true;
+  }
   store.selected = id;
+  endBatch();
 };
 
 // --- React Components ---
@@ -168,12 +183,8 @@ const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }
 );
 
 export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
-  // computed memoizes: only notifies when the boolean result changes.
-  // 998 rows stay false→false (no re-render). Only 2 rows change value.
-  const isSelected = useMemo(() => computed(() => store.selected === item.id), [item.id]);
-
   return (
-    <tr className={isSelected() ? "danger" : ""}>
+    <tr className={item.isSelected ? "danger" : ""}>
       <td className="col-md-1">{item.id}</td>
       <td className="col-md-4">
         <a onClick={() => onSelect(item.id)}>{item.label}</a>
