@@ -242,45 +242,33 @@ Supergrain delivers fine-grained reactivity with per-component signal scoping at
 
 ## Synchronous Writes and Batching
 
-Supergrain writes are **synchronous** — you can always read your own writes:
+Writes are **synchronous** — you can always read your own writes:
 
 ```typescript
 store.count = 5;
 console.log(store.count); // 5 — immediately available
 ```
 
-This means there is no auto-batching via microtask or deferred update queue. Each write fires its reactive effects immediately. For single mutations this is ideal — the state is always consistent and readable.
-
-When you need to make **multiple mutations atomically**, use `startBatch` / `endBatch` to group them. Without batching, each write triggers effects independently, which means:
-
-1. Subscribers may see **intermediate state** between writes
-2. Effects and computed signals run multiple times instead of once
+Single mutations are always safe. When you need to make **multiple mutations atomically**, wrap them in `startBatch` / `endBatch`. Without batching, each write fires reactive effects immediately — a `computed` that reads both swapped positions would run mid-swap and see a duplicate:
 
 ```typescript
-import { createStore, startBatch, endBatch } from "@supergrain/core";
-
-const [store] = createStore({
-  data: [
-    { id: 1, label: "A" },
-    { id: 2, label: "B" },
-    { id: 3, label: "C" },
-  ],
-});
-
-// ❌ Without batching — effects fire twice, once after each write
+// ❌ Without batching — computed sees [C, B, C] after first write
 const tmp = store.data[0];
-store.data[0] = store.data[2]; // effects fire here (intermediate state!)
-store.data[2] = tmp; // effects fire again
-
-// ✅ With batching — effects fire once, after both writes
-startBatch();
-const tmp2 = store.data[0];
-store.data[0] = store.data[2];
-store.data[2] = tmp2;
-endBatch(); // effects fire here, seeing final state
+store.data[0] = store.data[2]; // effects fire — data is [C, B, C]
+store.data[2] = tmp; // effects fire again — data is [C, B, A]
 ```
 
-> **Note:** The `update()` function returned by `createStore` already batches internally — you only need `startBatch` / `endBatch` when doing multiple direct proxy mutations.
+Wrap multi-step mutations in `startBatch` / `endBatch` so effects fire once with the final state:
+
+```typescript
+import { startBatch, endBatch } from "@supergrain/core";
+
+startBatch();
+const tmp = store.data[0];
+store.data[0] = store.data[2];
+store.data[2] = tmp;
+endBatch(); // effects fire once — data is [C, B, A]
+```
 
 ---
 
