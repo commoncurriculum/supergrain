@@ -1,5 +1,5 @@
-import { createStore, effect, computed } from "@supergrain/core";
-import { render, screen, act, cleanup } from "@testing-library/react";
+import { createStore, computed } from "@supergrain/core";
+import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";
 
@@ -42,7 +42,7 @@ describe("Deep Nesting Operations in React Components", () => {
           {
             id: "dept-1",
             name: "Engineering",
-            budget: 500000,
+            budget: 500_000,
             teams: [
               {
                 id: "team-1",
@@ -194,7 +194,7 @@ describe("Deep Nesting Operations in React Components", () => {
   });
 
   it("should display deeply nested organizational data in React components", async () => {
-    const { state, update } = createComplexStore();
+    const { state } = createComplexStore();
 
     const { container } = render(<OrganizationComponent store={state} />);
 
@@ -297,10 +297,10 @@ describe("Deep Nesting Operations in React Components", () => {
     });
 
     // Check that tasks are now in new order
-    const taskElements = Array.from(container.querySelectorAll('[data-testid^="task-task-"]'));
-    expect(taskElements[0].getAttribute("data-testid")).toBe("task-task-3");
-    expect(taskElements[1].getAttribute("data-testid")).toBe("task-task-1");
-    expect(taskElements[2].getAttribute("data-testid")).toBe("task-task-2");
+    const taskElements = [...container.querySelectorAll('[data-testid^="task-task-"]')];
+    expect((taskElements[0] as HTMLElement).dataset.testid).toBe("task-task-3");
+    expect((taskElements[1] as HTMLElement).dataset.testid).toBe("task-task-1");
+    expect((taskElements[2] as HTMLElement).dataset.testid).toBe("task-task-2");
   });
 
   it("should update React components when deeply nested metrics change", async () => {
@@ -335,7 +335,7 @@ describe("Deep Nesting Operations in React Components", () => {
           "organization.departments": {
             id: "dept-2",
             name: "Marketing",
-            budget: 200000,
+            budget: 200_000,
             teams: [
               {
                 id: "team-2",
@@ -386,7 +386,7 @@ describe("Deep Nesting Operations in React Components", () => {
     const { container } = render(<ComputedComponent />);
 
     expect(container.querySelector('[data-testid="total-budget"]')!.textContent).toBe("500000");
-    expect(computedValue).toBe(500000);
+    expect(computedValue).toBe(500_000);
 
     // Add a new department with budget
     await act(async () => {
@@ -395,7 +395,7 @@ describe("Deep Nesting Operations in React Components", () => {
           "organization.departments": {
             id: "dept-2",
             name: "HR",
-            budget: 150000,
+            budget: 150_000,
             teams: [],
           },
         },

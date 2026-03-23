@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest --passWithNoTests",
     "test:dist": "vitest run --config vitest.dist.config.ts",
-    "test:performance": "vitest src/performance.test.tsx"
+    "test:performance": "vitest src/performance.test.tsx --reporter=verbose 2>&1 | tee perf-results.txt"
   },
   "dependencies": {
     "@supergrain/core": "workspace:*",

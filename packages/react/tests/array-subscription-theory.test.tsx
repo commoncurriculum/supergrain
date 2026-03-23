@@ -11,7 +11,7 @@ describe("Array Subscription Theory Tests", () => {
     cleanup();
   });
 
-  it("should test if accessing array elements creates subscriptions to those elements", async () => {
+  it("array-length-only component does not re-render on element property change", async () => {
     const [store, update] = createStore({
       data: [
         { id: 1, label: "Item 1" },
@@ -19,55 +19,86 @@ describe("Array Subscription Theory Tests", () => {
       ],
     });
 
-    let arrayOnlyRenderCount = 0;
-    let elementAccessRenderCount = 0;
-    let specificElementRenderCount = 0;
+    let renderCount = 0;
 
-    // Component that only accesses the array, not elements
-    const ArrayOnlyComponent = tracked(() => {
-      arrayOnlyRenderCount++;
-      // Only access array length, not individual elements
+    const ArrayLengthOnly = tracked(() => {
+      renderCount++;
       return <div>Array length: {store.data.length}</div>;
     });
 
-    // Component that accesses all elements during iteration
-    const ElementAccessComponent = tracked(() => {
-      elementAccessRenderCount++;
-      // Access each element (this should create subscriptions to data[0], data[1], etc.)
-      const elementCount = store.data.map((item) => item.id).length;
-      return <div>Element count: {elementCount}</div>;
-    });
+    render(<ArrayLengthOnly />);
+    expect(renderCount).toBe(1);
 
-    // Component that accesses only a specific element
-    const SpecificElementComponent = tracked(() => {
-      specificElementRenderCount++;
-      // Access only data[0]
-      const firstItem = store.data[0];
-      return <div>First item: {firstItem?.id}</div>;
-    });
-
-    function TestApp() {
-      return (
-        <div>
-          <ArrayOnlyComponent />
-          <ElementAccessComponent />
-          <SpecificElementComponent />
-        </div>
-      );
-    }
-
-    render(<TestApp />);
-
-    // Test: Update data.0.label
     await act(async () => {
-      update({ $set: { "data.0.label": "Updated Item 1" } });
+      update({ $set: { "data.0.label": "Updated" } });
       await flushMicrotasks();
     });
 
-    // Test: Update data.1.label (to see if it's element-specific)
+    expect(renderCount).toBe(1);
+  });
+
+  it("iterating component only re-renders for properties it actually reads", async () => {
+    const [store, update] = createStore({
+      data: [
+        { id: 1, label: "Item 1" },
+        { id: 2, label: "Item 2" },
+      ],
+    });
+
+    let renderCount = 0;
+
+    // Reads item.id but NOT item.label
+    const IteratingComponent = tracked(() => {
+      renderCount++;
+      const ids = store.data.map((item) => item.id);
+      return <div>IDs: {ids.join(",")}</div>;
+    });
+
+    render(<IteratingComponent />);
+    expect(renderCount).toBe(1);
+
+    // Updating label should NOT re-render (component only reads id)
     await act(async () => {
-      update({ $set: { "data.1.label": "Updated Item 2" } });
+      update({ $set: { "data.0.label": "Updated 1" } });
       await flushMicrotasks();
     });
+
+    expect(renderCount).toBe(1);
+  });
+
+  it("specific-element component re-renders only for that element", async () => {
+    const [store, update] = createStore({
+      data: [
+        { id: 1, label: "Item 1" },
+        { id: 2, label: "Item 2" },
+      ],
+    });
+
+    let renderCount = 0;
+
+    const FirstElementOnly = tracked(() => {
+      renderCount++;
+      const first = store.data[0];
+      return <div>First: {first?.label}</div>;
+    });
+
+    render(<FirstElementOnly />);
+    expect(renderCount).toBe(1);
+
+    // Update data[0] — should re-render
+    await act(async () => {
+      update({ $set: { "data.0.label": "Updated 1" } });
+      await flushMicrotasks();
+    });
+
+    expect(renderCount).toBe(2);
+
+    // Update data[1] — should NOT re-render (doesn't access data[1])
+    await act(async () => {
+      update({ $set: { "data.1.label": "Updated 2" } });
+      await flushMicrotasks();
+    });
+
+    expect(renderCount).toBe(2);
   });
 });

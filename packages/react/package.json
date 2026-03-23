@@ -44,7 +44,7 @@
     "build": "vite build",
     "bench": "vitest bench --config vitest.bench.config.ts",
     "dev": "vite build --watch",
-    "lint": "oxlint -c ../../.oxlintrc.json src/",
+    "lint": "oxlint -c ../../.oxlintrc.json src/ tests/",
     "test": "vitest run --config vitest.browser.config.ts",
     "test:watch": "vitest --config vitest.browser.config.ts",
     "typecheck": "tsc --noEmit"

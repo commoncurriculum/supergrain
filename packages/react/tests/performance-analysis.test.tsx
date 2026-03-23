@@ -1,6 +1,6 @@
 import { createStore } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
-import React, { FC, memo } from "react";
+import React from "react";
 import { describe, it, expect, afterEach } from "vitest";
 
 import { tracked, For } from "../src";
@@ -33,7 +33,7 @@ interface AppState {
 
 // --- Render Tracking ---
 let renderCount = 0;
-let renderedRowIds: Set<number> = new Set();
+let renderedRowIds = new Set<number>();
 
 const resetRenderTracking = () => {
   renderCount = 0;
@@ -129,5 +129,6 @@ describe("Performance Analysis", () => {
     // Only the updated row should re-render
     expect(renderedRowIds.size).toBe(1);
     expect(renderedRowIds.has(42)).toBe(true);
+    expect(renderCount).toBe(1);
   });
 });

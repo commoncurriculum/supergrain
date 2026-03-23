@@ -1,6 +1,6 @@
 import { createStore } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
-import React, { FC, memo, useCallback } from "react";
+import React, { type FC, memo, useCallback } from "react";
 import { describe, it, expect, afterEach } from "vitest";
 
 import { tracked } from "../src";
@@ -32,7 +32,7 @@ interface AppState {
 
 // --- Render Tracking ---
 let renderCount = 0;
-let renderedRowIds: Set<number> = new Set();
+let renderedRowIds = new Set<number>();
 
 const resetRenderTracking = () => {
   renderCount = 0;
@@ -180,6 +180,7 @@ describe("Render Analysis Tests", () => {
 
     // The key insight: React re-renders ALL row components even though only selection changed
     expect(renderedRowIds.size).toBeGreaterThan(1);
+    expect(renderCount).toBe(renderedRowIds.size);
   });
 
   it("analyzes React.memo rendering behavior", () => {
@@ -360,23 +361,21 @@ describe("Render Analysis Tests", () => {
       );
     });
 
-    const OptimizedComponent = tracked(
-      ({ store, updateStore }: { store: any; updateStore: any }) => {
-        return (
-          <table>
-            <tbody>
-              {store.data.map((row: RowData) => (
-                <ProperMemoizedRow key={row.id} item={row} isSelected={row.id === store.selected} />
-              ))}
-            </tbody>
-          </table>
-        );
-      },
-    );
+    const OptimizedComponent = tracked(({ store }: { store: any }) => {
+      return (
+        <table>
+          <tbody>
+            {store.data.map((row: RowData) => (
+              <ProperMemoizedRow key={row.id} item={row} isSelected={row.id === store.selected} />
+            ))}
+          </tbody>
+        </table>
+      );
+    });
 
     resetRenderTracking();
 
-    const { container } = render(<OptimizedComponent store={store} updateStore={updateStore} />);
+    const { container } = render(<OptimizedComponent store={store} />);
 
     resetRenderTracking();
 
@@ -386,10 +385,6 @@ describe("Render Analysis Tests", () => {
 
     const selectedRow = container.querySelector("tbody tr:nth-child(25)");
     expect(selectedRow?.classList.contains("danger")).toBe(true);
-
-    console.log("Optimized selection results with stable proxy references:");
-    console.log(`- Total re-renders: ${renderCount}`);
-    console.log(`- Unique rows re-rendered: ${renderedRowIds.size}`);
 
     // With stable proxy references and no changing callbacks, React.memo should work perfectly
     expect(renderedRowIds.size).toBeLessThanOrEqual(2);
@@ -452,7 +447,7 @@ describe("Render Analysis Tests", () => {
     });
 
     // Initial render
-    const { container } = render(<ItemListComponent />);
+    render(<ItemListComponent />);
 
     // Reset counters for update measurement
     itemRenderCounts.clear();
@@ -476,12 +471,6 @@ describe("Render Analysis Tests", () => {
   });
 
   it("demonstrates lack of fine-grained reactivity without proper component structure", () => {
-    interface Item {
-      id: number;
-      name: string;
-      value: number;
-    }
-
     const [store, updateStore] = createStore({
       items: Array.from({ length: 100 }, (_, i) => ({
         id: i + 1,

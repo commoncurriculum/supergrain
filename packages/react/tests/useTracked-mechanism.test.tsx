@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/filename-case */
 import { createStore, effect } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
 import React, { memo, useState, useEffect } from "react";
@@ -11,7 +12,7 @@ describe("tracked() Mechanism Tests", () => {
     cleanup();
   });
 
-  it("should demonstrate that tracked() is what enables reactive subscriptions", async () => {
+  it("tracked() enables reactive subscriptions, memo() alone does not", async () => {
     const [store, update] = createStore({
       items: [{ deep: { value: 1 } }],
     });
@@ -19,53 +20,43 @@ describe("tracked() Mechanism Tests", () => {
     let trackedRenderCount = 0;
     let nonTrackedRenderCount = 0;
 
-    // Component using tracked() - should be reactive
     const TrackedComponent = tracked(() => {
       trackedRenderCount++;
       const value = store.items[0].deep.value;
       return <div data-testid="tracked-value">{value}</div>;
     });
 
-    // Component NOT using tracked() - should NOT be reactive
     const NonTrackedComponent = memo(() => {
       nonTrackedRenderCount++;
-      // Access store directly without tracked()
       const value = store.items[0].deep.value;
       return <div data-testid="non-tracked-value">{value}</div>;
     });
 
-    function TestApp() {
-      return (
-        <div>
-          <TrackedComponent />
-          <NonTrackedComponent />
-        </div>
-      );
-    }
+    const { container } = render(
+      <div>
+        <TrackedComponent />
+        <NonTrackedComponent />
+      </div>,
+    );
 
-    const { container } = render(<TestApp />);
-
-    // Both should show initial value
     expect(container.querySelector('[data-testid="tracked-value"]')?.textContent).toBe("1");
     expect(container.querySelector('[data-testid="non-tracked-value"]')?.textContent).toBe("1");
 
-    // Update the deep nested value
     await act(async () => {
-      update({
-        $set: {
-          "items.0.deep.value": 42,
-        },
-      });
+      update({ $set: { "items.0.deep.value": 42 } });
       await flushMicrotasks();
     });
 
-    if (trackedRenderCount > 1 && nonTrackedRenderCount === 1) {
-      expect(container.querySelector('[data-testid="tracked-value"]')?.textContent).toBe("42");
-      expect(container.querySelector('[data-testid="non-tracked-value"]')?.textContent).toBe("1"); // Should still show old value
-    }
+    // tracked() component re-renders on store change
+    expect(trackedRenderCount).toBe(2);
+    expect(container.querySelector('[data-testid="tracked-value"]')?.textContent).toBe("42");
+
+    // memo() component does NOT re-render — no reactive subscription
+    expect(nonTrackedRenderCount).toBe(1);
+    expect(container.querySelector('[data-testid="non-tracked-value"]')?.textContent).toBe("1");
   });
 
-  it("should show that manual effect usage works the same way", async () => {
+  it("manual effect() wires subscriptions like tracked() does internally", async () => {
     const [store, update] = createStore({
       items: [{ deep: { value: 100 } }],
     });
@@ -73,22 +64,18 @@ describe("tracked() Mechanism Tests", () => {
     let effectTriggered = false;
     let manualRenderCount = 0;
 
-    // Component that manually uses effect like tracked() does internally
     const ManualEffectComponent = memo(() => {
       manualRenderCount++;
       const [, forceUpdate] = useState({});
 
       useEffect(() => {
         const cleanup = effect(() => {
-          // Access the store property - this should create subscription
-          const value = store.items[0].deep.value;
-
+          store.items[0].deep.value;
           if (effectTriggered) {
-            forceUpdate({}); // Force re-render
+            forceUpdate({});
           }
           effectTriggered = true;
         });
-
         return cleanup;
       }, []);
 
@@ -96,19 +83,20 @@ describe("tracked() Mechanism Tests", () => {
       return <div data-testid="manual-effect-value">{value}</div>;
     });
 
-    const { container } = render(<ManualEffectComponent />);
+    render(<ManualEffectComponent />);
+    expect(manualRenderCount).toBe(1);
 
     await act(async () => {
-      update({
-        $set: {
-          "items.0.deep.value": 200,
-        },
-      });
+      update({ $set: { "items.0.deep.value": 200 } });
       await flushMicrotasks();
     });
+
+    // The effect fires on change and triggers forceUpdate
+    expect(effectTriggered).toBe(true);
+    expect(manualRenderCount).toBe(2);
   });
 
-  it("should demonstrate subscription specificity - only accessed properties trigger re-renders", async () => {
+  it("only accessed properties trigger re-renders, unaccessed do not", async () => {
     const [store, update] = createStore({
       items: [
         {
@@ -122,37 +110,27 @@ describe("tracked() Mechanism Tests", () => {
 
     const SpecificSubscriptionComponent = tracked(() => {
       renderCount++;
-      // Only access 'accessed' property, NOT 'notAccessed'
       const value = store.items[0].accessed.value;
       return <div data-testid="specific-value">{value}</div>;
     });
 
     render(<SpecificSubscriptionComponent />);
+    expect(renderCount).toBe(1);
 
-    // Test 1: Update the property that IS accessed - should trigger re-render
+    // Update the accessed property — should re-render
     await act(async () => {
-      update({
-        $set: {
-          "items.0.accessed.value": 42,
-        },
-      });
+      update({ $set: { "items.0.accessed.value": 42 } });
       await flushMicrotasks();
     });
 
-    const rendersAfterAccessedUpdate = renderCount;
+    expect(renderCount).toBe(2);
 
-    // Test 2: Update the property that is NOT accessed - should NOT trigger re-render
+    // Update the NOT-accessed property — should NOT re-render
     await act(async () => {
-      update({
-        $set: {
-          "items.0.notAccessed.value": 777,
-        },
-      });
+      update({ $set: { "items.0.notAccessed.value": 777 } });
       await flushMicrotasks();
     });
 
-    if (rendersAfterAccessedUpdate > 1 && renderCount === rendersAfterAccessedUpdate) {
-      // Perfect: Only accessed properties trigger re-renders
-    }
+    expect(renderCount).toBe(2);
   });
 });

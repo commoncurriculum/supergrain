@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { createStore, $BRAND, type Branded } from "../../src";
+import { createStore, type $BRAND, type Branded } from "../../src";
 
 // ---------------------------------------------------------------------------
 // Type assertion helpers

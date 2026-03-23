@@ -171,7 +171,7 @@ describe("Proxy (React) correctness", () => {
 
     await act(async () => {
       for (let i = 0; i < store.data.length; i += 10) {
-        store.data[i].label = store.data[i].label + " !!!";
+        store.data[i].label = `${store.data[i].label} !!!`;
       }
     });
 
