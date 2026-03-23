@@ -1,6 +1,6 @@
-import { createStore, startBatch, endBatch } from "@supergrain/core";
+import { createStore, startBatch, endBatch, computed } from "@supergrain/core";
 import { tracked, For } from "@supergrain/react";
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
 // --- Data Generation ---
@@ -100,7 +100,6 @@ export interface AppState {
 
 export interface RowProps {
   item: RowData;
-  isSelected: boolean;
   onSelect: (id: number) => void;
   onRemove: (id: number) => void;
 }
@@ -168,9 +167,13 @@ const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }
   </div>
 );
 
-export const Row = tracked(({ item, isSelected, onSelect, onRemove }: RowProps) => {
+export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
+  // computed memoizes: only notifies when the boolean result changes.
+  // 998 rows stay false→false (no re-render). Only 2 rows change value.
+  const isSelected = useMemo(() => computed(() => store.selected === item.id), [item.id]);
+
   return (
-    <tr className={isSelected ? "danger" : ""}>
+    <tr className={isSelected() ? "danger" : ""}>
       <td className="col-md-1">{item.id}</td>
       <td className="col-md-4">
         <a onClick={() => onSelect(item.id)}>{item.label}</a>
@@ -189,8 +192,6 @@ export const App = tracked(() => {
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const handleSelect = useCallback((id: number) => select(id), []);
   const handleRemove = useCallback((id: number) => remove(id), []);
-
-  const selected = store.selected;
 
   return (
     <div className="container">
@@ -215,13 +216,7 @@ export const App = tracked(() => {
         <tbody ref={tbodyRef}>
           <For each={store.data} parent={tbodyRef}>
             {(item: RowData) => (
-              <Row
-                key={item.id}
-                item={item}
-                isSelected={selected === item.id}
-                onSelect={handleSelect}
-                onRemove={handleRemove}
-              />
+              <Row key={item.id} item={item} onSelect={handleSelect} onRemove={handleRemove} />
             )}
           </For>
         </tbody>
