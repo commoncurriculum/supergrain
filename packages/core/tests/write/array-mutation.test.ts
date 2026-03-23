@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 
-import { createStore, effect } from "../../src";
+import { createStore, effect, startBatch, endBatch } from "../../src";
 
 describe("Array mutation methods trigger reactivity", () => {
   it("push() triggers effect tracking length", () => {
@@ -251,5 +251,124 @@ describe("Array mutation methods trigger reactivity", () => {
     store.items.splice(1, 1);
     expect(labels).toEqual(["a", "c"]);
     expect(effectFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("index swap does not fire version-only effect (no structural change)", () => {
+    const [store] = createStore({
+      items: [
+        { id: 1, label: "a" },
+        { id: 2, label: "b" },
+        { id: 3, label: "c" },
+      ],
+    });
+
+    // This effect only tracks the array's version signal (via .length),
+    // NOT per-element signals. A swap doesn't change length/structure,
+    // so this should NOT fire.
+    let capturedLength = 0;
+    const versionEffect = vi.fn(() => {
+      capturedLength = store.items.length;
+    });
+
+    effect(versionEffect);
+    expect(capturedLength).toBe(3);
+    expect(versionEffect).toHaveBeenCalledTimes(1);
+
+    // Swap indices 0 and 2 (batched, like a real swap operation)
+    startBatch();
+    const tmp = store.items[0]!;
+    store.items[0] = store.items[2]!;
+    store.items[2] = tmp;
+    endBatch();
+
+    // Length didn't change, so version-only effect should NOT re-fire
+    expect(capturedLength).toBe(3);
+    expect(versionEffect).toHaveBeenCalledTimes(1);
+  });
+
+  it("index swap fires per-element effects only for swapped indices", () => {
+    const [store] = createStore({
+      items: [
+        { id: 1, label: "a" },
+        { id: 2, label: "b" },
+        { id: 3, label: "c" },
+      ],
+    });
+
+    // Effect tracking only index 0
+    let item0Label = "";
+    const effect0 = vi.fn(() => {
+      item0Label = store.items[0]!.label;
+    });
+
+    // Effect tracking only index 1 (untouched by swap)
+    let item1Label = "";
+    const effect1 = vi.fn(() => {
+      item1Label = store.items[1]!.label;
+    });
+
+    // Effect tracking only index 2
+    let item2Label = "";
+    const effect2 = vi.fn(() => {
+      item2Label = store.items[2]!.label;
+    });
+
+    effect(effect0);
+    effect(effect1);
+    effect(effect2);
+
+    expect(effect0).toHaveBeenCalledTimes(1);
+    expect(effect1).toHaveBeenCalledTimes(1);
+    expect(effect2).toHaveBeenCalledTimes(1);
+
+    // Swap indices 0 and 2 (batched)
+    startBatch();
+    const tmp = store.items[0]!;
+    store.items[0] = store.items[2]!;
+    store.items[2] = tmp;
+    endBatch();
+
+    // Effects for swapped indices should fire
+    expect(item0Label).toBe("c");
+    expect(effect0).toHaveBeenCalledTimes(2);
+    expect(item2Label).toBe("a");
+    expect(effect2).toHaveBeenCalledTimes(2);
+
+    // Effect for untouched index should NOT fire
+    expect(item1Label).toBe("b");
+    expect(effect1).toHaveBeenCalledTimes(1);
+  });
+
+  it("iteration effect re-fires on swap (sees new element order)", () => {
+    const [store] = createStore({
+      items: [
+        { id: 1, label: "a" },
+        { id: 2, label: "b" },
+        { id: 3, label: "c" },
+      ],
+    });
+
+    let labels: string[] = [];
+    const iterEffect = vi.fn(() => {
+      labels = [];
+      for (const item of store.items) {
+        labels.push(item.label);
+      }
+    });
+
+    effect(iterEffect);
+    expect(labels).toEqual(["a", "b", "c"]);
+    expect(iterEffect).toHaveBeenCalledTimes(1);
+
+    // Swap indices 0 and 2 (batched)
+    startBatch();
+    const tmp = store.items[0]!;
+    store.items[0] = store.items[2]!;
+    store.items[2] = tmp;
+    endBatch();
+
+    // Iteration effect should see new order
+    expect(labels).toEqual(["c", "b", "a"]);
+    expect(iterEffect).toHaveBeenCalledTimes(2);
   });
 });

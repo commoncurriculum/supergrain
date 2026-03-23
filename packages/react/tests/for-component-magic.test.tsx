@@ -1,4 +1,4 @@
-import { createStore } from "@supergrain/core";
+import { createStore, startBatch, endBatch } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";
@@ -131,6 +131,500 @@ describe("For Component Magic Tests", () => {
     expect(items.length).toBe(2);
     expect(items[0].textContent).toBe("a");
     expect(items[1].textContent).toBe("c");
+  });
+
+  it("swap only re-renders the 2 swapped rows, not all rows", async () => {
+    interface RowData {
+      id: number;
+      label: string;
+    }
+
+    const [store] = createStore<{ data: RowData[] }>({
+      data: Array.from({ length: 20 }, (_, i) => ({
+        id: i + 1,
+        label: `Item ${i + 1}`,
+      })),
+    });
+
+    const renderedIds = new Set<number>();
+
+    const Row = tracked(({ item }: { item: RowData }) => {
+      renderedIds.add(item.id);
+      return (
+        <tr>
+          <td>{item.id}</td>
+          <td>{item.label}</td>
+        </tr>
+      );
+    });
+
+    const App = tracked(() => (
+      <table>
+        <tbody>
+          <For each={store.data}>{(item: RowData) => <Row key={item.id} item={item} />}</For>
+        </tbody>
+      </table>
+    ));
+
+    const { container } = render(<App />);
+    expect(container.querySelectorAll("tr").length).toBe(20);
+
+    // Reset after initial render
+    renderedIds.clear();
+
+    // Swap indices 1 and 18 (batched)
+    await act(async () => {
+      startBatch();
+      const tmp = store.data[1]!;
+      store.data[1] = store.data[18]!;
+      store.data[18] = tmp;
+      endBatch();
+    });
+
+    // Verify the swap happened in the DOM
+    const rows = container.querySelectorAll("tr");
+    expect(rows[1]!.querySelector("td")!.textContent).toBe("19"); // was 2
+    expect(rows[18]!.querySelector("td")!.textContent).toBe("2"); // was 19
+
+    // Only the 2 swapped rows should have re-rendered, not all 20
+    expect(renderedIds.size).toBeLessThanOrEqual(2);
+  });
+
+  it("swap: For's children function is called only for swapped indices, not all", async () => {
+    interface RowData {
+      id: number;
+      label: string;
+    }
+
+    const [store] = createStore<{ data: RowData[] }>({
+      data: Array.from({ length: 20 }, (_, i) => ({
+        id: i + 1,
+        label: `Item ${i + 1}`,
+      })),
+    });
+
+    // Count how many times For's children function is called
+    let childrenCallCount = 0;
+
+    const Row = tracked(({ item }: { item: RowData }) => (
+      <tr>
+        <td>{item.id}</td>
+        <td>{item.label}</td>
+      </tr>
+    ));
+
+    const App = tracked(() => (
+      <table>
+        <tbody>
+          <For each={store.data}>
+            {(item: RowData) => {
+              childrenCallCount++;
+              return <Row key={item.id} item={item} />;
+            }}
+          </For>
+        </tbody>
+      </table>
+    ));
+
+    const { container } = render(<App />);
+    expect(container.querySelectorAll("tr").length).toBe(20);
+
+    // Reset counter after initial render
+    childrenCallCount = 0;
+
+    // Swap indices 1 and 18 (batched)
+    await act(async () => {
+      startBatch();
+      const tmp = store.data[1]!;
+      store.data[1] = store.data[18]!;
+      store.data[18] = tmp;
+      endBatch();
+    });
+
+    // Verify the swap happened in the DOM
+    const rows = container.querySelectorAll("tr");
+    expect(rows[1]!.querySelector("td")!.textContent).toBe("19");
+    expect(rows[18]!.querySelector("td")!.textContent).toBe("2");
+
+    // For should NOT call children for all 20 items — only the 2 that changed
+    expect(childrenCallCount).toBeLessThanOrEqual(2);
+  });
+
+  it("For keys by item.id: DOM nodes are reused after remove", async () => {
+    interface RowData {
+      id: number;
+      label: string;
+    }
+
+    const [store] = createStore<{ data: RowData[] }>({
+      data: [
+        { id: 10, label: "A" },
+        { id: 20, label: "B" },
+        { id: 30, label: "C" },
+        { id: 40, label: "D" },
+      ],
+    });
+
+    const mountedIds: number[] = [];
+    const unmountedIds: number[] = [];
+
+    const Row = tracked(({ item }: { item: RowData }) => {
+      React.useEffect(() => {
+        mountedIds.push(item.id);
+        return () => {
+          unmountedIds.push(item.id);
+        };
+      }, [item.id]);
+      return <li data-id={item.id}>{item.label}</li>;
+    });
+
+    const App = tracked(() => (
+      <ul>
+        <For each={store.data}>{(item: RowData) => <Row key={item.id} item={item} />}</For>
+      </ul>
+    ));
+
+    const { container } = render(<App />);
+    expect(container.querySelectorAll("li").length).toBe(4);
+    mountedIds.length = 0;
+
+    // Remove item at index 1 (id=20)
+    await act(async () => {
+      store.data.splice(1, 1);
+    });
+
+    expect(container.querySelectorAll("li").length).toBe(3);
+    // Item 20 should be unmounted, no other items remounted
+    expect(unmountedIds).toContain(20);
+    // Items 10, 30, 40 should NOT have been remounted
+    expect(mountedIds).not.toContain(10);
+    expect(mountedIds).not.toContain(30);
+    expect(mountedIds).not.toContain(40);
+  });
+
+  it("For keys by item.id: swap then remove reconciles correctly", async () => {
+    interface RowData {
+      id: number;
+      label: string;
+    }
+
+    const [store] = createStore<{ data: RowData[] }>({
+      data: [
+        { id: 1, label: "A" },
+        { id: 2, label: "B" },
+        { id: 3, label: "C" },
+        { id: 4, label: "D" },
+        { id: 5, label: "E" },
+      ],
+    });
+
+    const App = tracked(() => (
+      <ul>
+        <For each={store.data}>{(item: RowData) => <li data-id={item.id}>{item.label}</li>}</For>
+      </ul>
+    ));
+
+    const { container } = render(<App />);
+
+    // Swap indices 1 and 3 (B and D) — For does NOT re-render
+    await act(async () => {
+      startBatch();
+      const tmp = store.data[1]!;
+      store.data[1] = store.data[3]!;
+      store.data[3] = tmp;
+      endBatch();
+    });
+
+    // Verify swap: [A, D, C, B, E]
+    let items = container.querySelectorAll("li");
+    expect(items[1]!.textContent).toBe("D");
+    expect(items[3]!.textContent).toBe("B");
+
+    // Now remove index 2 (C) — For re-renders with fresh keys
+    await act(async () => {
+      store.data.splice(2, 1);
+    });
+
+    // Should be [A, D, B, E] with correct content
+    items = container.querySelectorAll("li");
+    expect(items.length).toBe(4);
+    expect(items[0]!.textContent).toBe("A");
+    expect(items[1]!.textContent).toBe("D");
+    expect(items[2]!.textContent).toBe("B");
+    expect(items[3]!.textContent).toBe("E");
+  });
+
+  it("partial update: only updated rows re-render, not For or other rows", async () => {
+    interface RowData {
+      id: number;
+      label: string;
+    }
+
+    const [store] = createStore<{ data: RowData[] }>({
+      data: Array.from({ length: 20 }, (_, i) => ({
+        id: i + 1,
+        label: `Item ${i + 1}`,
+      })),
+    });
+
+    let forChildrenCalls = 0;
+    const renderedIds = new Set<number>();
+
+    const Row = tracked(({ item }: { item: RowData }) => {
+      renderedIds.add(item.id);
+      return (
+        <tr>
+          <td>{item.id}</td>
+          <td>{item.label}</td>
+        </tr>
+      );
+    });
+
+    const App = tracked(() => (
+      <table>
+        <tbody>
+          <For each={store.data}>
+            {(item: RowData) => {
+              forChildrenCalls++;
+              return <Row key={item.id} item={item} />;
+            }}
+          </For>
+        </tbody>
+      </table>
+    ));
+
+    render(<App />);
+    forChildrenCalls = 0;
+    renderedIds.clear();
+
+    // Update every 10th row's label (indices 0 and 10)
+    await act(async () => {
+      startBatch();
+      store.data[0]!.label += " !!!";
+      store.data[10]!.label += " !!!";
+      endBatch();
+    });
+
+    // For's children function should NOT be called (no structural change)
+    expect(forChildrenCalls).toBe(0);
+    // Only the 2 updated rows should re-render
+    expect(renderedIds.size).toBe(2);
+    expect(renderedIds.has(1)).toBe(true);
+    expect(renderedIds.has(11)).toBe(true);
+  });
+
+  it("select: only previously-selected and newly-selected rows re-render", async () => {
+    interface RowData {
+      id: number;
+      label: string;
+    }
+
+    const [store] = createStore<{
+      data: RowData[];
+      selected: number | null;
+    }>({
+      data: Array.from({ length: 20 }, (_, i) => ({
+        id: i + 1,
+        label: `Item ${i + 1}`,
+      })),
+      selected: null,
+    });
+
+    const renderedIds = new Set<number>();
+
+    const Row = tracked(({ item, isSelected }: { item: RowData; isSelected: boolean }) => {
+      renderedIds.add(item.id);
+      return (
+        <tr className={isSelected ? "danger" : ""}>
+          <td>{item.id}</td>
+        </tr>
+      );
+    });
+
+    const App = tracked(() => {
+      const selected = store.selected;
+      return (
+        <table>
+          <tbody>
+            <For each={store.data}>
+              {(item: RowData) => (
+                <Row key={item.id} item={item} isSelected={selected === item.id} />
+              )}
+            </For>
+          </tbody>
+        </table>
+      );
+    });
+
+    render(<App />);
+    renderedIds.clear();
+
+    // Select row 5
+    await act(async () => {
+      store.selected = 5;
+    });
+
+    // Only the newly selected row should re-render (at most 1 new + 0 old deselected)
+    expect(renderedIds.size).toBeLessThanOrEqual(1);
+    if (renderedIds.size > 0) {
+      expect(renderedIds.has(5)).toBe(true);
+    }
+  });
+
+  it("select change: at most old + new selected rows re-render", async () => {
+    interface RowData {
+      id: number;
+      label: string;
+    }
+
+    const [store] = createStore<{
+      data: RowData[];
+      selected: number | null;
+    }>({
+      data: Array.from({ length: 20 }, (_, i) => ({
+        id: i + 1,
+        label: `Item ${i + 1}`,
+      })),
+      selected: 5,
+    });
+
+    const renderedIds = new Set<number>();
+
+    const Row = tracked(({ item, isSelected }: { item: RowData; isSelected: boolean }) => {
+      renderedIds.add(item.id);
+      return (
+        <tr className={isSelected ? "danger" : ""}>
+          <td>{item.id}</td>
+        </tr>
+      );
+    });
+
+    const App = tracked(() => {
+      const selected = store.selected;
+      return (
+        <table>
+          <tbody>
+            <For each={store.data}>
+              {(item: RowData) => (
+                <Row key={item.id} item={item} isSelected={selected === item.id} />
+              )}
+            </For>
+          </tbody>
+        </table>
+      );
+    });
+
+    render(<App />);
+    renderedIds.clear();
+
+    // Change selection from 5 to 10
+    await act(async () => {
+      store.selected = 10;
+    });
+
+    // At most the old selected (5) and new selected (10) should re-render
+    expect(renderedIds.size).toBeLessThanOrEqual(2);
+  });
+
+  it("append: For re-renders, existing rows do NOT re-render", async () => {
+    interface RowData {
+      id: number;
+      label: string;
+    }
+
+    const [store] = createStore<{ data: RowData[] }>({
+      data: Array.from({ length: 5 }, (_, i) => ({
+        id: i + 1,
+        label: `Item ${i + 1}`,
+      })),
+    });
+
+    let forChildrenCalls = 0;
+    const renderedIds = new Set<number>();
+
+    const Row = tracked(({ item }: { item: RowData }) => {
+      renderedIds.add(item.id);
+      return (
+        <li>
+          {item.id}: {item.label}
+        </li>
+      );
+    });
+
+    const App = tracked(() => (
+      <ul>
+        <For each={store.data}>
+          {(item: RowData) => {
+            forChildrenCalls++;
+            return <Row key={item.id} item={item} />;
+          }}
+        </For>
+      </ul>
+    ));
+
+    const { container } = render(<App />);
+    expect(container.querySelectorAll("li").length).toBe(5);
+    forChildrenCalls = 0;
+    renderedIds.clear();
+
+    // Append 3 new items
+    await act(async () => {
+      store.data.push(
+        { id: 6, label: "Item 6" },
+        { id: 7, label: "Item 7" },
+        { id: 8, label: "Item 8" },
+      );
+    });
+
+    expect(container.querySelectorAll("li").length).toBe(8);
+    // For re-renders and calls children for all 8 (structural change)
+    // But only the 3 NEW rows should actually render — existing 5 are memo'd
+    expect(renderedIds.size).toBe(3);
+    expect(renderedIds.has(6)).toBe(true);
+    expect(renderedIds.has(7)).toBe(true);
+    expect(renderedIds.has(8)).toBe(true);
+  });
+
+  it("remove: For re-renders, remaining rows do NOT re-render", async () => {
+    interface RowData {
+      id: number;
+      label: string;
+    }
+
+    const [store] = createStore<{ data: RowData[] }>({
+      data: Array.from({ length: 10 }, (_, i) => ({
+        id: i + 1,
+        label: `Item ${i + 1}`,
+      })),
+    });
+
+    const renderedIds = new Set<number>();
+
+    const Row = tracked(({ item }: { item: RowData }) => {
+      renderedIds.add(item.id);
+      return <li>{item.label}</li>;
+    });
+
+    const App = tracked(() => (
+      <ul>
+        <For each={store.data}>{(item: RowData) => <Row key={item.id} item={item} />}</For>
+      </ul>
+    ));
+
+    const { container } = render(<App />);
+    expect(container.querySelectorAll("li").length).toBe(10);
+    renderedIds.clear();
+
+    // Remove item at index 3 (id=4)
+    await act(async () => {
+      store.data.splice(3, 1);
+    });
+
+    expect(container.querySelectorAll("li").length).toBe(9);
+    // Remaining rows should NOT re-render (only structural change)
+    // Some ForItems get new index props, but their children function
+    // produces same Row elements (same item proxy) → memo skips
+    expect(renderedIds.size).toBe(0);
   });
 
   it("push after initial empty render without any prior store.data assignment", async () => {

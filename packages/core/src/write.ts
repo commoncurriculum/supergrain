@@ -46,7 +46,14 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
 
   const didChange = unwrap(oldValue) !== unwrap(value);
   if (didChange) {
-    bumpVersion(target);
+    // Skip version bump for array element replacement (same length).
+    // Per-index signals already notify element-specific subscribers.
+    // Version bump would unnecessarily notify parent components that
+    // only care about structural changes (length, add, remove).
+    const isArrayElementReplace = Array.isArray(target) && hadKey && target.length === prevLen;
+    if (!isArrayElementReplace) {
+      bumpVersion(target);
+    }
   }
 
   const nodes = (target as any)[$NODE];

@@ -1,6 +1,9 @@
-import React from "react";
+import { unwrap } from "@supergrain/core";
+import React, { useRef } from "react";
 
 import { tracked } from "./tracked";
+
+const $TRACK = Symbol.for("supergrain:track");
 
 interface ForProps<T> {
   each: T[];
@@ -9,12 +12,39 @@ interface ForProps<T> {
 }
 
 /**
- * List rendering component for keyed reconciliation.
+ * Internal slot component that reads a single array element reactively.
  *
- * Iterates an array and renders children with stable keys derived from
- * item.id (or index as fallback). Wrapped in tracked() so that in-place
- * array mutations (push, splice, etc.) trigger re-renders by subscribing
- * to the array's length and ownKeys signals.
+ * Each ForItem subscribes to only its own per-index signal. On an element
+ * swap, only the ForItems at swapped indices re-render — the parent For
+ * and all other ForItems stay untouched.
+ */
+const ForItem = tracked(
+  ({
+    each,
+    index,
+    children,
+  }: {
+    each: unknown[];
+    index: number;
+    children: (item: unknown, index: number) => React.ReactNode;
+  }) => {
+    // Read through the proxy — subscribes to this index's signal only
+    const item = each[index];
+    const child = children(item, index);
+    return child as React.ReactElement;
+  },
+);
+
+/**
+ * List rendering component with fine-grained per-element reactivity.
+ *
+ * For subscribes only to structural changes (ownKeys: add, remove, splice).
+ * Each element is rendered through an internal ForItem tracked component
+ * that subscribes to its own per-index signal. This means:
+ *
+ * - Swap: Only 2 ForItems re-render (O(1) instead of O(n))
+ * - Add/Remove: For re-renders to adjust the slot count
+ * - Property update: Only the affected Row re-renders (via tracked)
  *
  * @example
  * ```tsx
@@ -27,27 +57,35 @@ interface ForProps<T> {
 export const For = tracked((props: ForProps<unknown>) => {
   const { each, children, fallback } = props;
 
-  if (!each || each.length === 0) {
+  // Subscribe to structural changes only (ownKeys), not per-element signals.
+  // Access $TRACK to establish the ownKeys subscription without reading elements.
+  void (each as any)?.[$TRACK];
+
+  const raw = unwrap(each);
+
+  if (!raw || raw.length === 0) {
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
 
-  return React.createElement(
-    React.Fragment,
-    null,
-    each.map((item, index) => {
-      const child = children(item, index);
+  // Build slot list from raw array (no per-index signal subscriptions).
+  // Keys come from raw item IDs for correct React reconciliation on add/remove.
+  const slots = [];
+  for (let i = 0; i < raw.length; i++) {
+    const rawItem = raw[i];
+    const key =
+      rawItem && typeof rawItem === "object" && "id" in rawItem
+        ? ((rawItem as Record<string, unknown>).id as React.Key)
+        : i;
 
-      // Assign stable key from item.id if available
-      if (React.isValidElement(child)) {
-        const key =
-          item && typeof item === "object" && "id" in item
-            ? (item as Record<string, unknown>).id
-            : index;
+    slots.push(
+      React.createElement(ForItem, {
+        key,
+        each,
+        index: i,
+        children,
+      }),
+    );
+  }
 
-        return React.cloneElement(child, { key } as any);
-      }
-
-      return child;
-    }),
-  );
+  return React.createElement(React.Fragment, null, ...slots);
 }) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;

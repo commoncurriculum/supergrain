@@ -1,4 +1,4 @@
-import { createStore } from "@supergrain/core";
+import { createStore, startBatch, endBatch } from "@supergrain/core";
 import { tracked, For } from "@supergrain/react";
 import { useCallback } from "react";
 import { createRoot } from "react-dom/client";
@@ -134,10 +134,12 @@ export const clear = () => {
 
 export const swapRows = () => {
   if (store.data.length > 998) {
+    startBatch();
     const row1 = store.data[1];
     const row998 = store.data[998];
     store.data[1] = row998;
     store.data[998] = row1;
+    endBatch();
   }
 };
 
