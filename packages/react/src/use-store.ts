@@ -52,11 +52,11 @@ const CachedForItem = tracked(
     children: (item: unknown, index: number) => React.ReactNode;
   }) => {
     const prevIndexRef = useRef(index);
-    const itemRef = useRef<unknown>(undefined);
+    const itemRef = useRef<unknown>(null);
 
-    if (itemRef.current === undefined || prevIndexRef.current !== index) {
+    if (itemRef.current === null || prevIndexRef.current !== index) {
       const prevSub = getCurrentSub();
-      setCurrentSub(undefined as any);
+      setCurrentSub(undefined as any); // eslint-disable-line unicorn/no-useless-undefined -- intentionally clearing subscriber
       itemRef.current = each[index];
       setCurrentSub(prevSub);
       prevIndexRef.current = index;
@@ -71,7 +71,7 @@ const CachedForItem = tracked(
  * List rendering component with fine-grained per-element reactivity.
  *
  * When a `parent` ref is provided, For uses O(1) direct DOM moves on swap:
- * an alien-signals effect detects element swaps and calls insertBefore.
+ * an alien-signals effect detects element swaps and moves DOM nodes.
  * CachedForItem ensures label changes still render correctly after a move.
  *
  * Without `parent`, For falls back to O(n) React keyed reconciliation.
@@ -109,7 +109,9 @@ export const For = tracked((props: ForProps<unknown>) => {
 
   // O(1) swap effect — only when parent ref is provided.
   useLayoutEffect(() => {
-    if (!parent) return;
+    if (!parent) {
+      return;
+    }
 
     if (!raw || raw.length === 0) {
       swapCleanupRef.current?.();
@@ -118,7 +120,7 @@ export const For = tracked((props: ForProps<unknown>) => {
     }
 
     swapCleanupRef.current?.();
-    prevRawRef.current = raw.slice();
+    prevRawRef.current = [...raw];
 
     const cleanup = alienEffect(() => {
       const nodes = (raw as any)[$NODE];
@@ -133,7 +135,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       const prev = prevRawRef.current;
       const container = parent.current;
       if (!container || prev.length !== raw.length) {
-        prevRawRef.current = raw.slice();
+        prevRawRef.current = [...raw];
         return;
       }
 
@@ -141,7 +143,9 @@ export const For = tracked((props: ForProps<unknown>) => {
       for (let i = 0; i < raw.length; i++) {
         if (raw[i] !== prev[i]) {
           changed.push(i);
-          if (changed.length > 2) break;
+          if (changed.length > 2) {
+            break;
+          }
         }
       }
 
@@ -152,12 +156,16 @@ export const For = tracked((props: ForProps<unknown>) => {
         const nodeB = domChildren[b];
         if (nodeA && nodeB) {
           const siblingA = nodeA.nextSibling === nodeB ? nodeA : nodeA.nextSibling;
-          container.insertBefore(nodeA, nodeB.nextSibling);
-          container.insertBefore(nodeB, siblingA);
+          nodeB.after(nodeA);
+          if (siblingA) {
+            siblingA.before(nodeB);
+          } else {
+            container.append(nodeB);
+          }
         }
       }
 
-      prevRawRef.current = raw.slice();
+      prevRawRef.current = [...raw];
     });
 
     swapCleanupRef.current = cleanup;

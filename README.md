@@ -93,14 +93,14 @@ const TodoList = tracked(() => (
 
 Writes are **synchronous** — you can always read your own writes:
 
-```typescript
+```ts
 store.count = 5;
 console.log(store.count); // 5 — immediately available
 ```
 
 Single mutations are always safe. When you need to make **multiple mutations atomically**, wrap them in `startBatch` / `endBatch`. Without batching, each write fires reactive effects immediately — a `computed` that reads both swapped positions would run mid-swap and see a duplicate:
 
-```typescript
+```ts
 // ❌ Without batching — computed sees [C, B, C] after first write
 const tmp = store.data[0];
 store.data[0] = store.data[2]; // effects fire — data is [C, B, C]
@@ -109,7 +109,7 @@ store.data[2] = tmp; // effects fire again — data is [C, B, A]
 
 Wrap multi-step mutations in `startBatch` / `endBatch` so effects fire once with the final state:
 
-```typescript
+```ts
 import { startBatch, endBatch } from "@supergrain/core";
 
 startBatch();
