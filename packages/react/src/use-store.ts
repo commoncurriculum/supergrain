@@ -38,13 +38,14 @@ const ForItem = tracked(
 /**
  * List rendering component with fine-grained per-element reactivity.
  *
- * For subscribes only to structural changes (ownKeys: add, remove, splice).
- * Each element is rendered through an internal ForItem tracked component
- * that subscribes to its own per-index signal. This means:
+ * For subscribes to both structural changes (ownKeys) and per-index signals.
+ * Each element is rendered through an internal ForItem tracked component.
  *
- * - Swap: Only 2 ForItems re-render (O(1) instead of O(n))
- * - Add/Remove: For re-renders to adjust the slot count
- * - Property update: Only the affected Row re-renders (via tracked)
+ * - Swap: For re-renders to update keys so React moves DOM nodes (keyed).
+ *   ForItem memo passes for unmoved items; only moved items re-render.
+ * - Add/Remove: For re-renders to adjust the slot count.
+ * - Property update: Per-index signals don't fire (same object at same index),
+ *   so For stays quiet. ForItem's tracked scope handles the re-render.
  *
  * @example
  * ```tsx
@@ -57,8 +58,7 @@ const ForItem = tracked(
 export const For = tracked((props: ForProps<unknown>) => {
   const { each, children, fallback } = props;
 
-  // Subscribe to structural changes only (ownKeys), not per-element signals.
-  // Access $TRACK to establish the ownKeys subscription without reading elements.
+  // Subscribe to structural changes (ownKeys: add, remove, splice).
   void (each as any)?.[$TRACK];
 
   const raw = unwrap(each);
@@ -67,8 +67,16 @@ export const For = tracked((props: ForProps<unknown>) => {
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
 
-  // Build slot list from raw array (no per-index signal subscriptions).
-  // Keys come from raw item IDs for correct React reconciliation on add/remove.
+  // Read each element through the proxy to subscribe to per-index signals.
+  // This ensures For re-renders on swap (element identity change at an index),
+  // which is required for correct keyed reconciliation (DOM node moves).
+  // Per-index signals do NOT fire on property updates (e.g., label change),
+  // so For stays quiet for those — ForItem handles property reactivity.
+  for (let i = 0; i < raw.length; i++) {
+    void each[i];
+  }
+
+  // Build slot list from raw array for key extraction.
   const slots = [];
   for (let i = 0; i < raw.length; i++) {
     const rawItem = raw[i];
