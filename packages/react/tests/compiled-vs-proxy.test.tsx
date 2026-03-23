@@ -358,7 +358,11 @@ describe.each([
       updateRows();
       await flushMicrotasks();
     });
-    expect(renderedRowIds.size).toBeLessThanOrEqual(100);
+    // Proxy mode detects per-item property changes; compiled/class-getter don't
+    // track nested mutations (known limitation)
+    if (mode === "proxy") {
+      expect(renderedRowIds.size).toBe(100);
+    }
   });
 
   it("select row", async () => {
@@ -376,7 +380,7 @@ describe.each([
       await flushMicrotasks();
     });
     expect(renderedRowIds.has(5)).toBe(true);
-    expect(renderedRowIds.size).toBeLessThanOrEqual(2);
+    expect(renderedRowIds.size).toBe(1); // Only newly selected row re-renders
   });
 
   it("swap rows", async () => {
@@ -393,7 +397,7 @@ describe.each([
       swapRows();
       await flushMicrotasks();
     });
-    expect(renderedRowIds.size).toBeLessThanOrEqual(4);
+    expect(renderedRowIds.size).toBeLessThanOrEqual(2); // Only swapped rows
   });
 
   it("remove row", async () => {

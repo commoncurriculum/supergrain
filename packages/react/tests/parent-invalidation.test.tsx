@@ -131,13 +131,21 @@ describe("Parent Invalidation Depth Tests", () => {
       await flushMicrotasks();
     });
 
-    const rootAfterDeep = rootRenderCount;
-    const level1AfterDeep = level1RenderCount;
-    const level2AfterDeep = level2RenderCount;
-    const level3AfterDeep = level3RenderCount;
-    const level4AfterDeep = level4RenderCount;
+    // Updating level4.value should NOT re-render components that only access
+    // higher levels (root, level1, level2, level3). Only level4 accesses the
+    // leaf object, so only it may re-render.
+    expect(rootRenderCount).toBe(1); // root only accessed level0 — unchanged
+    expect(level1RenderCount).toBe(1); // level1 only accessed level1 — unchanged
+    expect(level2RenderCount).toBe(1); // level2 only accessed level2 — unchanged
+    expect(level3RenderCount).toBe(1); // level3 only accessed level3 — unchanged
+    // level4 accessed level4 object which contains the changed value
+    expect(level4RenderCount).toBeGreaterThanOrEqual(1);
+    expect(arrayRenderCount).toBe(1); // array untouched
+    expect(arrayItemRenderCount).toBe(1); // array item untouched
 
-    // Test 2: Update array nested property
+    // Test 2: Update array nested property — only arrayItem should re-render
+    const arrayBefore = arrayRenderCount;
+    const arrayItemBefore = arrayItemRenderCount;
     await act(async () => {
       update({
         $set: {
@@ -146,8 +154,15 @@ describe("Parent Invalidation Depth Tests", () => {
       });
       await flushMicrotasks();
     });
+    expect(rootRenderCount).toBe(1); // still untouched
+    expect(arrayRenderCount).toBe(arrayBefore); // array ref unchanged
+    // arrayItem accesses array[0] which contains nested change
+    expect(arrayItemRenderCount).toBeGreaterThanOrEqual(arrayItemBefore);
 
-    // Test 3: Update intermediate level directly
+    // Test 3: Update intermediate level directly — replaces level2 object
+    const level2Before = level2RenderCount;
+    const level3Before = level3RenderCount;
+    const level4Before = level4RenderCount;
     await act(async () => {
       update({
         $set: {
@@ -156,6 +171,8 @@ describe("Parent Invalidation Depth Tests", () => {
       });
       await flushMicrotasks();
     });
+    // level2 accessed level2 which was replaced → should re-render
+    expect(level2RenderCount).toBeGreaterThan(level2Before);
   });
 
   it("should test array-specific parent invalidation behavior", async () => {
@@ -225,5 +242,13 @@ describe("Parent Invalidation Depth Tests", () => {
       });
       await flushMicrotasks();
     });
+
+    // Updating a deeply nested property in array[0].details.meta should NOT
+    // re-render components that only access higher levels
+    expect(arrayAccessRenderCount).toBe(1); // array ref unchanged
+    // itemAccess reads items[0] — the object at index 0 didn't change identity
+    expect(itemAccessRenderCount).toBe(1);
+    // detailsAccess reads items[0].details — details object didn't change identity
+    expect(detailsAccessRenderCount).toBe(1);
   });
 });

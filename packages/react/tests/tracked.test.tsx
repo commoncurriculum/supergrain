@@ -78,7 +78,7 @@ describe("tracked()", () => {
         store.data[0].label = "ONE UPDATED";
       });
 
-      expect(row1Renders).toBeGreaterThan(row1After); // Row 1 re-rendered
+      expect(row1Renders).toBe(row1After + 1); // Row 1 re-rendered exactly once
       expect(row2Renders).toBe(row2After); // Row 2 did NOT
       expect(appRenders).toBe(appAfter); // App did NOT
 
@@ -322,7 +322,7 @@ describe("tracked()", () => {
       await act(async () => {
         store.child = "C UPDATED";
       });
-      expect(childRenders).toBeGreaterThan(cAfter);
+      expect(childRenders).toBe(cAfter + 1); // Child re-rendered exactly once
       expect(parentRenders).toBe(pAfter); // Parent did NOT re-render
 
       // Change only parent property
@@ -330,7 +330,7 @@ describe("tracked()", () => {
       await act(async () => {
         store.parent = "P UPDATED";
       });
-      expect(parentRenders).toBeGreaterThan(pAfter);
+      expect(parentRenders).toBe(pAfter + 1); // Parent re-rendered exactly once
       expect(childRenders).toBe(cAfter2); // Child did NOT re-render
     });
   });

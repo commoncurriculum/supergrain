@@ -187,7 +187,7 @@ describe("For Component Magic Tests", () => {
     expect(rows[18]!.querySelector("td")!.textContent).toBe("2"); // was 19
 
     // Only the 2 swapped rows should have re-rendered, not all 20
-    expect(renderedIds.size).toBeLessThanOrEqual(2);
+    expect(renderedIds.size).toBe(2);
   });
 
   it("swap: For's children function is called only for swapped indices, not all", async () => {
@@ -247,7 +247,7 @@ describe("For Component Magic Tests", () => {
     expect(rows[18]!.querySelector("td")!.textContent).toBe("2");
 
     // For should NOT call children for all 20 items — only the 2 that changed
-    expect(childrenCallCount).toBeLessThanOrEqual(2);
+    expect(childrenCallCount).toBe(2);
   });
 
   it("For keys by item.id: DOM nodes are reused after remove", async () => {
@@ -465,7 +465,7 @@ describe("For Component Magic Tests", () => {
     });
 
     // Only the newly selected row should re-render (at most 1 new + 0 old deselected)
-    expect(renderedIds.size).toBeLessThanOrEqual(1);
+    expect(renderedIds.size).toBe(1);
     if (renderedIds.size > 0) {
       expect(renderedIds.has(5)).toBe(true);
     }
@@ -523,7 +523,7 @@ describe("For Component Magic Tests", () => {
     });
 
     // At most the old selected (5) and new selected (10) should re-render
-    expect(renderedIds.size).toBeLessThanOrEqual(2);
+    expect(renderedIds.size).toBe(2);
   });
 
   it("append: For re-renders, existing rows do NOT re-render", async () => {
