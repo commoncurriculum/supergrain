@@ -8,7 +8,7 @@ import { render, cleanup, act } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, afterEach } from "vitest";
 
-import { tracked, For } from "../src";
+import { tracked } from "../src";
 
 // --- Shared data ---
 interface RowData {
