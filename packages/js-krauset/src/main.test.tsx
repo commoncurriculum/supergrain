@@ -284,6 +284,8 @@ describe("krauset compliance: react-supergrain", () => {
  * Uses a completely fresh createStore to avoid $NODE leakage from other tests.
  */
 describe("fresh store push regression", () => {
+  afterEach(() => cleanup());
+
   it("push on a fresh store triggers re-render without prior assignment", async () => {
     const { createStore } = await import("@supergrain/core");
     const { tracked, For } = await import("@supergrain/react");
@@ -316,7 +318,5 @@ describe("fresh store push regression", () => {
     });
 
     expect(tbody.querySelectorAll("tr").length).toBe(2);
-
-    cleanup();
   });
 });
