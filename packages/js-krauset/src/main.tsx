@@ -1,5 +1,5 @@
 import { createStore, startBatch, endBatch } from "@supergrain/core";
-import { tracked, ForPortal } from "@supergrain/react";
+import { tracked, For } from "@supergrain/react";
 import { useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -213,7 +213,7 @@ export const App = tracked(() => {
       </div>
       <table className="table table-hover table-striped test-data">
         <tbody ref={tbodyRef}>
-          <ForPortal each={store.data} parent={tbodyRef}>
+          <For each={store.data} parent={tbodyRef}>
             {(item: RowData) => (
               <Row
                 key={item.id}
@@ -223,7 +223,7 @@ export const App = tracked(() => {
                 onRemove={handleRemove}
               />
             )}
-          </ForPortal>
+          </For>
         </tbody>
       </table>
       <span className="preloadicon glyphicon glyphicon-remove" aria-hidden="true"></span>

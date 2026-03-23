@@ -1,5 +1,5 @@
-import { unwrap } from "@supergrain/core";
-import React from "react";
+import { effect as alienEffect, getCurrentSub, setCurrentSub, unwrap } from "@supergrain/core";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 import { tracked } from "./tracked";
 
@@ -10,13 +10,12 @@ interface ForProps<T> {
   each: T[];
   children: (item: T, index: number) => React.ReactNode;
   fallback?: React.ReactNode;
+  parent?: React.RefObject<Element | null>;
 }
 
 /**
- * Internal slot component that reads a single array element reactively.
- *
- * Each ForItem subscribes to only its own per-index signal and the item's
- * property signals (via the children render function).
+ * Standard ForItem — subscribes to per-index signal and item properties.
+ * Used when no parent ref is provided (O(n) React reconciliation on swap).
  */
 const ForItem = tracked(
   ({
@@ -35,19 +34,63 @@ const ForItem = tracked(
 );
 
 /**
+ * Cached ForItem — caches its item in a ref for O(1) swap support.
+ *
+ * Only re-reads from the array when the index prop changes (structural
+ * change). On property-change re-renders, uses the cached item — so it
+ * always renders the correct content even if the DOM was moved by the
+ * alien swap effect.
+ */
+const CachedForItem = tracked(
+  ({
+    each,
+    index,
+    children,
+  }: {
+    each: unknown[];
+    index: number;
+    children: (item: unknown, index: number) => React.ReactNode;
+  }) => {
+    const prevIndexRef = useRef(index);
+    const itemRef = useRef<unknown>(undefined);
+
+    if (itemRef.current === undefined || prevIndexRef.current !== index) {
+      const prevSub = getCurrentSub();
+      setCurrentSub(undefined as any);
+      itemRef.current = each[index];
+      setCurrentSub(prevSub);
+      prevIndexRef.current = index;
+    }
+
+    const child = children(itemRef.current, index);
+    return child as React.ReactElement;
+  },
+);
+
+/**
  * List rendering component with fine-grained per-element reactivity.
  *
- * For subscribes to structural changes (ownKeys) and per-index signals.
- * Each element is rendered through an internal ForItem tracked component.
+ * When a `parent` ref is provided, For uses O(1) direct DOM moves on swap:
+ * an alien-signals effect detects element swaps and calls insertBefore.
+ * CachedForItem ensures label changes still render correctly after a move.
  *
- * - Swap: For re-renders to update keys so React moves DOM nodes (keyed).
- *   ForItem memo passes for unmoved items. Zero Row re-renders.
+ * Without `parent`, For falls back to O(n) React keyed reconciliation.
+ *
+ * Both modes:
  * - Add/Remove: For re-renders to adjust slot count. React handles it.
- * - Property update: Per-index signals don't fire (same object at same index),
- *   so For stays quiet. ForItem's tracked scope handles the re-render.
+ * - Property update: Only the affected ForItem re-renders (via tracked).
  *
  * @example
  * ```tsx
+ * // Fast path — O(1) swap
+ * const tbodyRef = useRef<HTMLTableSectionElement>(null)
+ * <tbody ref={tbodyRef}>
+ *   <For each={store.data} parent={tbodyRef}>
+ *     {(item) => <Row key={item.id} item={item} />}
+ *   </For>
+ * </tbody>
+ *
+ * // Standard path — no ref needed
  * <For each={store.data}>
  *   {(item) => <Row key={item.id} item={item} />}
  * </For>
@@ -55,36 +98,98 @@ const ForItem = tracked(
  */
 // tracked() erases the generic <T>, so we cast through unknown to restore it.
 export const For = tracked((props: ForProps<unknown>) => {
-  const { each, children, fallback } = props;
+  const { each, children, fallback, parent } = props;
+  const prevRawRef = useRef<unknown[]>([]);
+  const swapCleanupRef = useRef<(() => void) | null>(null);
 
   // Subscribe to structural changes (ownKeys: add, remove, splice).
   void (each as any)?.[$TRACK];
 
   const raw = unwrap(each);
 
+  // O(1) swap effect — only when parent ref is provided.
+  useLayoutEffect(() => {
+    if (!parent) return;
+
+    if (!raw || raw.length === 0) {
+      swapCleanupRef.current?.();
+      swapCleanupRef.current = null;
+      return;
+    }
+
+    swapCleanupRef.current?.();
+    prevRawRef.current = raw.slice();
+
+    const cleanup = alienEffect(() => {
+      const nodes = (raw as any)[$NODE];
+      for (let i = 0; i < raw.length; i++) {
+        if (nodes?.[i]) {
+          nodes[i]();
+        } else {
+          void each[i];
+        }
+      }
+
+      const prev = prevRawRef.current;
+      const container = parent.current;
+      if (!container || prev.length !== raw.length) {
+        prevRawRef.current = raw.slice();
+        return;
+      }
+
+      const changed: number[] = [];
+      for (let i = 0; i < raw.length; i++) {
+        if (raw[i] !== prev[i]) {
+          changed.push(i);
+          if (changed.length > 2) break;
+        }
+      }
+
+      if (changed.length === 2) {
+        const [a, b] = changed;
+        const domChildren = container.children;
+        const nodeA = domChildren[a];
+        const nodeB = domChildren[b];
+        if (nodeA && nodeB) {
+          const siblingA = nodeA.nextSibling === nodeB ? nodeA : nodeA.nextSibling;
+          container.insertBefore(nodeA, nodeB.nextSibling);
+          container.insertBefore(nodeB, siblingA);
+        }
+      }
+
+      prevRawRef.current = raw.slice();
+    });
+
+    swapCleanupRef.current = cleanup;
+    return cleanup;
+  });
+
+  useEffect(
+    () => () => {
+      swapCleanupRef.current?.();
+    },
+    [],
+  );
+
   if (!raw || raw.length === 0) {
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
 
-  // Subscribe to per-index signals so For re-renders on swap (element identity
-  // change at an index). Required for correct keyed reconciliation — React must
-  // see updated keys to move DOM nodes instead of recreating them.
-  // Per-index signals do NOT fire on property updates (same object at same
-  // index), so For stays quiet for those — ForItem handles property reactivity.
-  //
-  // Use direct signal reads when available (skip proxy overhead).
-  // Falls back to proxy reads for indices without existing signal nodes.
-  const nodes = (raw as any)[$NODE];
-  for (let i = 0; i < raw.length; i++) {
-    const existingNode = nodes?.[i];
-    if (existingNode) {
-      existingNode(); // direct signal read — fast
-    } else {
-      void each[i]; // proxy read — creates signal node
+  // Without parent: subscribe to per-index signals for React reconciliation on swap.
+  if (!parent) {
+    const nodes = (raw as any)[$NODE];
+    for (let i = 0; i < raw.length; i++) {
+      const existingNode = nodes?.[i];
+      if (existingNode) {
+        existingNode();
+      } else {
+        void each[i];
+      }
     }
   }
 
-  // Build slots keyed by ID for correct React reconciliation.
+  const ItemComponent = parent ? CachedForItem : ForItem;
+
   const slots = [];
   for (let i = 0; i < raw.length; i++) {
     const rawItem = raw[i];
@@ -94,7 +199,7 @@ export const For = tracked((props: ForProps<unknown>) => {
         : i;
 
     slots.push(
-      React.createElement(ForItem, {
+      React.createElement(ItemComponent, {
         key,
         each,
         index: i,
