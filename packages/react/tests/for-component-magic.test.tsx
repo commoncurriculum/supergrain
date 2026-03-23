@@ -647,4 +647,314 @@ describe("For Component Magic Tests", () => {
     expect(container.querySelectorAll("span").length).toBe(1);
     expect(container.querySelector("span")!.textContent).toBe("1");
   });
+
+  describe("parent prop: stale fiber stress tests", () => {
+    interface RowData {
+      id: number;
+      label: string;
+    }
+
+    function createTestStore(count: number) {
+      return createStore<{ data: RowData[]; selected: number | null }>({
+        data: Array.from({ length: count }, (_, i) => ({
+          id: i + 1,
+          label: `Item ${i + 1}`,
+        })),
+        selected: null,
+      });
+    }
+
+    function getLabels(c: HTMLElement) {
+      return Array.from(c.querySelectorAll("tr")).map(
+        (tr) => tr.querySelectorAll("td")[1]?.textContent ?? "",
+      );
+    }
+
+    function getIds(c: HTMLElement) {
+      return Array.from(c.querySelectorAll("tr")).map(
+        (tr) => tr.querySelectorAll("td")[0]?.textContent ?? "",
+      );
+    }
+
+    it("swap then update label on swapped item", async () => {
+      const [store] = createTestStore(5);
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => (
+                  <tr key={item.id}>
+                    <td>{item.id}</td>
+                    <td>{item.label}</td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+      expect(getIds(container)).toEqual(["1", "2", "3", "4", "5"]);
+
+      // Swap indices 1 and 3 (items 2 and 4)
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[1]!;
+        store.data[1] = store.data[3]!;
+        store.data[3] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["1", "4", "3", "2", "5"]);
+
+      // Now update the label on item 2 (now at position 3)
+      await act(async () => {
+        store.data[3]!.label = "UPDATED";
+      });
+
+      // Item 2 is at position 3 — its label should be updated there
+      expect(getLabels(container)[3]).toBe("UPDATED");
+      // Other items unchanged
+      expect(getLabels(container)[1]).toBe("Item 4");
+    });
+
+    it("swap then update label on NON-swapped item", async () => {
+      const [store] = createTestStore(5);
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => (
+                  <tr key={item.id}>
+                    <td>{item.id}</td>
+                    <td>{item.label}</td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+
+      // Swap indices 0 and 4
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[0]!;
+        store.data[0] = store.data[4]!;
+        store.data[4] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["5", "2", "3", "4", "1"]);
+
+      // Update label on item 3 (index 2, not swapped)
+      await act(async () => {
+        store.data[2]!.label = "MIDDLE UPDATED";
+      });
+
+      expect(getLabels(container)[2]).toBe("MIDDLE UPDATED");
+      // Swapped items still correct
+      expect(getIds(container)).toEqual(["5", "2", "3", "4", "1"]);
+    });
+
+    it("swap then remove a swapped item", async () => {
+      const [store] = createTestStore(5);
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => (
+                  <tr key={item.id}>
+                    <td>{item.id}</td>
+                    <td>{item.label}</td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+
+      // Swap indices 1 and 3
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[1]!;
+        store.data[1] = store.data[3]!;
+        store.data[3] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["1", "4", "3", "2", "5"]);
+
+      // Remove the item at index 1 (item 4, which was swapped to this position)
+      await act(async () => {
+        store.data.splice(1, 1);
+      });
+
+      expect(getIds(container)).toEqual(["1", "3", "2", "5"]);
+    });
+
+    it("swap then add items", async () => {
+      const [store] = createTestStore(5);
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => (
+                  <tr key={item.id}>
+                    <td>{item.id}</td>
+                    <td>{item.label}</td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+
+      // Swap indices 0 and 4
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[0]!;
+        store.data[0] = store.data[4]!;
+        store.data[4] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["5", "2", "3", "4", "1"]);
+
+      // Push new items
+      await act(async () => {
+        store.data.push({ id: 6, label: "Item 6" }, { id: 7, label: "Item 7" });
+      });
+
+      expect(getIds(container)).toEqual(["5", "2", "3", "4", "1", "6", "7"]);
+    });
+
+    it("multiple swaps in a row", async () => {
+      const [store] = createTestStore(5);
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => (
+                  <tr key={item.id}>
+                    <td>{item.id}</td>
+                    <td>{item.label}</td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+
+      // Swap 0 and 4
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[0]!;
+        store.data[0] = store.data[4]!;
+        store.data[4] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["5", "2", "3", "4", "1"]);
+
+      // Swap 1 and 3
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[1]!;
+        store.data[1] = store.data[3]!;
+        store.data[3] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["5", "4", "3", "2", "1"]);
+
+      // Swap back 0 and 4
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[0]!;
+        store.data[0] = store.data[4]!;
+        store.data[4] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["1", "4", "3", "2", "5"]);
+    });
+
+    it("swap then select a swapped item", async () => {
+      const [store] = createTestStore(5);
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        const selected = store.selected;
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => (
+                  <tr key={item.id} className={selected === item.id ? "danger" : ""}>
+                    <td>{item.id}</td>
+                    <td>{item.label}</td>
+                  </tr>
+                )}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+
+      // Swap indices 1 and 3
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[1]!;
+        store.data[1] = store.data[3]!;
+        store.data[3] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["1", "4", "3", "2", "5"]);
+
+      // Select item 4 (now at position 1 after swap)
+      await act(async () => {
+        store.selected = 4;
+      });
+
+      const rows = container.querySelectorAll("tr");
+      // Item 4 is at position 1 — it should have "danger" class
+      expect(rows[1]!.className).toBe("danger");
+      // Others should not
+      expect(rows[0]!.className).toBe("");
+      expect(rows[2]!.className).toBe("");
+      expect(rows[3]!.className).toBe("");
+      expect(rows[4]!.className).toBe("");
+    });
+  });
 });
