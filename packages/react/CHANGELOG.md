@@ -1,5 +1,51 @@
 # @supergrain/react
 
+## 1.2.0
+
+### Minor Changes
+
+- adafe77: O(1) keyed swap and fine-grained list rendering
+
+  ### `@supergrain/core`
+
+  - **Skip version bump on array element replacement** — when setting an existing array index without changing length, the version signal no longer fires. Per-index signals already notify element subscribers. This prevents parent components from re-rendering on swap.
+
+  ### `@supergrain/react`
+
+  - **O(1) keyed swap via `parent` prop on `<For>`** — pass a ref to the container element to enable direct DOM moves on swap. An alien-signals effect detects element swaps and calls `insertBefore` to move DOM nodes directly, bypassing React's O(n) reconciliation entirely. Swap script time: **0.3ms actual** (was ~8ms). Total swap time: **~13ms actual** (was ~45ms).
+
+  - **ForItem architecture with item caching** — each list element is rendered through an internal `ForItem` tracked component. When `parent` is provided, `ForItem` caches its item in a ref so property-change re-renders (e.g., label updates) use the correct item even after a DOM move.
+
+  - **Fine-grained property updates** — changing `item.label` only re-renders the affected row. `<For>` does not re-render. Other rows are untouched.
+
+  - **Batched benchmark operations** — `swapRows`, `update`, and `clear` wrapped in `startBatch`/`endBatch` for atomic multi-mutation updates.
+
+  ### Usage
+
+  ```tsx
+  // O(1) swap — pass parent ref
+  const tbodyRef = useRef<HTMLTableSectionElement>(null)
+  <tbody ref={tbodyRef}>
+    <For each={store.data} parent={tbodyRef}>
+      {(item) => <Row key={item.id} item={item} />}
+    </For>
+  </tbody>
+
+  // Standard — no ref needed, O(n) React reconciliation on swap
+  <For each={store.data}>
+    {(item) => <Row key={item.id} item={item} />}
+  </For>
+  ```
+
+  ### Documentation
+
+  - Added "Synchronous Writes and Batching" section to README
+
+### Patch Changes
+
+- Updated dependencies [adafe77]
+  - @supergrain/core@1.2.0
+
 ## 1.1.0
 
 ### Minor Changes
@@ -7,9 +53,11 @@
 - 20a6f46: Fine-grained array swap and optimized list rendering
 
   ### `@supergrain/core`
+
   - **Skip version bump on array element replacement** — when setting an existing array index without changing the array length, the version signal no longer fires. Per-index signals already notify element-specific subscribers, so the version bump was redundantly triggering parent component re-renders on operations like swap.
 
   ### `@supergrain/react`
+
   - **Rewrite `<For>` with internal `ForItem` slots** — `For` now subscribes only to structural changes (ownKeys: add, remove, splice). Each element is rendered through an internal `ForItem` tracked component that subscribes to its own per-index signal. On a swap, only the 2 affected `ForItem`s re-render instead of the entire list.
 
   ### Performance
@@ -95,6 +143,7 @@
   Nine operators (`$set`, `$unset`, `$inc`, `$push`, `$pull`, `$addToSet`, `$min`, `$max`, `$rename`) — all type-safe with dot-notation path inference. Inspired by MongoDB's update operators.
 
   ### Packages
+
   - **@supergrain/core** — `createStore`, `unwrap`, `update`, and signal primitives from [alien-signals](https://github.com/johnsoncodehk/signals) (`signal`, `computed`, `effect`, `startBatch`, `endBatch`)
   - **@supergrain/react** — `tracked()` for per-component reactivity, `<For>` for optimized lists, re-exports everything from core. Requires React 18.2+ or 19.x.
   - **@supergrain/store** — Document-oriented store for app-level state: look up records by model and ID, with built-in fetch handling and reactive loading/error states.
