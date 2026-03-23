@@ -1,7 +1,8 @@
 /**
  * Lightweight profiler for diagnosing signal subscription and render behavior.
  *
- * Zero cost when disabled — all instrumentation checks a single boolean flag.
+ * Zero cost when disabled — profiling functions are swapped to empty no-ops
+ * that V8 inlines away. No boolean checks on the hot path.
  * Enable with `enableProfiling()`, read with `getProfile()`, reset with `resetProfiler()`.
  *
  * @example
@@ -28,18 +29,45 @@ export interface Profile {
   effectFires: number;
 }
 
-let _enabled = false;
 let _signalReads = 0;
 let _signalSkips = 0;
 let _signalWrites = 0;
 let _effectFires = 0;
 
+// eslint-disable-next-line @typescript-eslint/no-empty-function -- intentional no-op for zero-cost disabled state
+function noop(): void {}
+
+function countSignalRead(): void {
+  _signalReads++;
+}
+function countSignalSkip(): void {
+  _signalSkips++;
+}
+function countSignalWrite(): void {
+  _signalWrites++;
+}
+function countEffectFire(): void {
+  _effectFires++;
+}
+
+// Exported as mutable bindings — swapped between no-ops and counters
+export let profileSignalRead: () => void = noop;
+export let profileSignalSkip: () => void = noop;
+export let profileSignalWrite: () => void = noop;
+export let profileEffectFire: () => void = noop;
+
 export function enableProfiling(): void {
-  _enabled = true;
+  profileSignalRead = countSignalRead;
+  profileSignalSkip = countSignalSkip;
+  profileSignalWrite = countSignalWrite;
+  profileEffectFire = countEffectFire;
 }
 
 export function disableProfiling(): void {
-  _enabled = false;
+  profileSignalRead = noop;
+  profileSignalSkip = noop;
+  profileSignalWrite = noop;
+  profileEffectFire = noop;
 }
 
 export function resetProfiler(): void {
@@ -58,34 +86,18 @@ export function getProfile(): Profile {
   };
 }
 
-export function profileSignalRead(): void {
-  if (_enabled) _signalReads++;
-}
-
-export function profileSignalSkip(): void {
-  if (_enabled) _signalSkips++;
-}
-
-export function profileSignalWrite(): void {
-  if (_enabled) _signalWrites++;
-}
-
-export function profileEffectFire(): void {
-  if (_enabled) _effectFires++;
-}
-
 /**
  * Wrapped effect that counts re-runs (not the initial run) when profiling is enabled.
+ * Forwards return values to preserve cleanup semantics.
  */
-export function profiledEffect(fn: () => void): () => void {
+export function profiledEffect<T>(fn: () => T): () => void {
   let firstRun = true;
   return alienEffect(() => {
     if (firstRun) {
       firstRun = false;
-      fn();
-      return;
+      return fn();
     }
     profileEffectFire();
-    fn();
+    return fn();
   });
 }

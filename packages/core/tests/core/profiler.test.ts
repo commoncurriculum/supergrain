@@ -93,7 +93,7 @@ describe("Profiler", () => {
   });
 
   describe("effectFires", () => {
-    it("counts effect fires on select (should be 2)", () => {
+    it("counts effect fires on first select (should be 1)", () => {
       const [store] = createStore({
         data: [
           { id: 1, label: "a", isSelected: false },
@@ -112,7 +112,7 @@ describe("Profiler", () => {
       }
       resetProfiler();
 
-      // Select row 2 — should fire exactly 2 effects (old deselect + new select)
+      // Select row 2 (no prior selection) — should fire exactly 1 effect
       startBatch();
       const item = store.data.find((d: any) => d.id === 2);
       if (item) item.isSelected = true;

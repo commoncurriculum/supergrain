@@ -1,7 +1,13 @@
-import { createStore } from "@supergrain/core";
+import {
+  createStore,
+  enableProfiling,
+  disableProfiling,
+  resetProfiler,
+  getProfile,
+} from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import { tracked } from "../src";
 import { flushMicrotasks } from "./test-utils";
@@ -9,6 +15,12 @@ import { flushMicrotasks } from "./test-utils";
 describe("Parent Invalidation Depth Tests", () => {
   beforeEach(() => {
     cleanup();
+    enableProfiling();
+    resetProfiler();
+  });
+
+  afterEach(() => {
+    disableProfiling();
   });
 
   it("should test how many levels of parent invalidation occur", async () => {
@@ -138,8 +150,8 @@ describe("Parent Invalidation Depth Tests", () => {
     expect(level1RenderCount).toBe(1); // level1 only accessed level1 — unchanged
     expect(level2RenderCount).toBe(1); // level2 only accessed level2 — unchanged
     expect(level3RenderCount).toBe(1); // level3 only accessed level3 — unchanged
-    // level4 accessed level4 object which contains the changed value
-    expect(level4RenderCount).toBeGreaterThanOrEqual(1);
+    // level4 accessed level4 OBJECT but not .value — should NOT re-render
+    expect(level4RenderCount).toBe(1);
     expect(arrayRenderCount).toBe(1); // array untouched
     expect(arrayItemRenderCount).toBe(1); // array item untouched
 
@@ -156,8 +168,8 @@ describe("Parent Invalidation Depth Tests", () => {
     });
     expect(rootRenderCount).toBe(1); // still untouched
     expect(arrayRenderCount).toBe(arrayBefore); // array ref unchanged
-    // arrayItem accesses array[0] which contains nested change
-    expect(arrayItemRenderCount).toBeGreaterThanOrEqual(arrayItemBefore);
+    // arrayItem accesses array[0] OBJECT but not nested.deep.value — should NOT re-render
+    expect(arrayItemRenderCount).toBe(arrayItemBefore);
 
     // Test 3: Update intermediate level directly — replaces level2 object
     const level2Before = level2RenderCount;
@@ -171,8 +183,8 @@ describe("Parent Invalidation Depth Tests", () => {
       });
       await flushMicrotasks();
     });
-    // level2 accessed level2 which was replaced → should re-render
-    expect(level2RenderCount).toBeGreaterThan(level2Before);
+    // level2 accessed level2 which was replaced → should re-render exactly once
+    expect(level2RenderCount).toBe(level2Before + 1);
   });
 
   it("should test array-specific parent invalidation behavior", async () => {

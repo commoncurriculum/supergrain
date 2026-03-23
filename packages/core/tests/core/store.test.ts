@@ -1,9 +1,26 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { createStore, effect, unwrap } from "../../src";
+import {
+  createStore,
+  effect,
+  unwrap,
+  enableProfiling,
+  disableProfiling,
+  resetProfiler,
+  getProfile,
+} from "../../src";
 import { $VERSION } from "../../src/internal";
 
 describe("Store", () => {
+  beforeEach(() => {
+    enableProfiling();
+    resetProfiler();
+  });
+
+  afterEach(() => {
+    disableProfiling();
+  });
+
   describe("createStore", () => {
     it("should create a store with initial state", () => {
       const [state] = createStore({ count: 0, name: "test" });
@@ -35,6 +52,12 @@ describe("Store", () => {
       update({ $set: { "user.address.city": "Boston" } });
       expect(city).toBe("Boston");
       expect(effectFn).toHaveBeenCalledTimes(2);
+
+      const p = getProfile();
+      expect(p.signalReads).toBe(6); // 3 reads × 2 runs (user, address, city)
+      expect(p.signalSkips).toBe(0);
+      expect(p.signalWrites).toBe(1); // city changed
+      expect(p.effectFires).toBe(1); // one re-run
     });
 
     it("should handle array updates reactively", () => {
@@ -59,6 +82,12 @@ describe("Store", () => {
       update({ $set: { items: [10, 20] } });
       expect(sum).toBe(30);
       expect(effectFn).toHaveBeenCalledTimes(3);
+
+      const p = getProfile();
+      expect(p.signalReads).toBe(22);
+      expect(p.signalSkips).toBe(9);
+      expect(p.signalWrites).toBe(2);
+      expect(p.effectFires).toBe(2);
     });
 
     it("should batch multiple operators in one update call", () => {
@@ -79,6 +108,12 @@ describe("Store", () => {
 
       expect(sum).toBe(30);
       expect(effectFn).toHaveBeenCalledTimes(2);
+
+      const p = getProfile();
+      expect(p.signalReads).toBe(4); // 2 reads × 2 runs
+      expect(p.signalSkips).toBe(0);
+      expect(p.signalWrites).toBe(2); // a + b
+      expect(p.effectFires).toBe(1); // batched into one
     });
   });
 
@@ -97,6 +132,11 @@ describe("Store", () => {
         value = state.frozen.value;
       });
       expect(value).toBe(1);
+
+      const p = getProfile();
+      expect(p.signalReads).toBe(1); // only "frozen" prop (value is on frozen obj, no proxy)
+      expect(p.signalWrites).toBe(0);
+      expect(p.effectFires).toBe(0);
     });
 
     it("should handle circular references", () => {
@@ -112,6 +152,12 @@ describe("Store", () => {
       expect(state.value).toBe(1);
       expect(selfValue).toBe(1);
       expect(unwrap(state.self)).toBe(obj);
+
+      const p = getProfile();
+      expect(p.signalReads).toBe(2); // self + value inside effect
+      expect(p.signalSkips).toBe(2); // state.value + unwrap reads outside effect
+      expect(p.signalWrites).toBe(0);
+      expect(p.effectFires).toBe(0);
     });
 
     it("should handle null and undefined values reactively", () => {
@@ -138,6 +184,12 @@ describe("Store", () => {
 
       update({ $set: { undef: "value" } });
       expect(undefValue).toBe("value");
+
+      const p = getProfile();
+      expect(p.signalReads).toBe(6); // 2 reads × 3 runs (initial + 2 updates)
+      expect(p.signalSkips).toBe(0);
+      expect(p.signalWrites).toBe(2); // nullable + undef
+      expect(p.effectFires).toBe(2); // one per update
     });
 
     it("should handle nested reactivity in arrays", () => {
@@ -156,6 +208,12 @@ describe("Store", () => {
       expect(bobTasks).toEqual(["task3"]);
       update({ $push: { "users.1.tasks": "task4" } });
       expect(bobTasks).toEqual(["task3", "task4"]);
+
+      const p = getProfile();
+      expect(p.signalReads).toBe(3); // users, [1], tasks (initial run)
+      expect(p.signalSkips).toBe(10); // reads during push + expect
+      expect(p.signalWrites).toBe(0); // push doesn't write to tracked signals
+      expect(p.effectFires).toBe(0); // tasks array identity unchanged — $push mutates in place
     });
 
     it("should handle adding new properties reactively", () => {
@@ -169,6 +227,12 @@ describe("Store", () => {
       update({ $set: { newProp: "value" } });
       expect(state.newProp).toBe("value");
       expect(keys.sort()).toEqual(["initial", "newProp"]);
+
+      const p = getProfile();
+      expect(p.signalReads).toBe(0); // Object.keys uses ownKeys trap, not signal reads
+      expect(p.signalSkips).toBe(1); // state.newProp read outside effect
+      expect(p.signalWrites).toBe(1); // ownKeys signal write (new key added)
+      expect(p.effectFires).toBe(1); // ownKeys change triggered re-run
     });
 
     it("should allow deletion of properties with $unset", () => {
@@ -182,6 +246,12 @@ describe("Store", () => {
       update({ $unset: { b: 1 } });
       expect(keys.sort()).toEqual(["a"]);
       expect(state.b).toBeUndefined();
+
+      const p = getProfile();
+      expect(p.signalReads).toBe(0); // Object.keys uses ownKeys trap
+      expect(p.signalSkips).toBe(1); // state.b read outside effect
+      expect(p.signalWrites).toBe(1); // ownKeys signal write (key deleted)
+      expect(p.effectFires).toBe(1); // ownKeys change triggered re-run
     });
 
     it("should increment version for writes even before a property is tracked", () => {

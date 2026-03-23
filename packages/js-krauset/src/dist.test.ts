@@ -7,6 +7,8 @@
  *
  * Run: `pnpm test`
  */
+import { writeFileSync } from "fs";
+import { resolve } from "path";
 import { chromium } from "playwright";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
@@ -113,4 +115,153 @@ describe("dist validation (isKeyed mirror)", () => {
     expect(await page.getAttribute("tbody>tr:nth-of-type(5)", "class")).toContain("danger");
     expect(await page.getAttribute("tbody>tr:nth-of-type(4)", "class")).not.toContain("danger");
   });
+
+  it("partial update: profile render counts at 1000 rows", async () => {
+    const page = await freshPage(ctx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+
+    // Start profiling, click update, wait for DOM change
+    await page.evaluate(() => (window as any).__startProfiling());
+    await click(page, "#update");
+    await page.waitForFunction(() =>
+      document
+        .querySelector("tbody>tr:nth-of-type(1)>td:nth-of-type(2)>a")
+        ?.textContent?.includes(" !!!"),
+    );
+    await page.waitForTimeout(100);
+
+    const p = await page.evaluate(() => (window as any).__getProfilingResults());
+    console.log("Partial update profiling (1000 rows):", JSON.stringify(p, null, 2));
+
+    // Core assertion: only 100 rows should re-render, not 1000
+    expect(p.rowRenderCount).toBe(100);
+    // App and For should NOT re-render
+    expect(p.appRenderCount).toBe(0);
+    // Signal writes: exactly 100 label changes
+    expect(p.signalWrites).toBe(100);
+    // Effect fires: exactly 100 (one per changed row)
+    expect(p.effectFires).toBe(100);
+  });
+
+  it("select row: profile render counts at 1000 rows", async () => {
+    const page = await freshPage(ctx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+
+    // Warmup select
+    await click(page, "tbody>tr:nth-of-type(5)>td:nth-of-type(2)>a");
+    await page.waitForTimeout(200);
+
+    // Start profiling, select a different row
+    await page.evaluate(() => (window as any).__startProfiling());
+    await click(page, "tbody>tr:nth-of-type(2)>td:nth-of-type(2)>a");
+    await page.waitForFunction(() =>
+      document.querySelector("tbody>tr:nth-of-type(2)")?.classList.contains("danger"),
+    );
+    await page.waitForTimeout(100);
+
+    const p = await page.evaluate(() => (window as any).__getProfilingResults());
+    console.log("Select row profiling (1000 rows):", JSON.stringify(p, null, 2));
+
+    // Only 2 rows should re-render (deselect old + select new)
+    expect(p.rowRenderCount).toBe(2);
+    // App should NOT re-render
+    expect(p.appRenderCount).toBe(0);
+    // Effect fires: exactly 2
+    expect(p.effectFires).toBe(2);
+  });
+
+  it("capture flamegraph trace for select row", async () => {
+    const page = await freshPage(ctx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+
+    // Warmup select
+    await click(page, "tbody>tr:nth-of-type(5)>td:nth-of-type(2)>a");
+    await page.waitForTimeout(200);
+
+    const client = await page.context().newCDPSession(page);
+    await client.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+    await client.send("Tracing.start", {
+      categories: [
+        "blink.user_timing",
+        "devtools.timeline",
+        "disabled-by-default-devtools.timeline",
+        "v8.execute",
+        "disabled-by-default-v8.cpu_profiler",
+      ].join(","),
+    });
+
+    const elem = await page.$("tbody>tr:nth-of-type(2)>td:nth-of-type(2)>a");
+    await elem!.click();
+    await elem!.dispose();
+    await page.waitForFunction(() =>
+      document.querySelector("tbody>tr:nth-of-type(2)")?.classList.contains("danger"),
+    );
+    await page.waitForTimeout(100);
+
+    const traceEvents = await new Promise<any[]>((res) => {
+      const chunks: any[] = [];
+      client.on("Tracing.dataCollected" as any, (data: any) => chunks.push(...data.value));
+      client.on("Tracing.tracingComplete" as any, () => res(chunks));
+      client.send("Tracing.end");
+    });
+
+    await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+    await client.detach();
+
+    const tracePath = resolve(__dirname, "../select-row-trace.json");
+    writeFileSync(tracePath, JSON.stringify(traceEvents));
+    console.log(`Select row trace written to ${tracePath}`);
+    expect(traceEvents.length).toBeGreaterThan(0);
+  }, 30000);
+
+  it("capture flamegraph trace for partial update", async () => {
+    const page = await freshPage(ctx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+
+    // Warmup
+    await click(page, "#update");
+    await page.waitForTimeout(200);
+
+    const client = await page.context().newCDPSession(page);
+    await client.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+    await client.send("Tracing.start", {
+      categories: [
+        "blink.user_timing",
+        "devtools.timeline",
+        "disabled-by-default-devtools.timeline",
+        "v8.execute",
+        "disabled-by-default-v8.cpu_profiler",
+      ].join(","),
+    });
+
+    const elem = await page.$("#update");
+    await elem!.click();
+    await elem!.dispose();
+    await page.waitForFunction(() =>
+      document
+        .querySelector("tbody>tr:nth-of-type(1)>td:nth-of-type(2)>a")
+        ?.textContent?.includes(" !!! !!!"),
+    );
+    await page.waitForTimeout(100);
+
+    const traceEvents = await new Promise<any[]>((res) => {
+      const chunks: any[] = [];
+      client.on("Tracing.dataCollected" as any, (data: any) => chunks.push(...data.value));
+      client.on("Tracing.tracingComplete" as any, () => res(chunks));
+      client.send("Tracing.end");
+    });
+
+    await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+    await client.detach();
+
+    const tracePath = resolve(__dirname, "../partial-update-trace.json");
+    writeFileSync(tracePath, JSON.stringify(traceEvents));
+    console.log(`Flamegraph trace written to ${tracePath}`);
+    console.log(`Open in Chrome: chrome://tracing → Load → ${tracePath}`);
+    expect(traceEvents.length).toBeGreaterThan(0);
+  }, 30000);
 });

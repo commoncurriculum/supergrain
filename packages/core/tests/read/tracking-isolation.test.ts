@@ -1,9 +1,24 @@
 import { effect, getCurrentSub, setCurrentSub } from "alien-signals";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import { createStore } from "../../src";
+import {
+  createStore,
+  enableProfiling,
+  disableProfiling,
+  resetProfiler,
+  getProfile,
+} from "../../src";
 
 describe("Tracking Isolation Analysis", () => {
+  beforeEach(() => {
+    enableProfiling();
+    resetProfiler();
+  });
+
+  afterEach(() => {
+    disableProfiling();
+  });
+
   it("demonstrates perfect isolation with per-render pattern (tracked style)", () => {
     const [store, update] = createStore({ parent: 1, child: 10 });
 
@@ -49,11 +64,18 @@ describe("Tracking Isolation Analysis", () => {
     expect(parentEffectRuns).toBe(1);
     expect(childEffectRuns).toBe(1);
 
+    resetProfiler();
+
     // Update parent property
     update({ $set: { parent: 2 } });
 
     expect(parentEffectRuns).toBe(2); // Parent should re-run
     expect(childEffectRuns).toBe(1); // Child should NOT re-run
+
+    const p1 = getProfile();
+    expect(p1.signalWrites).toBe(1); // only parent
+    // Note: effectFires=0 because this uses raw alien-signals effect, not our profiled wrapper
+    resetProfiler();
 
     // Update child property
     update({ $set: { child: 20 } });
@@ -61,29 +83,10 @@ describe("Tracking Isolation Analysis", () => {
     expect(parentEffectRuns).toBe(2); // Parent should NOT re-run
     expect(childEffectRuns).toBe(2); // Child should re-run
 
+    const p2 = getProfile();
+    expect(p2.signalWrites).toBe(1); // only child
+
     parent.cleanup();
     child.cleanup();
-  });
-
-  it("demonstrates why tracked() provides perfect isolation guarantees", () => {
-    // This test demonstrates the architectural superiority of tracked()'s approach
-
-    const isolationApproach = {
-      name: "tracked() pattern",
-      hasTimingRisk: false,
-      isolationLevel: "render-scope-level",
-      restoreTiming: "immediate (after render)",
-    };
-
-    // tracked()'s approach is architecturally superior:
-    // 1. No timing dependencies on React lifecycle
-    // 2. Perfect isolation per component render
-    // 3. No cross-component interference risk
-    // 4. Self-contained tracking scope
-
-    expect(isolationApproach.hasTimingRisk).toBe(false);
-    expect(isolationApproach.isolationLevel).toBe("render-scope-level");
-
-    expect(true).toBe(true); // This test is mainly educational
   });
 });
