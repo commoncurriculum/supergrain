@@ -21,6 +21,7 @@ import {
   click,
   text,
 } from "./test-helpers";
+import { computeResultsCPU, computeResultsJS, computeResultsPaint } from "./timeline";
 
 const ctx: TestContext = {} as TestContext;
 
@@ -39,11 +40,11 @@ async function timeClick(
     categories: "blink.user_timing,devtools.timeline,disabled-by-default-devtools.timeline",
   });
 
-  await page.evaluate((sel) => {
-    const el = document.querySelector(sel) as HTMLElement;
-    if (!el) throw new Error(`Element not found: ${sel}`);
-    el.click();
-  }, selector);
+  // Match Krause's clickElement: page.$() + elem.click()
+  const elem = await page.$(selector);
+  if (!elem) throw new Error(`Element not found: ${selector}`);
+  await elem.click();
+  await elem.dispose();
 
   // Match Krause: wait for the DOM assertion, then 40ms for paint to finish
   if (opts.afterClick) {
@@ -51,48 +52,24 @@ async function timeClick(
   }
   await page.waitForTimeout(40);
 
-  const result = await new Promise<any[]>((resolve) => {
+  const traceEvents = await new Promise<any[]>((resolve) => {
     const chunks: any[] = [];
     client.on("Tracing.dataCollected" as any, (data: any) => chunks.push(...data.value));
     client.on("Tracing.tracingComplete" as any, () => resolve(chunks));
     client.send("Tracing.end");
   });
 
-  const SCRIPT_EVENTS = new Set([
-    "EventDispatch",
-    "FunctionCall",
-    "TimerFire",
-    "FireAnimationFrame",
-  ]);
-  const PAINT_EVENTS = new Set(["Layout", "Paint", "Commit"]);
-  const RELEVANT_EVENTS = new Set([...SCRIPT_EVENTS, ...PAINT_EVENTS]);
-
-  let clickTs = 0;
-  let lastRelevantEnd = 0;
-  let scriptTime = 0;
-  let paintTime = 0;
-
-  for (const e of result) {
-    if (e.ph !== "X") continue;
-    if (e.name === "EventDispatch" && e.args?.data?.type === "click" && clickTs === 0) {
-      clickTs = e.ts;
-    }
-    if (clickTs > 0 && e.ts >= clickTs && RELEVANT_EVENTS.has(e.name)) {
-      const dur = (e.dur || 0) / 1000;
-      const end = e.ts + (e.dur || 0);
-      if (end > lastRelevantEnd) lastRelevantEnd = end;
-      if (SCRIPT_EVENTS.has(e.name)) scriptTime += dur;
-      if (PAINT_EVENTS.has(e.name)) paintTime += dur;
-    }
-  }
-
-  const total = clickTs > 0 ? (lastRelevantEnd - clickTs) / 1000 : 0;
+  // Use Krause's exact trace parsing logic from timeline.ts
+  const cpuResult = computeResultsCPU(traceEvents, "click");
+  const total = cpuResult.duration;
+  const script = computeResultsJS(cpuResult, traceEvents);
+  const paint = computeResultsPaint(cpuResult, traceEvents);
 
   if (opts.cpuThrottle) {
     await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   }
   await client.detach();
-  return { total, script: scriptTime, paint: paintTime };
+  return { total, script, paint };
 }
 
 const results: { name: string; total: number; script: number; paint: number }[] = [];

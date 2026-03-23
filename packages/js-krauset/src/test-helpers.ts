@@ -4,6 +4,7 @@ import { resolve, extname } from "path";
 import { chromium, type Browser, type Page } from "playwright";
 
 const distDir = resolve(__dirname, "../dist");
+const cssDir = resolve(__dirname, "../css");
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html",
@@ -29,7 +30,11 @@ export function checkDistExists() {
 
 export async function startServer(): Promise<{ server: Server; baseUrl: string }> {
   const server = createServer((req, res) => {
-    const filePath = resolve(distDir, (req.url ?? "/").replace(/^\//, "") || "index.html");
+    const urlPath = (req.url ?? "/").replace(/^\//, "") || "index.html";
+    // Serve /css/* from the css directory, everything else from dist
+    const filePath = urlPath.startsWith("css/")
+      ? resolve(cssDir, urlPath.slice(4))
+      : resolve(distDir, urlPath);
     if (!existsSync(filePath)) {
       res.writeHead(404);
       res.end("Not found");
