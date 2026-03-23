@@ -31,16 +31,22 @@ describe("JS-Krauset Simple Case Tests", () => {
     const Row = tracked(
       ({
         item,
-        isSelected,
+        isSelected: _isSelected,
         onSelect,
       }: {
         item: any;
         isSelected: boolean;
         onSelect: (id: number) => void;
       }) => {
-        if (item.id === 1) row1RenderCount++;
-        if (item.id === 2) row2RenderCount++;
-        if (item.id === 3) row3RenderCount++;
+        if (item.id === 1) {
+          row1RenderCount++;
+        }
+        if (item.id === 2) {
+          row2RenderCount++;
+        }
+        if (item.id === 3) {
+          row3RenderCount++;
+        }
 
         return (
           <div data-testid={`row-${item.id}`}>
@@ -88,13 +94,13 @@ describe("JS-Krauset Simple Case Tests", () => {
     await act(async () => {
       // This is exactly what js-krauset does in the update() function
       const updates: Record<string, string> = {};
-      updates["data.0.label"] = store.data[0].label + " !!!";
+      updates["data.0.label"] = `${store.data[0].label} !!!`;
 
       updateStore({ $set: updates });
       await flushMicrotasks();
     });
 
-    const parentAfterLabelUpdate = parentRenderCount;
+    const _parentAfterLabelUpdate = parentRenderCount;
 
     // Test 2: Update selection (this should definitely trigger re-renders)
     await act(async () => {
@@ -111,19 +117,23 @@ describe("JS-Krauset Simple Case Tests", () => {
       ],
     });
 
-    let parentRenderCount = 0;
-    let row1RenderCount = 0;
-    let row2RenderCount = 0;
+    let _parentRenderCount = 0;
+    let _row1RenderCount = 0;
+    let _row2RenderCount = 0;
 
     const Row = tracked(({ item }: { item: any }) => {
-      if (item.id === 1) row1RenderCount++;
-      if (item.id === 2) row2RenderCount++;
+      if (item.id === 1) {
+        _row1RenderCount++;
+      }
+      if (item.id === 2) {
+        _row2RenderCount++;
+      }
 
       return <div>{item.label}</div>;
     });
 
     const DirectRowList = tracked(() => {
-      parentRenderCount++;
+      _parentRenderCount++;
 
       return (
         <div>
@@ -151,10 +161,10 @@ describe("JS-Krauset Simple Case Tests", () => {
       ],
     });
 
-    let parentRenderCount = 0;
+    let _parentRenderCount = 0;
 
     const TestComponent = tracked(() => {
-      parentRenderCount++;
+      _parentRenderCount++;
 
       // Only access the array, not individual items
       return <div>Items: {store.data.length}</div>;
@@ -169,7 +179,7 @@ describe("JS-Krauset Simple Case Tests", () => {
 
       updateStore({
         $set: {
-          "data.0.label": currentLabel + " !!!",
+          "data.0.label": `${currentLabel} !!!`,
         },
       });
       await flushMicrotasks();

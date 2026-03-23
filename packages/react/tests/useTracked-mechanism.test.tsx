@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/filename-case */
 import { createStore, effect } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
 import React, { memo, useState, useEffect } from "react";
@@ -71,17 +72,17 @@ describe("tracked() Mechanism Tests", () => {
     });
 
     let effectTriggered = false;
-    let manualRenderCount = 0;
+    let _manualRenderCount = 0;
 
     // Component that manually uses effect like tracked() does internally
     const ManualEffectComponent = memo(() => {
-      manualRenderCount++;
+      _manualRenderCount++;
       const [, forceUpdate] = useState({});
 
       useEffect(() => {
         const cleanup = effect(() => {
           // Access the store property - this should create subscription
-          const value = store.items[0].deep.value;
+          const _value = store.items[0].deep.value;
 
           if (effectTriggered) {
             forceUpdate({}); // Force re-render
@@ -96,7 +97,7 @@ describe("tracked() Mechanism Tests", () => {
       return <div data-testid="manual-effect-value">{value}</div>;
     });
 
-    const { container } = render(<ManualEffectComponent />);
+    render(<ManualEffectComponent />);
 
     await act(async () => {
       update({

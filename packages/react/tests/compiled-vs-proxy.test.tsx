@@ -12,7 +12,7 @@ import { $NODE, $RAW } from "@supergrain/core/internal";
 import { render, act, cleanup } from "@testing-library/react";
 import { signal } from "alien-signals";
 import React, {
-  FC,
+  type FC,
   memo,
   useCallback,
   useReducer,
@@ -72,14 +72,18 @@ function useCompiled<T extends object>(store: T) {
     nodes = raw[$NODE];
   }
   for (const key of Object.keys(raw)) {
-    if (!nodes[key]) nodes[key] = signal(raw[key]);
+    if (!nodes[key]) {
+      nodes[key] = signal(raw[key]);
+    }
   }
   return nodes;
 }
 
 // --- Class getter view infrastructure ---
 function ensureSignal(nodes: any, key: string, raw: any) {
-  if (!nodes[key]) nodes[key] = signal(raw[key]);
+  if (!nodes[key]) {
+    nodes[key] = signal(raw[key]);
+  }
 }
 
 function getNodes(raw: any) {
@@ -137,7 +141,7 @@ const nouns = ["table", "chair", "house", "bbq", "desk", "car", "pony"];
 const random = (max: number) => Math.round(Math.random() * 1000) % max;
 
 function buildData(count: number): RowData[] {
-  const data: RowData[] = new Array(count);
+  const data: RowData[] = Array.from({ length: count });
   for (let i = 0; i < count; i++) {
     data[i] = {
       id: idCounter++,
@@ -183,7 +187,7 @@ const Row = tracked(
             <span className="glyphicon glyphicon-remove" />
           </a>
         </td>
-        <td></td>
+        <td />
       </tr>
     );
   },
@@ -303,7 +307,7 @@ function createTestStore() {
   };
   const updateRows = () => {
     for (let i = 0; i < store.data.length; i += 10) {
-      store.data[i].label = store.data[i].label + " !!!";
+      store.data[i].label += " !!!";
     }
   };
   const swapRows = () => {
@@ -412,7 +416,9 @@ describe.each([
       await flushMicrotasks();
     });
     // Array mutation via $pull — compiled/class-getter may not detect (known limitation)
-    if (mode === "proxy") expect(appRenderCount).toBe(1);
+    if (mode === "proxy") {
+      expect(appRenderCount).toBe(1);
+    }
   });
 
   it("clear rows", async () => {

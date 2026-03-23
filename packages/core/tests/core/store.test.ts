@@ -124,7 +124,7 @@ describe("Store", () => {
       });
 
       let nullValue: string | null = null;
-      let undefValue: string | undefined = undefined;
+      let undefValue: string | undefined;
       effect(() => {
         nullValue = state.nullable;
         undefValue = state.undef;

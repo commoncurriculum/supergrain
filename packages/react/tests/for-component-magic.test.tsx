@@ -19,12 +19,12 @@ describe("For Component Magic Tests", () => {
       ],
     });
 
-    let withForRenderCount = 0;
-    let withoutForRenderCount = 0;
+    let _withForRenderCount = 0;
+    let _withoutForRenderCount = 0;
 
     // Component that uses For
     const WithForComponent = tracked(() => {
-      withForRenderCount++;
+      _withForRenderCount++;
 
       return (
         <div>
@@ -35,7 +35,7 @@ describe("For Component Magic Tests", () => {
 
     // Component that uses regular map
     const WithoutForComponent = tracked(() => {
-      withoutForRenderCount++;
+      _withoutForRenderCount++;
 
       return (
         <div>
@@ -69,10 +69,10 @@ describe("For Component Magic Tests", () => {
       data: [{ id: 1, label: "Item 1" }],
     });
 
-    let renderCount = 0;
+    let _renderCount = 0;
 
     const TestComponent = tracked(() => {
-      renderCount++;
+      _renderCount++;
 
       const result = store.data.map((item) => {
         return <div key={item.id}>{item.label}</div>;

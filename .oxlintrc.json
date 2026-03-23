@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["unicorn", "typescript"],
+  "plugins": ["unicorn", "typescript", "react"],
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -16,6 +16,21 @@
     "func-style": "off",
     "id-length": "off",
     "max-lines": "off",
-    "max-lines-per-function": "off"
+    "max-lines-per-function": "off",
+    "max-params": "off",
+    "prefer-destructuring": "off",
+    "require-await": "off",
+    "arrow-body-style": "off",
+    "init-declarations": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/numeric-separators-style": "off",
+    "unicorn/no-new-array": "off",
+    "unicorn/no-unreadable-array-destructuring": "off",
+    "unicorn/filename-case": "off",
+    "unicorn/prefer-spread": "off",
+    "unicorn/prefer-dom-node-dataset": "off",
+    "typescript/array-type": "off",
+    "curly": "off",
+    "react-hooks/exhaustive-deps": "off"
   }
 }

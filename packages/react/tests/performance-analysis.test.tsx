@@ -1,6 +1,6 @@
 import { createStore } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
-import React, { FC, memo } from "react";
+import React from "react";
 import { describe, it, expect, afterEach } from "vitest";
 
 import { tracked, For } from "../src";
@@ -32,18 +32,18 @@ interface AppState {
 }
 
 // --- Render Tracking ---
-let renderCount = 0;
-let renderedRowIds: Set<number> = new Set();
+let _renderCount = 0;
+let renderedRowIds = new Set<number>();
 
 const resetRenderTracking = () => {
-  renderCount = 0;
+  _renderCount = 0;
   renderedRowIds.clear();
 };
 
 // --- Components ---
 
 const TrackingRow = tracked(({ item, isSelected }: { item: RowData; isSelected: boolean }) => {
-  renderCount++;
+  _renderCount++;
   renderedRowIds.add(item.id);
 
   return (

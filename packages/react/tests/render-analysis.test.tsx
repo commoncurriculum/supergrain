@@ -1,6 +1,6 @@
 import { createStore } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
-import React, { FC, memo, useCallback } from "react";
+import React, { type FC, memo, useCallback } from "react";
 import { describe, it, expect, afterEach } from "vitest";
 
 import { tracked } from "../src";
@@ -32,7 +32,7 @@ interface AppState {
 
 // --- Render Tracking ---
 let renderCount = 0;
-let renderedRowIds: Set<number> = new Set();
+let renderedRowIds = new Set<number>();
 
 const resetRenderTracking = () => {
   renderCount = 0;
@@ -361,7 +361,7 @@ describe("Render Analysis Tests", () => {
     });
 
     const OptimizedComponent = tracked(
-      ({ store, updateStore }: { store: any; updateStore: any }) => {
+      ({ store, updateStore: _updateStore }: { store: any; updateStore: any }) => {
         return (
           <table>
             <tbody>
@@ -452,7 +452,7 @@ describe("Render Analysis Tests", () => {
     });
 
     // Initial render
-    const { container } = render(<ItemListComponent />);
+    const { container: _container } = render(<ItemListComponent />);
 
     // Reset counters for update measurement
     itemRenderCounts.clear();
@@ -476,12 +476,6 @@ describe("Render Analysis Tests", () => {
   });
 
   it("demonstrates lack of fine-grained reactivity without proper component structure", () => {
-    interface Item {
-      id: number;
-      name: string;
-      value: number;
-    }
-
     const [store, updateStore] = createStore({
       items: Array.from({ length: 100 }, (_, i) => ({
         id: i + 1,

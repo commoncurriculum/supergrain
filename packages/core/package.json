@@ -46,7 +46,7 @@
     "postpack": "rm README.md",
     "build": "vite build",
     "dev": "vite build --watch",
-    "lint": "oxlint -c ../../.oxlintrc.json src/",
+    "lint": "oxlint -c ../../.oxlintrc.json src/ tests/",
     "test": "vitest run",
     "bench": "vitest bench",
     "bench:core": "vitest bench benchmarks/core-comparison.bench.ts",

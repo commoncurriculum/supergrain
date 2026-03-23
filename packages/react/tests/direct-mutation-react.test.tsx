@@ -17,7 +17,7 @@ describe("Direct Mutation with React Integration", () => {
           <button
             data-testid="increment"
             onClick={() => {
-              store.count = store.count + 1;
+              store.count += 1;
             }}
           >
             Increment
@@ -69,7 +69,7 @@ describe("Direct Mutation with React Integration", () => {
           <button
             data-testid="direct-button"
             onClick={() => {
-              store.directValue = store.directValue + 1;
+              store.directValue += 1;
               store.nested.directProp = `direct-${store.directValue}`;
             }}
           >

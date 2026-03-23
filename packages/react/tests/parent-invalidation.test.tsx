@@ -131,11 +131,11 @@ describe("Parent Invalidation Depth Tests", () => {
       await flushMicrotasks();
     });
 
-    const rootAfterDeep = rootRenderCount;
-    const level1AfterDeep = level1RenderCount;
-    const level2AfterDeep = level2RenderCount;
-    const level3AfterDeep = level3RenderCount;
-    const level4AfterDeep = level4RenderCount;
+    const _rootAfterDeep = rootRenderCount;
+    const _level1AfterDeep = level1RenderCount;
+    const _level2AfterDeep = level2RenderCount;
+    const _level3AfterDeep = level3RenderCount;
+    const _level4AfterDeep = level4RenderCount;
 
     // Test 2: Update array nested property
     await act(async () => {

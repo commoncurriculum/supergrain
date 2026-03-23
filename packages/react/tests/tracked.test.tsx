@@ -1,6 +1,6 @@
 import { createStore } from "@supergrain/core";
 import { render, cleanup, act } from "@testing-library/react";
-import React, { useCallback } from "react";
+import React from "react";
 import { describe, it, expect, afterEach } from "vitest";
 
 import { tracked, For } from "../src/index";
@@ -35,7 +35,7 @@ describe("tracked()", () => {
       let row1Renders = 0;
       let row2Renders = 0;
 
-      const Row = tracked(({ item, label }: { item: RowData; label: string }) => {
+      const Row = tracked(({ item, label: _label }: { item: RowData; label: string }) => {
         if (item.id === 1) row1Renders++;
         if (item.id === 2) row2Renders++;
         return (
@@ -89,7 +89,7 @@ describe("tracked()", () => {
 
     it("selection change re-renders App (reads selected) but only affected Rows via memo", async () => {
       const [store] = createStore<AppState>({ data: [], selected: null });
-      let appRenders = 0;
+      let _appRenders = 0;
 
       const Row = tracked(({ item, isSelected }: { item: RowData; isSelected: boolean }) => {
         return (
@@ -101,7 +101,7 @@ describe("tracked()", () => {
       });
 
       const App = tracked(() => {
-        appRenders++;
+        _appRenders++;
         const selected = store.selected;
         return (
           <For each={store.data}>

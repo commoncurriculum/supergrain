@@ -1,7 +1,7 @@
 import { createStore } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, beforeEach } from "vitest";
 
 import { tracked } from "../src";
 import { flushMicrotasks } from "./test-utils";
@@ -19,20 +19,20 @@ describe("Array Subscription Theory Tests", () => {
       ],
     });
 
-    let arrayOnlyRenderCount = 0;
-    let elementAccessRenderCount = 0;
-    let specificElementRenderCount = 0;
+    let _arrayOnlyRenderCount = 0;
+    let _elementAccessRenderCount = 0;
+    let _specificElementRenderCount = 0;
 
     // Component that only accesses the array, not elements
     const ArrayOnlyComponent = tracked(() => {
-      arrayOnlyRenderCount++;
+      _arrayOnlyRenderCount++;
       // Only access array length, not individual elements
       return <div>Array length: {store.data.length}</div>;
     });
 
     // Component that accesses all elements during iteration
     const ElementAccessComponent = tracked(() => {
-      elementAccessRenderCount++;
+      _elementAccessRenderCount++;
       // Access each element (this should create subscriptions to data[0], data[1], etc.)
       const elementCount = store.data.map((item) => item.id).length;
       return <div>Element count: {elementCount}</div>;
@@ -40,7 +40,7 @@ describe("Array Subscription Theory Tests", () => {
 
     // Component that accesses only a specific element
     const SpecificElementComponent = tracked(() => {
-      specificElementRenderCount++;
+      _specificElementRenderCount++;
       // Access only data[0]
       const firstItem = store.data[0];
       return <div>First item: {firstItem?.id}</div>;

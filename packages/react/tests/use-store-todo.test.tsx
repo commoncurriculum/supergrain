@@ -35,7 +35,7 @@ const TodoItem = tracked(({ task }: { task: Task }) => {
 const TodoListComponent = tracked(({ store }: { store: UserTaskList }) => {
   return (
     <div>
-      <h1>{store.firstName}'s Tasks</h1>
+      <h1>{store.firstName}&apos;s Tasks</h1>
       <ul>
         {store.tasks.map((task) => (
           <TodoItem key={task.id} task={task} />
