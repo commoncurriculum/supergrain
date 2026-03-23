@@ -45,13 +45,8 @@ describe("krauset compliance: react-supergrain", () => {
 
   beforeEach(() => {
     clear();
-    const result = render(
-      <table>
-        <tbody data-testid="tbody">
-          <App />
-        </tbody>
-      </table>,
-    );
+    resetIdCounter();
+    const result = render(<App />);
     container = result.container.querySelector("tbody")!;
   });
 

@@ -35,7 +35,7 @@ describe("tracked()", () => {
       let row1Renders = 0;
       let row2Renders = 0;
 
-      const Row = tracked(({ item, label: _label }: { item: RowData; label: string }) => {
+      const Row = tracked(({ item }: { item: RowData }) => {
         if (item.id === 1) row1Renders++;
         if (item.id === 2) row2Renders++;
         return (
@@ -48,11 +48,7 @@ describe("tracked()", () => {
 
       const App = tracked(() => {
         appRenders++;
-        return (
-          <For each={store.data}>
-            {(item: RowData) => <Row key={item.id} item={item} label={item.label} />}
-          </For>
-        );
+        return <For each={store.data}>{(item: RowData) => <Row key={item.id} item={item} />}</For>;
       });
 
       const { container } = render(
@@ -89,7 +85,7 @@ describe("tracked()", () => {
 
     it("selection change re-renders App (reads selected) but only affected Rows via memo", async () => {
       const [store] = createStore<AppState>({ data: [], selected: null });
-      let _appRenders = 0;
+      let appRenders = 0;
 
       const Row = tracked(({ item, isSelected }: { item: RowData; isSelected: boolean }) => {
         return (
@@ -101,7 +97,7 @@ describe("tracked()", () => {
       });
 
       const App = tracked(() => {
-        _appRenders++;
+        appRenders++;
         const selected = store.selected;
         return (
           <For each={store.data}>
@@ -125,9 +121,14 @@ describe("tracked()", () => {
         ];
       });
 
+      const appRendersBeforeSelect = appRenders;
+
       await act(async () => {
         store.selected = 2;
       });
+
+      // App re-renders because it reads store.selected
+      expect(appRenders).toBeGreaterThan(appRendersBeforeSelect);
 
       const rows = getRows(container.querySelector("tbody")!);
       expect(rows[0].className).toBe("");

@@ -32,18 +32,18 @@ interface AppState {
 }
 
 // --- Render Tracking ---
-let _renderCount = 0;
+let renderCount = 0;
 let renderedRowIds = new Set<number>();
 
 const resetRenderTracking = () => {
-  _renderCount = 0;
+  renderCount = 0;
   renderedRowIds.clear();
 };
 
 // --- Components ---
 
 const TrackingRow = tracked(({ item, isSelected }: { item: RowData; isSelected: boolean }) => {
-  _renderCount++;
+  renderCount++;
   renderedRowIds.add(item.id);
 
   return (
@@ -129,5 +129,6 @@ describe("Performance Analysis", () => {
     // Only the updated row should re-render
     expect(renderedRowIds.size).toBe(1);
     expect(renderedRowIds.has(42)).toBe(true);
+    expect(renderCount).toBe(1);
   });
 });

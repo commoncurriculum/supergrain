@@ -11,7 +11,7 @@ describe("For Component Magic Tests", () => {
     cleanup();
   });
 
-  it("should test if For component enables array element subscriptions", async () => {
+  it("For and map both re-render when an iterated element property changes", async () => {
     const [store, update] = createStore({
       data: [
         { id: 1, label: "Item 1" },
@@ -19,13 +19,11 @@ describe("For Component Magic Tests", () => {
       ],
     });
 
-    let _withForRenderCount = 0;
-    let _withoutForRenderCount = 0;
+    let withForRenderCount = 0;
+    let withMapRenderCount = 0;
 
-    // Component that uses For
     const WithForComponent = tracked(() => {
-      _withForRenderCount++;
-
+      withForRenderCount++;
       return (
         <div>
           <For each={store.data}>{(item: any) => <div key={item.id}>{item.label}</div>}</For>
@@ -33,10 +31,8 @@ describe("For Component Magic Tests", () => {
       );
     });
 
-    // Component that uses regular map
-    const WithoutForComponent = tracked(() => {
-      _withoutForRenderCount++;
-
+    const WithMapComponent = tracked(() => {
+      withMapRenderCount++;
       return (
         <div>
           {store.data.map((item: any) => (
@@ -46,47 +42,26 @@ describe("For Component Magic Tests", () => {
       );
     });
 
-    function TestApp() {
-      return (
-        <div>
-          <WithForComponent />
-          <WithoutForComponent />
-        </div>
-      );
-    }
+    render(
+      <div>
+        <WithForComponent />
+        <WithMapComponent />
+      </div>,
+    );
 
-    render(<TestApp />);
+    expect(withForRenderCount).toBe(1);
+    expect(withMapRenderCount).toBe(1);
 
-    // Test: Update data.0.label
     await act(async () => {
       update({ $set: { "data.0.label": "Updated Item 1" } });
       await flushMicrotasks();
     });
-  });
 
-  it("should test what exactly For component does differently", async () => {
-    const [store, update] = createStore({
-      data: [{ id: 1, label: "Item 1" }],
-    });
-
-    let _renderCount = 0;
-
-    const TestComponent = tracked(() => {
-      _renderCount++;
-
-      const result = store.data.map((item) => {
-        return <div key={item.id}>{item.label}</div>;
-      });
-
-      return <div>{result}</div>;
-    });
-
-    render(<TestComponent />);
-
-    await act(async () => {
-      update({ $set: { "data.0.label": "Updated!" } });
-      await flushMicrotasks();
-    });
+    // map component re-renders because it iterates and reads item.label in its own scope
+    expect(withMapRenderCount).toBe(2);
+    // For component does NOT re-render — For handles iteration internally,
+    // so the parent component's tracked scope doesn't subscribe to element properties
+    expect(withForRenderCount).toBe(1);
   });
 
   it("push on empty array triggers For re-render (fresh store)", async () => {

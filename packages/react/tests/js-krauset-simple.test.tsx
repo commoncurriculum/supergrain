@@ -11,8 +11,7 @@ describe("JS-Krauset Simple Case Tests", () => {
     cleanup();
   });
 
-  it("should test the exact js-krauset pattern - items[0].label update", async () => {
-    // Create store exactly like js-krauset
+  it("label update re-renders only the affected row, not parent or siblings", async () => {
     const [store, updateStore] = createStore({
       data: [
         { id: 1, label: "Item 1" },
@@ -27,45 +26,34 @@ describe("JS-Krauset Simple Case Tests", () => {
     let row2RenderCount = 0;
     let row3RenderCount = 0;
 
-    // Row component exactly like js-krauset
     const Row = tracked(
       ({
         item,
-        isSelected: _isSelected,
+        isSelected,
         onSelect,
       }: {
         item: any;
         isSelected: boolean;
         onSelect: (id: number) => void;
       }) => {
-        if (item.id === 1) {
-          row1RenderCount++;
-        }
-        if (item.id === 2) {
-          row2RenderCount++;
-        }
-        if (item.id === 3) {
-          row3RenderCount++;
-        }
+        if (item.id === 1) row1RenderCount++;
+        if (item.id === 2) row2RenderCount++;
+        if (item.id === 3) row3RenderCount++;
 
         return (
-          <div data-testid={`row-${item.id}`}>
+          <div data-testid={`row-${item.id}`} className={isSelected ? "danger" : ""}>
             <span onClick={() => onSelect(item.id)}>{item.label}</span>
           </div>
         );
       },
     );
 
-    // Parent component exactly like js-krauset RowList
     const RowList = tracked(() => {
       parentRenderCount++;
-
       const handleSelect = useCallback((id: number) => {
         updateStore({ $set: { selected: id } });
       }, []);
-
       const selected = store.selected;
-
       return (
         <div data-testid="row-list">
           <For each={store.data}>
@@ -84,32 +72,69 @@ describe("JS-Krauset Simple Case Tests", () => {
 
     render(<RowList />);
 
-    // Initial render
     expect(parentRenderCount).toBe(1);
     expect(row1RenderCount).toBe(1);
     expect(row2RenderCount).toBe(1);
     expect(row3RenderCount).toBe(1);
 
-    // Test 1: Update item label exactly like js-krauset
+    // Update only row 1's label
     await act(async () => {
-      // This is exactly what js-krauset does in the update() function
-      const updates: Record<string, string> = {};
-      updates["data.0.label"] = `${store.data[0].label} !!!`;
-
-      updateStore({ $set: updates });
+      updateStore({ $set: { "data.0.label": `${store.data[0].label} !!!` } });
       await flushMicrotasks();
     });
 
-    const _parentAfterLabelUpdate = parentRenderCount;
+    // Parent uses For, so it should NOT re-render on element property change
+    expect(parentRenderCount).toBe(1);
+    // Only row 1 should re-render
+    expect(row1RenderCount).toBe(2);
+    expect(row2RenderCount).toBe(1);
+    expect(row3RenderCount).toBe(1);
+  });
 
-    // Test 2: Update selection (this should definitely trigger re-renders)
+  it("selection change re-renders parent and all rows (props change via isSelected)", async () => {
+    const [store, updateStore] = createStore({
+      data: [
+        { id: 1, label: "Item 1" },
+        { id: 2, label: "Item 2" },
+      ],
+      selected: null as number | null,
+    });
+
+    let parentRenderCount = 0;
+
+    const Row = tracked(({ item, isSelected }: { item: any; isSelected: boolean }) => {
+      return (
+        <div className={isSelected ? "danger" : ""}>
+          <span>{item.label}</span>
+        </div>
+      );
+    });
+
+    const RowList = tracked(() => {
+      parentRenderCount++;
+      const selected = store.selected;
+      return (
+        <div>
+          <For each={store.data}>
+            {(item: any) => <Row key={item.id} item={item} isSelected={selected === item.id} />}
+          </For>
+        </div>
+      );
+    });
+
+    render(<RowList />);
+    expect(parentRenderCount).toBe(1);
+
     await act(async () => {
       updateStore({ $set: { selected: 1 } });
       await flushMicrotasks();
     });
+
+    // Parent re-renders because it reads store.selected
+    expect(parentRenderCount).toBe(2);
   });
 
-  it("should test WITHOUT For component - direct mapping", async () => {
+  it("without For, parent re-renders on element property change (map iterates in parent scope)", async () => {
     const [store, updateStore] = createStore({
       data: [
         { id: 1, label: "Item 1" },
@@ -117,24 +142,18 @@ describe("JS-Krauset Simple Case Tests", () => {
       ],
     });
 
-    let _parentRenderCount = 0;
-    let _row1RenderCount = 0;
-    let _row2RenderCount = 0;
+    let parentRenderCount = 0;
+    let row1RenderCount = 0;
+    let row2RenderCount = 0;
 
     const Row = tracked(({ item }: { item: any }) => {
-      if (item.id === 1) {
-        _row1RenderCount++;
-      }
-      if (item.id === 2) {
-        _row2RenderCount++;
-      }
-
+      if (item.id === 1) row1RenderCount++;
+      if (item.id === 2) row2RenderCount++;
       return <div>{item.label}</div>;
     });
 
     const DirectRowList = tracked(() => {
-      _parentRenderCount++;
-
+      parentRenderCount++;
       return (
         <div>
           {store.data.map((item) => (
@@ -145,15 +164,21 @@ describe("JS-Krauset Simple Case Tests", () => {
     });
 
     render(<DirectRowList />);
+    expect(parentRenderCount).toBe(1);
 
-    // Update label without For component
     await act(async () => {
       updateStore({ $set: { "data.0.label": "Updated Item 1" } });
       await flushMicrotasks();
     });
+
+    // Parent iterates via .map() but only reads item.id (for key), not item.label.
+    // So a label change doesn't trigger the parent — only the Row that reads label re-renders.
+    expect(parentRenderCount).toBe(1);
+    expect(row1RenderCount).toBe(2);
+    expect(row2RenderCount).toBe(1);
   });
 
-  it("should test what happens when we access individual items during update preparation", async () => {
+  it("component reading only array length does not re-render on element property change", async () => {
     const [store, updateStore] = createStore({
       data: [
         { id: 1, label: "Item 1" },
@@ -161,28 +186,22 @@ describe("JS-Krauset Simple Case Tests", () => {
       ],
     });
 
-    let _parentRenderCount = 0;
+    let renderCount = 0;
 
-    const TestComponent = tracked(() => {
-      _parentRenderCount++;
-
-      // Only access the array, not individual items
+    const LengthOnly = tracked(() => {
+      renderCount++;
       return <div>Items: {store.data.length}</div>;
     });
 
-    render(<TestComponent />);
+    render(<LengthOnly />);
+    expect(renderCount).toBe(1);
 
     await act(async () => {
-      // This is exactly what js-krauset does - it accesses store.data[0].label
-      // BEFORE doing the update
-      const currentLabel = store.data[0].label;
-
-      updateStore({
-        $set: {
-          "data.0.label": `${currentLabel} !!!`,
-        },
-      });
+      updateStore({ $set: { "data.0.label": `${store.data[0].label} !!!` } });
       await flushMicrotasks();
     });
+
+    // Only reads length, not element properties — should NOT re-render
+    expect(renderCount).toBe(1);
   });
 });

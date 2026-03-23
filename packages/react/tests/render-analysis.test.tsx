@@ -360,23 +360,21 @@ describe("Render Analysis Tests", () => {
       );
     });
 
-    const OptimizedComponent = tracked(
-      ({ store, updateStore: _updateStore }: { store: any; updateStore: any }) => {
-        return (
-          <table>
-            <tbody>
-              {store.data.map((row: RowData) => (
-                <ProperMemoizedRow key={row.id} item={row} isSelected={row.id === store.selected} />
-              ))}
-            </tbody>
-          </table>
-        );
-      },
-    );
+    const OptimizedComponent = tracked(({ store }: { store: any }) => {
+      return (
+        <table>
+          <tbody>
+            {store.data.map((row: RowData) => (
+              <ProperMemoizedRow key={row.id} item={row} isSelected={row.id === store.selected} />
+            ))}
+          </tbody>
+        </table>
+      );
+    });
 
     resetRenderTracking();
 
-    const { container } = render(<OptimizedComponent store={store} updateStore={updateStore} />);
+    const { container } = render(<OptimizedComponent store={store} />);
 
     resetRenderTracking();
 
@@ -386,10 +384,6 @@ describe("Render Analysis Tests", () => {
 
     const selectedRow = container.querySelector("tbody tr:nth-child(25)");
     expect(selectedRow?.classList.contains("danger")).toBe(true);
-
-    console.log("Optimized selection results with stable proxy references:");
-    console.log(`- Total re-renders: ${renderCount}`);
-    console.log(`- Unique rows re-rendered: ${renderedRowIds.size}`);
 
     // With stable proxy references and no changing callbacks, React.memo should work perfectly
     expect(renderedRowIds.size).toBeLessThanOrEqual(2);
@@ -452,7 +446,7 @@ describe("Render Analysis Tests", () => {
     });
 
     // Initial render
-    const { container: _container } = render(<ItemListComponent />);
+    render(<ItemListComponent />);
 
     // Reset counters for update measurement
     itemRenderCounts.clear();
