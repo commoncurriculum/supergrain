@@ -278,3 +278,45 @@ describe("krauset compliance: react-supergrain", () => {
     });
   });
 });
+
+/**
+ * Regression test: push on a fresh store must trigger re-render.
+ * Uses a completely fresh createStore to avoid $NODE leakage from other tests.
+ */
+describe("fresh store push regression", () => {
+  afterEach(() => cleanup());
+
+  it("push on a fresh store triggers re-render without prior assignment", async () => {
+    const { createStore } = await import("@supergrain/core");
+    const { tracked, For } = await import("@supergrain/react");
+
+    const [freshStore] = createStore<{ data: { id: number; label: string }[] }>({ data: [] });
+
+    const TestApp = tracked(() => {
+      return (
+        <For each={freshStore.data}>
+          {(item: { id: number; label: string }) => (
+            <tr key={item.id}>
+              <td>{item.label}</td>
+            </tr>
+          )}
+        </For>
+      );
+    });
+
+    const result = render(
+      <table>
+        <tbody>
+          <TestApp />
+        </tbody>
+      </table>,
+    );
+    const tbody = result.container.querySelector("tbody")!;
+
+    await act(async () => {
+      freshStore.data.push({ id: 1, label: "one" }, { id: 2, label: "two" });
+    });
+
+    expect(tbody.querySelectorAll("tr").length).toBe(2);
+  });
+});
