@@ -91,7 +91,7 @@ describe("dist validation (isKeyed mirror)", () => {
     for (const id of ["run", "runlots", "add", "update", "clear", "swaprows"]) {
       await waitFor(`#${id}`);
     }
-    await waitFor("#tbody");
+    await waitFor("tbody");
   });
 
   it("add() creates 1000 rows with correct DOM structure", async () => {
