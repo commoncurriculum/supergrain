@@ -190,5 +190,6 @@ es/
 .DS_Store
 .vitest-attachments/
 
-# Claude Code local settings
+# Claude Code
 .claude/settings.local.json
+.claude/worktrees/
