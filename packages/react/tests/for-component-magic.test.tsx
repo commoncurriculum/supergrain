@@ -1,7 +1,15 @@
-import { createStore, startBatch, endBatch } from "@supergrain/core";
+import {
+  createStore,
+  startBatch,
+  endBatch,
+  enableProfiling,
+  disableProfiling,
+  resetProfiler,
+  getProfile,
+} from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import { tracked, For } from "../src";
 import { flushMicrotasks } from "./test-utils";
@@ -9,6 +17,12 @@ import { flushMicrotasks } from "./test-utils";
 describe("For Component Magic Tests", () => {
   beforeEach(() => {
     cleanup();
+    enableProfiling();
+    resetProfiler();
+  });
+
+  afterEach(() => {
+    disableProfiling();
   });
 
   it("should test if For component enables array element subscriptions", async () => {
@@ -394,6 +408,7 @@ describe("For Component Magic Tests", () => {
     render(<App />);
     forChildrenCalls = 0;
     renderedIds.clear();
+    resetProfiler();
 
     // Update every 10th row's label (indices 0 and 10)
     await act(async () => {
@@ -403,12 +418,20 @@ describe("For Component Magic Tests", () => {
       endBatch();
     });
 
+    const p = getProfile();
+
     // For's children function should NOT be called (no structural change)
     expect(forChildrenCalls).toBe(0);
     // Only the 2 updated rows should re-render
     expect(renderedIds.size).toBe(2);
     expect(renderedIds.has(1)).toBe(true);
     expect(renderedIds.has(11)).toBe(true);
+
+    // Signal-level assertions: catch over-subscription
+    expect(p.effectFires).toBe(2); // only the 2 updated rows
+    expect(p.signalWrites).toBe(2); // 2 label changes
+    // Mutation path reads should all be skips (no subscriber)
+    expect(p.signalSkips).toBeGreaterThan(0);
   });
 
   it("select: only previously-selected and newly-selected rows re-render", async () => {
@@ -456,17 +479,24 @@ describe("For Component Magic Tests", () => {
 
     render(<App />);
     renderedIds.clear();
+    resetProfiler();
 
     // Select row 5
     await act(async () => {
       store.selected = 5;
     });
 
+    const p = getProfile();
+
     // Only the newly selected row should re-render (at most 1 new + 0 old deselected)
     expect(renderedIds.size).toBe(1);
     if (renderedIds.size > 0) {
       expect(renderedIds.has(5)).toBe(true);
     }
+
+    // Signal-level: store.selected change triggers App re-render,
+    // which re-creates all Row JSX, but memo skips unchanged rows.
+    expect(p.signalWrites).toBe(1); // only store.selected
   });
 
   it("select change: at most old + new selected rows re-render", async () => {
@@ -514,14 +544,20 @@ describe("For Component Magic Tests", () => {
 
     render(<App />);
     renderedIds.clear();
+    resetProfiler();
 
     // Change selection from 5 to 10
     await act(async () => {
       store.selected = 10;
     });
 
+    const p = getProfile();
+
     // At most the old selected (5) and new selected (10) should re-render
     expect(renderedIds.size).toBe(2);
+
+    // Signal-level profiling
+    expect(p.signalWrites).toBe(1); // only store.selected
   });
 
   it("append: For re-renders, existing rows do NOT re-render", async () => {

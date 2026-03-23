@@ -1,6 +1,7 @@
 import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 
 import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes } from "./core";
+import { profileSignalRead, profileSignalSkip } from "./profiler";
 import { writeHandler } from "./write";
 
 const ARRAY_MUTATORS = new Set([
@@ -57,6 +58,11 @@ const readHandler: Pick<
       if (existingNodes) {
         const tracked = existingNodes[prop];
         if (tracked) {
+          if (!getCurrentSub()) {
+            profileSignalSkip();
+            return wrap((target as any)[prop]);
+          }
+          profileSignalRead();
           const value = tracked();
           if (isWrappable(value)) {
             const proxy = createReactiveProxy(value);
@@ -105,9 +111,11 @@ const readHandler: Pick<
     }
 
     if (!getCurrentSub()) {
+      profileSignalSkip();
       return wrap(value);
     }
 
+    profileSignalRead();
     const nodes = getNodes(target);
     const node = getNode(nodes, prop, value);
     return wrap(node());
@@ -164,14 +172,4 @@ export function createReactiveProxy<T extends object>(target: T): T {
   }
 
   return proxy as T;
-}
-
-// Compiled views keep their signal table on a hidden slot so the public object
-// surface still behaves like a normal readonly object.
-export function attachViewNodes(target: object, nodes: object): void {
-  Object.defineProperty(target, "_n", {
-    value: nodes,
-    enumerable: false,
-    configurable: true,
-  });
 }

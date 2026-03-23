@@ -1,6 +1,13 @@
-import { createStore, startBatch, endBatch } from "@supergrain/core";
+import {
+  createStore,
+  startBatch,
+  endBatch,
+  enableProfiling,
+  resetProfiler,
+  getProfile,
+} from "@supergrain/core";
 import { tracked, For } from "@supergrain/react";
-import { useCallback, useRef } from "react";
+import { Profiler, useCallback, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 
@@ -175,6 +182,51 @@ export const select = (id: number) => {
   });
 };
 
+// --- Profiling ---
+
+enableProfiling();
+
+let rowRenderCount = 0;
+let appRenderCount = 0;
+let forRenderCount = 0;
+let reactCommitCount = 0;
+
+function onRenderProfiler(
+  _id: string,
+  _phase: string,
+  _actualDuration: number,
+  _baseDuration: number,
+  _startTime: number,
+  _commitTime: number,
+) {
+  reactCommitCount++;
+}
+
+export function startProfiling() {
+  resetProfiler();
+  rowRenderCount = 0;
+  appRenderCount = 0;
+  forRenderCount = 0;
+  reactCommitCount = 0;
+}
+
+export function getProfilingResults() {
+  const signalProfile = getProfile();
+  return {
+    ...signalProfile,
+    rowRenderCount,
+    appRenderCount,
+    forRenderCount,
+    reactCommitCount,
+  };
+}
+
+// Expose on window for Playwright
+if (typeof window !== "undefined") {
+  (window as any).__startProfiling = startProfiling;
+  (window as any).__getProfilingResults = getProfilingResults;
+}
+
 // --- React Components ---
 
 const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }) => (
@@ -186,6 +238,7 @@ const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }
 );
 
 export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
+  rowRenderCount++;
   return (
     <tr className={item.isSelected ? "danger" : ""}>
       <td className="col-md-1">{item.id}</td>
@@ -203,40 +256,43 @@ export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
 });
 
 export const App = tracked(() => {
+  appRenderCount++;
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const handleSelect = useCallback((id: number) => select(id), []);
   const handleRemove = useCallback((id: number) => remove(id), []);
 
   return (
-    <div className="container">
-      <div className="jumbotron">
-        <div className="row">
-          <div className="col-md-6">
-            <h1>React + Supergrain</h1>
-          </div>
-          <div className="col-md-6">
-            <div className="row">
-              <Button id="run" title="Create 1,000 rows" cb={() => run(1000)} />
-              <Button id="runlots" title="Create 10,000 rows" cb={() => run(10000)} />
-              <Button id="add" title="Append 1,000 rows" cb={add} />
-              <Button id="update" title="Update every 10th row" cb={update} />
-              <Button id="clear" title="Clear" cb={clear} />
-              <Button id="swaprows" title="Swap Rows" cb={swapRows} />
+    <Profiler id="app" onRender={onRenderProfiler}>
+      <div className="container">
+        <div className="jumbotron">
+          <div className="row">
+            <div className="col-md-6">
+              <h1>React + Supergrain</h1>
+            </div>
+            <div className="col-md-6">
+              <div className="row">
+                <Button id="run" title="Create 1,000 rows" cb={() => run(1000)} />
+                <Button id="runlots" title="Create 10,000 rows" cb={() => run(10000)} />
+                <Button id="add" title="Append 1,000 rows" cb={add} />
+                <Button id="update" title="Update every 10th row" cb={update} />
+                <Button id="clear" title="Clear" cb={clear} />
+                <Button id="swaprows" title="Swap Rows" cb={swapRows} />
+              </div>
             </div>
           </div>
         </div>
+        <table className="table table-hover table-striped test-data">
+          <tbody ref={tbodyRef}>
+            <For each={store.data} parent={tbodyRef}>
+              {(item: RowData) => (
+                <Row key={item.id} item={item} onSelect={handleSelect} onRemove={handleRemove} />
+              )}
+            </For>
+          </tbody>
+        </table>
+        <span className="preloadicon glyphicon glyphicon-remove" aria-hidden="true"></span>
       </div>
-      <table className="table table-hover table-striped test-data">
-        <tbody ref={tbodyRef}>
-          <For each={store.data} parent={tbodyRef}>
-            {(item: RowData) => (
-              <Row key={item.id} item={item} onSelect={handleSelect} onRemove={handleRemove} />
-            )}
-          </For>
-        </tbody>
-      </table>
-      <span className="preloadicon glyphicon glyphicon-remove" aria-hidden="true"></span>
-    </div>
+    </Profiler>
   );
 });
 

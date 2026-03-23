@@ -21,9 +21,17 @@ export {
 export {
   signal,
   computed,
-  effect,
   startBatch,
   endBatch,
   getCurrentSub,
   setCurrentSub,
 } from "alien-signals";
+
+export { profiledEffect as effect } from "./profiler";
+export {
+  enableProfiling,
+  disableProfiling,
+  resetProfiler,
+  getProfile,
+  type Profile,
+} from "./profiler";

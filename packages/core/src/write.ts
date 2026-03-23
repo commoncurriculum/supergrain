@@ -1,4 +1,5 @@
 import { $NODE, $OWN_KEYS, $VERSION, unwrap, getNodes } from "./core";
+import { profileSignalWrite } from "./profiler";
 
 export function bumpVersion(target: object): void {
   let nodes = (target as any)[$NODE];
@@ -20,6 +21,7 @@ export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, an
 
   const ownKeysSignal = resolvedNodes[$OWN_KEYS];
   if (ownKeysSignal) {
+    profileSignalWrite();
     ownKeysSignal(ownKeysSignal() + 1);
   }
 }
@@ -32,6 +34,7 @@ function bumpSignals(target: any, key: PropertyKey, prevLen: number): void {
   if (Array.isArray(target) && key !== "length") {
     const lengthNode = nodes["length"];
     if (lengthNode && target.length !== prevLen) {
+      profileSignalWrite();
       lengthNode(target.length);
     }
   }
@@ -60,6 +63,7 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
   if (nodes) {
     const node = nodes[key];
     if (node && didChange) {
+      profileSignalWrite();
       node(value);
     }
   }
@@ -83,6 +87,7 @@ export function deleteProperty(target: any, key: PropertyKey): void {
     if (nodes) {
       const node = nodes[key];
       if (node) {
+        profileSignalWrite();
         node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
       }
     }

@@ -9,6 +9,7 @@ import {
   setValueAtPath,
   type UnsetPathOperations,
 } from "./path";
+import { profileSignalWrite } from "./profiler";
 import { bumpOwnKeysSignal, bumpVersion, setProperty } from "./write";
 
 /**
@@ -142,6 +143,7 @@ function syncIndexedSignals(nodes: any, arr: any[]): void {
       const sig = nodes[key];
       const newValue = (arr as any)[key];
       if (sig() !== newValue) {
+        profileSignalWrite();
         sig(newValue);
       }
     }
@@ -170,6 +172,7 @@ function pullFromArray(arr: any[], condition: any): boolean {
 
       const lengthSignal = nodes["length"];
       if (lengthSignal && lengthSignal() !== arr.length) {
+        profileSignalWrite();
         lengthSignal(arr.length);
       }
 

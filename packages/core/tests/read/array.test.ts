@@ -1,17 +1,30 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { createStore, effect } from "../../src";
+import {
+  createStore,
+  effect,
+  enableProfiling,
+  disableProfiling,
+  resetProfiler,
+  getProfile,
+} from "../../src";
 
 describe("Array Support", () => {
   let store: any;
   let update: any;
 
   beforeEach(() => {
+    enableProfiling();
+    resetProfiler();
     const posts = [
       { id: 1, title: "Post 1" },
       { id: 2, title: "Post 2" },
     ];
     [store, update] = createStore({ posts: { all: { items: posts } } });
+  });
+
+  afterEach(() => {
+    disableProfiling();
   });
 
   it("should track access to array elements by index", () => {
@@ -28,6 +41,13 @@ describe("Array Support", () => {
     update({ $set: { "posts.all.items.0.title": "Updated Post 1" } });
     expect(postTitle).toBe("Updated Post 1");
     expect(titleEffect).toHaveBeenCalledTimes(2);
+
+    const p = getProfile();
+    // 5 reads per run (posts, all, items, [0], title) × 2 runs
+    expect(p.signalReads).toBe(10);
+    expect(p.signalSkips).toBe(0);
+    expect(p.signalWrites).toBe(1); // title changed
+    expect(p.effectFires).toBe(1);
   });
 
   it("should be reactive when using $push", () => {
@@ -45,6 +65,13 @@ describe("Array Support", () => {
 
     expect(postsLength).toBe(3);
     expect(lengthEffect).toHaveBeenCalledTimes(2);
+
+    const p = getProfile();
+    // 4 reads per run (posts, all, items, length) × 2 runs
+    expect(p.signalReads).toBe(8);
+    expect(p.signalSkips).toBe(0);
+    expect(p.signalWrites).toBe(1); // length signal write
+    expect(p.effectFires).toBe(1);
   });
 
   it("should be reactive when using $pull", () => {
@@ -63,6 +90,12 @@ describe("Array Support", () => {
     expect(postsLength).toBe(1);
     expect(store.posts.all.items[0].id).toBe(2);
     expect(lengthEffect).toHaveBeenCalledTimes(2);
+
+    const p = getProfile();
+    expect(p.signalReads).toBe(8); // 4 per run × 2 runs
+    expect(p.signalSkips).toBe(5); // store.posts.all.items[0].id outside effect
+    expect(p.signalWrites).toBe(1); // length signal write from pull
+    expect(p.effectFires).toBe(1);
   });
 
   it("should track dependencies inside loops", () => {
@@ -83,6 +116,13 @@ describe("Array Support", () => {
 
     expect(titleLengthSum).toBe(7); // "A" + "Post 2"
     expect(effectFn).toHaveBeenCalledTimes(2);
+
+    const p = getProfile();
+    // Per run: posts(1) + all(1) + items(1) + ownKeys/iterator + [0](1) + title(1) + [1](1) + title(1)
+    expect(p.signalReads).toBe(20);
+    expect(p.signalSkips).toBe(0);
+    expect(p.signalWrites).toBe(1); // one title changed
+    expect(p.effectFires).toBe(1);
   });
 
   it("should track dependencies inside filter-like loops", () => {
@@ -110,6 +150,13 @@ describe("Array Support", () => {
     expect(filtered).toHaveLength(1);
     expect(filtered[0].title).toBe("Post 1 Again");
     expect(effectFn).toHaveBeenCalledTimes(3);
+
+    const p = getProfile();
+    // 3 runs × ~10 reads per run
+    expect(p.signalReads).toBe(30);
+    expect(p.signalSkips).toBe(2); // filtered[0].title reads outside effect
+    expect(p.signalWrites).toBe(2); // 2 title changes
+    expect(p.effectFires).toBe(2);
   });
 
   it("should track dependencies inside map-like loops", () => {
@@ -129,6 +176,13 @@ describe("Array Support", () => {
     update({ $set: { "posts.all.items.0.title": "Updated Post" } });
     expect(titles).toEqual(["Updated Post", "Post 2"]);
     expect(effectFn).toHaveBeenCalledTimes(2);
+
+    const p = getProfile();
+    // 2 runs × ~10 reads per run
+    expect(p.signalReads).toBe(20);
+    expect(p.signalSkips).toBe(0);
+    expect(p.signalWrites).toBe(1);
+    expect(p.effectFires).toBe(1);
   });
 
   it("should not trigger item-specific effects when length changes", () => {
@@ -144,6 +198,13 @@ describe("Array Support", () => {
 
     expect(postTitle).toBe("Post 1");
     expect(titleEffect).toHaveBeenCalledTimes(1);
+
+    const p = getProfile();
+    // 1 run: posts(1) + all(1) + items(1) + [0](1) + title(1) = 5
+    expect(p.signalReads).toBe(5);
+    expect(p.signalSkips).toBe(0);
+    expect(p.signalWrites).toBe(0);
+    expect(p.effectFires).toBe(0); // push doesn't affect item[0].title
   });
 
   it("should handle array replacement with $set", () => {
@@ -165,5 +226,12 @@ describe("Array Support", () => {
 
     expect(accessCount).toBe(1);
     expect(effectFn).toHaveBeenCalledTimes(2);
+
+    const p = getProfile();
+    // Run 1: 2 items iterated. Run 2: 1 item iterated.
+    expect(p.signalReads).toBe(17);
+    expect(p.signalSkips).toBe(0);
+    expect(p.signalWrites).toBe(1); // items property replaced
+    expect(p.effectFires).toBe(1);
   });
 });
