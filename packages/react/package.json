@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/react",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "React adapter for Supergrain",
   "keywords": [
     "hooks",

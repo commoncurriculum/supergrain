@@ -1,5 +1,13 @@
 # @supergrain/react
 
+## 1.0.4
+
+### Patch Changes
+
+- 4bbe1d6: Fix For component missing re-renders on in-place array mutations (sort, reverse, fill, copyWithin)
+- Updated dependencies [4bbe1d6]
+  - @supergrain/core@1.0.4
+
 ## 1.0.3
 
 ### Patch Changes
@@ -66,6 +74,7 @@
   Nine operators (`$set`, `$unset`, `$inc`, `$push`, `$pull`, `$addToSet`, `$min`, `$max`, `$rename`) — all type-safe with dot-notation path inference. Inspired by MongoDB's update operators.
 
   ### Packages
+
   - **@supergrain/core** — `createStore`, `unwrap`, `update`, and signal primitives from [alien-signals](https://github.com/johnsoncodehk/signals) (`signal`, `computed`, `effect`, `startBatch`, `endBatch`)
   - **@supergrain/react** — `tracked()` for per-component reactivity, `<For>` for optimized lists, re-exports everything from core. Requires React 18.2+ or 19.x.
   - **@supergrain/store** — Document-oriented store for app-level state: look up records by model and ID, with built-in fetch handling and reactive loading/error states.
