@@ -1,5 +1,5 @@
-import { effect as alienEffect, getCurrentSub, setCurrentSub, unwrap } from "@supergrain/core";
-import React, { useEffect, useRef } from "react";
+import { effect as alienEffect, unwrap } from "@supergrain/core";
+import React, { useLayoutEffect, useRef } from "react";
 
 import { tracked } from "./tracked";
 
@@ -41,20 +41,21 @@ const ForItem = tracked(
 /**
  * List rendering component with fine-grained per-element reactivity.
  *
- * When a `container` ref is provided, For uses O(1) direct DOM swaps
- * instead of O(n) React reconciliation:
+ * Uses O(1) direct DOM swaps via an alien-signals effect that subscribes
+ * to per-index signals and calls insertBefore when elements change position.
+ * The effect fires synchronously during endBatch(), before React renders,
+ * so ForItem re-renders are no-ops (DOM already correct).
  *
- * - Swap: Alien effect moves 2 DOM nodes via insertBefore. ForItem
- *   re-renders are no-ops (DOM already correct). O(1).
+ * - Swap: 2 DOM moves via insertBefore. O(1).
  * - Add/Remove: For re-renders to adjust slot count. React handles it.
  * - Property update: Only the affected Row re-renders (via tracked).
  *
- * Without `container`, For falls back to O(n) keyed React reconciliation.
+ * Pass a `container` ref for the parent DOM element to enable O(1) swaps.
+ * Without it, For falls back to O(n) React reconciliation for swaps.
  *
  * @example
  * ```tsx
  * const tbodyRef = useRef<HTMLTableSectionElement>(null)
- * // ...
  * <tbody ref={tbodyRef}>
  *   <For each={store.data} container={tbodyRef}>
  *     {(item) => <Row key={item.id} item={item} />}
@@ -66,15 +67,14 @@ const ForItem = tracked(
 export const For = tracked((props: ForProps<unknown>) => {
   const { each, children, fallback, container } = props;
   const prevRawRef = useRef<unknown[]>([]);
-  const swapEffectRef = useRef<(() => void) | null>(null);
 
   // Subscribe to structural changes (ownKeys: add, remove, splice).
   void (each as any)?.[$TRACK];
 
   const raw = unwrap(each);
 
-  // O(1) DOM swap effect — only when container ref is provided
-  useEffect(() => {
+  // O(1) DOM swap effect — requires container ref for DOM access.
+  useLayoutEffect(() => {
     if (!container || !raw || raw.length === 0) return;
 
     // Initialize snapshot
@@ -82,7 +82,7 @@ export const For = tracked((props: ForProps<unknown>) => {
 
     const cleanup = alienEffect(() => {
       // Subscribe to per-index signals.
-      // Use direct signal reads when available (skip proxy overhead).
+      // Direct signal reads skip proxy overhead (wrapping, trackArrayVersion).
       const nodes = (raw as any)[$NODE];
       if (nodes) {
         for (let i = 0; i < raw.length; i++) {
@@ -123,7 +123,6 @@ export const For = tracked((props: ForProps<unknown>) => {
       prevRawRef.current = raw.slice();
     });
 
-    swapEffectRef.current = cleanup;
     return cleanup;
   }, [each, container]);
 
@@ -132,7 +131,7 @@ export const For = tracked((props: ForProps<unknown>) => {
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
 
-  // Always key by ID for correct React reconciliation on add/remove.
+  // Key by ID for correct React reconciliation on add/remove.
   // When container is provided, the alien effect handles swap DOM moves —
   // For does NOT subscribe to per-index signals and does NOT re-render on swap.
   // Without container, For subscribes to per-index signals and re-renders
