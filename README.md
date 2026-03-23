@@ -89,6 +89,38 @@ const TodoList = tracked(() => (
 ))
 ```
 
+## Synchronous Writes and Batching
+
+Writes are **synchronous** — you can always read your own writes:
+
+```typescript
+store.count = 5;
+console.log(store.count); // 5 — immediately available
+```
+
+Single mutations are always safe. When you need to make **multiple mutations atomically**, wrap them in `startBatch` / `endBatch`. Without batching, each write fires reactive effects immediately — a `computed` that reads both swapped positions would run mid-swap and see a duplicate:
+
+```typescript
+// ❌ Without batching — computed sees [C, B, C] after first write
+const tmp = store.data[0];
+store.data[0] = store.data[2]; // effects fire — data is [C, B, C]
+store.data[2] = tmp; // effects fire again — data is [C, B, A]
+```
+
+Wrap multi-step mutations in `startBatch` / `endBatch` so effects fire once with the final state:
+
+```typescript
+import { startBatch, endBatch } from "@supergrain/core";
+
+startBatch();
+const tmp = store.data[0];
+store.data[0] = store.data[2];
+store.data[2] = tmp;
+endBatch(); // effects fire once — data is [C, B, A]
+```
+
+---
+
 ## Comparison
 
 The same operations in other React state libraries:
@@ -118,7 +150,10 @@ const Counter = tracked(() => {
 ```typescript
 // [#DOC_TEST_53](packages/doc-tests/tests/readme-core.test.ts)
 
-const [state, setState] = useState<State>({ count: 0, user: { profile: { name: "John" } } });
+const [state, setState] = useState<State>({
+  count: 0,
+  user: { profile: { name: "John" } },
+});
 
 // Mutate
 setState((prev) => ({ ...prev, count: 5 }));
@@ -237,38 +272,6 @@ Results from [js-framework-benchmark](https://github.com/krausest/js-framework-b
 | After 5 create/clear cycles |        2.1 |         1.9 |     1.9 |
 
 Supergrain delivers fine-grained reactivity with per-component signal scoping at no meaningful performance cost compared to plain React hooks — while providing a dramatically simpler API than Zustand or Redux.
-
----
-
-## Synchronous Writes and Batching
-
-Writes are **synchronous** — you can always read your own writes:
-
-```typescript
-store.count = 5;
-console.log(store.count); // 5 — immediately available
-```
-
-Single mutations are always safe. When you need to make **multiple mutations atomically**, wrap them in `startBatch` / `endBatch`. Without batching, each write fires reactive effects immediately — a `computed` that reads both swapped positions would run mid-swap and see a duplicate:
-
-```typescript
-// ❌ Without batching — computed sees [C, B, C] after first write
-const tmp = store.data[0];
-store.data[0] = store.data[2]; // effects fire — data is [C, B, C]
-store.data[2] = tmp; // effects fire again — data is [C, B, A]
-```
-
-Wrap multi-step mutations in `startBatch` / `endBatch` so effects fire once with the final state:
-
-```typescript
-import { startBatch, endBatch } from "@supergrain/core";
-
-startBatch();
-const tmp = store.data[0];
-store.data[0] = store.data[2];
-store.data[2] = tmp;
-endBatch(); // effects fire once — data is [C, B, A]
-```
 
 ---
 
