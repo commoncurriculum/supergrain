@@ -1,4 +1,5 @@
 import { $NODE, $OWN_KEYS, $VERSION, unwrap, getNodes } from "./core";
+import { profileSignalWrite } from "./profiler";
 
 export function bumpVersion(target: object): void {
   let nodes = (target as any)[$NODE];
@@ -60,6 +61,7 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
   if (nodes) {
     const node = nodes[key];
     if (node && didChange) {
+      profileSignalWrite();
       node(value);
     }
   }

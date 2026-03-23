@@ -7,7 +7,6 @@ import {
   type StrictUpdateOperations,
 } from "./operators";
 import { createReactiveProxy } from "./read";
-import { createModelView, type SchemaLike } from "./typed";
 
 export { $BRAND, type Branded, type Signal, unwrap };
 
@@ -30,15 +29,8 @@ function normalizeInitialState(initialState: unknown): object {
   return unwrapped as object;
 }
 
-export function createStore<S extends SchemaLike<any>>(
-  initialState: S["infer"],
-  schema: S,
-): [Branded<S["infer"]>, StrictSetStoreFunction<S["infer"]>, Readonly<S["infer"]>];
 export function createStore<T extends object>(initialState: T): [Branded<T>, SetStoreFunction];
-export function createStore(
-  initialState: any,
-  schema?: SchemaLike,
-): [any, SetStoreFunction | StrictSetStoreFunction<any>, any?] {
+export function createStore(initialState: any): [any, SetStoreFunction] {
   const unwrappedState = normalizeInitialState(initialState);
   const state = createReactiveProxy(unwrappedState);
 
@@ -49,11 +41,6 @@ export function createStore(
     } finally {
       endBatch();
     }
-  }
-
-  if (schema) {
-    const view = createModelView(unwrappedState, schema);
-    return [state, updateStore, view];
   }
 
   return [state, updateStore];
