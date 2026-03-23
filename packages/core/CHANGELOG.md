@@ -1,5 +1,23 @@
 # @supergrain/core
 
+## 1.1.0
+
+### Minor Changes
+
+- 20a6f46: Fine-grained array swap and optimized list rendering
+
+  ### `@supergrain/core`
+
+  - **Skip version bump on array element replacement** — when setting an existing array index without changing the array length, the version signal no longer fires. Per-index signals already notify element-specific subscribers, so the version bump was redundantly triggering parent component re-renders on operations like swap.
+
+  ### `@supergrain/react`
+
+  - **Rewrite `<For>` with internal `ForItem` slots** — `For` now subscribes only to structural changes (ownKeys: add, remove, splice). Each element is rendered through an internal `ForItem` tracked component that subscribes to its own per-index signal. On a swap, only the 2 affected `ForItem`s re-render instead of the entire list.
+
+  ### Performance
+
+  Swap rows benchmark improved from 177.7ms to 48.0ms (3.7x faster). Script time dropped from 31ms to 2.3ms (13x faster).
+
 ## 1.0.4
 
 ### Patch Changes
@@ -65,6 +83,7 @@
   Nine operators (`$set`, `$unset`, `$inc`, `$push`, `$pull`, `$addToSet`, `$min`, `$max`, `$rename`) — all type-safe with dot-notation path inference. Inspired by MongoDB's update operators.
 
   ### Packages
+
   - **@supergrain/core** — `createStore`, `unwrap`, `update`, and signal primitives from [alien-signals](https://github.com/johnsoncodehk/signals) (`signal`, `computed`, `effect`, `startBatch`, `endBatch`)
   - **@supergrain/react** — `tracked()` for per-component reactivity, `<For>` for optimized lists, re-exports everything from core. Requires React 18.2+ or 19.x.
   - **@supergrain/store** — Document-oriented store for app-level state: look up records by model and ID, with built-in fetch handling and reactive loading/error states.
