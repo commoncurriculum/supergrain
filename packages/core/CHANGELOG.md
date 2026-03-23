@@ -1,5 +1,11 @@
 # @supergrain/core
 
+## 1.0.4
+
+### Patch Changes
+
+- 4bbe1d6: Fix For component missing re-renders on in-place array mutations (sort, reverse, fill, copyWithin)
+
 ## 1.0.3
 
 ### Patch Changes

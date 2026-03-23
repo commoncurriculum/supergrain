@@ -152,17 +152,15 @@ export const select = (id: number) => {
   store.selected = id;
 };
 
-// Attach event listeners to the static buttons on startup
-if (typeof window !== "undefined" && document.getElementById("run")) {
-  document.getElementById("run")!.addEventListener("click", () => run(1000));
-  document.getElementById("runlots")!.addEventListener("click", () => run(10000));
-  document.getElementById("add")!.addEventListener("click", add);
-  document.getElementById("update")!.addEventListener("click", update);
-  document.getElementById("clear")!.addEventListener("click", clear);
-  document.getElementById("swaprows")!.addEventListener("click", swapRows);
-}
-
 // --- React Components ---
+
+const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }) => (
+  <div className="col-sm-6 smallpad">
+    <button type="button" className="btn btn-primary btn-block" id={id} onClick={cb}>
+      {title}
+    </button>
+  </div>
+);
 
 export const Row = tracked(({ item, isSelected, onSelect, onRemove }: RowProps) => {
   return (
@@ -188,23 +186,49 @@ export const App = tracked(() => {
   const selected = store.selected;
 
   return (
-    <For each={store.data}>
-      {(item: RowData) => (
-        <Row
-          key={item.id}
-          item={item}
-          isSelected={selected === item.id}
-          onSelect={handleSelect}
-          onRemove={handleRemove}
-        />
-      )}
-    </For>
+    <div className="container">
+      <div className="jumbotron">
+        <div className="row">
+          <div className="col-md-6">
+            <h1>React + Supergrain</h1>
+          </div>
+          <div className="col-md-6">
+            <div className="row">
+              <Button id="run" title="Create 1,000 rows" cb={() => run(1000)} />
+              <Button id="runlots" title="Create 10,000 rows" cb={() => run(10000)} />
+              <Button id="add" title="Append 1,000 rows" cb={add} />
+              <Button id="update" title="Update every 10th row" cb={update} />
+              <Button id="clear" title="Clear" cb={clear} />
+              <Button id="swaprows" title="Swap Rows" cb={swapRows} />
+            </div>
+          </div>
+        </div>
+      </div>
+      <table className="table table-hover table-striped test-data">
+        <tbody>
+          <For each={store.data}>
+            {(item: RowData) => (
+              <Row
+                key={item.id}
+                item={item}
+                isSelected={selected === item.id}
+                onSelect={handleSelect}
+                onRemove={handleRemove}
+              />
+            )}
+          </For>
+        </tbody>
+      </table>
+      <span className="preloadicon glyphicon glyphicon-remove" aria-hidden="true"></span>
+    </div>
   );
 });
 
 // --- React Rendering ---
-if (typeof window !== "undefined" && document.getElementById("tbody")) {
-  const container = document.getElementById("tbody");
-  const root = createRoot(container!);
-  root.render((<App />) as any);
+if (typeof window !== "undefined") {
+  const container = document.getElementById("main");
+  if (container) {
+    const root = createRoot(container);
+    root.render(<App />);
+  }
 }
