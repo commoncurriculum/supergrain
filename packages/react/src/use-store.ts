@@ -1,5 +1,5 @@
 import { unwrap } from "@supergrain/core";
-import React, { useRef } from "react";
+import React from "react";
 
 import { tracked } from "./tracked";
 

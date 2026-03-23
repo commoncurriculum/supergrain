@@ -122,14 +122,18 @@ export const add = () => {
 };
 
 export const update = () => {
+  startBatch();
   for (let i = 0; i < store.data.length; i += 10) {
     store.data[i].label = store.data[i].label + " !!!";
   }
+  endBatch();
 };
 
 export const clear = () => {
+  startBatch();
   store.data = [];
   store.selected = null;
+  endBatch();
 };
 
 export const swapRows = () => {
