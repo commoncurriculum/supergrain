@@ -257,7 +257,7 @@ Results from [js-framework-benchmark](https://github.com/krausest/js-framework-b
 | Replace 1,000 rows          |       55.7 |        52.6 |    52.7 |
 | Partial update (every 10th) |       32.5 |        32.3 |    28.8 |
 | Select row                  |       14.8 |         9.1 |    11.8 |
-| Swap rows                   |   **48.0** |       178.0 |   184.0 |
+| Swap rows                   |      177.7 |       178.0 |   184.0 |
 | Remove row                  |       27.3 |        23.2 |    20.9 |
 | Create 10,000 rows          |      639.4 |       585.0 |   633.5 |
 | Append 1,000 rows           |       55.9 |        50.6 |    53.3 |
