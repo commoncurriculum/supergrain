@@ -27,12 +27,12 @@ const ctx: TestContext = {} as TestContext;
 async function timeClick(
   page: Page,
   selector: string,
-  cpuThrottle?: number,
+  opts: { cpuThrottle?: number; afterClick?: () => Promise<void> } = {},
 ): Promise<{ total: number; script: number; paint: number }> {
   const client = await page.context().newCDPSession(page);
 
-  if (cpuThrottle) {
-    await client.send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle });
+  if (opts.cpuThrottle) {
+    await client.send("Emulation.setCPUThrottlingRate", { rate: opts.cpuThrottle });
   }
 
   await client.send("Tracing.start", {
@@ -44,7 +44,12 @@ async function timeClick(
     if (!el) throw new Error(`Element not found: ${sel}`);
     el.click();
   }, selector);
-  await page.waitForTimeout(cpuThrottle ? cpuThrottle * 100 : 100);
+
+  // Match Krause: wait for the DOM assertion, then 40ms for paint to finish
+  if (opts.afterClick) {
+    await opts.afterClick();
+  }
+  await page.waitForTimeout(40);
 
   const result = await new Promise<any[]>((resolve) => {
     const chunks: any[] = [];
@@ -83,7 +88,7 @@ async function timeClick(
 
   const total = clickTs > 0 ? (lastRelevantEnd - clickTs) / 1000 : 0;
 
-  if (cpuThrottle) {
+  if (opts.cpuThrottle) {
     await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   }
   await client.detach();
@@ -125,8 +130,9 @@ describe("performance benchmarks", () => {
       await click(page, "#run");
       await click(page, "#clear");
     }
-    const ms = await timeClick(page, "#run");
-    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+    const ms = await timeClick(page, "#run", {
+      afterClick: () => waitFor(page, "tbody>tr:nth-of-type(1000)>td:nth-of-type(1)"),
+    });
     results.push({ name: "create rows (1k)", ...ms });
   });
 
@@ -136,8 +142,9 @@ describe("performance benchmarks", () => {
     for (let i = 0; i < 5; i++) {
       await click(page, "#run");
     }
-    const ms = await timeClick(page, "#run");
-    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+    const ms = await timeClick(page, "#run", {
+      afterClick: () => waitFor(page, "tbody>tr:nth-of-type(1000)>td:nth-of-type(1)"),
+    });
     results.push({ name: "replace all rows", ...ms });
   });
 
@@ -149,7 +156,17 @@ describe("performance benchmarks", () => {
     for (let i = 0; i < 3; i++) {
       await click(page, "#update");
     }
-    const ms = await timeClick(page, "#update", 4);
+    const ms = await timeClick(page, "#update", {
+      cpuThrottle: 4,
+      afterClick: async () => {
+        // Krause checks that row 991 has the expected number of " !!!" suffixes
+        await page.waitForFunction(() =>
+          document
+            .querySelector("tbody>tr:nth-of-type(991)>td:nth-of-type(2)>a")
+            ?.textContent?.includes(" !!!"),
+        );
+      },
+    });
     results.push({ name: "partial update (10th)", ...ms });
   });
 
@@ -159,7 +176,14 @@ describe("performance benchmarks", () => {
     await click(page, "#run");
     await waitFor(page, "tbody>tr:nth-of-type(1000)");
     await click(page, "tbody>tr:nth-of-type(5)>td:nth-of-type(2)>a");
-    const ms = await timeClick(page, "tbody>tr:nth-of-type(2)>td:nth-of-type(2)>a", 4);
+    const ms = await timeClick(page, "tbody>tr:nth-of-type(2)>td:nth-of-type(2)>a", {
+      cpuThrottle: 4,
+      afterClick: async () => {
+        await page.waitForFunction(() =>
+          document.querySelector("tbody>tr:nth-of-type(2)")?.classList.contains("danger"),
+        );
+      },
+    });
     results.push({ name: "select row", ...ms });
   });
 
@@ -171,8 +195,16 @@ describe("performance benchmarks", () => {
     for (let i = 0; i < 6; i++) {
       await click(page, "#swaprows");
     }
-    const ms = await timeClick(page, "#swaprows", 4);
-    expect(await text(page, "tbody>tr:nth-of-type(2)>td:nth-of-type(1)")).toBe("999");
+    const ms = await timeClick(page, "#swaprows", {
+      cpuThrottle: 4,
+      afterClick: async () => {
+        await page.waitForFunction(
+          () =>
+            document.querySelector("tbody>tr:nth-of-type(2)>td:nth-of-type(1)")?.textContent ===
+            "999",
+        );
+      },
+    });
     results.push({ name: "swap rows", ...ms });
   });
 
@@ -185,7 +217,17 @@ describe("performance benchmarks", () => {
       const row = 5 - i + 4;
       await click(page, `tbody>tr:nth-of-type(${row})>td:nth-of-type(3)>a>span`);
     }
-    const ms = await timeClick(page, "tbody>tr:nth-of-type(4)>td:nth-of-type(3)>a>span", 2);
+    const ms = await timeClick(page, "tbody>tr:nth-of-type(4)>td:nth-of-type(3)>a>span", {
+      cpuThrottle: 2,
+      afterClick: async () => {
+        // After removing row 4, what was row 5 shifts into position 4
+        await page.waitForFunction(
+          () =>
+            document.querySelector("tbody>tr:nth-of-type(4)>td:nth-of-type(1)")?.textContent ===
+            "10",
+        );
+      },
+    });
     results.push({ name: "remove row", ...ms });
   });
 
@@ -196,8 +238,9 @@ describe("performance benchmarks", () => {
       await click(page, "#run");
       await click(page, "#clear");
     }
-    const ms = await timeClick(page, "#runlots");
-    await waitFor(page, "tbody>tr:nth-of-type(10000)");
+    const ms = await timeClick(page, "#runlots", {
+      afterClick: () => waitFor(page, "tbody>tr:nth-of-type(10000)>td:nth-of-type(2)>a"),
+    });
     results.push({ name: "create many rows (10k)", ...ms });
   });
 
@@ -210,8 +253,9 @@ describe("performance benchmarks", () => {
     }
     await click(page, "#run");
     await waitFor(page, "tbody>tr:nth-of-type(1000)");
-    const ms = await timeClick(page, "#add");
-    await waitFor(page, "tbody>tr:nth-of-type(2000)");
+    const ms = await timeClick(page, "#add", {
+      afterClick: () => waitFor(page, "tbody>tr:nth-of-type(2000)>td:nth-of-type(1)"),
+    });
     results.push({ name: "append rows (1k to 1k)", ...ms });
   });
 
@@ -224,7 +268,14 @@ describe("performance benchmarks", () => {
     }
     await click(page, "#run");
     await waitFor(page, "tbody>tr:nth-of-type(1000)");
-    const ms = await timeClick(page, "#clear", 4);
+    const ms = await timeClick(page, "#clear", {
+      cpuThrottle: 4,
+      afterClick: async () => {
+        await page.waitForFunction(
+          () => !document.querySelector("tbody>tr:nth-of-type(1000)>td:nth-of-type(1)"),
+        );
+      },
+    });
     results.push({ name: "clear rows", ...ms });
   });
 });
