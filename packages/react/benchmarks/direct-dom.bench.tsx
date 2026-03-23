@@ -1,10 +1,9 @@
 /**
- * React adapter benchmark: supergrain proxy vs direct-dom vs React hooks vs Solid.js
+ * React adapter benchmark: supergrain proxy vs direct-dom vs React hooks
  *
  * - proxy: tracked() + For — standard React integration
  * - direct-dom: cloneNode + @supergrain/core/internal signal wiring, no React rows
  * - react hooks: vanilla React with useState/memo (no external store)
- * - solid-js: SolidJS store with imperative DOM
  *
  * Each benchmark validates its results to ensure operations actually
  * produce the expected DOM output — no fake results.
@@ -16,13 +15,6 @@ import { createStore, effect } from "@supergrain/core";
 import { $NODE, $RAW } from "@supergrain/core/internal";
 import { render, cleanup, act } from "@testing-library/react";
 import React, { FC, memo, useCallback, useState, useRef, useEffect } from "react";
-import {
-  createRoot as createSolidRoot,
-  createEffect as createSolidEffect,
-  createSignal,
-  batch as solidBatch,
-} from "solid-js";
-import { createStore as createSolidStore } from "solid-js/store";
 import { bench, describe, assert } from "vitest";
 
 import { tracked, For } from "../src";
@@ -87,7 +79,7 @@ function buildData(count: number): RowData[] {
   return d;
 }
 
-// Row template for Solid.js (cloned, not rendered by React)
+// Row template (cloned for direct-dom benchmark, not rendered by React)
 const rowTemplate = document.createElement("tr");
 rowTemplate.innerHTML = `<td class="col-md-1"></td><td class="col-md-4"><a></a></td><td class="col-md-1"><a><span class="glyphicon glyphicon-remove" aria-hidden="true"></span></a></td><td class="col-md-6"></td>`;
 
@@ -355,117 +347,6 @@ function makeHooksApp() {
   };
 }
 
-// --- Solid.js implementation (imperative DOM) ---
-function makeSolidBench() {
-  let dispose: (() => void) | null = null;
-  let container: HTMLElement | null = null;
-  let _setStore: any;
-  let _store: any;
-  let _setDataLen: ((n: number) => void) | null = null;
-
-  function mount() {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-
-    createSolidRoot((d) => {
-      dispose = d;
-      const [s, ss] = createSolidStore<{ data: RowData[]; selected: number | null }>({
-        data: [],
-        selected: null,
-      });
-      _store = s;
-      _setStore = ss;
-
-      const table = document.createElement("table");
-      const tbody = document.createElement("tbody");
-      table.appendChild(tbody);
-      container!.appendChild(table);
-
-      const [dataLen, setDataLen] = createSignal(0);
-      _setDataLen = setDataLen;
-      let rowCleanups: (() => void)[] = [];
-
-      createSolidEffect(() => {
-        const len = dataLen();
-        for (const c of rowCleanups) c();
-        rowCleanups = [];
-        tbody.textContent = "";
-
-        for (let idx = 0; idx < len; idx++) {
-          const item = s.data[idx];
-          const tr = rowTemplate.cloneNode(true) as HTMLTableRowElement;
-          const tds = tr.children;
-          const td0 = tds[0] as HTMLElement;
-          const a1 = (tds[1] as HTMLElement).firstChild as HTMLAnchorElement;
-
-          td0.textContent = String(item.id);
-          a1.textContent = item.label;
-
-          const itemId = item.id;
-          a1.onclick = () => ss("selected", itemId);
-
-          const capturedIdx = idx;
-          createSolidRoot((dRow) => {
-            rowCleanups.push(dRow);
-            createSolidEffect(() => {
-              a1.textContent = s.data[capturedIdx].label;
-            });
-            createSolidEffect(() => {
-              tr.className = s.selected === itemId ? "danger" : "";
-            });
-          });
-
-          tbody.appendChild(tr);
-        }
-      });
-    });
-  }
-
-  function unmount() {
-    if (dispose) dispose();
-    if (container) {
-      container.remove();
-      container = null;
-    }
-    dispose = null;
-    _setDataLen = null;
-  }
-
-  return {
-    mount,
-    unmount,
-    getContainer: () => container,
-    run: (n: number) => {
-      const data = buildData(n);
-      solidBatch(() => {
-        _setStore("data", data);
-        _setStore("selected", null);
-      });
-      _setDataLen!(data.length);
-    },
-    sel: (id: number) => {
-      _setStore("selected", id);
-    },
-    update10th: () => {
-      solidBatch(() => {
-        for (let i = 0; i < _store.data.length; i += 10) {
-          _setStore("data", i, "label", (l: string) => l + " !!!");
-        }
-      });
-    },
-    swap: () => {
-      if (_store.data.length > 998) {
-        solidBatch(() => {
-          const a = { ..._store.data[1] };
-          const b = { ..._store.data[998] };
-          _setStore("data", 1, b);
-          _setStore("data", 998, a);
-        });
-      }
-    },
-  };
-}
-
 // --- Benchmarks ---
 
 describe("Create 1000 rows", () => {
@@ -497,14 +378,6 @@ describe("Create 1000 rows", () => {
     });
     assertRowCount(container, 1000, "hooks create");
     cleanup();
-    idCounter = 1;
-  });
-  bench("solid-js", () => {
-    const ctx = makeSolidBench();
-    ctx.mount();
-    ctx.run(1000);
-    assertRowCount(ctx.getContainer()!, 1000, "solid create");
-    ctx.unmount();
     idCounter = 1;
   });
 });
@@ -548,15 +421,6 @@ describe("Select row", () => {
     });
     assertRowClass(container, 499, "danger", "hooks select");
     cleanup();
-    idCounter = 1;
-  });
-  bench("solid-js", () => {
-    const ctx = makeSolidBench();
-    ctx.mount();
-    ctx.run(1000);
-    ctx.sel(500);
-    assertRowClass(ctx.getContainer()!, 499, "danger", "solid select");
-    ctx.unmount();
     idCounter = 1;
   });
 });
@@ -608,19 +472,6 @@ describe("Swap rows", () => {
     assertRowText(container, 1, 0, id998Before!, "hooks swap row 1");
     assertRowText(container, 998, 0, id1Before!, "hooks swap row 998");
     cleanup();
-    idCounter = 1;
-  });
-  bench("solid-js", () => {
-    const ctx = makeSolidBench();
-    ctx.mount();
-    ctx.run(1000);
-    const c = ctx.getContainer()!;
-    const id1Before = c.querySelector("tbody tr:nth-child(2) td")!.textContent;
-    const id998Before = c.querySelector("tbody tr:nth-child(999) td")!.textContent;
-    ctx.swap();
-    assertRowText(c, 1, 0, id998Before!, "solid swap row 1");
-    assertRowText(c, 998, 0, id1Before!, "solid swap row 998");
-    ctx.unmount();
     idCounter = 1;
   });
 });
@@ -678,21 +529,6 @@ describe("Partial update (100 of 1000)", () => {
       `hooks update: first row should end with " !!!", got "${firstRowLabel}"`,
     );
     cleanup();
-    idCounter = 1;
-  });
-  bench("solid-js", () => {
-    const ctx = makeSolidBench();
-    ctx.mount();
-    ctx.run(1000);
-    ctx.update10th();
-    const c = ctx.getContainer()!;
-    const firstRowLabel =
-      c.querySelector("tbody tr:nth-child(1) td:nth-child(2) a")?.textContent ?? "";
-    assert(
-      firstRowLabel.endsWith(" !!!"),
-      `solid update: first row should end with " !!!", got "${firstRowLabel}"`,
-    );
-    ctx.unmount();
     idCounter = 1;
   });
 });
