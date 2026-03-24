@@ -1,16 +1,16 @@
 === Heap Snapshot Diff: Create 1K Rows ===
 
-Total: +278,407 objects, +7521 KB
+Total: +266,378 objects, +7314 KB
 
 Constructor                                           Count Δ       Size Δ    Per Row
 ─────────────────────────────────────────────────────────────────────────────────────
-native:InternalNode                                    +81017      +0.0 KB       81.0
-object:Object                                          +66005   +1715.0 KB       66.0
-number:heap number                                     +36000    +421.9 KB       36.0
+native:InternalNode                                    +75016      +0.0 KB       75.0
+object:Object                                          +66005   +1711.1 KB       66.0
+number:heap number                                     +35999    +421.9 KB       36.0
 array:                                                 +18000   +1125.0 KB       18.0
 object:Error                                            +9000    +210.9 KB        9.0
 object:FiberNode                                        +9000   +1265.6 KB        9.0
-object:system / Context                                 +6002    +132.9 KB        6.0
+object:system / Context                                 +6002    +125.0 KB        6.0
 closure:                                                +5002    +140.7 KB        5.0
 object:Array                                            +4996     +78.1 KB        5.0
 closure:native_bind                                     +4001     +93.8 KB        4.0
@@ -22,48 +22,48 @@ native:Text                                             +2000    +156.3 KB      
 native:<a>                                              +2000    +296.9 KB        2.0
 array:(bound arguments)                                 +2000     +43.0 KB        2.0
 native:DOMTokenList                                     +2000    +109.4 KB        2.0
-native:V8EventHandlerNonNull                            +2000     +62.5 KB        2.0
-native:EventListener                                    +2000     +46.9 KB        2.0
-closure:onClick                                         +2000     +54.7 KB        2.0
-native:system / ExternalStringData                      +1976     +44.3 KB        2.0
+native:system / ExternalStringData                      +1972     +44.2 KB        2.0
+native:PerformanceMeasure                               +1016    +142.9 KB        1.0
 object shape:system / Map                               +1012     +39.5 KB        1.0
-native:PerformanceMeasure                               +1010    +142.0 KB        1.0
-object:HTMLTableRowElement                              +1000     +15.6 KB        1.0
 object:HTMLSpanElement                                  +1000     +15.6 KB        1.0
+object:HTMLTableRowElement                              +1000     +15.6 KB        1.0
 native:<td class="col-md-4">                            +1000    +117.2 KB        1.0
 native:<span class="glyphicon glyphicon-remove" aria-hidden="true">      +1000    +117.2 KB        1.0
 native:<td class="col-md-6">                            +1000    +117.2 KB        1.0
-native:<tr class="">                                    +1000    +117.2 KB        1.0
-closure:unsubscribe                                     +1000     +27.3 KB        1.0
 closure:subscribe                                       +1000     +27.3 KB        1.0
 closure:getSnapshot                                     +1000     +27.3 KB        1.0
+closure:unsubscribe                                     +1000     +27.3 KB        1.0
 native:Element                                          +1000    +125.0 KB        1.0
 closure:warnAboutAccessingKey                           +1000     +31.3 KB        1.0
-array:(object properties)                                +989    +121.6 KB        1.0
+array:(object properties)                                +989     +74.7 KB        1.0
 code:system / LoadHandler                                 +44      +0.8 KB           
-object shape:system / DescriptorArray                     +18      +1.9 KB           
-code:system / TrustedByteArray                            +15      +3.1 KB           
+object shape:system / DescriptorArray                     +18      +1.8 KB           
+code:system / TrustedByteArray                            +17      +7.5 KB           
 object shape:system / PrototypeInfo                       +11      +0.4 KB           
 object shape:system / Cell                                 +9      +0.1 KB           
-code:system / FeedbackVector                               +9      +1.9 KB           
 code:system / CodeWrapper                                  +8      +0.1 KB           
+code:system / FeedbackVector                               +8      +1.8 KB           
 object shape:(enum cache)                                  +6      +0.1 KB           
 code:system / AllocationSite                               +4      +0.1 KB           
-string:tall brown desk                                     +4      +0.2 KB           
+string:inexpensive brown car                               +4      +0.2 KB           
 object shape:system / EnumCache                            +3      +0.0 KB           
-string:mushy white sandwich                                +3      +0.2 KB           
-string:handsome brown table                                +3      +0.2 KB           
-string:adorable purple house                               +3      +0.2 KB           
+string:odd brown pony                                      +3      +0.2 KB           
+string:plain white keyboard                                +3      +0.2 KB           
+string:expensive orange chair                              +3      +0.2 KB           
+string:mushy brown mouse                                   +3      +0.2 KB           
+string:small white chair                                   +3      +0.2 KB           
+string:expensive red pony                                  +3      +0.2 KB           
+string:important pink cookie                               +3      +0.2 KB           
 
 === Allocations that scale with row count (>= 500 new objects) ===
 
-  native:InternalNode                              +81,017 (81.0/row)       +0.0 KB
-  object:Object                                    +66,005 (66.0/row)    +1715.0 KB
-  number:heap number                               +36,000 (36.0/row)     +421.9 KB
+  native:InternalNode                              +75,016 (75.0/row)       +0.0 KB
+  object:Object                                    +66,005 (66.0/row)    +1711.1 KB
+  number:heap number                               +35,999 (36.0/row)     +421.9 KB
   array:                                           +18,000 (18.0/row)    +1125.0 KB
   object:Error                                     + 9,000 (9.0/row)     +210.9 KB
   object:FiberNode                                 + 9,000 (9.0/row)    +1265.6 KB
-  object:system / Context                          + 6,002 (6.0/row)     +132.9 KB
+  object:system / Context                          + 6,002 (6.0/row)     +125.0 KB
   closure:                                         + 5,002 (5.0/row)     +140.7 KB
   object:Array                                     + 4,996 (5.0/row)      +78.1 KB
   closure:native_bind                              + 4,001 (4.0/row)      +93.8 KB
@@ -75,23 +75,19 @@ string:adorable purple house                               +3      +0.2 KB
   native:<a>                                       + 2,000 (2.0/row)     +296.9 KB
   array:(bound arguments)                          + 2,000 (2.0/row)      +43.0 KB
   native:DOMTokenList                              + 2,000 (2.0/row)     +109.4 KB
-  native:V8EventHandlerNonNull                     + 2,000 (2.0/row)      +62.5 KB
-  native:EventListener                             + 2,000 (2.0/row)      +46.9 KB
-  closure:onClick                                  + 2,000 (2.0/row)      +54.7 KB
-  native:system / ExternalStringData               + 1,976 (2.0/row)      +44.3 KB
+  native:system / ExternalStringData               + 1,972 (2.0/row)      +44.2 KB
+  native:PerformanceMeasure                        + 1,016 (1.0/row)     +142.9 KB
   object shape:system / Map                        + 1,012 (1.0/row)      +39.5 KB
-  native:PerformanceMeasure                        + 1,010 (1.0/row)     +142.0 KB
-  object:HTMLTableRowElement                       + 1,000 (1.0/row)      +15.6 KB
   object:HTMLSpanElement                           + 1,000 (1.0/row)      +15.6 KB
+  object:HTMLTableRowElement                       + 1,000 (1.0/row)      +15.6 KB
   native:<td class="col-md-4">                     + 1,000 (1.0/row)     +117.2 KB
   native:<span class="glyphicon glyphicon-remove" aria-hidden="true"> + 1,000 (1.0/row)     +117.2 KB
   native:<td class="col-md-6">                     + 1,000 (1.0/row)     +117.2 KB
-  native:<tr class="">                             + 1,000 (1.0/row)     +117.2 KB
-  closure:unsubscribe                              + 1,000 (1.0/row)      +27.3 KB
   closure:subscribe                                + 1,000 (1.0/row)      +27.3 KB
   closure:getSnapshot                              + 1,000 (1.0/row)      +27.3 KB
+  closure:unsubscribe                              + 1,000 (1.0/row)      +27.3 KB
   native:Element                                   + 1,000 (1.0/row)     +125.0 KB
   closure:warnAboutAccessingKey                    + 1,000 (1.0/row)      +31.3 KB
-  array:(object properties)                        +   989 (1.0/row)     +121.6 KB
+  array:(object properties)                        +   989 (1.0/row)      +74.7 KB
 
-  Scaled allocations total: +7479 KB of +7521 KB total
+  Scaled allocations total: +7140 KB of +7314 KB total
