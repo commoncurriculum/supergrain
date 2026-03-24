@@ -363,4 +363,118 @@ describe("dist validation (isKeyed mirror)", () => {
     console.log(`Open in Chrome: chrome://tracing → Load → ${tracePath}`);
     expect(traceEvents.length).toBeGreaterThan(0);
   }, 30000);
+
+  it("capture trace for create 1k", async () => {
+    const page = await freshPage(ctx);
+
+    const client = await page.context().newCDPSession(page);
+    await client.send("Emulation.setCPUThrottlingRate", { rate: 2 });
+    await client.send("Tracing.start", {
+      categories: [
+        "blink.user_timing",
+        "devtools.timeline",
+        "disabled-by-default-devtools.timeline",
+        "v8.execute",
+        "disabled-by-default-v8.cpu_profiler",
+      ].join(","),
+    });
+
+    const elem = await page.$("#run");
+    await elem!.click();
+    await elem!.dispose();
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+    await page.waitForTimeout(100);
+
+    const traceEvents = await new Promise<any[]>((res) => {
+      const chunks: any[] = [];
+      client.on("Tracing.dataCollected" as any, (data: any) => chunks.push(...data.value));
+      client.on("Tracing.tracingComplete" as any, () => res(chunks));
+      client.send("Tracing.end");
+    });
+
+    await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+    await client.detach();
+
+    const tracePath = resolve(__dirname, "../create-1k-trace.json");
+    writeFileSync(tracePath, JSON.stringify(traceEvents));
+    console.log(`Create 1k trace written to ${tracePath}`);
+    expect(traceEvents.length).toBeGreaterThan(0);
+  }, 30000);
+
+  it("capture trace for remove row", async () => {
+    const page = await freshPage(ctx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+
+    const client = await page.context().newCDPSession(page);
+    await client.send("Emulation.setCPUThrottlingRate", { rate: 2 });
+    await client.send("Tracing.start", {
+      categories: [
+        "blink.user_timing",
+        "devtools.timeline",
+        "disabled-by-default-devtools.timeline",
+        "v8.execute",
+        "disabled-by-default-v8.cpu_profiler",
+      ].join(","),
+    });
+
+    const elem = await page.$("tbody>tr:nth-of-type(1)>td:nth-of-type(3)>a>span");
+    await elem!.click();
+    await elem!.dispose();
+    await page.waitForTimeout(300);
+
+    const traceEvents = await new Promise<any[]>((res) => {
+      const chunks: any[] = [];
+      client.on("Tracing.dataCollected" as any, (data: any) => chunks.push(...data.value));
+      client.on("Tracing.tracingComplete" as any, () => res(chunks));
+      client.send("Tracing.end");
+    });
+
+    await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+    await client.detach();
+
+    const tracePath = resolve(__dirname, "../remove-row-trace.json");
+    writeFileSync(tracePath, JSON.stringify(traceEvents));
+    console.log(`Remove row trace written to ${tracePath}`);
+    expect(traceEvents.length).toBeGreaterThan(0);
+  }, 30000);
+
+  it("capture trace for clear", async () => {
+    const page = await freshPage(ctx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+
+    const client = await page.context().newCDPSession(page);
+    await client.send("Emulation.setCPUThrottlingRate", { rate: 2 });
+    await client.send("Tracing.start", {
+      categories: [
+        "blink.user_timing",
+        "devtools.timeline",
+        "disabled-by-default-devtools.timeline",
+        "v8.execute",
+        "disabled-by-default-v8.cpu_profiler",
+      ].join(","),
+    });
+
+    const elem = await page.$("#clear");
+    await elem!.click();
+    await elem!.dispose();
+    await page.waitForFunction(() => document.querySelectorAll("tbody>tr").length === 0);
+    await page.waitForTimeout(100);
+
+    const traceEvents = await new Promise<any[]>((res) => {
+      const chunks: any[] = [];
+      client.on("Tracing.dataCollected" as any, (data: any) => chunks.push(...data.value));
+      client.on("Tracing.tracingComplete" as any, () => res(chunks));
+      client.send("Tracing.end");
+    });
+
+    await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+    await client.detach();
+
+    const tracePath = resolve(__dirname, "../clear-trace.json");
+    writeFileSync(tracePath, JSON.stringify(traceEvents));
+    console.log(`Clear trace written to ${tracePath}`);
+    expect(traceEvents.length).toBeGreaterThan(0);
+  }, 30000);
 });
