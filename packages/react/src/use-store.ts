@@ -187,11 +187,11 @@ export const For = tracked((props: ForProps<unknown>) => {
     // No wrapper component needed — children (e.g., tracked Row) handle their own
     // subscriptions. After a swap, For doesn't re-render, so children keep their
     // original item props. The swap effect moves DOM nodes to match.
+    //
     const prevSub = getCurrentSub();
     setCurrentSub(undefined as any); // eslint-disable-line unicorn/no-useless-undefined -- untrack array reads to avoid subscribing For to per-index signals
     for (let i = 0; i < raw.length; i++) {
-      const item = each[i];
-      slots[i] = children(item, i);
+      slots[i] = children(each[i], i);
     }
     setCurrentSub(prevSub);
   } else {
