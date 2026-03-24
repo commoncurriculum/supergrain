@@ -16,7 +16,7 @@ import { createContext, createElement, useContext, type ReactNode } from "react"
  * import { createStore } from '@supergrain/core'
  * import { provideStore } from '@supergrain/react'
  *
- * const [store] = createStore<AppState>({ todos: [], selected: null })
+ * const store = createStore<AppState>({ todos: [], selected: null })
  * const Store = provideStore(store)
  *
  * // root
@@ -32,6 +32,7 @@ export function provideStore<T>(store: T): {
 } {
   const Context = createContext<T | null>(null);
 
+  // children is intentionally required — a Provider without children is a no-op.
   function Provider({ children }: { children: ReactNode }) {
     return createElement(Context.Provider, { value: store }, children);
   }

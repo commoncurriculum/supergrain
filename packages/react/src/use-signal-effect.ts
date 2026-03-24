@@ -32,6 +32,10 @@ import { useEffect } from "react";
  * ```
  */
 export function useSignalEffect(fn: () => void): void {
+  // Empty deps is intentional: the signal effect tracks its own reactive
+  // dependencies via alien-signals. Stale closures are not a concern because
+  // callbacks read from store proxies whose references are stable — the proxy
+  // always returns the latest value regardless of when the closure was created.
   useEffect(() => {
     const cleanup = effect(fn);
     return cleanup;
