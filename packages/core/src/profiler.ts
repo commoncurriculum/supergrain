@@ -1,19 +1,11 @@
 /**
  * Lightweight profiler for diagnosing signal subscription and render behavior.
  *
- * Zero cost when disabled — profiling functions are swapped to empty no-ops
- * that V8 inlines away. No boolean checks on the hot path.
- * Enable with `enableProfiling()`, read with `getProfile()`, reset with `resetProfiler()`.
+ * Zero cost when disabled — all profiling functions check a single boolean
+ * that V8 branch-predicts as false. The functions themselves are constant
+ * (not swapped via mutable let bindings) so V8 can inline them.
  *
- * @example
- * ```ts
- * enableProfiling();
- * resetProfiler();
- * update();
- * const p = getProfile();
- * expect(p.effectFires).toBe(100); // 100 rows re-rendered
- * disableProfiling();
- * ```
+ * Enable with `enableProfiling()`, read with `getProfile()`, reset with `resetProfiler()`.
  */
 
 import { effect as alienEffect } from "alien-signals";
@@ -53,6 +45,7 @@ export interface Profile {
   timings: Record<TimingBucket, number>;
 }
 
+let _enabled = false;
 let _signalReads = 0;
 let _signalSkips = 0;
 let _signalWrites = 0;
@@ -82,57 +75,35 @@ const _timings: Record<TimingBucket, number> = {
 
 const _timingStarts: Record<string, number> = {};
 
-// eslint-disable-next-line @typescript-eslint/no-empty-function -- intentional no-op for zero-cost disabled state
-function noop(): void {}
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- intentional no-op signature
-function noopBucket(_bucket: TimingBucket): void {}
-
-function countSignalRead(): void {
-  _signalReads++;
+export function profileSignalRead(): void {
+  if (_enabled) _signalReads++;
 }
-function countSignalSkip(): void {
-  _signalSkips++;
+export function profileSignalSkip(): void {
+  if (_enabled) _signalSkips++;
 }
-function countSignalWrite(): void {
-  _signalWrites++;
+export function profileSignalWrite(): void {
+  if (_enabled) _signalWrites++;
 }
-function countEffectFire(): void {
-  _effectFires++;
+export function profileEffectFire(): void {
+  if (_enabled) _effectFires++;
 }
-function startTiming(bucket: TimingBucket): void {
-  _timingStarts[bucket] = performance.now();
+export function profileTimeStart(bucket: TimingBucket): void {
+  if (_enabled) _timingStarts[bucket] = performance.now();
 }
-function endTiming(bucket: TimingBucket): void {
+export function profileTimeEnd(bucket: TimingBucket): void {
+  if (!_enabled) return;
   const start = _timingStarts[bucket];
   if (start !== undefined) {
     _timings[bucket] += performance.now() - start;
   }
 }
 
-// Exported as mutable bindings — swapped between no-ops and counters
-export let profileSignalRead: () => void = noop;
-export let profileSignalSkip: () => void = noop;
-export let profileSignalWrite: () => void = noop;
-export let profileEffectFire: () => void = noop;
-export let profileTimeStart: (bucket: TimingBucket) => void = noopBucket;
-export let profileTimeEnd: (bucket: TimingBucket) => void = noopBucket;
-
 export function enableProfiling(): void {
-  profileSignalRead = countSignalRead;
-  profileSignalSkip = countSignalSkip;
-  profileSignalWrite = countSignalWrite;
-  profileEffectFire = countEffectFire;
-  profileTimeStart = startTiming;
-  profileTimeEnd = endTiming;
+  _enabled = true;
 }
 
 export function disableProfiling(): void {
-  profileSignalRead = noop;
-  profileSignalSkip = noop;
-  profileSignalWrite = noop;
-  profileEffectFire = noop;
-  profileTimeStart = noopBucket;
-  profileTimeEnd = noopBucket;
+  _enabled = false;
 }
 
 export function resetProfiler(): void {

@@ -26,6 +26,7 @@ export {
   disableProfiling,
   resetProfiler,
   getProfile,
+  profileEffectFire,
   profileTimeStart,
   profileTimeEnd,
   type Profile,
