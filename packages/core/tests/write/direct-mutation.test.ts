@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 
-import { createStore } from "../../src";
+import { createStore, update } from "../../src";
 
 describe("Direct Mutation Support", () => {
   it("should allow direct property assignment", () => {
-    const [store] = createStore({
+    const store = createStore({
       count: 0,
       user: { name: "John", age: 30 },
       items: [
@@ -35,7 +35,7 @@ describe("Direct Mutation Support", () => {
   });
 
   it("should trigger reactivity with direct mutations", () => {
-    const [store] = createStore({ count: 0, user: { name: "John" } });
+    const store = createStore({ count: 0, user: { name: "John" } });
 
     let reactionCount = 0;
     let lastValue: any = null;
@@ -77,7 +77,7 @@ describe("Direct Mutation Support", () => {
   });
 
   it("should work alongside traditional updateStore calls", () => {
-    const [store, updateStore] = createStore({
+    const store = createStore({
       count: 0,
       user: { name: "John" },
       items: [{ id: 1, label: "Item 1" }],
@@ -88,7 +88,7 @@ describe("Direct Mutation Support", () => {
     expect(store.count).toBe(5);
 
     // Use traditional updateStore
-    updateStore({ $set: { count: 10 } });
+    update(store, { $set: { count: 10 } });
     expect(store.count).toBe(10);
 
     // Use direct mutation on nested property
@@ -96,19 +96,19 @@ describe("Direct Mutation Support", () => {
     expect(store.user.name).toBe("Jane");
 
     // Use traditional updateStore on nested property
-    updateStore({ $set: { "user.name": "Bob" } });
+    update(store, { $set: { "user.name": "Bob" } });
     expect(store.user.name).toBe("Bob");
 
     // Both approaches should work together seamlessly
     store.count = 15;
-    updateStore({ $set: { "user.name": "Alice" } });
+    update(store, { $set: { "user.name": "Alice" } });
 
     expect(store.count).toBe(15);
     expect(store.user.name).toBe("Alice");
   });
 
   it("should handle array mutations correctly", () => {
-    const [store] = createStore({
+    const store = createStore({
       items: [
         { id: 1, label: "Item 1" },
         { id: 2, label: "Item 2" },
@@ -140,7 +140,7 @@ describe("Direct Mutation Support", () => {
       items: Array<{ id: number; label: string }>;
     }
 
-    const [store] = createStore<TestStore>({
+    const store = createStore<TestStore>({
       count: 0,
       user: { name: "John", age: 30 },
       items: [{ id: 1, label: "Item 1" }],

@@ -8,6 +8,7 @@ import {
   disableProfiling,
   resetProfiler,
   getProfile,
+  update,
 } from "../../src";
 import { $VERSION } from "../../src/internal";
 
@@ -23,21 +24,21 @@ describe("Store", () => {
 
   describe("createStore", () => {
     it("should create a store with initial state", () => {
-      const [state] = createStore({ count: 0, name: "test" });
+      const state = createStore({ count: 0, name: "test" });
       expect(state.count).toBe(0);
       expect(state.name).toBe("test");
     });
 
     it("should update state with the update function", () => {
-      const [state, update] = createStore({ count: 0 });
-      update({ $set: { count: 5 } });
+      const state = createStore({ count: 0 });
+      update(state, { $set: { count: 5 } });
       expect(state.count).toBe(5);
-      update({ $inc: { count: 1 } });
+      update(state, { $inc: { count: 1 } });
       expect(state.count).toBe(6);
     });
 
     it("should handle nested objects reactively", () => {
-      const [state, update] = createStore({
+      const state = createStore({
         user: { address: { city: "New York" } },
       });
       let city = "";
@@ -49,7 +50,7 @@ describe("Store", () => {
       expect(city).toBe("New York");
       expect(effectFn).toHaveBeenCalledTimes(1);
 
-      update({ $set: { "user.address.city": "Boston" } });
+      update(state, { $set: { "user.address.city": "Boston" } });
       expect(city).toBe("Boston");
       expect(effectFn).toHaveBeenCalledTimes(2);
 
@@ -61,7 +62,7 @@ describe("Store", () => {
     });
 
     it("should handle array updates reactively", () => {
-      const [state, update] = createStore<any>({ items: [1, 2, 3] });
+      const state = createStore<any>({ items: [1, 2, 3] });
       let sum = 0;
       const effectFn = vi.fn(() => {
         sum = 0;
@@ -74,12 +75,12 @@ describe("Store", () => {
       expect(sum).toBe(6);
       expect(effectFn).toHaveBeenCalledTimes(1);
 
-      update({ $set: { "items.1": 5 } });
+      update(state, { $set: { "items.1": 5 } });
       expect(state.items).toEqual([1, 5, 3]);
       expect(sum).toBe(9);
       expect(effectFn).toHaveBeenCalledTimes(2);
 
-      update({ $set: { items: [10, 20] } });
+      update(state, { $set: { items: [10, 20] } });
       expect(sum).toBe(30);
       expect(effectFn).toHaveBeenCalledTimes(3);
 
@@ -91,7 +92,7 @@ describe("Store", () => {
     });
 
     it("should batch multiple operators in one update call", () => {
-      const [state, update] = createStore<any>({ a: 1, b: 2 });
+      const state = createStore<any>({ a: 1, b: 2 });
       let sum = 0;
       const effectFn = vi.fn(() => {
         sum = state.a + state.b;
@@ -101,7 +102,7 @@ describe("Store", () => {
       expect(sum).toBe(3);
       expect(effectFn).toHaveBeenCalledTimes(1);
 
-      update({
+      update(state, {
         $set: { a: 10 },
         $inc: { b: 18 },
       });
@@ -125,7 +126,7 @@ describe("Store", () => {
 
     it("should handle frozen objects gracefully", () => {
       const frozen = Object.freeze({ value: 1 });
-      const [state] = createStore({ frozen });
+      const state = createStore({ frozen });
 
       let value = 0;
       effect(() => {
@@ -142,7 +143,7 @@ describe("Store", () => {
     it("should handle circular references", () => {
       const obj: any = { value: 1 };
       obj.self = obj;
-      const [state] = createStore(obj);
+      const state = createStore(obj);
 
       let selfValue = 0;
       effect(() => {
@@ -161,7 +162,7 @@ describe("Store", () => {
     });
 
     it("should handle null and undefined values reactively", () => {
-      const [state, update] = createStore<{
+      const state = createStore<{
         nullable: string | null;
         undef: string | undefined;
       }>({
@@ -179,10 +180,10 @@ describe("Store", () => {
       expect(nullValue).toBe(null);
       expect(undefValue).toBe(undefined);
 
-      update({ $set: { nullable: "value" } });
+      update(state, { $set: { nullable: "value" } });
       expect(nullValue).toBe("value");
 
-      update({ $set: { undef: "value" } });
+      update(state, { $set: { undef: "value" } });
       expect(undefValue).toBe("value");
 
       const p = getProfile();
@@ -193,7 +194,7 @@ describe("Store", () => {
     });
 
     it("should handle nested reactivity in arrays", () => {
-      const [state, update] = createStore<any>({
+      const state = createStore<any>({
         users: [
           { name: "Alice", tasks: ["task1"] },
           { name: "Bob", tasks: ["task3"] },
@@ -206,7 +207,7 @@ describe("Store", () => {
       });
 
       expect(bobTasks).toEqual(["task3"]);
-      update({ $push: { "users.1.tasks": "task4" } });
+      update(state, { $push: { "users.1.tasks": "task4" } });
       expect(bobTasks).toEqual(["task3", "task4"]);
 
       const p = getProfile();
@@ -217,14 +218,14 @@ describe("Store", () => {
     });
 
     it("should handle adding new properties reactively", () => {
-      const [state, update] = createStore<any>({ initial: true });
+      const state = createStore<any>({ initial: true });
       let keys: string[] = [];
       effect(() => {
         keys = Object.keys(state);
       });
 
       expect(keys).toEqual(["initial"]);
-      update({ $set: { newProp: "value" } });
+      update(state, { $set: { newProp: "value" } });
       expect(state.newProp).toBe("value");
       expect(keys.sort()).toEqual(["initial", "newProp"]);
 
@@ -236,14 +237,14 @@ describe("Store", () => {
     });
 
     it("should allow deletion of properties with $unset", () => {
-      const [state, update] = createStore<any>({ a: 1, b: 2 });
+      const state = createStore<any>({ a: 1, b: 2 });
       let keys: string[] = [];
       effect(() => {
         keys = Object.keys(state);
       });
       expect(keys.sort()).toEqual(["a", "b"]);
 
-      update({ $unset: { b: 1 } });
+      update(state, { $unset: { b: 1 } });
       expect(keys.sort()).toEqual(["a"]);
       expect(state.b).toBeUndefined();
 
@@ -255,13 +256,13 @@ describe("Store", () => {
     });
 
     it("should increment version for writes even before a property is tracked", () => {
-      const [state, update] = createStore<any>({ a: 1 });
+      const state = createStore<any>({ a: 1 });
 
       expect(state[$VERSION]).toBe(0);
       state.b = 2;
       expect(state[$VERSION]).toBe(1);
 
-      update({ $set: { a: 3 } });
+      update(state, { $set: { a: 3 } });
       expect(state[$VERSION]).toBe(2);
     });
   });

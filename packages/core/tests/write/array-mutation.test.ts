@@ -21,7 +21,7 @@ describe("Array mutation methods trigger reactivity", () => {
     disableProfiling();
   });
   it("push() triggers effect tracking length", () => {
-    const [store] = createStore({ items: [1, 2, 3] });
+    const store = createStore({ items: [1, 2, 3] });
 
     let capturedLength = 0;
     const effectFn = vi.fn(() => {
@@ -38,7 +38,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("push() with multiple items triggers effect", () => {
-    const [store] = createStore({ items: [1] });
+    const store = createStore({ items: [1] });
 
     let capturedLength = 0;
     const effectFn = vi.fn(() => {
@@ -55,7 +55,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("splice() removing an element triggers effect", () => {
-    const [store] = createStore({ items: [1, 2, 3] });
+    const store = createStore({ items: [1, 2, 3] });
 
     let capturedLength = 0;
     const effectFn = vi.fn(() => {
@@ -72,7 +72,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("splice() removing the last element triggers effect", () => {
-    const [store] = createStore({ items: [1, 2, 3] });
+    const store = createStore({ items: [1, 2, 3] });
 
     let capturedLength = 0;
     const effectFn = vi.fn(() => {
@@ -89,7 +89,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("pop() triggers effect", () => {
-    const [store] = createStore({ items: [1, 2, 3] });
+    const store = createStore({ items: [1, 2, 3] });
 
     let capturedLength = 0;
     const effectFn = vi.fn(() => {
@@ -106,7 +106,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("shift() triggers effect", () => {
-    const [store] = createStore({ items: [1, 2, 3] });
+    const store = createStore({ items: [1, 2, 3] });
 
     let capturedLength = 0;
     const effectFn = vi.fn(() => {
@@ -123,7 +123,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("unshift() triggers effect", () => {
-    const [store] = createStore({ items: [1, 2, 3] });
+    const store = createStore({ items: [1, 2, 3] });
 
     let capturedLength = 0;
     const effectFn = vi.fn(() => {
@@ -140,7 +140,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("push() on initially empty array triggers effect", () => {
-    const [store] = createStore<{ items: number[] }>({ items: [] });
+    const store = createStore<{ items: number[] }>({ items: [] });
 
     let capturedLength = 0;
     const effectFn = vi.fn(() => {
@@ -157,7 +157,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("push() triggers effect tracking iteration", () => {
-    const [store] = createStore({ items: [{ id: 1, label: "a" }] });
+    const store = createStore({ items: [{ id: 1, label: "a" }] });
 
     let labels: string[] = [];
     const effectFn = vi.fn(() => {
@@ -177,7 +177,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("sort() triggers effect", () => {
-    const [store] = createStore({ items: [3, 1, 2] });
+    const store = createStore({ items: [3, 1, 2] });
 
     let captured: number[] = [];
     const effectFn = vi.fn(() => {
@@ -194,7 +194,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("reverse() triggers effect", () => {
-    const [store] = createStore({ items: [1, 2, 3] });
+    const store = createStore({ items: [1, 2, 3] });
 
     let captured: number[] = [];
     const effectFn = vi.fn(() => {
@@ -211,7 +211,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("fill() triggers effect", () => {
-    const [store] = createStore({ items: [1, 2, 3] });
+    const store = createStore({ items: [1, 2, 3] });
 
     let captured: number[] = [];
     const effectFn = vi.fn(() => {
@@ -228,7 +228,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("copyWithin() triggers effect", () => {
-    const [store] = createStore({ items: [1, 2, 3, 4, 5] });
+    const store = createStore({ items: [1, 2, 3, 4, 5] });
 
     let captured: number[] = [];
     const effectFn = vi.fn(() => {
@@ -245,7 +245,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("splice() triggers effect tracking iteration", () => {
-    const [store] = createStore({
+    const store = createStore({
       items: [
         { id: 1, label: "a" },
         { id: 2, label: "b" },
@@ -271,7 +271,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("index swap does not fire version-only effect (no structural change)", () => {
-    const [store] = createStore({
+    const store = createStore({
       items: [
         { id: 1, label: "a" },
         { id: 2, label: "b" },
@@ -307,7 +307,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("index swap fires per-element effects only for swapped indices", () => {
-    const [store] = createStore({
+    const store = createStore({
       items: [
         { id: 1, label: "a" },
         { id: 2, label: "b" },
@@ -364,7 +364,7 @@ describe("Array mutation methods trigger reactivity", () => {
   });
 
   it("iteration effect re-fires on swap (sees new element order)", () => {
-    const [store] = createStore({
+    const store = createStore({
       items: [
         { id: 1, label: "a" },
         { id: 2, label: "b" },

@@ -1,21 +1,18 @@
 import type { StoreState, DocumentPromise, DocumentTypes, FetchHandler } from "./types";
 
-import { createStore, computed, type SetStoreFunction } from "@supergrain/core";
+import { createStore, update, computed } from "@supergrain/core";
 
 import { DocumentPromiseImpl } from "./document-promise";
 
 export class Store<T extends DocumentTypes = DocumentTypes> {
   private store: StoreState;
-  private update: SetStoreFunction;
   private fetchHandler?: FetchHandler;
   private promiseCache = new Map<string, DocumentPromise<any>>();
 
   constructor(fetchHandler?: FetchHandler) {
-    const [store, update] = createStore<StoreState>({
+    this.store = createStore<StoreState>({
       documents: {},
     });
-    this.store = store;
-    this.update = update;
     this.fetchHandler = fetchHandler;
   }
 
@@ -37,7 +34,7 @@ export class Store<T extends DocumentTypes = DocumentTypes> {
       this.triggerFetch(modelTypeStr, id);
 
       // Set just this document's state without copying the entire map
-      this.update({
+      update(this.store, {
         $set: {
           [`documents.${modelTypeStr}.${key}`]: {
             content: undefined,
@@ -58,7 +55,7 @@ export class Store<T extends DocumentTypes = DocumentTypes> {
     const key = String(id);
     const modelTypeStr = String(modelType);
 
-    this.update({
+    update(this.store, {
       $set: {
         [`documents.${modelTypeStr}.${key}`]: {
           content: data,
@@ -73,7 +70,7 @@ export class Store<T extends DocumentTypes = DocumentTypes> {
     const key = String(id);
     const modelTypeStr = String(modelType);
 
-    this.update({
+    update(this.store, {
       $set: {
         [`documents.${modelTypeStr}.${key}`]: {
           content: undefined,

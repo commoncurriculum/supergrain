@@ -2,7 +2,7 @@ import { effect } from "alien-signals";
 import { createRoot, createEffect, createSignal, batch } from "solid-js/dist/solid.js";
 import { createStore as createSolidStore } from "solid-js/store/dist/store.js";
 
-import { createStore } from "../src";
+import { createStore, update } from "../src";
 
 // Helper to wait for microtasks to resolve
 const nextTick = () => new Promise<void>((resolve) => queueMicrotask(() => resolve()));
@@ -11,7 +11,7 @@ async function validatePropertyUpdates() {
   console.log("--- Validating: Property Updates with Effects ---");
 
   // @supergrain/core
-  const [storableStore, setStorableStore] = createStore({ count: 0 });
+  const storableStore = createStore({ count: 0 });
   let storableRuns = 0;
   const storableDispose = effect(() => {
     storableRuns++;
@@ -19,7 +19,7 @@ async function validatePropertyUpdates() {
   });
 
   for (let i = 0; i < 1000; i++) {
-    setStorableStore({ $set: { count: i + 1 } });
+    update(storableStore, { $set: { count: i + 1 } });
   }
   await nextTick();
 
@@ -65,7 +65,7 @@ async function validateDeepUpdates() {
   const getDeepState = () => ({ l1: { l2: { l3: { value: 0 } } } });
 
   // @supergrain/core
-  const [storableStore, setStorableStore] = createStore(getDeepState());
+  const storableStore = createStore(getDeepState());
   let storableRuns = 0;
   const storableDispose = effect(() => {
     storableRuns++;
@@ -73,7 +73,7 @@ async function validateDeepUpdates() {
   });
 
   for (let i = 0; i < 100; i++) {
-    setStorableStore({ $set: { "l1.l2.l3.value": i + 1 } });
+    update(storableStore, { $set: { "l1.l2.l3.value": i + 1 } });
   }
   await nextTick();
   console.log(
@@ -149,7 +149,7 @@ async function validateGranularReactivity() {
   };
 
   // @supergrain/core
-  const [storableStore, setStorableStore] = createStore(getInitialData());
+  const storableStore = createStore(getInitialData());
   const storableRuns = Array(10).fill(0);
   const storableDisposers: (() => void)[] = [];
 
@@ -165,7 +165,7 @@ async function validateGranularReactivity() {
   await nextTick();
   console.log(`[@supergrain/core] Initial runs: ${storableRuns.join(", ")}`);
 
-  setStorableStore({ $set: { "prop5.nested": 999 } });
+  update(storableStore, { $set: { "prop5.nested": 999 } });
   await nextTick();
 
   const storablePassed = storableRuns[5] === 2 && storableRuns.every((r, i) => i === 5 || r === 1);

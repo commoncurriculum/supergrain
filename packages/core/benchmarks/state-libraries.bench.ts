@@ -10,7 +10,7 @@ import { proxy, subscribe, snapshot } from "valtio/vanilla";
 import { bench, describe } from "vitest";
 import { createStore as createZustandStore } from "zustand/vanilla";
 
-import { createStore } from "../src";
+import { createStore, update } from "../src";
 
 /**
  * Cross-library benchmarks comparing @supergrain/core against
@@ -76,7 +76,7 @@ describe("Store Creation: create 1000 stores", () => {
 // ---------------------------------------------------------------------------
 
 describe("Property Read: 1M non-reactive reads", () => {
-  const [sgStore] = createStore({ user: { age: 30 } });
+  const sgStore = createStore({ user: { age: 30 } });
 
   const zStore = createZustandStore(() => ({ user: { age: 30 } }));
 
@@ -132,9 +132,9 @@ describe("Property Read: 1M non-reactive reads", () => {
 
 describe("Non-reactive Updates: 1000 updates", () => {
   bench("@supergrain/core", () => {
-    const [, setStore] = createStore({ count: 0 });
+    const store = createStore({ count: 0 });
     for (let i = 0; i < 1000; i++) {
-      setStore({ $set: { count: i } });
+      update(store, { $set: { count: i } });
     }
   });
 
@@ -185,12 +185,12 @@ describe("Non-reactive Updates: 1000 updates", () => {
 
 describe("Reactive Updates: subscribe + 1000 updates", () => {
   bench("@supergrain/core", async () => {
-    const [store, setStore] = createStore({ count: 0 });
+    const store = createStore({ count: 0 });
     const dispose = effect(() => {
       store.count;
     });
     for (let i = 0; i < 1000; i++) {
-      setStore({ $set: { count: i } });
+      update(store, { $set: { count: i } });
     }
     await new Promise<void>((r) => queueMicrotask(r));
     dispose();
@@ -267,11 +267,11 @@ describe("Batch Update: 10 properties at once", () => {
   const initial = (): TenProps => ({ a: 0, b: 0, c: 0, d: 0, e: 0, f: 0, g: 0, h: 0, i: 0, j: 0 });
 
   bench("@supergrain/core", async () => {
-    const [store, setStore] = createStore(initial());
+    const store = createStore(initial());
     const dispose = effect(() => {
       for (const k of keys) store[k];
     });
-    setStore({ $set: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10 } });
+    update(store, { $set: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10 } });
     await new Promise<void>((r) => queueMicrotask(r));
     dispose();
   });
@@ -369,12 +369,12 @@ describe("Deep Updates: 100 nested property updates", () => {
   const deepState = () => ({ l1: { l2: { l3: { value: 0 } } } });
 
   bench("@supergrain/core", async () => {
-    const [store, setStore] = createStore(deepState());
+    const store = createStore(deepState());
     const dispose = effect(() => {
       store.l1.l2.l3.value;
     });
     for (let i = 0; i < 100; i++) {
-      setStore({ $set: { "l1.l2.l3.value": i } });
+      update(store, { $set: { "l1.l2.l3.value": i } });
     }
     await new Promise<void>((r) => queueMicrotask(r));
     dispose();
@@ -446,12 +446,12 @@ describe("Deep Updates: 100 nested property updates", () => {
 
 describe("Array Operations: 100 pushes with reactive subscriber", () => {
   bench("@supergrain/core", async () => {
-    const [store, update] = createStore<{ items: number[] }>({ items: [] });
+    const store = createStore<{ items: number[] }>({ items: [] });
     const dispose = effect(() => {
       store.items.length;
     });
     for (let i = 0; i < 100; i++) {
-      update({ $push: { items: i } });
+      update(store, { $push: { items: i } });
     }
     await new Promise<void>((r) => queueMicrotask(r));
     dispose();
@@ -525,7 +525,7 @@ describe("Granular Reactivity: update 1 of 10 independently observed props", () 
   bench("@supergrain/core", async () => {
     const data: Record<string, number> = {};
     for (let i = 0; i < 10; i++) data[`p${i}`] = i;
-    const [store, setStore] = createStore(data);
+    const store = createStore(data);
     const disposers: (() => void)[] = [];
     for (let i = 0; i < 10; i++) {
       disposers.push(
@@ -534,7 +534,7 @@ describe("Granular Reactivity: update 1 of 10 independently observed props", () 
         }),
       );
     }
-    setStore({ $set: { p5: 999 } });
+    update(store, { $set: { p5: 999 } });
     await new Promise<void>((r) => queueMicrotask(r));
     disposers.forEach((d) => d());
   });

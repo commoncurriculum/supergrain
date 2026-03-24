@@ -5,7 +5,7 @@ import { createRoot, createEffect, batch } from "solid-js/dist/solid.js";
 import { createStore as createSolidStore } from "solid-js/store/dist/store.js";
 import { bench, describe } from "vitest";
 
-import { createStore } from "../src";
+import { createStore, update } from "../src";
 
 function validationError(message: string) {
   console.warn(message);
@@ -51,7 +51,7 @@ describe("Core: Store Creation", () => {
 });
 
 describe("Core: Property Access (Non-reactive)", () => {
-  const [storableStore] = createStore({ user: { age: 30 } });
+  const storableStore = createStore({ user: { age: 30 } });
   let solidStore: any;
   createRoot((dispose: () => void) => {
     [solidStore] = createSolidStore({ user: { age: 30 } });
@@ -73,7 +73,7 @@ describe("Core: Property Access (Non-reactive)", () => {
 
 describe("Core: Reactive Effect Creation", () => {
   bench("@supergrain/core: create effect with 10k property reads", () => {
-    const [store] = createStore({ value: 0 });
+    const store = createStore({ value: 0 });
     let runs = 0;
     const dispose = effect(() => {
       runs++;
@@ -104,7 +104,7 @@ describe("Core: Reactive Effect Creation", () => {
 
 describe("Core: Property Updates with Effects", () => {
   bench("@supergrain/core: 1000 sequential updates", async () => {
-    const [store, setStore] = createStore({ count: 0 });
+    const store = createStore({ count: 0 });
     let runs = 0;
     const dispose = effect(() => {
       runs++;
@@ -116,7 +116,7 @@ describe("Core: Property Updates with Effects", () => {
     }
 
     for (let i = 0; i < 1000; i++) {
-      setStore({ $set: { count: i + 1 } });
+      update(store, { $set: { count: i + 1 } });
     }
 
     await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
@@ -157,7 +157,7 @@ describe("Core: Property Updates with Effects", () => {
 
 describe("Core: Batch Updates", () => {
   bench("@supergrain/core: batch update 3 properties", async () => {
-    const [store, setStore] = createStore({ a: 0, b: 0, c: 0 });
+    const store = createStore({ a: 0, b: 0, c: 0 });
     let runs = 0;
     const dispose = effect(() => {
       runs++;
@@ -166,7 +166,7 @@ describe("Core: Batch Updates", () => {
       store.c;
     });
 
-    setStore({ $set: { a: 1, b: 2, c: 3 } });
+    update(store, { $set: { a: 1, b: 2, c: 3 } });
 
     await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
 
@@ -205,7 +205,7 @@ describe("Core: Batch Updates", () => {
 
 describe("Core: Array Operations", () => {
   bench("@supergrain/core: 100 array pushes", async () => {
-    const [store, update] = createStore<{ items: number[] }>({ items: [] });
+    const store = createStore<{ items: number[] }>({ items: [] });
     let runs = 0;
     const dispose = effect(() => {
       runs++;
@@ -213,7 +213,7 @@ describe("Core: Array Operations", () => {
     });
 
     for (let i = 0; i < 100; i++) {
-      update({ $push: { items: i } });
+      update(store, { $push: { items: i } });
     }
 
     await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
@@ -256,7 +256,7 @@ describe("Core: Deep Updates", () => {
   const getDeepState = () => ({ l1: { l2: { l3: { value: 0 } } } });
 
   bench("@supergrain/core: 100 deep updates", async () => {
-    const [store, setStore] = createStore(getDeepState());
+    const store = createStore(getDeepState());
     let runs = 0;
     const dispose = effect(() => {
       runs++;
@@ -264,7 +264,7 @@ describe("Core: Deep Updates", () => {
     });
 
     for (let i = 0; i < 100; i++) {
-      setStore({ $set: { "l1.l2.l3.value": i + 1 } });
+      update(store, { $set: { "l1.l2.l3.value": i + 1 } });
     }
 
     await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
@@ -305,7 +305,7 @@ describe("Core: Granular Reactivity", () => {
   bench("@supergrain/core: update one property in object with 10 properties", async () => {
     const data: any = {};
     for (let i = 0; i < 10; i++) data[`prop${i}`] = { nested: i };
-    const [store, setStore] = createStore(data);
+    const store = createStore(data);
     const runs = Array(10).fill(0);
     const disposers: (() => void)[] = [];
 
@@ -324,7 +324,7 @@ describe("Core: Granular Reactivity", () => {
       validationError(`[@supergrain/core] Unexpected initial runs: ${runs.join(", ")}`);
     }
 
-    setStore({ $set: { "prop5.nested": 999 } });
+    update(store, { $set: { "prop5.nested": 999 } });
 
     await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
 
@@ -372,9 +372,9 @@ describe("Core: Granular Reactivity", () => {
  */
 describe("Core: Non-reactive Store Operations", () => {
   bench("@supergrain/core: 1000 non-reactive updates", () => {
-    const [_store, setStore] = createStore({ count: 0 });
+    const _store = createStore({ count: 0 });
     for (let i = 0; i < 1000; i++) {
-      setStore({ $set: { count: i + 1 } });
+      update(_store, { $set: { count: i + 1 } });
     }
   });
 

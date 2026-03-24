@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { createStore } from "../../src";
+import { createStore, update } from "../../src";
 
 interface Task {
   id: string;
@@ -28,7 +28,7 @@ describe("Todo App Core Tests", () => {
       },
     };
 
-    const [state, update] = createStore(initialState);
+    const state = createStore(initialState);
 
     const newTask: Task = {
       id: "task-1",
@@ -36,7 +36,7 @@ describe("Todo App Core Tests", () => {
       text: "Write tests based on USAGE.md",
     };
 
-    update({
+    update(state, {
       $push: {
         "userTaskList.tasks": newTask,
       },
@@ -59,9 +59,9 @@ describe("Todo App Core Tests", () => {
       },
     };
 
-    const [state, update] = createStore(initialState);
+    const state = createStore(initialState);
 
-    update({
+    update(state, {
       $pull: {
         "userTaskList.tasks": { id: "task-1" },
       },
@@ -84,10 +84,10 @@ describe("Todo App Core Tests", () => {
       },
     };
 
-    const [state, update] = createStore(initialState);
+    const state = createStore(initialState);
     const newText = "Updated task text";
 
-    update({
+    update(state, {
       $set: {
         "userTaskList.tasks.0.text": newText,
       },
@@ -107,11 +107,11 @@ describe("Todo App Core Tests", () => {
       },
     };
 
-    const [state, update] = createStore(initialState);
+    const state = createStore(initialState);
 
     expect(state.userTaskList.tasks[0]!.isCompleted).toBe(false);
 
-    update({
+    update(state, {
       $set: {
         "userTaskList.tasks.0.isCompleted": true,
       },

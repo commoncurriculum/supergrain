@@ -27,7 +27,7 @@ import { tracked, provideStore, useComputed, useSignalEffect, For } from '@super
 interface Todo { id: number; text: string; completed: boolean }
 interface AppState { todos: Todo[]; selected: number | null }
 
-const [store] = createStore<AppState>({
+const store = createStore<AppState>({
   todos: [
     { id: 1, text: 'Learn Supergrain', completed: false },
     { id: 2, text: 'Build something', completed: false },
@@ -37,7 +37,7 @@ const [store] = createStore<AppState>({
 
 const Store = provideStore(store)
 
-// ---- Components (leaf → root, required by JS declaration order) -------------
+// ---- Components  -------------
 
 const TodoItem = tracked(({ todo }: { todo: Todo }) => {
   const store = Store.useStore()
@@ -80,7 +80,7 @@ const App = tracked(() => {
 
 Checking a todo re-renders only that `TodoItem`. Changing selection re-renders only the 2 affected items. The `App` component and other items don't re-render.
 
-- **`createStore<T>(initial)`** — Creates a reactive store proxy. Reads and writes work like plain objects. Returns `[store, update]`.
+- **`createStore<T>(initial)`** — Creates a reactive store proxy. Reads and writes work like plain objects.
 
 - **`provideStore(store)`** — Wraps a store with React context plumbing. Returns `{ Provider, useStore }`. The proxy's identity never changes, so the context value is stable and won't trigger React re-renders.
 
@@ -134,7 +134,7 @@ The same operations in other React state libraries:
 // [#DOC_TEST_52](packages/doc-tests/tests/readme-core.test.ts)
 
 interface State { count: number; user: { profile: { name: string } } }
-const [store] = createStore<State>({ count: 0, user: { profile: { name: 'John' } } })
+const store = createStore<State>({ count: 0, user: { profile: { name: 'John' } } })
 
 // Mutate
 store.count = 5
@@ -280,12 +280,14 @@ Supergrain delivers fine-grained reactivity with per-component signal scoping at
 
 ## Update Operators (Optional)
 
-For complex updates — batched mutations, array manipulations, dot-notation paths — `createStore` also returns an optional `update` function with MongoDB-style operators:
+For complex updates — batched mutations, array manipulations, dot-notation paths — import `update` and pass the store as the first argument:
 
 ```typescript
 // [#DOC_TEST_46](packages/doc-tests/tests/readme-core.test.ts)
 
-const [state, update] = createStore({
+import { createStore, update } from "@supergrain/core";
+
+const store = createStore({
   count: 0,
   user: { name: "John", age: 30, middleName: "M" },
   items: ["a", "b", "c"],
@@ -295,31 +297,31 @@ const [state, update] = createStore({
 });
 
 // $set — set values (supports dot notation for nested paths)
-update({ $set: { count: 10, "user.name": "Alice" } });
+update(store, { $set: { count: 10, "user.name": "Alice" } });
 
 // $unset — remove fields
-update({ $unset: { "user.middleName": 1 } });
+update(store, { $unset: { "user.middleName": 1 } });
 
 // $inc — increment/decrement numbers
-update({ $inc: { count: 1 } });
-update({ $inc: { count: -5 } });
+update(store, { $inc: { count: 1 } });
+update(store, { $inc: { count: -5 } });
 
 // $push — add to arrays (with $each for multiple)
-update({ $push: { items: "d" } });
-update({ $push: { items: { $each: ["e", "f"] } } });
+update(store, { $push: { items: "d" } });
+update(store, { $push: { items: { $each: ["e", "f"] } } });
 
 // $pull — remove from arrays
-update({ $pull: { items: "b" } });
+update(store, { $pull: { items: "b" } });
 
 // $addToSet — add only if not already present
-update({ $addToSet: { tags: "vue" } });
+update(store, { $addToSet: { tags: "vue" } });
 
 // $min / $max — conditional updates
-update({ $min: { lowestScore: 50 } });
-update({ $max: { highestScore: 100 } });
+update(store, { $min: { lowestScore: 50 } });
+update(store, { $max: { highestScore: 100 } });
 
 // Batching — multiple operators in one call
-update({
+update(store, {
   $set: { "user.name": "Bob" },
   $inc: { count: 2 },
   $push: { items: "g" },

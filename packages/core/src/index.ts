@@ -1,13 +1,5 @@
 // Export the optimized implementation
-export {
-  createStore,
-  unwrap,
-  $BRAND,
-  type Signal,
-  type SetStoreFunction,
-  type StrictSetStoreFunction,
-  type Branded,
-} from "./store";
+export { createStore, unwrap, $BRAND, type Signal, type Branded } from "./store";
 
 // Export MongoDB-style update operators
 export {

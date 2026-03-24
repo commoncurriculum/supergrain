@@ -14,14 +14,14 @@ interface AppState {
 
 describe("provideStore()", () => {
   it("returns an object with Provider and useStore", () => {
-    const [store] = createStore<AppState>({ items: [], selected: null });
+    const store = createStore<AppState>({ items: [], selected: null });
     const Store = provideStore(store);
     expect(typeof Store.Provider).toBe("function");
     expect(typeof Store.useStore).toBe("function");
   });
 
   it("Provider requires no props (store is pre-bound)", () => {
-    const [store] = createStore<AppState>({ items: [], selected: null });
+    const store = createStore<AppState>({ items: [], selected: null });
     const Store = provideStore(store);
 
     const Child = tracked(() => {
@@ -39,7 +39,7 @@ describe("provideStore()", () => {
   });
 
   it("throws when useStore is called outside Provider", () => {
-    const [store] = createStore<AppState>({ items: [], selected: null });
+    const store = createStore<AppState>({ items: [], selected: null });
     const Store = provideStore(store);
 
     const Bad = () => {
@@ -51,7 +51,7 @@ describe("provideStore()", () => {
   });
 
   it("injected store is reactive", async () => {
-    const [store] = createStore<AppState>({
+    const store = createStore<AppState>({
       items: [{ id: 1, label: "hello" }],
       selected: null,
     });
@@ -78,7 +78,7 @@ describe("provideStore()", () => {
   });
 
   it("context value is stable — store mutations don't trigger context re-renders", async () => {
-    const [store] = createStore<AppState>({ items: [], selected: null });
+    const store = createStore<AppState>({ items: [], selected: null });
     const Store = provideStore(store);
     let childRenders = 0;
 
@@ -101,7 +101,7 @@ describe("provideStore()", () => {
   });
 
   it("works with useComputed for the firewall pattern", async () => {
-    const [store] = createStore<AppState>({
+    const store = createStore<AppState>({
       items: [
         { id: 1, label: "one" },
         { id: 2, label: "two" },
@@ -152,8 +152,8 @@ describe("provideStore()", () => {
       theme: string;
     }
 
-    const [authStore] = createStore<AuthState>({ user: "alice" });
-    const [uiStore] = createStore<UIState>({ theme: "dark" });
+    const authStore = createStore<AuthState>({ user: "alice" });
+    const uiStore = createStore<UIState>({ theme: "dark" });
 
     const Auth = provideStore(authStore);
     const UI = provideStore(uiStore);
@@ -185,7 +185,7 @@ describe("provideStore()", () => {
   });
 
   it("infers types from the store — no duplicate generic needed", () => {
-    const [store] = createStore({ count: 0, label: "test" });
+    const store = createStore({ count: 0, label: "test" });
     const Store = provideStore(store);
 
     const Child = tracked(() => {

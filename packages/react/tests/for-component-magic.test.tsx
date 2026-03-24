@@ -6,6 +6,7 @@ import {
   disableProfiling,
   resetProfiler,
   getProfile,
+  update,
 } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
@@ -26,7 +27,7 @@ describe("For Component Magic Tests", () => {
   });
 
   it("should test if For component enables array element subscriptions", async () => {
-    const [store, update] = createStore({
+    const store = createStore({
       data: [
         { id: 1, label: "Item 1" },
         { id: 2, label: "Item 2" },
@@ -73,13 +74,13 @@ describe("For Component Magic Tests", () => {
 
     // Test: Update data.0.label
     await act(async () => {
-      update({ $set: { "data.0.label": "Updated Item 1" } });
+      update(store, { $set: { "data.0.label": "Updated Item 1" } });
       await flushMicrotasks();
     });
   });
 
   it("should test what exactly For component does differently", async () => {
-    const [store, update] = createStore({
+    const store = createStore({
       data: [{ id: 1, label: "Item 1" }],
     });
 
@@ -98,13 +99,13 @@ describe("For Component Magic Tests", () => {
     render(<TestComponent />);
 
     await act(async () => {
-      update({ $set: { "data.0.label": "Updated!" } });
+      update(store, { $set: { "data.0.label": "Updated!" } });
       await flushMicrotasks();
     });
   });
 
   it("push on empty array triggers For re-render (fresh store)", async () => {
-    const [store] = createStore<{ data: { id: number; label: string }[] }>({ data: [] });
+    const store = createStore<{ data: { id: number; label: string }[] }>({ data: [] });
 
     const App = tracked(() => (
       <ul>
@@ -126,7 +127,7 @@ describe("For Component Magic Tests", () => {
   });
 
   it("splice on array triggers For re-render (fresh store, no prior assignment)", async () => {
-    const [store] = createStore<{ items: string[] }>({ items: ["a", "b", "c"] });
+    const store = createStore<{ items: string[] }>({ items: ["a", "b", "c"] });
 
     const App = tracked(() => (
       <ul>
@@ -153,7 +154,7 @@ describe("For Component Magic Tests", () => {
       label: string;
     }
 
-    const [store] = createStore<{ data: RowData[] }>({
+    const store = createStore<{ data: RowData[] }>({
       data: Array.from({ length: 20 }, (_, i) => ({
         id: i + 1,
         label: `Item ${i + 1}`,
@@ -211,7 +212,7 @@ describe("For Component Magic Tests", () => {
       label: string;
     }
 
-    const [store] = createStore<{ data: RowData[] }>({
+    const store = createStore<{ data: RowData[] }>({
       data: Array.from({ length: 20 }, (_, i) => ({
         id: i + 1,
         label: `Item ${i + 1}`,
@@ -268,7 +269,7 @@ describe("For Component Magic Tests", () => {
       label: string;
     }
 
-    const [store] = createStore<{ data: RowData[] }>({
+    const store = createStore<{ data: RowData[] }>({
       data: [
         { id: 10, label: "A" },
         { id: 20, label: "B" },
@@ -320,7 +321,7 @@ describe("For Component Magic Tests", () => {
       label: string;
     }
 
-    const [store] = createStore<{ data: RowData[] }>({
+    const store = createStore<{ data: RowData[] }>({
       data: [
         { id: 1, label: "A" },
         { id: 2, label: "B" },
@@ -372,7 +373,7 @@ describe("For Component Magic Tests", () => {
       label: string;
     }
 
-    const [store] = createStore<{ data: RowData[] }>({
+    const store = createStore<{ data: RowData[] }>({
       data: Array.from({ length: 20 }, (_, i) => ({
         id: i + 1,
         label: `Item ${i + 1}`,
@@ -440,7 +441,7 @@ describe("For Component Magic Tests", () => {
       label: string;
     }
 
-    const [store] = createStore<{
+    const store = createStore<{
       data: RowData[];
       selected: number | null;
     }>({
@@ -505,7 +506,7 @@ describe("For Component Magic Tests", () => {
       label: string;
     }
 
-    const [store] = createStore<{
+    const store = createStore<{
       data: RowData[];
       selected: number | null;
     }>({
@@ -566,7 +567,7 @@ describe("For Component Magic Tests", () => {
       label: string;
     }
 
-    const [store] = createStore<{ data: RowData[] }>({
+    const store = createStore<{ data: RowData[] }>({
       data: Array.from({ length: 5 }, (_, i) => ({
         id: i + 1,
         label: `Item ${i + 1}`,
@@ -625,7 +626,7 @@ describe("For Component Magic Tests", () => {
       label: string;
     }
 
-    const [store] = createStore<{ data: RowData[] }>({
+    const store = createStore<{ data: RowData[] }>({
       data: Array.from({ length: 10 }, (_, i) => ({
         id: i + 1,
         label: `Item ${i + 1}`,
@@ -666,7 +667,7 @@ describe("For Component Magic Tests", () => {
     // 1. Fresh store with empty array
     // 2. Component renders (empty)
     // 3. First mutation is push (not assignment)
-    const [store] = createStore<{ data: { id: number }[] }>({ data: [] });
+    const store = createStore<{ data: { id: number }[] }>({ data: [] });
 
     const App = tracked(() => (
       <For each={store.data}>{(item: { id: number }) => <span key={item.id}>{item.id}</span>}</For>
@@ -713,7 +714,7 @@ describe("For Component Magic Tests", () => {
     }
 
     it("swap then update label on swapped item", async () => {
-      const [store] = createTestStore(5);
+      const store = createTestStore(5);
 
       const App = tracked(() => {
         const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
@@ -759,7 +760,7 @@ describe("For Component Magic Tests", () => {
     });
 
     it("swap then update label on NON-swapped item", async () => {
-      const [store] = createTestStore(5);
+      const store = createTestStore(5);
 
       const App = tracked(() => {
         const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
@@ -803,7 +804,7 @@ describe("For Component Magic Tests", () => {
     });
 
     it("swap then remove a swapped item", async () => {
-      const [store] = createTestStore(5);
+      const store = createTestStore(5);
 
       const App = tracked(() => {
         const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
@@ -845,7 +846,7 @@ describe("For Component Magic Tests", () => {
     });
 
     it("swap then add items", async () => {
-      const [store] = createTestStore(5);
+      const store = createTestStore(5);
 
       const App = tracked(() => {
         const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
@@ -887,7 +888,7 @@ describe("For Component Magic Tests", () => {
     });
 
     it("multiple swaps in a row", async () => {
-      const [store] = createTestStore(5);
+      const store = createTestStore(5);
 
       const App = tracked(() => {
         const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
@@ -944,7 +945,7 @@ describe("For Component Magic Tests", () => {
     });
 
     it("swap then select a swapped item", async () => {
-      const [store] = createTestStore(5);
+      const store = createTestStore(5);
 
       const App = tracked(() => {
         const tbodyRef = React.useRef<HTMLTableSectionElement>(null);

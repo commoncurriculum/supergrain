@@ -4,12 +4,13 @@ import {
   disableProfiling,
   resetProfiler,
   getProfile,
+  update,
 } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import { tracked } from "../src";
+import { tracked, update } from "../src";
 import { flushMicrotasks } from "./test-utils";
 
 describe("Parent Invalidation Depth Tests", () => {
@@ -25,7 +26,7 @@ describe("Parent Invalidation Depth Tests", () => {
 
   it("should test how many levels of parent invalidation occur", async () => {
     // Create deeply nested structure
-    const [store, update] = createStore({
+    const store = createStore({
       level0: {
         level1: {
           level2: {
@@ -135,7 +136,7 @@ describe("Parent Invalidation Depth Tests", () => {
 
     // Test 1: Update deeply nested object property
     await act(async () => {
-      update({
+      update(store, {
         $set: {
           "level0.level1.level2.level3.level4.value": "updated-deep",
         },
@@ -159,7 +160,7 @@ describe("Parent Invalidation Depth Tests", () => {
     const arrayBefore = arrayRenderCount;
     const arrayItemBefore = arrayItemRenderCount;
     await act(async () => {
-      update({
+      update(store, {
         $set: {
           "array.0.nested.deep.value": "updated-array-deep",
         },
@@ -176,7 +177,7 @@ describe("Parent Invalidation Depth Tests", () => {
     const level3Before = level3RenderCount;
     const level4Before = level4RenderCount;
     await act(async () => {
-      update({
+      update(store, {
         $set: {
           "level0.level1.level2": { newProp: "direct-update" },
         },
@@ -188,7 +189,7 @@ describe("Parent Invalidation Depth Tests", () => {
   });
 
   it("should test array-specific parent invalidation behavior", async () => {
-    const [store, update] = createStore({
+    const store = createStore({
       items: [
         {
           id: 1,
@@ -247,7 +248,7 @@ describe("Parent Invalidation Depth Tests", () => {
 
     // Update deeply nested property in array item
     await act(async () => {
-      update({
+      update(store, {
         $set: {
           "items.0.details.meta.tag": "UPDATED",
         },

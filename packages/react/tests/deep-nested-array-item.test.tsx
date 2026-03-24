@@ -1,9 +1,9 @@
-import { createStore } from "@supergrain/core";
+import { createStore, update } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";
 
-import { tracked, For } from "../src";
+import { tracked, For, update } from "../src";
 import { flushMicrotasks } from "./test-utils";
 
 describe("Deep Nested Array Item Tests", () => {
@@ -13,7 +13,7 @@ describe("Deep Nested Array Item Tests", () => {
 
   it("should test updating deeply nested property in array item - items[0].obj.objTwo.objThree", async () => {
     // Create store with exact structure you specified
-    const [store, update] = createStore({
+    const store = createStore({
       items: [
         {
           id: 1,
@@ -48,7 +48,7 @@ describe("Deep Nested Array Item Tests", () => {
 
     // Test 1: Update the deeply nested objThree value
     await act(async () => {
-      update({
+      update(store, {
         $set: {
           "items.0.obj.objTwo.objThree": 42,
         },
@@ -60,7 +60,7 @@ describe("Deep Nested Array Item Tests", () => {
 
     // Test 2: Update a different deep property to test specificity
     await act(async () => {
-      update({
+      update(store, {
         $set: {
           "items.0.obj.objTwo.newProp": "hello",
         },
@@ -70,7 +70,7 @@ describe("Deep Nested Array Item Tests", () => {
 
     // Test 3: Update a completely different part of the structure
     await act(async () => {
-      update({
+      update(store, {
         $set: {
           "items.0.differentProp": "unrelated",
         },
@@ -87,7 +87,7 @@ describe("Deep Nested Array Item Tests", () => {
   });
 
   it("should test array iteration with deep nested properties", async () => {
-    const [store, update] = createStore({
+    const store = createStore({
       items: [
         {
           id: 1,
@@ -120,7 +120,7 @@ describe("Deep Nested Array Item Tests", () => {
 
     // Update deeply nested property in first item
     await act(async () => {
-      update({
+      update(store, {
         $set: {
           "items.0.obj.objTwo.objThree": "A-UPDATED",
         },
@@ -137,7 +137,7 @@ describe("Deep Nested Array Item Tests", () => {
   });
 
   it("should test with For component and deep nesting", async () => {
-    const [store, update] = createStore({
+    const store = createStore({
       items: [
         {
           id: 1,
@@ -167,7 +167,7 @@ describe("Deep Nested Array Item Tests", () => {
     const { container } = render(<ForComponent />);
 
     await act(async () => {
-      update({
+      update(store, {
         $set: {
           "items.0.obj.objTwo.objThree": 200,
         },

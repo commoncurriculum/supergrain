@@ -10,8 +10,8 @@
  * - Update operators (DOC_TEST_46)
  */
 
-import { createStore } from "@supergrain/core";
-import { tracked } from "@supergrain/react";
+import { createStore, update } from "@supergrain/core";
+import { tracked, update } from "@supergrain/react";
 import { describe, it, expect } from "vitest";
 
 describe("README Core Examples", () => {
@@ -22,7 +22,7 @@ describe("README Core Examples", () => {
         count: number;
         user: { profile: { name: string } };
       }
-      const [store] = createStore<State>({ count: 0, user: { profile: { name: "John" } } });
+      const store = createStore<State>({ count: 0, user: { profile: { name: "John" } } });
 
       store.count = 5;
       expect(store.count).toBe(5);
@@ -108,7 +108,7 @@ describe("README Core Examples", () => {
 
   describe("Update Operators", () => {
     it("#DOC_TEST_46", () => {
-      const [state, update] = createStore({
+      const state = createStore({
         count: 0,
         user: { name: "John", age: 30, middleName: "M" },
         items: ["a", "b", "c"],
@@ -118,43 +118,43 @@ describe("README Core Examples", () => {
       });
 
       // $set
-      update({ $set: { count: 10, "user.name": "Alice" } });
+      update(state, { $set: { count: 10, "user.name": "Alice" } });
       expect(state.count).toBe(10);
       expect(state.user.name).toBe("Alice");
 
       // $unset
-      update({ $unset: { "user.middleName": 1 } });
+      update(state, { $unset: { "user.middleName": 1 } });
       expect("middleName" in state.user).toBe(false);
 
       // $inc
-      update({ $inc: { count: 1 } });
+      update(state, { $inc: { count: 1 } });
       expect(state.count).toBe(11);
-      update({ $inc: { count: -5 } });
+      update(state, { $inc: { count: -5 } });
       expect(state.count).toBe(6);
 
       // $push
-      update({ $push: { items: "d" } });
+      update(state, { $push: { items: "d" } });
       expect(state.items).toContain("d");
-      update({ $push: { items: { $each: ["e", "f"] } } });
+      update(state, { $push: { items: { $each: ["e", "f"] } } });
       expect(state.items).toContain("e");
       expect(state.items).toContain("f");
 
       // $pull
-      update({ $pull: { items: "b" } });
+      update(state, { $pull: { items: "b" } });
       expect(state.items).not.toContain("b");
 
       // $addToSet
-      update({ $addToSet: { tags: "vue" } });
+      update(state, { $addToSet: { tags: "vue" } });
       expect(state.tags).toContain("vue");
 
       // $min / $max
-      update({ $min: { lowestScore: 50 } });
+      update(state, { $min: { lowestScore: 50 } });
       expect(state.lowestScore).toBe(50);
-      update({ $max: { highestScore: 100 } });
+      update(state, { $max: { highestScore: 100 } });
       expect(state.highestScore).toBe(100);
 
       // Batching
-      update({
+      update(state, {
         $set: { "user.name": "Bob" },
         $inc: { count: 2 },
         $push: { items: "g" },
