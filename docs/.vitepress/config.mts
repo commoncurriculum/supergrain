@@ -2,6 +2,7 @@ import { defineConfig } from "vitepress";
 
 export default defineConfig({
   title: "Supergrain",
+  base: "/supergrain/",
   description:
     "A reactive store library with super fine-grained reactivity powered by alien-signals",
 
