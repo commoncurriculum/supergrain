@@ -6,7 +6,7 @@ A fast, ergonomic reactive store for React.
 - **Fine-grained** — only the components that read changed properties re-render
 - **Synchronous** — state updates are immediate, not deferred to the next render
 - **Type-safe** — full TypeScript inference on stores and mutations
-- **Zero boilerplate** — no actions, reducers, selectors, or providers
+- **Zero boilerplate** — no actions, reducers, or selectors
 
 ## Install
 
