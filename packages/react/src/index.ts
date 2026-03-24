@@ -14,6 +14,3 @@ export { provideStore } from "./provide-store";
 
 // Export useSignalEffect for signal-tracked side effects tied to component lifecycle
 export { useSignalEffect } from "./use-signal-effect";
-
-// Re-export all core functionality to ensure users have access to everything
-export * from "@supergrain/core";

@@ -290,7 +290,7 @@ describe("fresh store push regression", () => {
     const { createStore } = await import("@supergrain/core");
     const { tracked, For } = await import("@supergrain/react");
 
-    const [freshStore] = createStore<{ data: { id: number; label: string }[] }>({ data: [] });
+    const freshStore = createStore<{ data: { id: number; label: string }[] }>({ data: [] });
 
     const TestApp = tracked(() => {
       return (

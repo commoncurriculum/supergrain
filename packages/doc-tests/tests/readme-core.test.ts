@@ -11,7 +11,7 @@
  */
 
 import { createStore, update } from "@supergrain/core";
-import { tracked, update } from "@supergrain/react";
+import { tracked } from "@supergrain/react";
 import { describe, it, expect } from "vitest";
 
 describe("README Core Examples", () => {
