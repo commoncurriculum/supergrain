@@ -113,7 +113,7 @@ export interface RowProps {
 
 // --- Storable Implementation ---
 
-const [store] = createStore<AppState>({
+const store = createStore<AppState>({
   data: [],
   selected: null,
 });
