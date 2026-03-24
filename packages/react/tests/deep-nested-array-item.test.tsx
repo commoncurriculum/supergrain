@@ -3,7 +3,7 @@ import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";
 
-import { tracked, For, update } from "../src";
+import { tracked, For } from "../src";
 import { flushMicrotasks } from "./test-utils";
 
 describe("Deep Nested Array Item Tests", () => {

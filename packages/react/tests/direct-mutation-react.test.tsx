@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect } from "vitest";
 
-import { tracked, update } from "../src";
+import { tracked } from "../src";
 
 describe("Direct Mutation with React Integration", () => {
   it("should work with click handlers and direct mutations", () => {

@@ -10,7 +10,7 @@ import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import { tracked, update } from "../src";
+import { tracked } from "../src";
 import { flushMicrotasks } from "./test-utils";
 
 describe("Parent Invalidation Depth Tests", () => {

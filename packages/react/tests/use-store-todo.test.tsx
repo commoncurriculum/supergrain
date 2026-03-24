@@ -3,7 +3,7 @@ import { render, screen, act } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect } from "vitest";
 
-import { tracked, update } from "../src";
+import { tracked } from "../src";
 import { flushMicrotasks } from "./test-utils";
 
 // --- Test Setup ---
