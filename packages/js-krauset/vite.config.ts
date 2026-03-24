@@ -24,6 +24,11 @@ export default defineConfig({
     },
   },
 
+  esbuild: {
+    // Keep class/function names for heap snapshot analysis.
+    keepNames: true,
+  },
+
   build: {
     // The benchmark runner expects predictable, non-hashed file names.
     rollupOptions: {
