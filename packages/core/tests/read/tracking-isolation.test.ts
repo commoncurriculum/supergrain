@@ -7,6 +7,7 @@ import {
   disableProfiling,
   resetProfiler,
   getProfile,
+  update,
 } from "../../src";
 
 describe("Tracking Isolation Analysis", () => {
@@ -20,7 +21,7 @@ describe("Tracking Isolation Analysis", () => {
   });
 
   it("demonstrates perfect isolation with per-render pattern (tracked style)", () => {
-    const [store, update] = createStore({ parent: 1, child: 10 });
+    const store = createStore({ parent: 1, child: 10 });
 
     let parentEffectRuns = 0;
     let childEffectRuns = 0;
@@ -67,7 +68,7 @@ describe("Tracking Isolation Analysis", () => {
     resetProfiler();
 
     // Update parent property
-    update({ $set: { parent: 2 } });
+    update(store, { $set: { parent: 2 } });
 
     expect(parentEffectRuns).toBe(2); // Parent should re-run
     expect(childEffectRuns).toBe(1); // Child should NOT re-run
@@ -78,7 +79,7 @@ describe("Tracking Isolation Analysis", () => {
     resetProfiler();
 
     // Update child property
-    update({ $set: { child: 20 } });
+    update(store, { $set: { child: 20 } });
 
     expect(parentEffectRuns).toBe(2); // Parent should NOT re-run
     expect(childEffectRuns).toBe(2); // Child should re-run

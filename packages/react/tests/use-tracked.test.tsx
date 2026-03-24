@@ -7,7 +7,7 @@ import { tracked } from "../src";
 
 describe("tracked()", () => {
   it("returns a component that provides access to store values", () => {
-    const [store] = createStore({ title: "hello" });
+    const store = createStore({ title: "hello" });
 
     const TestComponent = tracked(() => {
       return <div data-testid="title">{store.title}</div>;
@@ -18,7 +18,7 @@ describe("tracked()", () => {
   });
 
   it("re-renders when tracked signal changes", () => {
-    const [store] = createStore({ title: "hello" });
+    const store = createStore({ title: "hello" });
     let renderCount = 0;
 
     const TestComponent = tracked(() => {
@@ -40,7 +40,7 @@ describe("tracked()", () => {
   });
 
   it("only re-renders for tracked properties", () => {
-    const [store] = createStore({ title: "hello", count: 0 });
+    const store = createStore({ title: "hello", count: 0 });
     let renderCount = 0;
 
     const TestComponent = tracked(() => {

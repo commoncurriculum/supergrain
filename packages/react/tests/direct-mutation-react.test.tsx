@@ -1,13 +1,13 @@
-import { createStore } from "@supergrain/core";
+import { createStore, update } from "@supergrain/core";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect } from "vitest";
 
-import { tracked } from "../src";
+import { tracked, update } from "../src";
 
 describe("Direct Mutation with React Integration", () => {
   it("should work with click handlers and direct mutations", () => {
-    const [store] = createStore({ count: 0, message: "Hello" });
+    const store = createStore({ count: 0, message: "Hello" });
 
     const App = tracked(() => {
       return (
@@ -53,7 +53,7 @@ describe("Direct Mutation with React Integration", () => {
   });
 
   it("should work with both direct mutations and updateStore calls", () => {
-    const [store, updateStore] = createStore({
+    const store = createStore({
       directValue: 0,
       operatorValue: 0,
       nested: { directProp: "direct", operatorProp: "operator" },
@@ -78,7 +78,7 @@ describe("Direct Mutation with React Integration", () => {
           <button
             data-testid="operator-button"
             onClick={() =>
-              updateStore({
+              update(store, {
                 $set: {
                   operatorValue: store.operatorValue + 1,
                   "nested.operatorProp": `operator-${store.operatorValue + 1}`,
@@ -121,7 +121,7 @@ describe("Direct Mutation with React Integration", () => {
   });
 
   it("should handle array mutations with React rendering", () => {
-    const [store] = createStore({
+    const store = createStore({
       items: [
         { id: 1, name: "Item 1", completed: false },
         { id: 2, name: "Item 2", completed: false },
@@ -181,7 +181,7 @@ describe("Direct Mutation with React Integration", () => {
   });
 
   it("should demonstrate direct mutation API improvements", () => {
-    const [store, updateStore] = createStore({
+    const store = createStore({
       counter: 0,
       user: { name: "John", age: 25 },
       todos: [{ id: 1, text: "Learn Storable", done: false }],
@@ -196,7 +196,6 @@ describe("Direct Mutation with React Integration", () => {
           </div>
           <div data-testid="todo-text">{store.todos[0].text}</div>
           <div data-testid="todo-status">{store.todos[0].done ? "Done" : "Pending"}</div>
-
           <button
             data-testid="direct-updates"
             onClick={() => {
@@ -210,12 +209,11 @@ describe("Direct Mutation with React Integration", () => {
           >
             Direct Updates (Clean API)
           </button>
-
           <button
             data-testid="operator-updates"
             onClick={() => {
               // Reset using traditional approach for comparison
-              updateStore({
+              update(store, {
                 $set: {
                   counter: 0,
                   "user.name": "John",

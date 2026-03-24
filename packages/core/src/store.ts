@@ -1,20 +1,7 @@
-import { startBatch, endBatch } from "alien-signals";
-
 import { $BRAND, type Branded, type Signal, unwrap } from "./core";
-import {
-  update as applyUpdate,
-  type LooseUpdateOperations,
-  type StrictUpdateOperations,
-} from "./operators";
 import { createReactiveProxy } from "./read";
 
 export { $BRAND, type Branded, type Signal, unwrap };
-
-export type SetStoreFunction = (operations: LooseUpdateOperations) => void;
-
-export type StrictSetStoreFunction<T extends object> = (
-  operations: StrictUpdateOperations<T>,
-) => void;
 
 function normalizeInitialState(initialState: unknown): object {
   if (initialState === null || initialState === undefined) {
@@ -29,19 +16,8 @@ function normalizeInitialState(initialState: unknown): object {
   return unwrapped as object;
 }
 
-export function createStore<T extends object>(initialState: T): [Branded<T>, SetStoreFunction];
-export function createStore(initialState: any): [any, SetStoreFunction] {
+export function createStore<T extends object>(initialState: T): Branded<T>;
+export function createStore(initialState: any): any {
   const unwrappedState = normalizeInitialState(initialState);
-  const state = createReactiveProxy(unwrappedState);
-
-  function updateStore(operations: LooseUpdateOperations): void {
-    startBatch();
-    try {
-      applyUpdate(unwrappedState, operations);
-    } finally {
-      endBatch();
-    }
-  }
-
-  return [state, updateStore];
+  return createReactiveProxy(unwrappedState);
 }

@@ -1,7 +1,7 @@
 // Table row operations (select, swap, append, delete) — krauset-style benchmarks.
 import { bench, describe } from "vitest";
 
-import { createStore, effect } from "../src";
+import { createStore, effect, update } from "../src";
 
 // --- Data Generation Utilities ---
 
@@ -96,7 +96,7 @@ describe("Core: Row Operations", () => {
   bench(
     "select row: highlighting a selected row in a table of 1,000 rows",
     () => {
-      const [store, updateStore] = createStore<AppState>({
+      const store = createStore<AppState>({
         data: buildData(1000),
         selected: null,
       });
@@ -108,7 +108,7 @@ describe("Core: Row Operations", () => {
 
       // Select a row in the middle of the dataset
       // @ts-ignore
-      updateStore({ $set: { selected: store.data[500].id } });
+      update(store, { $set: { selected: store.data[500].id } });
 
       dispose();
     },
@@ -121,7 +121,7 @@ describe("Core: Row Operations", () => {
   bench(
     "swap rows: swapping two rows in a table of 1,000 rows",
     () => {
-      const [store, updateStore] = createStore<AppState>({
+      const store = createStore<AppState>({
         data: buildData(1000),
         selected: null,
       });
@@ -137,7 +137,7 @@ describe("Core: Row Operations", () => {
       if (store.data.length > 998) {
         const row1 = store.data[1];
         const row998 = store.data[998];
-        updateStore({
+        update(store, {
           $set: {
             "data.1": row998,
             "data.998": row1,

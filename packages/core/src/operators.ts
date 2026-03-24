@@ -1,4 +1,6 @@
-import { $NODE } from "./core";
+import { startBatch, endBatch } from "alien-signals";
+
+import { $NODE, unwrap } from "./core";
 import {
   type ArrayPullOperations,
   type ArrayWriteOperations,
@@ -378,11 +380,17 @@ export type UpdateOperations<T extends object = Record<string, any>> =
   | StrictUpdateOperations<T>;
 
 export function update<T extends object>(target: T, operations: UpdateOperations<T>): void {
-  for (const op of operatorList) {
-    if (op in operations) {
-      const operator = operators[op];
-      const opArgs = (operations as any)[op];
-      operator?.(target, opArgs);
+  const raw = unwrap(target) as object;
+  startBatch();
+  try {
+    for (const op of operatorList) {
+      if (op in operations) {
+        const operator = operators[op];
+        const opArgs = (operations as any)[op];
+        operator?.(raw, opArgs);
+      }
     }
+  } finally {
+    endBatch();
   }
 }

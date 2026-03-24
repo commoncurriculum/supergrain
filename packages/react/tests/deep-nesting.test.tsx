@@ -1,4 +1,4 @@
-import { createStore, effect, computed } from "@supergrain/core";
+import { createStore, update, effect, computed } from "@supergrain/core";
 import { render, screen, act, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";
@@ -34,7 +34,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
   // Complex nested data structure for comprehensive testing
   const createComplexStore = () => {
-    const [state, update] = createStore({
+    const state = createStore({
       organization: {
         id: "org-1",
         name: "TechCorp",
@@ -224,7 +224,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Update a deeply nested task title
     await act(async () => {
-      update({
+      update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks.0.title":
             "Database Refactoring",
@@ -245,7 +245,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Add a new task to existing project
     await act(async () => {
-      update({
+      update(state, {
         $push: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks": {
             id: "task-3",
@@ -272,7 +272,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // First add another task so we have something to reorder
     await act(async () => {
-      update({
+      update(state, {
         $push: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks": {
             id: "task-3",
@@ -288,7 +288,7 @@ describe("Deep Nesting Operations in React Components", () => {
     await act(async () => {
       const currentTasks = getProject(state, 0, 0, 0, 0).tasks;
       const reorderedTasks = [currentTasks[2], currentTasks[0], currentTasks[1]];
-      update({
+      update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks": reorderedTasks,
         },
@@ -310,7 +310,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Update project progress
     await act(async () => {
-      update({
+      update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.metrics.progress": 0.85,
         },
@@ -330,7 +330,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Add a new department
     await act(async () => {
-      update({
+      update(state, {
         $push: {
           "organization.departments": {
             id: "dept-2",
@@ -390,7 +390,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Add a new department with budget
     await act(async () => {
-      update({
+      update(state, {
         $push: {
           "organization.departments": {
             id: "dept-2",
@@ -421,7 +421,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Update unrelated data - should not re-render
     await act(async () => {
-      update({
+      update(state, {
         $set: {
           "organization.name": "TechCorp Updated",
         },
@@ -433,7 +433,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Update the accessed task - should re-render
     await act(async () => {
-      update({
+      update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks.0.title": "Updated Task",
         },
@@ -583,7 +583,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Update a deep nested task property - should only re-render affected components
     await act(async () => {
-      update({
+      update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks.0.completed": true,
         },
@@ -606,7 +606,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Update organization name - should re-render org but not nested components
     await act(async () => {
-      update({
+      update(state, {
         $set: {
           "organization.name": "TechCorp Renamed",
         },

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { createStore, effect, computed } from "../../src";
+import { createStore, update, effect, computed } from "../../src";
 
 describe("Deep Nesting Operations (Type Safe)", () => {
   // Helper to safely access deeply nested properties (not used but kept for future reference)
@@ -14,7 +14,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
 
   // Complex nested data structure for comprehensive testing
   const createComplexStore = () => {
-    const [state, update] = createStore({
+    const state = createStore({
       organization: {
         id: "org-1",
         name: "TechCorp",
@@ -165,12 +165,12 @@ describe("Deep Nesting Operations (Type Safe)", () => {
       taskIndex: number,
     ) => getProject(deptIndex, teamIndex, memberIndex, projectIndex).tasks[taskIndex]!;
 
-    return { state, update, getDept, getTeam, getMember, getProject, getTask };
+    return { state, getDept, getTeam, getMember, getProject, getTask };
   };
 
   describe("Deep Object Reading and Reactivity", () => {
     it("should track deeply nested property access", () => {
-      const { update, getMember } = createComplexStore();
+      const { state, getMember } = createComplexStore();
       let accessCount = 0;
 
       const deepValue = computed(() => {
@@ -182,11 +182,11 @@ describe("Deep Nesting Operations (Type Safe)", () => {
       expect(accessCount).toBe(1);
 
       // Update unrelated property - should not trigger recomputation
-      update({ $set: { "organization.name": "NewTechCorp" } });
+      update(state, { $set: { "organization.name": "NewTechCorp" } });
       expect(accessCount).toBe(1);
 
       // Update the tracked deep property
-      update({
+      update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.contact.address.coordinates.lat": 40.7128,
         },
@@ -196,7 +196,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should track multiple levels of nested arrays and objects", () => {
-      const { state, update, getDept, getTeam, getMember, getTask } = createComplexStore();
+      const { state, getDept, getTeam, getMember, getTask } = createComplexStore();
       const reactions: string[] = [];
 
       // Track different nesting levels
@@ -229,15 +229,15 @@ describe("Deep Nesting Operations (Type Safe)", () => {
       reactions.length = 0;
 
       // Update at different levels
-      update({ $set: { "organization.name": "SuperTech" } });
+      update(state, { $set: { "organization.name": "SuperTech" } });
       expect(reactions).toEqual(["org-name"]);
       reactions.length = 0;
 
-      update({ $set: { "organization.departments.0.name": "Innovation" } });
+      update(state, { $set: { "organization.departments.0.name": "Innovation" } });
       expect(reactions).toEqual(["dept-name"]);
       reactions.length = 0;
 
-      update({
+      update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks.0.title": "New Migration",
         },
@@ -246,7 +246,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should handle array access within deeply nested structures", () => {
-      const { update, getProject } = createComplexStore();
+      const { state, getProject } = createComplexStore();
 
       const taskCounter = computed(() => {
         return getProject(0, 0, 0, 0).tasks.length;
@@ -255,7 +255,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
       expect(taskCounter()).toBe(2);
 
       // Add a new task
-      update({
+      update(state, {
         $push: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks": {
             id: "task-3",
@@ -271,9 +271,9 @@ describe("Deep Nesting Operations (Type Safe)", () => {
 
   describe("Creating Objects at All Levels", () => {
     it("should create new departments", () => {
-      const { state, update } = createComplexStore();
+      const { state } = createComplexStore();
 
-      update({
+      update(state, {
         $push: {
           "organization.departments": {
             id: "dept-3",
@@ -293,9 +293,9 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should create new teams within existing departments", () => {
-      const { update, getDept } = createComplexStore();
+      const { state, getDept } = createComplexStore();
 
-      update({
+      update(state, {
         $push: {
           "organization.departments.0.teams": {
             id: "team-3",
@@ -314,9 +314,9 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should create new members within existing teams", () => {
-      const { update, getTeam } = createComplexStore();
+      const { state, getTeam } = createComplexStore();
 
-      update({
+      update(state, {
         $push: {
           "organization.departments.0.teams.0.members": {
             id: "emp-3",
@@ -346,10 +346,10 @@ describe("Deep Nesting Operations (Type Safe)", () => {
 
   describe("Updating Fields Deep in the Tree", () => {
     it("should update scalar values at maximum depth", () => {
-      const { update, getProject } = createComplexStore();
+      const { state, getProject } = createComplexStore();
 
       // Update CPU threshold in autoscaling config
-      update({
+      update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.metadata.resources.tools.deployment.config.autoscaling.triggers.cpu.threshold": 85,
         },
@@ -361,10 +361,10 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should increment numeric values deep in structure", () => {
-      const { update, getDept, getMember } = createComplexStore();
+      const { state, getDept, getMember } = createComplexStore();
 
       // Increment department budget and member coordinates
-      update({
+      update(state, {
         $inc: {
           "organization.departments.0.budget": 50000,
           "organization.departments.0.metrics.performance.velocity": 5,
@@ -378,10 +378,9 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should handle multiple simultaneous deep updates", () => {
-      const { state, update, getDept, getTeam, getMember, getProject, getTask } =
-        createComplexStore();
+      const { state, getDept, getTeam, getMember, getProject, getTask } = createComplexStore();
 
-      update({
+      update(state, {
         $set: {
           "organization.name": "MegaTech",
           "organization.departments.0.name": "Engineering & Innovation",
@@ -414,11 +413,11 @@ describe("Deep Nesting Operations (Type Safe)", () => {
 
   describe("Deleting Objects at All Levels", () => {
     it("should delete departments", () => {
-      const { state, update } = createComplexStore();
+      const { state } = createComplexStore();
 
       expect(state.organization.departments).toHaveLength(2);
 
-      update({
+      update(state, {
         $pull: {
           "organization.departments": { id: "dept-2" },
         },
@@ -429,11 +428,11 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should delete teams from departments", () => {
-      const { update, getDept } = createComplexStore();
+      const { state, getDept } = createComplexStore();
 
       expect(getDept(0).teams).toHaveLength(2);
 
-      update({
+      update(state, {
         $pull: {
           "organization.departments.0.teams": { id: "team-2" },
         },
@@ -444,11 +443,11 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should delete members from teams", () => {
-      const { update, getTeam } = createComplexStore();
+      const { state, getTeam } = createComplexStore();
 
       expect(getTeam(0, 0).members).toHaveLength(2);
 
-      update({
+      update(state, {
         $pull: {
           "organization.departments.0.teams.0.members": { id: "emp-2" },
         },
@@ -461,7 +460,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
 
   describe("Changing Order of Objects at All Levels", () => {
     it("should reorder departments", () => {
-      const { state, update } = createComplexStore();
+      const { state } = createComplexStore();
 
       // Get original order
       const originalFirst = state.organization.departments[0]!.id;
@@ -470,7 +469,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
       expect(originalSecond).toBe("dept-2");
 
       // Reverse the order by replacing the entire array
-      update({
+      update(state, {
         $set: {
           "organization.departments": [
             state.organization.departments[1]!,
@@ -484,13 +483,13 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should reorder teams within departments", () => {
-      const { update, getDept } = createComplexStore();
+      const { state, getDept } = createComplexStore();
 
       const originalOrder = getDept(0).teams.map((t) => t.id);
       expect(originalOrder).toEqual(["team-1", "team-2"]);
 
       // Reverse team order
-      update({
+      update(state, {
         $set: {
           "organization.departments.0.teams": [getDept(0).teams[1]!, getDept(0).teams[0]!],
         },
@@ -501,7 +500,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should maintain reactivity during reordering", () => {
-      const { update, getDept } = createComplexStore();
+      const { state, getDept } = createComplexStore();
       let reactionCount = 0;
 
       const firstTeamName = computed(() => {
@@ -513,7 +512,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
       expect(reactionCount).toBe(1);
 
       // Reorder teams
-      update({
+      update(state, {
         $set: {
           "organization.departments.0.teams": [getDept(0).teams[1]!, getDept(0).teams[0]!],
         },
@@ -527,9 +526,9 @@ describe("Deep Nesting Operations (Type Safe)", () => {
 
   describe("Adding New Properties and Deep Expansion", () => {
     it("should add new top-level properties", () => {
-      const { state, update } = createComplexStore();
+      const { state } = createComplexStore();
 
-      update({
+      update(state, {
         $set: {
           "organization.compliance": {
             certifications: ["ISO-27001", "SOC-2"],
@@ -548,10 +547,10 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should add multiple levels deep to new properties", () => {
-      const { state, update } = createComplexStore();
+      const { state } = createComplexStore();
 
       // First add a new integration system
-      update({
+      update(state, {
         $set: {
           "organization.integrations": {
             external: {},
@@ -560,7 +559,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
       });
 
       // Then add multiple levels deep
-      update({
+      update(state, {
         $set: {
           "organization.integrations.external.salesforce": {
             enabled: true,
@@ -586,11 +585,11 @@ describe("Deep Nesting Operations (Type Safe)", () => {
     });
 
     it("should maintain reactivity when adding new deep properties", () => {
-      const { state, update } = createComplexStore();
+      const { state } = createComplexStore();
       let reactionCount = 0;
 
       // Add new property and start tracking it
-      update({
+      update(state, {
         $set: {
           "organization.newSystem": {
             status: "initializing",
@@ -607,7 +606,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
       expect(reactionCount).toBe(1);
 
       // Update the tracked property
-      update({
+      update(state, {
         $set: {
           "organization.newSystem.status": "running",
         },

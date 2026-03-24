@@ -1,9 +1,9 @@
-import { createStore } from "@supergrain/core";
+import { createStore, update } from "@supergrain/core";
 import { render, screen, act } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect } from "vitest";
 
-import { tracked } from "../src";
+import { tracked, update } from "../src";
 import { flushMicrotasks } from "./test-utils";
 
 // --- Test Setup ---
@@ -54,7 +54,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: [],
     };
-    const [store, update] = createStore(initialState);
+    const store = createStore(initialState);
 
     render(<TodoListComponent store={store} />);
 
@@ -70,7 +70,7 @@ describe("tracked() for Todo App", () => {
 
     // Use `act` to wrap the state update
     await act(async () => {
-      update({
+      update(store, {
         $push: {
           tasks: newTask,
         },
@@ -92,7 +92,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: initialTasks,
     };
-    const [store, update] = createStore(initialState);
+    const store = createStore(initialState);
 
     render(<TodoListComponent store={store} />);
 
@@ -102,7 +102,7 @@ describe("tracked() for Todo App", () => {
 
     // Remove the first task
     await act(async () => {
-      update({
+      update(store, {
         $pull: {
           tasks: { id: "task-1" },
         },
@@ -125,7 +125,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: initialTasks,
     };
-    const [store, update] = createStore(initialState);
+    const store = createStore(initialState);
 
     render(<TodoListComponent store={store} />);
 
@@ -135,7 +135,7 @@ describe("tracked() for Todo App", () => {
     const newText = "This text has been updated";
     // Update the text of the first task
     await act(async () => {
-      update({
+      update(store, {
         $set: {
           "tasks.0.text": newText,
         },
@@ -157,7 +157,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: initialTasks,
     };
-    const [store, update] = createStore(initialState);
+    const store = createStore(initialState);
 
     render(<TodoListComponent store={store} />);
 
@@ -166,7 +166,7 @@ describe("tracked() for Todo App", () => {
 
     // Mark the task as completed
     await act(async () => {
-      update({
+      update(store, {
         $set: {
           "tasks.0.isCompleted": true,
         },

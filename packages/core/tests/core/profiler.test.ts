@@ -15,7 +15,7 @@ describe("Profiler", () => {
 
   describe("signalReads and signalSkips", () => {
     it("counts reads with a subscriber as signalReads", () => {
-      const [store] = createStore({ x: 1 });
+      const store = createStore({ x: 1 });
       effect(() => {
         void store.x;
       });
@@ -25,7 +25,7 @@ describe("Profiler", () => {
     });
 
     it("counts reads without a subscriber as signalSkips", () => {
-      const [store] = createStore({ x: 1 });
+      const store = createStore({ x: 1 });
       // Read outside any effect — no subscriber
       void store.x;
       const p = getProfile();
@@ -34,7 +34,7 @@ describe("Profiler", () => {
     });
 
     it("counts proxy reads in a find loop as skips", () => {
-      const [store] = createStore({
+      const store = createStore({
         data: [{ id: 1 }, { id: 2 }, { id: 3 }],
       });
       // Access data to create the signal (inside an effect to warm up)
@@ -53,7 +53,7 @@ describe("Profiler", () => {
 
   describe("signalWrites", () => {
     it("counts property mutations when signal exists", () => {
-      const [store] = createStore({ x: 1, y: 2 });
+      const store = createStore({ x: 1, y: 2 });
       // Create the signal by reading inside an effect
       effect(() => void store.x);
       resetProfiler();
@@ -64,7 +64,7 @@ describe("Profiler", () => {
     });
 
     it("counts batched mutations individually", () => {
-      const [store] = createStore({
+      const store = createStore({
         data: [{ label: "a" }, { label: "b" }, { label: "c" }],
       });
       // Warm up signals
@@ -85,7 +85,7 @@ describe("Profiler", () => {
     });
 
     it("does not count no-op writes (same value)", () => {
-      const [store] = createStore({ x: 1 });
+      const store = createStore({ x: 1 });
       store.x = 1; // same value
       const p = getProfile();
       expect(p.signalWrites).toBe(0);
@@ -94,7 +94,7 @@ describe("Profiler", () => {
 
   describe("effectFires", () => {
     it("counts effect fires on first select (should be 1)", () => {
-      const [store] = createStore({
+      const store = createStore({
         data: [
           { id: 1, label: "a", isSelected: false },
           { id: 2, label: "b", isSelected: false },
@@ -125,7 +125,7 @@ describe("Profiler", () => {
 
     it("counts effect fires on partial update (should be N/10)", () => {
       const count = 100;
-      const [store] = createStore({
+      const store = createStore({
         data: Array.from({ length: count }, (_, i) => ({
           id: i + 1,
           label: `Item ${i + 1}`,
@@ -156,7 +156,7 @@ describe("Profiler", () => {
     it("does not count when profiling is disabled", () => {
       disableProfiling();
       resetProfiler();
-      const [store] = createStore({ x: 1 });
+      const store = createStore({ x: 1 });
       store.x = 10;
       void store.x;
       const p = getProfile();
@@ -169,7 +169,7 @@ describe("Profiler", () => {
 
   describe("resetProfiler", () => {
     it("resets all counters to zero", () => {
-      const [store] = createStore({ x: 1 });
+      const store = createStore({ x: 1 });
       effect(() => void store.x);
       store.x = 2;
 

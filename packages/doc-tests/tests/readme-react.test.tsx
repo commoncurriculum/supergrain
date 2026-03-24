@@ -26,7 +26,7 @@ describe("README React Examples", () => {
       selected: number | null;
     }
 
-    const [store] = createStore<AppState>({
+    const store = createStore<AppState>({
       todos: [
         { id: 1, text: "Learn Supergrain", completed: false },
         { id: 2, text: "Build something", completed: false },
