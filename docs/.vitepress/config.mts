@@ -14,6 +14,7 @@ export default defineConfig({
     nav: [
       { text: "Home", link: "/" },
       { text: "Guide", link: "#installation" },
+      { text: "Comparison", link: "/comparison" },
       { text: "GitHub", link: "https://github.com/commoncurriculum/supergrain" },
     ],
 
@@ -21,7 +22,7 @@ export default defineConfig({
 
     footer: {
       message: "Released under the MIT License.",
-      copyright: "Copyright © 2024 Common Curriculum",
+      copyright: "Copyright © 2026 Common Curriculum",
     },
   },
 });

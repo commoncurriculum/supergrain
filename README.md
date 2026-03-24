@@ -22,7 +22,7 @@ npm install @supergrain/core @supergrain/react
 import { createStore } from '@supergrain/core'
 import { tracked, provideStore, useComputed, useSignalEffect, For } from '@supergrain/react'
 
-// ---- Store ------------------------------------------------------------------
+// Step 1: Create a store — just a plain object.
 
 interface Todo { id: number; text: string; completed: boolean }
 interface AppState { todos: Todo[]; selected: number | null }
@@ -37,7 +37,7 @@ const store = createStore<AppState>({
 
 const Store = provideStore(store)
 
-// ---- Components  -------------
+// Step 2: Wrap components with tracked() for fine-grained re-renders.
 
 const TodoItem = tracked(({ todo }: { todo: Todo }) => {
   const store = Store.useStore()
@@ -54,6 +54,8 @@ const TodoItem = tracked(({ todo }: { todo: Todo }) => {
     </li>
   )
 })
+
+// Step 3: Use useComputed and useSignalEffect for derived values and side effects.
 
 const App = tracked(() => {
   const store = Store.useStore()
@@ -73,24 +75,187 @@ const App = tracked(() => {
   )
 })
 
-// ---- Render -----------------------------------------------------------------
+// That's it. Render with Provider.
 
 <Store.Provider><App /></Store.Provider>
 ```
 
 Checking a todo re-renders only that `TodoItem`. Changing selection re-renders only the 2 affected items. The `App` component and other items don't re-render.
 
-- **`createStore<T>(initial)`** — Creates a reactive store proxy. Reads and writes work like plain objects.
+### API
 
-- **`provideStore(store)`** — Wraps a store with React context plumbing. Returns `{ Provider, useStore }`. The proxy's identity never changes, so the context value is stable and won't trigger React re-renders.
+`createStore<T>(initial)`
 
-- **`tracked(Component)`** — Wraps a React component with per-component signal scoping. Only the signals read during render are tracked — when they change, only this component re-renders.
+Creates a reactive store proxy. Reads and writes work like plain objects.
 
-- **`useComputed(() => expr, deps?)`** — Derived value that acts as a **firewall**. Re-evaluates when upstream signals change, but only triggers a re-render when the **result** changes. Also works with proxy props directly (`useComputed(() => item.label.toUpperCase())`). Optional `deps` array controls when the computed is recreated (like `useMemo`).
+`provideStore(store)`
 
-- **`useSignalEffect(() => sideEffect)`** — Signal-tracked side effect tied to the component lifecycle. Re-runs when tracked signals change, cleans up on unmount. Does **not** cause the component to re-render.
+Wraps a store with React context plumbing. Returns `{ Provider, useStore }`. The proxy's identity never changes, so the context value is stable and won't trigger React re-renders.
 
-- **`<For each={array} parent={ref?}>{item => ...}</For>`** — Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
+`tracked(Component)`
+
+Wraps a React component with per-component signal scoping. Only the signals read during render are tracked — when they change, only this component re-renders.
+
+`useComputed(() => expr, deps?)`
+
+Shorthand for `useMemo(() => computed(factory), deps)`. Re-evaluates when upstream signals change, but only triggers a re-render when the **result** changes — acting as a firewall. The `deps` array works exactly like `useMemo`: when deps change, a new computed is created.
+
+`useSignalEffect(() => sideEffect)`
+
+Shorthand for `useEffect(() => effect(fn), [])`. Runs a signal-tracked side effect that re-runs when tracked signals change and cleans up on unmount. Does **not** cause the component to re-render.
+
+`<For each={array} parent={ref?}>{item => ...}</For>`
+
+Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
+
+See how Supergrain compares to useState, Zustand, Redux, and MobX in the [comparison guide](./comparison).
+
+## Ergonomic
+
+Signal-level performance with a proxy experience. No new mental model — if you know JavaScript objects, you know Supergrain.
+
+```ts
+const store = createStore({ count: 0, user: { name: "Jane" } });
+
+// Read like a plain object
+console.log(store.count); // 0
+console.log(store.user.name); // 'Jane'
+
+// Write like a plain object
+store.count = 5;
+store.user.name = "Alice";
+```
+
+- No actions, reducers, selectors, or dispatch
+- No `set()` wrappers or updater functions
+- Full TypeScript inference — no manual type annotations on reads or writes
+
+## Mutation
+
+Arrays and objects work exactly how you'd expect. Push, splice, assign, delete — all tracked, all reactive.
+
+```ts
+const store = createStore({
+  items: ["a", "b", "c"],
+  user: { name: "Jane", age: 30 },
+});
+
+// Arrays
+store.items.push("d");
+store.items.splice(1, 1);
+store.items[0] = "x";
+
+// Objects
+store.user.name = "Alice";
+delete store.user.age;
+```
+
+- Every mutation fires reactive updates automatically
+- No immutable spreading, no immer, no copy-on-write
+- Writes are synchronous — read your own writes immediately
+
+## Deep Reactivity
+
+Nested objects and arrays are reactive at any depth. No `observable()` calls, no `ref()` wrappers — the entire tree is tracked automatically.
+
+```ts
+const store = createStore({
+  org: {
+    teams: [{ name: "Frontend", members: [{ name: "Alice", active: true }] }],
+  },
+});
+
+// Change a deeply nested property
+store.org.teams[0].members[0].active = false;
+
+// Only components reading `active` on that specific member re-render
+```
+
+- Works at any nesting depth — objects, arrays, arrays of objects
+- No manual wrapping or opt-in per field
+- Proxy-based: new properties and nested objects are automatically reactive
+
+## Performance
+
+Fine-grained means what _doesn't_ re-render matters most. When one property changes, only the components that actually read that property update.
+
+```tsx
+const store = createStore({ count: 0, theme: "light" });
+
+// Only re-renders when `count` changes — not when `theme` changes
+const Counter = tracked(() => <p>{store.count}</p>);
+
+// Only re-renders when `theme` changes — not when `count` changes
+const Theme = tracked(() => <p>{store.theme}</p>);
+```
+
+- Per-component signal scoping via `tracked()`
+- Sibling components are independent — no wasted renders
+- Parent components don't re-render when children's data changes
+
+## Computed
+
+Derived values that act as a firewall. `useComputed` re-evaluates when upstream signals change, but only triggers a re-render when the **result** changes.
+
+```tsx
+const store = createStore({
+  selected: 3,
+  todos: [
+    /* 1000 items */
+  ],
+});
+
+const TodoItem = tracked(({ todo }) => {
+  // Only re-renders when this specific item's selection state flips
+  const isSelected = useComputed(() => store.selected === todo.id);
+  return <li className={isSelected ? "active" : ""}>{todo.text}</li>;
+});
+```
+
+- 998 rows return `false` → they don't re-render when selection changes
+- Only the 2 rows whose result flips (`true↔false`) update
+- Shorthand for `useMemo(() => computed(factory), deps)`
+
+## Effects
+
+Signal-tracked side effects that run outside the React render cycle. They re-run when tracked signals change, but never cause the component to re-render.
+
+```tsx
+const App = tracked(() => {
+  const store = Store.useStore();
+  const remaining = useComputed(() => store.todos.filter((t) => !t.completed).length);
+
+  useSignalEffect(() => {
+    document.title = `${remaining} items left`;
+  });
+
+  return <TodoList />;
+});
+```
+
+- Runs immediately, re-runs when tracked signals change
+- Cleans up automatically on unmount
+- Shorthand for `useEffect(() => effect(fn), [])`
+
+## Looping
+
+`<For>` renders lists with per-item tracking. Only items that actually changed re-render — not the entire list.
+
+```tsx
+const App = tracked(() => {
+  const store = Store.useStore();
+
+  return (
+    <For each={store.todos} parent={tableRef}>
+      {(todo) => <TodoItem key={todo.id} todo={todo} />}
+    </For>
+  );
+});
+```
+
+- Tracks which items changed and only re-renders those
+- Optional `parent` ref enables O(1) direct DOM moves for swaps
+- Without `parent`, falls back to standard React reconciliation
 
 ## Synchronous Writes and Batching
 
@@ -122,133 +287,7 @@ store.data[2] = tmp;
 endBatch(); // effects fire once — data is [C, B, A]
 ```
 
----
-
-## Comparison
-
-The same operations in other React state libraries:
-
-### Supergrain
-
-```typescript
-// [#DOC_TEST_52](packages/doc-tests/tests/readme-core.test.ts)
-
-interface State { count: number; user: { profile: { name: string } } }
-const store = createStore<State>({ count: 0, user: { profile: { name: 'John' } } })
-
-// Mutate
-store.count = 5
-
-// Deep nested
-store.user.profile.name = 'Bob'
-
-// Fine-grained — only re-renders when count changes
-const Counter = tracked(() => {
-  return <p>{store.count}</p>
-})
-```
-
-### useState
-
-```typescript
-// [#DOC_TEST_53](packages/doc-tests/tests/readme-core.test.ts)
-
-const [state, setState] = useState<State>({
-  count: 0,
-  user: { profile: { name: "John" } },
-});
-
-// Mutate
-setState((prev) => ({ ...prev, count: 5 }));
-
-// Deep nested
-setState((prev) => ({
-  ...prev,
-  user: { ...prev.user, profile: { ...prev.user.profile, name: "Bob" } },
-}));
-
-// Fine-grained — ❌ not possible. Re-renders on ANY state change.
-```
-
-### Zustand
-
-```typescript
-// [#DOC_TEST_54](packages/doc-tests/tests/readme-core.test.ts)
-
-const useStore = create<State>()((set) => ({
-  count: 0,
-  user: { profile: { name: 'John' } },
-}))
-
-// Mutate
-set({ count: 5 })
-
-// Deep nested — manual spreading
-set(state => ({
-  user: { ...state.user, profile: { ...state.user.profile, name: 'Bob' } }
-}))
-
-// Fine-grained — requires selector
-const Counter = () => {
-  const count = useStore(state => state.count)
-  return <p>{count}</p>
-}
-```
-
-### Redux / RTK
-
-```typescript
-// [#DOC_TEST_55](packages/doc-tests/tests/readme-core.test.ts)
-
-const slice = createSlice({
-  name: 'app',
-  initialState: { count: 0, user: { profile: { name: 'John' } } } as State,
-  reducers: {
-    setCount: (state, action) => { state.count = action.payload },
-    setName: (state, action) => { state.user.profile.name = action.payload },
-  },
-})
-
-// Mutate — need a reducer for each mutation
-dispatch(setCount(5))
-
-// Deep nested — need a reducer for each path
-dispatch(setName('Bob'))
-
-// Fine-grained — requires useSelector
-const Counter = () => {
-  const count = useSelector((state: RootState) => state.app.count)
-  return <p>{count}</p>
-}
-```
-
-### MobX
-
-```typescript
-// [#DOC_TEST_56](packages/doc-tests/tests/readme-core.test.ts)
-
-class AppStore {
-  count = 0
-  user = { profile: { name: 'John' } }
-  constructor() { makeAutoObservable(this) }
-}
-const store = new AppStore()
-
-// Mutate
-store.count = 5
-
-// Deep nested
-store.user.profile.name = 'Bob'
-
-// Fine-grained — requires observer + makeAutoObservable ceremony
-const Counter = observer(() => {
-  return <p>{store.count}</p>
-})
-```
-
----
-
-## Benchmarks
+<!-- ## Benchmarks
 
 Results from [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark) (Krause benchmarks), median of 5 runs. Lower is better.
 
@@ -274,9 +313,7 @@ Results from [js-framework-benchmark](https://github.com/krausest/js-framework-b
 | After 1,000 rows            |        5.1 |     **4.4** |     6.1 |
 | After 5 create/clear cycles |        2.1 |         1.9 |     1.9 |
 
-Supergrain delivers fine-grained reactivity with per-component signal scoping at no meaningful performance cost compared to plain React hooks — while providing a dramatically simpler API than Zustand or Redux.
-
----
+Supergrain delivers fine-grained reactivity with per-component signal scoping at no meaningful performance cost compared to plain React hooks — while providing a dramatically simpler API than Zustand or Redux. -->
 
 ## Update Operators (Optional)
 
@@ -327,8 +364,6 @@ update(store, {
   $push: { items: "g" },
 });
 ```
-
----
 
 ## Contributing
 

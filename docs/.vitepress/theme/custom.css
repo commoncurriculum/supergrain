@@ -22,10 +22,10 @@
   --vp-c-brand-soft: rgba(245, 158, 11, 0.14);
 
   /* Warm light mode */
-  --vp-c-bg: #fdfaf5;
-  --vp-c-bg-alt: #f8f0e3;
+  --vp-c-bg: #fffbeb;
+  --vp-c-bg-alt: #fef3c7;
   --vp-c-bg-elv: #ffffff;
-  --vp-c-bg-soft: #f3e8d4;
+  --vp-c-bg-soft: #fde68a;
 
   /* Typography */
   --vp-font-family-base: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -395,6 +395,26 @@
   border-bottom-color: rgba(251, 191, 36, 0.12);
 }
 
+.readme-content hr {
+  margin: 64px auto;
+  border: none;
+  height: auto;
+  text-align: center;
+  overflow: visible;
+}
+
+.readme-content hr::after {
+  content: "· · ·";
+  display: block;
+  font-size: 1.5rem;
+  letter-spacing: 0.5em;
+  color: var(--sg-gold);
+}
+
+.dark .readme-content hr::after {
+  color: var(--sg-gold-dark);
+}
+
 .readme-content h3 {
   font-size: 1.05rem;
   font-weight: 700;
@@ -455,17 +475,28 @@
 .readme-content div[class*="language-"],
 div[class*="language-"] {
   border-radius: 12px !important;
-  border: 1px solid rgba(120, 53, 15, 0.1) !important;
+  border: 1px solid rgba(120, 53, 15, 0.15) !important;
   margin: 24px 0 !important;
-  background: #fffefb !important;
+  background: #ffffff !important;
   padding: 0 !important;
 }
 
 .readme-content div[class*="language-"] pre,
 div[class*="language-"] pre {
-  padding: 20px 24px !important;
+  padding: 16px 24px !important;
   background: transparent !important;
   margin: 0 !important;
+}
+
+/* Copy button shouldn't take up block space */
+div[class*="language-"] button.copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+div[class*="language-"] {
+  position: relative !important;
 }
 
 .readme-content div[class*="language-"] code,
