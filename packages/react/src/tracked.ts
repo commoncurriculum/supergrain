@@ -42,51 +42,60 @@ import { type FC, memo, useEffect, useRef, useSyncExternalStore } from "react";
  * })
  * ```
  */
+/** Internal state for a tracked component instance. */
+interface TrackedState {
+  cleanup: () => void;
+  effectNode: any;
+  version: number;
+  listener: (() => void) | null;
+  subscribe: (cb: () => void) => () => void;
+  getSnapshot: () => number;
+  unsubscribe: () => void;
+}
+
 export function tracked<P extends object>(Component: FC<P>) {
   const Tracked: FC<P> = (props: P) => {
     profileTimeStart("trackedHookTime");
-    const ref = useRef<{
-      cleanup: () => void;
-      effectNode: any;
-      version: number;
-      subscribe: (cb: () => void) => () => void;
-      getSnapshot: () => number;
-    } | null>(null);
+    const ref = useRef<TrackedState | null>(null);
     profileTimeEnd("trackedHookTime");
 
     if (!ref.current) {
       profileTimeStart("trackedSetup");
       profileTimeStart("trackedEffectTime");
-      let effectNode: any = null;
+      // All mutable state lives on the state object to minimize closure contexts.
+      // subscribe/getSnapshot/unsubscribe close over `state` only (one V8 Context).
+      const state: TrackedState = {
+        effectNode: null,
+        version: 0,
+        listener: null,
+        cleanup: null!,
+        unsubscribe() {
+          state.listener = null;
+        },
+        subscribe(cb: () => void) {
+          state.listener = cb;
+          return state.unsubscribe;
+        },
+        getSnapshot() {
+          return state.version;
+        },
+      };
+
       let firstRun = true;
-      let version = 0;
-      let listener: (() => void) | null = null;
       // Use alienEffect directly to avoid profiledEffect's double-callback overhead.
       // profileEffectFire() is called manually on re-runs.
-      const cleanup = alienEffect(() => {
+      state.cleanup = alienEffect(() => {
         if (firstRun) {
-          effectNode = getCurrentSub();
+          state.effectNode = getCurrentSub();
           firstRun = false;
           return;
         }
         profileEffectFire();
-        version++;
-        listener?.();
+        state.version++;
+        state.listener?.();
       });
-      ref.current = {
-        cleanup,
-        effectNode,
-        version,
-        subscribe(cb: () => void) {
-          listener = cb;
-          return () => {
-            listener = null;
-          };
-        },
-        getSnapshot() {
-          return version;
-        },
-      };
+
+      ref.current = state;
       profileTimeEnd("trackedEffectTime");
       profileTimeEnd("trackedSetup");
     }

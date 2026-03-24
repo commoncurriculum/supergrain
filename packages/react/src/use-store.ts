@@ -47,6 +47,17 @@ const ForItem = tracked(
  * change). On property-change re-renders, uses the cached item — so it
  * always renders the correct content even if the DOM was moved by the
  * alien swap effect.
+ *
+ * ⚠️ DO NOT replace tracked() with memo() here. It looks like this component
+ * has no reactive reads (the array access is deliberately untracked via
+ * setCurrentSub(undefined)), but the children callback executed on line 76
+ * CAN read reactive properties inline (e.g., item.label, item.id). Those
+ * reads happen during THIS component's render and need an active alien-signals
+ * subscriber to trigger re-renders when the underlying data changes.
+ *
+ * When children are themselves wrapped in tracked() (e.g., <Row />), the
+ * tracked() here is redundant for that case — but the For API must support
+ * inline children too. See tests: "swap then update label on swapped item".
  */
 const CachedForItem = tracked(
   ({
@@ -129,7 +140,7 @@ export const For = tracked((props: ForProps<unknown>) => {
 
     swapCleanupRef.current?.();
     profileTimeStart("forArrayCopy");
-    prevRawRef.current = [...raw];
+    prevRawRef.current = raw.slice();
     profileTimeEnd("forArrayCopy");
 
     const cleanup = alienEffect(() => {
@@ -149,7 +160,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       const container = parent.current;
       if (!container || prev.length !== raw.length) {
         profileTimeStart("forArrayCopy");
-        prevRawRef.current = [...raw];
+        prevRawRef.current = raw.slice();
         profileTimeEnd("forArrayCopy");
         profileTimeEnd("forSwapEffect");
         return;
@@ -182,7 +193,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       }
 
       profileTimeStart("forArrayCopy");
-      prevRawRef.current = [...raw];
+      prevRawRef.current = raw.slice();
       profileTimeEnd("forArrayCopy");
       profileTimeEnd("forSwapEffect");
     });
@@ -219,7 +230,7 @@ export const For = tracked((props: ForProps<unknown>) => {
   const ItemComponent = parent ? CachedForItem : ForItem;
 
   profileTimeStart("forSlotBuildTime");
-  const slots = Array.from({ length: raw.length });
+  const slots = new Array(raw.length);
   for (let i = 0; i < raw.length; i++) {
     const rawItem = raw[i];
     const key =

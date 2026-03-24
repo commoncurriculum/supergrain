@@ -40,7 +40,7 @@ Each `tracked()` component gets 1 fiber + hook state nodes. With 3 components/ro
 
 ---
 
-### Step 2: Merge CachedForItem into Row (eliminate 1 tracked() layer)
+### Step 2: Merge CachedForItem into Row (eliminate 1 tracked() layer) ❌ BLOCKED
 
 **Theory**: CachedForItem exists to cache the item ref for O(1) DOM swaps. But it's wrapped in `tracked()`, which adds per-row: 1 useRef, 1 useSyncExternalStore, 1 useEffect, 1 alien-signals effect, 2 closures (subscribe + getSnapshot), plus a full React component mount.
 
@@ -57,6 +57,20 @@ CachedForItem's actual logic is just 2 useRefs and an index-change check. This c
 4. Run `pnpm test:perf` — measure timing delta.
 
 **Expected savings**: ~5 hooks/row, ~1 effect/row, ~3 closures/row, ~40 InternalNodes/row.
+
+**RESULT**: ❌ Cannot do this. CachedForItem MUST use tracked() because children callbacks
+can read reactive properties inline (e.g., `item.label`). Those reads happen during
+CachedForItem's render and need an active alien-signals subscriber. Replacing tracked()
+with memo() causes "swap then update label" tests to fail. See code comment on CachedForItem.
+
+When children are wrapped in tracked() (like the benchmark's Row), CachedForItem's tracked()
+effect has zero dependencies — but the For API must support inline children too.
+
+**Alternative approaches to explore**:
+- A specialized `trackedForItem` that merges CachedForItem's caching + tracked()'s
+  reactivity into a single component with fewer total hooks
+- Having the benchmark's Row component handle its own item caching (benchmark-only opt)
+- A completely different O(1) swap mechanism that doesn't need a wrapper component
 
 ---
 
