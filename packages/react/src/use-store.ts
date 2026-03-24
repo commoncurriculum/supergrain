@@ -41,66 +41,26 @@ const ForItem = tracked(
 );
 
 /**
- * Cached ForItem — caches its item in a ref for O(1) swap support.
- *
- * Only re-reads from the array when the index prop changes (structural
- * change). On property-change re-renders, uses the cached item — so it
- * always renders the correct content even if the DOM was moved by the
- * alien swap effect.
- *
- * ⚠️ DO NOT replace tracked() with memo() here. It looks like this component
- * has no reactive reads (the array access is deliberately untracked via
- * setCurrentSub(undefined)), but the children callback executed on line 76
- * CAN read reactive properties inline (e.g., item.label, item.id). Those
- * reads happen during THIS component's render and need an active alien-signals
- * subscriber to trigger re-renders when the underlying data changes.
- *
- * When children are themselves wrapped in tracked() (e.g., <Row />), the
- * tracked() here is redundant for that case — but the For API must support
- * inline children too. See tests: "swap then update label on swapped item".
- */
-const CachedForItem = tracked(
-  ({
-    each,
-    index,
-    children,
-  }: {
-    each: unknown[];
-    index: number;
-    children: (item: unknown, index: number) => React.ReactNode;
-  }) => {
-    const prevIndexRef = useRef(index);
-    const itemRef = useRef<unknown>(null);
-
-    if (itemRef.current === null || prevIndexRef.current !== index) {
-      const prevSub = getCurrentSub();
-      setCurrentSub(undefined as any); // eslint-disable-line unicorn/no-useless-undefined -- intentionally clearing subscriber
-      itemRef.current = each[index];
-      setCurrentSub(prevSub);
-      prevIndexRef.current = index;
-    }
-
-    const child = children(itemRef.current, index);
-    return child as React.ReactElement;
-  },
-);
-
-/**
  * List rendering component with fine-grained per-element reactivity.
  *
  * When a `parent` ref is provided, For uses O(1) direct DOM moves on swap:
- * an alien-signals effect detects element swaps and moves DOM nodes.
- * CachedForItem ensures label changes still render correctly after a move.
+ * an alien-signals effect detects element swaps and moves DOM nodes directly.
+ * Children are called once with the reactive proxy item and keep their
+ * original item props after swaps (since For doesn't re-render on swap).
  *
  * Without `parent`, For falls back to O(n) React keyed reconciliation.
  *
  * Both modes:
  * - Add/Remove: For re-renders to adjust slot count. React handles it.
- * - Property update: Only the affected ForItem re-renders (via tracked).
+ * - Property update: Only the affected child re-renders (via tracked).
+ *
+ * **Important**: When using the `parent` prop, children MUST be `tracked()`
+ * components (e.g., `<Row />`). For calls children directly without a wrapper,
+ * so inline children won't have reactive subscriptions for property changes.
  *
  * @example
  * ```tsx
- * // Fast path — O(1) swap
+ * // Fast path — O(1) swap (children must be tracked)
  * const tbodyRef = useRef<HTMLTableSectionElement>(null)
  * <tbody ref={tbodyRef}>
  *   <For each={store.data} parent={tbodyRef}>
@@ -108,7 +68,7 @@ const CachedForItem = tracked(
  *   </For>
  * </tbody>
  *
- * // Standard path — no ref needed
+ * // Standard path — no ref needed, inline children OK
  * <For each={store.data}>
  *   {(item) => <Row key={item.id} item={item} />}
  * </For>
@@ -214,8 +174,24 @@ export const For = tracked((props: ForProps<unknown>) => {
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
 
-  // Without parent: subscribe to per-index signals for React reconciliation on swap.
-  if (!parent) {
+  profileTimeStart("forSlotBuildTime");
+  const slots = new Array(raw.length);
+
+  if (parent) {
+    // Parent path (O(1) swap): call children directly with untracked array reads.
+    // No wrapper component needed — children (e.g., tracked Row) handle their own
+    // subscriptions. After a swap, For doesn't re-render, so children keep their
+    // original item props. The swap effect moves DOM nodes to match.
+    const prevSub = getCurrentSub();
+    setCurrentSub(undefined as any); // eslint-disable-line unicorn/no-useless-undefined -- untrack array reads to avoid subscribing For to per-index signals
+    for (let i = 0; i < raw.length; i++) {
+      const item = each[i];
+      slots[i] = children(item, i);
+    }
+    setCurrentSub(prevSub);
+  } else {
+    // Non-parent path: use ForItem wrapper for per-index signal subscription
+    // so React keyed reconciliation handles swaps.
     const nodes = getNodesIfExist(raw);
     for (let i = 0; i < raw.length; i++) {
       const existingNode = nodes?.[i];
@@ -225,25 +201,21 @@ export const For = tracked((props: ForProps<unknown>) => {
         void each[i];
       }
     }
-  }
 
-  const ItemComponent = parent ? CachedForItem : ForItem;
+    for (let i = 0; i < raw.length; i++) {
+      const rawItem = raw[i];
+      const key =
+        rawItem && typeof rawItem === "object" && "id" in rawItem
+          ? ((rawItem as Record<string, unknown>).id as React.Key)
+          : i;
 
-  profileTimeStart("forSlotBuildTime");
-  const slots = new Array(raw.length);
-  for (let i = 0; i < raw.length; i++) {
-    const rawItem = raw[i];
-    const key =
-      rawItem && typeof rawItem === "object" && "id" in rawItem
-        ? ((rawItem as Record<string, unknown>).id as React.Key)
-        : i;
-
-    slots[i] = React.createElement(ItemComponent, {
-      key,
-      each,
-      index: i,
-      children,
-    });
+      slots[i] = React.createElement(ForItem, {
+        key,
+        each,
+        index: i,
+        children,
+      });
+    }
   }
 
   profileTimeEnd("forSlotBuildTime");

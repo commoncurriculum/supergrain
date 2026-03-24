@@ -716,18 +716,22 @@ describe("For Component Magic Tests", () => {
     it("swap then update label on swapped item", async () => {
       const store = createTestStore(5);
 
+      // Children must be tracked components when using parent prop,
+      // since there's no wrapper component to subscribe to item changes.
+      const Row = tracked(({ item }: { item: RowData }) => (
+        <tr>
+          <td>{item.id}</td>
+          <td>{item.label}</td>
+        </tr>
+      ));
+
       const App = tracked(() => {
         const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
         return (
           <table>
             <tbody ref={tbodyRef}>
               <For each={store.data} parent={tbodyRef}>
-                {(item: RowData) => (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{item.label}</td>
-                  </tr>
-                )}
+                {(item: RowData) => <Row key={item.id} item={item} />}
               </For>
             </tbody>
           </table>
@@ -762,18 +766,21 @@ describe("For Component Magic Tests", () => {
     it("swap then update label on NON-swapped item", async () => {
       const store = createTestStore(5);
 
+      // Children must be tracked components when using parent prop.
+      const Row = tracked(({ item }: { item: RowData }) => (
+        <tr>
+          <td>{item.id}</td>
+          <td>{item.label}</td>
+        </tr>
+      ));
+
       const App = tracked(() => {
         const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
         return (
           <table>
             <tbody ref={tbodyRef}>
               <For each={store.data} parent={tbodyRef}>
-                {(item: RowData) => (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{item.label}</td>
-                  </tr>
-                )}
+                {(item: RowData) => <Row key={item.id} item={item} />}
               </For>
             </tbody>
           </table>
