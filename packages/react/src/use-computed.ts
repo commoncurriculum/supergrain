@@ -21,7 +21,7 @@ import { useMemo } from "react";
  * @example
  * ```tsx
  * const Row = tracked(({ item }) => {
- *   const store = useAppStore();
+ *   const store = Store.useStore();
  *   const isSelected = useComputed(() => store.selected === item.id);
  *   return <tr className={isSelected ? 'danger' : ''}> ... </tr>;
  * });

@@ -16,9 +16,13 @@ import { type FC, memo, useReducer, useRef, useEffect } from "react";
  *
  * @example
  * ```tsx
- * const Row = tracked(({ item, isSelected }) => {
- *   // item.label and item.id reads are scoped to this Row's effect.
+ * const Store = provideStore(store)
+ *
+ * const Row = tracked(({ item }) => {
+ *   const store = Store.useStore()
+ *   // item.label read is scoped to this Row's effect.
  *   // A label change on this item re-renders only this Row.
+ *   const isSelected = useComputed(() => store.selected === item.id)
  *   return (
  *     <tr className={isSelected ? 'danger' : ''}>
  *       <td>{item.id}</td>
@@ -28,16 +32,10 @@ import { type FC, memo, useReducer, useRef, useEffect } from "react";
  * })
  *
  * const App = tracked(() => {
- *   const selected = store.selected
+ *   const store = Store.useStore()
  *   return (
  *     <For each={store.data}>
- *       {(item) => (
- *         <Row
- *           key={item.id}
- *           item={item}
- *           isSelected={selected === item.id}
- *         />
- *       )}
+ *       {(item) => <Row key={item.id} item={item} />}
  *     </For>
  *   )
  * })

@@ -17,7 +17,10 @@ import { useEffect } from "react";
  *
  * @example
  * ```tsx
+ * const Store = provideStore(store)
+ *
  * const App = tracked(() => {
+ *   const store = Store.useStore()
  *   const remaining = useComputed(() => store.todos.filter(t => !t.completed).length)
  *
  *   useSignalEffect(() => {

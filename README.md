@@ -16,7 +16,9 @@ npm install @supergrain/core @supergrain/react
 
 ## Quick Start
 
-```tsx
+```typescript
+// [#DOC_TEST_QUICK_START](packages/doc-tests/tests/readme-react.test.tsx)
+
 import { createStore } from '@supergrain/core'
 import { tracked, provideStore, useComputed, useSignalEffect, For } from '@supergrain/react'
 
@@ -89,19 +91,6 @@ Checking a todo re-renders only that `TodoItem`. Changing selection re-renders o
 - **`useSignalEffect(() => sideEffect)`** — Signal-tracked side effect tied to the component lifecycle. Re-runs when tracked signals change, cleans up on unmount. Does **not** cause the component to re-render.
 
 - **`<For each={array}>{item => ...}</For>`** — Optimized list rendering. Tracks which items actually changed and only re-renders those, unlike `.map()` + `React.memo()` which calls the comparison function for every item.
-
-Multiple stores compose naturally:
-
-```tsx
-const Auth = provideStore(authStore)
-const UI = provideStore(uiStore)
-
-<Auth.Provider>
-  <UI.Provider>
-    <App />
-  </UI.Provider>
-</Auth.Provider>
-```
 
 ## Synchronous Writes and Batching
 
