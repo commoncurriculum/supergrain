@@ -85,12 +85,10 @@ These are comparable. For 1000 items, the difference is ~0-2ms — within noise.
 
 The swap effect moves DOM without updating fibers. Any element caching must be invalidated after a swap, because returning the same element reference tells React "nothing changed here" — but the DOM DID change. This means the cache is cold in the swap-then-structural-change sequence, which is a common benchmark operation.
 
-### CachedForItem provided this for free
-
-CachedForItem wasn't just item caching — it was a **React component boundary**. React's own reconciliation handled memoization via tracked()/memo. No manual cache, no identity tracking, no invalidation logic. The component boundary is what made it work.
-
 ## Key Lesson
 
-Don't try to replicate React's memoization manually in a render loop. React's memo/key reconciliation is already optimized for this. A component boundary (even a thin wrapper) gives you memoization that correctly handles all edge cases — identity, keys, fiber tracking, DOM synchronization.
+Don't try to replicate React's memoization manually in a render loop. The per-item check cost is comparable to the per-item creation cost. Map lookups, identity comparisons, and cache invalidation logic add overhead that offsets the savings from skipping `children()`.
 
-The append regression from removing CachedForItem is the inherent cost of eliminating that component boundary. It cannot be recovered without reintroducing one.
+CachedForItem's memo behavior came from being a React component boundary (tracked/memo), not from manual caching. But restoring CachedForItem is net-negative: it fixes the +4ms append regression but adds +5ms to create and +8ms to remove (measured, 5 runs each). The append regression is also a script-only cost — total time (script + paint) is flat because fewer objects means less GC pressure during paint.
+
+The correct call is to not have CachedForItem.
