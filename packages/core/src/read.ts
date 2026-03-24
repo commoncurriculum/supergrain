@@ -24,6 +24,10 @@ const isWrappable = (value: unknown): value is object =>
   (value.constructor === Object || value.constructor === Array);
 
 function wrap<T>(value: T): T {
+  // Fast-path: primitives (number, string, boolean, null, undefined) don't need wrapping
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
   profileTimeStart("wrapTime");
   const result = isWrappable(value) ? createReactiveProxy(value) : value;
   profileTimeEnd("wrapTime");
@@ -58,7 +62,7 @@ const readHandler: Pick<
   get(target, prop, receiver) {
     profileTimeStart("proxyGetTime");
     if (typeof prop === "string") {
-      const existingNodes = getNodesIfExist(target);
+      const existingNodes = (target as any)[$NODE];
       if (existingNodes) {
         const tracked = existingNodes[prop];
         if (tracked) {
@@ -96,7 +100,7 @@ const readHandler: Pick<
       return receiver;
     }
     if (prop === $VERSION) {
-      const nodes = getNodesIfExist(target);
+      const nodes = (target as any)[$NODE];
       profileTimeEnd("proxyGetTime");
       return nodes?.[$VERSION] ? nodes[$VERSION]() : 0;
     }
