@@ -8,7 +8,8 @@
     "typecheck": "tsc --noEmit",
     "test": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/dist.test.ts",
     "test:perf": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/perf.test.ts --reporter=verbose 2>&1 | tee perf-results.txt",
-    "test:heap": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/heap.test.ts --reporter=verbose"
+    "build-dev": "vite build --config vite.config.dev.ts",
+    "test:heap": "pnpm build-dev && vitest run --config vitest.dist.config.ts src/heap.test.ts --reporter=verbose"
   },
   "dependencies": {
     "@supergrain/core": "workspace:*",
