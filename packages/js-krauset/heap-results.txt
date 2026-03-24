@@ -1,0 +1,89 @@
+=== Heap Snapshot Diff: Create 1K Rows ===
+
+Total: +226,256 objects, +5487 KB
+
+Constructor                                           Count Δ       Size Δ    Per Row
+─────────────────────────────────────────────────────────────────────────────────────
+native:InternalNode                                    +81015      +0.0 KB       81.0
+object:Object                                          +62005   +1691.5 KB       62.0
+closure:                                               +11002    +308.6 KB       11.0
+object:Lv                                              +10000   +1015.6 KB       10.0
+object:system / Context                                 +8001    +195.3 KB        8.0
+closure:native_bind                                     +7001    +164.1 KB        7.0
+object:Array                                            +7000    +109.4 KB        7.0
+array:(object elements)                                 +4000     +62.5 KB        4.0
+object:HTMLTableCellElement                             +4000     +62.5 KB        4.0
+array:(bound arguments)                                 +4000     +85.9 KB        4.0
+native:<td class="col-md-1">                            +2000    +234.4 KB        2.0
+object:HTMLAnchorElement                                +2000     +31.3 KB        2.0
+native:Text                                             +2000    +156.3 KB        2.0
+native:<a>                                              +2000    +296.9 KB        2.0
+closure:subscribe                                       +2000     +54.7 KB        2.0
+closure:getSnapshot                                     +2000     +54.7 KB        2.0
+native:DOMTokenList                                     +2000    +109.4 KB        2.0
+native:V8EventHandlerNonNull                            +2000     +62.5 KB        2.0
+native:EventListener                                    +2000     +46.9 KB        2.0
+closure:onClick                                         +2000     +54.7 KB        2.0
+object:HTMLTableRowElement                              +1000     +15.6 KB        1.0
+object:HTMLSpanElement                                  +1000     +15.6 KB        1.0
+native:<td class="col-md-4">                            +1000    +117.2 KB        1.0
+native:<span class="glyphicon glyphicon-remove" aria-hidden="true">      +1000    +117.2 KB        1.0
+native:<td class="col-md-6">                            +1000    +117.2 KB        1.0
+native:<tr class="">                                    +1000    +117.2 KB        1.0
+native:Element                                          +1000    +125.0 KB        1.0
+native:system / ExternalStringData                       +952     +21.3 KB        1.0
+code:system / LoadHandler                                 +44      +0.8 KB           
+code:system / TrustedByteArray                            +20      +2.1 KB           
+object shape:system / DescriptorArray                     +15      +1.7 KB           
+object shape:system / Map                                 +11      +0.4 KB           
+object shape:system / PrototypeInfo                       +11      +0.4 KB           
+object shape:system / Cell                                 +9      +0.1 KB           
+code:system / CodeWrapper                                  +9      +0.1 KB           
+code:system / FeedbackVector                               +9      +1.7 KB           
+code:system / AllocationSite                               +4      +0.1 KB           
+string:large red                                           +4      +0.1 KB           
+string:plain green                                         +4      +0.1 KB           
+string:easy purple                                         +4      +0.1 KB           
+string:odd yellow                                          +3      +0.1 KB           
+string:mushy white                                         +3      +0.1 KB           
+object shape:system / WeakArrayList                        +2      +0.1 KB           
+code:system / StoreHandler                                 +2      +0.0 KB           
+string:angry blue                                          +2      +0.0 KB           
+string:elegant blue                                        +2      +0.0 KB           
+object shape:(enum cache)                                  +2      +0.0 KB           
+string:short yellow                                        +2      +0.0 KB           
+string:large purple                                        +2      +0.0 KB           
+string:fancy brown bbq                                     +2      +0.1 KB           
+
+=== Allocations that scale with row count (>= 500 new objects) ===
+
+  native:InternalNode                              +81,015 (81.0/row)       +0.0 KB
+  object:Object                                    +62,005 (62.0/row)    +1691.5 KB
+  closure:                                         +11,002 (11.0/row)     +308.6 KB
+  object:Lv                                        +10,000 (10.0/row)    +1015.6 KB
+  object:system / Context                          + 8,001 (8.0/row)     +195.3 KB
+  closure:native_bind                              + 7,001 (7.0/row)     +164.1 KB
+  object:Array                                     + 7,000 (7.0/row)     +109.4 KB
+  array:(object elements)                          + 4,000 (4.0/row)      +62.5 KB
+  object:HTMLTableCellElement                      + 4,000 (4.0/row)      +62.5 KB
+  array:(bound arguments)                          + 4,000 (4.0/row)      +85.9 KB
+  native:<td class="col-md-1">                     + 2,000 (2.0/row)     +234.4 KB
+  object:HTMLAnchorElement                         + 2,000 (2.0/row)      +31.3 KB
+  native:Text                                      + 2,000 (2.0/row)     +156.3 KB
+  native:<a>                                       + 2,000 (2.0/row)     +296.9 KB
+  closure:subscribe                                + 2,000 (2.0/row)      +54.7 KB
+  closure:getSnapshot                              + 2,000 (2.0/row)      +54.7 KB
+  native:DOMTokenList                              + 2,000 (2.0/row)     +109.4 KB
+  native:V8EventHandlerNonNull                     + 2,000 (2.0/row)      +62.5 KB
+  native:EventListener                             + 2,000 (2.0/row)      +46.9 KB
+  closure:onClick                                  + 2,000 (2.0/row)      +54.7 KB
+  object:HTMLTableRowElement                       + 1,000 (1.0/row)      +15.6 KB
+  object:HTMLSpanElement                           + 1,000 (1.0/row)      +15.6 KB
+  native:<td class="col-md-4">                     + 1,000 (1.0/row)     +117.2 KB
+  native:<span class="glyphicon glyphicon-remove" aria-hidden="true"> + 1,000 (1.0/row)     +117.2 KB
+  native:<td class="col-md-6">                     + 1,000 (1.0/row)     +117.2 KB
+  native:<tr class="">                             + 1,000 (1.0/row)     +117.2 KB
+  native:Element                                   + 1,000 (1.0/row)     +125.0 KB
+  native:system / ExternalStringData               +   952 (1.0/row)      +21.3 KB
+
+  Scaled allocations total: +5443 KB of +5487 KB total
