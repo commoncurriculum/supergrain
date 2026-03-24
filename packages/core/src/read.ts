@@ -1,6 +1,6 @@
 import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 
-import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes } from "./core";
+import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes, getNodesIfExist } from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
 import { writeHandler } from "./write";
 
@@ -54,7 +54,7 @@ const readHandler: Pick<
 > = {
   get(target, prop, receiver) {
     if (typeof prop === "string") {
-      const existingNodes = (target as any)[$NODE];
+      const existingNodes = getNodesIfExist(target);
       if (existingNodes) {
         const tracked = existingNodes[prop];
         if (tracked) {
@@ -85,7 +85,7 @@ const readHandler: Pick<
       return receiver;
     }
     if (prop === $VERSION) {
-      const nodes = (target as any)[$NODE];
+      const nodes = getNodesIfExist(target);
       return nodes?.[$VERSION] ? nodes[$VERSION]() : 0;
     }
 

@@ -172,6 +172,72 @@ describe("dist validation (isKeyed mirror)", () => {
     expect(p.effectFires).toBe(2);
   });
 
+  it("create 1k: profile timing breakdown", async () => {
+    const page = await freshPage(ctx);
+
+    // Start profiling, then create 1000 rows
+    await page.evaluate(() => (window as any).__startProfiling());
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+    await page.waitForTimeout(100);
+
+    const p = await page.evaluate(() => (window as any).__getProfilingResults());
+    console.log("Create 1k profiling:", JSON.stringify(p, null, 2));
+
+    expect(p.rowRenderCount).toBe(1000);
+  });
+
+  it("replace 1k: profile timing breakdown", async () => {
+    const page = await freshPage(ctx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+
+    // Start profiling, then replace
+    await page.evaluate(() => (window as any).__startProfiling());
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+    await page.waitForTimeout(100);
+
+    const p = await page.evaluate(() => (window as any).__getProfilingResults());
+    console.log("Replace 1k profiling:", JSON.stringify(p, null, 2));
+
+    expect(p.rowRenderCount).toBe(1000);
+  });
+
+  it("append 1k: profile timing breakdown", async () => {
+    const page = await freshPage(ctx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+
+    // Start profiling, then append
+    await page.evaluate(() => (window as any).__startProfiling());
+    await click(page, "#add");
+    await waitFor(page, "tbody>tr:nth-of-type(2000)");
+    await page.waitForTimeout(100);
+
+    const p = await page.evaluate(() => (window as any).__getProfilingResults());
+    console.log("Append 1k profiling:", JSON.stringify(p, null, 2));
+
+    expect(p.rowRenderCount).toBe(1000);
+  });
+
+  it("clear: profile timing breakdown", async () => {
+    const page = await freshPage(ctx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+
+    // Start profiling, then clear
+    await page.evaluate(() => (window as any).__startProfiling());
+    await click(page, "#clear");
+    await page.waitForFunction(() => document.querySelectorAll("tbody>tr").length === 0);
+    await page.waitForTimeout(100);
+
+    const p = await page.evaluate(() => (window as any).__getProfilingResults());
+    console.log("Clear profiling:", JSON.stringify(p, null, 2));
+
+    expect(p.rowRenderCount).toBe(0);
+  });
+
   it("capture flamegraph trace for select row", async () => {
     const page = await freshPage(ctx);
     await click(page, "#run");

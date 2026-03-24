@@ -1,4 +1,4 @@
-import { effect, getCurrentSub, setCurrentSub } from "@supergrain/core";
+import { effect, getCurrentSub, setCurrentSub, profileTimeStart, profileTimeEnd } from "@supergrain/core";
 import { type FC, memo, useReducer, useRef, useEffect } from "react";
 
 /**
@@ -47,6 +47,7 @@ export function tracked<P extends object>(Component: FC<P>) {
     const ref = useRef<{ cleanup: () => void; effectNode: any } | null>(null);
 
     if (!ref.current) {
+      profileTimeStart("trackedSetup");
       let effectNode: any = null;
       let firstRun = true;
       const cleanup = effect(() => {
@@ -58,6 +59,7 @@ export function tracked<P extends object>(Component: FC<P>) {
         forceUpdate();
       });
       ref.current = { cleanup, effectNode };
+      profileTimeEnd("trackedSetup");
     }
 
     useEffect(

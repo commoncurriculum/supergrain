@@ -1,5 +1,6 @@
 // Export the optimized implementation
 export { createStore, unwrap, $BRAND, type Signal, type Branded } from "./store";
+export { getNodesIfExist } from "./core";
 
 // Export MongoDB-style update operators
 export {
@@ -25,5 +26,8 @@ export {
   disableProfiling,
   resetProfiler,
   getProfile,
+  profileTimeStart,
+  profileTimeEnd,
   type Profile,
+  type TimingBucket,
 } from "./profiler";

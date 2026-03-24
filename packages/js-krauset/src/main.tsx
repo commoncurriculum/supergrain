@@ -3,6 +3,7 @@ import {
   startBatch,
   endBatch,
   enableProfiling,
+  disableProfiling,
   resetProfiler,
   getProfile,
 } from "@supergrain/core";
@@ -170,8 +171,6 @@ export const select = (id: number) => {
 
 // --- Profiling ---
 
-enableProfiling();
-
 let rowRenderCount = 0;
 let appRenderCount = 0;
 let forRenderCount = 0;
@@ -189,6 +188,7 @@ function onRenderProfiler(
 }
 
 export function startProfiling() {
+  enableProfiling();
   resetProfiler();
   rowRenderCount = 0;
   appRenderCount = 0;
@@ -198,6 +198,7 @@ export function startProfiling() {
 
 export function getProfilingResults() {
   const signalProfile = getProfile();
+  disableProfiling();
   return {
     ...signalProfile,
     rowRenderCount,

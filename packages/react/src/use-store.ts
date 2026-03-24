@@ -1,10 +1,9 @@
-import { effect as alienEffect, getCurrentSub, setCurrentSub, unwrap } from "@supergrain/core";
-import React, { useEffect, useLayoutEffect, useRef } from "react";
+import { effect as alienEffect, getCurrentSub, setCurrentSub, unwrap, profileTimeStart, profileTimeEnd, getNodesIfExist } from "@supergrain/core";
+import React, { memo, useEffect, useLayoutEffect, useRef } from "react";
 
 import { tracked } from "./tracked";
 
 const $TRACK = Symbol.for("supergrain:track");
-const $NODE = Symbol.for("supergrain:node");
 
 interface ForProps<T> {
   each: T[];
@@ -98,6 +97,7 @@ const CachedForItem = tracked(
  */
 // tracked() erases the generic <T>, so we cast through unknown to restore it.
 export const For = tracked((props: ForProps<unknown>) => {
+  profileTimeStart("forRender");
   const { each, children, fallback, parent } = props;
   const prevRawRef = useRef<unknown[]>([]);
   const swapCleanupRef = useRef<(() => void) | null>(null);
@@ -120,10 +120,14 @@ export const For = tracked((props: ForProps<unknown>) => {
     }
 
     swapCleanupRef.current?.();
-    prevRawRef.current = [...raw];
+    profileTimeStart("forArrayCopy");
+    prevRawRef.current = raw.slice();
+    profileTimeEnd("forArrayCopy");
 
     const cleanup = alienEffect(() => {
-      const nodes = (raw as any)[$NODE];
+      profileTimeStart("forSwapEffect");
+      profileTimeStart("signalSubscribe");
+      const nodes = getNodesIfExist(raw);
       for (let i = 0; i < raw.length; i++) {
         if (nodes?.[i]) {
           nodes[i]();
@@ -131,11 +135,15 @@ export const For = tracked((props: ForProps<unknown>) => {
           void each[i];
         }
       }
+      profileTimeEnd("signalSubscribe");
 
       const prev = prevRawRef.current;
       const container = parent.current;
       if (!container || prev.length !== raw.length) {
-        prevRawRef.current = [...raw];
+        profileTimeStart("forArrayCopy");
+        prevRawRef.current = raw.slice();
+        profileTimeEnd("forArrayCopy");
+        profileTimeEnd("forSwapEffect");
         return;
       }
 
@@ -165,7 +173,10 @@ export const For = tracked((props: ForProps<unknown>) => {
         }
       }
 
-      prevRawRef.current = [...raw];
+      profileTimeStart("forArrayCopy");
+      prevRawRef.current = raw.slice();
+      profileTimeEnd("forArrayCopy");
+      profileTimeEnd("forSwapEffect");
     });
 
     swapCleanupRef.current = cleanup;
@@ -180,12 +191,13 @@ export const For = tracked((props: ForProps<unknown>) => {
   );
 
   if (!raw || raw.length === 0) {
+    profileTimeEnd("forRender");
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
 
   // Without parent: subscribe to per-index signals for React reconciliation on swap.
   if (!parent) {
-    const nodes = (raw as any)[$NODE];
+    const nodes = getNodesIfExist(raw);
     for (let i = 0; i < raw.length; i++) {
       const existingNode = nodes?.[i];
       if (existingNode) {
@@ -198,7 +210,7 @@ export const For = tracked((props: ForProps<unknown>) => {
 
   const ItemComponent = parent ? CachedForItem : ForItem;
 
-  const slots = [];
+  const slots = new Array(raw.length);
   for (let i = 0; i < raw.length; i++) {
     const rawItem = raw[i];
     const key =
@@ -206,15 +218,14 @@ export const For = tracked((props: ForProps<unknown>) => {
         ? ((rawItem as Record<string, unknown>).id as React.Key)
         : i;
 
-    slots.push(
-      React.createElement(ItemComponent, {
-        key,
-        each,
-        index: i,
-        children,
-      }),
-    );
+    slots[i] = React.createElement(ItemComponent, {
+      key,
+      each,
+      index: i,
+      children,
+    });
   }
 
-  return React.createElement(React.Fragment, null, ...slots);
+  profileTimeEnd("forRender");
+  return slots as any;
 }) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;

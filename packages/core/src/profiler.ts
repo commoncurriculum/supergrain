@@ -18,6 +18,15 @@
 
 import { effect as alienEffect } from "alien-signals";
 
+/** Named timing buckets for profiling where time is spent. */
+export type TimingBucket =
+  | "trackedSetup"
+  | "computedSetup"
+  | "forRender"
+  | "forSwapEffect"
+  | "forArrayCopy"
+  | "signalSubscribe";
+
 export interface Profile {
   /** Signal reads that created a subscription (inside a tracked effect) */
   signalReads: number;
@@ -27,6 +36,8 @@ export interface Profile {
   signalWrites: number;
   /** Effect fires (each = one component re-render via tracked()) */
   effectFires: number;
+  /** Accumulated time (ms) per named timing bucket */
+  timings: Record<TimingBucket, number>;
 }
 
 let _signalReads = 0;
@@ -34,8 +45,21 @@ let _signalSkips = 0;
 let _signalWrites = 0;
 let _effectFires = 0;
 
+const _timings: Record<TimingBucket, number> = {
+  trackedSetup: 0,
+  computedSetup: 0,
+  forRender: 0,
+  forSwapEffect: 0,
+  forArrayCopy: 0,
+  signalSubscribe: 0,
+};
+
+const _timingStarts: Record<string, number> = {};
+
 // eslint-disable-next-line @typescript-eslint/no-empty-function -- intentional no-op for zero-cost disabled state
 function noop(): void {}
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- intentional no-op signature
+function noopBucket(_bucket: TimingBucket): void {}
 
 function countSignalRead(): void {
   _signalReads++;
@@ -49,18 +73,31 @@ function countSignalWrite(): void {
 function countEffectFire(): void {
   _effectFires++;
 }
+function startTiming(bucket: TimingBucket): void {
+  _timingStarts[bucket] = performance.now();
+}
+function endTiming(bucket: TimingBucket): void {
+  const start = _timingStarts[bucket];
+  if (start !== undefined) {
+    _timings[bucket] += performance.now() - start;
+  }
+}
 
 // Exported as mutable bindings — swapped between no-ops and counters
 export let profileSignalRead: () => void = noop;
 export let profileSignalSkip: () => void = noop;
 export let profileSignalWrite: () => void = noop;
 export let profileEffectFire: () => void = noop;
+export let profileTimeStart: (bucket: TimingBucket) => void = noopBucket;
+export let profileTimeEnd: (bucket: TimingBucket) => void = noopBucket;
 
 export function enableProfiling(): void {
   profileSignalRead = countSignalRead;
   profileSignalSkip = countSignalSkip;
   profileSignalWrite = countSignalWrite;
   profileEffectFire = countEffectFire;
+  profileTimeStart = startTiming;
+  profileTimeEnd = endTiming;
 }
 
 export function disableProfiling(): void {
@@ -68,6 +105,8 @@ export function disableProfiling(): void {
   profileSignalSkip = noop;
   profileSignalWrite = noop;
   profileEffectFire = noop;
+  profileTimeStart = noopBucket;
+  profileTimeEnd = noopBucket;
 }
 
 export function resetProfiler(): void {
@@ -75,6 +114,9 @@ export function resetProfiler(): void {
   _signalSkips = 0;
   _signalWrites = 0;
   _effectFires = 0;
+  for (const key of Object.keys(_timings) as TimingBucket[]) {
+    _timings[key] = 0;
+  }
 }
 
 export function getProfile(): Profile {
@@ -83,6 +125,7 @@ export function getProfile(): Profile {
     signalSkips: _signalSkips,
     signalWrites: _signalWrites,
     effectFires: _effectFires,
+    timings: { ..._timings },
   };
 }
 
