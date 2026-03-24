@@ -16,77 +16,91 @@ npm install @supergrain/core @supergrain/react
 
 ## Quick Start
 
-```typescript
-// [#DOC_TEST_32](packages/doc-tests/tests/readme-react.test.tsx)
+```tsx
+import { createStore } from '@supergrain/core'
+import { tracked, provideStore, useComputed, useSignalEffect, For } from '@supergrain/react'
 
-import { createStore, computed, effect } from '@supergrain/core'
-import { tracked, For } from '@supergrain/react'
+// ---- Store ------------------------------------------------------------------
 
 interface Todo { id: number; text: string; completed: boolean }
+interface AppState { todos: Todo[]; selected: number | null }
 
-const [store] = createStore<{ todos: Todo[] }>({
+const [store] = createStore<AppState>({
   todos: [
     { id: 1, text: 'Learn Supergrain', completed: false },
     { id: 2, text: 'Build something', completed: false },
   ],
+  selected: null,
 })
 
-const TodoItem = tracked(({ todo }: { todo: Todo }) => (
-  <li>
-    <input
-      type="checkbox"
-      checked={todo.completed}
-      onChange={() => todo.completed = !todo.completed}
-    />
-    {todo.text}
-  </li>
-))
+const Store = provideStore(store)
+
+// ---- Components (leaf → root, required by JS declaration order) -------------
+
+const TodoItem = tracked(({ todo }: { todo: Todo }) => {
+  const store = Store.useStore()
+  const isSelected = useComputed(() => store.selected === todo.id)
+
+  return (
+    <li className={isSelected ? 'selected' : ''}>
+      <input
+        type="checkbox"
+        checked={todo.completed}
+        onChange={() => todo.completed = !todo.completed}
+      />
+      {todo.text}
+    </li>
+  )
+})
 
 const App = tracked(() => {
-  const remaining = computed(() => store.todos.filter(t => !t.completed).length)
+  const store = Store.useStore()
+  const remaining = useComputed(() => store.todos.filter(t => !t.completed).length)
 
-  effect(() => document.title = `${remaining()} items left`)
+  useSignalEffect(() => {
+    document.title = `${remaining} items left`
+  })
 
   return (
     <div>
-      <h1>Todos ({remaining()})</h1>
+      <h1>Todos ({remaining})</h1>
       <For each={store.todos}>
         {todo => <TodoItem key={todo.id} todo={todo} />}
       </For>
     </div>
   )
 })
+
+// ---- Render -----------------------------------------------------------------
+
+<Store.Provider><App /></Store.Provider>
 ```
 
-Checking a todo re-renders only that `TodoItem` — the `App` component and other items don't re-render.
+Checking a todo re-renders only that `TodoItem`. Changing selection re-renders only the 2 affected items. The `App` component and other items don't re-render.
 
-## `<For>` Component
+- **`createStore<T>(initial)`** — Creates a reactive store proxy. Reads and writes work like plain objects. Returns `[store, update]`.
 
-`<For>` optimizes list rendering. With `.map()` + `React.memo()`, React still calls the memo comparison function for every item whenever the array changes. `<For>` tracks which items actually changed and only re-renders those:
+- **`provideStore(store)`** — Wraps a store with React context plumbing. Returns `{ Provider, useStore }`. The proxy's identity never changes, so the context value is stable and won't trigger React re-renders.
 
-```typescript
-// [#DOC_TEST_39](packages/doc-tests/tests/readme-react.test.tsx)
+- **`tracked(Component)`** — Wraps a React component with per-component signal scoping. Only the signals read during render are tracked — when they change, only this component re-renders.
 
-import { For } from '@supergrain/react'
+- **`useComputed(() => expr, deps?)`** — Derived value that acts as a **firewall**. Re-evaluates when upstream signals change, but only triggers a re-render when the **result** changes. Also works with proxy props directly (`useComputed(() => item.label.toUpperCase())`). Optional `deps` array controls when the computed is recreated (like `useMemo`).
 
-const [store] = createStore({
-  todos: [
-    { id: 1, text: 'Task 1', completed: false },
-    { id: 2, text: 'Task 2', completed: true },
-  ],
-})
+- **`useSignalEffect(() => sideEffect)`** — Signal-tracked side effect tied to the component lifecycle. Re-runs when tracked signals change, cleans up on unmount. Does **not** cause the component to re-render.
 
-const TodoItem = tracked(({ todo }: { todo: any }) => (
-  <div className={todo.completed ? 'completed' : ''}>
-    {todo.text}
-  </div>
-))
+- **`<For each={array}>{item => ...}</For>`** — Optimized list rendering. Tracks which items actually changed and only re-renders those, unlike `.map()` + `React.memo()` which calls the comparison function for every item.
 
-const TodoList = tracked(() => (
-  <For each={store.todos} fallback={<div>No todos yet</div>}>
-    {todo => <TodoItem key={todo.id} todo={todo} />}
-  </For>
-))
+Multiple stores compose naturally:
+
+```tsx
+const Auth = provideStore(authStore)
+const UI = provideStore(uiStore)
+
+<Auth.Provider>
+  <UI.Provider>
+    <App />
+  </UI.Provider>
+</Auth.Provider>
 ```
 
 ## Synchronous Writes and Batching

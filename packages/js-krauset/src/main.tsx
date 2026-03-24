@@ -6,7 +6,7 @@ import {
   resetProfiler,
   getProfile,
 } from "@supergrain/core";
-import { tracked, For } from "@supergrain/react";
+import { tracked, For, provideStore, useComputed } from "@supergrain/react";
 import { Profiler, useCallback, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
@@ -88,7 +88,6 @@ export function buildData(count: number): RowData[] {
       label: `${adjectives[_random(adjectives.length)]} ${
         colours[_random(colours.length)]
       } ${nouns[_random(nouns.length)]}`,
-      isSelected: false,
     };
   }
   return data;
@@ -99,7 +98,6 @@ export function buildData(count: number): RowData[] {
 export interface RowData {
   id: number;
   label: string;
-  isSelected: boolean;
 }
 
 export interface AppState {
@@ -119,6 +117,8 @@ const [store] = createStore<AppState>({
   data: [],
   selected: null,
 });
+
+const Store = provideStore(store);
 
 export const run = (count: number) => {
   store.data = buildData(count);
@@ -164,21 +164,7 @@ export const remove = (id: number) => {
 
 export const select = (id: number) => {
   flushSync(() => {
-    startBatch();
-    // Deselect old
-    if (store.selected !== null) {
-      const old = store.data.find((d) => d.id === store.selected);
-      if (old) {
-        old.isSelected = false;
-      }
-    }
-    // Select new
-    const item = store.data.find((d) => d.id === id);
-    if (item) {
-      item.isSelected = true;
-    }
     store.selected = id;
-    endBatch();
   });
 };
 
@@ -239,8 +225,10 @@ const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }
 
 export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
   rowRenderCount++;
+  const store = Store.useStore();
+  const isSelected = useComputed(() => store.selected === item.id);
   return (
-    <tr className={item.isSelected ? "danger" : ""}>
+    <tr className={isSelected ? "danger" : ""}>
       <td className="col-md-1">{item.id}</td>
       <td className="col-md-4">
         <a onClick={() => onSelect(item.id)}>{item.label}</a>
@@ -301,6 +289,10 @@ if (typeof window !== "undefined") {
   const container = document.getElementById("main");
   if (container) {
     const root = createRoot(container);
-    root.render(<App />);
+    root.render(
+      <Store.Provider>
+        <App />
+      </Store.Provider>,
+    );
   }
 }
