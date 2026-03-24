@@ -1,5 +1,5 @@
 import { effect, getCurrentSub, setCurrentSub, profileTimeStart, profileTimeEnd } from "@supergrain/core";
-import { type FC, memo, useReducer, useRef, useEffect } from "react";
+import { type FC, memo, useEffect, useRef, useSyncExternalStore } from "react";
 
 /**
  * Wraps a React component with per-component signal scoping.
@@ -44,8 +44,13 @@ import { type FC, memo, useReducer, useRef, useEffect } from "react";
 export function tracked<P extends object>(Component: FC<P>) {
   const Tracked: FC<P> = (props: P) => {
     profileTimeStart("trackedHookTime");
-    const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
-    const ref = useRef<{ cleanup: () => void; effectNode: any } | null>(null);
+    const ref = useRef<{
+      cleanup: () => void;
+      effectNode: any;
+      version: number;
+      subscribe: (cb: () => void) => () => void;
+      getSnapshot: () => number;
+    } | null>(null);
     profileTimeEnd("trackedHookTime");
 
     if (!ref.current) {
@@ -53,20 +58,38 @@ export function tracked<P extends object>(Component: FC<P>) {
       profileTimeStart("trackedEffectTime");
       let effectNode: any = null;
       let firstRun = true;
+      let version = 0;
+      let listener: (() => void) | null = null;
       const cleanup = effect(() => {
         if (firstRun) {
           effectNode = getCurrentSub();
           firstRun = false;
           return;
         }
-        forceUpdate();
+        version++;
+        listener?.();
       });
-      ref.current = { cleanup, effectNode };
+      ref.current = {
+        cleanup,
+        effectNode,
+        version,
+        subscribe(cb: () => void) {
+          listener = cb;
+          return () => {
+            listener = null;
+          };
+        },
+        getSnapshot() {
+          return version;
+        },
+      };
       profileTimeEnd("trackedEffectTime");
       profileTimeEnd("trackedSetup");
     }
 
     profileTimeStart("trackedHookTime");
+    useSyncExternalStore(ref.current.subscribe, ref.current.getSnapshot);
+
     useEffect(
       () => () => {
         profileTimeStart("effectCleanupTime");
