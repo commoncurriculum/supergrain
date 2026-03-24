@@ -21,11 +21,24 @@ import { effect as alienEffect } from "alien-signals";
 /** Named timing buckets for profiling where time is spent. */
 export type TimingBucket =
   | "trackedSetup"
+  | "trackedHookTime"
+  | "trackedEffectTime"
+  | "trackedRenderTime"
+  | "effectCleanupTime"
   | "computedSetup"
+  | "computedAlloc"
+  | "computedEval"
   | "forRender"
+  | "forTotalRenderTime"
+  | "forSlotBuildTime"
   | "forSwapEffect"
   | "forArrayCopy"
-  | "signalSubscribe";
+  | "signalSubscribe"
+  | "proxyGetTime"
+  | "wrapTime"
+  | "setPropertyTime"
+  | "signalBumpTime"
+  | "spliceTime";
 
 export interface Profile {
   /** Signal reads that created a subscription (inside a tracked effect) */
@@ -47,11 +60,24 @@ let _effectFires = 0;
 
 const _timings: Record<TimingBucket, number> = {
   trackedSetup: 0,
+  trackedHookTime: 0,
+  trackedEffectTime: 0,
+  trackedRenderTime: 0,
+  effectCleanupTime: 0,
   computedSetup: 0,
+  computedAlloc: 0,
+  computedEval: 0,
   forRender: 0,
+  forTotalRenderTime: 0,
+  forSlotBuildTime: 0,
   forSwapEffect: 0,
   forArrayCopy: 0,
   signalSubscribe: 0,
+  proxyGetTime: 0,
+  wrapTime: 0,
+  setPropertyTime: 0,
+  signalBumpTime: 0,
+  spliceTime: 0,
 };
 
 const _timingStarts: Record<string, number> = {};

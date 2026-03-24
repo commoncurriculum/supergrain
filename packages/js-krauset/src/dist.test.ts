@@ -238,6 +238,39 @@ describe("dist validation (isKeyed mirror)", () => {
     expect(p.rowRenderCount).toBe(0);
   });
 
+  it("remove row: profile timing breakdown", async () => {
+    const page = await freshPage(ctx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+
+    // Start profiling, then remove the first row
+    await page.evaluate(() => (window as any).__startProfiling());
+    await click(page, "tbody>tr:nth-of-type(1)>td:nth-of-type(3)>a>span");
+    await page.waitForTimeout(200);
+
+    const p = await page.evaluate(() => (window as any).__getProfilingResults());
+    console.log("Remove row profiling:", JSON.stringify(p, null, 2));
+
+    expect(await page.$$eval("tbody>tr", (rows: any[]) => rows.length)).toBe(999);
+  });
+
+  it("swap rows: profile timing breakdown", async () => {
+    const page = await freshPage(ctx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1000)");
+
+    // Start profiling, then swap
+    await page.evaluate(() => (window as any).__startProfiling());
+    await click(page, "#swaprows");
+    await page.waitForTimeout(200);
+
+    const p = await page.evaluate(() => (window as any).__getProfilingResults());
+    console.log("Swap rows profiling:", JSON.stringify(p, null, 2));
+
+    // After swap, row 2 should be at position 999 and vice versa
+    expect(await page.$eval("tbody>tr:nth-of-type(2)>td:nth-of-type(1)", (el: any) => el.textContent)).toBe("999");
+  });
+
   it("capture flamegraph trace for select row", async () => {
     const page = await freshPage(ctx);
     await click(page, "#run");

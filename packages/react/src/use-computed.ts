@@ -30,9 +30,14 @@ import { useMemo } from "react";
 export function useComputed<T>(factory: () => T, deps: readonly unknown[] = []): T {
   const c = useMemo(() => {
     profileTimeStart("computedSetup");
+    profileTimeStart("computedAlloc");
     const s = computed(factory);
+    profileTimeEnd("computedAlloc");
     profileTimeEnd("computedSetup");
     return s;
   }, deps); // eslint-disable-line react-hooks/exhaustive-deps
-  return c();
+  profileTimeStart("computedEval");
+  const value = c();
+  profileTimeEnd("computedEval");
+  return value;
 }

@@ -43,11 +43,14 @@ import { type FC, memo, useReducer, useRef, useEffect } from "react";
  */
 export function tracked<P extends object>(Component: FC<P>) {
   const Tracked: FC<P> = (props: P) => {
+    profileTimeStart("trackedHookTime");
     const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
     const ref = useRef<{ cleanup: () => void; effectNode: any } | null>(null);
+    profileTimeEnd("trackedHookTime");
 
     if (!ref.current) {
       profileTimeStart("trackedSetup");
+      profileTimeStart("trackedEffectTime");
       let effectNode: any = null;
       let firstRun = true;
       const cleanup = effect(() => {
@@ -59,21 +62,28 @@ export function tracked<P extends object>(Component: FC<P>) {
         forceUpdate();
       });
       ref.current = { cleanup, effectNode };
+      profileTimeEnd("trackedEffectTime");
       profileTimeEnd("trackedSetup");
     }
 
+    profileTimeStart("trackedHookTime");
     useEffect(
       () => () => {
+        profileTimeStart("effectCleanupTime");
         ref.current?.cleanup?.();
         ref.current = null;
+        profileTimeEnd("effectCleanupTime");
       },
       [],
     );
+    profileTimeEnd("trackedHookTime");
 
+    profileTimeStart("trackedRenderTime");
     const prev = getCurrentSub();
     setCurrentSub(ref.current.effectNode);
     const result = Component(props); // eslint-disable-line new-cap -- React function component call
     setCurrentSub(prev);
+    profileTimeEnd("trackedRenderTime");
     return result;
   };
 

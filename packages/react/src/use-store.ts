@@ -210,6 +210,7 @@ export const For = tracked((props: ForProps<unknown>) => {
 
   const ItemComponent = parent ? CachedForItem : ForItem;
 
+  profileTimeStart("forSlotBuildTime");
   const slots = new Array(raw.length);
   for (let i = 0; i < raw.length; i++) {
     const rawItem = raw[i];
@@ -226,6 +227,7 @@ export const For = tracked((props: ForProps<unknown>) => {
     });
   }
 
+  profileTimeEnd("forSlotBuildTime");
   profileTimeEnd("forRender");
   return slots as any;
 }) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;

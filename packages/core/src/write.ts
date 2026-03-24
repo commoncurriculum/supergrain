@@ -1,5 +1,5 @@
 import { $OWN_KEYS, $VERSION, unwrap, getNodes, getNodesIfExist } from "./core";
-import { profileSignalWrite } from "./profiler";
+import { profileSignalWrite, profileTimeStart, profileTimeEnd } from "./profiler";
 
 export function bumpVersion(target: object): void {
   let nodes = getNodesIfExist(target);
@@ -41,6 +41,7 @@ function bumpSignals(target: any, key: PropertyKey, prevLen: number): void {
 }
 
 export function setProperty(target: any, key: PropertyKey, value: any): void {
+  profileTimeStart("setPropertyTime");
   const hadKey = Object.hasOwn(target, key);
   const prevLen = Array.isArray(target) ? target.length : -1;
   const oldValue = target[key];
@@ -64,7 +65,9 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
     const node = nodes[key];
     if (node && didChange) {
       profileSignalWrite();
+      profileTimeStart("signalBumpTime");
       node(value);
+      profileTimeEnd("signalBumpTime");
     }
   }
   bumpSignals(target, key, prevLen);
@@ -72,6 +75,7 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
   if (!hadKey) {
     bumpOwnKeysSignal(target, getNodesIfExist(target));
   }
+  profileTimeEnd("setPropertyTime");
 }
 
 export function deleteProperty(target: any, key: PropertyKey): void {

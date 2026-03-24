@@ -1,7 +1,7 @@
 import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 
 import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes, getNodesIfExist } from "./core";
-import { profileSignalRead, profileSignalSkip } from "./profiler";
+import { profileSignalRead, profileSignalSkip, profileTimeStart, profileTimeEnd } from "./profiler";
 import { writeHandler } from "./write";
 
 const ARRAY_MUTATORS = new Set([
@@ -24,7 +24,10 @@ const isWrappable = (value: unknown): value is object =>
   (value.constructor === Object || value.constructor === Array);
 
 function wrap<T>(value: T): T {
-  return isWrappable(value) ? createReactiveProxy(value) : value;
+  profileTimeStart("wrapTime");
+  const result = isWrappable(value) ? createReactiveProxy(value) : value;
+  profileTimeEnd("wrapTime");
+  return result;
 }
 
 function trackSelf(target: object): void {
@@ -53,6 +56,7 @@ const readHandler: Pick<
   "get" | "ownKeys" | "has" | "getOwnPropertyDescriptor"
 > = {
   get(target, prop, receiver) {
+    profileTimeStart("proxyGetTime");
     if (typeof prop === "string") {
       const existingNodes = getNodesIfExist(target);
       if (existingNodes) {
@@ -60,32 +64,40 @@ const readHandler: Pick<
         if (tracked) {
           if (!getCurrentSub()) {
             profileSignalSkip();
-            return wrap((target as any)[prop]);
+            const r = wrap((target as any)[prop]);
+            profileTimeEnd("proxyGetTime");
+            return r;
           }
           profileSignalRead();
           const value = tracked();
           if (isWrappable(value)) {
             const proxy = createReactiveProxy(value);
             trackArrayVersion(value);
+            profileTimeEnd("proxyGetTime");
             return proxy;
           }
+          profileTimeEnd("proxyGetTime");
           return value;
         }
       }
     }
 
     if (prop === $RAW) {
+      profileTimeEnd("proxyGetTime");
       return target;
     }
     if (prop === $PROXY) {
+      profileTimeEnd("proxyGetTime");
       return receiver;
     }
     if (prop === $TRACK) {
       trackSelf(target);
+      profileTimeEnd("proxyGetTime");
       return receiver;
     }
     if (prop === $VERSION) {
       const nodes = getNodesIfExist(target);
+      profileTimeEnd("proxyGetTime");
       return nodes?.[$VERSION] ? nodes[$VERSION]() : 0;
     }
 
@@ -97,28 +109,36 @@ const readHandler: Pick<
           trackSelf(target);
         }
         if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
+          profileTimeEnd("proxyGetTime");
           return (...args: any[]) => {
+            profileTimeStart("spliceTime");
             startBatch();
             try {
               return value.apply(receiver, args);
             } finally {
               endBatch();
+              profileTimeEnd("spliceTime");
             }
           };
         }
       }
+      profileTimeEnd("proxyGetTime");
       return value;
     }
 
     if (!getCurrentSub()) {
       profileSignalSkip();
-      return wrap(value);
+      const r = wrap(value);
+      profileTimeEnd("proxyGetTime");
+      return r;
     }
 
     profileSignalRead();
     const nodes = getNodes(target);
     const node = getNode(nodes, prop, value);
-    return wrap(node());
+    const r = wrap(node());
+    profileTimeEnd("proxyGetTime");
+    return r;
   },
 
   ownKeys(target) {
