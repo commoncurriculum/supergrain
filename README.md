@@ -90,7 +90,7 @@ Checking a todo re-renders only that `TodoItem`. Changing selection re-renders o
 
 - **`useSignalEffect(() => sideEffect)`** — Signal-tracked side effect tied to the component lifecycle. Re-runs when tracked signals change, cleans up on unmount. Does **not** cause the component to re-render.
 
-- **`<For each={array}>{item => ...}</For>`** — Optimized list rendering. Tracks which items actually changed and only re-renders those, unlike `.map()` + `React.memo()` which calls the comparison function for every item.
+- **`<For each={array} parent={ref?}>{item => ...}</For>`** — Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
 
 ## Synchronous Writes and Batching
 
