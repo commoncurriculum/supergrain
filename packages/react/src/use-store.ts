@@ -1,5 +1,13 @@
-import { effect as alienEffect, getCurrentSub, setCurrentSub, unwrap, profileTimeStart, profileTimeEnd, getNodesIfExist } from "@supergrain/core";
-import React, { memo, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  effect as alienEffect,
+  getCurrentSub,
+  setCurrentSub,
+  unwrap,
+  profileTimeStart,
+  profileTimeEnd,
+  getNodesIfExist,
+} from "@supergrain/core";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 import { tracked } from "./tracked";
 
@@ -121,7 +129,7 @@ export const For = tracked((props: ForProps<unknown>) => {
 
     swapCleanupRef.current?.();
     profileTimeStart("forArrayCopy");
-    prevRawRef.current = raw.slice();
+    prevRawRef.current = [...raw];
     profileTimeEnd("forArrayCopy");
 
     const cleanup = alienEffect(() => {
@@ -141,7 +149,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       const container = parent.current;
       if (!container || prev.length !== raw.length) {
         profileTimeStart("forArrayCopy");
-        prevRawRef.current = raw.slice();
+        prevRawRef.current = [...raw];
         profileTimeEnd("forArrayCopy");
         profileTimeEnd("forSwapEffect");
         return;
@@ -174,7 +182,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       }
 
       profileTimeStart("forArrayCopy");
-      prevRawRef.current = raw.slice();
+      prevRawRef.current = [...raw];
       profileTimeEnd("forArrayCopy");
       profileTimeEnd("forSwapEffect");
     });
@@ -211,7 +219,7 @@ export const For = tracked((props: ForProps<unknown>) => {
   const ItemComponent = parent ? CachedForItem : ForItem;
 
   profileTimeStart("forSlotBuildTime");
-  const slots = new Array(raw.length);
+  const slots = Array.from({ length: raw.length });
   for (let i = 0; i < raw.length; i++) {
     const rawItem = raw[i];
     const key =

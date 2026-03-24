@@ -268,7 +268,9 @@ describe("dist validation (isKeyed mirror)", () => {
     console.log("Swap rows profiling:", JSON.stringify(p, null, 2));
 
     // After swap, row 2 should be at position 999 and vice versa
-    expect(await page.$eval("tbody>tr:nth-of-type(2)>td:nth-of-type(1)", (el: any) => el.textContent)).toBe("999");
+    expect(
+      await page.$eval("tbody>tr:nth-of-type(2)>td:nth-of-type(1)", (el: any) => el.textContent),
+    ).toBe("999");
   });
 
   it("capture flamegraph trace for select row", async () => {

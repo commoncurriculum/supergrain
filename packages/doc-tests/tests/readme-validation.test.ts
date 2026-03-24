@@ -13,6 +13,15 @@ import { describe, it, expect } from "vitest";
 describe("README Documentation Validation", () => {
   const readmeContent = readFileSync(join(__dirname, "../../../README.md"), "utf-8");
 
+  // Also scan docs/ directory for additional markdown files with DOC_TEST markers
+  const docsDir = join(__dirname, "../../../docs");
+  const docsContent = readdirSync(docsDir)
+    .filter((file) => file.endsWith(".md"))
+    .map((file) => readFileSync(join(docsDir, file), "utf-8"))
+    .join("\n");
+
+  const allDocContent = readmeContent + "\n" + docsContent;
+
   const testsDir = __dirname;
   const testFiles = readdirSync(testsDir)
     .filter((file) => file.endsWith(".test.ts") || file.endsWith(".test.tsx"))
@@ -95,12 +104,12 @@ describe("README Documentation Validation", () => {
   });
 
   it("should not have orphaned test cases (tests without corresponding README examples)", () => {
-    // Extract all DOC_TEST identifiers from README
+    // Extract all DOC_TEST identifiers from README and docs/
     const docTestRegex = /\/\/\s*\[#(DOC_TEST_[A-Za-z0-9_]+)\]/g;
     const readmeDocTests = new Set<string>();
     let match;
 
-    while ((match = docTestRegex.exec(readmeContent)) !== null) {
+    while ((match = docTestRegex.exec(allDocContent)) !== null) {
       readmeDocTests.add(match[1]);
     }
 

@@ -1,5 +1,5 @@
-import { effect as alienEffect, getCurrentSub, setCurrentSub } from "alien-signals";
 import { profileTimeStart, profileTimeEnd, profileEffectFire } from "@supergrain/core";
+import { effect as alienEffect, getCurrentSub, setCurrentSub } from "alien-signals";
 import { type FC, memo, useEffect, useRef, useSyncExternalStore } from "react";
 
 /**
