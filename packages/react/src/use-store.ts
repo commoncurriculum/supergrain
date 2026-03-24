@@ -150,11 +150,16 @@ export const For = tracked((props: ForProps<unknown>) => {
             container.append(nodeB);
           }
         }
+        // Update prev from raw (not swapping within prev) to preserve
+        // object identity — raw may contain proxy wrappers while prev
+        // has raw objects, so we must copy from raw for === to work.
+        prev[a] = raw[a];
+        prev[b] = raw[b];
+      } else {
+        profileTimeStart("forArrayCopy");
+        prevRawRef.current = raw.slice();
+        profileTimeEnd("forArrayCopy");
       }
-
-      profileTimeStart("forArrayCopy");
-      prevRawRef.current = raw.slice();
-      profileTimeEnd("forArrayCopy");
       profileTimeEnd("forSwapEffect");
     });
 
