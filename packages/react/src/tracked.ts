@@ -121,12 +121,10 @@ export function tracked<P extends object>(Component: FC<P>) {
     profileTimeStart("trackedRenderTime");
     const prev = getCurrentSub();
     setCurrentSub(ref.current.effectNode);
-    try {
-      return Component(props); // eslint-disable-line new-cap -- React function component call
-    } finally {
-      setCurrentSub(prev);
-      profileTimeEnd("trackedRenderTime");
-    }
+    const result = Component(props); // eslint-disable-line new-cap -- React function component call
+    setCurrentSub(prev);
+    profileTimeEnd("trackedRenderTime");
+    return result;
   };
 
   return memo(Tracked);
