@@ -1,5 +1,6 @@
-import { effect, getCurrentSub, setCurrentSub } from "@supergrain/core";
-import { type FC, memo, useReducer, useRef, useEffect } from "react";
+import { profileTimeStart, profileTimeEnd, profileEffectFire } from "@supergrain/core";
+import { effect as alienEffect, getCurrentSub, setCurrentSub } from "alien-signals";
+import { type FC, memo, useEffect, useRef, useSyncExternalStore } from "react";
 
 /**
  * Wraps a React component with per-component signal scoping.
@@ -41,37 +42,85 @@ import { type FC, memo, useReducer, useRef, useEffect } from "react";
  * })
  * ```
  */
+
+/** Internal state for a tracked component instance. */
+interface TrackedState {
+  cleanup: () => void;
+  effectNode: any;
+  version: number;
+  listener: (() => void) | null;
+  subscribe: (cb: () => void) => () => void;
+  getSnapshot: () => number;
+  unsubscribe: () => void;
+}
+
 export function tracked<P extends object>(Component: FC<P>) {
   const Tracked: FC<P> = (props: P) => {
-    const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
-    const ref = useRef<{ cleanup: () => void; effectNode: any } | null>(null);
+    profileTimeStart("trackedHookTime");
+    const ref = useRef<TrackedState | null>(null);
+    profileTimeEnd("trackedHookTime");
 
     if (!ref.current) {
-      let effectNode: any = null;
+      profileTimeStart("trackedSetup");
+      profileTimeStart("trackedEffectTime");
+      // All mutable state lives on the state object to minimize closure contexts.
+      // subscribe/getSnapshot/unsubscribe close over `state` only (one V8 Context).
+      const state: TrackedState = {
+        effectNode: null,
+        version: 0,
+        listener: null,
+        cleanup: null!,
+        unsubscribe() {
+          state.listener = null;
+        },
+        subscribe(cb: () => void) {
+          state.listener = cb;
+          return state.unsubscribe;
+        },
+        getSnapshot() {
+          return state.version;
+        },
+      };
+
       let firstRun = true;
-      const cleanup = effect(() => {
+      // Use alienEffect directly to avoid profiledEffect's double-callback overhead.
+      // profileEffectFire() is called manually on re-runs.
+      state.cleanup = alienEffect(() => {
         if (firstRun) {
-          effectNode = getCurrentSub();
+          state.effectNode = getCurrentSub();
           firstRun = false;
           return;
         }
-        forceUpdate();
+        profileEffectFire();
+        state.version++;
+        state.listener?.();
       });
-      ref.current = { cleanup, effectNode };
+
+      ref.current = state;
+      profileTimeEnd("trackedEffectTime");
+      profileTimeEnd("trackedSetup");
     }
+
+    profileTimeStart("trackedHookTime");
+    useSyncExternalStore(ref.current.subscribe, ref.current.getSnapshot);
 
     useEffect(
       () => () => {
+        profileTimeStart("effectCleanupTime");
         ref.current?.cleanup?.();
         ref.current = null;
+        profileTimeEnd("effectCleanupTime");
       },
       [],
     );
+    profileTimeEnd("trackedHookTime");
 
+    profileTimeStart("trackedRenderTime");
     const prev = getCurrentSub();
     setCurrentSub(ref.current.effectNode);
     const result = Component(props); // eslint-disable-line new-cap -- React function component call
     setCurrentSub(prev);
+    profileTimeEnd("trackedRenderTime");
     return result;
   };
 
