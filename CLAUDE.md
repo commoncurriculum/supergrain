@@ -14,21 +14,17 @@ Supergrain is a reactive store library with fine-grained reactivity. The project
 
 ## Required Commands After Code Changes
 
-**IMPORTANT**: After making any code changes, you MUST run both tests and type checks:
-
-### 1. Run Tests
+**IMPORTANT**: After making any code changes, you MUST run ALL of the following checks. These mirror exactly what CI runs — if any fail locally, CI will fail too.
 
 ```bash
-pnpm test
+pnpm test              # Unit tests across all packages
+pnpm run test:validate # README/docs documentation validation
+pnpm run typecheck     # TypeScript type checking across all packages
+pnpm lint              # Linting across all packages
+pnpm format            # Formatting (oxfmt)
 ```
 
-### 2. Run Type Checks
-
-```bash
-pnpm run typecheck
-```
-
-Both commands must pass before considering any code changes complete.
+**All five commands must pass before pushing or considering any code changes complete.** Do NOT skip `test:validate` — it catches orphaned doc tests and missing DOC_TEST identifiers.
 
 ## Package-specific Commands
 
