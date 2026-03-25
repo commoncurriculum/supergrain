@@ -104,7 +104,7 @@ export function tracked<P extends object>(Component: FC<P>) {
     }
 
     profileTimeStart("trackedHookTime");
-    useSyncExternalStore(ref.current.subscribe, ref.current.getSnapshot);
+    useSyncExternalStore(ref.current.subscribe, ref.current.getSnapshot, ref.current.getSnapshot);
 
     useEffect(
       () => () => {

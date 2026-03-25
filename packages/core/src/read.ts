@@ -55,79 +55,88 @@ function trackArrayVersion(value: unknown): void {
   }
 }
 
+function proxyGet(target: any, prop: PropertyKey, receiver: any): any {
+  if (typeof prop === "string") {
+    const existingNodes = (target as any)[$NODE];
+    if (existingNodes) {
+      const tracked = existingNodes[prop];
+      if (tracked) {
+        if (!getCurrentSub()) {
+          profileSignalSkip();
+          return wrap((target as any)[prop]);
+        }
+        profileSignalRead();
+        const value = tracked();
+        if (isWrappable(value)) {
+          const proxy = createReactiveProxy(value);
+          trackArrayVersion(value);
+          return proxy;
+        }
+        return value;
+      }
+    }
+  }
+
+  if (prop === $RAW) {
+    return target;
+  }
+  if (prop === $PROXY) {
+    return receiver;
+  }
+  if (prop === $TRACK) {
+    trackSelf(target);
+    return receiver;
+  }
+  if (prop === $VERSION) {
+    const nodes = (target as any)[$NODE];
+    return nodes?.[$VERSION] ? nodes[$VERSION]() : 0;
+  }
+
+  const value = (target as any)[prop];
+
+  if (typeof value === "function") {
+    if (Array.isArray(target)) {
+      if (getCurrentSub()) {
+        trackSelf(target);
+      }
+      if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
+        return (...args: any[]) => {
+          profileTimeStart("arrayMutatorTime");
+          startBatch();
+          try {
+            return value.apply(receiver, args);
+          } finally {
+            endBatch();
+            profileTimeEnd("arrayMutatorTime");
+          }
+        };
+      }
+    }
+    return value;
+  }
+
+  if (!getCurrentSub()) {
+    profileSignalSkip();
+    return wrap(value);
+  }
+
+  profileSignalRead();
+  const nodes = getNodes(target);
+  const node = getNode(nodes, prop, value);
+  return wrap(node());
+}
+
 const readHandler: Pick<
   ProxyHandler<object>,
   "get" | "ownKeys" | "has" | "getOwnPropertyDescriptor"
 > = {
   get(target, prop, receiver) {
-    if (typeof prop === "string") {
-      const existingNodes = (target as any)[$NODE];
-      if (existingNodes) {
-        const tracked = existingNodes[prop];
-        if (tracked) {
-          if (!getCurrentSub()) {
-            profileSignalSkip();
-            return wrap((target as any)[prop]);
-          }
-          profileSignalRead();
-          const value = tracked();
-          if (isWrappable(value)) {
-            const proxy = createReactiveProxy(value);
-            trackArrayVersion(value);
-            return proxy;
-          }
-          return value;
-        }
-      }
+    profileTimeStart("proxyGetTime");
+    try {
+      return proxyGet(target, prop, receiver);
+    } finally {
+      profileTimeEnd("proxyGetTime");
     }
-
-    if (prop === $RAW) {
-      return target;
-    }
-    if (prop === $PROXY) {
-      return receiver;
-    }
-    if (prop === $TRACK) {
-      trackSelf(target);
-      return receiver;
-    }
-    if (prop === $VERSION) {
-      const nodes = (target as any)[$NODE];
-      return nodes?.[$VERSION] ? nodes[$VERSION]() : 0;
-    }
-
-    const value = (target as any)[prop];
-
-    if (typeof value === "function") {
-      if (Array.isArray(target)) {
-        if (getCurrentSub()) {
-          trackSelf(target);
-        }
-        if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
-          return (...args: any[]) => {
-            profileTimeStart("arrayMutatorTime");
-            startBatch();
-            try {
-              return value.apply(receiver, args);
-            } finally {
-              endBatch();
-              profileTimeEnd("arrayMutatorTime");
-            }
-          };
-        }
-      }
-      return value;
-    }
-
-    if (!getCurrentSub()) {
-      profileSignalSkip();
-      return wrap(value);
-    }
-
-    profileSignalRead();
-    const nodes = getNodes(target);
-    const node = getNode(nodes, prop, value);
-    return wrap(node());
   },
 
   ownKeys(target) {
