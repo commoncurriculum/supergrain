@@ -1,3 +1,4 @@
+import strip from "@rollup/plugin-strip";
 import react from "@vitejs/plugin-react";
 /// <reference types="vitest" />
 import { resolve } from "path";
@@ -11,6 +12,17 @@ export default defineConfig({
       insertTypesEntry: true,
     }),
     react(),
+    // Strip profiler calls from production builds — zero runtime cost.
+    strip({
+      functions: [
+        "profileTimeStart",
+        "profileTimeEnd",
+        "profileSignalRead",
+        "profileSignalSkip",
+        "profileSignalWrite",
+        "profileEffectFire",
+      ],
+    }),
   ],
 
   // This is the key change:
