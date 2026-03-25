@@ -1,22 +1,34 @@
 /**
  * Lightweight profiler for diagnosing signal subscription and render behavior.
  *
- * Zero cost when disabled — profiling functions are swapped to empty no-ops
- * that V8 inlines away. No boolean checks on the hot path.
- * Enable with `enableProfiling()`, read with `getProfile()`, reset with `resetProfiler()`.
+ * When disabled, profiling adds only a single, predictable boolean check per call,
+ * which V8 can efficiently branch-predict as false. The functions themselves are
+ * constant (not swapped via mutable let bindings) so V8 can inline them.
  *
- * @example
- * ```ts
- * enableProfiling();
- * resetProfiler();
- * update();
- * const p = getProfile();
- * expect(p.effectFires).toBe(100); // 100 rows re-rendered
- * disableProfiling();
- * ```
+ * Enable with `enableProfiling()`, read with `getProfile()`, reset with `resetProfiler()`.
  */
 
 import { effect as alienEffect } from "alien-signals";
+
+/** Named timing buckets for profiling where time is spent. */
+export type TimingBucket =
+  | "trackedSetup"
+  | "trackedHookTime"
+  | "trackedEffectTime"
+  | "trackedRenderTime"
+  | "effectCleanupTime"
+  | "computedSetup"
+  | "computedAlloc"
+  | "computedEval"
+  | "forRender"
+  | "forSlotBuildTime"
+  | "forSwapEffect"
+  | "forArrayCopy"
+  | "signalSubscribe"
+  | "wrapTime"
+  | "setPropertyTime"
+  | "signalBumpTime"
+  | "arrayMutatorTime";
 
 export interface Profile {
   /** Signal reads that created a subscription (inside a tracked effect) */
@@ -27,47 +39,72 @@ export interface Profile {
   signalWrites: number;
   /** Effect fires (each = one component re-render via tracked()) */
   effectFires: number;
+  /** Accumulated time (ms) per named timing bucket */
+  timings: Record<TimingBucket, number>;
 }
 
+let _enabled = false;
 let _signalReads = 0;
 let _signalSkips = 0;
 let _signalWrites = 0;
 let _effectFires = 0;
 
-// eslint-disable-next-line @typescript-eslint/no-empty-function -- intentional no-op for zero-cost disabled state
-function noop(): void {}
+const _timings: Record<TimingBucket, number> = {
+  trackedSetup: 0,
+  trackedHookTime: 0,
+  trackedEffectTime: 0,
+  trackedRenderTime: 0,
+  effectCleanupTime: 0,
+  computedSetup: 0,
+  computedAlloc: 0,
+  computedEval: 0,
+  forRender: 0,
+  forSlotBuildTime: 0,
+  forSwapEffect: 0,
+  forArrayCopy: 0,
+  signalSubscribe: 0,
+  wrapTime: 0,
+  setPropertyTime: 0,
+  signalBumpTime: 0,
+  arrayMutatorTime: 0,
+};
 
-function countSignalRead(): void {
-  _signalReads++;
-}
-function countSignalSkip(): void {
-  _signalSkips++;
-}
-function countSignalWrite(): void {
-  _signalWrites++;
-}
-function countEffectFire(): void {
-  _effectFires++;
-}
+const _timingStarts: Partial<Record<TimingBucket, number>> = {};
 
-// Exported as mutable bindings — swapped between no-ops and counters
-export let profileSignalRead: () => void = noop;
-export let profileSignalSkip: () => void = noop;
-export let profileSignalWrite: () => void = noop;
-export let profileEffectFire: () => void = noop;
+export function profileSignalRead(): void {
+  if (_enabled) _signalReads++;
+}
+export function profileSignalSkip(): void {
+  if (_enabled) _signalSkips++;
+}
+export function profileSignalWrite(): void {
+  if (_enabled) _signalWrites++;
+}
+export function profileEffectFire(): void {
+  if (_enabled) _effectFires++;
+}
+/**
+ * Start timing a named bucket. Not reentrant — nested calls to the same
+ * bucket (e.g., nested For components) will overwrite the outer start time.
+ */
+export function profileTimeStart(bucket: TimingBucket): void {
+  if (_enabled) _timingStarts[bucket] = performance.now();
+}
+export function profileTimeEnd(bucket: TimingBucket): void {
+  if (!_enabled) return;
+  const start = _timingStarts[bucket];
+  if (start !== undefined) {
+    _timings[bucket] += performance.now() - start;
+    delete _timingStarts[bucket];
+  }
+}
 
 export function enableProfiling(): void {
-  profileSignalRead = countSignalRead;
-  profileSignalSkip = countSignalSkip;
-  profileSignalWrite = countSignalWrite;
-  profileEffectFire = countEffectFire;
+  _enabled = true;
 }
 
 export function disableProfiling(): void {
-  profileSignalRead = noop;
-  profileSignalSkip = noop;
-  profileSignalWrite = noop;
-  profileEffectFire = noop;
+  _enabled = false;
 }
 
 export function resetProfiler(): void {
@@ -75,6 +112,12 @@ export function resetProfiler(): void {
   _signalSkips = 0;
   _signalWrites = 0;
   _effectFires = 0;
+  for (const key of Object.keys(_timings) as TimingBucket[]) {
+    _timings[key] = 0;
+  }
+  for (const key of Object.keys(_timingStarts) as TimingBucket[]) {
+    delete _timingStarts[key];
+  }
 }
 
 export function getProfile(): Profile {
@@ -83,6 +126,7 @@ export function getProfile(): Profile {
     signalSkips: _signalSkips,
     signalWrites: _signalWrites,
     effectFires: _effectFires,
+    timings: { ..._timings },
   };
 }
 

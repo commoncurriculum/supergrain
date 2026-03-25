@@ -1,7 +1,7 @@
 import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 
 import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes } from "./core";
-import { profileSignalRead, profileSignalSkip } from "./profiler";
+import { profileSignalRead, profileSignalSkip, profileTimeStart, profileTimeEnd } from "./profiler";
 import { writeHandler } from "./write";
 
 const ARRAY_MUTATORS = new Set([
@@ -24,7 +24,14 @@ const isWrappable = (value: unknown): value is object =>
   (value.constructor === Object || value.constructor === Array);
 
 function wrap<T>(value: T): T {
-  return isWrappable(value) ? createReactiveProxy(value) : value;
+  // Fast-path: primitives (number, string, boolean, null, undefined) skip isWrappable call
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
+  profileTimeStart("wrapTime");
+  const result = isWrappable(value) ? createReactiveProxy(value) : value;
+  profileTimeEnd("wrapTime");
+  return result;
 }
 
 function trackSelf(target: object): void {
@@ -53,6 +60,7 @@ const readHandler: Pick<
   "get" | "ownKeys" | "has" | "getOwnPropertyDescriptor"
 > = {
   get(target, prop, receiver) {
+    // Hot path: string property with existing signal node
     if (typeof prop === "string") {
       const existingNodes = (target as any)[$NODE];
       if (existingNodes) {
@@ -98,11 +106,13 @@ const readHandler: Pick<
         }
         if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
           return (...args: any[]) => {
+            profileTimeStart("arrayMutatorTime");
             startBatch();
             try {
               return value.apply(receiver, args);
             } finally {
               endBatch();
+              profileTimeEnd("arrayMutatorTime");
             }
           };
         }
