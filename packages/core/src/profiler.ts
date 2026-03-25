@@ -25,7 +25,6 @@ export type TimingBucket =
   | "forSwapEffect"
   | "forArrayCopy"
   | "signalSubscribe"
-  | "proxyGetTime"
   | "wrapTime"
   | "setPropertyTime"
   | "signalBumpTime"
@@ -64,7 +63,6 @@ const _timings: Record<TimingBucket, number> = {
   forSwapEffect: 0,
   forArrayCopy: 0,
   signalSubscribe: 0,
-  proxyGetTime: 0,
   wrapTime: 0,
   setPropertyTime: 0,
   signalBumpTime: 0,
