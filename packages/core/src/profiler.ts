@@ -21,12 +21,10 @@ export type TimingBucket =
   | "computedAlloc"
   | "computedEval"
   | "forRender"
-  | "forTotalRenderTime"
   | "forSlotBuildTime"
   | "forSwapEffect"
   | "forArrayCopy"
   | "signalSubscribe"
-  | "proxyGetTime"
   | "wrapTime"
   | "setPropertyTime"
   | "signalBumpTime"
@@ -61,12 +59,10 @@ const _timings: Record<TimingBucket, number> = {
   computedAlloc: 0,
   computedEval: 0,
   forRender: 0,
-  forTotalRenderTime: 0,
   forSlotBuildTime: 0,
   forSwapEffect: 0,
   forArrayCopy: 0,
   signalSubscribe: 0,
-  proxyGetTime: 0,
   wrapTime: 0,
   setPropertyTime: 0,
   signalBumpTime: 0,
@@ -87,6 +83,10 @@ export function profileSignalWrite(): void {
 export function profileEffectFire(): void {
   if (_enabled) _effectFires++;
 }
+/**
+ * Start timing a named bucket. Not reentrant — nested calls to the same
+ * bucket (e.g., nested For components) will overwrite the outer start time.
+ */
 export function profileTimeStart(bucket: TimingBucket): void {
   if (_enabled) _timingStarts[bucket] = performance.now();
 }
