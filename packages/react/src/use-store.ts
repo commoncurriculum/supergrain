@@ -180,7 +180,7 @@ export const For = tracked((props: ForProps<unknown>) => {
   }
 
   profileTimeStart("forSlotBuildTime");
-  const slots = Array.from({ length: raw.length });
+  const slots: React.ReactNode[] = Array.from({ length: raw.length });
 
   if (parent) {
     // Parent path (O(1) swap): call children directly with untracked array reads.
@@ -227,5 +227,5 @@ export const For = tracked((props: ForProps<unknown>) => {
 
   profileTimeEnd("forSlotBuildTime");
   profileTimeEnd("forRender");
-  return slots as any;
+  return React.createElement(React.Fragment, null, ...slots);
 }) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;
