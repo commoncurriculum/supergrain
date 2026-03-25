@@ -1,5 +1,5 @@
 import {
-  effect as alienEffect,
+  effect,
   getCurrentSub,
   setCurrentSub,
   unwrap,
@@ -103,7 +103,7 @@ export const For = tracked((props: ForProps<unknown>) => {
     prevRawRef.current = [...raw];
     profileTimeEnd("forArrayCopy");
 
-    const cleanup = alienEffect(() => {
+    const cleanup = effect(() => {
       profileTimeStart("forSwapEffect");
       profileTimeStart("signalSubscribe");
       const nodes = getNodesIfExist(raw);
