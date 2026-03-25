@@ -3,12 +3,11 @@ import {
   startBatch,
   endBatch,
   enableProfiling,
-  disableProfiling,
   resetProfiler,
   getProfile,
 } from "@supergrain/core";
 import { tracked, For, provideStore, useComputed } from "@supergrain/react";
-import { Profiler, useEffect, useRef } from "react";
+import { Profiler, useCallback, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 
@@ -108,6 +107,8 @@ export interface AppState {
 
 export interface RowProps {
   item: RowData;
+  onSelect: (id: number) => void;
+  onRemove: (id: number) => void;
 }
 
 // --- Storable Implementation ---
@@ -169,6 +170,8 @@ export const select = (id: number) => {
 
 // --- Profiling ---
 
+enableProfiling();
+
 let rowRenderCount = 0;
 let appRenderCount = 0;
 let forRenderCount = 0;
@@ -186,7 +189,6 @@ function onRenderProfiler(
 }
 
 export function startProfiling() {
-  enableProfiling();
   resetProfiler();
   rowRenderCount = 0;
   appRenderCount = 0;
@@ -196,7 +198,6 @@ export function startProfiling() {
 
 export function getProfilingResults() {
   const signalProfile = getProfile();
-  disableProfiling();
   return {
     ...signalProfile,
     rowRenderCount,
@@ -222,18 +223,18 @@ const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }
   </div>
 );
 
-export const Row = tracked(({ item }: RowProps) => {
+export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
   rowRenderCount++;
   const store = Store.useStore();
   const isSelected = useComputed(() => store.selected === item.id);
   return (
-    <tr className={isSelected ? "danger" : ""} data-id={item.id}>
+    <tr className={isSelected ? "danger" : ""}>
       <td className="col-md-1">{item.id}</td>
       <td className="col-md-4">
-        <a>{item.label}</a>
+        <a onClick={() => onSelect(item.id)}>{item.label}</a>
       </td>
       <td className="col-md-1">
-        <a>
+        <a onClick={() => onRemove(item.id)}>
           <span className="glyphicon glyphicon-remove" aria-hidden="true"></span>
         </a>
       </td>
@@ -245,27 +246,8 @@ export const Row = tracked(({ item }: RowProps) => {
 export const App = tracked(() => {
   appRenderCount++;
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
-
-  useEffect(() => {
-    const tbody = tbodyRef.current;
-    if (!tbody) return;
-    function handleClick(e: MouseEvent) {
-      const target = e.target as HTMLElement;
-      const a = target.closest("a");
-      if (!a) return;
-      const tr = a.closest("tr") as HTMLElement | null;
-      if (!tr) return;
-      const id = Number(tr.dataset.id);
-      if (a.parentElement?.classList.contains("col-md-4")) {
-        select(id);
-      } else {
-        e.stopPropagation();
-        remove(id);
-      }
-    }
-    tbody.addEventListener("click", handleClick);
-    return () => tbody.removeEventListener("click", handleClick);
-  }, []);
+  const handleSelect = useCallback((id: number) => select(id), []);
+  const handleRemove = useCallback((id: number) => remove(id), []);
 
   return (
     <Profiler id="app" onRender={onRenderProfiler}>
@@ -291,7 +273,7 @@ export const App = tracked(() => {
           <tbody ref={tbodyRef}>
             <For each={store.data} parent={tbodyRef}>
               {(item: RowData) => (
-                <Row key={item.id} item={item} />
+                <Row key={item.id} item={item} onSelect={handleSelect} onRemove={handleRemove} />
               )}
             </For>
           </tbody>
