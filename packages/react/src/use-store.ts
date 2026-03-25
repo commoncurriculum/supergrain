@@ -10,6 +10,9 @@ import {
 } from "@supergrain/core";
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 
+// useLayoutEffect warns during SSR. Fall back to useEffect on the server.
+const useIsomorphicLayoutEffect = globalThis.document === undefined ? useEffect : useLayoutEffect;
+
 import { tracked } from "./tracked";
 
 interface ForProps<T> {
@@ -86,7 +89,9 @@ export const For = tracked((props: ForProps<unknown>) => {
   const raw = unwrap(each);
 
   // O(1) swap effect — only when parent ref is provided.
-  useLayoutEffect(() => {
+  // No deps array: must re-create the alien-signals effect on every For render
+  // so it captures the latest `raw` array reference after structural changes.
+  useIsomorphicLayoutEffect(() => {
     if (!parent) {
       return;
     }
@@ -187,7 +192,7 @@ export const For = tracked((props: ForProps<unknown>) => {
     // subscriptions. After a swap, For doesn't re-render, so children keep their
     // original item props. The swap effect moves DOM nodes to match.
     const prevSub = getCurrentSub();
-    setCurrentSub(undefined as any); // eslint-disable-line unicorn/no-useless-undefined -- untrack array reads to avoid subscribing For to per-index signals
+    setCurrentSub(undefined); // untrack array reads to avoid subscribing For to per-index signals
     try {
       for (let i = 0; i < raw.length; i++) {
         slots[i] = children(each[i], i);
