@@ -6,20 +6,20 @@ Goal: close the ~14% gap vs react-hooks on create 1k (46.6ms → 40.8ms target).
 
 Heap snapshot diff for create 1k rows shows **+333k objects, +9.2 MB** (dev build; production is ~+244k objects, +6.8 MB):
 
-| Per Row | Constructor | Size (dev) | What |
-|---------|-------------|------------|------|
-| 88.9 | Object | 2,288 KB | Props, hook state, fiber metadata, signal nodes |
-| 81.0 | InternalNode | 0 KB | Native DOM/React wrappers |
-| 40.0 | heap number | 469 KB | Dev-only boxed numbers (ignore) |
-| **10.0** | **FiberNode** | **1,406 KB** | **React fiber nodes — #1 allocation by size** |
-| 10.0 | Error | 234 KB | Dev-only stack traces (ignore) |
-| 11.0 | closure | 309 KB | Anonymous closures (tracked internals, handlers) |
-| 10.0 | system/Context | 234 KB | V8 closure variable contexts |
-| 7.0 | native_bind | 164 KB | .bind() calls |
-| 8.0 | Array | 125 KB | Hook state arrays |
-| 2.0 | subscribe | 55 KB | tracked() useSyncExternalStore subscribe fns |
-| 2.0 | getSnapshot | 55 KB | tracked() useSyncExternalStore snapshot fns |
-| 2.0 | onClick | 55 KB | Click handlers |
+| Per Row  | Constructor    | Size (dev)   | What                                             |
+| -------- | -------------- | ------------ | ------------------------------------------------ |
+| 88.9     | Object         | 2,288 KB     | Props, hook state, fiber metadata, signal nodes  |
+| 81.0     | InternalNode   | 0 KB         | Native DOM/React wrappers                        |
+| 40.0     | heap number    | 469 KB       | Dev-only boxed numbers (ignore)                  |
+| **10.0** | **FiberNode**  | **1,406 KB** | **React fiber nodes — #1 allocation by size**    |
+| 10.0     | Error          | 234 KB       | Dev-only stack traces (ignore)                   |
+| 11.0     | closure        | 309 KB       | Anonymous closures (tracked internals, handlers) |
+| 10.0     | system/Context | 234 KB       | V8 closure variable contexts                     |
+| 7.0      | native_bind    | 164 KB       | .bind() calls                                    |
+| 8.0      | Array          | 125 KB       | Hook state arrays                                |
+| 2.0      | subscribe      | 55 KB        | tracked() useSyncExternalStore subscribe fns     |
+| 2.0      | getSnapshot    | 55 KB        | tracked() useSyncExternalStore snapshot fns      |
+| 2.0      | onClick        | 55 KB        | Click handlers                                   |
 
 **Key finding**: 10 FiberNodes per row × 1000 rows = 1.4 MB just for React's fiber tree.
 With 3 components/row (For slot + CachedForItem + Row) and 10+ hooks/row, each gets a fiber + hook linked list nodes.
@@ -47,10 +47,12 @@ Each `tracked()` component gets 1 fiber + hook state nodes. With 3 components/ro
 CachedForItem's actual logic is just 2 useRefs and an index-change check. This could be done inside Row itself or via a lighter wrapper that doesn't need its own reactive tracking.
 
 **How to investigate**:
+
 - CachedForItem is tracked so it can subscribe to array structural changes. But does it actually need its own effect? The `For` component already subscribes to `$TRACK` for structural changes.
 - If CachedForItem is only rendering its children (the Row), and the Row is itself tracked, the CachedForItem `tracked()` wrapper may be doing nothing useful.
 
 **How to validate**:
+
 1. Create a `LiteCachedForItem` that does the caching logic (2 useRefs + index check) but is NOT wrapped in `tracked()` — just a plain `memo()` component.
 2. Run `pnpm test` (correctness) — does swap still work?
 3. Run `pnpm test:heap` — expect -1000 effects, -2000 closures (subscribe/getSnapshot), -1000 useEffect cleanups.
@@ -67,6 +69,7 @@ When children are wrapped in tracked() (like the benchmark's Row), CachedForItem
 effect has zero dependencies — but the For API must support inline children too.
 
 **Alternative approaches to explore**:
+
 - A specialized `trackedForItem` that merges CachedForItem's caching + tracked()'s
   reactivity into a single component with fewer total hooks
 - Having the benchmark's Row component handle its own item caching (benchmark-only opt)
@@ -79,12 +82,14 @@ effect has zero dependencies — but the For API must support inline children to
 **Theory**: `useComputed(() => store.selected === item.id)` creates a computed signal node per row. On create, no row is selected, so this computed is wasted work. The computed also goes through the proxy trap twice (store.selected + item.id).
 
 **How to investigate**:
+
 - Can selected state be compared via a simple equality check instead of a computed signal?
 - The Row is already inside a `tracked()` wrapper that captures reactive reads. If Row reads `store.selected` directly, changes to `selected` would re-render ALL rows (since every row depends on it).
 - The computed acts as a filter: it only re-renders the row when `store.selected === item.id` changes from true↔false.
 - **This is actually necessary for correctness** — without it, selecting a row would re-render all 1000 rows.
 
 **Alternative approaches**:
+
 - A: Move selected into per-item state (`item.selected` boolean). Then each row only reads its own item. But this changes the store API.
 - B: Keep the computed but lazily create it (don't create until first access? But it's always accessed on render).
 - C: Use a lighter mechanism than `computed()` — a simple memoized comparison that doesn't create a signal graph node.
@@ -98,10 +103,12 @@ effect has zero dependencies — but the For API must support inline children to
 **Theory**: Each `tracked()` creates subscribe, getSnapshot, and cleanup closures. That's 3 closures × 2 tracked components/row (or 1 if Step 2 succeeds) = 3-6 closures/row.
 
 **How to investigate**:
+
 - Can subscribe and getSnapshot be methods on the ref object instead of closures? V8 shares method code across instances.
 - The subscribe/getSnapshot closures capture `listener` and `version` via closure scope. These could instead be properties on the ref object.
 
 **How to validate**:
+
 1. Refactor tracked() to use ref.current properties instead of closure variables
 2. Run heap test — expect ~2-4 fewer closures per row
 3. Run correctness tests
@@ -112,11 +119,13 @@ effect has zero dependencies — but the For API must support inline children to
 ### Step 5: Reduce For component overhead
 
 **Theory**: For creates these per-render:
+
 - `Array.from({ length: 1000 })` — 1 array + 1000 slots
 - `[...raw]` — 1000-element copy for swap detection
 - 1000 `React.createElement(CachedForItem, ...)` calls with props objects
 
 **How to investigate**:
+
 - Can `Array.from` be replaced with a pre-allocated array or direct JSX array?
 - The `[...raw]` copy: is it needed on initial create? No swaps have happened yet.
 - Can the element creation be cheaper?
@@ -135,13 +144,13 @@ effect has zero dependencies — but the For API must support inline children to
 
 ## Prioritization
 
-| Step | Expected Impact | Effort | Risk |
-|------|----------------|--------|------|
+| Step                    | Expected Impact                                 | Effort | Risk                      |
+| ----------------------- | ----------------------------------------------- | ------ | ------------------------- |
 | 2 (merge CachedForItem) | HIGH — eliminates ~50% of per-row hook overhead | Medium | Medium — swap correctness |
-| 4 (reduce closures) | MEDIUM — fewer allocations per tracked() | Low | Low |
-| 1 (identify Kv) | DATA — informs other decisions | Low | None |
-| 3 (useComputed) | LOW-MEDIUM — 1 signal node/row | Medium | High — correctness |
-| 5 (For overhead) | LOW — one-time cost, not per-row | Low | Low |
-| 6 (head-to-head) | VALIDATION | Medium | None |
+| 4 (reduce closures)     | MEDIUM — fewer allocations per tracked()        | Low    | Low                       |
+| 1 (identify Kv)         | DATA — informs other decisions                  | Low    | None                      |
+| 3 (useComputed)         | LOW-MEDIUM — 1 signal node/row                  | Medium | High — correctness        |
+| 5 (For overhead)        | LOW — one-time cost, not per-row                | Low    | Low                       |
+| 6 (head-to-head)        | VALIDATION                                      | Medium | None                      |
 
 **Recommended order**: 1 → 2 → 4 → 5 → 3 → 6

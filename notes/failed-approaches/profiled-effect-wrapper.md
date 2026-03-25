@@ -29,10 +29,12 @@ const dispose = profiledEffect(() => {
 ## Why It Failed
 
 This creates two closures per tracked component where one sufficed:
+
 1. The outer closure passed to `alienEffect` (the wrapper)
 2. The inner `fn` closure (the actual effect body)
 
 For create 1k with 1000 Row components:
+
 - +1000 extra closure allocations
 - +1000 extra function calls per effect fire (wrapper calls fn())
 - The wrapper closure captures `fn`, adding to the closure's V8 Context size

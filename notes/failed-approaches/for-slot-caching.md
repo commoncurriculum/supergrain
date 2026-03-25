@@ -32,11 +32,11 @@ elementCacheRef.current = newCache;
 
 **Results (median script, 5 runs):**
 
-| Operation | No cache | Map cache |
-|---|---|---|
-| append 1k | 37.1ms | 39.5ms |
-| partial update | 14.5ms | 16.8ms |
-| create 1k | 20.9ms | 21.1ms |
+| Operation      | No cache | Map cache |
+| -------------- | -------- | --------- |
+| append 1k      | 37.1ms   | 39.5ms    |
+| partial update | 14.5ms   | 16.8ms    |
+| create 1k      | 20.9ms   | 21.1ms    |
 
 Map cache was **net-negative**. The Map allocation, .get()/.set() calls, and key extraction cost more per-item than just calling `children()`.
 
@@ -67,12 +67,14 @@ Even after both fixes, the benchmark showed no improvement over the uncached ver
 ### The per-item check costs as much as the per-item creation
 
 The savings from skipping `children()` are:
+
 - 1 proxy array read (`each[i]`)
 - 1 function call (`children(item, i)`)
 - 1 `React.createElement(Row, {item, key})` inside children
 - 1 `item.id` proxy read for the key
 
 The cost of the cache check is:
+
 - 1 `raw[i]` read
 - 1 `prevRaw[i]` read
 - 1 identity comparison

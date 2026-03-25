@@ -16,8 +16,12 @@ let profileTimeStart: (bucket: TimingBucket) => void = noop;
 let profileTimeEnd: (bucket: TimingBucket) => void = noop;
 
 function enableProfiling() {
-  profileTimeStart = (bucket) => { /* record performance.now() */ };
-  profileTimeEnd = (bucket) => { /* accumulate elapsed time */ };
+  profileTimeStart = (bucket) => {
+    /* record performance.now() */
+  };
+  profileTimeEnd = (bucket) => {
+    /* accumulate elapsed time */
+  };
 }
 
 function disableProfiling() {
@@ -31,6 +35,7 @@ The idea was that when profiling is off, `profileTimeStart` and `profileTimeEnd`
 ## Why It Failed
 
 V8 treats mutable `let` bindings as indirect calls. It cannot:
+
 - Inline the function body at call sites
 - Branch-predict based on the current binding
 - Optimize away the call when the binding is `noop`
