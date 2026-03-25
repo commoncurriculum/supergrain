@@ -18,7 +18,6 @@ export {
   endBatch,
   getCurrentSub,
   setCurrentSub,
-  type ReactiveNode,
 } from "alien-signals";
 
 export { profiledEffect as effect } from "./profiler";
@@ -27,6 +26,7 @@ export {
   disableProfiling,
   resetProfiler,
   getProfile,
+  profileEffectFire,
   profileTimeStart,
   profileTimeEnd,
   type Profile,

@@ -1,11 +1,10 @@
+import { profileTimeStart, profileTimeEnd, profileEffectFire } from "@supergrain/core";
 import {
-  effect,
+  effect as alienEffect,
   getCurrentSub,
   setCurrentSub,
-  profileTimeStart,
-  profileTimeEnd,
   type ReactiveNode,
-} from "@supergrain/core";
+} from "alien-signals";
 import { type FC, memo, useEffect, useRef, useSyncExternalStore } from "react";
 
 /**
@@ -89,12 +88,15 @@ export function tracked<P extends object>(Component: FC<P>) {
       };
 
       let firstRun = true;
-      state.cleanup = effect(() => {
+      // Use alienEffect directly to avoid profiledEffect's double-callback overhead.
+      // profileEffectFire() is called manually on re-runs.
+      state.cleanup = alienEffect(() => {
         if (firstRun) {
           state.effectNode = getCurrentSub();
           firstRun = false;
           return;
         }
+        profileEffectFire();
         state.version++;
         state.listener?.();
       });

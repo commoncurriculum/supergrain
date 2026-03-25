@@ -1,5 +1,4 @@
 import {
-  effect,
   getCurrentSub,
   setCurrentSub,
   unwrap,
@@ -8,6 +7,7 @@ import {
   getNodesIfExist,
   $TRACK,
 } from "@supergrain/core";
+import { effect as alienEffect } from "alien-signals";
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 // useLayoutEffect warns during SSR. Fall back to useEffect on the server.
@@ -107,7 +107,7 @@ export const For = tracked((props: ForProps<unknown>) => {
     prevRawRef.current = [...raw];
     profileTimeEnd("forArrayCopy");
 
-    const cleanup = effect(() => {
+    const cleanup = alienEffect(() => {
       profileTimeStart("forSwapEffect");
       profileTimeStart("signalSubscribe");
       const nodes = getNodesIfExist(raw);

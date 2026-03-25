@@ -60,7 +60,6 @@ const readHandler: Pick<
   "get" | "ownKeys" | "has" | "getOwnPropertyDescriptor"
 > = {
   get(target, prop, receiver) {
-    // Hot path: string property with existing signal node
     if (typeof prop === "string") {
       const existingNodes = (target as any)[$NODE];
       if (existingNodes) {
@@ -106,13 +105,13 @@ const readHandler: Pick<
         }
         if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
           return (...args: any[]) => {
-            profileTimeStart("arrayMutatorTime");
+            profileTimeStart("spliceTime");
             startBatch();
             try {
               return value.apply(receiver, args);
             } finally {
               endBatch();
-              profileTimeEnd("arrayMutatorTime");
+              profileTimeEnd("spliceTime");
             }
           };
         }
