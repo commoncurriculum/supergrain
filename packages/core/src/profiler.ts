@@ -71,7 +71,7 @@ const _timings: Record<TimingBucket, number> = {
   arrayMutatorTime: 0,
 };
 
-const _timingStarts: Record<string, number> = {};
+const _timingStarts: Partial<Record<TimingBucket, number>> = {};
 
 export function profileSignalRead(): void {
   if (_enabled) _signalReads++;
@@ -117,7 +117,7 @@ export function resetProfiler(): void {
   for (const key of Object.keys(_timings) as TimingBucket[]) {
     _timings[key] = 0;
   }
-  for (const key of Object.keys(_timingStarts)) {
+  for (const key of Object.keys(_timingStarts) as TimingBucket[]) {
     delete _timingStarts[key];
   }
 }
