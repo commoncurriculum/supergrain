@@ -1,10 +1,17 @@
-import { effect as alienEffect, getCurrentSub, setCurrentSub, unwrap } from "@supergrain/core";
+import {
+  effect as alienEffect,
+  getCurrentSub,
+  setCurrentSub,
+  unwrap,
+  profileTimeStart,
+  profileTimeEnd,
+  getNodesIfExist,
+} from "@supergrain/core";
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 import { tracked } from "./tracked";
 
 const $TRACK = Symbol.for("supergrain:track");
-const $NODE = Symbol.for("supergrain:node");
 
 interface ForProps<T> {
   each: T[];
@@ -34,55 +41,26 @@ const ForItem = tracked(
 );
 
 /**
- * Cached ForItem — caches its item in a ref for O(1) swap support.
- *
- * Only re-reads from the array when the index prop changes (structural
- * change). On property-change re-renders, uses the cached item — so it
- * always renders the correct content even if the DOM was moved by the
- * alien swap effect.
- */
-const CachedForItem = tracked(
-  ({
-    each,
-    index,
-    children,
-  }: {
-    each: unknown[];
-    index: number;
-    children: (item: unknown, index: number) => React.ReactNode;
-  }) => {
-    const prevIndexRef = useRef(index);
-    const itemRef = useRef<unknown>(null);
-
-    if (itemRef.current === null || prevIndexRef.current !== index) {
-      const prevSub = getCurrentSub();
-      setCurrentSub(undefined as any); // eslint-disable-line unicorn/no-useless-undefined -- intentionally clearing subscriber
-      itemRef.current = each[index];
-      setCurrentSub(prevSub);
-      prevIndexRef.current = index;
-    }
-
-    const child = children(itemRef.current, index);
-    return child as React.ReactElement;
-  },
-);
-
-/**
  * List rendering component with fine-grained per-element reactivity.
  *
  * When a `parent` ref is provided, For uses O(1) direct DOM moves on swap:
- * an alien-signals effect detects element swaps and moves DOM nodes.
- * CachedForItem ensures label changes still render correctly after a move.
+ * an alien-signals effect detects element swaps and moves DOM nodes directly.
+ * Children are called once with the reactive proxy item and keep their
+ * original item props after swaps (since For doesn't re-render on swap).
  *
  * Without `parent`, For falls back to O(n) React keyed reconciliation.
  *
  * Both modes:
  * - Add/Remove: For re-renders to adjust slot count. React handles it.
- * - Property update: Only the affected ForItem re-renders (via tracked).
+ * - Property update: Only the affected child re-renders (via tracked).
+ *
+ * **Important**: When using the `parent` prop, children MUST be `tracked()`
+ * components (e.g., `<Row />`). For calls children directly without a wrapper,
+ * so inline children won't have reactive subscriptions for property changes.
  *
  * @example
  * ```tsx
- * // Fast path — O(1) swap
+ * // Fast path — O(1) swap (children must be tracked)
  * const tbodyRef = useRef<HTMLTableSectionElement>(null)
  * <tbody ref={tbodyRef}>
  *   <For each={store.data} parent={tbodyRef}>
@@ -90,7 +68,7 @@ const CachedForItem = tracked(
  *   </For>
  * </tbody>
  *
- * // Standard path — no ref needed
+ * // Standard path — no ref needed, inline children OK
  * <For each={store.data}>
  *   {(item) => <Row key={item.id} item={item} />}
  * </For>
@@ -98,6 +76,7 @@ const CachedForItem = tracked(
  */
 // tracked() erases the generic <T>, so we cast through unknown to restore it.
 export const For = tracked((props: ForProps<unknown>) => {
+  profileTimeStart("forRender");
   const { each, children, fallback, parent } = props;
   const prevRawRef = useRef<unknown[]>([]);
   const swapCleanupRef = useRef<(() => void) | null>(null);
@@ -120,10 +99,14 @@ export const For = tracked((props: ForProps<unknown>) => {
     }
 
     swapCleanupRef.current?.();
+    profileTimeStart("forArrayCopy");
     prevRawRef.current = [...raw];
+    profileTimeEnd("forArrayCopy");
 
     const cleanup = alienEffect(() => {
-      const nodes = (raw as any)[$NODE];
+      profileTimeStart("forSwapEffect");
+      profileTimeStart("signalSubscribe");
+      const nodes = getNodesIfExist(raw);
       for (let i = 0; i < raw.length; i++) {
         if (nodes?.[i]) {
           nodes[i]();
@@ -131,11 +114,15 @@ export const For = tracked((props: ForProps<unknown>) => {
           void each[i];
         }
       }
+      profileTimeEnd("signalSubscribe");
 
       const prev = prevRawRef.current;
       const container = parent.current;
       if (!container || prev.length !== raw.length) {
+        profileTimeStart("forArrayCopy");
         prevRawRef.current = [...raw];
+        profileTimeEnd("forArrayCopy");
+        profileTimeEnd("forSwapEffect");
         return;
       }
 
@@ -163,9 +150,17 @@ export const For = tracked((props: ForProps<unknown>) => {
             container.append(nodeB);
           }
         }
+        // Update prev from raw (not swapping within prev) to preserve
+        // object identity — raw may contain proxy wrappers while prev
+        // has raw objects, so we must copy from raw for === to work.
+        prev[a] = raw[a];
+        prev[b] = raw[b];
+      } else {
+        profileTimeStart("forArrayCopy");
+        prevRawRef.current = [...raw];
+        profileTimeEnd("forArrayCopy");
       }
-
-      prevRawRef.current = [...raw];
+      profileTimeEnd("forSwapEffect");
     });
 
     swapCleanupRef.current = cleanup;
@@ -180,12 +175,28 @@ export const For = tracked((props: ForProps<unknown>) => {
   );
 
   if (!raw || raw.length === 0) {
+    profileTimeEnd("forRender");
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
 
-  // Without parent: subscribe to per-index signals for React reconciliation on swap.
-  if (!parent) {
-    const nodes = (raw as any)[$NODE];
+  profileTimeStart("forSlotBuildTime");
+  const slots = Array.from({ length: raw.length });
+
+  if (parent) {
+    // Parent path (O(1) swap): call children directly with untracked array reads.
+    // No wrapper component needed — children (e.g., tracked Row) handle their own
+    // subscriptions. After a swap, For doesn't re-render, so children keep their
+    // original item props. The swap effect moves DOM nodes to match.
+    const prevSub = getCurrentSub();
+    setCurrentSub(undefined as any); // eslint-disable-line unicorn/no-useless-undefined -- untrack array reads to avoid subscribing For to per-index signals
+    for (let i = 0; i < raw.length; i++) {
+      slots[i] = children(each[i], i);
+    }
+    setCurrentSub(prevSub);
+  } else {
+    // Non-parent path: use ForItem wrapper for per-index signal subscription
+    // so React keyed reconciliation handles swaps.
+    const nodes = getNodesIfExist(raw);
     for (let i = 0; i < raw.length; i++) {
       const existingNode = nodes?.[i];
       if (existingNode) {
@@ -194,27 +205,24 @@ export const For = tracked((props: ForProps<unknown>) => {
         void each[i];
       }
     }
-  }
 
-  const ItemComponent = parent ? CachedForItem : ForItem;
+    for (let i = 0; i < raw.length; i++) {
+      const rawItem = raw[i];
+      const key =
+        rawItem && typeof rawItem === "object" && "id" in rawItem
+          ? ((rawItem as Record<string, unknown>).id as React.Key)
+          : i;
 
-  const slots = [];
-  for (let i = 0; i < raw.length; i++) {
-    const rawItem = raw[i];
-    const key =
-      rawItem && typeof rawItem === "object" && "id" in rawItem
-        ? ((rawItem as Record<string, unknown>).id as React.Key)
-        : i;
-
-    slots.push(
-      React.createElement(ItemComponent, {
+      slots[i] = React.createElement(ForItem, {
         key,
         each,
         index: i,
         children,
-      }),
-    );
+      });
+    }
   }
 
-  return React.createElement(React.Fragment, null, ...slots);
+  profileTimeEnd("forSlotBuildTime");
+  profileTimeEnd("forRender");
+  return slots as any;
 }) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;
