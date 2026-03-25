@@ -6,12 +6,11 @@ import {
   profileTimeStart,
   profileTimeEnd,
   getNodesIfExist,
+  $TRACK,
 } from "@supergrain/core";
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 import { tracked } from "./tracked";
-
-const $TRACK = Symbol.for("supergrain:track");
 
 interface ForProps<T> {
   each: T[];

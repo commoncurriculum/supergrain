@@ -4,6 +4,7 @@ import {
   setCurrentSub,
   profileTimeStart,
   profileTimeEnd,
+  type ReactiveNode,
 } from "@supergrain/core";
 import { type FC, memo, useEffect, useRef, useSyncExternalStore } from "react";
 
@@ -51,7 +52,7 @@ import { type FC, memo, useEffect, useRef, useSyncExternalStore } from "react";
 /** Internal state for a tracked component instance. */
 interface TrackedState {
   cleanup: () => void;
-  effectNode: any;
+  effectNode: ReactiveNode | undefined;
   version: number;
   listener: (() => void) | null;
   subscribe: (cb: () => void) => () => void;
@@ -71,7 +72,7 @@ export function tracked<P extends object>(Component: FC<P>) {
       // All mutable state lives on the state object to minimize closure contexts.
       // subscribe/getSnapshot/unsubscribe close over `state` only (one V8 Context).
       const state: TrackedState = {
-        effectNode: null,
+        effectNode: undefined,
         version: 0,
         listener: null,
         cleanup: null!,

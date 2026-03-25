@@ -1,6 +1,6 @@
 // Export the optimized implementation
 export { createStore, unwrap, $BRAND, type Signal, type Branded } from "./store";
-export { getNodesIfExist } from "./core";
+export { getNodesIfExist, $TRACK } from "./core";
 
 // Export MongoDB-style update operators
 export {
@@ -18,6 +18,7 @@ export {
   endBatch,
   getCurrentSub,
   setCurrentSub,
+  type ReactiveNode,
 } from "alien-signals";
 
 export { profiledEffect as effect } from "./profiler";
