@@ -5,7 +5,7 @@ import {
   setCurrentSub,
   type ReactiveNode,
 } from "alien-signals";
-import { type FC, memo, useEffect, useRef, useSyncExternalStore } from "react";
+import { type FC, memo, useReducer, useRef, useEffect } from "react";
 
 /**
  * Wraps a React component with per-component signal scoping.
@@ -47,68 +47,33 @@ import { type FC, memo, useEffect, useRef, useSyncExternalStore } from "react";
  * })
  * ```
  */
-
-/** Internal state for a tracked component instance. */
-interface TrackedState {
-  cleanup: () => void;
-  effectNode: ReactiveNode | undefined;
-  version: number;
-  listener: (() => void) | null;
-  subscribe: (cb: () => void) => () => void;
-  getSnapshot: () => number;
-  unsubscribe: () => void;
-}
-
 export function tracked<P extends object>(Component: FC<P>) {
   const Tracked: FC<P> = (props: P) => {
     profileTimeStart("trackedHookTime");
-    const ref = useRef<TrackedState | null>(null);
+    const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+    const ref = useRef<{ cleanup: () => void; effectNode: ReactiveNode | undefined } | null>(null);
     profileTimeEnd("trackedHookTime");
 
     if (!ref.current) {
       profileTimeStart("trackedSetup");
       profileTimeStart("trackedEffectTime");
-      // All mutable state lives on the state object to minimize closure contexts.
-      // subscribe/getSnapshot/unsubscribe close over `state` only (one V8 Context).
-      const state: TrackedState = {
-        effectNode: undefined,
-        version: 0,
-        listener: null,
-        cleanup: null!,
-        unsubscribe() {
-          state.listener = null;
-        },
-        subscribe(cb: () => void) {
-          state.listener = cb;
-          return state.unsubscribe;
-        },
-        getSnapshot() {
-          return state.version;
-        },
-      };
-
       let firstRun = true;
-      // Use alienEffect directly to avoid profiledEffect's double-callback overhead.
-      // profileEffectFire() is called manually on re-runs.
-      state.cleanup = alienEffect(() => {
+      let capturedNode: ReactiveNode | undefined = null!; // eslint-disable-line unicorn/no-null -- set synchronously by alienEffect
+      const cleanup = alienEffect(() => {
         if (firstRun) {
-          state.effectNode = getCurrentSub();
+          capturedNode = getCurrentSub();
           firstRun = false;
           return;
         }
         profileEffectFire();
-        state.version++;
-        state.listener?.();
+        forceUpdate();
       });
-
-      ref.current = state;
+      ref.current = { cleanup, effectNode: capturedNode };
       profileTimeEnd("trackedEffectTime");
       profileTimeEnd("trackedSetup");
     }
 
     profileTimeStart("trackedHookTime");
-    useSyncExternalStore(ref.current.subscribe, ref.current.getSnapshot, ref.current.getSnapshot);
-
     useEffect(
       () => () => {
         profileTimeStart("effectCleanupTime");
