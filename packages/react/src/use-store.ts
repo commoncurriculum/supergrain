@@ -100,7 +100,7 @@ export const For = tracked((props: ForProps<unknown>) => {
 
     swapCleanupRef.current?.();
     profileTimeStart("forArrayCopy");
-    prevRawRef.current = raw.slice();
+    prevRawRef.current = [...raw];
     profileTimeEnd("forArrayCopy");
 
     const cleanup = alienEffect(() => {
@@ -120,7 +120,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       const container = parent.current;
       if (!container || prev.length !== raw.length) {
         profileTimeStart("forArrayCopy");
-        prevRawRef.current = raw.slice();
+        prevRawRef.current = [...raw];
         profileTimeEnd("forArrayCopy");
         profileTimeEnd("forSwapEffect");
         return;
@@ -157,7 +157,7 @@ export const For = tracked((props: ForProps<unknown>) => {
         prev[b] = raw[b];
       } else {
         profileTimeStart("forArrayCopy");
-        prevRawRef.current = raw.slice();
+        prevRawRef.current = [...raw];
         profileTimeEnd("forArrayCopy");
       }
       profileTimeEnd("forSwapEffect");
@@ -180,7 +180,7 @@ export const For = tracked((props: ForProps<unknown>) => {
   }
 
   profileTimeStart("forSlotBuildTime");
-  const slots = new Array(raw.length);
+  const slots = Array.from({ length: raw.length });
 
   if (parent) {
     // Parent path (O(1) swap): call children directly with untracked array reads.
