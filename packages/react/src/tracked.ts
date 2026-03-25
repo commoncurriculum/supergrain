@@ -1,5 +1,10 @@
-import { profileTimeStart, profileTimeEnd, profileEffectFire } from "@supergrain/core";
-import { effect as alienEffect, getCurrentSub, setCurrentSub } from "alien-signals";
+import {
+  effect,
+  getCurrentSub,
+  setCurrentSub,
+  profileTimeStart,
+  profileTimeEnd,
+} from "@supergrain/core";
 import { type FC, memo, useEffect, useRef, useSyncExternalStore } from "react";
 
 /**
@@ -83,15 +88,12 @@ export function tracked<P extends object>(Component: FC<P>) {
       };
 
       let firstRun = true;
-      // Use alienEffect directly to avoid profiledEffect's double-callback overhead.
-      // profileEffectFire() is called manually on re-runs.
-      state.cleanup = alienEffect(() => {
+      state.cleanup = effect(() => {
         if (firstRun) {
           state.effectNode = getCurrentSub();
           firstRun = false;
           return;
         }
-        profileEffectFire();
         state.version++;
         state.listener?.();
       });
@@ -118,10 +120,12 @@ export function tracked<P extends object>(Component: FC<P>) {
     profileTimeStart("trackedRenderTime");
     const prev = getCurrentSub();
     setCurrentSub(ref.current.effectNode);
-    const result = Component(props); // eslint-disable-line new-cap -- React function component call
-    setCurrentSub(prev);
-    profileTimeEnd("trackedRenderTime");
-    return result;
+    try {
+      return Component(props); // eslint-disable-line new-cap -- React function component call
+    } finally {
+      setCurrentSub(prev);
+      profileTimeEnd("trackedRenderTime");
+    }
   };
 
   return memo(Tracked);

@@ -105,13 +105,13 @@ const readHandler: Pick<
         }
         if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
           return (...args: any[]) => {
-            profileTimeStart("spliceTime");
+            profileTimeStart("arrayMutatorTime");
             startBatch();
             try {
               return value.apply(receiver, args);
             } finally {
               endBatch();
-              profileTimeEnd("spliceTime");
+              profileTimeEnd("arrayMutatorTime");
             }
           };
         }

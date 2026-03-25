@@ -1,9 +1,9 @@
 /**
  * Lightweight profiler for diagnosing signal subscription and render behavior.
  *
- * Zero cost when disabled — all profiling functions check a single boolean
- * that V8 branch-predicts as false. The functions themselves are constant
- * (not swapped via mutable let bindings) so V8 can inline them.
+ * When disabled, profiling adds only a single, predictable boolean check per call,
+ * which V8 can efficiently branch-predict as false. The functions themselves are
+ * constant (not swapped via mutable let bindings) so V8 can inline them.
  *
  * Enable with `enableProfiling()`, read with `getProfile()`, reset with `resetProfiler()`.
  */
@@ -30,7 +30,7 @@ export type TimingBucket =
   | "wrapTime"
   | "setPropertyTime"
   | "signalBumpTime"
-  | "spliceTime";
+  | "arrayMutatorTime";
 
 export interface Profile {
   /** Signal reads that created a subscription (inside a tracked effect) */
@@ -70,7 +70,7 @@ const _timings: Record<TimingBucket, number> = {
   wrapTime: 0,
   setPropertyTime: 0,
   signalBumpTime: 0,
-  spliceTime: 0,
+  arrayMutatorTime: 0,
 };
 
 const _timingStarts: Record<string, number> = {};
@@ -95,6 +95,7 @@ export function profileTimeEnd(bucket: TimingBucket): void {
   const start = _timingStarts[bucket];
   if (start !== undefined) {
     _timings[bucket] += performance.now() - start;
+    delete _timingStarts[bucket];
   }
 }
 
@@ -113,6 +114,9 @@ export function resetProfiler(): void {
   _effectFires = 0;
   for (const key of Object.keys(_timings) as TimingBucket[]) {
     _timings[key] = 0;
+  }
+  for (const key of Object.keys(_timingStarts)) {
+    delete _timingStarts[key];
   }
 }
 

@@ -189,10 +189,13 @@ export const For = tracked((props: ForProps<unknown>) => {
     // original item props. The swap effect moves DOM nodes to match.
     const prevSub = getCurrentSub();
     setCurrentSub(undefined as any); // eslint-disable-line unicorn/no-useless-undefined -- untrack array reads to avoid subscribing For to per-index signals
-    for (let i = 0; i < raw.length; i++) {
-      slots[i] = children(each[i], i);
+    try {
+      for (let i = 0; i < raw.length; i++) {
+        slots[i] = children(each[i], i);
+      }
+    } finally {
+      setCurrentSub(prevSub);
     }
-    setCurrentSub(prevSub);
   } else {
     // Non-parent path: use ForItem wrapper for per-index signal subscription
     // so React keyed reconciliation handles swaps.
