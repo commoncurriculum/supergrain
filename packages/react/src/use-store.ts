@@ -158,10 +158,11 @@ export const For = tracked((props: ForProps<unknown>) => {
     [],
   );
 
+  const elementCacheRef = useRef(new Map<unknown, React.ReactNode>());
+
   if (!raw || raw.length === 0) {
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
-
   const slots: React.ReactNode[] = Array.from({ length: raw.length });
 
   if (parent) {
@@ -171,9 +172,19 @@ export const For = tracked((props: ForProps<unknown>) => {
     // original item props. The swap effect moves DOM nodes to match.
     const prevSub = getCurrentSub();
     setCurrentSub(undefined); // untrack array reads to avoid subscribing For to per-index signals
+    const prevCache = elementCacheRef.current;
+    const nextCache = new Map<unknown, React.ReactNode>();
     for (let i = 0; i < raw.length; i++) {
-      slots[i] = children(each[i], i);
+      const rawItem = raw[i];
+      const cached = prevCache.get(rawItem);
+      if (cached === undefined) {
+        slots[i] = children(each[i], i);
+      } else {
+        slots[i] = cached;
+      }
+      nextCache.set(rawItem, slots[i]);
     }
+    elementCacheRef.current = nextCache;
     setCurrentSub(prevSub);
   } else {
     // Non-parent path: use ForItem wrapper for per-index signal subscription

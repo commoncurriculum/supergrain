@@ -226,7 +226,8 @@ const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }
 
 export const Row = tracked(({ item, store, onSelect, onRemove }: RowProps) => {
   rowRenderCount++;
-  const isSelected = useComputed(() => store.selected === item.id);
+  const id = item.id;
+  const isSelected = useComputed(() => store.selected === id);
   return (
     <tr className={isSelected ? "danger" : ""}>
       <td className="col-md-1">{item.id}</td>
