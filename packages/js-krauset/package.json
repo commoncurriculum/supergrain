@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/dist.test.ts",
     "test:perf": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/perf.test.ts --reporter=verbose 2>&1 | tee perf-results.txt",
-    "perf:stats": "tsx perf-stats.ts --"
+    "perf:stats": "node perf-stats.ts"
   },
   "dependencies": {
     "@supergrain/core": "workspace:*",

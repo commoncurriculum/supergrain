@@ -11,7 +11,7 @@ if (!name) {
   process.exit(1);
 }
 
-const dir = resolve(__dirname);
+const dir = resolve(import.meta.dirname);
 
 // Note existing files so we only use the ones we create
 const existingFiles = new Set(
