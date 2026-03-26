@@ -123,9 +123,22 @@ pnpm perf:stats baseline 15
 # 2. On your branch (or after your change):
 pnpm perf:stats optimized 15
 
-# 3. Compare:
+# 3. Compare (includes Krause weights):
 pnpm perf:compare baseline optimized
 ```
+
+**CPU profiling** (function-level flame graphs + heap tracking — adds overhead, do NOT use for timing):
+
+```bash
+# Generate .cpuprofile files per benchmark
+pnpm perf:profile
+
+# Print top functions by self time
+pnpm perf:analyze           # all benchmarks
+pnpm perf:analyze create-1k # specific benchmark
+```
+
+Build is unminified so profiles show real function names.
 
 ### Submitting to js-framework-benchmark
 
