@@ -1,0 +1,532 @@
+{
+  "name": "branch",
+  "runCount": 15,
+  "files": [
+    "perf-results-2026-03-26T03-00-31-478Z.json",
+    "perf-results-2026-03-26T03-00-49-603Z.json",
+    "perf-results-2026-03-26T03-01-07-455Z.json",
+    "perf-results-2026-03-26T03-01-25-286Z.json",
+    "perf-results-2026-03-26T03-01-43-232Z.json",
+    "perf-results-2026-03-26T03-02-01-366Z.json",
+    "perf-results-2026-03-26T03-02-19-184Z.json",
+    "perf-results-2026-03-26T03-02-36-893Z.json",
+    "perf-results-2026-03-26T03-02-54-656Z.json",
+    "perf-results-2026-03-26T03-03-12-394Z.json",
+    "perf-results-2026-03-26T03-03-30-122Z.json",
+    "perf-results-2026-03-26T03-03-47-871Z.json",
+    "perf-results-2026-03-26T03-04-05-628Z.json",
+    "perf-results-2026-03-26T03-04-23-440Z.json",
+    "perf-results-2026-03-26T03-04-41-521Z.json"
+  ],
+  "git": {
+    "branch": "optimize-benchmark-v3",
+    "commit": "4a0b591",
+    "message": "Add perf:compare script for side-by-side benchmark comparison",
+    "dirty": false
+  },
+  "benchmarks": {
+    "create rows (1k)": {
+      "total": {
+        "mean": 45.21033333333333,
+        "median": 44.019,
+        "stddev": 3.278230308498101,
+        "min": 42.426,
+        "max": 56.455
+      },
+      "script": {
+        "mean": 7.899666666666666,
+        "median": 7.802,
+        "stddev": 0.277605875698304,
+        "min": 7.379,
+        "max": 8.463
+      },
+      "paint": {
+        "mean": 26.581466666666667,
+        "median": 26.463,
+        "stddev": 0.7196032116536321,
+        "min": 25.406,
+        "max": 27.95
+      },
+      "layouts": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "numberCommits": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "maxDeltaBetweenCommits": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rafLongDelay": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "replace all rows": {
+      "total": {
+        "mean": 50.79073333333333,
+        "median": 50.73,
+        "stddev": 2.0711772969872846,
+        "min": 48.371,
+        "max": 55.287
+      },
+      "script": {
+        "mean": 13.530933333333333,
+        "median": 13.605,
+        "stddev": 0.27078810083819327,
+        "min": 12.839,
+        "max": 13.872
+      },
+      "paint": {
+        "mean": 27.3198,
+        "median": 26.639,
+        "stddev": 1.3925242403635207,
+        "min": 25.878,
+        "max": 30.672
+      },
+      "layouts": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "numberCommits": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "maxDeltaBetweenCommits": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rafLongDelay": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "partial update (10th)": {
+      "total": {
+        "mean": 41.447733333333325,
+        "median": 39.615,
+        "stddev": 4.808486920250717,
+        "min": 36.041,
+        "max": 51.666
+      },
+      "script": {
+        "mean": 5.761733333333334,
+        "median": 5.662,
+        "stddev": 0.4557419542777348,
+        "min": 4.944,
+        "max": 6.739
+      },
+      "paint": {
+        "mean": 18.058400000000002,
+        "median": 17.692,
+        "stddev": 1.2398871884167528,
+        "min": 16.344,
+        "max": 20.86
+      },
+      "layouts": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "numberCommits": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "maxDeltaBetweenCommits": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rafLongDelay": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "select row": {
+      "total": {
+        "mean": 11.309466666666667,
+        "median": 11.117,
+        "stddev": 0.8581889354267447,
+        "min": 9.834,
+        "max": 12.646
+      },
+      "script": {
+        "mean": 4.4610666666666665,
+        "median": 4.608,
+        "stddev": 0.4052275848897205,
+        "min": 3.755,
+        "max": 5.117
+      },
+      "paint": {
+        "mean": 4.559399999999999,
+        "median": 4.679,
+        "stddev": 0.7291857376553659,
+        "min": 3.328,
+        "max": 5.614
+      },
+      "layouts": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      },
+      "numberCommits": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "maxDeltaBetweenCommits": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rafLongDelay": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "swap rows": {
+      "total": {
+        "mean": 39.90566666666667,
+        "median": 38.759,
+        "stddev": 3.9303030360972873,
+        "min": 36.511,
+        "max": 53.38
+      },
+      "script": {
+        "mean": 1.0360666666666667,
+        "median": 1.04,
+        "stddev": 0.3180464256816745,
+        "min": 0.51,
+        "max": 1.473
+      },
+      "paint": {
+        "mean": 21.95893333333333,
+        "median": 21.782,
+        "stddev": 1.0123708455348208,
+        "min": 20.639,
+        "max": 23.548
+      },
+      "layouts": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "numberCommits": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "maxDeltaBetweenCommits": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rafLongDelay": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "remove row": {
+      "total": {
+        "mean": 33.28086666666667,
+        "median": 32.561,
+        "stddev": 3.388365896547905,
+        "min": 30.398,
+        "max": 44.902
+      },
+      "script": {
+        "mean": 3.135333333333333,
+        "median": 3.144,
+        "stddev": 0.20738777420303467,
+        "min": 2.844,
+        "max": 3.473
+      },
+      "paint": {
+        "mean": 17.5704,
+        "median": 17.354,
+        "stddev": 1.0437544283339188,
+        "min": 16.077,
+        "max": 20.159
+      },
+      "layouts": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "numberCommits": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "maxDeltaBetweenCommits": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rafLongDelay": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "create many rows (10k)": {
+      "total": {
+        "mean": 577.0240666666667,
+        "median": 576.571,
+        "stddev": 5.677043167784521,
+        "min": 568.221,
+        "max": 587.088
+      },
+      "script": {
+        "mean": 246.60753333333338,
+        "median": 245.329,
+        "stddev": 4.6971126289337475,
+        "min": 240.317,
+        "max": 256.105
+      },
+      "paint": {
+        "mean": 309.5460666666667,
+        "median": 308.925,
+        "stddev": 2.329133500300535,
+        "min": 306.585,
+        "max": 314.183
+      },
+      "layouts": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "numberCommits": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "maxDeltaBetweenCommits": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rafLongDelay": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "append rows (1k to 1k)": {
+      "total": {
+        "mean": 51.21973333333333,
+        "median": 50.83,
+        "stddev": 1.379338801342472,
+        "min": 49.127,
+        "max": 53.867
+      },
+      "script": {
+        "mean": 10.2508,
+        "median": 10.116,
+        "stddev": 0.33764423090979456,
+        "min": 9.642,
+        "max": 10.809
+      },
+      "paint": {
+        "mean": 29.478133333333336,
+        "median": 29.408,
+        "stddev": 0.49987423307156814,
+        "min": 28.76,
+        "max": 30.706
+      },
+      "layouts": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "numberCommits": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "maxDeltaBetweenCommits": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rafLongDelay": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      }
+    },
+    "clear rows": {
+      "total": {
+        "mean": 37.1018,
+        "median": 36.065,
+        "stddev": 3.6656576526820754,
+        "min": 33.782,
+        "max": 49.382
+      },
+      "script": {
+        "mean": 22.17653333333333,
+        "median": 22.293,
+        "stddev": 0.42745321251440965,
+        "min": 21.397,
+        "max": 22.85
+      },
+      "paint": {
+        "mean": 1.7523333333333335,
+        "median": 1.818,
+        "stddev": 0.3672105057804795,
+        "min": 1.03,
+        "max": 2.265
+      },
+      "layouts": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "numberCommits": {
+        "mean": 1,
+        "median": 1,
+        "stddev": 0,
+        "min": 1,
+        "max": 1
+      },
+      "maxDeltaBetweenCommits": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rafLongDelay": {
+        "mean": 0,
+        "median": 0,
+        "stddev": 0,
+        "min": 0,
+        "max": 0
+      }
+    }
+  },
+  "totals": {
+    "total": {
+      "mean": 887.2903999999999,
+      "median": 881.2620000000001,
+      "stddev": 17.700607631001404,
+      "min": 869.259,
+      "max": 945.8999999999999
+    },
+    "script": {
+      "mean": 314.8596666666666,
+      "median": 314.157,
+      "stddev": 4.890737117813185,
+      "min": 307.54,
+      "max": 326.06700000000006
+    },
+    "paint": {
+      "mean": 456.8249333333332,
+      "median": 457.492,
+      "stddev": 4.1683900723847245,
+      "min": 447.68399999999997,
+      "max": 463.279
+    },
+    "layouts": {
+      "mean": 8,
+      "median": 8,
+      "stddev": 0,
+      "min": 8,
+      "max": 8
+    },
+    "numberCommits": {
+      "mean": 9,
+      "median": 9,
+      "stddev": 0,
+      "min": 9,
+      "max": 9
+    },
+    "rafLongDelay": {
+      "mean": 0,
+      "median": 0,
+      "stddev": 0,
+      "min": 0,
+      "max": 0
+    }
+  }
+}

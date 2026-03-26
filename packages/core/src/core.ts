@@ -28,6 +28,11 @@ export function unwrap<T>(value: T): T {
   return (value && (value as any)[$RAW]) || value;
 }
 
+/** Get nodes if they already exist (no creation). Fast path for hot loops. */
+export function getNodesIfExist(target: object): DataNodes | undefined {
+  return (target as any)[$NODE];
+}
+
 export function getNodes(target: object): DataNodes {
   let nodes = (target as any)[$NODE];
   if (!nodes) {

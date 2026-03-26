@@ -107,6 +107,7 @@ export interface AppState {
 
 export interface RowProps {
   item: RowData;
+  store: AppState;
   onSelect: (id: number) => void;
   onRemove: (id: number) => void;
 }
@@ -223,10 +224,10 @@ const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }
   </div>
 );
 
-export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
+export const Row = tracked(({ item, store, onSelect, onRemove }: RowProps) => {
   rowRenderCount++;
-  const store = Store.useStore();
-  const isSelected = useComputed(() => store.selected === item.id);
+  const id = item.id;
+  const isSelected = useComputed(() => store.selected === id);
   return (
     <tr className={isSelected ? "danger" : ""}>
       <td className="col-md-1">{item.id}</td>
@@ -273,7 +274,13 @@ export const App = tracked(() => {
           <tbody ref={tbodyRef}>
             <For each={store.data} parent={tbodyRef}>
               {(item: RowData) => (
-                <Row key={item.id} item={item} onSelect={handleSelect} onRemove={handleRemove} />
+                <Row
+                  key={item.id}
+                  item={item}
+                  store={store}
+                  onSelect={handleSelect}
+                  onRemove={handleRemove}
+                />
               )}
             </For>
           </tbody>

@@ -1,6 +1,6 @@
 import { startBatch, endBatch } from "alien-signals";
 
-import { $NODE, unwrap } from "./core";
+import { unwrap, getNodesIfExist } from "./core";
 import {
   type ArrayPullOperations,
   type ArrayWriteOperations,
@@ -168,7 +168,7 @@ function pullFromArray(arr: any[], condition: any): boolean {
   if (removed && arr.length !== originalLength) {
     bumpVersion(arr);
 
-    const nodes = (arr as any)[$NODE];
+    const nodes = getNodesIfExist(arr);
     if (nodes) {
       bumpOwnKeysSignal(arr, nodes);
 

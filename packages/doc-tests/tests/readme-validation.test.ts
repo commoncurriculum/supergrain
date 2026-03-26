@@ -1,17 +1,28 @@
 /**
- * README Documentation Validation Tests
+ * Documentation Validation Tests
  *
  * Tests that ensure:
- * - All code blocks in README.md have DOC_TEST identifiers
+ * - All code blocks in README.md and docs/*.md have DOC_TEST identifiers
  * - All DOC_TEST identifiers have corresponding tests in the test suite
  */
 
-import { readFileSync, readdirSync } from "fs";
+import { readFileSync, readdirSync, existsSync } from "fs";
 import { join } from "path";
 import { describe, it, expect } from "vitest";
 
 describe("README Documentation Validation", () => {
-  const readmeContent = readFileSync(join(__dirname, "../../../README.md"), "utf-8");
+  const rootDir = join(__dirname, "../../..");
+  // Collect all documentation markdown: README.md + docs/*.md
+  const docFiles = [join(rootDir, "README.md")];
+  const docsDir = join(rootDir, "docs");
+  if (existsSync(docsDir)) {
+    for (const file of readdirSync(docsDir)) {
+      if (file.endsWith(".md")) {
+        docFiles.push(join(docsDir, file));
+      }
+    }
+  }
+  const readmeContent = docFiles.map((f) => readFileSync(f, "utf-8")).join("\n");
 
   const testsDir = __dirname;
   const testFiles = readdirSync(testsDir)

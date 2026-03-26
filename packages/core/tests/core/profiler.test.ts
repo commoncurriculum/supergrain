@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import { createStore, effect, startBatch, endBatch } from "../../src";
 import { enableProfiling, disableProfiling, resetProfiler, getProfile } from "../../src/profiler";
@@ -92,8 +92,8 @@ describe("Profiler", () => {
     });
   });
 
-  describe("effectFires", () => {
-    it("counts effect fires on first select (should be 1)", () => {
+  describe("fine-grained reactivity", () => {
+    it("only fires affected effects on select (1 of 3)", () => {
       const store = createStore({
         data: [
           { id: 1, label: "a", isSelected: false },
@@ -103,27 +103,32 @@ describe("Profiler", () => {
         selected: null as number | null,
       });
 
-      // Simulate per-row effects (like tracked Row components)
-      for (let i = 0; i < store.data.length; i++) {
+      const spies = store.data.map((_: any, i: number) => {
+        const spy = vi.fn();
         effect(() => {
           void store.data[i]!.isSelected;
           void store.data[i]!.label;
+          spy();
         });
-      }
-      resetProfiler();
+        return spy;
+      });
 
-      // Select row 2 (no prior selection) — should fire exactly 1 effect
+      // Reset after initial run
+      for (const spy of spies) spy.mockClear();
+
+      // Select row 2 — should fire exactly 1 effect
       startBatch();
       const item = store.data.find((d: any) => d.id === 2);
       if (item) item.isSelected = true;
       store.selected = 2;
       endBatch();
 
-      const p = getProfile();
-      expect(p.effectFires).toBe(1); // only the newly selected row
+      expect(spies[0]).not.toHaveBeenCalled();
+      expect(spies[1]).toHaveBeenCalledTimes(1);
+      expect(spies[2]).not.toHaveBeenCalled();
     });
 
-    it("counts effect fires on partial update (should be N/10)", () => {
+    it("only fires affected effects on partial update (10 of 100)", () => {
       const count = 100;
       const store = createStore({
         data: Array.from({ length: count }, (_, i) => ({
@@ -132,13 +137,16 @@ describe("Profiler", () => {
         })),
       });
 
-      // Simulate per-row effects
-      for (let i = 0; i < count; i++) {
+      const spies = Array.from({ length: count }, (_, i) => {
+        const spy = vi.fn();
         effect(() => {
           void store.data[i]!.label;
+          spy();
         });
-      }
-      resetProfiler();
+        return spy;
+      });
+
+      for (const spy of spies) spy.mockClear();
 
       // Update every 10th row
       startBatch();
@@ -147,8 +155,8 @@ describe("Profiler", () => {
       }
       endBatch();
 
-      const p = getProfile();
-      expect(p.effectFires).toBe(10); // exactly 10 out of 100
+      const firedCount = spies.filter((s) => s.mock.calls.length > 0).length;
+      expect(firedCount).toBe(10);
     });
   });
 
@@ -163,7 +171,6 @@ describe("Profiler", () => {
       expect(p.signalReads).toBe(0);
       expect(p.signalSkips).toBe(0);
       expect(p.signalWrites).toBe(0);
-      expect(p.effectFires).toBe(0);
     });
   });
 
@@ -181,7 +188,6 @@ describe("Profiler", () => {
       expect(after.signalReads).toBe(0);
       expect(after.signalSkips).toBe(0);
       expect(after.signalWrites).toBe(0);
-      expect(after.effectFires).toBe(0);
     });
   });
 });

@@ -1,3 +1,4 @@
+import strip from "@rollup/plugin-strip";
 import react from "@vitejs/plugin-react";
 /// <reference types="vitest" />
 import { resolve } from "path";
@@ -11,6 +12,9 @@ export default defineConfig({
       insertTypesEntry: true,
     }),
     react(),
+    strip({
+      functions: ["profileSignalRead", "profileSignalSkip", "profileSignalWrite"],
+    }),
   ],
 
   // This is the key change:
@@ -25,6 +29,8 @@ export default defineConfig({
   },
 
   build: {
+    // Keep function names readable for profiling and debugging
+    minify: false,
     // The benchmark runner expects predictable, non-hashed file names.
     rollupOptions: {
       output: {

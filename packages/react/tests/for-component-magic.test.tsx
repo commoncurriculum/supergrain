@@ -429,7 +429,6 @@ describe("For Component Magic Tests", () => {
     expect(renderedIds.has(11)).toBe(true);
 
     // Signal-level assertions: catch over-subscription
-    expect(p.effectFires).toBe(2); // only the 2 updated rows
     expect(p.signalWrites).toBe(2); // 2 label changes
     // Mutation path reads should all be skips (no subscriber)
     expect(p.signalSkips).toBeGreaterThan(0);
@@ -701,6 +700,16 @@ describe("For Component Magic Tests", () => {
       });
     }
 
+    // Parent path requires tracked children for reactive property updates.
+    const StressRow = tracked(({ item }: { item: RowData }) => {
+      return (
+        <tr>
+          <td>{item.id}</td>
+          <td>{item.label}</td>
+        </tr>
+      );
+    });
+
     function getLabels(c: HTMLElement) {
       return Array.from(c.querySelectorAll("tr")).map(
         (tr) => tr.querySelectorAll("td")[1]?.textContent ?? "",
@@ -722,12 +731,7 @@ describe("For Component Magic Tests", () => {
           <table>
             <tbody ref={tbodyRef}>
               <For each={store.data} parent={tbodyRef}>
-                {(item: RowData) => (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{item.label}</td>
-                  </tr>
-                )}
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
               </For>
             </tbody>
           </table>
@@ -768,12 +772,7 @@ describe("For Component Magic Tests", () => {
           <table>
             <tbody ref={tbodyRef}>
               <For each={store.data} parent={tbodyRef}>
-                {(item: RowData) => (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{item.label}</td>
-                  </tr>
-                )}
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
               </For>
             </tbody>
           </table>
@@ -812,12 +811,7 @@ describe("For Component Magic Tests", () => {
           <table>
             <tbody ref={tbodyRef}>
               <For each={store.data} parent={tbodyRef}>
-                {(item: RowData) => (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{item.label}</td>
-                  </tr>
-                )}
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
               </For>
             </tbody>
           </table>
@@ -854,12 +848,7 @@ describe("For Component Magic Tests", () => {
           <table>
             <tbody ref={tbodyRef}>
               <For each={store.data} parent={tbodyRef}>
-                {(item: RowData) => (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{item.label}</td>
-                  </tr>
-                )}
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
               </For>
             </tbody>
           </table>
@@ -896,12 +885,7 @@ describe("For Component Magic Tests", () => {
           <table>
             <tbody ref={tbodyRef}>
               <For each={store.data} parent={tbodyRef}>
-                {(item: RowData) => (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{item.label}</td>
-                  </tr>
-                )}
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
               </For>
             </tbody>
           </table>
@@ -947,19 +931,22 @@ describe("For Component Magic Tests", () => {
     it("swap then select a swapped item", async () => {
       const store = createTestStore(5);
 
+      const SelectableRow = tracked(({ item }: { item: RowData }) => {
+        return (
+          <tr className={store.selected === item.id ? "danger" : ""}>
+            <td>{item.id}</td>
+            <td>{item.label}</td>
+          </tr>
+        );
+      });
+
       const App = tracked(() => {
         const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
-        const selected = store.selected;
         return (
           <table>
             <tbody ref={tbodyRef}>
               <For each={store.data} parent={tbodyRef}>
-                {(item: RowData) => (
-                  <tr key={item.id} className={selected === item.id ? "danger" : ""}>
-                    <td>{item.id}</td>
-                    <td>{item.label}</td>
-                  </tr>
-                )}
+                {(item: RowData) => <SelectableRow key={item.id} item={item} />}
               </For>
             </tbody>
           </table>

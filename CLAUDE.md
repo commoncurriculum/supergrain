@@ -14,21 +14,17 @@ Supergrain is a reactive store library with fine-grained reactivity. The project
 
 ## Required Commands After Code Changes
 
-**IMPORTANT**: After making any code changes, you MUST run both tests and type checks:
-
-### 1. Run Tests
+**IMPORTANT**: After making any code changes, you MUST run ALL of the following checks. These mirror exactly what CI runs — if any fail locally, CI will fail too.
 
 ```bash
-pnpm test
+pnpm test              # Unit tests across all packages
+pnpm run test:validate # README/docs documentation validation
+pnpm run typecheck     # TypeScript type checking across all packages
+pnpm lint              # Linting across all packages
+pnpm format            # Formatting (oxfmt)
 ```
 
-### 2. Run Type Checks
-
-```bash
-pnpm run typecheck
-```
-
-Both commands must pass before considering any code changes complete.
+**All five commands must pass before pushing or considering any code changes complete.** Do NOT skip `test:validate` — it catches orphaned doc tests and missing DOC_TEST identifiers.
 
 ## Package-specific Commands
 
@@ -95,11 +91,54 @@ cd packages/js-krauset
 
 # Correctness tests (builds prod bundle, runs in Playwright)
 pnpm test
-
-# Performance benchmarks (builds prod bundle, runs with CDP tracing)
-pnpm test:perf
-# Results written to perf-results.txt
 ```
+
+### Benchmarking workflow
+
+All commands run from `packages/js-krauset`.
+
+**Single run** (quick sanity check):
+
+```bash
+pnpm test:perf
+```
+
+Writes `perf-results.txt` (human-readable), `perf-results.json` (latest, overwritten each run), and `perf-results-<timestamp>.json` (unique per run). Each JSON contains per-benchmark metrics: total, script, paint, layouts, numberCommits, maxDeltaBetweenCommits, rafLongDelay, plus git metadata.
+
+**Statistical run** (for real comparisons):
+
+```bash
+pnpm perf:stats <name> <runs>
+# e.g. pnpm perf:stats baseline 15
+```
+
+Runs `pnpm test:perf` N times, then computes mean/median/stddev/min/max across all runs for every metric. Saves to `perf-stats-<name>.json`. Only uses JSON files generated during that invocation (ignores pre-existing files).
+
+**Comparing before/after**:
+
+```bash
+# 1. On main (or before your change):
+pnpm perf:stats baseline 15
+
+# 2. On your branch (or after your change):
+pnpm perf:stats optimized 15
+
+# 3. Compare (includes Krause weights):
+pnpm perf:compare baseline optimized
+```
+
+**CPU profiling** (function-level flame graphs + heap tracking — adds overhead, do NOT use for timing):
+
+```bash
+# Generate .cpuprofile files per benchmark
+pnpm perf:profile
+
+# Print top functions by self time
+pnpm perf:analyze           # all benchmarks
+pnpm perf:analyze create-1k # specific benchmark
+```
+
+Build is unminified so profiles show real function names.
 
 ### Submitting to js-framework-benchmark
 
@@ -109,6 +148,16 @@ The benchmark repo submission lives at `https://github.com/commoncurriculum/js-f
 2. Create a standalone `package.json` with published npm versions (e.g., `@supergrain/core: "1.0.4"`) instead of `workspace:*`
 3. Remove the vite alias (the benchmark repo uses published packages, not local source)
 4. Add `"customURL": "/dist"` to the `js-framework-benchmark` section of package.json
+
+## Benchmarking Rules
+
+**NEVER write custom benchmark scripts or test files.** The project already has `perf.test.ts` and `perf-stats.ts` in `packages/js-krauset` which exactly match the js-framework-benchmark methodology (Krause's warmup counts, CPU throttling rates, CDP tracing). Use `pnpm test:perf` for quick checks, `pnpm perf:stats <name> <runs>` for real comparisons.
+
+- Do NOT create bash scripts, python scripts, or new TS test files for benchmarking
+- Do NOT reinvent warmup logic, tracing, or timing — perf.test.ts already does it correctly
+- Do NOT dismiss consistent benchmark results as "noise" — if a number is consistently higher across runs, it's real
+- Save baseline stats once (`pnpm perf:stats baseline 15`) and reuse them — don't re-run baselines every time
+- When comparing, use `pnpm perf:stats` on both baseline and branch, then compare the JSON files
 
 ## Package Manager
 

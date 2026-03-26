@@ -24,6 +24,9 @@ const isWrappable = (value: unknown): value is object =>
   (value.constructor === Object || value.constructor === Array);
 
 function wrap<T>(value: T): T {
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
   return isWrappable(value) ? createReactiveProxy(value) : value;
 }
 

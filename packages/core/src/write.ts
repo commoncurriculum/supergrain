@@ -1,8 +1,8 @@
-import { $NODE, $OWN_KEYS, $VERSION, unwrap, getNodes } from "./core";
+import { $OWN_KEYS, $VERSION, unwrap, getNodes, getNodesIfExist } from "./core";
 import { profileSignalWrite } from "./profiler";
 
 export function bumpVersion(target: object): void {
-  let nodes = (target as any)[$NODE];
+  let nodes = getNodesIfExist(target);
   if (!nodes) {
     // Lazily create nodes + version signal on first mutation
     nodes = getNodes(target);
@@ -14,7 +14,7 @@ export function bumpVersion(target: object): void {
 }
 
 export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, any>): void {
-  const resolvedNodes = nodes ?? (target as any)[$NODE];
+  const resolvedNodes = nodes ?? getNodesIfExist(target);
   if (!resolvedNodes) {
     return;
   }
@@ -27,7 +27,7 @@ export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, an
 }
 
 function bumpSignals(target: any, key: PropertyKey, prevLen: number): void {
-  const nodes = (target as any)[$NODE];
+  const nodes = getNodesIfExist(target);
   if (!nodes) {
     return;
   }
@@ -59,7 +59,7 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
     }
   }
 
-  const nodes = (target as any)[$NODE];
+  const nodes = getNodesIfExist(target);
   if (nodes) {
     const node = nodes[key];
     if (node && didChange) {
@@ -70,7 +70,7 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
   bumpSignals(target, key, prevLen);
 
   if (!hadKey) {
-    bumpOwnKeysSignal(target, (target as any)[$NODE]);
+    bumpOwnKeysSignal(target, getNodesIfExist(target));
   }
 }
 
@@ -83,7 +83,7 @@ export function deleteProperty(target: any, key: PropertyKey): void {
   if (hadKey) {
     bumpVersion(target);
 
-    const nodes = (target as any)[$NODE];
+    const nodes = getNodesIfExist(target);
     if (nodes) {
       const node = nodes[key];
       if (node) {
@@ -92,7 +92,7 @@ export function deleteProperty(target: any, key: PropertyKey): void {
       }
     }
     bumpSignals(target, key, prevLen);
-    bumpOwnKeysSignal(target, (target as any)[$NODE]);
+    bumpOwnKeysSignal(target, getNodesIfExist(target));
   }
 }
 
