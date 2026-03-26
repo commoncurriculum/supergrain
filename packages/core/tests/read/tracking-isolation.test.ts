@@ -75,7 +75,6 @@ describe("Tracking Isolation Analysis", () => {
 
     const p1 = getProfile();
     expect(p1.signalWrites).toBe(1); // only parent
-    // Note: effectFires=0 because this uses raw alien-signals effect, not our profiled wrapper
     resetProfiler();
 
     // Update child property

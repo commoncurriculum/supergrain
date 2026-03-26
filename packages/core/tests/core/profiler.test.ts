@@ -171,7 +171,6 @@ describe("Profiler", () => {
       expect(p.signalReads).toBe(0);
       expect(p.signalSkips).toBe(0);
       expect(p.signalWrites).toBe(0);
-      expect(p.effectFires).toBe(0);
     });
   });
 
@@ -189,7 +188,6 @@ describe("Profiler", () => {
       expect(after.signalReads).toBe(0);
       expect(after.signalSkips).toBe(0);
       expect(after.signalWrites).toBe(0);
-      expect(after.effectFires).toBe(0);
     });
   });
 });

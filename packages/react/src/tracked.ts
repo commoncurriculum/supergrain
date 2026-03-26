@@ -4,7 +4,12 @@ import {
   setCurrentSub,
   type ReactiveNode,
 } from "alien-signals";
-import { type FC, memo, useReducer, useRef, useEffect } from "react";
+import { type FC, memo, useReducer, useEffect } from "react";
+
+interface TrackedState {
+  cleanup: () => void;
+  effectNode: ReactiveNode | undefined;
+}
 
 /**
  * Wraps a React component with per-component signal scoping.
@@ -49,9 +54,11 @@ import { type FC, memo, useReducer, useRef, useEffect } from "react";
 export function tracked<P extends object>(Component: FC<P>) {
   const Tracked: FC<P> = (props: P) => {
     const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
-    const ref = useRef<{ cleanup: () => void; effectNode: ReactiveNode | undefined } | null>(null);
 
-    if (!ref.current) {
+    // Store effect state on the dispatch function (stable per component instance).
+    // Eliminates useRef (1 fewer hook vs the original implementation).
+    const fu = forceUpdate as unknown as { __sg?: TrackedState };
+    if (!fu.__sg) {
       let firstRun = true;
       let capturedNode: ReactiveNode | undefined = null!; // eslint-disable-line unicorn/no-null -- set synchronously by alienEffect
       const cleanup = alienEffect(() => {
@@ -62,19 +69,19 @@ export function tracked<P extends object>(Component: FC<P>) {
         }
         forceUpdate();
       });
-      ref.current = { cleanup, effectNode: capturedNode };
+      fu.__sg = { cleanup, effectNode: capturedNode };
     }
 
     useEffect(
       () => () => {
-        ref.current?.cleanup?.();
-        ref.current = null;
+        const state = (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
+        state?.cleanup?.();
       },
       [],
     );
 
     const prev = getCurrentSub();
-    setCurrentSub(ref.current.effectNode);
+    setCurrentSub(fu.__sg.effectNode);
     const result = Component(props); // eslint-disable-line new-cap -- React function component call
     setCurrentSub(prev);
     return result;

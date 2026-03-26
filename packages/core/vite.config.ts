@@ -10,12 +10,7 @@ export default defineConfig({
       insertTypesEntry: true,
     }),
     strip({
-      functions: [
-        "profileSignalRead",
-        "profileSignalSkip",
-        "profileSignalWrite",
-        "profileEffectFire",
-      ],
+      functions: ["profileSignalRead", "profileSignalSkip", "profileSignalWrite"],
     }),
   ],
   build: {

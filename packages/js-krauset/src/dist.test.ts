@@ -140,8 +140,6 @@ describe("dist validation (isKeyed mirror)", () => {
     expect(p.appRenderCount).toBe(0);
     // Signal writes: exactly 100 label changes
     expect(p.signalWrites).toBe(100);
-    // Effect fires: exactly 100 (one per changed row)
-    expect(p.effectFires).toBe(100);
   });
 
   it("select row: profile render counts at 1000 rows", async () => {
@@ -168,8 +166,6 @@ describe("dist validation (isKeyed mirror)", () => {
     expect(p.rowRenderCount).toBe(2);
     // App should NOT re-render
     expect(p.appRenderCount).toBe(0);
-    // Effect fires: exactly 2
-    expect(p.effectFires).toBe(2);
   });
 
   it("capture flamegraph trace for select row", async () => {
