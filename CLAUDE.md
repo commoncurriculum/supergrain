@@ -91,16 +91,39 @@ cd packages/js-krauset
 
 # Correctness tests (builds prod bundle, runs in Playwright)
 pnpm test
+```
 
-# Single performance benchmark run (builds prod bundle, runs with CDP tracing)
+### Benchmarking workflow
+
+All commands run from `packages/js-krauset`.
+
+**Single run** (quick sanity check):
+
+```bash
 pnpm test:perf
-# Results written to perf-results.txt, perf-results.json, and perf-results-<timestamp>.json
+```
 
-# Statistical benchmark run (runs N times, computes mean/median/stddev/min/max)
-pnpm perf:stats <name> [runs]
+Writes `perf-results.txt` (human-readable), `perf-results.json` (latest, overwritten each run), and `perf-results-<timestamp>.json` (unique per run). Each JSON contains per-benchmark metrics: total, script, paint, layouts, numberCommits, maxDeltaBetweenCommits, rafLongDelay, plus git metadata.
+
+**Statistical run** (for real comparisons):
+
+```bash
+pnpm perf:stats <name> <runs>
 # e.g. pnpm perf:stats baseline 15
-# e.g. pnpm perf:stats after-optimization 15
-# Results written to perf-stats-<name>.json
+```
+
+Runs `pnpm test:perf` N times, then computes mean/median/stddev/min/max across all runs for every metric. Saves to `perf-stats-<name>.json`. Only uses JSON files generated during that invocation (ignores pre-existing files).
+
+**Comparing before/after**:
+
+```bash
+# 1. On main (or before your change):
+pnpm perf:stats baseline 15
+
+# 2. On your branch (or after your change):
+pnpm perf:stats optimized 15
+
+# 3. Compare perf-stats-baseline.json vs perf-stats-optimized.json
 ```
 
 ### Submitting to js-framework-benchmark
@@ -114,13 +137,13 @@ The benchmark repo submission lives at `https://github.com/commoncurriculum/js-f
 
 ## Benchmarking Rules
 
-**NEVER write custom benchmark scripts or test files.** The project already has `perf.test.ts` in `packages/js-krauset` which exactly matches the js-framework-benchmark methodology (Krause's warmup counts, CPU throttling rates, CDP tracing). Use it. Run `pnpm test:perf` — that's it.
+**NEVER write custom benchmark scripts or test files.** The project already has `perf.test.ts` and `perf-stats.ts` in `packages/js-krauset` which exactly match the js-framework-benchmark methodology (Krause's warmup counts, CPU throttling rates, CDP tracing). Use `pnpm test:perf` for quick checks, `pnpm perf:stats <name> <runs>` for real comparisons.
 
 - Do NOT create bash scripts, python scripts, or new TS test files for benchmarking
 - Do NOT reinvent warmup logic, tracing, or timing — perf.test.ts already does it correctly
 - Do NOT dismiss consistent benchmark results as "noise" — if a number is consistently higher across runs, it's real
-- Save baseline numbers once and reuse them — don't re-run baselines every time
-- When comparing, run `pnpm test:perf` on both the branch and baseline package, multiple times
+- Save baseline stats once (`pnpm perf:stats baseline 15`) and reuse them — don't re-run baselines every time
+- When comparing, use `pnpm perf:stats` on both baseline and branch, then compare the JSON files
 
 ## Package Manager
 
