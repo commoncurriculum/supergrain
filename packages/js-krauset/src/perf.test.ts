@@ -30,6 +30,7 @@ import {
 } from "./timeline";
 
 const ctx: TestContext = {} as TestContext;
+const PROFILE = !!process.env.PROFILE;
 
 interface BenchmarkResult {
   name: string;
@@ -57,18 +58,23 @@ async function getMetrics(client: any): Promise<Record<string, number>> {
 async function timeClick(
   page: Page,
   selector: string,
-  opts: { cpuThrottle?: number; afterClick?: () => Promise<void> } = {},
+  opts: { cpuThrottle?: number; afterClick?: () => Promise<void>; traceName?: string } = {},
 ): Promise<Omit<BenchmarkResult, "name">> {
   const client = await page.context().newCDPSession(page);
-  await client.send("Performance.enable");
 
   if (opts.cpuThrottle) {
     await client.send("Emulation.setCPUThrottlingRate", { rate: opts.cpuThrottle });
   }
 
-  // Force GC and snapshot heap before the operation
-  await client.send("HeapProfiler.collectGarbage");
-  const metricsBefore = await getMetrics(client);
+  // Profiling: heap + CPU flame graph (adds overhead, opt-in via --profile)
+  let metricsBefore: Record<string, number> | undefined;
+  if (PROFILE) {
+    await client.send("Performance.enable");
+    await client.send("HeapProfiler.collectGarbage");
+    metricsBefore = await getMetrics(client);
+    await client.send("Profiler.enable");
+    await client.send("Profiler.start");
+  }
 
   await client.send("Tracing.start", {
     categories: "blink.user_timing,devtools.timeline,disabled-by-default-devtools.timeline",
@@ -93,8 +99,18 @@ async function timeClick(
     client.send("Tracing.end");
   });
 
-  // Snapshot heap after the operation
-  const metricsAfter = await getMetrics(client);
+  // Save CPU profile + snapshot heap (only when profiling)
+  let metricsAfter: Record<string, number> | undefined;
+  if (PROFILE) {
+    if (opts.traceName) {
+      const { profile } = await client.send("Profiler.stop");
+      await client.send("Profiler.disable");
+      const profilePath = resolve(__dirname, `../${opts.traceName}.cpuprofile`);
+      writeFileSync(profilePath, JSON.stringify(profile));
+    }
+    metricsAfter = await getMetrics(client);
+    await client.send("Performance.disable");
+  }
 
   // Use Krause's exact trace parsing logic from timeline.ts
   const cpuResult = computeResultsCPU(traceEvents, "click");
@@ -105,7 +121,6 @@ async function timeClick(
   if (opts.cpuThrottle) {
     await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   }
-  await client.send("Performance.disable");
   await client.detach();
   return {
     total,
@@ -117,9 +132,15 @@ async function timeClick(
     rafLongDelay: cpuResult.raf_long_delay,
     droppedNonMainProcessCommitEvents: cpuResult.droppedNonMainProcessCommitEvents,
     droppedNonMainProcessOtherEvents: cpuResult.droppedNonMainProcessOtherEvents,
-    heapUsedDelta: metricsAfter.JSHeapUsedSize - metricsBefore.JSHeapUsedSize,
-    heapTotalDelta: metricsAfter.JSHeapTotalSize - metricsBefore.JSHeapTotalSize,
-    domNodesDelta: metricsAfter.Nodes - metricsBefore.Nodes,
+    heapUsedDelta:
+      metricsBefore && metricsAfter
+        ? metricsAfter.JSHeapUsedSize - metricsBefore.JSHeapUsedSize
+        : 0,
+    heapTotalDelta:
+      metricsBefore && metricsAfter
+        ? metricsAfter.JSHeapTotalSize - metricsBefore.JSHeapTotalSize
+        : 0,
+    domNodesDelta: metricsBefore && metricsAfter ? metricsAfter.Nodes - metricsBefore.Nodes : 0,
   };
 }
 
@@ -194,6 +215,7 @@ describe("performance benchmarks", () => {
       await click(page, "#clear");
     }
     const ms = await timeClick(page, "#run", {
+      traceName: "create-1k",
       afterClick: () => waitFor(page, "tbody>tr:nth-of-type(1000)>td:nth-of-type(1)"),
     });
     results.push({ name: "create rows (1k)", ...ms });
@@ -206,6 +228,7 @@ describe("performance benchmarks", () => {
       await click(page, "#run");
     }
     const ms = await timeClick(page, "#run", {
+      traceName: "replace-1k",
       afterClick: () => waitFor(page, "tbody>tr:nth-of-type(1000)>td:nth-of-type(1)"),
     });
     results.push({ name: "replace all rows", ...ms });
@@ -220,6 +243,7 @@ describe("performance benchmarks", () => {
       await click(page, "#update");
     }
     const ms = await timeClick(page, "#update", {
+      traceName: "partial-update",
       cpuThrottle: 4,
       afterClick: async () => {
         // Krause checks that row 991 has the expected number of " !!!" suffixes
@@ -240,6 +264,7 @@ describe("performance benchmarks", () => {
     await waitFor(page, "tbody>tr:nth-of-type(1000)");
     await click(page, "tbody>tr:nth-of-type(5)>td:nth-of-type(2)>a");
     const ms = await timeClick(page, "tbody>tr:nth-of-type(2)>td:nth-of-type(2)>a", {
+      traceName: "select-row",
       cpuThrottle: 4,
       afterClick: async () => {
         await page.waitForFunction(() =>
@@ -259,6 +284,7 @@ describe("performance benchmarks", () => {
       await click(page, "#swaprows");
     }
     const ms = await timeClick(page, "#swaprows", {
+      traceName: "swap-rows",
       cpuThrottle: 4,
       afterClick: async () => {
         await page.waitForFunction(
@@ -281,6 +307,7 @@ describe("performance benchmarks", () => {
       await click(page, `tbody>tr:nth-of-type(${row})>td:nth-of-type(3)>a>span`);
     }
     const ms = await timeClick(page, "tbody>tr:nth-of-type(4)>td:nth-of-type(3)>a>span", {
+      traceName: "remove-row",
       cpuThrottle: 2,
       afterClick: async () => {
         // After removing row 4, what was row 5 shifts into position 4
@@ -302,6 +329,7 @@ describe("performance benchmarks", () => {
       await click(page, "#clear");
     }
     const ms = await timeClick(page, "#runlots", {
+      traceName: "create-10k",
       afterClick: () => waitFor(page, "tbody>tr:nth-of-type(10000)>td:nth-of-type(2)>a"),
     });
     results.push({ name: "create many rows (10k)", ...ms });
@@ -317,6 +345,7 @@ describe("performance benchmarks", () => {
     await click(page, "#run");
     await waitFor(page, "tbody>tr:nth-of-type(1000)");
     const ms = await timeClick(page, "#add", {
+      traceName: "append-1k",
       afterClick: () => waitFor(page, "tbody>tr:nth-of-type(2000)>td:nth-of-type(1)"),
     });
     results.push({ name: "append rows (1k to 1k)", ...ms });
@@ -332,6 +361,7 @@ describe("performance benchmarks", () => {
     await click(page, "#run");
     await waitFor(page, "tbody>tr:nth-of-type(1000)");
     const ms = await timeClick(page, "#clear", {
+      traceName: "clear-rows",
       cpuThrottle: 4,
       afterClick: async () => {
         await page.waitForFunction(

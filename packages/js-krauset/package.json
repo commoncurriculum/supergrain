@@ -9,7 +9,9 @@
     "test": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/dist.test.ts",
     "test:perf": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/perf.test.ts --reporter=verbose 2>&1 | tee perf-results.txt",
     "perf:stats": "node perf-stats.ts",
-    "perf:compare": "node perf-compare.ts"
+    "perf:compare": "node perf-compare.ts",
+    "perf:profile": "pnpm build-prod && PROFILE=1 vitest run --config vitest.dist.config.ts src/perf.test.ts",
+    "perf:analyze": "node perf-profile.ts"
   },
   "dependencies": {
     "@supergrain/core": "workspace:*",

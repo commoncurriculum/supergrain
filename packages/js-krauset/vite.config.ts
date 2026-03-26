@@ -34,6 +34,8 @@ export default defineConfig({
   },
 
   build: {
+    // Keep function names readable for profiling and debugging
+    minify: false,
     // The benchmark runner expects predictable, non-hashed file names.
     rollupOptions: {
       output: {
