@@ -3,9 +3,10 @@ node_modules/
 
 # Performance test output
 perf-results.txt
-
-# Performance test output
-perf-results.txt
+perf-results.json
+perf-results-*.json
+perf-stats.json
+perf-stats-*.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

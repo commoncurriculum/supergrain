@@ -7,6 +7,7 @@
  *
  * Run: `pnpm test:perf`
  */
+import { execSync } from "child_process";
 import { writeFileSync } from "fs";
 import { resolve } from "path";
 import { chromium, type Page } from "playwright";
@@ -21,15 +22,33 @@ import {
   click,
   text,
 } from "./test-helpers";
-import { computeResultsCPU, computeResultsJS, computeResultsPaint } from "./timeline";
+import {
+  type CPUDurationResult,
+  computeResultsCPU,
+  computeResultsJS,
+  computeResultsPaint,
+} from "./timeline";
 
 const ctx: TestContext = {} as TestContext;
+
+interface BenchmarkResult {
+  name: string;
+  total: number;
+  script: number;
+  paint: number;
+  layouts: number;
+  numberCommits: number;
+  maxDeltaBetweenCommits: number;
+  rafLongDelay: number;
+  droppedNonMainProcessCommitEvents: boolean;
+  droppedNonMainProcessOtherEvents: boolean;
+}
 
 async function timeClick(
   page: Page,
   selector: string,
   opts: { cpuThrottle?: number; afterClick?: () => Promise<void> } = {},
-): Promise<{ total: number; script: number; paint: number }> {
+): Promise<Omit<BenchmarkResult, "name">> {
   const client = await page.context().newCDPSession(page);
 
   if (opts.cpuThrottle) {
@@ -69,10 +88,20 @@ async function timeClick(
     await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   }
   await client.detach();
-  return { total, script, paint };
+  return {
+    total,
+    script,
+    paint,
+    layouts: cpuResult.layouts,
+    numberCommits: cpuResult.numberCommits,
+    maxDeltaBetweenCommits: cpuResult.maxDeltaBetweenCommits,
+    rafLongDelay: cpuResult.raf_long_delay,
+    droppedNonMainProcessCommitEvents: cpuResult.droppedNonMainProcessCommitEvents,
+    droppedNonMainProcessOtherEvents: cpuResult.droppedNonMainProcessOtherEvents,
+  };
 }
 
-const results: { name: string; total: number; script: number; paint: number }[] = [];
+const results: BenchmarkResult[] = [];
 
 describe("performance benchmarks", () => {
   beforeAll(async () => {
@@ -97,6 +126,38 @@ describe("performance benchmarks", () => {
       const output = `Benchmark Results\n${sep}\n${header}\n${sep}\n${lines.join("\n")}\n${sep}`;
       console.log(`\n${output}`);
       writeFileSync(resolve(__dirname, "../perf-results.txt"), output + "\n");
+
+      // Write JSON results with git metadata
+      const git = (cmd: string) => execSync(cmd, { encoding: "utf-8" }).trim();
+      const timestamp = new Date().toISOString();
+      const json = {
+        timestamp,
+        git: {
+          branch: git("git rev-parse --abbrev-ref HEAD"),
+          commit: git("git rev-parse --short HEAD"),
+          message: git("git log -1 --pretty=%s"),
+          dirty: git("git status --porcelain") !== "",
+        },
+        results,
+        totals: {
+          total: results.reduce((s, r) => s + r.total, 0),
+          script: results.reduce((s, r) => s + r.script, 0),
+          paint: results.reduce((s, r) => s + r.paint, 0),
+          layouts: results.reduce((s, r) => s + r.layouts, 0),
+          numberCommits: results.reduce((s, r) => s + r.numberCommits, 0),
+          rafLongDelay: results.reduce((s, r) => s + r.rafLongDelay, 0),
+        },
+      };
+      const jsonPath = resolve(
+        __dirname,
+        `../perf-results-${timestamp.replace(/[:.]/g, "-")}.json`,
+      );
+      writeFileSync(jsonPath, JSON.stringify(json, null, 2) + "\n");
+      writeFileSync(
+        resolve(__dirname, "../perf-results.json"),
+        JSON.stringify(json, null, 2) + "\n",
+      );
+      console.log(`\nJSON results written to: ${jsonPath}`);
     }
   });
 

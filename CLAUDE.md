@@ -92,9 +92,15 @@ cd packages/js-krauset
 # Correctness tests (builds prod bundle, runs in Playwright)
 pnpm test
 
-# Performance benchmarks (builds prod bundle, runs with CDP tracing)
+# Single performance benchmark run (builds prod bundle, runs with CDP tracing)
 pnpm test:perf
-# Results written to perf-results.txt
+# Results written to perf-results.txt, perf-results.json, and perf-results-<timestamp>.json
+
+# Statistical benchmark run (runs N times, computes mean/median/stddev/min/max)
+pnpm perf:stats <name> [runs]
+# e.g. pnpm perf:stats baseline 15
+# e.g. pnpm perf:stats after-optimization 15
+# Results written to perf-stats-<name>.json
 ```
 
 ### Submitting to js-framework-benchmark
