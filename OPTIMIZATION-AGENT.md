@@ -123,23 +123,36 @@ pnpm perf:compare branch <experiment-name>
 <analysis — what did the profiler show? why didn't the hypothesis hold?>
 ```
 
-**If accepted:** Commit the change with a descriptive message including the benchmark delta (e.g., "Optimize bumpVersion: -3.2% weighted total"). Then **revert the change in the working tree** before starting the next experiment. The commit is saved in git history — you can cherry-pick winners at the end.
+**If accepted:**
 
-### 7. Before considering any change final, verify everything passes
+1. Run all checks first:
 
-```bash
-pnpm test
-pnpm run test:validate
-pnpm run typecheck
-pnpm lint
-pnpm format
-```
+   ```bash
+   pnpm test
+   pnpm run test:validate
+   pnpm run typecheck
+   pnpm lint
+   pnpm format
+   ```
 
-All five must pass.
+   All five must pass before committing.
 
-### 8. After all experiments: combine winners
+2. Commit with a simple `-m` flag — **do NOT use heredocs, string interpolation, or `$(cat ...)` in commit messages** as these require manual approval. Just use a plain quoted string:
 
-Once you've tested all experiments individually, cherry-pick the accepted commits together and run one final 15-run benchmark to confirm they don't interfere with each other.
+   ```bash
+   git add <files>
+   git commit -m "Optimize bumpVersion: -3.2% weighted total"
+   ```
+
+3. Revert the working tree back to baseline before starting the next experiment:
+   ```bash
+   git stash
+   ```
+   The commit is saved in git history — you can cherry-pick winners at the end.
+
+### 7. After all experiments: combine winners
+
+Cherry-pick the accepted commits together and run one final 15-run benchmark (`pnpm perf:stats combined 15`, then `pnpm perf:compare branch combined`) to confirm they don't interfere with each other. If the combination regresses, bisect which pair of changes conflicts and drop the less impactful one.
 
 ## Krause Benchmark Weights
 
@@ -171,6 +184,8 @@ The library uses alien-signals as the reactivity engine. Signals are lazily crea
 
 Don't trust this list blindly — **profile first** and let the data tell you where time is actually spent.
 
+Note: The build is unminified (`minify: false` in vite.config.ts) so `pnpm perf:profile` / `pnpm perf:analyze` show real function names. `pnpm test:perf` (for timing) uses the same unminified build — this is intentional so profiles and benchmarks run the same code.
+
 ## Rules
 
 - **NEVER write custom benchmark scripts.** Use `perf.test.ts` and the pnpm commands above.
@@ -180,3 +195,5 @@ Don't trust this list blindly — **profile first** and let the data tell you wh
 - **SSR must always work.** Never assume client-only.
 - **One optimization per experiment.** If you change two things and get a 5% improvement, you don't know which one helped.
 - **Do NOT push to remote.** Commit locally. The project owner will review and push.
+- **Do NOT use heredocs, string interpolation, or `$(cat ...)` in git commit messages.** Use plain `git commit -m "message"`. Complex shell constructs require manual approval which won't be available.
+- **Do NOT write bash scripts, python scripts, or ad-hoc node scripts.** Edit source files, run the existing pnpm commands, use git. That's it. No creative tooling.
