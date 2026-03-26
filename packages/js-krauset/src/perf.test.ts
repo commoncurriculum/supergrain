@@ -42,6 +42,16 @@ interface BenchmarkResult {
   rafLongDelay: number;
   droppedNonMainProcessCommitEvents: boolean;
   droppedNonMainProcessOtherEvents: boolean;
+  heapUsedDelta: number;
+  heapTotalDelta: number;
+  domNodesDelta: number;
+}
+
+async function getMetrics(client: any): Promise<Record<string, number>> {
+  const { metrics } = await client.send("Performance.getMetrics");
+  const map: Record<string, number> = {};
+  for (const m of metrics) map[m.name] = m.value;
+  return map;
 }
 
 async function timeClick(
@@ -50,10 +60,15 @@ async function timeClick(
   opts: { cpuThrottle?: number; afterClick?: () => Promise<void> } = {},
 ): Promise<Omit<BenchmarkResult, "name">> {
   const client = await page.context().newCDPSession(page);
+  await client.send("Performance.enable");
 
   if (opts.cpuThrottle) {
     await client.send("Emulation.setCPUThrottlingRate", { rate: opts.cpuThrottle });
   }
+
+  // Force GC and snapshot heap before the operation
+  await client.send("HeapProfiler.collectGarbage");
+  const metricsBefore = await getMetrics(client);
 
   await client.send("Tracing.start", {
     categories: "blink.user_timing,devtools.timeline,disabled-by-default-devtools.timeline",
@@ -78,6 +93,9 @@ async function timeClick(
     client.send("Tracing.end");
   });
 
+  // Snapshot heap after the operation
+  const metricsAfter = await getMetrics(client);
+
   // Use Krause's exact trace parsing logic from timeline.ts
   const cpuResult = computeResultsCPU(traceEvents, "click");
   const total = cpuResult.duration;
@@ -87,6 +105,7 @@ async function timeClick(
   if (opts.cpuThrottle) {
     await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   }
+  await client.send("Performance.disable");
   await client.detach();
   return {
     total,
@@ -98,6 +117,9 @@ async function timeClick(
     rafLongDelay: cpuResult.raf_long_delay,
     droppedNonMainProcessCommitEvents: cpuResult.droppedNonMainProcessCommitEvents,
     droppedNonMainProcessOtherEvents: cpuResult.droppedNonMainProcessOtherEvents,
+    heapUsedDelta: metricsAfter.JSHeapUsedSize - metricsBefore.JSHeapUsedSize,
+    heapTotalDelta: metricsAfter.JSHeapTotalSize - metricsBefore.JSHeapTotalSize,
+    domNodesDelta: metricsAfter.Nodes - metricsBefore.Nodes,
   };
 }
 
@@ -146,6 +168,9 @@ describe("performance benchmarks", () => {
           layouts: results.reduce((s, r) => s + r.layouts, 0),
           numberCommits: results.reduce((s, r) => s + r.numberCommits, 0),
           rafLongDelay: results.reduce((s, r) => s + r.rafLongDelay, 0),
+          heapUsedDelta: results.reduce((s, r) => s + r.heapUsedDelta, 0),
+          heapTotalDelta: results.reduce((s, r) => s + r.heapTotalDelta, 0),
+          domNodesDelta: results.reduce((s, r) => s + r.domNodesDelta, 0),
         },
       };
       const jsonPath = resolve(

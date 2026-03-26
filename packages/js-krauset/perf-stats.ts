@@ -44,6 +44,9 @@ const numericKeys = [
   "numberCommits",
   "maxDeltaBetweenCommits",
   "rafLongDelay",
+  "heapUsedDelta",
+  "heapTotalDelta",
+  "domNodesDelta",
 ];
 
 function stats(values: number[]) {
