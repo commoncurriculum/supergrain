@@ -163,7 +163,9 @@ export const remove = (id: number) => {
 };
 
 export const select = (id: number) => {
-  store.selected = id;
+  flushSync(() => {
+    store.selected = id;
+  });
 };
 
 // --- Profiling ---
