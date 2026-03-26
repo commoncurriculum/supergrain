@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { createStore, update } from "../../src";
 import {
+  createStore,
+  update,
+  effect,
   enableProfiling,
   disableProfiling,
   resetProfiler,
   getProfile,
-  profiledEffect as effect,
-} from "../../src/profiler";
+} from "../../src";
 
 describe("Array Support", () => {
   let store: any;
@@ -46,7 +47,6 @@ describe("Array Support", () => {
     expect(p.signalReads).toBe(10);
     expect(p.signalSkips).toBe(0);
     expect(p.signalWrites).toBe(1); // title changed
-    expect(p.effectFires).toBe(1);
   });
 
   it("should be reactive when using $push", () => {
@@ -70,7 +70,6 @@ describe("Array Support", () => {
     expect(p.signalReads).toBe(8);
     expect(p.signalSkips).toBe(0);
     expect(p.signalWrites).toBe(1); // length signal write
-    expect(p.effectFires).toBe(1);
   });
 
   it("should be reactive when using $pull", () => {
@@ -94,7 +93,6 @@ describe("Array Support", () => {
     expect(p.signalReads).toBe(8); // 4 per run × 2 runs
     expect(p.signalSkips).toBe(5); // store.posts.all.items[0].id outside effect
     expect(p.signalWrites).toBe(1); // length signal write from pull
-    expect(p.effectFires).toBe(1);
   });
 
   it("should track dependencies inside loops", () => {
@@ -121,7 +119,6 @@ describe("Array Support", () => {
     expect(p.signalReads).toBe(20);
     expect(p.signalSkips).toBe(0);
     expect(p.signalWrites).toBe(1); // one title changed
-    expect(p.effectFires).toBe(1);
   });
 
   it("should track dependencies inside filter-like loops", () => {
@@ -155,7 +152,6 @@ describe("Array Support", () => {
     expect(p.signalReads).toBe(30);
     expect(p.signalSkips).toBe(2); // filtered[0].title reads outside effect
     expect(p.signalWrites).toBe(2); // 2 title changes
-    expect(p.effectFires).toBe(2);
   });
 
   it("should track dependencies inside map-like loops", () => {
@@ -181,7 +177,6 @@ describe("Array Support", () => {
     expect(p.signalReads).toBe(20);
     expect(p.signalSkips).toBe(0);
     expect(p.signalWrites).toBe(1);
-    expect(p.effectFires).toBe(1);
   });
 
   it("should not trigger item-specific effects when length changes", () => {
@@ -203,7 +198,6 @@ describe("Array Support", () => {
     expect(p.signalReads).toBe(5);
     expect(p.signalSkips).toBe(0);
     expect(p.signalWrites).toBe(0);
-    expect(p.effectFires).toBe(0); // push doesn't affect item[0].title
   });
 
   it("should handle array replacement with $set", () => {
@@ -231,6 +225,5 @@ describe("Array Support", () => {
     expect(p.signalReads).toBe(17);
     expect(p.signalSkips).toBe(0);
     expect(p.signalWrites).toBe(1); // items property replaced
-    expect(p.effectFires).toBe(1);
   });
 });

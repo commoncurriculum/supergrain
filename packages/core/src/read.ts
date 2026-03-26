@@ -1,7 +1,7 @@
 import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 
 import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes } from "./core";
-import { profileSignalRead, profileSignalSkip, profileTimeStart, profileTimeEnd } from "./profiler";
+import { profileSignalRead, profileSignalSkip } from "./profiler";
 import { writeHandler } from "./write";
 
 const ARRAY_MUTATORS = new Set([
@@ -24,14 +24,10 @@ const isWrappable = (value: unknown): value is object =>
   (value.constructor === Object || value.constructor === Array);
 
 function wrap<T>(value: T): T {
-  // Fast-path: primitives (number, string, boolean, null, undefined) skip isWrappable call
   if (typeof value !== "object" || value === null) {
     return value;
   }
-  profileTimeStart("wrapTime");
-  const result = isWrappable(value) ? createReactiveProxy(value) : value;
-  profileTimeEnd("wrapTime");
-  return result;
+  return isWrappable(value) ? createReactiveProxy(value) : value;
 }
 
 function trackSelf(target: object): void {
@@ -105,13 +101,11 @@ const readHandler: Pick<
         }
         if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
           return (...args: any[]) => {
-            profileTimeStart("spliceTime");
             startBatch();
             try {
               return value.apply(receiver, args);
             } finally {
               endBatch();
-              profileTimeEnd("spliceTime");
             }
           };
         }

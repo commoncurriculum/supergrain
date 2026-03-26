@@ -106,6 +106,16 @@ The benchmark repo submission lives at `https://github.com/commoncurriculum/js-f
 3. Remove the vite alias (the benchmark repo uses published packages, not local source)
 4. Add `"customURL": "/dist"` to the `js-framework-benchmark` section of package.json
 
+## Benchmarking Rules
+
+**NEVER write custom benchmark scripts or test files.** The project already has `perf.test.ts` in `packages/js-krauset` which exactly matches the js-framework-benchmark methodology (Krause's warmup counts, CPU throttling rates, CDP tracing). Use it. Run `pnpm test:perf` — that's it.
+
+- Do NOT create bash scripts, python scripts, or new TS test files for benchmarking
+- Do NOT reinvent warmup logic, tracing, or timing — perf.test.ts already does it correctly
+- Do NOT dismiss consistent benchmark results as "noise" — if a number is consistently higher across runs, it's real
+- Save baseline numbers once and reuse them — don't re-run baselines every time
+- When comparing, run `pnpm test:perf` on both the branch and baseline package, multiple times
+
 ## Package Manager
 
 This project uses **pnpm** with workspace support. Always use `pnpm` instead of `npm` or `yarn`.

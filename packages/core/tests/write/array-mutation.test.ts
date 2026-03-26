@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { createStore, startBatch, endBatch } from "../../src";
 import {
+  createStore,
+  effect,
+  startBatch,
+  endBatch,
   enableProfiling,
   disableProfiling,
   resetProfiler,
   getProfile,
-  profiledEffect as effect,
-} from "../../src/profiler";
+} from "../../src";
 
 describe("Array mutation methods trigger reactivity", () => {
   beforeEach(() => {
@@ -299,9 +301,6 @@ describe("Array mutation methods trigger reactivity", () => {
     // Length didn't change, so version-only effect should NOT re-fire
     expect(capturedLength).toBe(3);
     expect(versionEffect).toHaveBeenCalledTimes(1);
-
-    const p = getProfile();
-    expect(p.effectFires).toBe(0); // swap doesn't fire length-tracking effect
   });
 
   it("index swap fires per-element effects only for swapped indices", () => {
@@ -357,7 +356,6 @@ describe("Array mutation methods trigger reactivity", () => {
     expect(effect1).toHaveBeenCalledTimes(1);
 
     const p = getProfile();
-    expect(p.effectFires).toBe(2); // only the 2 swapped indices
     expect(p.signalWrites).toBe(2); // 2 index assignments
   });
 
@@ -394,7 +392,6 @@ describe("Array mutation methods trigger reactivity", () => {
     expect(iterEffect).toHaveBeenCalledTimes(2);
 
     const p = getProfile();
-    expect(p.effectFires).toBe(1); // iteration effect fires once (batched swap)
     expect(p.signalWrites).toBe(2); // 2 index assignments
   });
 });

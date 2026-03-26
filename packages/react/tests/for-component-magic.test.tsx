@@ -429,7 +429,6 @@ describe("For Component Magic Tests", () => {
     expect(renderedIds.has(11)).toBe(true);
 
     // Signal-level assertions: catch over-subscription
-    expect(p.effectFires).toBe(2); // only the 2 updated rows
     expect(p.signalWrites).toBe(2); // 2 label changes
     // Mutation path reads should all be skips (no subscriber)
     expect(p.signalSkips).toBeGreaterThan(0);

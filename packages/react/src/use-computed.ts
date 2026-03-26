@@ -1,4 +1,4 @@
-import { computed, profileTimeStart, profileTimeEnd } from "@supergrain/core";
+import { computed } from "@supergrain/core";
 import { useMemo } from "react";
 
 /**
@@ -28,16 +28,6 @@ import { useMemo } from "react";
  * ```
  */
 export function useComputed<T>(factory: () => T, deps: readonly unknown[] = []): T {
-  const c = useMemo(() => {
-    profileTimeStart("computedSetup");
-    profileTimeStart("computedAlloc");
-    const s = computed(factory);
-    profileTimeEnd("computedAlloc");
-    profileTimeEnd("computedSetup");
-    return s;
-  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
-  profileTimeStart("computedEval");
-  const value = c();
-  profileTimeEnd("computedEval");
-  return value;
+  const c = useMemo(() => computed(factory), deps); // eslint-disable-line react-hooks/exhaustive-deps
+  return c();
 }

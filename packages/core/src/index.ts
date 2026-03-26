@@ -25,9 +25,5 @@ export {
   disableProfiling,
   resetProfiler,
   getProfile,
-  profileEffectFire,
-  profileTimeStart,
-  profileTimeEnd,
   type Profile,
-  type TimingBucket,
 } from "./profiler";
