@@ -1,9 +1,6 @@
-import {
-  effect as alienEffect,
-  getCurrentSub,
-  setCurrentSub,
-  type ReactiveNode,
-} from "alien-signals";
+import type { ReactiveNode } from "alien-signals";
+
+import { effect as alienEffect, getCurrentSub, setCurrentSub } from "@supergrain/core";
 import { type FC, memo, useReducer, useEffect } from "react";
 
 interface TrackedState {

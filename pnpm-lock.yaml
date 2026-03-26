@@ -372,9 +372,6 @@ importers:
       '@supergrain/core':
         specifier: workspace:*
         version: link:../core
-      alien-signals:
-        specifier: ^2.0.7
-        version: 2.0.7
     devDependencies:
       '@testing-library/dom':
         specifier: ^10.4.1

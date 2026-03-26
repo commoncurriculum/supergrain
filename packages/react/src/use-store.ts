@@ -1,5 +1,11 @@
-import { getCurrentSub, setCurrentSub, unwrap, getNodesIfExist, $TRACK } from "@supergrain/core";
-import { effect as alienEffect } from "alien-signals";
+import {
+  effect as alienEffect,
+  getCurrentSub,
+  setCurrentSub,
+  unwrap,
+  getNodesIfExist,
+  $TRACK,
+} from "@supergrain/core";
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 // useLayoutEffect warns during SSR. Fall back to useEffect on the server.
@@ -148,15 +154,11 @@ export const For = tracked((props: ForProps<unknown>) => {
     });
 
     swapCleanupRef.current = cleanup;
-    return cleanup;
+    return () => {
+      cleanup();
+      swapCleanupRef.current = null;
+    };
   });
-
-  useEffect(
-    () => () => {
-      swapCleanupRef.current?.();
-    },
-    [],
-  );
 
   const elementCacheRef = useRef(new Map<unknown, React.ReactNode>());
 
@@ -177,6 +179,8 @@ export const For = tracked((props: ForProps<unknown>) => {
     for (let i = 0; i < raw.length; i++) {
       const rawItem = raw[i];
       const cached = prevCache.get(rawItem);
+      // Intentionally using === undefined (not .has()) — children() returns JSX elements,
+      // never undefined. Avoiding the extra Map lookup keeps this hot loop fast.
       if (cached === undefined) {
         slots[i] = children(each[i], i);
       } else {
