@@ -51,12 +51,16 @@ pnpm perf:analyze create-1k # specific benchmark
 
 **Every experiment is measured independently against the same baseline.** Do not stack changes. If you accept experiment A and then want to try experiment B, revert A first and measure B against the original baseline. Only after all experiments are individually validated should you combine the winners.
 
-### 1. Establish baseline (once, reuse for all experiments)
+### 1. Use the existing baseline
+
+A 15-run baseline already exists at `packages/js-krauset/perf-stats-branch.json` (the current branch code). Use it for all comparisons:
 
 ```bash
 cd packages/js-krauset
-pnpm perf:stats baseline 15
+pnpm perf:compare branch <experiment-name>
 ```
+
+If you need to re-establish it for any reason: `pnpm perf:stats branch 15`
 
 ### 2. Profile to find what to optimize
 
@@ -75,7 +79,7 @@ Edit files in `packages/core/src/` and/or `packages/react/src/`. Keep changes sm
 
 ```bash
 pnpm perf:stats <experiment-name> 15
-pnpm perf:compare baseline <experiment-name>
+pnpm perf:compare branch <experiment-name>
 ```
 
 ### 5. Decide: accept or reject
