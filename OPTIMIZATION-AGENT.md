@@ -5,25 +5,52 @@ You are working on the `optimize-benchmark-v3` branch of supergrain, a reactive 
 ## Before You Start
 
 1. **Read `CLAUDE.md`** — project structure, required checks, benchmarking rules.
-2. **Read all files in `packages/js-krauset/failed-experiments/`** — do NOT retry anything documented there unless you have a fundamentally different approach.
-3. **Run `git diff main` on `packages/core` and `packages/react`** to understand the current branch state yourself. Don't rely on this document for that — it may be stale.
-4. **Profile the current code** to find actual bottlenecks before proposing any changes:
+2. **Read all files in `notes/failed-approaches/`** — extensive documentation of 16+ failed optimization approaches. Do NOT retry anything documented there unless you have a fundamentally different approach.
+3. **Read `notes/performance/`** — profiling results, architecture analysis, and optimization history.
+4. **Run `git diff main` on `packages/core` and `packages/react`** to understand the current branch state yourself. Don't rely on this document for that — it may be stale.
+5. **Profile the current code** to find actual bottlenecks before proposing any changes:
    ```bash
    cd packages/js-krauset
    pnpm perf:profile
    pnpm perf:analyze
    ```
 
-### Known Failed Experiments (from git history)
+### Key Lessons from Prior Failed Approaches (`notes/failed-approaches/`)
 
-- `091ce55` — proxyGet extraction caused V8 inlining regression (+18% create 1k)
-- `01617b3` — useSyncExternalStore replaced useReducer, added overhead on all operations. Reverted.
-- `c0dd2c7` — slot caching experiment was net-negative on benchmarks
-- `26b3adb` — removing try/finally from hot paths (with useSyncExternalStore) — partial, part of the USSE exploration
-- `210418c` — reconciliation performance attempt was reverted
+These are extensively documented. Read the full files before attempting anything similar.
+
+**Micro-optimizations that hurt V8 inlining:**
+
+- Extracting proxy get handler into named function caused +18% regression (`091ce55`, also `inline-primitive-checks-optimization.md`)
+- Adding `typeof` checks to skip `wrap()`/`unwrap()` for primitives — V8 already inlines these; extra branches add polymorphism
+- WeakMap for node storage — slower hot-path access than direct symbol property (`weakmap-node-storage-optimization.md`)
+- Slot caching (`c0dd2c7`) — net-negative on benchmarks
+
+**Compiled/alternative read paths that can't beat proxy:**
+
+- `readSignal()` compilation — 0.57-0.94x speed of proxy, identical work + function call overhead (`readSignal-function-call.md`, `per-level-readSignal-compilation.md`)
+- `compiled-reads-investigation.md` in `notes/performance/` — only `createView()` with prototype getters (10x faster reads) and `$$()` direct DOM bindings beat proxy
+
+**React integration approaches that failed:**
+
+- `useSyncExternalStore` replaced `useReducer` — added overhead on all operations (`01617b3`)
+- Direct component subscriptions, React Context, manual track functions — all slower than proxy-based per-access subscriber swapping (`react-tracking-approaches.md`)
+- Removing try/finally from hot paths (with USSE) — partial, part of the reverted USSE exploration (`26b3adb`)
+- DirectFor, `$$()` direct bindings, useScopedTracked — all failed except `tracked()` wrapper (`react-optimization-experiments-2026-03.md`)
+- Reconciliation performance attempt was reverted (`210418c`)
+
+**Architectural dead ends:**
+
+- Eager signal preallocation — sub-tree replacement makes pre-allocated signals worthless (`eager-signal-preallocation.md`)
+- Context switching reduction (N×3 → 2 per render) — race conditions break dependency tracking (`context-switching-optimization.md`)
+- Bypassing automatic dependency tracking — fundamentally breaks reactivity (`reactivity-breaking-optimizations.md`)
+- Direct DOM bypass (bypassing React reconciler) — no SSR support (`direct-dom-bypass.md`)
+- Signal prototype optimization — extracted methods lose binding (`signal-prototype-optimization.md`)
+
+**Still open for exploration:**
+
 - TrackedState / reduce closures in tracked() — attempted as part of useSyncExternalStore rewrite but was never tried with useReducer. **Open for re-exploration** with the current useReducer approach.
-
-These are documented so you don't blindly repeat them. A fresh approach is encouraged — if you see an opportunity that's similar to a past failure but with a different mechanism or context, try it. Just document your reasoning.
+- Reconciliation redundancy investigation (`notes/performance/reconciliation-optimization.md`) — hypothesis that `reconcile()` duplicates work already done by `setProperty`. Not yet tested.
 
 ## Benchmarking Commands
 
@@ -97,7 +124,7 @@ pnpm perf:compare branch <experiment-name>
 
 ### 6. Log the result
 
-**If rejected:** Revert your code change, then create a file in `packages/js-krauset/failed-experiments/<experiment-name>.md`:
+**If rejected:** Revert your code change, then create a file in `notes/failed-approaches/<experiment-name>.md`:
 
 ```markdown
 # <experiment-name>

@@ -8,6 +8,7 @@ perf-results-*.json
 perf-stats.json
 perf-stats-*.json
 *.cpuprofile
+*-trace.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
