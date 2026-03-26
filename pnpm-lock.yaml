@@ -113,6 +113,9 @@ importers:
       '@preact/signals-core':
         specifier: ^1.14.0
         version: 1.14.0
+      '@rollup/plugin-strip':
+        specifier: ^3.0.4
+        version: 3.0.4(rollup@4.50.1)
       '@solidjs/testing-library':
         specifier: ^0.8.10
         version: 0.8.10(solid-js@1.9.9)
@@ -214,6 +217,9 @@ importers:
         specifier: 19.0.0
         version: 19.0.0(react@19.0.0)
     devDependencies:
+      '@rollup/plugin-strip':
+        specifier: ^3.0.4
+        version: 3.0.4(rollup@4.50.1)
       '@types/node':
         specifier: ^22.18.3
         version: 22.18.3
@@ -1188,6 +1194,15 @@ packages:
 
   '@rolldown/pluginutils@1.0.0-beta.27':
     resolution: {integrity: sha512-+d0F4MKMCbeVUJwG96uQ4SgAznZNSq93I3V+9NHA4OpvqG8mRCpGdKmK8l/dl02h2CCDHwW2FqilnTyDcAnqjA==}
+
+  '@rollup/plugin-strip@3.0.4':
+    resolution: {integrity: sha512-LDRV49ZaavxUo2YoKKMQjCxzCxugu1rCPQa0lDYBOWLj6vtzBMr8DcoJjsmg+s450RbKbe3qI9ZLaSO+O1oNbg==}
+    engines: {node: '>=14.0.0'}
+    peerDependencies:
+      rollup: ^1.20.0||^2.0.0||^3.0.0||^4.0.0
+    peerDependenciesMeta:
+      rollup:
+        optional: true
 
   '@rollup/pluginutils@5.3.0':
     resolution: {integrity: sha512-5EdhGZtnu3V88ces7s53hhfK5KSASnJZv8Lulpc04cWO3REESroJXg73DFsOmgbU2BhwV0E20bu2IDZb3VKW4Q==}
@@ -3728,6 +3743,14 @@ snapshots:
       react-redux: 9.2.0(@types/react@19.1.13)(react@19.1.1)(redux@5.0.1)
 
   '@rolldown/pluginutils@1.0.0-beta.27': {}
+
+  '@rollup/plugin-strip@3.0.4(rollup@4.50.1)':
+    dependencies:
+      '@rollup/pluginutils': 5.3.0(rollup@4.50.1)
+      estree-walker: 2.0.2
+      magic-string: 0.30.21
+    optionalDependencies:
+      rollup: 4.50.1
 
   '@rollup/pluginutils@5.3.0(rollup@4.50.1)':
     dependencies:

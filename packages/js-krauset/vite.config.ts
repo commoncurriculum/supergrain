@@ -12,11 +12,8 @@ export default defineConfig({
       insertTypesEntry: true,
     }),
     react(),
-    // Strip profiler calls from production builds — zero runtime cost.
     strip({
       functions: [
-        "profileTimeStart",
-        "profileTimeEnd",
         "profileSignalRead",
         "profileSignalSkip",
         "profileSignalWrite",
