@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import { createStore, effect, startBatch, endBatch } from "../../src";
-import { enableProfiling, disableProfiling, resetProfiler, getProfile } from "../../src/profiler";
+import { createStore, startBatch, endBatch } from "../../src";
+import {
+  enableProfiling,
+  disableProfiling,
+  resetProfiler,
+  getProfile,
+  profiledEffect as effect,
+} from "../../src/profiler";
 
 describe("Profiler", () => {
   beforeEach(() => {

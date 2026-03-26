@@ -1,15 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+import { createStore, startBatch, endBatch } from "../../src";
 import {
-  createStore,
-  effect,
-  startBatch,
-  endBatch,
   enableProfiling,
   disableProfiling,
   resetProfiler,
   getProfile,
-} from "../../src";
+  profiledEffect as effect,
+} from "../../src/profiler";
 
 describe("Array mutation methods trigger reactivity", () => {
   beforeEach(() => {

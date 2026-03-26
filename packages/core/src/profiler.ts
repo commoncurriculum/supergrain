@@ -127,8 +127,9 @@ export function getProfile(): Profile {
 }
 
 /**
- * Wrapped effect that counts re-runs (not the initial run) when profiling is enabled.
- * Forwards return values to preserve cleanup semantics.
+ * Effect wrapper that counts re-runs via profileEffectFire().
+ * Used by tests that assert on effectFires. Production code should
+ * use alien-signals effect directly.
  */
 export function profiledEffect<T>(fn: () => T): () => void {
   let firstRun = true;

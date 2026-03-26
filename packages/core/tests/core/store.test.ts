@@ -1,16 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+import { createStore, unwrap, update } from "../../src";
+import { $VERSION } from "../../src/internal";
 import {
-  createStore,
-  effect,
-  unwrap,
   enableProfiling,
   disableProfiling,
   resetProfiler,
   getProfile,
-  update,
-} from "../../src";
-import { $VERSION } from "../../src/internal";
+  profiledEffect as effect,
+} from "../../src/profiler";
 
 describe("Store", () => {
   beforeEach(() => {

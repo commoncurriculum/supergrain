@@ -12,6 +12,7 @@ export {
 
 // Re-export signals primitives from alien-signals for convenience
 export {
+  effect,
   signal,
   computed,
   startBatch,
@@ -19,8 +20,6 @@ export {
   getCurrentSub,
   setCurrentSub,
 } from "alien-signals";
-
-export { profiledEffect as effect } from "./profiler";
 export {
   enableProfiling,
   disableProfiling,

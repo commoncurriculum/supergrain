@@ -1,14 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
+import { createStore, update } from "../../src";
 import {
-  createStore,
-  update,
-  effect,
   enableProfiling,
   disableProfiling,
   resetProfiler,
   getProfile,
-} from "../../src";
+  profiledEffect as effect,
+} from "../../src/profiler";
 
 describe("Array Support", () => {
   let store: any;
