@@ -11,8 +11,8 @@
     "perf:stats": "node perf-stats.ts"
   },
   "dependencies": {
-    "@supergrain/core": "2.0.1",
-    "@supergrain/react": "2.0.1",
+    "@supergrain/core": "2.0.0",
+    "@supergrain/react": "2.0.0",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },
