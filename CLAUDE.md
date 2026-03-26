@@ -123,7 +123,8 @@ pnpm perf:stats baseline 15
 # 2. On your branch (or after your change):
 pnpm perf:stats optimized 15
 
-# 3. Compare perf-stats-baseline.json vs perf-stats-optimized.json
+# 3. Compare:
+pnpm perf:compare baseline optimized
 ```
 
 ### Submitting to js-framework-benchmark
