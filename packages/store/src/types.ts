@@ -324,10 +324,12 @@ export interface QueryPromise {
    * first successful page load, rejects once on first error, a successful
    * refetch after an error creates a new promise.
    *
-   * Pagination note: `fetchNextPage()` does NOT create a new promise and
-   * the existing promise's resolved value is frozen to the FIRST page's
-   * refs. Consumers reading `refs` (which mutates in place as pages arrive)
-   * re-render via the reactive graph — they do not re-suspend.
+   * Pagination note: `fetchNextPage()` does NOT create a new promise.
+   * The `refs` array instance is stable across pages — new page items
+   * are appended in place to the SAME array — so the promise's
+   * resolved value (which IS that array) naturally sees the growth.
+   * Consumers reading `refs` re-render via the reactive graph; they
+   * do not re-suspend.
    */
   readonly promise: Promise<readonly Ref[]> | undefined;
 

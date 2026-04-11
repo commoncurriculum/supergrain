@@ -73,6 +73,34 @@ describe("store.subscribe doc events", () => {
     expect((errors[0] as { error: Error }).error.message).toBe("nope");
   });
 
+  it("emits DOC_INSERT for each included doc normalized from a query response", async () => {
+    // Query responses normalize `included` docs into the doc cache.
+    // That normalization is a cache write — semantically identical
+    // to a direct `insertDocument` — and must emit DOC_INSERT events
+    // so devtools show the full cache delta, not a mystery population
+    // that only QUERY_FETCH_SUCCESS hinted at.
+    //
+    // Order is not asserted (implementations may insert before or
+    // after emitting QUERY_FETCH_SUCCESS); only that one DOC_INSERT
+    // fires per included doc.
+    const listener = vi.fn();
+    const { store } = makeStore({
+      queries: { "activity-feed": makeFeedAdapter() },
+    });
+    store.subscribe(listener);
+
+    store.query({ type: "activity-feed", id: "u1" });
+    await flushCoalescer();
+
+    const inserts = eventsOfKind(listener, "DOC_INSERT");
+    const insertedIds = inserts
+      .map((e) => e as { type: string; id: string })
+      .filter((e) => e.type === "post")
+      .map((e) => e.id)
+      .sort();
+    expect(insertedIds).toEqual(["10", "11"]);
+  });
+
   it("emits doc-insert when insertDocument is called directly", () => {
     const listener = vi.fn();
     const { store } = makeStore();
@@ -360,6 +388,90 @@ describe("store.subscribe connection events", () => {
       { status: "OFFLINE", previous: "ONLINE" },
       { status: "DEGRADED", previous: "OFFLINE" },
     ]);
+  });
+});
+
+// =============================================================================
+// store.subscribe — reentrancy
+// =============================================================================
+
+describe("store.subscribe reentrancy", () => {
+  it("supports insertDocument called from inside a listener", () => {
+    // A devtools or middleware-style listener may respond to an event
+    // by writing to the cache (e.g. attaching derived data). The
+    // resulting DOC_INSERT must fan out to all listeners normally,
+    // without infinite loops or lost events. Iteration must walk a
+    // snapshot of the listener list so the mutation doesn't corrupt
+    // iteration.
+    const seen: Array<string> = [];
+    const { store } = makeStore();
+    let patched = false;
+
+    store.subscribe((event) => {
+      if (event.kind === "DOC_INSERT") {
+        seen.push(`A:${event.type}:${event.id}`);
+        // Reentrant insert — once — to derive a related doc
+        if (event.id === "1" && !patched) {
+          patched = true;
+          store.insertDocument({
+            type: "post",
+            id: "derived",
+            attributes: { title: "derived", body: "b", authorId: "1" },
+          });
+        }
+      }
+    });
+    store.subscribe((event) => {
+      if (event.kind === "DOC_INSERT") {
+        seen.push(`B:${event.type}:${event.id}`);
+      }
+    });
+
+    store.insertDocument({
+      type: "user",
+      id: "1",
+      attributes: { firstName: "X", lastName: "Y", email: "x@y" },
+    });
+
+    // Both listeners see both events, in order: the outer user insert
+    // is fully delivered, then the reentrant post insert is delivered.
+    expect(seen).toEqual(["A:user:1", "B:user:1", "A:post:derived", "B:post:derived"]);
+  });
+
+  it("iterates a snapshot of listeners so subscribe() from inside a listener doesn't fire for the current event", () => {
+    // A listener that adds a new listener mid-dispatch must not cause
+    // the new listener to receive the currently-dispatching event.
+    // Iteration uses a snapshot of the list; the new listener will
+    // see the NEXT event onward.
+    const laterCalls: Array<string> = [];
+    const { store } = makeStore();
+
+    store.subscribe((event) => {
+      if (event.kind === "DOC_INSERT" && event.id === "1") {
+        store.subscribe((later) => {
+          if (later.kind === "DOC_INSERT") {
+            laterCalls.push(later.id);
+          }
+        });
+      }
+    });
+
+    // First insert: the late subscriber isn't attached yet, so it
+    // must NOT see this event.
+    store.insertDocument({
+      type: "user",
+      id: "1",
+      attributes: { firstName: "A", lastName: "B", email: "a@b" },
+    });
+
+    // Second insert: late subscriber is now attached.
+    store.insertDocument({
+      type: "user",
+      id: "2",
+      attributes: { firstName: "C", lastName: "D", email: "c@d" },
+    });
+
+    expect(laterCalls).toEqual(["2"]);
   });
 });
 

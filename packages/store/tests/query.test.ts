@@ -525,6 +525,57 @@ describe("query .promise", () => {
     expect(q.promise).toBe(first);
   });
 
+  it("preserves refs array identity across fetchNextPage (in-place growth)", async () => {
+    // `QueryPromise.refs` mutates in place across pagination — taking
+    // a reference to it before fetchNextPage and checking after must
+    // yield the SAME array instance with new items appended. This is
+    // the foundation for the `.promise` freeze-to-first-page contract:
+    // the resolved value IS the refs array, and it grows as new pages
+    // arrive. An impl that replaced refs with a fresh array per page
+    // would break Suspense consumers reading the initial resolved value.
+    const pages: QueryResponse[] = [
+      {
+        data: [
+          { type: "post", id: "10" },
+          { type: "post", id: "11" },
+        ],
+        included: [],
+        nextOffset: 2,
+      },
+      {
+        data: [
+          { type: "post", id: "12" },
+          { type: "post", id: "13" },
+        ],
+        included: [],
+        nextOffset: null,
+      },
+    ];
+    let call = 0;
+    const feed: QueryAdapter = {
+      fetch: vi.fn(async () => pages[call++]!),
+    };
+    const { store } = makeStore({
+      queries: { feed },
+    });
+
+    const q = store.query({ type: "feed", id: "u1", pageSize: 2 });
+    await flushCoalescer();
+
+    const firstRefs = q.refs;
+    expect(firstRefs).toHaveLength(2);
+
+    q.fetchNextPage();
+    await flushCoalescer();
+
+    // Same array instance — not replaced
+    expect(q.refs).toBe(firstRefs);
+    // And the held reference now sees the appended items
+    expect(firstRefs).toHaveLength(4);
+    expect(firstRefs?.[2]).toEqual({ type: "post", id: "12" });
+    expect(firstRefs?.[3]).toEqual({ type: "post", id: "13" });
+  });
+
   it("is stable across fetchNextPage (promise identity unchanged)", async () => {
     // `refs` mutates in place as new pages arrive, but the .promise
     // field's identity does NOT change — consumers reading refs

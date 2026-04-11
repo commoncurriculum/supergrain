@@ -423,7 +423,11 @@ describe("useQuery", () => {
         id: "u1",
         params: { a: 1, b: 2 },
       });
-      return <span data-testid="v">{version}</span>;
+      return (
+        <span data-testid="v">
+          {version}:{q.status}
+        </span>
+      );
     };
 
     const { rerender } = render(
