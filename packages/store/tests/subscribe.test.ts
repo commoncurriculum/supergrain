@@ -124,7 +124,11 @@ describe("store.subscribe doc events", () => {
 // =============================================================================
 
 describe("store.subscribe query events", () => {
-  it("emits query-fetch-start and query-fetch-success", async () => {
+  it("emits query-fetch-start and query-fetch-success with the SAME key", async () => {
+    // Tighter than "the key is a string": a query's start and success
+    // events must carry the same key so devtools can correlate them.
+    // An impl that regenerated the key on each emission (e.g. from a
+    // fresh object) would silently break devtools pairing.
     const listener = vi.fn();
     const { store } = makeStore({
       queries: { "activity-feed": makeFeedAdapter() },
@@ -138,9 +142,41 @@ describe("store.subscribe query events", () => {
     const successes = eventsOfKind(listener, "QUERY_FETCH_SUCCESS");
 
     expect(starts).toHaveLength(1);
-    expect(typeof (starts[0] as { key: string }).key).toBe("string");
     expect(successes).toHaveLength(1);
-    expect(typeof (successes[0] as { key: string }).key).toBe("string");
+    const startKey = (starts[0] as { key: string }).key;
+    const successKey = (successes[0] as { key: string }).key;
+    expect(typeof startKey).toBe("string");
+    expect(startKey.length).toBeGreaterThan(0);
+    expect(successKey).toBe(startKey);
+  });
+
+  it("emits the same key for equivalent defs regardless of param ordering", async () => {
+    // Two equivalent QueryDefs (same type/id, params with reordered
+    // keys) must hash to the same event key. Pins that the devtools
+    // view will correctly group them as one query, and guards the
+    // handle-identity contract at the event-bus level.
+    const listener = vi.fn();
+    const { store } = makeStore({
+      queries: { "activity-feed": makeFeedAdapter() },
+    });
+    store.subscribe(listener);
+
+    store.query({
+      type: "activity-feed",
+      id: "u1",
+      params: { a: 1, b: 2 },
+    });
+    store.query({
+      type: "activity-feed",
+      id: "u1",
+      params: { b: 2, a: 1 },
+    });
+    await flushCoalescer();
+
+    const starts = eventsOfKind(listener, "QUERY_FETCH_START");
+    // Handle identity dedupes the second store.query call, so one
+    // START event fires for the two equivalent calls.
+    expect(starts).toHaveLength(1);
   });
 
   it("emits query-fetch-error when the query adapter throws", async () => {
@@ -185,7 +221,62 @@ describe("store.subscribe query events", () => {
 
     const invalidations = eventsOfKind(listener, "INVALIDATE_QUERY");
     expect(invalidations).toHaveLength(1);
-    expect(typeof (invalidations[0] as { key: string }).key).toBe("string");
+
+    // Invalidate key must match the START/SUCCESS key for the same
+    // query — devtools pair these by key.
+    const starts = eventsOfKind(listener, "QUERY_FETCH_START");
+    expect(starts).toHaveLength(1);
+    const startKey = (starts[0] as { key: string }).key;
+    expect((invalidations[0] as { key: string }).key).toBe(startKey);
+  });
+});
+
+// =============================================================================
+// store.subscribe — partial-failure event routing
+// =============================================================================
+
+describe("store.subscribe partial failure", () => {
+  it("emits DOC_FETCH_ERROR (not DOC_FETCH_SUCCESS) when the adapter returns a subset of requested ids", async () => {
+    // The bulk handle enters ERROR state on partial failure; the
+    // subscribe stream must match — devtools should see the failure,
+    // not a misleading "success" event.
+    const partialAdapter: DocumentAdapter<User> = {
+      find: vi.fn(async (ids: string[]) => ({
+        data: [
+          {
+            type: "user",
+            id: ids[0]!,
+            attributes: {
+              firstName: `User${ids[0]}`,
+              lastName: "X",
+              email: "x@y",
+            },
+            meta: { revision: 1 },
+          },
+        ],
+      })),
+    };
+    const listener = vi.fn();
+    const { store } = makeStore({
+      adapters: { user: partialAdapter, post: makePostAdapter() },
+    });
+    store.subscribe(listener);
+
+    store.findDoc("user", ["1", "2", "3"]);
+    await flushCoalescer();
+
+    const successes = eventsOfKind(listener, "DOC_FETCH_SUCCESS");
+    const errors = eventsOfKind(listener, "DOC_FETCH_ERROR");
+
+    expect(successes).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      kind: "DOC_FETCH_ERROR",
+      type: "user",
+    });
+    const err = errors[0] as { ids: string[]; error: Error };
+    expect(err.ids).toEqual(expect.arrayContaining(["1", "2", "3"]));
+    expect(err.error).toBeInstanceOf(Error);
   });
 });
 

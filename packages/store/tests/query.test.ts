@@ -407,6 +407,70 @@ describe("query pagination", () => {
     expect(secondCall.page).toEqual({ offset: 2, limit: 2 });
   });
 
+  it("fetchNextPage is a no-op while the initial fetch is still in flight", async () => {
+    // Before the first page resolves, `nextOffset` is null and status
+    // is PENDING. Calling fetchNextPage in that window must NOT dispatch
+    // a second adapter call — there's no cursor yet and the initial
+    // fetch is already doing the work. The handle stays PENDING.
+    const feed = makePagedFeedAdapter();
+    const { store } = makeStore({
+      queries: { feed },
+    });
+
+    const q = store.query({ type: "feed", id: "u1", pageSize: 2 });
+    expect(q.status).toBe("PENDING");
+    expect(q.nextOffset).toBeNull();
+
+    q.fetchNextPage(); // should no-op — initial fetch in flight
+
+    await flushCoalescer();
+
+    // Exactly one adapter call: the original query fetch
+    expect(feed.fetch).toHaveBeenCalledTimes(1);
+    expect(q.refs).toHaveLength(2);
+    expect(q.nextOffset).toBe(2);
+  });
+
+  it("preserves duplicate refs across pages (does not dedupe)", async () => {
+    // A server that returns the same ref on two adjacent pages is
+    // either paginating a live feed or leaking an indexing bug — either
+    // way, the store's job is to append refs verbatim, not to hide it.
+    // Callers that want dedup must do it themselves.
+    const page0: QueryResponse = {
+      data: [
+        { type: "post", id: "10" },
+        { type: "post", id: "11" },
+      ],
+      included: [],
+      nextOffset: 2,
+    };
+    const page1: QueryResponse = {
+      data: [
+        { type: "post", id: "11" }, // duplicate across pages
+        { type: "post", id: "12" },
+      ],
+      included: [],
+      nextOffset: null,
+    };
+    let call = 0;
+    const feed: QueryAdapter = {
+      fetch: vi.fn(async () => (call++ === 0 ? page0 : page1)),
+    };
+    const { store } = makeStore({
+      queries: { feed },
+    });
+
+    const q = store.query({ type: "feed", id: "u1", pageSize: 2 });
+    await flushCoalescer();
+    expect(q.refs).toHaveLength(2);
+
+    q.fetchNextPage();
+    await flushCoalescer();
+
+    expect(q.refs).toHaveLength(4);
+    expect(q.refs?.map((r) => r.id)).toEqual(["10", "11", "11", "12"]);
+  });
+
   it("fetchNextPage is a no-op when nextOffset is null", async () => {
     const feed = makeFeedAdapter(); // returns nextOffset: null
     const { store } = makeStore({

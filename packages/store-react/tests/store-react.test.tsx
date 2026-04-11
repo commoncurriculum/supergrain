@@ -400,6 +400,61 @@ describe("useQuery", () => {
     cleanup();
   });
 
+  it("does not churn acquisitions when the def is a fresh object each render", async () => {
+    // Consumers typically write `useQuery({ type, id, params: { ... } })`
+    // inline, producing a new object every render. The hook must key
+    // its effect by the HASHED def (params sorted, arrays ordered),
+    // not by object identity — otherwise every render triggers a
+    // release + re-acquire, churning subscriptions and refetching.
+    const unsubscribe = vi.fn();
+    const subscribeQuery: SubscribeQueryFn = vi.fn(() => unsubscribe);
+
+    const { ctx, Wrap } = makeContext({
+      queries: { "activity-feed": makeFeedAdapter() },
+      subscribeQuery,
+      keepAliveMs: 50,
+      strict: false,
+    });
+
+    const Feed = ({ version }: { version: number }) => {
+      // Fresh object literal every render, but equivalent hash
+      const q = ctx.useQuery({
+        type: "activity-feed",
+        id: "u1",
+        params: { a: 1, b: 2 },
+      });
+      return <span data-testid="v">{version}</span>;
+    };
+
+    const { rerender } = render(
+      <Wrap>
+        <Feed version={1} />
+      </Wrap>,
+    );
+    await tick();
+
+    expect(subscribeQuery).toHaveBeenCalledTimes(1);
+
+    // Force multiple renders with fresh def objects each time
+    rerender(
+      <Wrap>
+        <Feed version={2} />
+      </Wrap>,
+    );
+    rerender(
+      <Wrap>
+        <Feed version={3} />
+      </Wrap>,
+    );
+    await tick();
+
+    // subscribeQuery must not have been called again — hashed key
+    // hasn't changed, so the effect doesn't re-run.
+    expect(subscribeQuery).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).not.toHaveBeenCalled();
+    cleanup();
+  });
+
   it("returns an idle handle when def is null", async () => {
     const { ctx, Wrap } = makeContext({
       queries: { "activity-feed": makeFeedAdapter() },

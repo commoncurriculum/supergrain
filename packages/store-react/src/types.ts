@@ -39,7 +39,16 @@ export interface StoreContext<M extends DocumentTypes> {
 
   /**
    * Run a server-named query. Internally calls `store.query` on render
-   * and `store.acquireQuery` in a `useEffect` keyed to the query def.
+   * and `store.acquireQuery` in a `useEffect` keyed to the query's
+   * *hashed* key — NOT to the `def` object's reference identity.
+   *
+   * This means callers may pass a fresh `{ type, id, params }` literal
+   * every render without churning acquisitions: the hook hashes the def
+   * using the same rules as `QueryDef` (sorted-key params, ordered
+   * arrays) and only re-acquires when the hash actually changes.
+   *
+   * Passing `null`/`undefined` returns a synthetic IDLE handle (all
+   * fields empty, no adapter call) and does not acquire.
    */
   useQuery: (def: QueryDef | null | undefined, opts?: AcquireOptions) => QueryPromise;
 

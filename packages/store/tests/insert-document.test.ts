@@ -251,6 +251,60 @@ describe("insertDocument write policy vs in-flight fetch", () => {
     expect(doc.revision).toBe(5);
   });
 
+  it("equal revisions fall back to last-write-wins (direct insert wins)", async () => {
+    // "Strictly newer wins" leaves equality undefined at first glance.
+    // The type docblock pins the fall-through: equal revisions revert
+    // to rule 1 (last-write-wins), so the direct insert — which is
+    // synchronous and therefore always happens after fetch dispatch —
+    // stays authoritative.
+    let resolveFetch: (() => void) | undefined;
+    const userFind = vi.fn(
+      (ids: string[]): Promise<DocumentResponse<User>> =>
+        new Promise((resolve) => {
+          resolveFetch = () =>
+            resolve({
+              data: ids.map((id) => ({
+                type: "user",
+                id,
+                attributes: {
+                  firstName: "ServerSameRev",
+                  lastName: "X",
+                  email: "x@y",
+                },
+                meta: { revision: 3 },
+              })),
+            });
+        }),
+    );
+    const { store } = makeStore({
+      adapters: {
+        user: { find: userFind },
+        post: makePostAdapter(),
+      },
+    });
+
+    const doc = store.findDoc("user", "1");
+    await vi.advanceTimersByTimeAsync(20);
+
+    store.insertDocument({
+      type: "user",
+      id: "1",
+      attributes: {
+        firstName: "DirectSameRev",
+        lastName: "X",
+        email: "x@y",
+      },
+      meta: { revision: 3 },
+    });
+    expect(doc.data?.firstName).toBe("DirectSameRev");
+
+    resolveFetch!();
+    await vi.runAllTimersAsync();
+
+    expect(doc.data?.firstName).toBe("DirectSameRev");
+    expect(doc.revision).toBe(3);
+  });
+
   it("direct insert WITH revision wins over a server response WITHOUT revision", async () => {
     // Policy: "if one has meta.revision and the other doesn't, the one
     // with revision wins." Direct insert carries a revision; the server

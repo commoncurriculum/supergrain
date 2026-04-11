@@ -158,6 +158,23 @@ describe("findDoc (array of ids)", () => {
     expect(docs.items?.[2]?.firstName).toBe("User3");
   });
 
+  it("resolves synchronously to an empty items array when given []", () => {
+    // Empty array is distinct from null/undefined: the caller has
+    // explicitly selected zero rows ("render an empty list"), not
+    // declared "no selection yet". The handle must be SUCCESS
+    // synchronously with items === [], and must NOT call the adapter.
+    const { store, userAdapter } = makeStore();
+    const docs = store.findDoc("user", []);
+
+    expect(docs.status).toBe("SUCCESS");
+    expect(docs.items).toEqual([]);
+    expect(docs.error).toBeUndefined();
+    expect(docs.isPending).toBe(false);
+    expect(docs.isFetching).toBe(false);
+    expect(docs.hasData).toBe(true);
+    expect(userAdapter.find).not.toHaveBeenCalled();
+  });
+
   it("shares the coalescer with single-id findDoc (one batched adapter call)", async () => {
     const { store, userAdapter } = makeStore();
 

@@ -148,6 +148,16 @@ export interface PersistedQueryState {
 // =============================================================================
 
 export type OnInvalidate = () => void;
+
+/**
+ * A teardown function. Also the return type of `acquireDoc`/`acquireQuery`'s
+ * release function.
+ *
+ * **Idempotent.** Calling more than once has no effect after the first call:
+ * the second and later calls MUST NOT decrement refcounts, emit events,
+ * or throw. This matches React's `useEffect` cleanup conventions and keeps
+ * StrictMode double-invocations safe.
+ */
 export type Unsubscribe = () => void;
 
 export type SubscribeDocFn = (type: string, id: string, onInvalidate: OnInvalidate) => Unsubscribe;
@@ -321,7 +331,19 @@ export interface QueryPromise {
    */
   readonly promise: Promise<readonly Ref[]> | undefined;
 
-  /** No-op if already on the last page (`nextOffset === null`). */
+  /**
+   * Fetch the next page and append its refs.
+   *
+   * No-op in any of:
+   * - already on the last page (`nextOffset === null`)
+   * - initial fetch still in flight (status `PENDING`; no `nextOffset` yet)
+   * - another fetch is already in flight (refetch or fetchNextPage)
+   *
+   * Duplicate refs across pages are preserved as-is — the store does NOT
+   * dedupe within `refs`. Servers that want a deduped list must produce
+   * one; callers rendering lists should key by `{type, id}` if they need
+   * React-stable keys.
+   */
   fetchNextPage(): void;
   /** No-op if a fetch is already in flight. */
   refetch(): void;
@@ -415,6 +437,9 @@ export interface Store<M extends DocumentTypes> {
    * - Single `id` → `DocumentPromise<T>`
    * - Array of ids → `DocumentsPromise<T>`
    * - `null`/`undefined` → idle handle, no fetch attempted
+   * - Empty array `[]` → synchronous `SUCCESS` handle with `items === []`,
+   *   no adapter call. This matches "render an empty list immediately"
+   *   — distinct from the IDLE case produced by `null`/`undefined`.
    *
    * Runtime errors:
    * - Throws if `type` has no registered adapter in `StoreConfig.adapters`.
@@ -456,7 +481,14 @@ export interface Store<M extends DocumentTypes> {
    * acquired increments each id's refcount independently. The returned
    * release function decrements each by one.
    *
-   * Passing `null`/`undefined` returns a no-op release function.
+   * Duplicate ids within a single array input are deduped: each unique
+   * id is acquired exactly once per call, and the release function
+   * decrements each unique id exactly once. `acquireDoc("user", ["1","1","2"])`
+   * is equivalent to `acquireDoc("user", ["1","2"])`.
+   *
+   * Passing `null`/`undefined` or `[]` returns a no-op release function.
+   *
+   * The returned release function is idempotent (see `Unsubscribe`).
    *
    * @example
    * ```tsx
@@ -490,11 +522,23 @@ export interface Store<M extends DocumentTypes> {
    * and by the (separate) writes/CRDT layer. Fully reactive — any handles
    * reading these docs will update.
    *
-   * Write policy: if a fetch is currently in flight for one of the inserted
-   * docs, the in-flight response is dropped when it returns — the direct
-   * insert is authoritative. (Exception: if the in-flight response has a
-   * strictly newer `meta.revision`, it wins. If neither has a revision,
-   * last-write-wins.)
+   * Write policy when a direct insert races with an in-flight fetch for
+   * the same `(type, id)`:
+   *
+   * 1. **Neither has `meta.revision`** — last-write-wins. The direct
+   *    insert, which is synchronous, always happens after the fetch was
+   *    dispatched, so the direct insert stays authoritative and the
+   *    arriving fetch response is dropped.
+   * 2. **Exactly one has `meta.revision`** — the revision-bearing value
+   *    wins (authoritative source trumps untracked).
+   * 3. **Both have `meta.revision`** — strictly newer wins. If they are
+   *    equal, falls through to last-write-wins (rule 1): the direct
+   *    insert wins because it happened after fetch dispatch.
+   *
+   * The same rule applies to the pre-tick case: when `insertDocument`
+   * fires while the id is still queued in the 15ms batch window, the
+   * handle flips to `SUCCESS` synchronously and the eventual adapter
+   * response is reconciled against the inserted doc by the same rules.
    */
   insertDocument(docOrDocs: Doc<unknown> | readonly Doc<unknown>[]): void;
 

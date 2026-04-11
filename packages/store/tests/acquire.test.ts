@@ -318,6 +318,74 @@ describe("acquireDoc with array input", () => {
     expect(subscribeDoc).not.toHaveBeenCalled();
     expect(() => release()).not.toThrow();
   });
+
+  it("dedupes duplicate ids within a single array input", async () => {
+    // `acquireDoc("user", ["1", "1", "2"])` must be equivalent to
+    // `acquireDoc("user", ["1", "2"])`: one subscribe per unique id,
+    // and a single release() drives each unique id's refcount back
+    // to zero. An implementation that counted each occurrence would
+    // require TWO release calls on "1" to tear down — that's wrong.
+    const unsubscribeById = new Map<string, ReturnType<typeof vi.fn>>();
+    const subscribeDoc = vi.fn((_type, id) => {
+      const fn = vi.fn();
+      unsubscribeById.set(id, fn);
+      return fn;
+    });
+    const { store } = makeStore({
+      subscribeDoc,
+      keepAliveMs: 0,
+    });
+
+    const release = store.acquireDoc("user", ["1", "1", "2"]);
+
+    // Exactly one subscribe per unique id
+    expect(subscribeDoc).toHaveBeenCalledTimes(2);
+    const subscribedIds = (subscribeDoc as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[1] as string,
+    );
+    expect(subscribedIds.sort()).toEqual(["1", "2"]);
+
+    // Single release drives both back to zero — no stuck refcount on "1"
+    release();
+    await advance(1);
+
+    expect(unsubscribeById.get("1")).toHaveBeenCalledTimes(1);
+    expect(unsubscribeById.get("2")).toHaveBeenCalledTimes(1);
+  });
+});
+
+// =============================================================================
+// acquireDoc — idempotent release
+// =============================================================================
+
+describe("acquireDoc release idempotency", () => {
+  it("calling release more than once is a no-op on subsequent calls", async () => {
+    // A second release() call must NOT double-decrement the refcount.
+    // If it did, a later legitimate release from another acquirer would
+    // drive the count negative and tear down a still-held subscription.
+    const unsubscribe = vi.fn();
+    const subscribeDoc = vi.fn(() => unsubscribe);
+    const { store } = makeStore({
+      subscribeDoc,
+      keepAliveMs: 0,
+    });
+
+    const releaseA = store.acquireDoc("user", "1");
+    const releaseB = store.acquireDoc("user", "1");
+
+    // Oops — caller releases A twice
+    releaseA();
+    releaseA();
+    await advance(1);
+
+    // Still held by B; no teardown
+    expect(unsubscribe).not.toHaveBeenCalled();
+
+    // Real teardown when B releases
+    releaseB();
+    await advance(1);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
 });
 
 // =============================================================================
