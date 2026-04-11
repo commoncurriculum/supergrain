@@ -26,6 +26,20 @@ describe("acquireDoc separation from findDoc", () => {
 
     expect(subscribeDoc).not.toHaveBeenCalled();
   });
+
+  it("acquireDoc alone (without a prior findDoc) triggers a batched fetch", async () => {
+    // Pins the contract: acquireDoc is sufficient on its own to start
+    // the data flow. A React hook that only calls acquireDoc on mount
+    // would still get data — findDoc on every render is an optimization
+    // for stable identity, not a fetch-triggering requirement.
+    const { store, userAdapter } = makeStore();
+
+    store.acquireDoc("user", "1");
+    await flushCoalescer();
+
+    expect(userAdapter.find).toHaveBeenCalledTimes(1);
+    expect(userAdapter.find).toHaveBeenCalledWith(["1"]);
+  });
 });
 
 // =============================================================================
@@ -191,6 +205,34 @@ describe("acquireDoc grace period", () => {
 
     await advance(0);
 
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("keepAliveMs: 0 — a synchronous re-acquire after release cancels teardown", async () => {
+    // Critical for React StrictMode: release() schedules setTimeout(0),
+    // and a synchronous re-acquire in the same tick must cancel it.
+    // An implementation that used queueMicrotask could race and lose;
+    // this test pins the cancellation path at the 0ms boundary.
+    const unsubscribe = vi.fn();
+    const subscribeDoc = vi.fn(() => unsubscribe);
+    const { store } = makeStore({
+      subscribeDoc,
+      keepAliveMs: 0,
+    });
+
+    const release1 = store.acquireDoc("user", "1");
+    release1();
+    // Synchronously re-acquire — no await between release and acquire
+    const release2 = store.acquireDoc("user", "1");
+
+    await advance(1);
+
+    expect(unsubscribe).not.toHaveBeenCalled();
+    expect(subscribeDoc).toHaveBeenCalledTimes(1);
+
+    // And proper teardown still works on the final release
+    release2();
+    await advance(1);
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 });

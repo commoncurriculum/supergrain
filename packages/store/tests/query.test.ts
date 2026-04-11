@@ -24,13 +24,15 @@ describe("query basic fetch", () => {
 
     const q = store.query({ type: "activity-feed", id: "u1" });
 
-    expect(q.status).toBe("pending");
+    expect(q.status).toBe("PENDING");
     expect(q.refs).toBeUndefined();
     expect(q.isPending).toBe(true);
     expect(q.isFetching).toBe(true);
     expect(q.error).toBeUndefined();
     expect(q.hasData).toBe(false);
     expect(q.fetchedAt).toBeUndefined();
+    // Before the first page loads, nextOffset is null (not undefined).
+    expect(q.nextOffset).toBeNull();
   });
 
   it("exposes refs after fetch resolves, preserving server order", async () => {
@@ -41,7 +43,7 @@ describe("query basic fetch", () => {
     const q = store.query({ type: "activity-feed", id: "u1" });
     await flushCoalescer();
 
-    expect(q.status).toBe("success");
+    expect(q.status).toBe("SUCCESS");
     expect(q.refs).toHaveLength(2);
     expect(q.refs?.[0]).toEqual({ type: "post", id: "10" });
     expect(q.refs?.[1]).toEqual({ type: "post", id: "11" });
@@ -83,7 +85,7 @@ describe("query basic fetch", () => {
     await flushCoalescer();
 
     const doc = store.findDoc("post", "10");
-    expect(doc.status).toBe("success");
+    expect(doc.status).toBe("SUCCESS");
     expect(doc.data?.title).toBe("P10");
     expect(postAdapter.find).not.toHaveBeenCalled();
   });
@@ -162,7 +164,7 @@ describe("query refetch", () => {
     const q = store.query({ type: "activity-feed", id: "u1" });
     await flushCoalescer();
 
-    expect(q.status).toBe("error");
+    expect(q.status).toBe("ERROR");
     expect(q.error).toBeInstanceOf(Error);
     expect(q.error?.message).toBe("feed boom");
     expect(q.isFetching).toBe(false);
@@ -422,5 +424,139 @@ describe("query pagination", () => {
 
     expect(feed.fetch).toHaveBeenCalledTimes(1);
     expect(q.refs).toHaveLength(2);
+  });
+});
+
+// =============================================================================
+// query — stable .promise for React.use()
+// =============================================================================
+
+describe("query .promise", () => {
+  it("resolves to the first page's refs on first load", async () => {
+    const { store } = makeStore({
+      queries: { "activity-feed": makeFeedAdapter() },
+    });
+
+    const q = store.query({ type: "activity-feed", id: "u1" });
+    expect(q.promise).toBeInstanceOf(Promise);
+
+    await flushCoalescer();
+
+    const refs = await q.promise!;
+    expect(refs).toHaveLength(2);
+    expect(refs[0]).toEqual({ type: "post", id: "10" });
+  });
+
+  it("is stable across refetch (does not create a new promise)", async () => {
+    const { store } = makeStore({
+      queries: { "activity-feed": makeFeedAdapter() },
+    });
+
+    const q = store.query({ type: "activity-feed", id: "u1" });
+    await flushCoalescer();
+
+    const first = q.promise;
+    q.refetch();
+
+    expect(q.promise).toBe(first);
+  });
+
+  it("is stable across fetchNextPage (promise identity unchanged)", async () => {
+    // `refs` mutates in place as new pages arrive, but the .promise
+    // field's identity does NOT change — consumers reading refs
+    // re-render via reactivity, not by re-suspending.
+    const pages: QueryResponse[] = [
+      {
+        data: [
+          { type: "post", id: "10" },
+          { type: "post", id: "11" },
+        ],
+        included: [],
+        nextOffset: 2,
+      },
+      {
+        data: [
+          { type: "post", id: "12" },
+          { type: "post", id: "13" },
+        ],
+        included: [],
+        nextOffset: null,
+      },
+    ];
+    let call = 0;
+    const feed: QueryAdapter = {
+      fetch: vi.fn(async () => pages[call++]!),
+    };
+    const { store } = makeStore({
+      queries: { feed },
+    });
+
+    const q = store.query({ type: "feed", id: "u1", pageSize: 2 });
+    await flushCoalescer();
+
+    const first = q.promise;
+    expect(first).toBeInstanceOf(Promise);
+
+    q.fetchNextPage();
+    await flushCoalescer();
+
+    expect(q.refs).toHaveLength(4);
+    expect(q.promise).toBe(first);
+  });
+
+  it("rejects once on initial error", async () => {
+    const failingFeed: QueryAdapter = {
+      fetch: vi.fn(async () => {
+        throw new Error("query-promise-boom");
+      }),
+    };
+    const { store } = makeStore({
+      queries: { "activity-feed": failingFeed },
+    });
+
+    const q = store.query({ type: "activity-feed", id: "u1" });
+    const p = q.promise;
+
+    await flushCoalescer();
+
+    expect(q.status).toBe("ERROR");
+    await expect(p).rejects.toThrow("query-promise-boom");
+  });
+
+  it("creates a NEW .promise on successful refetch after an error", async () => {
+    let callCount = 0;
+    const flakyFeed: QueryAdapter = {
+      fetch: vi.fn(async () => {
+        callCount++;
+        if (callCount === 1) throw new Error("flaky-feed");
+        return {
+          data: [{ type: "post", id: "10" }],
+          included: [
+            {
+              type: "post",
+              id: "10",
+              attributes: { title: "P10", body: "b", authorId: "1" },
+            },
+          ],
+          nextOffset: null,
+        };
+      }),
+    };
+    const { store } = makeStore({
+      queries: { "activity-feed": flakyFeed },
+    });
+
+    const q = store.query({ type: "activity-feed", id: "u1" });
+    const firstPromise = q.promise;
+    await flushCoalescer();
+
+    expect(q.status).toBe("ERROR");
+    await firstPromise?.catch(() => {});
+
+    q.refetch();
+    await flushCoalescer();
+
+    expect(q.status).toBe("SUCCESS");
+    expect(q.promise).not.toBe(firstPromise);
   });
 });

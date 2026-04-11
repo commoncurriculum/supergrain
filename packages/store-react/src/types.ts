@@ -1,5 +1,6 @@
 import type {
   AcquireOptions,
+  ConnectionStatus,
   DocumentPromise,
   DocumentsPromise,
   DocumentTypes,
@@ -42,8 +43,11 @@ export interface StoreContext<M extends DocumentTypes> {
    */
   useQuery: (def: QueryDef | null | undefined, opts?: AcquireOptions) => QueryPromise;
 
-  /** Reactive connection status of the underlying store. */
-  useConnection: () => "online" | "offline" | "degraded";
+  /**
+   * Reactive transport connection status. Re-renders the calling
+   * component when `store.setConnection(...)` changes the value.
+   */
+  useConnection: () => ConnectionStatus;
 }
 
 export interface UseDocument<M extends DocumentTypes> {

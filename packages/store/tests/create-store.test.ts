@@ -26,13 +26,29 @@ describe("createStore", () => {
     expect(typeof store.acquireDoc).toBe("function");
     expect(typeof store.acquireQuery).toBe("function");
     expect(typeof store.insertDocument).toBe("function");
+    expect(typeof store.setConnection).toBe("function");
     expect(typeof store.onReconnect).toBe("function");
     expect(typeof store.subscribe).toBe("function");
   });
 
-  it("starts in 'online' connection state", () => {
+  it("connection defaults to ONLINE", () => {
     const { store } = makeStore();
-    expect(store.connection).toBe("online");
+    expect(store.connection).toBe("ONLINE");
+  });
+
+  it("setConnection updates the reactive connection field", () => {
+    const { store } = makeStore();
+
+    expect(store.connection).toBe("ONLINE");
+
+    store.setConnection("OFFLINE");
+    expect(store.connection).toBe("OFFLINE");
+
+    store.setConnection("DEGRADED");
+    expect(store.connection).toBe("DEGRADED");
+
+    store.setConnection("ONLINE");
+    expect(store.connection).toBe("ONLINE");
   });
 
   it("throws a clear error when findDoc is called with an unregistered type", () => {

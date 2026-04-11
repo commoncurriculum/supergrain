@@ -158,19 +158,37 @@ export type SubscribeQueryFn = (def: QueryDef, onInvalidate: OnInvalidate) => Un
 // Connection state
 // =============================================================================
 
-export type ConnectionStatus = "online" | "offline" | "degraded";
+/**
+ * Reactive transport connection status.
+ *
+ * - `ONLINE`   – socket is connected and delivering invalidations
+ * - `OFFLINE`  – socket is disconnected; data may be stale, reads still
+ *                return cached values
+ * - `DEGRADED` – socket is connected but the transport reports a
+ *                degraded state (e.g. fallback polling, high error rate)
+ *
+ * **Ownership:** this store does NOT own connection lifecycle. Session /
+ * transport management (handshake, reconnect backoff, heartbeat, retry)
+ * lives in a separate layer. That layer pushes status here via
+ * `store.setConnection(status)`; the store's only job is to expose the
+ * value reactively so reads and UIs can react to it. Do not grow
+ * connection logic inside this package.
+ *
+ * Read via `store.connection` (reactive) or `useConnection()` in React.
+ */
+export type ConnectionStatus = "ONLINE" | "OFFLINE" | "DEGRADED";
 
 // =============================================================================
 // Handle status
 // =============================================================================
 
 /**
- * - `idle`    – no fetch attempted (id was null/undefined)
- * - `pending` – first fetch in flight, no data yet
- * - `success` – data present (may also be refetching; check `isFetching`)
- * - `error`   – fetch failed, no fallback data available
+ * - `IDLE`    – no fetch attempted (id was null/undefined)
+ * - `PENDING` – first fetch in flight, no data yet
+ * - `SUCCESS` – data present (may also be refetching; check `isFetching`)
+ * - `ERROR`   – fetch failed, no fallback data available
  */
-export type Status = "idle" | "pending" | "success" | "error";
+export type Status = "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
 
 // =============================================================================
 // Handles returned by Store methods (reactive)
@@ -180,7 +198,7 @@ export type Status = "idle" | "pending" | "success" | "error";
  * Reactive handle for a single document. Read `data` etc. inside a
  * supergrain `tracked()` scope to subscribe to changes.
  *
- * Idle invariant — when `status === "idle"`, all of:
+ * Idle invariant — when `status === "IDLE"`, all of:
  * - `data === undefined`
  * - `error === undefined`
  * - `isPending === false`
@@ -224,7 +242,25 @@ export interface DocumentPromise<T> {
   refetch(): void;
 }
 
-/** Reactive handle for a bulk find-by-ids. */
+/**
+ * Reactive handle for a bulk find-by-ids.
+ *
+ * Idle invariant — when `status === "IDLE"` (id list was null/undefined),
+ * all of:
+ * - `items === undefined`
+ * - `error === undefined`
+ * - `isPending === false`
+ * - `isFetching === false`
+ * - `hasData === false`
+ * - `fetchedAt === undefined`
+ * - `promise === undefined`
+ *
+ * Partial failure: if the adapter returns a subset of the requested ids,
+ * missing ids are treated as errors for the per-id doc cache entries; the
+ * bulk handle enters `status === "ERROR"` with an error describing the
+ * missing ids. All-or-nothing — no "some present, some missing" partial
+ * success state.
+ */
 export interface DocumentsPromise<T> {
   readonly status: Status;
   readonly items: T[] | undefined;
@@ -235,6 +271,11 @@ export interface DocumentsPromise<T> {
   readonly hasData: boolean;
 
   readonly fetchedAt: Date | undefined;
+  /**
+   * Stable Promise for use with React 19's `use()`. Same lifecycle rules as
+   * `DocumentPromise.promise`: resolves once on first success, rejects once
+   * on first error, a successful refetch after an error creates a new promise.
+   */
   readonly promise: Promise<T[]> | undefined;
 
   refetch(): void;
@@ -259,10 +300,25 @@ export interface QueryPromise {
   readonly isFetching: boolean;
   readonly hasData: boolean;
 
-  /** Server-provided cursor for the next page. `null` when exhausted. */
+  /**
+   * Server-provided cursor for the next page. `null` when exhausted or
+   * before the first page has loaded (`status === "PENDING"` or `"IDLE"`).
+   */
   readonly nextOffset: number | null;
 
   readonly fetchedAt: Date | undefined;
+  /**
+   * Stable Promise for use with React 19's `use()`.
+   *
+   * Same lifecycle rules as `DocumentPromise.promise`: resolves once on the
+   * first successful page load, rejects once on first error, a successful
+   * refetch after an error creates a new promise.
+   *
+   * Pagination note: `fetchNextPage()` does NOT create a new promise and
+   * the existing promise's resolved value is frozen to the FIRST page's
+   * refs. Consumers reading `refs` (which mutates in place as pages arrive)
+   * re-render via the reactive graph — they do not re-suspend.
+   */
   readonly promise: Promise<readonly Ref[]> | undefined;
 
   /** No-op if already on the last page (`nextOffset === null`). */
@@ -325,16 +381,22 @@ export interface StoreConfig<M extends DocumentTypes> {
 // =============================================================================
 
 export type StoreEvent =
-  | { kind: "doc-insert"; type: string; id: string }
-  | { kind: "doc-fetch-start"; type: string; ids: string[] }
-  | { kind: "doc-fetch-success"; type: string; ids: string[] }
-  | { kind: "doc-fetch-error"; type: string; ids: string[]; error: Error }
-  | { kind: "query-fetch-start"; key: string }
-  | { kind: "query-fetch-success"; key: string }
-  | { kind: "query-fetch-error"; key: string; error: Error }
-  | { kind: "invalidate-doc"; type: string; id: string }
-  | { kind: "invalidate-query"; key: string }
-  | { kind: "connection-change"; status: ConnectionStatus };
+  | { kind: "DOC_INSERT"; type: string; id: string }
+  | { kind: "DOC_FETCH_START"; type: string; ids: string[] }
+  | { kind: "DOC_FETCH_SUCCESS"; type: string; ids: string[] }
+  | { kind: "DOC_FETCH_ERROR"; type: string; ids: string[]; error: Error }
+  | { kind: "QUERY_FETCH_START"; key: string }
+  | { kind: "QUERY_FETCH_SUCCESS"; key: string }
+  | { kind: "QUERY_FETCH_ERROR"; key: string; error: Error }
+  | { kind: "INVALIDATE_DOC"; type: string; id: string }
+  | { kind: "INVALIDATE_QUERY"; key: string }
+  | {
+      kind: "CONNECTION_CHANGE";
+      /** The new status after the transition. */
+      status: ConnectionStatus;
+      /** The status that was in effect before this transition. */
+      previous: ConnectionStatus;
+    };
 
 // =============================================================================
 // Store (public interface)
@@ -436,13 +498,33 @@ export interface Store<M extends DocumentTypes> {
    */
   insertDocument(docOrDocs: Doc<unknown> | readonly Doc<unknown>[]): void;
 
-  /** Reactive connection status. Read inside `tracked()` to react. */
+  /**
+   * Current reactive transport status. Read inside a `tracked()` scope
+   * (or via `useConnection()` in React) to re-render on transitions.
+   * Defaults to `"ONLINE"`.
+   */
   readonly connection: ConnectionStatus;
+
+  /**
+   * Pushed by the transport layer when connection state changes.
+   * Emits a `CONNECTION_CHANGE` event to subscribers and updates the
+   * reactive `connection` field. Calling with the same status as the
+   * current value is a no-op — no event fires.
+   *
+   * Note: `setConnection("ONLINE")` does NOT automatically trigger
+   * refetches; callers that want reconciliation after coming back
+   * online should also invoke `onReconnect()`.
+   */
+  setConnection(status: ConnectionStatus): void;
 
   /**
    * Call after socket reconnection. Refetches all currently-acquired
    * documents and queries (refcount > 0). Does NOT revalidate cold
    * cached docs that no one currently holds.
+   *
+   * If called while a fetch is already in flight for an acquired doc,
+   * the store dispatches a fresh fetch; the in-flight response is
+   * discarded when it resolves (superseded by the reconnect fetch).
    */
   onReconnect(): void;
 

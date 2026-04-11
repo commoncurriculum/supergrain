@@ -22,7 +22,7 @@ describe("findDoc (single id)", () => {
     const { store } = makeStore();
     const doc = store.findDoc("user", "1");
 
-    expect(doc.status).toBe("pending");
+    expect(doc.status).toBe("PENDING");
     expect(doc.data).toBeUndefined();
     expect(doc.isPending).toBe(true);
     expect(doc.isFetching).toBe(true);
@@ -40,7 +40,7 @@ describe("findDoc (single id)", () => {
 
     expect(userAdapter.find).toHaveBeenCalledTimes(1);
     expect(userAdapter.find).toHaveBeenCalledWith(["1"]);
-    expect(doc.status).toBe("success");
+    expect(doc.status).toBe("SUCCESS");
     expect(doc.isPending).toBe(false);
     expect(doc.isFetching).toBe(false);
     expect(doc.hasData).toBe(true);
@@ -87,7 +87,7 @@ describe("findDoc idle state", () => {
     const { store, userAdapter } = makeStore();
     const doc = store.findDoc("user", null);
 
-    expect(doc.status).toBe("idle");
+    expect(doc.status).toBe("IDLE");
     expect(doc.data).toBeUndefined();
     expect(doc.error).toBeUndefined();
     expect(doc.isPending).toBe(false);
@@ -103,7 +103,7 @@ describe("findDoc idle state", () => {
     const { store, userAdapter } = makeStore();
     const doc = store.findDoc("user", undefined);
 
-    expect(doc.status).toBe("idle");
+    expect(doc.status).toBe("IDLE");
     expect(doc.data).toBeUndefined();
     expect(doc.error).toBeUndefined();
     expect(doc.isPending).toBe(false);
@@ -123,12 +123,13 @@ describe("findDoc idle state", () => {
     const ids = null as readonly string[] | null | undefined;
     const docs = store.findDoc("user", ids);
 
-    expect(docs.status).toBe("idle");
+    expect(docs.status).toBe("IDLE");
     expect(docs.items).toBeUndefined();
     expect(docs.error).toBeUndefined();
     expect(docs.isPending).toBe(false);
     expect(docs.isFetching).toBe(false);
     expect(docs.hasData).toBe(false);
+    expect(docs.fetchedAt).toBeUndefined();
     expect(docs.promise).toBeUndefined();
     expect(userAdapter.find).not.toHaveBeenCalled();
   });
@@ -143,14 +144,14 @@ describe("findDoc (array of ids)", () => {
     const { store, userAdapter } = makeStore();
     const docs = store.findDoc("user", ["1", "2", "3"]);
 
-    expect(docs.status).toBe("pending");
+    expect(docs.status).toBe("PENDING");
     expect(docs.isPending).toBe(true);
     expect(docs.items).toBeUndefined();
 
     await flushCoalescer();
 
     expect(userAdapter.find).toHaveBeenCalledTimes(1);
-    expect(docs.status).toBe("success");
+    expect(docs.status).toBe("SUCCESS");
     expect(docs.items).toHaveLength(3);
     expect(docs.items?.[0]?.firstName).toBe("User1");
     expect(docs.items?.[1]?.firstName).toBe("User2");
@@ -198,7 +199,7 @@ describe("findDoc refetch", () => {
     await flushCoalescer();
 
     expect(doc.isFetching).toBe(false);
-    expect(doc.status).toBe("success");
+    expect(doc.status).toBe("SUCCESS");
   });
 
   it("refetch while a fetch is already in flight is a no-op (dedup)", async () => {
@@ -254,7 +255,7 @@ describe("findDoc errors", () => {
     const doc = store.findDoc("user", "1");
     await flushCoalescer();
 
-    expect(doc.status).toBe("error");
+    expect(doc.status).toBe("ERROR");
     expect(doc.error).toBeInstanceOf(Error);
     expect(doc.error?.message).toBe("boom");
     expect(doc.isFetching).toBe(false);
@@ -276,7 +277,7 @@ describe("findDoc errors", () => {
 
     const doc = store.findDoc("user", "1");
     await flushCoalescer();
-    expect(doc.status).toBe("error");
+    expect(doc.status).toBe("ERROR");
 
     // Direct insert recovers the handle
     store.insertDocument({
@@ -285,7 +286,7 @@ describe("findDoc errors", () => {
       attributes: { firstName: "Recovered", lastName: "X", email: "r@x" },
     });
 
-    expect(doc.status).toBe("success");
+    expect(doc.status).toBe("SUCCESS");
     expect(doc.error).toBeUndefined();
     expect(doc.data?.firstName).toBe("Recovered");
   });
@@ -337,7 +338,7 @@ describe("findDoc .promise", () => {
 
     await flushCoalescer();
 
-    expect(doc.status).toBe("error");
+    expect(doc.status).toBe("ERROR");
     await expect(p).rejects.toThrow("nope");
   });
 
@@ -369,16 +370,141 @@ describe("findDoc .promise", () => {
     const firstPromise = doc.promise;
     await flushCoalescer();
 
-    expect(doc.status).toBe("error");
+    expect(doc.status).toBe("ERROR");
     // Swallow the rejection so the test runner doesn't treat it as unhandled
     await firstPromise?.catch(() => {});
 
     doc.refetch();
     await flushCoalescer();
 
-    expect(doc.status).toBe("success");
+    expect(doc.status).toBe("SUCCESS");
     expect(doc.promise).not.toBe(firstPromise);
     const data = await doc.promise!;
     expect(data.firstName).toBe("Recovered");
+  });
+});
+
+// =============================================================================
+// findDoc — bulk partial failure
+// =============================================================================
+
+describe("findDoc (array) partial failure", () => {
+  it("enters ERROR status when the adapter returns a subset of the requested ids", async () => {
+    // Adapter is asked for [1,2,3] but only returns data for "1". The
+    // bulk handle must NOT claim success with missing items — it enters
+    // error state so callers notice the gap instead of rendering holes.
+    const partialAdapter: DocumentAdapter<User> = {
+      find: vi.fn(async (ids: string[]) => ({
+        data: [
+          {
+            type: "user",
+            id: ids[0]!,
+            attributes: {
+              firstName: `User${ids[0]}`,
+              lastName: "X",
+              email: "x@y",
+            },
+            meta: { revision: 1 },
+          },
+        ],
+      })),
+    };
+    const { store } = makeStore({
+      adapters: { user: partialAdapter, post: makePostAdapter() },
+    });
+
+    const docs = store.findDoc("user", ["1", "2", "3"]);
+    await flushCoalescer();
+
+    expect(docs.status).toBe("ERROR");
+    expect(docs.error).toBeInstanceOf(Error);
+    expect(docs.items).toBeUndefined();
+  });
+});
+
+// =============================================================================
+// findDoc — stable .promise for React.use() (bulk)
+// =============================================================================
+
+describe("findDoc (array) .promise", () => {
+  it("resolves to the items array on first load", async () => {
+    const { store } = makeStore();
+    const docs = store.findDoc("user", ["1", "2"]);
+
+    expect(docs.promise).toBeInstanceOf(Promise);
+
+    await flushCoalescer();
+
+    const data = await docs.promise!;
+    expect(data).toHaveLength(2);
+    expect(data[0]?.firstName).toBe("User1");
+  });
+
+  it("is stable across refetch (does not create a new promise)", async () => {
+    const { store } = makeStore();
+    const docs = store.findDoc("user", ["1", "2"]);
+    await flushCoalescer();
+
+    const first = docs.promise;
+    docs.refetch();
+
+    expect(docs.promise).toBe(first);
+  });
+
+  it("rejects once on initial error", async () => {
+    const failingAdapter: DocumentAdapter<User> = {
+      find: vi.fn(async () => {
+        throw new Error("bulk-nope");
+      }),
+    };
+    const { store } = makeStore({
+      adapters: { user: failingAdapter, post: makePostAdapter() },
+    });
+
+    const docs = store.findDoc("user", ["1", "2"]);
+    const p = docs.promise;
+
+    await flushCoalescer();
+
+    expect(docs.status).toBe("ERROR");
+    await expect(p).rejects.toThrow("bulk-nope");
+  });
+
+  it("creates a NEW .promise on successful refetch after an error", async () => {
+    let callCount = 0;
+    const flakyAdapter: DocumentAdapter<User> = {
+      find: vi.fn(async (ids: string[]) => {
+        callCount++;
+        if (callCount === 1) throw new Error("bulk-first-fail");
+        return {
+          data: ids.map((id) => ({
+            type: "user",
+            id,
+            attributes: {
+              firstName: `Recovered${id}`,
+              lastName: "X",
+              email: "r@x",
+            },
+            meta: { revision: 2 },
+          })),
+        };
+      }),
+    };
+    const { store } = makeStore({
+      adapters: { user: flakyAdapter, post: makePostAdapter() },
+    });
+
+    const docs = store.findDoc("user", ["1", "2"]);
+    const firstPromise = docs.promise;
+    await flushCoalescer();
+
+    expect(docs.status).toBe("ERROR");
+    await firstPromise?.catch(() => {});
+
+    docs.refetch();
+    await flushCoalescer();
+
+    expect(docs.status).toBe("SUCCESS");
+    expect(docs.promise).not.toBe(firstPromise);
   });
 });

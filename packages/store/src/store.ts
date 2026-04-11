@@ -74,7 +74,10 @@ export function createStore<M extends DocumentTypes>(_config: StoreConfig<M>): S
       notImplemented("insertDocument");
     },
     get connection(): ConnectionStatus {
-      return "online";
+      return "ONLINE";
+    },
+    setConnection(_status) {
+      notImplemented("setConnection");
     },
     onReconnect() {
       notImplemented("onReconnect");

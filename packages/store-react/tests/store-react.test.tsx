@@ -9,7 +9,7 @@ import type {
 } from "@supergrain/store";
 
 import { createStore } from "@supergrain/store";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, act } from "@testing-library/react";
 import { StrictMode, Suspense, use, type ReactNode } from "react";
 import { describe, it, expect, vi } from "vitest";
 
@@ -221,7 +221,7 @@ describe("useDocument", () => {
 
     const MaybeBadge = ({ userId }: { userId: string | null }) => {
       const user = ctx.useDocument("user", userId);
-      if (user.status === "idle") return <span>none</span>;
+      if (user.status === "IDLE") return <span>none</span>;
       return <span>{user.data?.firstName ?? "…"}</span>;
     };
 
@@ -416,7 +416,7 @@ describe("useQuery", () => {
       </Wrap>,
     );
 
-    expect(screen.getByText("idle")).toBeDefined();
+    expect(screen.getByText("IDLE")).toBeDefined();
     cleanup();
   });
 });
@@ -457,7 +457,7 @@ describe("Suspense consumption", () => {
 // =============================================================================
 
 describe("useConnection", () => {
-  it("returns 'online' by default", () => {
+  it("returns 'ONLINE' by default", () => {
     const { ctx, Wrap } = makeContext();
 
     const Probe = () => {
@@ -471,7 +471,41 @@ describe("useConnection", () => {
       </Wrap>,
     );
 
-    expect(screen.getByText("online")).toBeDefined();
+    expect(screen.getByText("ONLINE")).toBeDefined();
+    cleanup();
+  });
+
+  it("re-renders when store.setConnection changes the status", async () => {
+    const { ctx, store, Wrap } = makeContext();
+
+    const Probe = () => {
+      const c = ctx.useConnection();
+      return <span data-testid="conn">{c}</span>;
+    };
+
+    render(
+      <Wrap>
+        <Probe />
+      </Wrap>,
+    );
+
+    expect(screen.getByTestId("conn").textContent).toBe("ONLINE");
+
+    await act(async () => {
+      store.setConnection("OFFLINE");
+    });
+    expect(screen.getByTestId("conn").textContent).toBe("OFFLINE");
+
+    await act(async () => {
+      store.setConnection("DEGRADED");
+    });
+    expect(screen.getByTestId("conn").textContent).toBe("DEGRADED");
+
+    await act(async () => {
+      store.setConnection("ONLINE");
+    });
+    expect(screen.getByTestId("conn").textContent).toBe("ONLINE");
+
     cleanup();
   });
 });
@@ -585,6 +619,59 @@ describe("useDocument acquire lifecycle", () => {
     expect(subscribeDoc).toHaveBeenCalled();
     expect(unsubscribe).not.toHaveBeenCalled();
     cleanup();
+  });
+
+  it("does not leak subscriptions when the id prop changes under StrictMode", async () => {
+    // StrictMode double-mounts on initial mount; then a prop change
+    // runs cleanup(old) → effect(new). The refcount + grace period
+    // must net to balanced acquires/releases per id by end-of-lifecycle
+    // — neither leaked nor orphaned.
+    const subscribed: string[] = [];
+    const unsubscribed: string[] = [];
+    const subscribeDoc: SubscribeDocFn = vi.fn((_type, id) => {
+      subscribed.push(id);
+      return () => {
+        unsubscribed.push(id);
+      };
+    });
+
+    const { ctx, Wrap } = makeContext({
+      subscribeDoc,
+      keepAliveMs: 0,
+      strict: true,
+    });
+
+    const Probe = ({ userId }: { userId: string }) => {
+      const doc = ctx.useDocument("user", userId);
+      return <span>{doc.data?.firstName ?? "…"}</span>;
+    };
+
+    const { rerender, unmount } = render(
+      <Wrap>
+        <Probe userId="1" />
+      </Wrap>,
+    );
+    await tick(30);
+
+    rerender(
+      <Wrap>
+        <Probe userId="2" />
+      </Wrap>,
+    );
+    await tick(30);
+
+    unmount();
+    await tick(30);
+
+    // Both ids entered the subscribe path
+    expect(subscribed).toContain("1");
+    expect(subscribed).toContain("2");
+
+    // Leak-prevention invariant: every subscribe has a matching
+    // unsubscribe by the end of the lifecycle, per id.
+    const countOf = (arr: string[], id: string) => arr.filter((x) => x === id).length;
+    expect(countOf(unsubscribed, "1")).toBe(countOf(subscribed, "1"));
+    expect(countOf(unsubscribed, "2")).toBe(countOf(subscribed, "2"));
   });
 });
 

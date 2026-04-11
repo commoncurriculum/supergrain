@@ -3,7 +3,7 @@ import type { User } from "./helpers";
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { flushCoalescer, makeStore } from "./helpers";
+import { flushCoalescer, makePostAdapter, makeStore } from "./helpers";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -32,7 +32,7 @@ describe("insertDocument (single)", () => {
     });
 
     const doc = store.findDoc("user", "1");
-    expect(doc.status).toBe("success");
+    expect(doc.status).toBe("SUCCESS");
     expect(doc.data?.firstName).toBe("Direct");
     expect(userAdapter.find).not.toHaveBeenCalled();
   });
@@ -81,9 +81,9 @@ describe("insertDocument (array)", () => {
     const user = store.findDoc("user", "1");
     const post = store.findDoc("post", "10");
 
-    expect(user.status).toBe("success");
+    expect(user.status).toBe("SUCCESS");
     expect(user.data?.firstName).toBe("A");
-    expect(post.status).toBe("success");
+    expect(post.status).toBe("SUCCESS");
     expect(post.data?.title).toBe("Hi");
     expect(userAdapter.find).not.toHaveBeenCalled();
     expect(postAdapter.find).not.toHaveBeenCalled();
@@ -249,5 +249,116 @@ describe("insertDocument write policy vs in-flight fetch", () => {
 
     expect(doc.data?.firstName).toBe("DirectNewer");
     expect(doc.revision).toBe(5);
+  });
+
+  it("direct insert WITH revision wins over a server response WITHOUT revision", async () => {
+    // Policy: "if one has meta.revision and the other doesn't, the one
+    // with revision wins." Direct insert carries a revision; the server
+    // response does not → direct insert stays authoritative.
+    let resolveFetch: (() => void) | undefined;
+    const userFind = vi.fn(
+      (ids: string[]): Promise<DocumentResponse<User>> =>
+        new Promise((resolve) => {
+          resolveFetch = () =>
+            resolve({
+              data: ids.map((id) => ({
+                type: "user",
+                id,
+                attributes: {
+                  firstName: "ServerNoRev",
+                  lastName: "X",
+                  email: "x@y",
+                },
+                // no meta.revision
+              })),
+            });
+        }),
+    );
+    const { store } = makeStore({
+      adapters: {
+        user: { find: userFind },
+        post: makePostAdapter(),
+      },
+    });
+
+    const doc = store.findDoc("user", "1");
+    await vi.advanceTimersByTimeAsync(20);
+
+    store.insertDocument({
+      type: "user",
+      id: "1",
+      attributes: {
+        firstName: "DirectWithRev",
+        lastName: "X",
+        email: "x@y",
+      },
+      meta: { revision: 3 },
+    });
+    expect(doc.data?.firstName).toBe("DirectWithRev");
+
+    resolveFetch!();
+    await vi.runAllTimersAsync();
+
+    expect(doc.data?.firstName).toBe("DirectWithRev");
+    expect(doc.revision).toBe(3);
+  });
+});
+
+// =============================================================================
+// insertDocument — pre-tick coalescer interaction
+// =============================================================================
+
+describe("insertDocument pre-tick coalescer interaction", () => {
+  it("resolves a pending findDoc immediately when insertDocument fires before the batch tick", async () => {
+    // findDoc queues "1" into the 15ms batch window. BEFORE the batch
+    // tick fires, a direct insert arrives. The handle must flip to
+    // SUCCESS synchronously with the inserted data, and the eventual
+    // adapter response must not clobber it.
+    //
+    // Adapter is set up with NO revision so last-write-wins leaves the
+    // direct insert authoritative even if the fetch still dispatches.
+    const userFind = vi.fn(
+      async (ids: string[]): Promise<DocumentResponse<User>> => ({
+        data: ids.map((id) => ({
+          type: "user",
+          id,
+          attributes: {
+            firstName: `FromAdapter${id}`,
+            lastName: "X",
+            email: "x@y",
+          },
+          // no meta.revision
+        })),
+      }),
+    );
+    const { store } = makeStore({
+      adapters: {
+        user: { find: userFind },
+        post: makePostAdapter(),
+      },
+    });
+
+    const doc = store.findDoc("user", "1");
+    expect(doc.status).toBe("PENDING");
+
+    // Synchronous direct insert BEFORE the 15ms batch tick elapses
+    store.insertDocument({
+      type: "user",
+      id: "1",
+      attributes: {
+        firstName: "PreTick",
+        lastName: "X",
+        email: "p@x",
+      },
+    });
+
+    expect(doc.status).toBe("SUCCESS");
+    expect(doc.data?.firstName).toBe("PreTick");
+
+    // Drain the coalescer. Whether the adapter actually dispatched or
+    // was skipped is an impl detail — the handle data must stay as
+    // "PreTick" either way (per last-write-wins write policy).
+    await flushCoalescer();
+    expect(doc.data?.firstName).toBe("PreTick");
   });
 });

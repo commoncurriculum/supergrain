@@ -1,6 +1,7 @@
 import type { StoreContext, UseDocument } from "./types";
 import type {
   AcquireOptions,
+  ConnectionStatus,
   DocumentPromise,
   DocumentsPromise,
   DocumentTypes,
@@ -60,7 +61,7 @@ export function createStoreContext<M extends DocumentTypes>(store: Store<M>): St
     return notImplemented("useQuery");
   };
 
-  const useConnection = (): "online" | "offline" | "degraded" => {
+  const useConnection = (): ConnectionStatus => {
     return notImplemented("useConnection");
   };
 

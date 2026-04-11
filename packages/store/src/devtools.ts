@@ -79,21 +79,21 @@ export function attachReduxDevtools<M extends DocumentTypes>(
 
 function eventToActionType(event: StoreEvent): string {
   switch (event.kind) {
-    case "doc-fetch-start":
-    case "doc-fetch-success":
-    case "doc-fetch-error":
+    case "DOC_FETCH_START":
+    case "DOC_FETCH_SUCCESS":
+    case "DOC_FETCH_ERROR":
       return `${event.kind}(${event.type}:${event.ids.join(",")})`;
-    case "doc-insert":
+    case "DOC_INSERT":
       return `${event.kind}(${event.type}:${event.id})`;
-    case "query-fetch-start":
-    case "query-fetch-success":
-    case "query-fetch-error":
+    case "QUERY_FETCH_START":
+    case "QUERY_FETCH_SUCCESS":
+    case "QUERY_FETCH_ERROR":
       return `${event.kind}(${event.key})`;
-    case "invalidate-doc":
+    case "INVALIDATE_DOC":
       return `${event.kind}(${event.type}:${event.id})`;
-    case "invalidate-query":
+    case "INVALIDATE_QUERY":
       return `${event.kind}(${event.key})`;
-    case "connection-change":
+    case "CONNECTION_CHANGE":
       return `${event.kind}(${event.status})`;
   }
 }

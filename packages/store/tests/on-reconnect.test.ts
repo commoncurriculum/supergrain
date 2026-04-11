@@ -1,8 +1,8 @@
-import type { QueryAdapter } from "../src";
+import type { DocumentAdapter, DocumentResponse, QueryAdapter } from "../src";
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { advance, flushCoalescer, makeStore } from "./helpers";
+import { advance, flushCoalescer, makePostAdapter, makeStore, type User } from "./helpers";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -116,5 +116,62 @@ describe("onReconnect (queries)", () => {
     await flushCoalescer();
 
     expect(feedAdapter.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+// =============================================================================
+// onReconnect — interaction with in-flight fetch
+// =============================================================================
+
+describe("onReconnect during in-flight fetch", () => {
+  it("dispatches a fresh fetch even when a prior fetch is still in flight", async () => {
+    // Scenario: acquired doc is mid-fetch when the socket reconnects.
+    // onReconnect must issue a fresh batched fetch. The pre-reconnect
+    // response is superseded when it eventually resolves.
+    let resolveFirst: (() => void) | undefined;
+    let callIndex = 0;
+    const userFind = vi.fn((ids: string[]): Promise<DocumentResponse<User>> => {
+      const index = callIndex++;
+      return new Promise((resolve) => {
+        const doResolve = () =>
+          resolve({
+            data: ids.map((id) => ({
+              type: "user",
+              id,
+              attributes: {
+                firstName: index === 0 ? "Stale" : "Fresh",
+                lastName: "X",
+                email: "x@y",
+              },
+              meta: { revision: index + 1 },
+            })),
+          });
+        if (index === 0) {
+          resolveFirst = doResolve;
+        } else {
+          doResolve();
+        }
+      });
+    });
+    const userAdapter: DocumentAdapter<User> = { find: userFind };
+    const { store } = makeStore({
+      adapters: { user: userAdapter, post: makePostAdapter() },
+    });
+
+    store.acquireDoc("user", "1");
+    await advance(20);
+    expect(userFind).toHaveBeenCalledTimes(1);
+
+    // Reconnect BEFORE the first fetch resolves
+    store.onReconnect();
+    await advance(20);
+
+    // A second fetch must have been dispatched — onReconnect is not a
+    // no-op just because a fetch is already in flight.
+    expect(userFind).toHaveBeenCalledTimes(2);
+
+    // Drain the stale first fetch; it must not clobber the fresh result.
+    resolveFirst!();
+    await vi.runAllTimersAsync();
   });
 });

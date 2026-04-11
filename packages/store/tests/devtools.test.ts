@@ -109,7 +109,7 @@ describe("attachReduxDevtools", () => {
   // These tests exercise event forwarding — they depend on `store.subscribe`
   // being implemented (currently a stub), so they fail until the store ships.
 
-  it("forwards doc-fetch-start and doc-fetch-success events to devtools", async () => {
+  it("forwards DOC_FETCH_START and DOC_FETCH_SUCCESS events to devtools", async () => {
     const ext = installMockExtension();
     const store = makeStore();
 
@@ -120,8 +120,8 @@ describe("attachReduxDevtools", () => {
     await vi.advanceTimersByTimeAsync(25);
 
     const actionTypes = conn.send.mock.calls.map((c) => (c[0] as { type: string }).type);
-    expect(actionTypes.some((t) => t.startsWith("doc-fetch-start"))).toBe(true);
-    expect(actionTypes.some((t) => t.startsWith("doc-fetch-success"))).toBe(true);
+    expect(actionTypes.some((t) => t.startsWith("DOC_FETCH_START"))).toBe(true);
+    expect(actionTypes.some((t) => t.startsWith("DOC_FETCH_SUCCESS"))).toBe(true);
   });
 
   it("includes the event payload in the sent action", async () => {
