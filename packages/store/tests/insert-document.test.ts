@@ -305,6 +305,61 @@ describe("insertDocument write policy vs in-flight fetch", () => {
     expect(doc.revision).toBe(3);
   });
 
+  it("server response WITH revision wins over a direct insert WITHOUT revision", async () => {
+    // Inverse of the "direct WITH rev vs server WITHOUT rev" case: now
+    // the server carries the revision and the direct insert does not,
+    // so the server response wins per rule 2. Pins that rule 2 is
+    // symmetric (the revision-bearing value always wins regardless of
+    // which side it's on), not a bias for direct inserts.
+    let resolveFetch: (() => void) | undefined;
+    const userFind = vi.fn(
+      (ids: string[]): Promise<DocumentResponse<User>> =>
+        new Promise((resolve) => {
+          resolveFetch = () =>
+            resolve({
+              data: ids.map((id) => ({
+                type: "user",
+                id,
+                attributes: {
+                  firstName: "ServerWithRev",
+                  lastName: "X",
+                  email: "x@y",
+                },
+                meta: { revision: 7 },
+              })),
+            });
+        }),
+    );
+    const { store } = makeStore({
+      adapters: {
+        user: { find: userFind },
+        post: makePostAdapter(),
+      },
+    });
+
+    const doc = store.findDoc("user", "1");
+    await vi.advanceTimersByTimeAsync(20);
+
+    // Direct insert mid-flight with NO revision
+    store.insertDocument({
+      type: "user",
+      id: "1",
+      attributes: {
+        firstName: "DirectNoRev",
+        lastName: "X",
+        email: "x@y",
+      },
+      // no meta.revision
+    });
+    expect(doc.data?.firstName).toBe("DirectNoRev");
+
+    resolveFetch!();
+    await vi.runAllTimersAsync();
+
+    expect(doc.data?.firstName).toBe("ServerWithRev");
+    expect(doc.revision).toBe(7);
+  });
+
   it("direct insert WITH revision wins over a server response WITHOUT revision", async () => {
     // Policy: "if one has meta.revision and the other doesn't, the one
     // with revision wins." Direct insert carries a revision; the server
