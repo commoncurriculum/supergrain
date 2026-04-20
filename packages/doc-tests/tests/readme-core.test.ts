@@ -10,7 +10,7 @@
  * - Update operators (DOC_TEST_46)
  */
 
-import { createStore, update } from "@supergrain/core";
+import { createReactive, update } from "@supergrain/core";
 import { tracked } from "@supergrain/react";
 import { describe, it, expect } from "vitest";
 
@@ -22,7 +22,7 @@ describe("README Core Examples", () => {
         count: number;
         user: { profile: { name: string } };
       }
-      const store = createStore<State>({ count: 0, user: { profile: { name: "John" } } });
+      const store = createReactive<State>({ count: 0, user: { profile: { name: "John" } } });
 
       store.count = 5;
       expect(store.count).toBe(5);
@@ -108,7 +108,7 @@ describe("README Core Examples", () => {
 
   describe("Update Operators", () => {
     it("#DOC_TEST_46", () => {
-      const state = createStore({
+      const state = createReactive({
         count: 0,
         user: { name: "John", age: 30, middleName: "M" },
         items: ["a", "b", "c"],

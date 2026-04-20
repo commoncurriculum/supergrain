@@ -1,13 +1,13 @@
 /**
- * Type-level tests for Branded<T> on createStore return type.
+ * Type-level tests for Branded<T> on createReactive return type.
  *
- * These tests verify that createStore returns Branded<T> with $BRAND
+ * These tests verify that createReactive returns Branded<T> with $BRAND
  * at all nesting levels. No runtime assertions -- if it compiles, it passes.
  */
 
 import { describe, it, expect } from "vitest";
 
-import { createStore, $BRAND, type Branded, update } from "../../src";
+import { createReactive, $BRAND, type Branded, update } from "../../src";
 
 // ---------------------------------------------------------------------------
 // Type assertion helpers
@@ -17,17 +17,17 @@ type AssertBranded<T> = typeof $BRAND extends keyof T ? true : false;
 type Assert<T extends true> = T;
 
 // ---------------------------------------------------------------------------
-// 1. createStore return type has $BRAND at top level
+// 1. createReactive return type has $BRAND at top level
 // ---------------------------------------------------------------------------
 
-const simpleStore = createStore({ name: "test", count: 0 });
+const simpleStore = createReactive({ name: "test", count: 0 });
 export type _1 = Assert<AssertBranded<typeof simpleStore>>;
 
 // ---------------------------------------------------------------------------
 // 2. Nested objects have $BRAND at all levels
 // ---------------------------------------------------------------------------
 
-const nestedStore = createStore({
+const nestedStore = createReactive({
   a: { b: { c: 42 } },
 });
 export type _2a = Assert<AssertBranded<typeof nestedStore>>;
@@ -40,7 +40,7 @@ export type _2d = Assert<(typeof nestedStore)["a"]["b"]["c"] extends number ? tr
 // 3. Array items have $BRAND, arrays themselves do NOT
 // ---------------------------------------------------------------------------
 
-const arrayStore = createStore({
+const arrayStore = createReactive({
   items: [{ id: "1", label: "first" }],
 });
 export type _3a = Assert<AssertBranded<typeof arrayStore>>;
@@ -64,7 +64,7 @@ export type _4e = Assert<Branded<undefined> extends undefined ? true : false>;
 // 5. Optional properties are preserved
 // ---------------------------------------------------------------------------
 
-const optionalStore = createStore<{ title?: string | null; required: string }>({
+const optionalStore = createReactive<{ title?: string | null; required: string }>({
   required: "yes",
 });
 type OptStore = typeof optionalStore;
@@ -73,12 +73,12 @@ export type _5b = Assert<undefined extends OptStore["title"] ? true : false>;
 export type _5c = Assert<null extends OptStore["title"] ? true : false>;
 
 // ---------------------------------------------------------------------------
-// Runtime: existing behavior unchanged (createStore still works at runtime)
+// Runtime: existing behavior unchanged (createReactive still works at runtime)
 // ---------------------------------------------------------------------------
 
 describe("Branded type - runtime behavior unchanged", () => {
-  it("createStore still returns working reactive proxy", () => {
-    const state = createStore({ count: 0, nested: { value: "hello" } });
+  it("createReactive still returns working reactive proxy", () => {
+    const state = createReactive({ count: 0, nested: { value: "hello" } });
     expect(state.count).toBe(0);
     expect(state.nested.value).toBe("hello");
     update(state, { $set: { count: 5 } });
@@ -86,7 +86,7 @@ describe("Branded type - runtime behavior unchanged", () => {
   });
 
   it("arrays still work at runtime", () => {
-    const state = createStore({ items: [{ id: "1" }] });
+    const state = createReactive({ items: [{ id: "1" }] });
     expect(state.items[0]?.id).toBe("1");
     update(state, { $push: { items: { id: "2" } } });
     expect(state.items.length).toBe(2);

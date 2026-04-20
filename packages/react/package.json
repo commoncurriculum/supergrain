@@ -45,6 +45,7 @@
     "bench": "vitest bench --config vitest.bench.config.ts",
     "dev": "vite build --watch",
     "lint": "oxlint -c ../../.oxlintrc.json src/",
+    "size": "size-limit",
     "test": "vitest run --config vitest.browser.config.ts",
     "test:watch": "vitest --config vitest.browser.config.ts",
     "typecheck": "tsc --noEmit"
@@ -69,5 +70,16 @@
   },
   "peerDependencies": {
     "react": "^18.2.0 || ^19.0.0"
-  }
+  },
+  "size-limit": [
+    {
+      "name": "@supergrain/react (incl. core)",
+      "path": "dist/index.es.js",
+      "import": "{ tracked, createStore, useReactive, useComputed, useSignalEffect, For }",
+      "ignore": [
+        "react",
+        "react-dom"
+      ]
+    }
+  ]
 }

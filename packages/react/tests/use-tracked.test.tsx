@@ -1,4 +1,4 @@
-import { createStore } from "@supergrain/core";
+import { createReactive } from "@supergrain/core";
 import { render, screen, act } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect } from "vitest";
@@ -7,7 +7,7 @@ import { tracked } from "../src";
 
 describe("tracked()", () => {
   it("returns a component that provides access to store values", () => {
-    const store = createStore({ title: "hello" });
+    const store = createReactive({ title: "hello" });
 
     const TestComponent = tracked(() => {
       return <div data-testid="title">{store.title}</div>;
@@ -18,7 +18,7 @@ describe("tracked()", () => {
   });
 
   it("re-renders when tracked signal changes", () => {
-    const store = createStore({ title: "hello" });
+    const store = createReactive({ title: "hello" });
     let renderCount = 0;
 
     const TestComponent = tracked(() => {
@@ -40,7 +40,7 @@ describe("tracked()", () => {
   });
 
   it("only re-renders for tracked properties", () => {
-    const store = createStore({ title: "hello", count: 0 });
+    const store = createReactive({ title: "hello", count: 0 });
     let renderCount = 0;
 
     const TestComponent = tracked(() => {

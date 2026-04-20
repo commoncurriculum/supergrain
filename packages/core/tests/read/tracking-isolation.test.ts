@@ -2,7 +2,7 @@ import { effect, getCurrentSub, setCurrentSub } from "alien-signals";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import {
-  createStore,
+  createReactive,
   enableProfiling,
   disableProfiling,
   resetProfiler,
@@ -21,7 +21,7 @@ describe("Tracking Isolation Analysis", () => {
   });
 
   it("demonstrates perfect isolation with per-render pattern (tracked style)", () => {
-    const store = createStore({ parent: 1, child: 10 });
+    const store = createReactive({ parent: 1, child: 10 });
 
     let parentEffectRuns = 0;
     let childEffectRuns = 0;

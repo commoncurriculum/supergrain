@@ -1,4 +1,4 @@
-import { createStore, update } from "@supergrain/core";
+import { createReactive, update } from "@supergrain/core";
 import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";
@@ -13,7 +13,7 @@ describe("Deep Nested Array Item Tests", () => {
 
   it("should test updating deeply nested property in array item - items[0].obj.objTwo.objThree", async () => {
     // Create store with exact structure you specified
-    const store = createStore({
+    const store = createReactive({
       items: [
         {
           id: 1,
@@ -87,7 +87,7 @@ describe("Deep Nested Array Item Tests", () => {
   });
 
   it("should test array iteration with deep nested properties", async () => {
-    const store = createStore({
+    const store = createReactive({
       items: [
         {
           id: 1,
@@ -137,7 +137,7 @@ describe("Deep Nested Array Item Tests", () => {
   });
 
   it("should test with For component and deep nesting", async () => {
-    const store = createStore({
+    const store = createReactive({
       items: [
         {
           id: 1,

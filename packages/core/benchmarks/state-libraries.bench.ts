@@ -10,7 +10,7 @@ import { proxy, subscribe, snapshot } from "valtio/vanilla";
 import { bench, describe } from "vitest";
 import { createStore as createZustandStore } from "zustand/vanilla";
 
-import { createStore, update } from "../src";
+import { createReactive, update } from "../src";
 
 /**
  * Cross-library benchmarks comparing @supergrain/core against
@@ -30,7 +30,7 @@ import { createStore, update } from "../src";
 describe("Store Creation: create 1000 stores", () => {
   bench("@supergrain/core", () => {
     for (let i = 0; i < 1000; i++) {
-      createStore({ id: i, name: `Item ${i}`, nested: { count: i } });
+      createReactive({ id: i, name: `Item ${i}`, nested: { count: i } });
     }
   });
 
@@ -76,7 +76,7 @@ describe("Store Creation: create 1000 stores", () => {
 // ---------------------------------------------------------------------------
 
 describe("Property Read: 1M non-reactive reads", () => {
-  const sgStore = createStore({ user: { age: 30 } });
+  const sgStore = createReactive({ user: { age: 30 } });
 
   const zStore = createZustandStore(() => ({ user: { age: 30 } }));
 
@@ -132,7 +132,7 @@ describe("Property Read: 1M non-reactive reads", () => {
 
 describe("Non-reactive Updates: 1000 updates", () => {
   bench("@supergrain/core", () => {
-    const store = createStore({ count: 0 });
+    const store = createReactive({ count: 0 });
     for (let i = 0; i < 1000; i++) {
       update(store, { $set: { count: i } });
     }
@@ -185,7 +185,7 @@ describe("Non-reactive Updates: 1000 updates", () => {
 
 describe("Reactive Updates: subscribe + 1000 updates", () => {
   bench("@supergrain/core", async () => {
-    const store = createStore({ count: 0 });
+    const store = createReactive({ count: 0 });
     const dispose = effect(() => {
       store.count;
     });
@@ -267,7 +267,7 @@ describe("Batch Update: 10 properties at once", () => {
   const initial = (): TenProps => ({ a: 0, b: 0, c: 0, d: 0, e: 0, f: 0, g: 0, h: 0, i: 0, j: 0 });
 
   bench("@supergrain/core", async () => {
-    const store = createStore(initial());
+    const store = createReactive(initial());
     const dispose = effect(() => {
       for (const k of keys) store[k];
     });
@@ -369,7 +369,7 @@ describe("Deep Updates: 100 nested property updates", () => {
   const deepState = () => ({ l1: { l2: { l3: { value: 0 } } } });
 
   bench("@supergrain/core", async () => {
-    const store = createStore(deepState());
+    const store = createReactive(deepState());
     const dispose = effect(() => {
       store.l1.l2.l3.value;
     });
@@ -446,7 +446,7 @@ describe("Deep Updates: 100 nested property updates", () => {
 
 describe("Array Operations: 100 pushes with reactive subscriber", () => {
   bench("@supergrain/core", async () => {
-    const store = createStore<{ items: number[] }>({ items: [] });
+    const store = createReactive<{ items: number[] }>({ items: [] });
     const dispose = effect(() => {
       store.items.length;
     });
@@ -525,7 +525,7 @@ describe("Granular Reactivity: update 1 of 10 independently observed props", () 
   bench("@supergrain/core", async () => {
     const data: Record<string, number> = {};
     for (let i = 0; i < 10; i++) data[`p${i}`] = i;
-    const store = createStore(data);
+    const store = createReactive(data);
     const disposers: (() => void)[] = [];
     for (let i = 0; i < 10; i++) {
       disposers.push(

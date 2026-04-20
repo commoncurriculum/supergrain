@@ -741,23 +741,24 @@
 
 .readme-content h2 {
   font-family: var(--font-display);
-  font-size: 1.75rem;
-  font-weight: 700;
+  font-size: 2.5rem;
+  font-weight: 800;
   font-style: normal;
   font-variation-settings:
-    "opsz" 48,
+    "opsz" 96,
     "WONK" 1,
     "SOFT" 50;
-  letter-spacing: -0.02em;
-  margin-top: 56px;
-  margin-bottom: 16px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid rgba(120, 53, 15, 0.15);
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin-top: 104px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid rgba(120, 53, 15, 0.28);
   color: var(--vp-c-text-1);
 }
 
 .dark .readme-content h2 {
-  border-bottom-color: rgba(251, 191, 36, 0.12);
+  border-bottom-color: rgba(251, 191, 36, 0.25);
 }
 
 .readme-content hr {
@@ -825,7 +826,7 @@
 }
 
 .readme-content code:not(pre code) {
-  background: var(--vp-c-bg-soft);
+  background: rgba(120, 53, 15, 0.06);
   padding: 2px 7px;
   border-radius: 4px;
   font-size: 0.88em;
@@ -833,6 +834,7 @@
 }
 
 .dark .readme-content code:not(pre code) {
+  background: rgba(251, 191, 36, 0.08);
   color: var(--sg-gold-light);
 }
 

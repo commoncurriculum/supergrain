@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import {
-  createStore,
+  createReactive,
   effect,
   unwrap,
   enableProfiling,
@@ -22,15 +22,15 @@ describe("Store", () => {
     disableProfiling();
   });
 
-  describe("createStore", () => {
+  describe("createReactive", () => {
     it("should create a store with initial state", () => {
-      const state = createStore({ count: 0, name: "test" });
+      const state = createReactive({ count: 0, name: "test" });
       expect(state.count).toBe(0);
       expect(state.name).toBe("test");
     });
 
     it("should update state with the update function", () => {
-      const state = createStore({ count: 0 });
+      const state = createReactive({ count: 0 });
       update(state, { $set: { count: 5 } });
       expect(state.count).toBe(5);
       update(state, { $inc: { count: 1 } });
@@ -38,7 +38,7 @@ describe("Store", () => {
     });
 
     it("should handle nested objects reactively", () => {
-      const state = createStore({
+      const state = createReactive({
         user: { address: { city: "New York" } },
       });
       let city = "";
@@ -61,7 +61,7 @@ describe("Store", () => {
     });
 
     it("should handle array updates reactively", () => {
-      const state = createStore<any>({ items: [1, 2, 3] });
+      const state = createReactive<any>({ items: [1, 2, 3] });
       let sum = 0;
       const effectFn = vi.fn(() => {
         sum = 0;
@@ -90,7 +90,7 @@ describe("Store", () => {
     });
 
     it("should batch multiple operators in one update call", () => {
-      const state = createStore<any>({ a: 1, b: 2 });
+      const state = createReactive<any>({ a: 1, b: 2 });
       let sum = 0;
       const effectFn = vi.fn(() => {
         sum = state.a + state.b;
@@ -117,13 +117,13 @@ describe("Store", () => {
 
   describe("Edge Cases", () => {
     it("should reject non-object root state", () => {
-      expect(() => createStore(0 as any)).toThrow(/requires the root state/i);
-      expect(() => createStore("x" as any)).toThrow(/requires the root state/i);
+      expect(() => createReactive(0 as any)).toThrow(/requires the root state/i);
+      expect(() => createReactive("x" as any)).toThrow(/requires the root state/i);
     });
 
     it("should handle frozen objects gracefully", () => {
       const frozen = Object.freeze({ value: 1 });
-      const state = createStore({ frozen });
+      const state = createReactive({ frozen });
 
       let value = 0;
       effect(() => {
@@ -139,7 +139,7 @@ describe("Store", () => {
     it("should handle circular references", () => {
       const obj: any = { value: 1 };
       obj.self = obj;
-      const state = createStore(obj);
+      const state = createReactive(obj);
 
       let selfValue = 0;
       effect(() => {
@@ -157,7 +157,7 @@ describe("Store", () => {
     });
 
     it("should handle null and undefined values reactively", () => {
-      const state = createStore<{
+      const state = createReactive<{
         nullable: string | null;
         undef: string | undefined;
       }>({
@@ -188,7 +188,7 @@ describe("Store", () => {
     });
 
     it("should handle nested reactivity in arrays", () => {
-      const state = createStore<any>({
+      const state = createReactive<any>({
         users: [
           { name: "Alice", tasks: ["task1"] },
           { name: "Bob", tasks: ["task3"] },
@@ -211,7 +211,7 @@ describe("Store", () => {
     });
 
     it("should handle adding new properties reactively", () => {
-      const state = createStore<any>({ initial: true });
+      const state = createReactive<any>({ initial: true });
       let keys: string[] = [];
       effect(() => {
         keys = Object.keys(state);
@@ -229,7 +229,7 @@ describe("Store", () => {
     });
 
     it("should allow deletion of properties with $unset", () => {
-      const state = createStore<any>({ a: 1, b: 2 });
+      const state = createReactive<any>({ a: 1, b: 2 });
       let keys: string[] = [];
       effect(() => {
         keys = Object.keys(state);
@@ -247,7 +247,7 @@ describe("Store", () => {
     });
 
     it("should increment version for writes even before a property is tracked", () => {
-      const state = createStore<any>({ a: 1 });
+      const state = createReactive<any>({ a: 1 });
 
       expect(state[$VERSION]).toBe(0);
       state.b = 2;

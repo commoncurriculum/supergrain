@@ -3,10 +3,10 @@
 import { effect } from "alien-signals";
 import { bench, describe } from "vitest";
 
-import { createStore, unwrap } from "../src";
+import { createReactive, unwrap } from "../src";
 import { $NODE } from "../src/internal";
 
-const store = createStore({ title: "Buy milk", count: 0, done: false });
+const store = createReactive({ title: "Buy milk", count: 0, done: false });
 const raw = unwrap(store) as any;
 effect(() => {
   store.title;

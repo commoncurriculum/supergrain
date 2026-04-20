@@ -47,6 +47,7 @@
     "build": "vite build",
     "dev": "vite build --watch",
     "lint": "oxlint -c ../../.oxlintrc.json src/",
+    "size": "size-limit",
     "test": "vitest run",
     "bench": "vitest bench",
     "bench:core": "vitest bench benchmarks/core-comparison.bench.ts",
@@ -80,5 +81,12 @@
     "arktype": {
       "optional": true
     }
-  }
+  },
+  "size-limit": [
+    {
+      "name": "@supergrain/core",
+      "path": "dist/index.es.js",
+      "import": "{ createReactive }"
+    }
+  ]
 }

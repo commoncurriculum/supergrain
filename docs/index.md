@@ -40,20 +40,16 @@ layout: page
   <div class="hero-code">
 
 ```tsx
-import { createStore } from "@supergrain/core";
-import { tracked, provideStore, For } from "@supergrain/react";
+import { tracked, useReactive, For } from "@supergrain/react";
 
-const Store = provideStore(
-  createStore({
+const TodoList = tracked(() => {
+  const { todos } = useReactive({
     todos: [
       { id: 1, text: "Ship it", done: false },
       { id: 2, text: "Sleep", done: true },
     ],
-  }),
-);
+  });
 
-const TodoList = tracked(() => {
-  const { todos } = Store.useStore();
   return (
     <For each={todos}>
       {(todo) => (

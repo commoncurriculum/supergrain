@@ -1,7 +1,7 @@
 // Table row operations (select, swap, append, delete) — krauset-style benchmarks.
 import { bench, describe } from "vitest";
 
-import { createStore, effect, update } from "../src";
+import { createReactive, effect, update } from "../src";
 
 // --- Data Generation Utilities ---
 
@@ -96,7 +96,7 @@ describe("Core: Row Operations", () => {
   bench(
     "select row: highlighting a selected row in a table of 1,000 rows",
     () => {
-      const store = createStore<AppState>({
+      const store = createReactive<AppState>({
         data: buildData(1000),
         selected: null,
       });
@@ -121,7 +121,7 @@ describe("Core: Row Operations", () => {
   bench(
     "swap rows: swapping two rows in a table of 1,000 rows",
     () => {
-      const store = createStore<AppState>({
+      const store = createReactive<AppState>({
         data: buildData(1000),
         selected: null,
       });

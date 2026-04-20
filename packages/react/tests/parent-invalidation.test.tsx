@@ -1,5 +1,5 @@
 import {
-  createStore,
+  createReactive,
   enableProfiling,
   disableProfiling,
   resetProfiler,
@@ -26,7 +26,7 @@ describe("Parent Invalidation Depth Tests", () => {
 
   it("should test how many levels of parent invalidation occur", async () => {
     // Create deeply nested structure
-    const store = createStore({
+    const store = createReactive({
       level0: {
         level1: {
           level2: {
@@ -189,7 +189,7 @@ describe("Parent Invalidation Depth Tests", () => {
   });
 
   it("should test array-specific parent invalidation behavior", async () => {
-    const store = createStore({
+    const store = createReactive({
       items: [
         {
           id: 1,

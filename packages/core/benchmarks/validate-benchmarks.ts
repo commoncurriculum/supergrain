@@ -2,7 +2,7 @@ import { effect } from "alien-signals";
 import { createRoot, createEffect, createSignal, batch } from "solid-js/dist/solid.js";
 import { createStore as createSolidStore } from "solid-js/store/dist/store.js";
 
-import { createStore, update } from "../src";
+import { createReactive, update } from "../src";
 
 // Helper to wait for microtasks to resolve
 const nextTick = () => new Promise<void>((resolve) => queueMicrotask(() => resolve()));
@@ -11,7 +11,7 @@ async function validatePropertyUpdates() {
   console.log("--- Validating: Property Updates with Effects ---");
 
   // @supergrain/core
-  const storableStore = createStore({ count: 0 });
+  const storableStore = createReactive({ count: 0 });
   let storableRuns = 0;
   const storableDispose = effect(() => {
     storableRuns++;
@@ -65,7 +65,7 @@ async function validateDeepUpdates() {
   const getDeepState = () => ({ l1: { l2: { l3: { value: 0 } } } });
 
   // @supergrain/core
-  const storableStore = createStore(getDeepState());
+  const storableStore = createReactive(getDeepState());
   let storableRuns = 0;
   const storableDispose = effect(() => {
     storableRuns++;
@@ -149,7 +149,7 @@ async function validateGranularReactivity() {
   };
 
   // @supergrain/core
-  const storableStore = createStore(getInitialData());
+  const storableStore = createReactive(getInitialData());
   const storableRuns = Array(10).fill(0);
   const storableDisposers: (() => void)[] = [];
 

@@ -2,17 +2,45 @@
  * README React Examples Tests
  *
  * Tests for React integration examples from the README:
+ * - Local state (DOC_TEST_LOCAL_STATE)
  * - Quick Start (DOC_TEST_QUICK_START)
  */
 
-import { createStore } from "@supergrain/core";
-import { tracked, provideStore, useComputed, useSignalEffect, For } from "@supergrain/react";
-import { render, screen, act } from "@testing-library/react";
+import {
+  tracked,
+  createStore,
+  useReactive,
+  useComputed,
+  useSignalEffect,
+  For,
+} from "@supergrain/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 describe("README React Examples", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("#DOC_TEST_LOCAL_STATE", () => {
+    const Counter = tracked(() => {
+      const state = useReactive({ count: 0 });
+      return <button onClick={() => state.count++}>Clicked {state.count} times</button>;
+    });
+
+    const { getByRole } = render(<Counter />);
+    const button = getByRole("button");
+    expect(button.textContent).toBe("Clicked 0 times");
+
+    act(() => {
+      fireEvent.click(button);
+    });
+    expect(button.textContent).toBe("Clicked 1 times");
+
+    act(() => {
+      fireEvent.click(button);
+    });
+    expect(button.textContent).toBe("Clicked 2 times");
   });
 
   it("#DOC_TEST_QUICK_START", () => {
@@ -26,18 +54,16 @@ describe("README React Examples", () => {
       selected: number | null;
     }
 
-    const store = createStore<AppState>({
+    const { Provider, useStore } = createStore<AppState>(() => ({
       todos: [
         { id: 1, text: "Learn Supergrain", completed: false },
         { id: 2, text: "Build something", completed: false },
       ],
       selected: null,
-    });
-
-    const Store = provideStore(store);
+    }));
 
     const TodoItem = tracked(({ todo }: { todo: Todo }) => {
-      const s = Store.useStore();
+      const s = useStore();
       const isSelected = useComputed(() => s.selected === todo.id);
 
       return (
@@ -55,11 +81,12 @@ describe("README React Examples", () => {
     const titleSpy = vi.spyOn(document, "title", "set");
 
     const App = tracked(() => {
-      const s = Store.useStore();
+      const s = useStore();
       const remaining = useComputed(() => s.todos.filter((t) => !t.completed).length);
 
       useSignalEffect(() => {
-        document.title = `${remaining} items left`;
+        const count = s.todos.filter((t) => !t.completed).length;
+        document.title = `${count} items left`;
       });
 
       return (
@@ -70,10 +97,18 @@ describe("README React Examples", () => {
       );
     });
 
+    // Probe the store from inside the Provider so the test can mutate it.
+    let storeRef: AppState = null!;
+    const Probe = () => {
+      storeRef = useStore();
+      return null;
+    };
+
     render(
-      <Store.Provider>
+      <Provider>
+        <Probe />
         <App />
-      </Store.Provider>,
+      </Provider>,
     );
 
     expect(screen.getByText("Todos (2)")).toBeInTheDocument();
@@ -82,7 +117,7 @@ describe("README React Examples", () => {
     expect(titleSpy).toHaveBeenCalledWith("2 items left");
 
     act(() => {
-      store.todos[0].completed = true;
+      storeRef.todos[0].completed = true;
     });
 
     expect(screen.getByText("Todos (1)")).toBeInTheDocument();

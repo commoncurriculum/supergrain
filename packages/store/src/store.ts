@@ -1,6 +1,6 @@
 import type { StoreState, DocumentPromise, DocumentTypes, FetchHandler } from "./types";
 
-import { createStore, update, computed } from "@supergrain/core";
+import { createReactive, update, computed } from "@supergrain/core";
 
 import { DocumentPromiseImpl } from "./document-promise";
 
@@ -10,7 +10,7 @@ export class Store<T extends DocumentTypes = DocumentTypes> {
   private promiseCache = new Map<string, DocumentPromise<any>>();
 
   constructor(fetchHandler?: FetchHandler) {
-    this.store = createStore<StoreState>({
+    this.store = createReactive<StoreState>({
       documents: {},
     });
     this.fetchHandler = fetchHandler;
