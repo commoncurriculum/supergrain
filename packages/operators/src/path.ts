@@ -1,4 +1,4 @@
-import { setProperty, deleteProperty } from "./write";
+import { setProperty, deleteProperty } from "@supergrain/core/internal";
 
 export type PathSegment = string;
 

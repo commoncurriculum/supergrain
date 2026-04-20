@@ -16,81 +16,140 @@ npm install @supergrain/core @supergrain/react
 
 ## Quick Start
 
-```typescript
+Supergrain has two APIs for state. Use `useReactive` for state that lives inside a single component. Use `createStore` for state shared across your app.
+
+### Local state — `useReactive`
+
+For state scoped to a single component, `useReactive` returns a reactive proxy that lives for the component's lifetime. No Provider, no setup — mutate it like a plain object.
+
+```tsx
+// [#DOC_TEST_LOCAL_STATE](packages/doc-tests/tests/readme-react.test.tsx)
+
+import { tracked, useReactive } from "@supergrain/react";
+
+const Counter = tracked(() => {
+  const state = useReactive({ count: 0 });
+  return <button onClick={() => state.count++}>Clicked {state.count} times</button>;
+});
+```
+
+Wrap the component in `tracked()` to get fine-grained re-renders: only the properties you read are tracked.
+
+### App-wide state — `createStore`
+
+For state shared across components, `createStore` returns a `Provider` and a `useStore` hook bound to one typed store. The Provider builds a fresh store on each mount, so SSR requests and tests are isolated by construction.
+
+**Step 1: Define the store.** The initializer runs once per Provider mount.
+
+```tsx
 // [#DOC_TEST_QUICK_START](packages/doc-tests/tests/readme-react.test.tsx)
+// store.ts
+import { createStore } from "@supergrain/react";
 
-import { createStore } from '@supergrain/core'
-import { tracked, provideStore, useComputed, useSignalEffect, For } from '@supergrain/react'
+export interface Todo {
+  id: number;
+  text: string;
+  completed: boolean;
+}
+export interface AppState {
+  todos: Todo[];
+  selected: number | null;
+}
 
-// Step 1: Create a store — just a plain object.
-
-interface Todo { id: number; text: string; completed: boolean }
-interface AppState { todos: Todo[]; selected: number | null }
-
-const store = createStore<AppState>({
+export const { Provider, useStore } = createStore<AppState>(() => ({
   todos: [
-    { id: 1, text: 'Learn Supergrain', completed: false },
-    { id: 2, text: 'Build something', completed: false },
+    { id: 1, text: "Learn Supergrain", completed: false },
+    { id: 2, text: "Build something", completed: false },
   ],
   selected: null,
-})
+}));
+```
 
-const Store = provideStore(store)
+**Step 2: Mount the Provider at the root.** Each mount builds a fresh store, so SSR requests and tests are isolated by construction.
 
-// Step 2: Wrap components with tracked() for fine-grained re-renders.
+```tsx
+// main.tsx
+import { Provider } from "./store";
+import { App } from "./App";
 
-const TodoItem = tracked(({ todo }: { todo: Todo }) => {
-  const store = Store.useStore()
-  const isSelected = useComputed(() => store.selected === todo.id)
+<Provider>
+  <App />
+</Provider>;
+```
+
+**Step 3: Read the store from any descendant via `useStore()`.**
+
+```tsx
+// TodoItem.tsx
+import { tracked, useComputed } from "@supergrain/react";
+import { useStore, type Todo } from "./store";
+
+export const TodoItem = tracked(({ todo }: { todo: Todo }) => {
+  const store = useStore();
+  const isSelected = useComputed(() => store.selected === todo.id);
 
   return (
-    <li className={isSelected ? 'selected' : ''}>
+    <li className={isSelected ? "selected" : ""}>
       <input
         type="checkbox"
         checked={todo.completed}
-        onChange={() => todo.completed = !todo.completed}
+        onChange={() => (todo.completed = !todo.completed)}
       />
       {todo.text}
     </li>
-  )
-})
+  );
+});
+```
 
-// Step 3: Use useComputed and useSignalEffect for derived values and side effects.
+**Step 4: Use `useComputed` for derived values, `useSignalEffect` for side effects.**
 
-const App = tracked(() => {
-  const store = Store.useStore()
-  const remaining = useComputed(() => store.todos.filter(t => !t.completed).length)
+```tsx
+// App.tsx
+import { tracked, useComputed, useSignalEffect, For } from "@supergrain/react";
+import { useStore } from "./store";
+import { TodoItem } from "./TodoItem";
+
+export const App = tracked(() => {
+  const store = useStore();
+  const remaining = useComputed(() => store.todos.filter((t) => !t.completed).length);
 
   useSignalEffect(() => {
-    document.title = `${remaining} items left`
-  })
+    const count = store.todos.filter((t) => !t.completed).length;
+    document.title = `${count} items left`;
+  });
 
   return (
     <div>
       <h1>Todos ({remaining})</h1>
-      <For each={store.todos}>
-        {todo => <TodoItem key={todo.id} todo={todo} />}
-      </For>
+      <For each={store.todos}>{(todo) => <TodoItem key={todo.id} todo={todo} />}</For>
     </div>
-  )
-})
-
-// That's it. Render with Provider.
-
-<Store.Provider><App /></Store.Provider>
+  );
+});
 ```
 
 Checking a todo re-renders only that `TodoItem`. Changing selection re-renders only the 2 affected items. The `App` component and other items don't re-render.
 
-### API
+## API
 
-`createStore<T>(initial)`
+### Core
 
-Creates a reactive store proxy. Reads and writes work like plain objects.
+From `@supergrain/core`. Framework-agnostic primitives.
 
-`provideStore(store)`
+`createReactive<T>(initial)`
 
-Wraps a store with React context plumbing. Returns `{ Provider, useStore }`. The proxy's identity never changes, so the context value is stable and won't trigger React re-renders.
+Creates a reactive proxy. Reads and writes work like plain objects. The primitive — use directly for standalone state, or wrap it with the React helpers below.
+
+### React
+
+From `@supergrain/react`. React-specific hooks and components.
+
+`useReactive<T>(initial)`
+
+Per-component reactive state. Creates the proxy once on mount; the identity stays stable across renders. Use for state scoped to a single component — no Provider needed.
+
+`createStore<T>(() => initial)`
+
+Returns `{ Provider, useStore }` for app-wide or subtree-wide state. The Provider creates a fresh store on mount (each request/test gets its own), and `useStore()` reads it from context. The proxy's identity never changes, so the context value is stable and won't trigger React re-renders.
 
 `tracked(Component)`
 
@@ -110,12 +169,14 @@ Optimized list rendering. Tracks which items actually changed and only re-render
 
 See how Supergrain compares to useState, Zustand, Redux, and MobX in the [comparison guide](./comparison).
 
-## Ergonomic
+## Features
+
+### Ergonomic
 
 Signal-level performance with a proxy experience. No new mental model — if you know JavaScript objects, you know Supergrain.
 
 ```ts
-const store = createStore({ count: 0, user: { name: "Jane" } });
+const store = createReactive({ count: 0, user: { name: "Jane" } });
 
 // Read like a plain object
 console.log(store.count); // 0
@@ -130,12 +191,12 @@ store.user.name = "Alice";
 - No `set()` wrappers or updater functions
 - Full TypeScript inference — no manual type annotations on reads or writes
 
-## Mutation
+### Mutation
 
 Arrays and objects work exactly how you'd expect. Push, splice, assign, delete — all tracked, all reactive.
 
 ```ts
-const store = createStore({
+const store = createReactive({
   items: ["a", "b", "c"],
   user: { name: "Jane", age: 30 },
 });
@@ -154,12 +215,12 @@ delete store.user.age;
 - No immutable spreading, no immer, no copy-on-write
 - Writes are synchronous — read your own writes immediately
 
-## Deep Reactivity
+### Deep Reactivity
 
 Nested objects and arrays are reactive at any depth. No `observable()` calls, no `ref()` wrappers — the entire tree is tracked automatically.
 
 ```ts
-const store = createStore({
+const store = createReactive({
   org: {
     teams: [{ name: "Frontend", members: [{ name: "Alice", active: true }] }],
   },
@@ -175,12 +236,12 @@ store.org.teams[0].members[0].active = false;
 - No manual wrapping or opt-in per field
 - Proxy-based: new properties and nested objects are automatically reactive
 
-## Performance
+### Performance
 
 Fine-grained means what _doesn't_ re-render matters most. When one property changes, only the components that actually read that property update.
 
 ```tsx
-const store = createStore({ count: 0, theme: "light" });
+const store = createReactive({ count: 0, theme: "light" });
 
 // Only re-renders when `count` changes — not when `theme` changes
 const Counter = tracked(() => <p>{store.count}</p>);
@@ -193,12 +254,12 @@ const Theme = tracked(() => <p>{store.theme}</p>);
 - Sibling components are independent — no wasted renders
 - Parent components don't re-render when children's data changes
 
-## Computed
+### Computed
 
 Derived values that act as a firewall. `useComputed` re-evaluates when upstream signals change, but only triggers a re-render when the **result** changes.
 
 ```tsx
-const store = createStore({
+const store = createReactive({
   selected: 3,
   todos: [
     /* 1000 items */
@@ -216,7 +277,7 @@ const TodoItem = tracked(({ todo }) => {
 - Only the 2 rows whose result flips (`true↔false`) update
 - Shorthand for `useMemo(() => computed(factory), deps)`
 
-## Effects
+### Effects
 
 Signal-tracked side effects that run outside the React render cycle. They re-run when tracked signals change, but never cause the component to re-render.
 
@@ -237,7 +298,7 @@ const App = tracked(() => {
 - Cleans up automatically on unmount
 - Shorthand for `useEffect(() => effect(fn), [])`
 
-## Looping
+### Looping
 
 `<For>` renders lists with per-item tracking. Only items that actually changed re-render — not the entire list.
 
@@ -257,7 +318,7 @@ const App = tracked(() => {
 - Optional `parent` ref enables O(1) direct DOM moves for swaps
 - Without `parent`, falls back to standard React reconciliation
 
-## Synchronous Writes and Batching
+### Synchronous Writes and Batching
 
 Writes are **synchronous** — you can always read your own writes:
 
@@ -317,14 +378,15 @@ Supergrain delivers fine-grained reactivity with per-component signal scoping at
 
 ## Update Operators (Optional)
 
-For complex updates — batched mutations, array manipulations, dot-notation paths — import `update` and pass the store as the first argument:
+For complex updates — batched mutations, array manipulations, dot-notation paths — install `@supergrain/operators` and import `update`:
 
 ```typescript
 // [#DOC_TEST_46](packages/doc-tests/tests/readme-core.test.ts)
 
-import { createStore, update } from "@supergrain/core";
+import { createReactive } from "@supergrain/core";
+import { update } from "@supergrain/operators";
 
-const store = createStore({
+const store = createReactive({
   count: 0,
   user: { name: "John", age: 30, middleName: "M" },
   items: ["a", "b", "c"],

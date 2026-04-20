@@ -1,13 +1,13 @@
 {
-  "name": "@supergrain/store",
+  "name": "@supergrain/operators",
   "version": "3.0.0",
-  "description": "Document-oriented store for Supergrain with TypeScript support",
+  "description": "MongoDB-style update operators ($set, $push, $pull, $inc, ...) for Supergrain reactive stores",
   "keywords": [
-    "document",
+    "operators",
     "reactive",
     "store",
     "supergrain",
-    "typescript"
+    "update"
   ],
   "homepage": "https://commoncurriculum.github.io/supergrain/",
   "bugs": {
@@ -18,7 +18,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/commoncurriculum/supergrain.git",
-    "directory": "packages/store"
+    "directory": "packages/operators"
   },
   "files": [
     "dist"
@@ -43,16 +43,26 @@
     "build": "vite build",
     "dev": "vite build --watch",
     "lint": "oxlint -c ../../.oxlintrc.json src/",
+    "size": "size-limit",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@supergrain/core": "workspace:*",
-    "@supergrain/operators": "workspace:*"
+    "alien-signals": "^2.0.7"
   },
   "devDependencies": {
-    "@vitest/browser": "4.1.0",
-    "msw": "^2.13.4",
     "vitest": "4.1.0"
-  }
+  },
+  "size-limit": [
+    {
+      "name": "@supergrain/operators",
+      "path": "dist/index.js",
+      "import": "{ update }",
+      "ignore": [
+        "@supergrain/core",
+        "alien-signals"
+      ]
+    }
+  ]
 }

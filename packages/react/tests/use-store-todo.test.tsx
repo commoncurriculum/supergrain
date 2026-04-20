@@ -1,4 +1,5 @@
-import { createStore, update } from "@supergrain/core";
+import { createReactive } from "@supergrain/core";
+import { update } from "@supergrain/operators";
 import { render, screen, act } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect } from "vitest";
@@ -54,7 +55,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: [],
     };
-    const store = createStore(initialState);
+    const store = createReactive(initialState);
 
     render(<TodoListComponent store={store} />);
 
@@ -92,7 +93,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: initialTasks,
     };
-    const store = createStore(initialState);
+    const store = createReactive(initialState);
 
     render(<TodoListComponent store={store} />);
 
@@ -125,7 +126,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: initialTasks,
     };
-    const store = createStore(initialState);
+    const store = createReactive(initialState);
 
     render(<TodoListComponent store={store} />);
 
@@ -157,7 +158,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: initialTasks,
     };
-    const store = createStore(initialState);
+    const store = createReactive(initialState);
 
     render(<TodoListComponent store={store} />);
 

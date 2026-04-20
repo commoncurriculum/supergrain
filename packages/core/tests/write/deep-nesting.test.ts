@@ -1,6 +1,7 @@
+import { update } from "@supergrain/operators";
 import { describe, it, expect } from "vitest";
 
-import { createStore, update, effect, computed } from "../../src";
+import { createReactive, effect, computed } from "../../src";
 
 describe("Deep Nesting Operations (Type Safe)", () => {
   // Helper to safely access deeply nested properties (not used but kept for future reference)
@@ -14,7 +15,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
 
   // Complex nested data structure for comprehensive testing
   const createComplexStore = () => {
-    const state = createStore({
+    const state = createReactive({
       organization: {
         id: "org-1",
         name: "TechCorp",

@@ -5,16 +5,17 @@ export default defineConfig({
   build: {
     lib: {
       entry: "src/index.ts",
-      name: "SupergrainStore",
+      name: "SupergrainOperators",
       formats: ["es", "cjs"],
       fileName: "index",
     },
     rollupOptions: {
-      external: ["@supergrain/core", "@supergrain/operators"],
+      external: ["@supergrain/core", "@supergrain/core/internal", "alien-signals"],
       output: {
         globals: {
           "@supergrain/core": "SupergrainCore",
-          "@supergrain/operators": "SupergrainOperators",
+          "@supergrain/core/internal": "SupergrainCoreInternal",
+          "alien-signals": "alienSignals",
         },
       },
     },

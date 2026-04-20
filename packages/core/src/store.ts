@@ -10,14 +10,14 @@ function normalizeInitialState(initialState: unknown): object {
 
   const unwrapped = unwrap(initialState);
   if (typeof unwrapped !== "object") {
-    throw new TypeError("createStore() requires the root state to be a plain object or array.");
+    throw new TypeError("createReactive() requires the root state to be a plain object or array.");
   }
 
   return unwrapped as object;
 }
 
-export function createStore<T extends object>(initialState: T): Branded<T>;
-export function createStore(initialState: any): any {
+export function createReactive<T extends object>(initialState: T): Branded<T>;
+export function createReactive(initialState: any): any {
   const unwrappedState = normalizeInitialState(initialState);
   return createReactiveProxy(unwrappedState);
 }

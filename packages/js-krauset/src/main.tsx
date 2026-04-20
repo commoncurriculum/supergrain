@@ -1,12 +1,12 @@
 import {
-  createStore,
+  createReactive,
   startBatch,
   endBatch,
   enableProfiling,
   resetProfiler,
   getProfile,
 } from "@supergrain/core";
-import { tracked, For, provideStore, useComputed } from "@supergrain/react";
+import { tracked, For, useComputed } from "@supergrain/react";
 import { Profiler, useCallback, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
@@ -114,12 +114,10 @@ export interface RowProps {
 
 // --- Storable Implementation ---
 
-const store = createStore<AppState>({
+const store = createReactive<AppState>({
   data: [],
   selected: null,
 });
-
-const Store = provideStore(store);
 
 export const run = (count: number) => {
   store.data = buildData(count);
@@ -296,10 +294,6 @@ if (typeof window !== "undefined") {
   const container = document.getElementById("main");
   if (container) {
     const root = createRoot(container);
-    root.render(
-      <Store.Provider>
-        <App />
-      </Store.Provider>,
-    );
+    root.render(<App />);
   }
 }

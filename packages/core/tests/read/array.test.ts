@@ -1,8 +1,8 @@
+import { update } from "@supergrain/operators";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import {
-  createStore,
-  update,
+  createReactive,
   effect,
   enableProfiling,
   disableProfiling,
@@ -20,7 +20,7 @@ describe("Array Support", () => {
       { id: 1, title: "Post 1" },
       { id: 2, title: "Post 2" },
     ];
-    store = createStore({ posts: { all: { items: posts } } });
+    store = createReactive({ posts: { all: { items: posts } } });
   });
 
   afterEach(() => {

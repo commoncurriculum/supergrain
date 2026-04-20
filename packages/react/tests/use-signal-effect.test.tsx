@@ -1,4 +1,4 @@
-import { createStore } from "@supergrain/core";
+import { createReactive } from "@supergrain/core";
 import { render, cleanup, act } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -9,7 +9,7 @@ afterEach(() => cleanup());
 
 describe("useSignalEffect()", () => {
   it("runs the effect on mount", () => {
-    const store = createStore({ count: 0 });
+    const store = createReactive({ count: 0 });
     const spy = vi.fn();
 
     const App = tracked(() => {
@@ -25,7 +25,7 @@ describe("useSignalEffect()", () => {
   });
 
   it("re-runs when a tracked signal changes", async () => {
-    const store = createStore({ count: 0 });
+    const store = createReactive({ count: 0 });
     const spy = vi.fn();
 
     const App = tracked(() => {
@@ -46,7 +46,7 @@ describe("useSignalEffect()", () => {
   });
 
   it("cleans up on unmount", async () => {
-    const store = createStore({ count: 0 });
+    const store = createReactive({ count: 0 });
     const spy = vi.fn();
 
     const App = tracked(() => {
@@ -69,7 +69,7 @@ describe("useSignalEffect()", () => {
   });
 
   it("does not cause the component to re-render", async () => {
-    const store = createStore({ count: 0 });
+    const store = createReactive({ count: 0 });
     let renders = 0;
     const effectSpy = vi.fn();
 
@@ -94,7 +94,7 @@ describe("useSignalEffect()", () => {
   });
 
   it("tracks signals read inside the effect, not during render", async () => {
-    const store = createStore({ a: 1, b: 2 });
+    const store = createReactive({ a: 1, b: 2 });
     const spy = vi.fn();
 
     const App = tracked(() => {
@@ -120,7 +120,7 @@ describe("useSignalEffect()", () => {
   });
 
   it("works with multiple signal effects in the same component", async () => {
-    const store = createStore({ x: 0, y: 0 });
+    const store = createReactive({ x: 0, y: 0 });
     const spyX = vi.fn();
     const spyY = vi.fn();
 

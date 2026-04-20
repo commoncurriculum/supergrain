@@ -1,4 +1,4 @@
-import { createStore, computed } from "@supergrain/core";
+import { createReactive, computed } from "@supergrain/core";
 import { render, cleanup, act } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, afterEach } from "vitest";
@@ -9,7 +9,7 @@ afterEach(() => cleanup());
 
 describe("useComputed()", () => {
   it("returns a derived value from store state", async () => {
-    const store = createStore({ count: 2 });
+    const store = createReactive({ count: 2 });
 
     const Display = tracked(() => {
       const doubled = useComputed(() => store.count * 2);
@@ -21,7 +21,7 @@ describe("useComputed()", () => {
   });
 
   it("updates when the derived value changes", async () => {
-    const store = createStore({ count: 2 });
+    const store = createReactive({ count: 2 });
 
     const Display = tracked(() => {
       const doubled = useComputed(() => store.count * 2);
@@ -36,7 +36,7 @@ describe("useComputed()", () => {
   });
 
   it("acts as a firewall — skips re-render when derived value is unchanged", async () => {
-    const store = createStore<{ selected: number | null }>({ selected: null });
+    const store = createReactive<{ selected: number | null }>({ selected: null });
     let renders = 0;
 
     const Row = tracked(({ id }: { id: number }) => {
@@ -71,7 +71,7 @@ describe("useComputed()", () => {
   });
 
   it("works with proxy props (no store injection needed)", async () => {
-    const store = createStore({
+    const store = createReactive({
       items: [
         { id: 1, label: "hello" },
         { id: 2, label: "world" },
@@ -100,7 +100,7 @@ describe("useComputed()", () => {
   });
 
   it("accepts deps array and recomputes when deps change", async () => {
-    const store = createStore<{ selected: number | null }>({ selected: null });
+    const store = createReactive<{ selected: number | null }>({ selected: null });
     let renders = 0;
 
     const Row = ({ id }: { id: number }) => {

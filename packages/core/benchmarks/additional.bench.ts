@@ -1,13 +1,14 @@
+import { update } from "@supergrain/operators";
 import { effect } from "alien-signals";
 // Proxy overhead analysis, effect lifecycle, and complex reactive scenarios.
 import { bench, describe } from "vitest";
 
-import { createStore, update } from "../src";
+import { createReactive } from "../src";
 
 describe("Additional: Plain vs Proxy Performance", () => {
   describe("Property Access", () => {
     const plainObject = { name: "John Doe", age: 30 };
-    const proxyObject = createStore({ name: "John Doe", age: 30 });
+    const proxyObject = createReactive({ name: "John Doe", age: 30 });
 
     bench("plain object: 100k property reads", () => {
       let value;
@@ -35,7 +36,7 @@ describe("Additional: Plain vs Proxy Performance", () => {
     });
 
     bench("proxy object: 100k property sets", () => {
-      const _proxyObject = createStore({ value: 0 });
+      const _proxyObject = createReactive({ value: 0 });
       for (let i = 0; i < 100000; i++) {
         update(_proxyObject, { $set: { value: i } });
       }
@@ -44,7 +45,7 @@ describe("Additional: Plain vs Proxy Performance", () => {
 
   describe("Deep Property Access", () => {
     const plainDeep = { level1: { level2: { level3: { value: "test" } } } };
-    const proxyDeep = createStore({
+    const proxyDeep = createReactive({
       level1: { level2: { level3: { value: "test" } } },
     });
 
@@ -68,7 +69,7 @@ describe("Additional: Plain vs Proxy Performance", () => {
 
 describe("Additional: Effect Creation and Destruction", () => {
   bench("create/dispose 1000 effects for one signal", () => {
-    const store = createStore({ value: 0 });
+    const store = createReactive({ value: 0 });
     let totalTracked = 0;
     const disposers = [];
 
@@ -87,7 +88,7 @@ describe("Additional: Effect Creation and Destruction", () => {
   });
 
   bench("create/dispose one effect 10000 times", () => {
-    const store = createStore({ counter: 0 });
+    const store = createReactive({ counter: 0 });
     let totalTracked = 0;
 
     for (let i = 0; i < 10000; i++) {
@@ -102,7 +103,7 @@ describe("Additional: Effect Creation and Destruction", () => {
 
 describe("Additional: Signal Subscription/Unsubscription", () => {
   bench("subscribe/unsubscribe 10k listeners to one signal", () => {
-    const store = createStore({ value: 0 });
+    const store = createReactive({ value: 0 });
     const disposers = [];
     for (let i = 0; i < 10000; i++) {
       disposers.push(effect(() => store.value));
@@ -115,7 +116,7 @@ describe("Additional: Signal Subscription/Unsubscription", () => {
 
 describe("Additional: Batched vs Unbatched Updates", () => {
   bench("10 unbatched updates triggering one effect", () => {
-    const store = createStore({
+    const store = createReactive({
       a: 0,
       b: 0,
       c: 0,
@@ -161,7 +162,7 @@ describe("Additional: Batched vs Unbatched Updates", () => {
   });
 
   bench("10 batched updates triggering one effect", () => {
-    const store = createStore({
+    const store = createReactive({
       a: 0,
       b: 0,
       c: 0,
@@ -232,7 +233,7 @@ describe("Additional: Batched vs Unbatched Updates", () => {
 
 describe("Additional: Array Operations (Non-Reactive)", () => {
   bench("Array.push: 1000 items", () => {
-    const _store = createStore({ items: [] as number[] });
+    const _store = createReactive({ items: [] as number[] });
     for (let i = 0; i < 1000; i++) {
       update(_store, { $push: { items: i } });
     }
@@ -240,7 +241,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
 
   bench("Array.pop: 1000 items", () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i);
-    const store = createStore({ items: initial });
+    const store = createReactive({ items: initial });
     for (let i = 0; i < 1000; i++) {
       const items = [...store.items];
       items.pop();
@@ -250,7 +251,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
 
   bench("Array.shift: 1000 items", () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i);
-    const store = createStore({ items: initial });
+    const store = createReactive({ items: initial });
     for (let i = 0; i < 1000; i++) {
       const items = [...store.items];
       items.shift();
@@ -259,7 +260,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
   });
 
   bench("Array.unshift: 1000 items", () => {
-    const store = createStore({ items: [] as number[] });
+    const store = createReactive({ items: [] as number[] });
     for (let i = 0; i < 1000; i++) {
       const items = [i, ...store.items];
       update(store, { $set: { items } });
@@ -268,7 +269,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
 
   bench("Array.splice: remove 500 from 1000", () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i);
-    const store = createStore({ items: initial });
+    const store = createReactive({ items: initial });
     const items = [...store.items];
     items.splice(250, 500);
     update(store, { $set: { items } });
@@ -276,7 +277,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
 
   bench("Array.splice: add 500 to 1000", () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i);
-    const store = createStore({ items: initial });
+    const store = createReactive({ items: initial });
     const newItems = Array.from({ length: 500 }, (_, i) => i + 1000);
     const items = [...store.items];
     items.splice(500, 0, ...newItems);
@@ -285,7 +286,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
 
   bench("Array.sort: 1000 items", () => {
     const initial = Array.from({ length: 1000 }, () => Math.random());
-    const store = createStore({ items: initial });
+    const store = createReactive({ items: initial });
     const items = [...store.items].sort((a, b) => a - b);
     update(store, { $set: { items } });
   });
@@ -294,7 +295,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
 describe("Additional: Array Iteration Methods (Reactive)", () => {
   bench("Array.map: 1000 items, 10 times", () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i);
-    const store = createStore({ items: initial });
+    const store = createReactive({ items: initial });
     effect(() => {
       // Benchmark the reactive read of the array
       for (let i = 0; i < 10; i++) {
@@ -305,7 +306,7 @@ describe("Additional: Array Iteration Methods (Reactive)", () => {
 
   bench("Array.filter: 1000 items, 10 times", () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i);
-    const store = createStore({ items: initial });
+    const store = createReactive({ items: initial });
     effect(() => {
       for (let i = 0; i < 10; i++) {
         store.items.filter((x) => x % 2 === 0);
@@ -315,7 +316,7 @@ describe("Additional: Array Iteration Methods (Reactive)", () => {
 
   bench("Array.reduce: 1000 items, 10 times", () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i);
-    const store = createStore({ items: initial });
+    const store = createReactive({ items: initial });
     effect(() => {
       for (let i = 0; i < 10; i++) {
         store.items.reduce((acc, x) => acc + x, 0);
@@ -325,7 +326,7 @@ describe("Additional: Array Iteration Methods (Reactive)", () => {
 
   bench("Array.find/findIndex: 1000 items, 100 times", () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i);
-    const store = createStore({ items: initial });
+    const store = createReactive({ items: initial });
     effect(() => {
       for (let i = 0; i < 100; i++) {
         store.items.find((x) => x === 50);
@@ -336,7 +337,7 @@ describe("Additional: Array Iteration Methods (Reactive)", () => {
 
   bench("Array.some/every: 1000 items, 100 times", () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i);
-    const store = createStore({ items: initial });
+    const store = createReactive({ items: initial });
     effect(() => {
       for (let i = 0; i < 100; i++) {
         store.items.some((x) => x % 2 === 0);
@@ -347,7 +348,7 @@ describe("Additional: Array Iteration Methods (Reactive)", () => {
 
   bench("Array.includes/indexOf: 1000 items, 100 times", () => {
     const initial = Array.from({ length: 1000 }, (_, i) => i);
-    const store = createStore({ items: initial });
+    const store = createReactive({ items: initial });
     effect(() => {
       for (let i = 0; i < 100; i++) {
         store.items.includes(50);
@@ -374,7 +375,7 @@ describe("Additional: Complex Scenarios", () => {
   }
 
   bench("Data Grid Simulation: 100 rows", () => {
-    const grid = createStore<GridState>({
+    const grid = createReactive<GridState>({
       rows: Array.from({ length: 100 }, (_, i) => ({
         id: i,
         name: `Row ${i}`,
@@ -438,7 +439,7 @@ describe("Additional: Complex Scenarios", () => {
   }
 
   bench("Shopping Cart Simulation: 50 items", () => {
-    const cart = createStore<CartState>({
+    const cart = createReactive<CartState>({
       items: Array.from({ length: 50 }, (_, i) => ({
         id: i,
         name: `Product ${i}`,
@@ -503,7 +504,7 @@ describe("Additional: Complex Scenarios", () => {
           : Array.from({ length: 3 }, (_, i) => createNode(`${id}-${i}`, level + 1, maxLevel)),
     });
 
-    const tree = createStore({ root: createNode("root", 1, 5) });
+    const tree = createReactive({ root: createNode("root", 1, 5) });
 
     // Count selected nodes reactively
     function countSelected(node: TreeNode): number {
@@ -544,7 +545,7 @@ describe("Additional: Complex Scenarios", () => {
 
 describe("Additional: Mixed Read/Write Loads", () => {
   bench("100 reads and 100 writes on a single property", () => {
-    const store = createStore({ count: 0 });
+    const store = createReactive({ count: 0 });
     let effectRuns = 0;
 
     const dispose = effect(() => {
@@ -577,7 +578,7 @@ describe("Additional: Complex Object Structures", () => {
   }
 
   bench("Nested object and array updates", () => {
-    const user = createStore<User>({
+    const user = createReactive<User>({
       id: 1,
       name: "John Doe",
       profile: {
@@ -620,7 +621,7 @@ describe("Additional: Circular Dependencies", () => {
   }
 
   bench("Create and update circular list", () => {
-    const store = createStore({
+    const store = createReactive({
       nodes: Array.from(
         { length: 10 },
         (_, i): CircularNode => ({

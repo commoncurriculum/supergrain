@@ -1,4 +1,4 @@
-import { createStore } from "@supergrain/core";
+import { createReactive } from "@supergrain/core";
 import { tracked } from "@supergrain/react";
 import { render, fireEvent, act, renderHook, cleanup } from "@testing-library/react";
 import React, { FC, memo, useState, useRef } from "react";
@@ -281,7 +281,7 @@ describe("For Component Analysis", () => {
       resetRenderTracking();
 
       const data = buildData(100);
-      const [store, updateStore] = createStore<AppState>({
+      const [store, updateStore] = createReactive<AppState>({
         data,
         selected: null,
       });
@@ -323,7 +323,7 @@ describe("For Component Analysis", () => {
       resetRenderTracking();
 
       const data = buildData(100);
-      const [store, updateStore] = createStore<AppState>({
+      const [store, updateStore] = createReactive<AppState>({
         data,
         selected: null,
       });
@@ -363,7 +363,7 @@ describe("For Component Analysis", () => {
       resetRenderTracking();
 
       const data = buildData(100);
-      const [store, updateStore] = createStore<AppState>({
+      const [store, updateStore] = createReactive<AppState>({
         data,
         selected: null,
       });
@@ -404,7 +404,7 @@ describe("For Component Analysis", () => {
     "perf: regular map - 1000 rows select",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createStore<AppState>({
+      const [store, updateStore] = createReactive<AppState>({
         data,
         selected: null,
       });
@@ -430,7 +430,7 @@ describe("For Component Analysis", () => {
     "perf: memoized rows - 1000 rows select",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createStore<AppState>({
+      const [store, updateStore] = createReactive<AppState>({
         data,
         selected: null,
       });
@@ -458,7 +458,7 @@ describe("For Component Analysis", () => {
     "perf: For component - 1000 rows select",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createStore<AppState>({
+      const [store, updateStore] = createReactive<AppState>({
         data,
         selected: null,
       });
@@ -489,7 +489,7 @@ describe("For Component Analysis", () => {
     "scenario: regular map - 10 sequential selections",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createStore<AppState>({
+      const [store, updateStore] = createReactive<AppState>({
         data,
         selected: null,
       });
@@ -519,7 +519,7 @@ describe("For Component Analysis", () => {
     "scenario: memoized rows - 10 sequential selections",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createStore<AppState>({
+      const [store, updateStore] = createReactive<AppState>({
         data,
         selected: null,
       });
@@ -549,7 +549,7 @@ describe("For Component Analysis", () => {
     "scenario: For component - 10 sequential selections",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createStore<AppState>({
+      const [store, updateStore] = createReactive<AppState>({
         data,
         selected: null,
       });

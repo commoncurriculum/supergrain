@@ -1,10 +1,11 @@
+import { update } from "@supergrain/operators";
 import { describe, it, expect } from "vitest";
 
-import { createStore, update } from "../../src";
+import { createReactive } from "../../src";
 
 describe("Direct Mutation Support", () => {
   it("should allow direct property assignment", () => {
-    const store = createStore({
+    const store = createReactive({
       count: 0,
       user: { name: "John", age: 30 },
       items: [
@@ -35,7 +36,7 @@ describe("Direct Mutation Support", () => {
   });
 
   it("should trigger reactivity with direct mutations", () => {
-    const store = createStore({ count: 0, user: { name: "John" } });
+    const store = createReactive({ count: 0, user: { name: "John" } });
 
     let reactionCount = 0;
     let lastValue: any = null;
@@ -77,7 +78,7 @@ describe("Direct Mutation Support", () => {
   });
 
   it("should work alongside traditional updateStore calls", () => {
-    const store = createStore({
+    const store = createReactive({
       count: 0,
       user: { name: "John" },
       items: [{ id: 1, label: "Item 1" }],
@@ -108,7 +109,7 @@ describe("Direct Mutation Support", () => {
   });
 
   it("should handle array mutations correctly", () => {
-    const store = createStore({
+    const store = createReactive({
       items: [
         { id: 1, label: "Item 1" },
         { id: 2, label: "Item 2" },
@@ -140,7 +141,7 @@ describe("Direct Mutation Support", () => {
       items: Array<{ id: number; label: string }>;
     }
 
-    const store = createStore<TestStore>({
+    const store = createReactive<TestStore>({
       count: 0,
       user: { name: "John", age: 30 },
       items: [{ id: 1, label: "Item 1" }],

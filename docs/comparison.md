@@ -8,7 +8,7 @@ The same operations in other React state libraries:
 // [#DOC_TEST_52](packages/doc-tests/tests/readme-core.test.ts)
 
 interface State { count: number; user: { profile: { name: string } } }
-const store = createStore<State>({ count: 0, user: { profile: { name: 'John' } } })
+const store = createReactive<State>({ count: 0, user: { profile: { name: 'John' } } })
 
 // Mutate
 store.count = 5

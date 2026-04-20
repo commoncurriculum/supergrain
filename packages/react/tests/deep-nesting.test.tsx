@@ -1,4 +1,5 @@
-import { createStore, update, effect, computed } from "@supergrain/core";
+import { createReactive, effect, computed } from "@supergrain/core";
+import { update } from "@supergrain/operators";
 import { render, screen, act, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";
@@ -34,7 +35,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
   // Complex nested data structure for comprehensive testing
   const createComplexStore = () => {
-    const state = createStore({
+    const state = createReactive({
       organization: {
         id: "org-1",
         name: "TechCorp",

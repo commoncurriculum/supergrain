@@ -9,7 +9,7 @@ export default defineConfig({
   head: [["link", { rel: "icon", type: "image/svg+xml", href: "/hero-grain.svg" }]],
 
   themeConfig: {
-    logo: "/hero-grain.svg",
+    logo: { src: "/mascot.jpg", width: 28, height: 28 },
 
     nav: [
       { text: "Home", link: "/" },

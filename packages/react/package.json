@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/react",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "description": "React adapter for Supergrain",
   "keywords": [
     "hooks",
@@ -45,6 +45,7 @@
     "bench": "vitest bench --config vitest.bench.config.ts",
     "dev": "vite build --watch",
     "lint": "oxlint -c ../../.oxlintrc.json src/",
+    "size": "size-limit",
     "test": "vitest run --config vitest.browser.config.ts",
     "test:watch": "vitest --config vitest.browser.config.ts",
     "typecheck": "tsc --noEmit"
@@ -53,6 +54,7 @@
     "@supergrain/core": "workspace:*"
   },
   "devDependencies": {
+    "@supergrain/operators": "workspace:*",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.0",
     "@types/node": "^22.18.3",
@@ -69,5 +71,16 @@
   },
   "peerDependencies": {
     "react": "^18.2.0 || ^19.0.0"
-  }
+  },
+  "size-limit": [
+    {
+      "name": "@supergrain/react (incl. core)",
+      "path": "dist/index.es.js",
+      "import": "{ tracked, createStore, useReactive, useComputed, useSignalEffect, For }",
+      "ignore": [
+        "react",
+        "react-dom"
+      ]
+    }
+  ]
 }
