@@ -12,9 +12,9 @@ type Join<K extends string, P extends string> = `${K}.${P}`;
 
 export type Path<T, D extends Depth = 5> = [D] extends [0]
   ? never
-  : T extends Primitive | ((...args: never[]) => unknown)
+  : T extends Primitive | ((...args: Array<never>) => unknown)
     ? never
-    : T extends readonly (infer U)[]
+    : T extends ReadonlyArray<infer U>
       ? ArrayKey | Join<ArrayKey, Path<U, PrevDepth[D]>>
       : T extends object
         ? {
@@ -27,14 +27,14 @@ export type Path<T, D extends Depth = 5> = [D] extends [0]
         : never;
 
 export type PathValue<T, P extends string> = P extends `${infer Head}.${infer Tail}`
-  ? T extends readonly (infer U)[]
+  ? T extends ReadonlyArray<infer U>
     ? Head extends ArrayKey
       ? PathValue<U, Tail>
       : never
     : Head extends keyof T
       ? PathValue<T[Head], Tail>
       : never
-  : T extends readonly (infer U)[]
+  : T extends ReadonlyArray<infer U>
     ? P extends ArrayKey
       ? U
       : never
@@ -52,7 +52,7 @@ type KnownPathByValue<T, Value> = Extract<
 export type NumericPath<T> = KnownPathByValue<T, number | null | undefined>;
 export type ArrayPath<T> = Extract<
   {
-    [P in Path<T>]: PathValue<T, P> extends readonly any[] ? P : never;
+    [P in Path<T>]: PathValue<T, P> extends ReadonlyArray<any> ? P : never;
   }[Path<T>],
   string
 >;
@@ -64,7 +64,7 @@ function isContainer(value: unknown): value is Record<string, unknown> | unknown
   return value !== null && typeof value === "object";
 }
 
-export function splitPath(path: string): PathSegment[] {
+export function splitPath(path: string): Array<PathSegment> {
   if (path.length === 0) {
     throw new Error("Update paths must not be empty.");
   }
@@ -138,14 +138,14 @@ export type NumericPathOperations<T extends object> = LoosePathMap<NumericPath<T
 
 export type ArrayWriteOperations<T extends object> = LooseUnknownPathMap<
   ArrayPath<T>,
-  PathValue<T, ArrayPath<T>> extends (infer Item)[] ? Item | ArrayModifiers<Item> : never
+  PathValue<T, ArrayPath<T>> extends Array<infer Item> ? Item | ArrayModifiers<Item> : never
 >;
 
 export type ArrayPullOperations<T extends object> = LooseUnknownPathMap<
   ArrayPath<T>,
-  PathValue<T, ArrayPath<T>> extends (infer Item)[] ? Item | Partial<Item> : never
+  PathValue<T, ArrayPath<T>> extends Array<infer Item> ? Item | Partial<Item> : never
 >;
 
 export interface ArrayModifiers<T> {
-  $each: T[];
+  $each: Array<T>;
 }

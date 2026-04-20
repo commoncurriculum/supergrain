@@ -1,46 +1,11 @@
-export { createStore } from "./store";
+export { MemoryEngine } from "./memory";
+export type { DocumentTypes } from "./memory";
 
-// Devtools
-export { attachReduxDevtools } from "./devtools";
-export type { AttachReduxDevtoolsOptions } from "./devtools";
+export { defaultProcessor, jsonApiProcessor } from "./processor";
+export type { ResponseProcessor } from "./processor";
 
-// Testing primitives
-export { createFakeAdapter, createFakeQueryAdapter } from "./testing";
-export type { FakeAdapter, FakeQueryAdapter } from "./testing";
+export { Finder } from "./finder";
+export type { DocumentAdapter, ModelConfig, FinderConfig } from "./finder";
 
-export type {
-  // Model types
-  DocumentTypes,
-  Doc,
-  DocMeta,
-  Ref,
-  // Adapter responses
-  DocumentResponse,
-  QueryResponse,
-  // Adapters
-  DocumentAdapter,
-  QueryAdapter,
-  // Queries
-  QueryDef,
-  ResolvedQueryDef,
-  // Persistence
-  PersistenceAdapter,
-  PersistedQueryState,
-  // Subscriptions
-  SubscribeDocFn,
-  SubscribeQueryFn,
-  OnInvalidate,
-  Unsubscribe,
-  // Connection
-  ConnectionStatus,
-  // Handles
-  Status,
-  DocumentPromise,
-  DocumentsPromise,
-  QueryPromise,
-  // Store
-  Store,
-  StoreConfig,
-  AcquireOptions,
-  StoreEvent,
-} from "./types";
+export { Store } from "./store";
+export type { DocumentHandle, Status, StoreConfig } from "./store";

@@ -41,7 +41,7 @@ function assertArrayTarget(
   operator: "$push" | "$pull" | "$addToSet",
   path: string,
   result: { parent: any; key: string } | null,
-): any[] {
+): Array<any> {
   if (!result) {
     throw new Error(`${operator} path "${path}" must resolve to an existing array.`);
   }
@@ -132,14 +132,14 @@ function compareAndSetValue({ parent, key, newValue, isMin }: CompareAndSetOpts)
 }
 
 // Precise function for array push operations
-function pushToArray(arr: any[], itemsToAdd: any[]): void {
+function pushToArray(arr: Array<any>, itemsToAdd: Array<any>): void {
   const startIndex = arr.length;
   for (let i = 0; i < itemsToAdd.length; i++) {
     setProperty(arr, startIndex + i, itemsToAdd[i]);
   }
 }
 
-function syncIndexedSignals(nodes: any, arr: any[]): void {
+function syncIndexedSignals(nodes: any, arr: Array<any>): void {
   for (const key of Object.keys(nodes)) {
     if (key !== "length" && !isNaN(Number(key))) {
       const sig = nodes[key];
@@ -154,7 +154,7 @@ function syncIndexedSignals(nodes: any, arr: any[]): void {
 
 // Operates on the RAW (unwrapped) array, not through the proxy.
 // Must manually manage signals since proxy handlers aren't involved.
-function pullFromArray(arr: any[], condition: any): boolean {
+function pullFromArray(arr: Array<any>, condition: any): boolean {
   let removed = false;
   const originalLength = arr.length;
 
@@ -186,7 +186,7 @@ function pullFromArray(arr: any[], condition: any): boolean {
 }
 
 // Precise function for addToSet operations
-function addUniqueToArray(arr: any[], itemsToAdd: any[]): boolean {
+function addUniqueToArray(arr: Array<any>, itemsToAdd: Array<any>): boolean {
   const newItems = itemsToAdd.filter((item) => !arr.some((existing) => isEqual(existing, item)));
 
   if (newItems.length > 0) {
@@ -277,7 +277,7 @@ function $addToSet(target: object, operations: Record<string, any>): void {
 }
 
 function $rename(target: object, operations: Record<string, string>): void {
-  const renames: { oldPath: string; newPath: string; value: any }[] = [];
+  const renames: Array<{ oldPath: string; newPath: string; value: any }> = [];
 
   for (const oldPath of Object.keys(operations)) {
     const newPath = operations[oldPath]!;

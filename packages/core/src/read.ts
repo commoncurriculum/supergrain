@@ -100,7 +100,7 @@ const readHandler: Pick<
           trackSelf(target);
         }
         if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
-          return (...args: any[]) => {
+          return (...args: Array<any>) => {
             startBatch();
             try {
               return value.apply(receiver, args);

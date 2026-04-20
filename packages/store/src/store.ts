@@ -1,89 +1,140 @@
-import type {
-  AcquireOptions,
-  ConnectionStatus,
-  DocumentPromise,
-  DocumentsPromise,
-  DocumentTypes,
-  Store,
-  StoreConfig,
-  Unsubscribe,
-} from "./types";
+import type { Finder } from "./finder";
+import type { DocumentTypes } from "./memory";
+
+// =============================================================================
+// Status
+// =============================================================================
 
 /**
- * Create a reactive, document-oriented store.
+ * - `IDLE`    – no fetch attempted (id was null/undefined)
+ * - `PENDING` – first fetch in flight, no data yet
+ * - `SUCCESS` – data present (may also be refetching; check `isFetching`)
+ * - `ERROR`   – fetch failed, no fallback data available
+ */
+export type Status = "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
+
+// =============================================================================
+// DocumentHandle — reactive handle returned by Store.find
+// =============================================================================
+
+/**
+ * Reactive handle for a single document.
  *
- * This is the sole entry point. Configure per-type adapters, optional
- * query adapters, optional live subscriptions, and optional fall-through
- * persistence; the returned store handles caching, batching, and
- * reactive reads.
+ * A signal-backed view, not a class — the implementation builds one via
+ * `@supergrain/core` primitives internally. A reactive state machine:
+ *
+ * ```
+ * IDLE ──(id becomes non-null, not cached)──► PENDING
+ * IDLE ──(id becomes non-null, cached)─────► SUCCESS
+ * PENDING ──(finder resolves)──► SUCCESS
+ * PENDING ──(finder rejects) ──► ERROR
+ * SUCCESS ──(refetch)──► SUCCESS (with isFetching: true mid-flight)
+ * ERROR   ──(refetch)──► PENDING, then SUCCESS (new promise object)
+ * ```
+ *
+ * Idle invariant — when `status === "IDLE"`, all of:
+ * - `data === undefined`
+ * - `error === undefined`
+ * - `isPending === false`
+ * - `isFetching === false`
+ * - `hasData === false`
+ * - `fetchedAt === undefined`
+ * - `promise === undefined`
+ *
+ * All fields are reactive: reading them inside a `tracked()` scope subscribes
+ * to changes. Handle identity is stable — `Store.find("user", "1")` returns
+ * the same handle on every call.
+ */
+export interface DocumentHandle<T> {
+  readonly status: Status;
+  readonly data: T | undefined;
+  readonly error: Error | undefined;
+  /** True only before the first successful load. */
+  readonly isPending: boolean;
+  /** True whenever any fetch (initial OR refetch) is in flight. */
+  readonly isFetching: boolean;
+  readonly hasData: boolean;
+  /** Client wall-clock Date of the last successful fetch. */
+  readonly fetchedAt: Date | undefined;
+  /**
+   * Stable Promise for use with React 19's `use()`.
+   *
+   * - Resolves exactly once on first successful load.
+   * - Refetches do NOT create new promises — they update `data`/`isFetching`.
+   * - If the first fetch errors, the promise rejects once.
+   * - A successful refetch AFTER an error creates a NEW promise object (so a
+   *   Suspense boundary inside an error boundary can recover).
+   */
+  readonly promise: Promise<T> | undefined;
+}
+
+// =============================================================================
+// Store config
+// =============================================================================
+
+export interface StoreConfig<M extends DocumentTypes> {
+  /**
+   * Finder used for `store.find` fallback when a document isn't in memory.
+   * Construct with `new Finder({...})` and pass it here.
+   */
+  finder: Finder<M>;
+}
+
+// =============================================================================
+// Store
+// =============================================================================
+
+/**
+ * Reactive document store.
+ *
+ * Thin orchestrator over a `MemoryEngine` (reactive in-memory cache) and a
+ * `Finder` (batched fetching). The constructor attaches the store to the
+ * finder so `store.find` can fall back to the finder on cache miss.
  *
  * @example
  * ```ts
- * const store = createStore<Models>({
- *   adapters: {
- *     user: { find: (ids) => ajax.request(`/users/${ids.join(",")}`) },
- *   },
+ * const finder = new Finder<TypeToModel>({
+ *   models: { user: { adapter: userAdapter } },
  * })
+ * const store = new Store<TypeToModel>({ finder })
  * ```
  */
-export function createStore<M extends DocumentTypes>(_config: StoreConfig<M>): Store<M> {
-  const notImplemented = (name: string): never => {
-    throw new Error(`@supergrain/store: ${name} is not yet implemented`);
-  };
-
-  function findDoc<K extends keyof M & string>(
-    type: K,
-    id: string | null | undefined,
-  ): DocumentPromise<M[K]>;
-  function findDoc<K extends keyof M & string>(
-    type: K,
-    ids: readonly string[] | null | undefined,
-  ): DocumentsPromise<M[K]>;
-  function findDoc(_type: string, _idOrIds: string | readonly string[] | null | undefined): never {
-    return notImplemented("findDoc");
+export class Store<M extends DocumentTypes> {
+  constructor(config: StoreConfig<M>) {
+    config.finder.attachStore(this);
   }
 
-  function acquireDoc<K extends keyof M & string>(
-    type: K,
-    id: string | null | undefined,
-    opts?: AcquireOptions,
-  ): Unsubscribe;
-  function acquireDoc<K extends keyof M & string>(
-    type: K,
-    ids: readonly string[] | null | undefined,
-    opts?: AcquireOptions,
-  ): Unsubscribe;
-  function acquireDoc(
-    _type: string,
-    _idOrIds: string | readonly string[] | null | undefined,
-    _opts?: AcquireOptions,
-  ): Unsubscribe {
-    return notImplemented("acquireDoc");
+  /**
+   * Find a document. Checks memory first, falls back to the finder
+   * (which batches, fetches, and inserts). Returns a reactive handle.
+   *
+   * - `null`/`undefined` id → idle handle, no fetch attempted
+   * - Same `(type, id)` always returns the same handle object (stable identity)
+   */
+  find<K extends keyof M & string>(_type: K, _id: string | null | undefined): DocumentHandle<M[K]> {
+    throw new Error("@supergrain/store: Store.find is not yet implemented");
   }
 
-  return {
-    findDoc,
-    acquireDoc,
-    query(_def) {
-      return notImplemented("query");
-    },
-    acquireQuery(_def, _opts) {
-      return notImplemented("acquireQuery");
-    },
-    insertDocument(_docOrDocs) {
-      notImplemented("insertDocument");
-    },
-    get connection(): ConnectionStatus {
-      return "ONLINE";
-    },
-    setConnection(_status) {
-      notImplemented("setConnection");
-    },
-    onReconnect() {
-      notImplemented("onReconnect");
-    },
-    subscribe(_listener) {
-      return notImplemented("subscribe");
-    },
-  };
+  /**
+   * Direct memory lookup. No fetch, no finder. Returns the document
+   * or undefined. Reactive — reads inside a tracked() scope subscribe
+   * to changes.
+   */
+  findInMemory<K extends keyof M & string>(_type: K, _id: string): M[K] | undefined {
+    throw new Error("@supergrain/store: Store.findInMemory is not yet implemented");
+  }
+
+  /**
+   * Insert or update a document in the store. Keyed by `doc.type` and
+   * `doc.id`. Fully reactive — any handles or tracked scopes reading
+   * this document will update.
+   */
+  insertDocument(_doc: M[keyof M]): void {
+    throw new Error("@supergrain/store: Store.insertDocument is not yet implemented");
+  }
+
+  /** Clear all documents from memory. */
+  clearMemory(): void {
+    throw new Error("@supergrain/store: Store.clearMemory is not yet implemented");
+  }
 }

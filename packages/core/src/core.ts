@@ -4,11 +4,12 @@ import { signal } from "alien-signals";
 // Exported as a real symbol so consumers can reference `typeof $BRAND` in type positions.
 export const $BRAND = Symbol.for("supergrain:brand");
 
-export type Branded<T> = T extends (infer U)[]
-  ? Branded<U>[]
-  : T extends object
-    ? { [K in keyof T]: Branded<T[K]> } & { readonly [$BRAND]?: true }
-    : T;
+export type Branded<T> =
+  T extends Array<infer U>
+    ? Array<Branded<U>>
+    : T extends object
+      ? { [K in keyof T]: Branded<T[K]> } & { readonly [$BRAND]?: true }
+      : T;
 
 export interface Signal<T> {
   (): T;

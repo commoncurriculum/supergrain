@@ -14,7 +14,7 @@ const useIsomorphicLayoutEffect = globalThis.document === undefined ? useEffect 
 import { tracked } from "./tracked";
 
 interface ForProps<T> {
-  each: T[];
+  each: Array<T>;
   children: (item: T, index: number) => React.ReactNode;
   fallback?: React.ReactNode;
   parent?: React.RefObject<Element | null>;
@@ -30,7 +30,7 @@ const ForItem = tracked(
     index,
     children,
   }: {
-    each: unknown[];
+    each: Array<unknown>;
     index: number;
     children: (item: unknown, index: number) => React.ReactNode;
   }) => {
@@ -77,7 +77,7 @@ const ForItem = tracked(
 // tracked() erases the generic <T>, so we cast through unknown to restore it.
 export const For = tracked((props: ForProps<unknown>) => {
   const { each, children, fallback, parent } = props;
-  const prevRawRef = useRef<unknown[]>([]);
+  const prevRawRef = useRef<Array<unknown>>([]);
   const swapCleanupRef = useRef<(() => void) | null>(null);
 
   // Subscribe to structural changes (ownKeys: add, remove, splice).
@@ -119,7 +119,7 @@ export const For = tracked((props: ForProps<unknown>) => {
         return;
       }
 
-      const changed: number[] = [];
+      const changed: Array<number> = [];
       for (let i = 0; i < raw.length; i++) {
         if (raw[i] !== prev[i]) {
           changed.push(i);
@@ -165,7 +165,7 @@ export const For = tracked((props: ForProps<unknown>) => {
   if (!raw || raw.length === 0) {
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
-  const slots: React.ReactNode[] = Array.from({ length: raw.length });
+  const slots: Array<React.ReactNode> = Array.from({ length: raw.length });
 
   if (parent) {
     // Parent path (O(1) swap): call children directly with untracked array reads.
