@@ -5,9 +5,10 @@
  * at all nesting levels. No runtime assertions -- if it compiles, it passes.
  */
 
+import { update } from "@supergrain/operators";
 import { describe, it, expect } from "vitest";
 
-import { createReactive, $BRAND, type Branded, update } from "../../src";
+import { createReactive, $BRAND, type Branded } from "../../src";
 
 // ---------------------------------------------------------------------------
 // Type assertion helpers

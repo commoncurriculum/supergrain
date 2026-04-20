@@ -1,6 +1,12 @@
+import { unwrap, getNodesIfExist } from "@supergrain/core";
+import {
+  bumpOwnKeysSignal,
+  bumpVersion,
+  profileSignalWrite,
+  setProperty,
+} from "@supergrain/core/internal";
 import { startBatch, endBatch } from "alien-signals";
 
-import { unwrap, getNodesIfExist } from "./core";
 import {
   type ArrayPullOperations,
   type ArrayWriteOperations,
@@ -11,8 +17,6 @@ import {
   setValueAtPath,
   type UnsetPathOperations,
 } from "./path";
-import { profileSignalWrite } from "./profiler";
-import { bumpOwnKeysSignal, bumpVersion, setProperty } from "./write";
 
 /**
  * MongoDB-style operators for updating reactive stores.

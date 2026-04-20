@@ -10,7 +10,8 @@
  * - Update operators (DOC_TEST_46)
  */
 
-import { createReactive, update } from "@supergrain/core";
+import { createReactive } from "@supergrain/core";
+import { update } from "@supergrain/operators";
 import { tracked } from "@supergrain/react";
 import { describe, it, expect } from "vitest";
 

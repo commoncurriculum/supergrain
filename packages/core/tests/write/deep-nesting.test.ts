@@ -1,6 +1,7 @@
+import { update } from "@supergrain/operators";
 import { describe, it, expect } from "vitest";
 
-import { createReactive, update, effect, computed } from "../../src";
+import { createReactive, effect, computed } from "../../src";
 
 describe("Deep Nesting Operations (Type Safe)", () => {
   // Helper to safely access deeply nested properties (not used but kept for future reference)

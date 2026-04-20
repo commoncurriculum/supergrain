@@ -1,6 +1,7 @@
 import type { StoreState, DocumentPromise, DocumentTypes, FetchHandler } from "./types";
 
-import { createReactive, update, computed } from "@supergrain/core";
+import { createReactive, computed } from "@supergrain/core";
+import { update } from "@supergrain/operators";
 
 import { DocumentPromiseImpl } from "./document-promise";
 

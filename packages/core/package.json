@@ -63,6 +63,7 @@
     "@preact/signals-core": "^1.14.0",
     "@rollup/plugin-strip": "^3.0.4",
     "@solidjs/testing-library": "^0.8.10",
+    "@supergrain/operators": "workspace:*",
     "@vitest/browser": "4.1.0",
     "arktype": "^2.2.0",
     "jotai": "^2.14.0",

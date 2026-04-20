@@ -1,4 +1,5 @@
-import { createReactive, update, effect, computed } from "@supergrain/core";
+import { createReactive, effect, computed } from "@supergrain/core";
+import { update } from "@supergrain/operators";
 import { render, screen, act, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";

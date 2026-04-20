@@ -1,8 +1,9 @@
+import { update } from "@supergrain/operators";
 import { effect } from "alien-signals";
 import { createRoot, createEffect, createSignal, batch } from "solid-js/dist/solid.js";
 import { createStore as createSolidStore } from "solid-js/store/dist/store.js";
 
-import { createReactive, update } from "../src";
+import { createReactive } from "../src";
 
 // Helper to wait for microtasks to resolve
 const nextTick = () => new Promise<void>((resolve) => queueMicrotask(() => resolve()));

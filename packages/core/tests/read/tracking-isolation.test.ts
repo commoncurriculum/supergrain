@@ -1,3 +1,4 @@
+import { update } from "@supergrain/operators";
 import { effect, getCurrentSub, setCurrentSub } from "alien-signals";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
@@ -7,7 +8,6 @@ import {
   disableProfiling,
   resetProfiler,
   getProfile,
-  update,
 } from "../../src";
 
 describe("Tracking Isolation Analysis", () => {

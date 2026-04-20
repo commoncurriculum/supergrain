@@ -12,6 +12,25 @@ export default defineConfig({
           include: ["packages/core/**/*.test.{ts,tsx}"],
           environment: "node",
         },
+        resolve: {
+          alias: {
+            "@supergrain/core": resolve(__dirname, "./packages/core/src"),
+            "@supergrain/operators": resolve(__dirname, "./packages/operators/src"),
+          },
+        },
+      },
+      // Node environment for operators tests
+      {
+        test: {
+          include: ["packages/operators/**/*.test.{ts,tsx}"],
+          environment: "node",
+        },
+        resolve: {
+          alias: {
+            "@supergrain/core": resolve(__dirname, "./packages/core/src"),
+            "@supergrain/operators": resolve(__dirname, "./packages/operators/src"),
+          },
+        },
       },
       // Node environment for app-store tests
       {
@@ -22,6 +41,7 @@ export default defineConfig({
         resolve: {
           alias: {
             "@supergrain/core": resolve(__dirname, "./packages/core/src"),
+            "@supergrain/operators": resolve(__dirname, "./packages/operators/src"),
             "@supergrain/store": resolve(__dirname, "./packages/store/src"),
           },
         },
@@ -47,6 +67,7 @@ export default defineConfig({
         resolve: {
           alias: {
             "@supergrain/core": resolve(__dirname, "./packages/core/src"),
+            "@supergrain/operators": resolve(__dirname, "./packages/operators/src"),
             "@supergrain/react": resolve(__dirname, "./packages/react/src"),
           },
         },

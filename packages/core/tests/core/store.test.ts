@@ -1,3 +1,4 @@
+import { update } from "@supergrain/operators";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import {
@@ -8,7 +9,6 @@ import {
   disableProfiling,
   resetProfiler,
   getProfile,
-  update,
 } from "../../src";
 import { $VERSION } from "../../src/internal";
 

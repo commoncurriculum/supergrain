@@ -1,6 +1,7 @@
+import { createReactive, effect } from "@supergrain/core";
 import { describe, it, expect, vi } from "vitest";
 
-import { createReactive, effect, update } from "../../src";
+import { update } from "../src";
 
 describe("MongoDB Style Operators", () => {
   it("$set: should set top-level and nested properties", () => {

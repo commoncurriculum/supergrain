@@ -3,6 +3,7 @@ import {
   effect as preactEffect,
   batch as preactBatch,
 } from "@preact/signals-core";
+import { update } from "@supergrain/operators";
 import { effect } from "alien-signals";
 import { createStore as createJotaiStore, atom } from "jotai/vanilla";
 import { observable, autorun, runInAction } from "mobx";
@@ -10,7 +11,7 @@ import { proxy, subscribe, snapshot } from "valtio/vanilla";
 import { bench, describe } from "vitest";
 import { createStore as createZustandStore } from "zustand/vanilla";
 
-import { createReactive, update } from "../src";
+import { createReactive } from "../src";
 
 /**
  * Cross-library benchmarks comparing @supergrain/core against

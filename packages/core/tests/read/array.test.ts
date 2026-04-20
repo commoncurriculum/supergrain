@@ -1,8 +1,8 @@
+import { update } from "@supergrain/operators";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import {
   createReactive,
-  update,
   effect,
   enableProfiling,
   disableProfiling,

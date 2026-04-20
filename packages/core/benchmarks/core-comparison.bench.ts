@@ -1,11 +1,12 @@
 import { testEffect } from "@solidjs/testing-library";
+import { update } from "@supergrain/operators";
 import { effect } from "alien-signals";
 // Import browser builds explicitly to enable reactivity in Node.js
 import { createRoot, createEffect, batch } from "solid-js/dist/solid.js";
 import { createStore as createSolidStore } from "solid-js/store/dist/store.js";
 import { bench, describe } from "vitest";
 
-import { createReactive, update } from "../src";
+import { createReactive } from "../src";
 
 function validationError(message: string) {
   console.warn(message);

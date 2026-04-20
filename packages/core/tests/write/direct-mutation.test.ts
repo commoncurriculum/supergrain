@@ -1,6 +1,7 @@
+import { update } from "@supergrain/operators";
 import { describe, it, expect } from "vitest";
 
-import { createReactive, update } from "../../src";
+import { createReactive } from "../../src";
 
 describe("Direct Mutation Support", () => {
   it("should allow direct property assignment", () => {

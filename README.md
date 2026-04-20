@@ -378,12 +378,13 @@ Supergrain delivers fine-grained reactivity with per-component signal scoping at
 
 ## Update Operators (Optional)
 
-For complex updates — batched mutations, array manipulations, dot-notation paths — import `update` and pass the store as the first argument:
+For complex updates — batched mutations, array manipulations, dot-notation paths — install `@supergrain/operators` and import `update`:
 
 ```typescript
 // [#DOC_TEST_46](packages/doc-tests/tests/readme-core.test.ts)
 
-import { createReactive, update } from "@supergrain/core";
+import { createReactive } from "@supergrain/core";
+import { update } from "@supergrain/operators";
 
 const store = createReactive({
   count: 0,

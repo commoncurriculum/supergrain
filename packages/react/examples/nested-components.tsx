@@ -1,6 +1,7 @@
 import React from "react";
 
-import { createReactive, update } from "../../core/src/index";
+import { createReactive } from "../../core/src/index";
+import { update } from "../../operators/src/index";
 import { tracked } from "../src/index";
 
 // Create a store with separate properties for different component levels

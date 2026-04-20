@@ -1,8 +1,9 @@
+import { update } from "@supergrain/operators";
 import { effect } from "alien-signals";
 // Proxy overhead analysis, effect lifecycle, and complex reactive scenarios.
 import { bench, describe } from "vitest";
 
-import { createReactive, update } from "../src";
+import { createReactive } from "../src";
 
 describe("Additional: Plain vs Proxy Performance", () => {
   describe("Property Access", () => {

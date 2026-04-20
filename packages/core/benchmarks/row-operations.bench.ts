@@ -1,7 +1,8 @@
+import { update } from "@supergrain/operators";
 // Table row operations (select, swap, append, delete) — krauset-style benchmarks.
 import { bench, describe } from "vitest";
 
-import { createReactive, effect, update } from "../src";
+import { createReactive, effect } from "../src";
 
 // --- Data Generation Utilities ---
 
