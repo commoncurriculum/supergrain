@@ -19,7 +19,7 @@ layout: page
       <ul class="hero-yep">
         <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">Plain JS&nbsp;—</span> <code>{ user: { name } }</code></span></li>
         <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">Direct mutation&nbsp;—</span> <code>store.x = 1</code></span></li>
-        <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">Leaf reactivity&nbsp;—</span> <code>store.user.name</code> re-renders alone</span></li>
+        <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">Deep reactivity&nbsp;—</span> <code>store.a.b[0].c</code>, or whatever nested shape you want</span></li>
         <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">TypeScript inference&nbsp;—</span> no generics, no casts</span></li>
         <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">Works with SSR&nbsp;—</span> Next.js, RSC, React 19</span></li>
         <li><span class="yep-check">✓</span><span class="yep-body">~5kb gzipped</span></li>
