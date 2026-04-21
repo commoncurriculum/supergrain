@@ -16,7 +16,7 @@ A fast, ergonomic reactive store for React.
 - [Update Operators](#update-operators-optional) — MongoDB-style `$set`, `$inc`, `$push`, etc.
 - [How it works](#how-it-works) — proxies, alien-signals, `tracked()`, SSR
 - [FAQ](#faq) — common questions about reactivity, batching, memo, and types
-- [Comparison Guide](./docs/comparison.md) — side-by-side with `useState`, Zustand, Redux, MobX
+- [Comparison Guide](https://github.com/commoncurriculum/supergrain/blob/main/docs/comparison.md) — side-by-side with `useState`, Zustand, Redux, MobX
 
 ## Packages
 
@@ -154,7 +154,19 @@ Checking a todo re-renders only that `TodoItem`. Changing selection re-renders o
 From `@supergrain/core`. Framework-agnostic primitives.
 
 - `createReactive<T>(initial)`
-  > Creates a reactive proxy. Reads and writes work like plain objects. The primitive — use directly for standalone state, or wrap it with the React helpers below.
+
+  > Returns a reactive proxy you can read from and mutate directly. Use it for standalone reactive state outside React, or pair it with the React helpers below to drive component renders.
+
+- `computed(fn)`
+
+  > Returns a derived value that recomputes lazily when its dependencies change. Use for memoized derivations outside React (`useComputed` is the React-aware variant).
+
+- `effect(fn)`
+
+  > Runs `fn` immediately and re-runs it whenever its dependencies change. Returns a stop function. Use outside React; for components, prefer `useSignalEffect`.
+
+- `batch(fn)`
+  > Coalesces signal writes inside `fn` into a single notification. Throws if `fn` returns a Promise (must be sync).
 
 ### React
 
@@ -183,7 +195,7 @@ From `@supergrain/react`. React-specific hooks and components.
 - `<For each={array} parent={ref?}>{item => ...}</For>`
   > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
 
-See how Supergrain compares to useState, Zustand, Redux, and MobX in the [comparison guide](./docs/comparison.md).
+See how Supergrain compares to useState, Zustand, Redux, and MobX in the [comparison guide](https://github.com/commoncurriculum/supergrain/blob/main/docs/comparison.md).
 
 ## Features
 
@@ -488,7 +500,7 @@ Path autocompletion and type checking work up to 5 levels of nesting. Beyond tha
 <details>
 <summary><strong>How does this compare to other signal-based React libraries?</strong></summary>
 
-See the [Comparison Guide](./docs/comparison.md). Briefly: most signal libraries (Preact Signals, MobX, Jotai) require you to wrap individual values in signal/atom containers. Supergrain wraps a _whole object tree_ in a Proxy, so you write plain `store.user.name = "x"` and reads/writes are tracked automatically. Internally we use alien-signals for propagation, and `tracked()` gives per-component subscription scoping — closer in spirit to Solid's reactive components than to React Compiler's auto-memoization.
+See the [Comparison Guide](https://github.com/commoncurriculum/supergrain/blob/main/docs/comparison.md). Briefly: most signal libraries (Preact Signals, MobX, Jotai) require you to wrap individual values in signal/atom containers. Supergrain wraps a _whole object tree_ in a Proxy, so you write plain `store.user.name = "x"` and reads/writes are tracked automatically. Internally we use alien-signals for propagation, and `tracked()` gives per-component subscription scoping — closer in spirit to Solid's reactive components than to React Compiler's auto-memoization.
 
 </details>
 
@@ -525,8 +537,8 @@ This project uses [Changesets](https://github.com/changesets/changesets) for aut
 
 GitHub Actions automatically handles versioning, changelogs, and publishing to NPM.
 
-- [NPM Setup Guide](./notes/publishing/npm-setup.md) - Complete guide for setting up NPM publishing
-- [Releasing Guide](./notes/publishing/releasing.md) - Step-by-step instructions for creating releases
+- [NPM Setup Guide](https://github.com/commoncurriculum/supergrain/blob/main/notes/publishing/npm-setup.md) - Complete guide for setting up NPM publishing
+- [Releasing Guide](https://github.com/commoncurriculum/supergrain/blob/main/notes/publishing/releasing.md) - Step-by-step instructions for creating releases
 
 ## License
 
