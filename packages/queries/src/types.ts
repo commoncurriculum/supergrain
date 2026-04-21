@@ -1,4 +1,4 @@
-import type { DocumentTypes, Store } from "@supergrain/store";
+import type { DocumentStore, DocumentTypes } from "@supergrain/document-store";
 
 // =============================================================================
 // Query adapter
@@ -74,7 +74,7 @@ export interface CreateQueryParams<
   K extends keyof M & string,
   T extends { offset: number },
 > {
-  store: Store<M>;
+  store: DocumentStore<M>;
   adapter: QueryAdapter<T>;
   type: K;
   id: string;

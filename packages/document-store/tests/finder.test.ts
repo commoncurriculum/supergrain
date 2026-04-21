@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Finder, Store } from "../src";
+import { DocumentStore, Finder } from "../src";
 import {
   API_BASE,
   advance,
@@ -275,7 +275,7 @@ describe("Finder errors", () => {
         "card-stack": { adapter: { find: () => Promise.resolve({ data: [] }) } },
       },
     });
-    new Store<TypeToModel>({ finder });
+    new DocumentStore<TypeToModel>({ finder });
 
     const p = finder.find("user", "1");
     await flushCoalescer();

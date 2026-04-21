@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { MemoryEngine } from "../src";
+import { MemoryEngine } from "../src/memory";
 import { makePost, makeUser, type TypeToModel } from "./example-app";
 
 // =============================================================================

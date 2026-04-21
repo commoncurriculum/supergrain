@@ -1,11 +1,9 @@
-import type { DocumentAdapter } from "@supergrain/store";
-
-import { Finder, Store } from "@supergrain/store";
 import { render, screen, cleanup } from "@testing-library/react";
 import { StrictMode, type ReactNode } from "react";
 import { describe, it, expect } from "vitest";
 
-import { StoreContext } from "../src";
+import { DocumentStore, Finder, type DocumentAdapter } from "../../src";
+import { DocumentStoreProvider, useDocument, useDocumentStore } from "../../src/react";
 
 // =============================================================================
 // Test models
@@ -67,7 +65,7 @@ function makePostAdapter(): DocumentAdapter {
   };
 }
 
-function makeContext(opts: { strict?: boolean } = {}) {
+function initStore(): DocumentStore<TypeToModel> {
   const finder = new Finder<TypeToModel>({
     models: {
       user: { adapter: makeUserAdapter() },
@@ -75,54 +73,30 @@ function makeContext(opts: { strict?: boolean } = {}) {
     },
     batchWindowMs: 15,
   });
+  return new DocumentStore<TypeToModel>({ finder });
+}
 
-  const store = new Store<TypeToModel>({ finder });
-  const ctx = new StoreContext<TypeToModel>(store);
-
+function wrapper(opts: { strict?: boolean } = {}) {
   const strict = opts.strict ?? true;
-  const Wrap = ({ children }: { children: ReactNode }) =>
-    strict ? (
-      <StrictMode>
-        <ctx.Provider>{children}</ctx.Provider>
-      </StrictMode>
-    ) : (
-      <ctx.Provider>{children}</ctx.Provider>
+  return function Wrap({ children }: { children: ReactNode }) {
+    const content = (
+      <DocumentStoreProvider<TypeToModel> init={initStore}>{children}</DocumentStoreProvider>
     );
-
-  return { ctx, store, Wrap };
+    return strict ? <StrictMode>{content}</StrictMode> : content;
+  };
 }
 
 // =============================================================================
-// new StoreContext
+// DocumentStoreProvider + useDocumentStore
 // =============================================================================
 
-describe("new StoreContext", () => {
-  it("exposes Provider + hooks", () => {
-    const { ctx } = makeContext();
-
-    expect(ctx.Provider).toBeDefined();
-    expect(typeof ctx.useStore).toBe("function");
-    expect(typeof ctx.useDocument).toBe("function");
-  });
-
-  it("useStore throws outside of Provider", () => {
-    const { ctx } = makeContext();
-
-    const Probe = () => {
-      ctx.useStore();
-      return null;
-    };
-
-    expect(() => render(<Probe />)).toThrow(/must be used within/i);
-    cleanup();
-  });
-
-  it("useStore returns the underlying store inside Provider", () => {
-    const { ctx, store, Wrap } = makeContext();
+describe("DocumentStoreProvider", () => {
+  it("provides the store to descendants", () => {
+    const Wrap = wrapper();
 
     let captured: unknown;
     const Probe = () => {
-      captured = ctx.useStore();
+      captured = useDocumentStore<TypeToModel>();
       return null;
     };
 
@@ -132,7 +106,19 @@ describe("new StoreContext", () => {
       </Wrap>,
     );
 
-    expect(captured).toBe(store);
+    expect(captured).toBeInstanceOf(DocumentStore);
+    cleanup();
+  });
+});
+
+describe("useDocumentStore", () => {
+  it("throws outside the Provider", () => {
+    const Probe = () => {
+      useDocumentStore<TypeToModel>();
+      return null;
+    };
+
+    expect(() => render(<Probe />)).toThrow(/must be used within/i);
     cleanup();
   });
 });
@@ -143,10 +129,10 @@ describe("new StoreContext", () => {
 
 describe("useDocument", () => {
   it("renders loading state and then data for a single id", async () => {
-    const { ctx, Wrap } = makeContext();
+    const Wrap = wrapper();
 
     const UserBadge = ({ userId }: { userId: string }) => {
-      const handle = ctx.useDocument("user", userId);
+      const handle = useDocument<TypeToModel, "user">("user", userId);
       if (handle.isPending) return <span>loading</span>;
       if (handle.error) return <span>error: {handle.error.message}</span>;
       return <span>{handle.data?.attributes.firstName}</span>;
@@ -167,10 +153,10 @@ describe("useDocument", () => {
   });
 
   it("returns an idle handle when id is null", () => {
-    const { ctx, Wrap } = makeContext();
+    const Wrap = wrapper();
 
     const MaybeBadge = ({ userId }: { userId: string | null }) => {
-      const handle = ctx.useDocument("user", userId);
+      const handle = useDocument<TypeToModel, "user">("user", userId);
       if (handle.status === "IDLE") return <span>none</span>;
       return <span>{handle.data?.attributes.firstName ?? "…"}</span>;
     };

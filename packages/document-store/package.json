@@ -1,14 +1,13 @@
 {
-  "name": "@supergrain/store-react",
-  "version": "0.0.1",
-  "description": "React hooks for @supergrain/store",
+  "name": "@supergrain/document-store",
+  "version": "3.0.0",
+  "description": "Document-oriented store for Supergrain with TypeScript support",
   "keywords": [
     "document",
-    "hooks",
-    "react",
     "reactive",
     "store",
-    "supergrain"
+    "supergrain",
+    "typescript"
   ],
   "homepage": "https://commoncurriculum.github.io/supergrain/",
   "bugs": {
@@ -19,20 +18,40 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/commoncurriculum/supergrain.git",
-    "directory": "packages/store-react"
+    "directory": "packages/document-store"
   },
   "files": [
     "dist"
   ],
   "type": "module",
   "main": "./dist/index.cjs",
-  "module": "./dist/index.es.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.es.js",
+      "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./processors": {
+      "types": "./dist/processors/index.d.ts",
+      "import": "./dist/processors/index.js",
+      "require": "./dist/processors/index.cjs"
+    },
+    "./processors/json-api": {
+      "types": "./dist/processors/json-api.d.ts",
+      "import": "./dist/processors/json-api.js",
+      "require": "./dist/processors/json-api.cjs"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "require": "./dist/react/index.cjs"
+    },
+    "./react/json-api": {
+      "types": "./dist/react/json-api.d.ts",
+      "import": "./dist/react/json-api.js",
+      "require": "./dist/react/json-api.cjs"
     }
   },
   "publishConfig": {
@@ -44,32 +63,32 @@
     "build": "vite build",
     "dev": "vite build --watch",
     "lint": "oxlint -c ../../.oxlintrc.json src/",
-    "test": "vitest run --config vitest.browser.config.ts",
-    "test:watch": "vitest --config vitest.browser.config.ts",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@supergrain/core": "workspace:*",
-    "@supergrain/react": "workspace:*",
-    "@supergrain/store": "workspace:*"
+    "@supergrain/operators": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.0",
-    "@types/node": "^22.18.3",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/browser": "4.1.0",
+    "msw": "^2.13.4",
     "playwright": "^1.55.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.5",
-    "vite-plugin-dts": "^4.5.4",
     "vitest": "4.1.0"
   },
   "peerDependencies": {
     "react": "^18.2.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   }
 }

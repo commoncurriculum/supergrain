@@ -2,7 +2,7 @@
 // example-app.ts
 // =============================================================================
 //
-// Realistic consumer wiring for @supergrain/store. In a real codebase this
+// Realistic consumer wiring for @supergrain/document-store. In a real codebase this
 // would live at `services/store.ts` (or equivalent): domain models, HTTP
 // adapters (real fetch-based), and the one-time Finder + Store composition
 // that components import.
@@ -29,7 +29,8 @@ import { http, HttpResponse, type HttpHandler } from "msw";
 import { setupServer } from "msw/node";
 import { vi } from "vitest";
 
-import { Finder, Store, jsonApiProcessor, type DocumentAdapter } from "../src";
+import { DocumentStore, Finder, type DocumentAdapter } from "../src";
+import { jsonApiProcessor } from "../src/processors/json-api";
 
 // ─── Domain models ──────────────────────────────────────────────────────────
 
@@ -222,7 +223,7 @@ export function createApp(overrides: AppOverrides = {}) {
     batchWindowMs: overrides.batchWindowMs ?? 15,
     batchSize: overrides.batchSize,
   });
-  const store = new Store<TypeToModel>({ finder });
+  const store = new DocumentStore<TypeToModel>({ finder });
   return { store, finder };
 }
 

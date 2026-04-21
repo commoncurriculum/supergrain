@@ -14,7 +14,7 @@ import type { DocumentTypes } from "./memory";
 export type Status = "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
 
 // =============================================================================
-// DocumentHandle — reactive handle returned by Store.find
+// DocumentHandle — reactive handle returned by DocumentStore.find
 // =============================================================================
 
 /**
@@ -42,8 +42,8 @@ export type Status = "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
  * - `promise === undefined`
  *
  * All fields are reactive: reading them inside a `tracked()` scope subscribes
- * to changes. Handle identity is stable — `Store.find("user", "1")` returns
- * the same handle on every call.
+ * to changes. Handle identity is stable — `DocumentStore.find("user", "1")`
+ * returns the same handle on every call.
  */
 export interface DocumentHandle<T> {
   readonly status: Status;
@@ -69,19 +69,48 @@ export interface DocumentHandle<T> {
 }
 
 // =============================================================================
-// Store config
+// DocumentsHandle — reactive handle returned by DocumentStore.findMany
 // =============================================================================
 
-export interface StoreConfig<M extends DocumentTypes> {
+/**
+ * Aggregated reactive handle for a batch of documents fetched by ids.
+ *
+ * Same state machine as `DocumentHandle<T>`, rolled up across the set:
+ *
+ * - `PENDING` while any doc is still loading for its first time
+ * - `SUCCESS` when all have resolved (`data` is the full array)
+ * - `ERROR` if any failed (`error` is the first failure seen)
+ *
+ * Use when you need a single aggregate state ("show spinner until all
+ * docs ready"). For per-doc state in a list, render subcomponents that
+ * each call `DocumentStore.find` — the batching across them still
+ * collapses into one network request.
+ */
+export interface DocumentsHandle<T> {
+  readonly status: Status;
+  readonly data: ReadonlyArray<T> | undefined;
+  readonly error: Error | undefined;
+  readonly isPending: boolean;
+  readonly isFetching: boolean;
+  readonly hasData: boolean;
+  readonly fetchedAt: Date | undefined;
+  readonly promise: Promise<ReadonlyArray<T>> | undefined;
+}
+
+// =============================================================================
+// DocumentStore config
+// =============================================================================
+
+export interface DocumentStoreConfig<M extends DocumentTypes> {
   /**
-   * Finder used for `store.find` fallback when a document isn't in memory.
-   * Construct with `new Finder({...})` and pass it here.
+   * Finder used for `DocumentStore.find` fallback when a document isn't in
+   * memory. Construct with `new Finder({...})` and pass it here.
    */
   finder: Finder<M>;
 }
 
 // =============================================================================
-// Store
+// DocumentStore
 // =============================================================================
 
 /**
@@ -89,18 +118,18 @@ export interface StoreConfig<M extends DocumentTypes> {
  *
  * Thin orchestrator over a `MemoryEngine` (reactive in-memory cache) and a
  * `Finder` (batched fetching). The constructor attaches the store to the
- * finder so `store.find` can fall back to the finder on cache miss.
+ * finder so `DocumentStore.find` can fall back to the finder on cache miss.
  *
  * @example
  * ```ts
  * const finder = new Finder<TypeToModel>({
  *   models: { user: { adapter: userAdapter } },
- * })
- * const store = new Store<TypeToModel>({ finder })
+ * });
+ * const store = new DocumentStore<TypeToModel>({ finder });
  * ```
  */
-export class Store<M extends DocumentTypes> {
-  constructor(config: StoreConfig<M>) {
+export class DocumentStore<M extends DocumentTypes> {
+  constructor(config: DocumentStoreConfig<M>) {
     config.finder.attachStore(this);
   }
 
@@ -112,7 +141,22 @@ export class Store<M extends DocumentTypes> {
    * - Same `(type, id)` always returns the same handle object (stable identity)
    */
   find<K extends keyof M & string>(_type: K, _id: string | null | undefined): DocumentHandle<M[K]> {
-    throw new Error("@supergrain/store: Store.find is not yet implemented");
+    throw new Error("@supergrain/document-store: DocumentStore.find is not yet implemented");
+  }
+
+  /**
+   * Find many documents by ids. Batches into a single adapter call, returns
+   * an aggregate reactive handle.
+   *
+   * - Empty `ids` → idle handle
+   * - Same `(type, ids)` on repeat calls returns the same handle (identity
+   *   based on type + sorted-joined ids)
+   */
+  findMany<K extends keyof M & string>(
+    _type: K,
+    _ids: ReadonlyArray<string>,
+  ): DocumentsHandle<M[K]> {
+    throw new Error("@supergrain/document-store: DocumentStore.findMany is not yet implemented");
   }
 
   /**
@@ -121,7 +165,9 @@ export class Store<M extends DocumentTypes> {
    * to changes.
    */
   findInMemory<K extends keyof M & string>(_type: K, _id: string): M[K] | undefined {
-    throw new Error("@supergrain/store: Store.findInMemory is not yet implemented");
+    throw new Error(
+      "@supergrain/document-store: DocumentStore.findInMemory is not yet implemented",
+    );
   }
 
   /**
@@ -130,11 +176,13 @@ export class Store<M extends DocumentTypes> {
    * this document will update.
    */
   insertDocument(_doc: M[keyof M]): void {
-    throw new Error("@supergrain/store: Store.insertDocument is not yet implemented");
+    throw new Error(
+      "@supergrain/document-store: DocumentStore.insertDocument is not yet implemented",
+    );
   }
 
   /** Clear all documents from memory. */
   clearMemory(): void {
-    throw new Error("@supergrain/store: Store.clearMemory is not yet implemented");
+    throw new Error("@supergrain/document-store: DocumentStore.clearMemory is not yet implemented");
   }
 }

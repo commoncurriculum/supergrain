@@ -1,5 +1,5 @@
 import type { CreateQueryParams, Query, QueryModel } from "./types";
-import type { DocumentTypes } from "@supergrain/store";
+import type { DocumentTypes } from "@supergrain/document-store";
 
 import { signal } from "@supergrain/core";
 

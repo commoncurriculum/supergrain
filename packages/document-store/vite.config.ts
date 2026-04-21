@@ -4,24 +4,29 @@ import dts from "vite-plugin-dts";
 export default defineConfig({
   build: {
     lib: {
-      entry: "src/index.ts",
-      name: "SupergrainStore",
+      entry: {
+        index: "src/index.ts",
+        "processors/index": "src/processors/index.ts",
+        "processors/json-api": "src/processors/json-api.ts",
+        "react/index": "src/react/index.ts",
+        "react/json-api": "src/react/json-api.ts",
+      },
+      name: "SupergrainDocumentStore",
       formats: ["es", "cjs"],
-      fileName: "index",
     },
     rollupOptions: {
-      external: ["@supergrain/core", "@supergrain/operators"],
+      external: ["@supergrain/core", "@supergrain/operators", "react", "react/jsx-runtime"],
       output: {
         globals: {
           "@supergrain/core": "SupergrainCore",
           "@supergrain/operators": "SupergrainOperators",
+          react: "React",
         },
       },
     },
   },
   plugins: [
     dts({
-      rollupTypes: true,
       tsconfigPath: "./tsconfig.json",
     }),
   ],

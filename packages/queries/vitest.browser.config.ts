@@ -20,7 +20,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@supergrain/core": resolve(__dirname, "../core/src"),
-      "@supergrain/store": resolve(__dirname, "../store/src"),
+      "@supergrain/document-store": resolve(__dirname, "../document-store/src"),
       "@supergrain/queries": resolve(__dirname, "./src"),
     },
   },

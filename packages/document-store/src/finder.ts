@@ -1,6 +1,5 @@
 import type { DocumentTypes } from "./memory";
-import type { ResponseProcessor } from "./processor";
-import type { Store } from "./store";
+import type { DocumentStore } from "./store";
 
 // =============================================================================
 // DocumentAdapter — per-model transport
@@ -8,8 +7,8 @@ import type { Store } from "./store";
 
 /**
  * Talks to the API. Returns a raw response — the shape is opaque to
- * the finder. A `ResponseProcessor` (default or custom) transforms it
- * into documents.
+ * the finder. A `ResponseProcessor` (`defaultProcessor` or a custom one)
+ * transforms it into documents.
  *
  * Contract:
  * - `find` is called with a chunk of ids (at most `FinderConfig.batchSize`,
@@ -25,6 +24,36 @@ export interface DocumentAdapter {
 }
 
 // =============================================================================
+// ResponseProcessor — raw response → documents
+// =============================================================================
+
+/**
+ * Transforms a raw adapter response into documents the store can cache.
+ *
+ * A processor is a pure function that:
+ * 1. Parses the raw response shape (opaque to the finder).
+ * 2. Calls `store.insertDocument` for every document worth caching —
+ *    both the requested documents and any sideloaded resources.
+ * 3. Returns the array of documents matching the originally-requested
+ *    ids. The finder uses this to resolve the pending `find` promises.
+ *
+ * Contract:
+ * - Synchronous only. If you need async normalization, do it in the
+ *   adapter before it returns.
+ * - Must insert every document it wants cached — the finder does NOT
+ *   auto-insert the returned array. Insert then return.
+ * - If the processor throws, the finder rejects all pending deferreds
+ *   for that chunk with the thrown error.
+ * - The returned array may be empty if none of the requested ids were
+ *   in the response — in that case the finder rejects the pending
+ *   deferreds with a "document not found" error.
+ */
+export type ResponseProcessor<M extends DocumentTypes, T> = (
+  raw: unknown,
+  store: DocumentStore<M>,
+) => Array<T>;
+
+// =============================================================================
 // Per-model config
 // =============================================================================
 
@@ -32,10 +61,11 @@ export interface DocumentAdapter {
  * Per-model wiring: the adapter that talks to the API and the
  * optional processor that normalizes its response.
  *
- * If `processor` is omitted, the finder uses `DefaultProcessor` — which
+ * If `processor` is omitted, the finder uses `defaultProcessor` — which
  * assumes the adapter returns a doc or an array of docs, each with its
- * own `type`/`id`. For envelopes, pass `new JsonApiProcessor()` or a
- * custom `ResponseProcessor`.
+ * own `type`/`id`. For envelopes (e.g. JSON-API), pass `jsonApiProcessor`
+ * from `@supergrain/document-store/processors/json-api` or a custom
+ * `ResponseProcessor`.
  */
 export interface ModelConfig<M extends DocumentTypes, K extends keyof M> {
   adapter: DocumentAdapter;
@@ -67,23 +97,23 @@ export interface FinderConfig<M extends DocumentTypes> {
  * into the store.
  *
  * Store and finder reference each other, so wiring is two-step: construct
- * the finder first, then pass it to `new Store({ finder })`. The Store
- * constructor calls `attachStore` on this finder.
+ * the finder first, then pass it to `new DocumentStore({ finder })`. The
+ * DocumentStore constructor calls `attachStore` on this finder.
  *
  * @example
  * ```ts
  * const finder = new Finder<TypeToModel>({
  *   models: {
  *     user: { adapter: userAdapter },
- *     "card-stack": { adapter: cardStackAdapter, processor: new JsonApiProcessor() },
+ *     "card-stack": { adapter: cardStackAdapter, processor: jsonApiProcessor },
  *   },
- * })
- * const store = new Store<TypeToModel>({ finder })
+ * });
+ * const store = new DocumentStore<TypeToModel>({ finder });
  * ```
  */
 export class Finder<M extends DocumentTypes> {
   #config: FinderConfig<M>;
-  #store: Store<M> | undefined;
+  #store: DocumentStore<M> | undefined;
 
   constructor(config: FinderConfig<M>) {
     this.#config = config;
@@ -94,22 +124,23 @@ export class Finder<M extends DocumentTypes> {
    * tick window, calls the adapter, processes the response, and
    * inserts results into the store.
    *
-   * Throws synchronously if called before a store has been attached.
+   * Throws synchronously if called before a store has been attached,
+   * or if `type` is not in `config.models`.
    */
   find<K extends keyof M & string>(type: K, _id: string): Promise<M[K]> {
     if (!this.#store) {
       throw new Error(
-        "@supergrain/store: store not attached. Pass the finder to new Store({...}).",
+        "@supergrain/document-store: store not attached. Pass the finder to new DocumentStore({...}).",
       );
     }
     if (!this.#config.models[type]) {
-      throw new Error(`@supergrain/store: no model configured for type "${type}"`);
+      throw new Error(`@supergrain/document-store: no model configured for type "${type}"`);
     }
-    throw new Error("@supergrain/store: Finder.find is not yet implemented");
+    throw new Error("@supergrain/document-store: Finder.find is not yet implemented");
   }
 
-  /** Attach the store. Called once by the `Store` constructor. */
-  attachStore(store: Store<M>): void {
+  /** Attach the store. Called once by the `DocumentStore` constructor. */
+  attachStore(store: DocumentStore<M>): void {
     this.#store = store;
   }
 }

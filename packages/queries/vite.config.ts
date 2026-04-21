@@ -10,11 +10,11 @@ export default defineConfig({
       fileName: "index",
     },
     rollupOptions: {
-      external: ["@supergrain/core", "@supergrain/store"],
+      external: ["@supergrain/core", "@supergrain/document-store"],
       output: {
         globals: {
           "@supergrain/core": "SupergrainCore",
-          "@supergrain/store": "SupergrainStore",
+          "@supergrain/document-store": "SupergrainDocumentStore",
         },
       },
     },

@@ -13,7 +13,7 @@
     "baseUrl": ".",
     "paths": {
       "@supergrain/core": ["../core/src"],
-      "@supergrain/store": ["../store/src"]
+      "@supergrain/document-store": ["../document-store/src"]
     }
   },
   "include": ["src", "tests"]

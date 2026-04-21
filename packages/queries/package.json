@@ -1,7 +1,7 @@
 {
   "name": "@supergrain/queries",
   "version": "0.0.1",
-  "description": "Pagination + live-subscription query primitive for @supergrain/store",
+  "description": "Pagination + live-subscription query primitive for @supergrain/document-store",
   "keywords": [
     "query",
     "reactive",
@@ -49,7 +49,7 @@
   },
   "dependencies": {
     "@supergrain/core": "workspace:*",
-    "@supergrain/store": "workspace:*"
+    "@supergrain/document-store": "workspace:*"
   },
   "devDependencies": {
     "@vitest/browser": "4.1.0",

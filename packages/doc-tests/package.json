@@ -20,9 +20,9 @@
   },
   "dependencies": {
     "@supergrain/core": "workspace:*",
+    "@supergrain/document-store": "workspace:*",
     "@supergrain/operators": "workspace:*",
-    "@supergrain/react": "workspace:*",
-    "@supergrain/store": "workspace:*"
+    "@supergrain/react": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
