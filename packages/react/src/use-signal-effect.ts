@@ -17,10 +17,11 @@ import { useEffect } from "react";
  *
  * @example
  * ```tsx
- * const { Provider, useStore } = createStore(() => ({ todos: [] as Todo[] }))
+ * // app/store.ts: export const Provider = (p) =>
+ * //   <StoreProvider init={() => ({ todos: [] as Todo[] })}>{p.children}</StoreProvider>;
  *
  * const App = tracked(() => {
- *   const store = useStore()
+ *   const store = useStore<AppState>()
  *   const remaining = useComputed(() => store.todos.filter(t => !t.completed).length)
  *
  *   useSignalEffect(() => {

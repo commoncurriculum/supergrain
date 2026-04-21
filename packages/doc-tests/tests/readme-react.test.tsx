@@ -8,7 +8,8 @@
 
 import {
   tracked,
-  createStore,
+  StoreProvider,
+  useStore,
   useReactive,
   useComputed,
   useSignalEffect,
@@ -54,16 +55,18 @@ describe("README React Examples", () => {
       selected: number | null;
     }
 
-    const { Provider, useStore } = createStore<AppState>(() => ({
-      todos: [
-        { id: 1, text: "Learn Supergrain", completed: false },
-        { id: 2, text: "Build something", completed: false },
-      ],
-      selected: null,
-    }));
+    function initState(): AppState {
+      return {
+        todos: [
+          { id: 1, text: "Learn Supergrain", completed: false },
+          { id: 2, text: "Build something", completed: false },
+        ],
+        selected: null,
+      };
+    }
 
     const TodoItem = tracked(({ todo }: { todo: Todo }) => {
-      const s = useStore();
+      const s = useStore<AppState>();
       const isSelected = useComputed(() => s.selected === todo.id);
 
       return (
@@ -81,7 +84,7 @@ describe("README React Examples", () => {
     const titleSpy = vi.spyOn(document, "title", "set");
 
     const App = tracked(() => {
-      const s = useStore();
+      const s = useStore<AppState>();
       const remaining = useComputed(() => s.todos.filter((t) => !t.completed).length);
 
       useSignalEffect(() => {
@@ -100,15 +103,15 @@ describe("README React Examples", () => {
     // Probe the store from inside the Provider so the test can mutate it.
     let storeRef: AppState = null!;
     const Probe = () => {
-      storeRef = useStore();
+      storeRef = useStore<AppState>();
       return null;
     };
 
     render(
-      <Provider>
+      <StoreProvider<AppState> init={initState}>
         <Probe />
         <App />
-      </Provider>,
+      </StoreProvider>,
     );
 
     expect(screen.getByText("Todos (2)")).toBeInTheDocument();

@@ -12,8 +12,9 @@ export { useComputed } from "./use-computed";
 // Export useReactive for per-component reactive state
 export { useReactive } from "./use-reactive";
 
-// Export createStore for app-wide reactive state with Provider + hook
-export { createStore } from "./create-store";
+// Export StoreProvider + useStore for app-wide reactive state (singleton default).
+// Export createStoreContext for isolated stores (libraries, micro-frontends).
+export { StoreProvider, useStore, createStoreContext } from "./create-store";
 
 // Export useSignalEffect for signal-tracked side effects tied to component lifecycle
 export { useSignalEffect } from "./use-signal-effect";

@@ -3,7 +3,7 @@ import { StrictMode, type ReactNode } from "react";
 import { describe, it, expect } from "vitest";
 
 import { DocumentStore, Finder, type DocumentAdapter } from "../../src";
-import { DocumentStoreProvider, useDocument, useDocumentStore } from "../../src/react";
+import { createDocumentStoreContext } from "../../src/react";
 
 // =============================================================================
 // Test models
@@ -27,14 +27,12 @@ type TypeToModel = {
 };
 
 // =============================================================================
-// Helpers
+// Helpers — each test file uses its own isolated context via the factory,
+// which gives typed hooks without polluting the global TypeRegistry.
 // =============================================================================
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-// Adapters return a bare array of documents — matches the library's
-// defaultProcessor. For the envelope path, tests can provide their own
-// adapter + jsonApiProcessor the same way a consumer would.
 function makeUserAdapter(): DocumentAdapter {
   return {
     find: (ids) =>
@@ -76,27 +74,28 @@ function initStore(): DocumentStore<TypeToModel> {
   return new DocumentStore<TypeToModel>({ finder });
 }
 
+// One isolated context for this whole test file — typed for TypeToModel.
+const { Provider, useDocument, useDocumentStore } = createDocumentStoreContext<TypeToModel>();
+
 function wrapper(opts: { strict?: boolean } = {}) {
   const strict = opts.strict ?? true;
   return function Wrap({ children }: { children: ReactNode }) {
-    const content = (
-      <DocumentStoreProvider<TypeToModel> init={initStore}>{children}</DocumentStoreProvider>
-    );
+    const content = <Provider init={initStore}>{children}</Provider>;
     return strict ? <StrictMode>{content}</StrictMode> : content;
   };
 }
 
 // =============================================================================
-// DocumentStoreProvider + useDocumentStore
+// Provider + useDocumentStore
 // =============================================================================
 
-describe("DocumentStoreProvider", () => {
+describe("createDocumentStoreContext — Provider", () => {
   it("provides the store to descendants", () => {
     const Wrap = wrapper();
 
     let captured: unknown;
     const Probe = () => {
-      captured = useDocumentStore<TypeToModel>();
+      captured = useDocumentStore();
       return null;
     };
 
@@ -111,10 +110,10 @@ describe("DocumentStoreProvider", () => {
   });
 });
 
-describe("useDocumentStore", () => {
+describe("createDocumentStoreContext — useDocumentStore", () => {
   it("throws outside the Provider", () => {
     const Probe = () => {
-      useDocumentStore<TypeToModel>();
+      useDocumentStore();
       return null;
     };
 
@@ -127,12 +126,12 @@ describe("useDocumentStore", () => {
 // useDocument
 // =============================================================================
 
-describe("useDocument", () => {
+describe("createDocumentStoreContext — useDocument", () => {
   it("renders loading state and then data for a single id", async () => {
     const Wrap = wrapper();
 
     const UserBadge = ({ userId }: { userId: string }) => {
-      const handle = useDocument<TypeToModel, "user">("user", userId);
+      const handle = useDocument("user", userId);
       if (handle.isPending) return <span>loading</span>;
       if (handle.error) return <span>error: {handle.error.message}</span>;
       return <span>{handle.data?.attributes.firstName}</span>;
@@ -156,7 +155,7 @@ describe("useDocument", () => {
     const Wrap = wrapper();
 
     const MaybeBadge = ({ userId }: { userId: string | null }) => {
-      const handle = useDocument<TypeToModel, "user">("user", userId);
+      const handle = useDocument("user", userId);
       if (handle.status === "IDLE") return <span>none</span>;
       return <span>{handle.data?.attributes.firstName ?? "…"}</span>;
     };
@@ -168,6 +167,44 @@ describe("useDocument", () => {
     );
 
     expect(screen.getByText("none")).toBeDefined();
+    cleanup();
+  });
+});
+
+// =============================================================================
+// Isolation — two factory instances don't collide
+// =============================================================================
+
+describe("createDocumentStoreContext — isolation", () => {
+  it("two factory instances don't see each other's stores", () => {
+    const ctxA = createDocumentStoreContext<TypeToModel>();
+    const ctxB = createDocumentStoreContext<TypeToModel>();
+
+    let storeA: unknown = null;
+    let storeB: unknown = null;
+
+    const ProbeA = () => {
+      storeA = ctxA.useDocumentStore();
+      return null;
+    };
+
+    const ProbeB = () => {
+      storeB = ctxB.useDocumentStore();
+      return null;
+    };
+
+    render(
+      <ctxA.Provider init={initStore}>
+        <ctxB.Provider init={initStore}>
+          <ProbeA />
+          <ProbeB />
+        </ctxB.Provider>
+      </ctxA.Provider>,
+    );
+
+    expect(storeA).toBeInstanceOf(DocumentStore);
+    expect(storeB).toBeInstanceOf(DocumentStore);
+    expect(storeA).not.toBe(storeB);
     cleanup();
   });
 });

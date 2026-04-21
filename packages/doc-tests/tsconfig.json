@@ -2,11 +2,17 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "types": ["vitest/globals", "vitest/browser"],
-    "lib": ["DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@supergrain/core": ["../core/src"],
+      "@supergrain/react": ["../react/src"],
+      "@supergrain/document-store": ["../document-store/src"]
+    }
   },
   "include": ["tests/**/*", "vitest.config.ts", "vitest.node.config.ts"],
   "exclude": ["node_modules", "dist"]

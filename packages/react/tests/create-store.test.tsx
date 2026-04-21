@@ -2,7 +2,7 @@ import { render, cleanup, act } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, afterEach } from "vitest";
 
-import { tracked, createStore, useComputed } from "../src/index";
+import { tracked, StoreProvider, useStore, createStoreContext, useComputed } from "../src/index";
 
 afterEach(() => cleanup());
 
@@ -11,41 +11,29 @@ interface AppState {
   selected: number | null;
 }
 
-describe("createStore()", () => {
-  it("returns an object with Provider and useStore", () => {
-    const { Provider, useStore } = createStore<AppState>(() => ({
-      items: [],
-      selected: null,
-    }));
-    expect(typeof Provider).toBe("function");
-    expect(typeof useStore).toBe("function");
-  });
+// =============================================================================
+// Default singleton path — StoreProvider + useStore
+// =============================================================================
 
+describe("StoreProvider + useStore (default singleton)", () => {
   it("Provider exposes the store to descendants via useStore", () => {
-    const { Provider, useStore } = createStore<AppState>(() => ({
-      items: [],
-      selected: null,
-    }));
-
     const Child = tracked(() => {
-      const s = useStore();
+      const s = useStore<AppState>();
       return <span data-testid="val">{String(s.selected)}</span>;
     });
 
     const { getByTestId } = render(
-      <Provider>
+      <StoreProvider<AppState> init={() => ({ items: [], selected: null })}>
         <Child />
-      </Provider>,
+      </StoreProvider>,
     );
 
     expect(getByTestId("val").textContent).toBe("null");
   });
 
   it("throws when useStore is called outside Provider", () => {
-    const { useStore } = createStore<AppState>(() => ({ items: [], selected: null }));
-
     const Bad = () => {
-      useStore();
+      useStore<AppState>();
       return null;
     };
 
@@ -53,26 +41,23 @@ describe("createStore()", () => {
   });
 
   it("store from the Provider is reactive", async () => {
-    const { Provider, useStore } = createStore<AppState>(() => ({
-      items: [{ id: 1, label: "hello" }],
-      selected: null,
-    }));
-
     let storeRef: AppState = null!;
     const Probe = () => {
-      storeRef = useStore();
+      storeRef = useStore<AppState>();
       return null;
     };
     const Child = tracked(() => {
-      const s = useStore();
+      const s = useStore<AppState>();
       return <span data-testid="label">{s.items[0].label}</span>;
     });
 
     const { getByTestId } = render(
-      <Provider>
+      <StoreProvider<AppState>
+        init={() => ({ items: [{ id: 1, label: "hello" }], selected: null })}
+      >
         <Probe />
         <Child />
-      </Provider>,
+      </StoreProvider>,
     );
 
     expect(getByTestId("label").textContent).toBe("hello");
@@ -85,15 +70,11 @@ describe("createStore()", () => {
   });
 
   it("context value is stable — store mutations don't trigger context re-renders", async () => {
-    const { Provider, useStore } = createStore<AppState>(() => ({
-      items: [],
-      selected: null,
-    }));
     let childRenders = 0;
     let storeRef: AppState = null!;
 
     const Probe = () => {
-      storeRef = useStore();
+      storeRef = useStore<AppState>();
       return null;
     };
     const Counter = () => {
@@ -102,10 +83,10 @@ describe("createStore()", () => {
     };
 
     render(
-      <Provider>
+      <StoreProvider<AppState> init={() => ({ items: [], selected: null })}>
         <Probe />
         <Counter />
-      </Provider>,
+      </StoreProvider>,
     );
     expect(childRenders).toBe(1);
 
@@ -116,35 +97,36 @@ describe("createStore()", () => {
   });
 
   it("works with useComputed for the firewall pattern", async () => {
-    const { Provider, useStore } = createStore<AppState>(() => ({
-      items: [
-        { id: 1, label: "one" },
-        { id: 2, label: "two" },
-        { id: 3, label: "three" },
-      ],
-      selected: null,
-    }));
     let rowRenders = 0;
     let storeRef: AppState = null!;
 
     const Probe = () => {
-      storeRef = useStore();
+      storeRef = useStore<AppState>();
       return null;
     };
     const Row = tracked(({ id }: { id: number }) => {
       rowRenders++;
-      const s = useStore();
+      const s = useStore<AppState>();
       const isSelected = useComputed(() => s.selected === id);
       return <div data-testid={`row-${id}`}>{isSelected ? "selected" : "not"}</div>;
     });
 
     const { getByTestId } = render(
-      <Provider>
+      <StoreProvider<AppState>
+        init={() => ({
+          items: [
+            { id: 1, label: "one" },
+            { id: 2, label: "two" },
+            { id: 3, label: "three" },
+          ],
+          selected: null,
+        })}
+      >
         <Probe />
         <Row id={1} />
         <Row id={2} />
         <Row id={3} />
-      </Provider>,
+      </StoreProvider>,
     );
     expect(rowRenders).toBe(3);
 
@@ -163,8 +145,20 @@ describe("createStore()", () => {
     expect(getByTestId("row-1").textContent).toBe("selected");
     expect(getByTestId("row-2").textContent).toBe("not");
   });
+});
 
-  it("supports multiple independent stores", async () => {
+// =============================================================================
+// createStoreContext — escape hatch for isolation
+// =============================================================================
+
+describe("createStoreContext (isolation)", () => {
+  it("returns an object with Provider and useStore", () => {
+    const ctx = createStoreContext<AppState>();
+    expect(typeof ctx.Provider).toBe("function");
+    expect(typeof ctx.useStore).toBe("function");
+  });
+
+  it("supports multiple independent stores that don't collide", async () => {
     interface AuthState {
       user: string | null;
     }
@@ -172,8 +166,8 @@ describe("createStore()", () => {
       theme: string;
     }
 
-    const Auth = createStore<AuthState>(() => ({ user: "alice" }));
-    const UI = createStore<UIState>(() => ({ theme: "dark" }));
+    const Auth = createStoreContext<AuthState>();
+    const UI = createStoreContext<UIState>();
 
     let uiRef: UIState = null!;
     const Probe = () => {
@@ -191,8 +185,8 @@ describe("createStore()", () => {
     });
 
     const { getByTestId } = render(
-      <Auth.Provider>
-        <UI.Provider>
+      <Auth.Provider init={() => ({ user: "alice" })}>
+        <UI.Provider init={() => ({ theme: "dark" })}>
           <Probe />
           <Display />
         </UI.Provider>
@@ -208,29 +202,29 @@ describe("createStore()", () => {
   });
 
   it("each Provider mount gets an isolated store", async () => {
-    const { Provider, useStore } = createStore(() => ({ count: 0 }));
+    const ctx = createStoreContext<{ count: number }>();
 
     let firstRef: { count: number } = null!;
     let secondRef: { count: number } = null!;
     const First = tracked(() => {
-      const s = useStore();
+      const s = ctx.useStore();
       firstRef = s;
       return <span data-testid="first">{s.count}</span>;
     });
     const Second = tracked(() => {
-      const s = useStore();
+      const s = ctx.useStore();
       secondRef = s;
       return <span data-testid="second">{s.count}</span>;
     });
 
     const { getByTestId } = render(
       <>
-        <Provider>
+        <ctx.Provider init={() => ({ count: 0 })}>
           <First />
-        </Provider>
-        <Provider>
+        </ctx.Provider>
+        <ctx.Provider init={() => ({ count: 0 })}>
           <Second />
-        </Provider>
+        </ctx.Provider>
       </>,
     );
 
@@ -243,25 +237,27 @@ describe("createStore()", () => {
     expect(getByTestId("second").textContent).toBe("0");
   });
 
-  it("infers types from the initializer — no duplicate generic needed", () => {
-    const { Provider, useStore } = createStore(() => ({ count: 0, label: "test" }));
+  it("doesn't collide with the default StoreProvider", () => {
+    const ctx = createStoreContext<{ isolated: true }>();
 
-    const Child = tracked(() => {
-      const s = useStore();
-      // TypeScript should infer s.count as number, s.label as string
-      return (
-        <span>
-          {s.count}
-          {s.label}
-        </span>
-      );
-    });
+    let defaultStore: AppState = null!;
+    let isolatedStore: { isolated: true } = null!;
 
-    const { container } = render(
-      <Provider>
-        <Child />
-      </Provider>,
+    const Probe = () => {
+      defaultStore = useStore<AppState>();
+      isolatedStore = ctx.useStore();
+      return null;
+    };
+
+    render(
+      <StoreProvider<AppState> init={() => ({ items: [], selected: null })}>
+        <ctx.Provider init={() => ({ isolated: true })}>
+          <Probe />
+        </ctx.Provider>
+      </StoreProvider>,
     );
-    expect(container.textContent).toBe("0test");
+
+    expect(defaultStore.items).toEqual([]);
+    expect(isolatedStore.isolated).toBe(true);
   });
 });

@@ -4,97 +4,117 @@ import type { DocumentHandle, DocumentsHandle, DocumentStore } from "../store";
 import { createContext, createElement, useContext, useState, type ReactNode } from "react";
 
 // =============================================================================
-// Internal singleton context
-// =============================================================================
-//
-// One document store per app. The Provider populates this shared context;
-// the free-standing hooks below read from it. Since the store is created
-// per-mount via `useState(init)`, SSR requests and tests remain isolated
-// even though the context identity is global.
-
-const DocumentStoreContext = createContext<DocumentStore<DocumentTypes> | null>(null);
-
-// =============================================================================
-// DocumentStoreProvider
+// createDocumentStoreContext — escape hatch for isolation
 // =============================================================================
 
 /**
- * Mounts a `DocumentStore` into the React tree. Builds a fresh store on
- * mount via the `init` function, so each Provider instance (per SSR
- * request, per test) gets its own store.
+ * Create an isolated `DocumentStore` React binding — Context + Provider +
+ * hooks, all tied to a fresh React Context that doesn't collide with the
+ * default singleton or any other call to this factory.
+ *
+ * Most apps don't need this. Use the free-standing exports
+ * (`DocumentStoreProvider`, `useDocument`, etc.) — they're backed by a
+ * default context created once at module load.
+ *
+ * Reach for this factory when you need **isolation**: a library shipping
+ * its own document store without colliding with the host app, a
+ * micro-frontend that owns its own data layer, or a test harness that
+ * mounts alternate data.
  *
  * @example
- * ```tsx
- * // app/document-store.ts
- * function initStore() {
- *   const finder = new Finder<TypeToModel>({ models: {...} });
- *   return new DocumentStore<TypeToModel>({ finder });
- * }
- *
- * export function Provider({ children }: { children: ReactNode }) {
- *   return (
- *     <DocumentStoreProvider init={initStore}>
- *       {children}
- *     </DocumentStoreProvider>
- *   );
- * }
+ * ```ts
+ * // in a library
+ * const libStore = createDocumentStoreContext<LibTypes>();
+ * export const Provider = libStore.Provider;
+ * export const useLibDocument = libStore.useDocument;
  * ```
- */
-export function DocumentStoreProvider<M extends DocumentTypes = RegisteredTypes>({
-  init,
-  children,
-}: {
-  init: () => DocumentStore<M>;
-  children: ReactNode;
-}): ReactNode {
-  const [store] = useState(init);
-  return createElement(
-    DocumentStoreContext.Provider,
-    { value: store as unknown as DocumentStore<DocumentTypes> },
-    children,
-  );
-}
-
-// =============================================================================
-// Free-standing hooks
-// =============================================================================
-
-/**
- * Escape hatch — read the mounted `DocumentStore` from context.
  *
- * Use for imperative operations that aren't covered by the reactive
- * hooks: `store.insertDocument(doc)`, `store.clearMemory()`, etc. For
- * reads, prefer `useDocument` / `useDocuments` — they subscribe to
- * changes automatically.
+ * Note: the subpath hooks in `@supergrain/document-store/react/json-api`
+ * (`useBelongsTo`, `useHasMany`) compose on the **default** `useDocument`.
+ * If you need JSON-API hooks bound to your isolated context, compose them
+ * yourself on top of `libStore.useDocument` / `libStore.useDocuments`.
  */
-export function useDocumentStore<M extends DocumentTypes = RegisteredTypes>(): DocumentStore<M> {
-  const store = useContext(DocumentStoreContext);
-  if (store === null) {
-    throw new Error(
-      "@supergrain/document-store/react: useDocumentStore must be used within <DocumentStoreProvider>",
-    );
+export function createDocumentStoreContext<M extends DocumentTypes = RegisteredTypes>(): {
+  Provider: (props: { init: () => DocumentStore<M>; children: ReactNode }) => ReactNode;
+  useDocumentStore: () => DocumentStore<M>;
+  useDocument: <K extends keyof M & string>(
+    type: K,
+    id: string | null | undefined,
+  ) => DocumentHandle<M[K]>;
+  useDocuments: <K extends keyof M & string>(
+    type: K,
+    ids: ReadonlyArray<string>,
+  ) => DocumentsHandle<M[K]>;
+} {
+  const Context = createContext<DocumentStore<M> | null>(null);
+
+  function Provider({
+    init,
+    children,
+  }: {
+    init: () => DocumentStore<M>;
+    children: ReactNode;
+  }): ReactNode {
+    const [store] = useState(init);
+    return createElement(Context.Provider, { value: store }, children);
   }
-  return store as unknown as DocumentStore<M>;
+
+  function useDocumentStore(): DocumentStore<M> {
+    const store = useContext(Context);
+    if (store === null) {
+      throw new Error(
+        "@supergrain/document-store/react: useDocumentStore must be used within <DocumentStoreProvider>",
+      );
+    }
+    return store;
+  }
+
+  function useDocument<K extends keyof M & string>(
+    _type: K,
+    _id: string | null | undefined,
+  ): DocumentHandle<M[K]> {
+    // Validates Provider is mounted; implementation will call
+    // `store.find(type, id)` on this store reference.
+    useDocumentStore();
+    throw new Error("@supergrain/document-store/react: useDocument is not yet implemented");
+  }
+
+  function useDocuments<K extends keyof M & string>(
+    _type: K,
+    _ids: ReadonlyArray<string>,
+  ): DocumentsHandle<M[K]> {
+    useDocumentStore();
+    throw new Error("@supergrain/document-store/react: useDocuments is not yet implemented");
+  }
+
+  return { Provider, useDocumentStore, useDocument, useDocuments };
 }
 
-/**
- * Reactive read of a single document by `(type, id)`. Re-renders when the
- * document changes. `null`/`undefined` id returns an idle handle (no fetch).
- */
-export function useDocument<
-  M extends DocumentTypes = RegisteredTypes,
-  K extends keyof M & string = keyof M & string,
->(_type: K, _id: string | null | undefined): DocumentHandle<M[K]> {
-  throw new Error("@supergrain/document-store/react: useDocument is not yet implemented");
-}
+// =============================================================================
+// Default singleton context
+// =============================================================================
+//
+// One call to the factory, bound at module load. 95% of apps import the
+// free-standing exports below and never touch `createDocumentStoreContext`.
+// Libraries needing isolation call the factory for their own Context.
+
+const defaultContext = createDocumentStoreContext();
 
 /**
- * Reactive read of many documents by ids. Batches into a single adapter
- * call; returns one aggregate handle. Empty `ids` returns an idle handle.
+ * Free-standing default exports — bound to a single module-level context.
+ * 95% of apps import these and never touch `createDocumentStoreContext`.
+ *
+ * - `DocumentStoreProvider` mounts the store. Builds a fresh instance on
+ *   mount via `init`, so each Provider instance (per SSR request, per
+ *   test) gets its own store.
+ * - `useDocumentStore` — escape hatch for imperative ops (insertDocument,
+ *   clearMemory). For reads, prefer `useDocument` / `useDocuments`.
+ * - `useDocument` — reactive single-doc read by `(type, id)`.
+ * - `useDocuments` — reactive batch read by `(type, ids)`.
  */
-export function useDocuments<
-  M extends DocumentTypes = RegisteredTypes,
-  K extends keyof M & string = keyof M & string,
->(_type: K, _ids: ReadonlyArray<string>): DocumentsHandle<M[K]> {
-  throw new Error("@supergrain/document-store/react: useDocuments is not yet implemented");
-}
+export const {
+  Provider: DocumentStoreProvider,
+  useDocumentStore,
+  useDocument,
+  useDocuments,
+} = defaultContext;
