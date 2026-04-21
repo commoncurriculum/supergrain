@@ -1,142 +1,90 @@
-import { render, screen, cleanup } from "@testing-library/react";
-import { StrictMode, type ReactNode } from "react";
-import { describe, it, expect } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { type ReactNode, StrictMode } from "react";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { DocumentStore, Finder, type DocumentAdapter } from "../../src";
+import { type DocumentStore } from "../../src";
 import { createDocumentStoreContext } from "../../src/react";
+import {
+  API_BASE,
+  clearRequests,
+  initStore,
+  makeUser,
+  server,
+  type TypeToModel,
+  type User,
+} from "../example-app";
 
 // =============================================================================
-// Test models
+// MSW lifecycle — the shared example-app MSW server handles /users and /posts.
+// Each test builds a fresh DocumentStore via initStore() so in-memory state is
+// isolated across tests.
 // =============================================================================
 
-interface User {
-  id: string;
-  type: "user";
-  attributes: { firstName: string; lastName: string; email: string };
-}
-
-interface Post {
-  id: string;
-  type: "post";
-  attributes: { title: string; body: string; authorId: string };
-}
-
-type TypeToModel = {
-  user: User;
-  post: Post;
-};
+beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+afterAll(() => server.close());
+afterEach(() => {
+  server.resetHandlers();
+  clearRequests();
+  cleanup();
+});
 
 // =============================================================================
-// Helpers — each test file uses its own isolated context via the factory,
-// which gives typed hooks without polluting the global TypeRegistry.
+// Per-file isolated context via the factory, typed for TypeToModel (so the
+// hooks don't rely on global TypeRegistry augmentation).
 // =============================================================================
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-function makeUserAdapter(): DocumentAdapter {
-  return {
-    find: (ids) =>
-      Promise.resolve(
-        ids.map((id) => ({
-          id,
-          type: "user" as const,
-          attributes: {
-            firstName: `User${id}`,
-            lastName: "Test",
-            email: `user${id}@example.com`,
-          },
-        })),
-      ),
-  };
-}
+const { Provider, useDocument, useDocuments, useDocumentStore } =
+  createDocumentStoreContext<TypeToModel>();
 
-function makePostAdapter(): DocumentAdapter {
-  return {
-    find: (ids) =>
-      Promise.resolve(
-        ids.map((id) => ({
-          id,
-          type: "post" as const,
-          attributes: { title: `Post${id}`, body: "b", authorId: "1" },
-        })),
-      ),
-  };
-}
-
-function initStore(): DocumentStore<TypeToModel> {
-  const finder = new Finder<TypeToModel>({
-    models: {
-      user: { adapter: makeUserAdapter() },
-      post: { adapter: makePostAdapter() },
-    },
-    batchWindowMs: 15,
-  });
-  return new DocumentStore<TypeToModel>({ finder });
-}
-
-// One isolated context for this whole test file — typed for TypeToModel.
-const { Provider, useDocument, useDocumentStore } = createDocumentStoreContext<TypeToModel>();
-
-function wrapper(opts: { strict?: boolean } = {}) {
-  const strict = opts.strict ?? true;
-  return function Wrap({ children }: { children: ReactNode }) {
-    const content = <Provider init={initStore}>{children}</Provider>;
-    return strict ? <StrictMode>{content}</StrictMode> : content;
-  };
+function Wrap({
+  init = initStore,
+  children,
+}: {
+  init?: () => DocumentStore<TypeToModel>;
+  children: ReactNode;
+}) {
+  return (
+    <StrictMode>
+      <Provider init={init}>{children}</Provider>
+    </StrictMode>
+  );
 }
 
 // =============================================================================
-// Provider + useDocumentStore
+// Realistic components the tests render — same shape a consumer would write.
 // =============================================================================
 
-describe("createDocumentStoreContext — Provider", () => {
-  it("provides the store to descendants", () => {
-    const Wrap = wrapper();
+function UserBadge({ userId }: { userId: string | null | undefined }) {
+  const handle = useDocument("user", userId);
+  if (handle.status === "IDLE") return <span>no user</span>;
+  if (handle.isPending) return <span>loading</span>;
+  if (handle.error) return <span>error: {handle.error.message}</span>;
+  return <span>{handle.data?.attributes.firstName}</span>;
+}
 
-    let captured: unknown;
-    const Probe = () => {
-      captured = useDocumentStore();
-      return null;
-    };
-
-    render(
-      <Wrap>
-        <Probe />
-      </Wrap>,
-    );
-
-    expect(captured).toBeInstanceOf(DocumentStore);
-    cleanup();
-  });
-});
-
-describe("createDocumentStoreContext — useDocumentStore", () => {
-  it("throws outside the Provider", () => {
-    const Probe = () => {
-      useDocumentStore();
-      return null;
-    };
-
-    expect(() => render(<Probe />)).toThrow(/must be used within/i);
-    cleanup();
-  });
-});
+function UserList({ ids }: { ids: ReadonlyArray<string> }) {
+  const handle = useDocuments("user", ids);
+  if (handle.status === "IDLE") return <span>no users</span>;
+  if (handle.isPending) return <span>loading</span>;
+  if (handle.error) return <span>error</span>;
+  return (
+    <ul>
+      {handle.data?.map((u) => (
+        <li key={u.id}>{u.attributes.firstName}</li>
+      ))}
+    </ul>
+  );
+}
 
 // =============================================================================
-// useDocument
+// Provider — hooks work inside it, throw outside it.
 // =============================================================================
 
-describe("createDocumentStoreContext — useDocument", () => {
-  it("renders loading state and then data for a single id", async () => {
-    const Wrap = wrapper();
-
-    const UserBadge = ({ userId }: { userId: string }) => {
-      const handle = useDocument("user", userId);
-      if (handle.isPending) return <span>loading</span>;
-      if (handle.error) return <span>error: {handle.error.message}</span>;
-      return <span>{handle.data?.attributes.firstName}</span>;
-    };
-
+describe("DocumentStoreProvider", () => {
+  it("makes the store available to descendants — useDocument fetches and renders", async () => {
     render(
       <Wrap>
         <UserBadge userId="1" />
@@ -148,63 +96,178 @@ describe("createDocumentStoreContext — useDocument", () => {
     await tick();
 
     expect(screen.getByText("User1")).toBeDefined();
-    cleanup();
   });
 
-  it("returns an idle handle when id is null", () => {
-    const Wrap = wrapper();
-
-    const MaybeBadge = ({ userId }: { userId: string | null }) => {
-      const handle = useDocument("user", userId);
-      if (handle.status === "IDLE") return <span>none</span>;
-      return <span>{handle.data?.attributes.firstName ?? "…"}</span>;
-    };
-
-    render(
-      <Wrap>
-        <MaybeBadge userId={null} />
-      </Wrap>,
-    );
-
-    expect(screen.getByText("none")).toBeDefined();
-    cleanup();
+  it("throws when hooks are used outside a Provider", () => {
+    expect(() => render(<UserBadge userId="1" />)).toThrow(/must be used within/i);
   });
 });
 
 // =============================================================================
-// Isolation — two factory instances don't collide
+// useDocument
 // =============================================================================
 
-describe("createDocumentStoreContext — isolation", () => {
-  it("two factory instances don't see each other's stores", () => {
-    const ctxA = createDocumentStoreContext<TypeToModel>();
-    const ctxB = createDocumentStoreContext<TypeToModel>();
-
-    let storeA: unknown = null;
-    let storeB: unknown = null;
-
-    const ProbeA = () => {
-      storeA = ctxA.useDocumentStore();
-      return null;
-    };
-
-    const ProbeB = () => {
-      storeB = ctxB.useDocumentStore();
-      return null;
-    };
-
+describe("useDocument", () => {
+  it("returns an idle handle when id is null", () => {
     render(
-      <ctxA.Provider init={initStore}>
-        <ctxB.Provider init={initStore}>
-          <ProbeA />
-          <ProbeB />
-        </ctxB.Provider>
-      </ctxA.Provider>,
+      <Wrap>
+        <UserBadge userId={null} />
+      </Wrap>,
     );
 
-    expect(storeA).toBeInstanceOf(DocumentStore);
-    expect(storeB).toBeInstanceOf(DocumentStore);
-    expect(storeA).not.toBe(storeB);
-    cleanup();
+    expect(screen.getByText("no user")).toBeDefined();
+  });
+
+  it("shows cached data immediately with no loading state (memory-first path)", () => {
+    // Pre-seed user 1. The badge should render "Alice" synchronously without
+    // ever passing through a loading state — proves find() hits memory before
+    // delegating to the finder.
+    function init() {
+      const store = initStore();
+      store.insertDocument("user", makeUser("1", { firstName: "Alice" }));
+      return store;
+    }
+
+    render(
+      <Wrap init={init}>
+        <UserBadge userId="1" />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("Alice")).toBeDefined();
+    expect(screen.queryByText("loading")).toBeNull();
+  });
+});
+
+// =============================================================================
+// useDocuments
+// =============================================================================
+
+describe("useDocuments", () => {
+  it("renders loading then the full list for a batch of ids", async () => {
+    render(
+      <Wrap>
+        <UserList ids={["1", "2", "3"]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("loading")).toBeDefined();
+
+    await tick();
+
+    expect(screen.getByText("User1")).toBeDefined();
+    expect(screen.getByText("User2")).toBeDefined();
+    expect(screen.getByText("User3")).toBeDefined();
+  });
+
+  it("returns an idle handle for an empty ids array", () => {
+    render(
+      <Wrap>
+        <UserList ids={[]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("no users")).toBeDefined();
+  });
+
+  it("surfaces a batch error when the endpoint fails", async () => {
+    server.use(
+      http.get(`${API_BASE}/users`, () => HttpResponse.json({ message: "boom" }, { status: 500 })),
+    );
+
+    render(
+      <Wrap>
+        <UserList ids={["1", "2"]} />
+      </Wrap>,
+    );
+
+    await tick();
+
+    expect(screen.getByText("error")).toBeDefined();
+  });
+});
+
+// =============================================================================
+// useDocumentStore — the imperative escape hatch (e.g. for socket pushes,
+// "save" buttons, clearMemory on logout).
+// =============================================================================
+
+describe("useDocumentStore", () => {
+  it("exposes the store for imperative writes (e.g. socket push → insertDocument)", () => {
+    function PushSimulator({ user }: { user: User }) {
+      // A component that simulates an external source (websocket, admin tool,
+      // etc.) writing directly to the store. Real apps do this inside effects
+      // that subscribe to transport events.
+      const store = useDocumentStore();
+      return (
+        <button type="button" onClick={() => store.insertDocument("user", user)}>
+          simulate push
+        </button>
+      );
+    }
+
+    render(
+      <Wrap>
+        <PushSimulator user={makeUser("99", { firstName: "Pushed" })} />
+        <UserBadge userId="99" />
+      </Wrap>,
+    );
+
+    // UserBadge fired a fetch for id 99 on mount.
+    expect(screen.getByText("loading")).toBeDefined();
+
+    // External "push" inserts before the fetch lands. UserBadge picks it up
+    // via the handle's memory-backed reactive data.
+    fireEvent.click(screen.getByText("simulate push"));
+
+    expect(screen.getByText("Pushed")).toBeDefined();
+  });
+});
+
+// =============================================================================
+// Factory isolation — two factory instances keep their stores separate.
+// =============================================================================
+
+describe("createDocumentStoreContext isolation", () => {
+  it("two independent stores render their own data side-by-side", () => {
+    const tenantA = createDocumentStoreContext<TypeToModel>();
+    const tenantB = createDocumentStoreContext<TypeToModel>();
+
+    function initA() {
+      const store = initStore();
+      store.insertDocument("user", makeUser("1", { firstName: "AliceA" }));
+      return store;
+    }
+
+    function initB() {
+      const store = initStore();
+      store.insertDocument("user", makeUser("1", { firstName: "BobB" }));
+      return store;
+    }
+
+    function UserFromA() {
+      const handle = tenantA.useDocument("user", "1");
+      return <span data-testid="tenant-a">{handle.data?.attributes.firstName ?? "—"}</span>;
+    }
+    function UserFromB() {
+      const handle = tenantB.useDocument("user", "1");
+      return <span data-testid="tenant-b">{handle.data?.attributes.firstName ?? "—"}</span>;
+    }
+
+    render(
+      <>
+        <tenantA.Provider init={initA}>
+          <UserFromA />
+        </tenantA.Provider>
+        <tenantB.Provider init={initB}>
+          <UserFromB />
+        </tenantB.Provider>
+      </>,
+    );
+
+    // Each tenant sees its own seeded data. If they shared storage, both
+    // would show the same name (whichever Provider mounted last).
+    expect(screen.getByTestId("tenant-a").textContent).toBe("AliceA");
+    expect(screen.getByTestId("tenant-b").textContent).toBe("BobB");
   });
 });

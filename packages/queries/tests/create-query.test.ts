@@ -1,4 +1,4 @@
-import { DocumentStore, Finder } from "@supergrain/document-store";
+import { DocumentStore } from "@supergrain/document-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createQuery, type QueryAdapter } from "../src";
@@ -24,13 +24,12 @@ type TypeToModel = {
 };
 
 function makeStore(): DocumentStore<TypeToModel> {
-  const finder = new Finder<TypeToModel>({
+  return new DocumentStore<TypeToModel>({
     models: {
       planbooks_for_user: { adapter: { find: () => Promise.resolve({ data: [] }) } },
       planbook: { adapter: { find: () => Promise.resolve({ data: [] }) } },
     },
   });
-  return new DocumentStore<TypeToModel>({ finder });
 }
 
 function makeAdapter(): {
@@ -41,7 +40,7 @@ function makeAdapter(): {
     Promise.resolve({
       data: { results: [] as Array<PlanbookRef> },
       meta: { nextOffset: null as number | null },
-      included: undefined as Array<unknown> | undefined,
+      included: undefined as Array<{ type: string; id: string }> | undefined,
     }),
   );
   return { adapter: { fetch }, fetch };

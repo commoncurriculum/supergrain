@@ -2,6 +2,38 @@ import { createReactive } from "@supergrain/core";
 import { createContext, createElement, useContext, useState, type ReactNode } from "react";
 
 // =============================================================================
+// StoreRegistry — module-augmentation hook for the default singleton store.
+// =============================================================================
+
+/**
+ * Module-augmentation registry. Consumers augment this once to tell
+ * `StoreProvider` / `useStore` which state shape the default singleton store
+ * carries, and every call site picks it up without explicit generics.
+ *
+ * @example
+ * ```ts
+ * // in app bootstrap, once:
+ * declare module "@supergrain/react" {
+ *   interface StoreRegistry {
+ *     store: AppState;
+ *   }
+ * }
+ * ```
+ *
+ * Libraries / micro-frontends that need a store with a different shape should
+ * use `createStoreContext<T>()` instead — that factory never touches the
+ * registry and gives you a fully isolated Context.
+ */
+// oxlint-disable-next-line no-empty-interface
+export interface StoreRegistry {}
+
+/**
+ * Resolved default-store shape — reads from `StoreRegistry.store` if the
+ * consumer has augmented it, falls back to `object` otherwise.
+ */
+export type RegisteredStore = StoreRegistry extends { store: infer T extends object } ? T : object;
+
+// =============================================================================
 // createStoreContext — escape hatch for isolation
 // =============================================================================
 
@@ -70,6 +102,11 @@ const defaultContext = createStoreContext<any>();
  * store on mount via the `init` function, so each Provider instance (per
  * SSR request, per test) gets its own store.
  *
+ * Typing:
+ * - Augment `StoreRegistry` once and every call resolves to your state
+ *   shape automatically. See the `StoreRegistry` doc for the pattern.
+ * - Or pass an explicit `<T>` at the call site: `<StoreProvider<AppState>>`.
+ *
  * @example
  * ```tsx
  * // store.ts
@@ -82,7 +119,7 @@ const defaultContext = createStoreContext<any>();
  * }
  * ```
  */
-export function StoreProvider<T>({
+export function StoreProvider<T = RegisteredStore>({
   init,
   children,
 }: {
@@ -96,12 +133,17 @@ export function StoreProvider<T>({
  * Read the mounted reactive store from context. Throws when used outside
  * of `<StoreProvider>`.
  *
+ * Typing:
+ * - Augment `StoreRegistry` once and every call resolves to your state
+ *   shape automatically: `const state = useStore();`
+ * - Or pass an explicit `<T>` at the call site: `useStore<AppState>()`.
+ *
  * @example
  * ```tsx
  * const state = useStore<AppState>();
  * state.todos.push(...);
  * ```
  */
-export function useStore<T>(): T {
+export function useStore<T = RegisteredStore>(): T {
   return defaultContext.useStore() as T;
 }

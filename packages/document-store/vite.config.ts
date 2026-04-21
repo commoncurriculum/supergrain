@@ -15,11 +15,10 @@ export default defineConfig({
       formats: ["es", "cjs"],
     },
     rollupOptions: {
-      external: ["@supergrain/core", "@supergrain/operators", "react", "react/jsx-runtime"],
+      external: ["@supergrain/core", "react", "react/jsx-runtime"],
       output: {
         globals: {
           "@supergrain/core": "SupergrainCore",
-          "@supergrain/operators": "SupergrainOperators",
           react: "React",
         },
       },

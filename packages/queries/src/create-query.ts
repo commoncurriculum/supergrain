@@ -53,8 +53,13 @@ export function createQuery<
       if (destroyed) return;
 
       if (res.included) {
+        // Sideloaded `included` docs can be of any type — queries requires
+        // each one to carry its own `type` field in the envelope (typical
+        // JSON-API convention), since the core library's `insertDocument`
+        // takes type as an explicit arg.
         for (const doc of res.included) {
-          store.insertDocument(doc as M[keyof M]);
+          const docType = doc.type as keyof M & string;
+          store.insertDocument(docType, doc as unknown as M[keyof M & string]);
         }
       }
 
@@ -73,7 +78,7 @@ export function createQuery<
 
       const nextOffset = res.meta?.nextOffset ?? null;
       const doc: QueryModel<K, T> = { id, type, results, nextOffset };
-      store.insertDocument(doc as unknown as M[keyof M]);
+      store.insertDocument(type, doc as unknown as M[K]);
 
       attempts = 0;
       isFetching(false);

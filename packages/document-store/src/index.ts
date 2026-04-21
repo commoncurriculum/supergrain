@@ -7,9 +7,18 @@
 //   @supergrain/document-store/react/json-api      — useBelongsTo / useHasMany
 
 export { DocumentStore } from "./store";
-export type { DocumentHandle, DocumentsHandle } from "./store";
-
-export { Finder } from "./finder";
-export type { DocumentAdapter, ResponseProcessor } from "./finder";
+export type {
+  DocumentAdapter,
+  DocumentHandle,
+  DocumentsHandle,
+  DocumentStoreConfig,
+  ModelConfig,
+  ResponseProcessor,
+  Status,
+} from "./store";
 
 export type { DocumentTypes, TypeRegistry, RegisteredTypes } from "./memory";
+
+// Finder is intentionally not exported — it's an internal implementation
+// detail of DocumentStore (batching / dedup / chunking). Consumers configure
+// it through `DocumentStoreConfig.batchWindowMs` and `DocumentStoreConfig.batchSize`.

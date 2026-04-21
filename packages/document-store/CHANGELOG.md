@@ -1,49 +1,37 @@
-# @supergrain/store
+# @supergrain/document-store
 
 ## 3.0.0
 
 ### Major Changes
 
-- 3dc7b57: Rename the `createStore` primitive in `@supergrain/core` to `createReactive`, and reshape the React integration.
+- 3dc7b57: Rename `@supergrain/store` to `@supergrain/document-store`, rename the `createStore` primitive in `@supergrain/core` to `createReactive`, and reshape the React integration.
 
   **Breaking changes:**
 
-  - `@supergrain/core`: `createStore` is renamed to `createReactive`. Same behavior, clearer vocabulary — the primitive builds a reactive proxy; the word "store" is reserved for the app-wide API in `@supergrain/react`.
-  - `@supergrain/react`: `provideStore(store)` is removed. Replace with the new `createStore(() => initial)` factory, which takes an initializer function and returns `{ Provider, useStore }`. The Provider creates a fresh store on each mount, so SSR and tests are isolated by construction.
+  - Package rename: `@supergrain/store` → `@supergrain/document-store`. Update imports, and update subpath imports too: `@supergrain/document-store`, `/processors`, `/processors/json-api`, `/react`, `/react/json-api`. The `Store` class is now `DocumentStore`; `StoreConfig` is `DocumentStoreConfig`.
+  - `@supergrain/store-react` is absorbed into `@supergrain/document-store/react` (the separate package is gone).
+  - `@supergrain/core`: `createStore` is renamed to `createReactive`. Same behavior, clearer vocabulary — the primitive builds a reactive proxy; the word "store" is reserved for the app-wide APIs in `@supergrain/react` and `@supergrain/document-store`.
+  - `@supergrain/react`: `provideStore(store)` is removed. Replace with either (a) the free-standing `StoreProvider` + `useStore` exports backed by a module-level singleton context, or (b) the `createStoreContext()` factory for libraries / micro-frontends that need isolation.
 
   **New:**
 
   - `@supergrain/react` ships `useReactive(initial)` for per-component reactive state. No Provider needed for state scoped to a single component.
+  - `@supergrain/document-store/react` ships `DocumentStoreProvider` + `useDocument` / `useDocuments` / `useDocumentStore` as the default singleton path, and `createDocumentStoreContext()` as the factory escape hatch for isolated stores.
+  - Module-augmentation `TypeRegistry` lets consumers declare their document-type map once and get typed hooks everywhere without per-call-site generics.
 
   **Migration:**
 
   ```ts
   // Before
+  import { Store } from "@supergrain/store";
   import { createStore } from "@supergrain/core";
   import { provideStore } from "@supergrain/react";
 
-  const store = createStore<AppState>({ ... });
-  const Store = provideStore(store);
-  // <Store.Provider>, Store.useStore()
-
   // After
-  import { createStore } from "@supergrain/react";
-
-  const { Provider, useStore } = createStore<AppState>(() => ({ ... }));
-  // <Provider>, useStore()
-  ```
-
-  For per-component state:
-
-  ```tsx
-  // Before: needed useMemo + createStore
-  // After:
-  import { useReactive } from "@supergrain/react";
-
-  function Counter() {
-    const state = useReactive({ count: 0 });
-    return <button onClick={() => state.count++}>{state.count}</button>;
-  }
+  import { DocumentStore, Finder } from "@supergrain/document-store";
+  import { DocumentStoreProvider, useDocument } from "@supergrain/document-store/react";
+  import { createReactive } from "@supergrain/core";
+  import { StoreProvider, useStore } from "@supergrain/react";
   ```
 
 ### Patch Changes

@@ -12,8 +12,10 @@ import type { DocumentStore, DocumentTypes } from "@supergrain/document-store";
  *   `offset: number` (server-controlled positioning for stable ordering on
  *   later pages).
  * - `meta.nextOffset` — cursor for the next page, or `null` when exhausted.
- * - `included` — sideloaded documents written into the store via
- *   `store.insertDocument`.
+ * - `included` — sideloaded documents written into the store. Each item
+ *   must carry its own `type` and `id` (JSON-API convention) so the query
+ *   helper can insert it under the correct type. This is a queries-specific
+ *   requirement on top of the core library's minimal `{ id }` contract.
  */
 export interface QueryAdapter<T> {
   fetch(
@@ -22,7 +24,7 @@ export interface QueryAdapter<T> {
   ): Promise<{
     data: { results: Array<T> };
     meta?: { nextOffset?: number | null };
-    included?: Array<unknown>;
+    included?: Array<{ type: string; id: string }>;
   }>;
 }
 

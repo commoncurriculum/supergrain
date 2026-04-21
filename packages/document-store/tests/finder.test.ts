@@ -1,285 +1,319 @@
-import { http, HttpResponse } from "msw";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DocumentStore, Finder } from "../src";
-import {
-  API_BASE,
-  advance,
-  clearRequests,
-  createApp,
-  flushCoalescer,
-  requests,
-  server,
-  type App,
-  type TypeToModel,
-} from "./example-app";
+import { DocumentStore, type DocumentAdapter } from "../src";
 
 // =============================================================================
-// MSW lifecycle — intercept network for the whole file.
-// =============================================================================
-
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterAll(() => server.close());
-
-// =============================================================================
-// Shared app — same wiring as store.test.ts. A fresh instance per test,
-// but the shape (three models, real fetch-based adapters) is stable so
-// every test reads the same way.
+// Finder contract tests.
 //
-// The `requests()` log is the test's view of what network calls the library
-// actually made. Assertions count requests and check pathnames; id-correctness
-// is proven by the promise results (if three finds resolve to their own docs,
-// the adapter must have carried the right ids).
+// Finder is internal (not exported from @supergrain/document-store). These
+// tests exercise its behavior through the public DocumentStore API: batching
+// within a tick window, dedup of concurrent same-id requests, chunking at
+// batchSize, and error propagation from adapter/processor.
+//
+// No MSW, no network. Each adapter is a real, in-process implementation that
+// records the `ids` it was called with as part of its own public state
+// (`calls: string[][]`). That isn't a spy or mock — it's a real adapter
+// whose behavior is fully inspectable. Assertions check the adapter's own
+// recorded state and the observable outcomes of `store.find(...)`.
+//
+// Request-count / URL-shape assertions (i.e. "1 bulk GET" vs "3 fan-out GETs")
+// belong in adapter.test.ts — that's the adapter's concern, not Finder's.
 // =============================================================================
 
-let app: App;
+type TestTypes = {
+  user: { id: string; name: string };
+  post: { id: string; title: string };
+};
 
-beforeEach(() => {
-  vi.useFakeTimers();
-  app = createApp();
-});
+interface IntrospectableAdapter extends DocumentAdapter {
+  /** Every `ids` array this adapter has been called with, in order. */
+  readonly calls: ReadonlyArray<ReadonlyArray<string>>;
+  /** Trigger for a specific id to fail (returns a rejected Promise). */
+  failIds?: Set<string>;
+  /** When set, `find` omits these ids from its response (simulates "not found"). */
+  omitIds?: Set<string>;
+}
 
-afterEach(() => {
-  vi.useRealTimers();
-  server.resetHandlers();
-  clearRequests();
-});
+function makeUserAdapter(): IntrospectableAdapter {
+  const calls: string[][] = [];
+  const adapter: IntrospectableAdapter = {
+    calls,
+    async find(ids) {
+      calls.push([...ids]);
+      if (adapter.failIds && ids.some((id) => adapter.failIds!.has(id))) {
+        throw new Error("adapter rejected");
+      }
+      return ids.filter((id) => !adapter.omitIds?.has(id)).map((id) => ({ id, name: `User${id}` }));
+    },
+  };
+  return adapter;
+}
+
+function makePostAdapter(): IntrospectableAdapter {
+  const calls: string[][] = [];
+  const adapter: IntrospectableAdapter = {
+    calls,
+    async find(ids) {
+      calls.push([...ids]);
+      return ids.map((id) => ({ id, title: `Post${id}` }));
+    },
+  };
+  return adapter;
+}
+
+interface TestApp {
+  store: DocumentStore<TestTypes>;
+  userAdapter: IntrospectableAdapter;
+  postAdapter: IntrospectableAdapter;
+}
+
+function makeStore(opts: { batchWindowMs?: number; batchSize?: number } = {}): TestApp {
+  const userAdapter = makeUserAdapter();
+  const postAdapter = makePostAdapter();
+  const config = {
+    models: {
+      user: { adapter: userAdapter },
+      post: { adapter: postAdapter },
+    },
+    ...(opts.batchWindowMs !== undefined && { batchWindowMs: opts.batchWindowMs }),
+    ...(opts.batchSize !== undefined && { batchSize: opts.batchSize }),
+  };
+  const store = new DocumentStore<TestTypes>(config);
+  return { store, userAdapter, postAdapter };
+}
+
+async function flushBatch(ms = 20): Promise<void> {
+  await vi.advanceTimersByTimeAsync(ms);
+}
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
 
 // =============================================================================
-// API surface
-// =============================================================================
-
-describe("new Finder — API surface", () => {
-  it("exposes find and attachStore", () => {
-    expect(typeof app.finder.find).toBe("function");
-    expect(typeof app.finder.attachStore).toBe("function");
-  });
-
-  it("throws a clear error when find is called before a store is attached", async () => {
-    // Construct a standalone finder — no Store has attached yet.
-    const finder = new Finder<TypeToModel>({
-      models: {
-        user: { adapter: { find: () => Promise.resolve([]) } },
-        post: { adapter: { find: () => Promise.resolve([]) } },
-        "card-stack": { adapter: { find: () => Promise.resolve({ data: [] }) } },
-      },
-    });
-
-    await expect(() => finder.find("user", "1")).rejects.toThrow(/store not attached/i);
-  });
-});
-
-// =============================================================================
-// Batching (default 15ms window)
+// Batching within the tick window
 // =============================================================================
 
 describe("Finder batching", () => {
-  it("collapses three near-simultaneous finds into a single network request", async () => {
-    const p1 = app.finder.find("user", "1");
-    const p2 = app.finder.find("user", "2");
-    const p3 = app.finder.find("user", "3");
-    await flushCoalescer();
+  it("collapses N finds of the same type within the window into one adapter.find call", async () => {
+    const app = makeStore();
+    app.store.find("user", "1");
+    app.store.find("user", "2");
+    app.store.find("user", "3");
 
-    // All three resolve to their own docs — proves ids carried through correctly.
-    expect((await p1).id).toBe("1");
-    expect((await p2).id).toBe("2");
-    expect((await p3).id).toBe("3");
+    await flushBatch();
 
-    // One network round-trip served all three.
-    expect(requests().length).toBe(1);
-    expect(requests()[0].url.pathname).toBe("/users");
+    expect(app.userAdapter.calls).toHaveLength(1);
+    expect([...app.userAdapter.calls[0]].sort()).toEqual(["1", "2", "3"]);
   });
 
   it("starts a fresh batch after the previous window drains", async () => {
-    await app.finder.find("user", "1");
-    await flushCoalescer();
+    const app = makeStore();
+    app.store.find("user", "1");
+    await flushBatch();
+    app.store.find("user", "2");
+    await flushBatch();
 
-    await app.finder.find("user", "2");
-    await flushCoalescer();
-
-    expect(requests().length).toBe(2);
+    expect(app.userAdapter.calls).toHaveLength(2);
+    expect(app.userAdapter.calls[0]).toEqual(["1"]);
+    expect(app.userAdapter.calls[1]).toEqual(["2"]);
   });
 
   it("respects a custom batchWindowMs", async () => {
-    const slowApp = createApp({ batchWindowMs: 50 });
+    const app = makeStore({ batchWindowMs: 50 });
+    app.store.find("user", "1");
 
-    slowApp.finder.find("user", "1");
-    await advance(20);
-    expect(requests().length).toBe(0); // window hasn't elapsed
+    await vi.advanceTimersByTimeAsync(20);
+    expect(app.userAdapter.calls).toHaveLength(0); // window hasn't elapsed
 
-    await advance(40);
-    expect(requests().length).toBe(1);
+    await vi.advanceTimersByTimeAsync(40);
+    expect(app.userAdapter.calls).toHaveLength(1);
   });
 
-  it("fires separate requests per type in the same tick", async () => {
-    const pUser = app.finder.find("user", "1");
-    const pPost = app.finder.find("post", "1");
-    await flushCoalescer();
+  it("fires separate adapter calls per type in the same window", async () => {
+    const app = makeStore();
+    app.store.find("user", "1");
+    app.store.find("post", "1");
+    await flushBatch();
 
-    expect((await pUser).id).toBe("1");
-    expect((await pPost).id).toBe("1");
-
-    const paths = requests()
-      .map((r) => r.url.pathname)
-      .sort();
-    expect(paths).toEqual(["/posts", "/users"]);
+    expect(app.userAdapter.calls).toHaveLength(1);
+    expect(app.postAdapter.calls).toHaveLength(1);
+    expect(app.userAdapter.calls[0]).toEqual(["1"]);
+    expect(app.postAdapter.calls[0]).toEqual(["1"]);
   });
 });
 
 // =============================================================================
-// Dedup
+// Dedup — concurrent finds for the same (type, id) share one adapter call + promise
 // =============================================================================
 
 describe("Finder dedup", () => {
-  it("collapses concurrent requests for the same id into one network call", async () => {
-    const p1 = app.finder.find("user", "1");
-    const p2 = app.finder.find("user", "1");
-    const p3 = app.finder.find("user", "1");
-    await flushCoalescer();
+  it("concurrent same-id finds result in a single adapter call with that id once", async () => {
+    const app = makeStore();
+    app.store.find("user", "1");
+    app.store.find("user", "1");
+    app.store.find("user", "1");
 
-    // All three promises resolve to the same doc.
-    const [d1, d2, d3] = await Promise.all([p1, p2, p3]);
-    expect(d1.id).toBe("1");
-    expect(d2).toBe(d1);
-    expect(d3).toBe(d1);
+    await flushBatch();
 
-    // Server saw one request, not three.
-    expect(requests().length).toBe(1);
+    expect(app.userAdapter.calls).toHaveLength(1);
+    expect(app.userAdapter.calls[0]).toEqual(["1"]);
   });
 
-  it("does not refetch an id that is already in flight", async () => {
-    app.finder.find("user", "1");
-    await advance(10); // mid-window
-    app.finder.find("user", "1");
-    await flushCoalescer();
+  it("mid-window additions to an in-flight id don't re-request", async () => {
+    const app = makeStore();
+    app.store.find("user", "1");
+    await vi.advanceTimersByTimeAsync(10); // mid-window
+    app.store.find("user", "1");
 
-    expect(requests().length).toBe(1);
+    await flushBatch();
+
+    expect(app.userAdapter.calls).toHaveLength(1);
+    expect(app.userAdapter.calls[0]).toEqual(["1"]);
+  });
+
+  it("handles returned for concurrent same-id finds are the same object", () => {
+    const app = makeStore();
+    const h1 = app.store.find("user", "1");
+    const h2 = app.store.find("user", "1");
+    expect(h1).toBe(h2);
   });
 });
 
 // =============================================================================
-// Chunking (default batchSize 60)
+// Chunking — one adapter call per chunk of at most batchSize ids
 // =============================================================================
 
 describe("Finder chunking", () => {
-  it("chunks 150 ids at the default batchSize 60 into 3 requests", async () => {
-    // Fire 150 concurrent finds; every one must resolve correctly.
-    const promises: Array<Promise<unknown>> = [];
+  it("splits 150 ids at the default batchSize 60 into 3 adapter calls", async () => {
+    const app = makeStore();
     for (let i = 0; i < 150; i++) {
-      promises.push(app.finder.find("user", String(i)));
+      app.store.find("user", String(i));
     }
-    await flushCoalescer();
-    await Promise.all(promises);
 
-    // 150 ids at batchSize 60 → 3 chunks.
-    expect(requests().length).toBe(3);
+    await flushBatch();
+
+    expect(app.userAdapter.calls).toHaveLength(3);
+    const lens = app.userAdapter.calls.map((c) => c.length).sort((a, b) => b - a);
+    expect(lens).toEqual([60, 60, 30]);
   });
 
   it("respects a custom batchSize", async () => {
-    const smallBatchApp = createApp({ batchSize: 10 });
-
-    const promises: Array<Promise<unknown>> = [];
+    const app = makeStore({ batchSize: 10 });
     for (let i = 0; i < 25; i++) {
-      promises.push(smallBatchApp.finder.find("user", String(i)));
+      app.store.find("user", String(i));
     }
-    await flushCoalescer();
-    await Promise.all(promises);
 
-    // 25 ids at batchSize 10 → 3 chunks (10 + 10 + 5).
-    expect(requests().length).toBe(3);
+    await flushBatch();
+
+    expect(app.userAdapter.calls).toHaveLength(3);
+    const lens = app.userAdapter.calls.map((c) => c.length).sort((a, b) => b - a);
+    expect(lens).toEqual([10, 10, 5]);
   });
 });
 
 // =============================================================================
-// Store insertion via processor
-// =============================================================================
-
-describe("Finder → store insertion", () => {
-  it("runs the default processor (user: bare array response) and inserts", async () => {
-    app.finder.find("user", "1");
-    await flushCoalescer();
-
-    expect(app.store.findInMemory("user", "1")?.attributes.firstName).toBe("User1");
-  });
-
-  it("runs a custom processor (card-stack: JSON-API envelope) and inserts", async () => {
-    // card-stack is configured with processor: jsonApiProcessor in createApp.
-    // Its server endpoint returns { data, included } — the processor unwraps it.
-    app.finder.find("card-stack", "42");
-    await flushCoalescer();
-
-    expect(app.store.findInMemory("card-stack", "42")?.attributes.title).toBe("Card Stack 42");
-  });
-
-  it("resolves the find promise with the document matching the requested id", async () => {
-    const promise = app.finder.find("user", "1");
-    await flushCoalescer();
-
-    const doc = await promise;
-    expect(doc.id).toBe("1");
-    expect(doc.attributes.firstName).toBe("User1");
-  });
-
-  it("rejects the find promise when the server returns no match for the requested id", async () => {
-    // Override the handler: the server returns an empty list.
-    server.use(http.get(`${API_BASE}/users`, () => HttpResponse.json([])));
-
-    const p = app.finder.find("user", "1");
-    await flushCoalescer();
-
-    await expect(p).rejects.toThrow(/not found/i);
-  });
-});
-
-// =============================================================================
-// Errors
+// Error propagation — adapter rejections, missing docs, processor throws
 // =============================================================================
 
 describe("Finder errors", () => {
-  it("rejects the find promise when the network fails", async () => {
-    server.use(http.get(`${API_BASE}/users`, () => HttpResponse.error()));
+  it("rejects all pending handles in a chunk when the adapter rejects", async () => {
+    const app = makeStore();
+    app.userAdapter.failIds = new Set(["1"]);
 
-    const promise = app.finder.find("user", "1");
-    await flushCoalescer();
+    const h1 = app.store.find("user", "1");
+    const h2 = app.store.find("user", "2");
+    const h3 = app.store.find("user", "3");
 
-    await expect(promise).rejects.toThrow();
+    await flushBatch();
+
+    expect(h1.status).toBe("ERROR");
+    expect(h2.status).toBe("ERROR");
+    expect(h3.status).toBe("ERROR");
+    expect(h1.error?.message).toMatch(/adapter rejected/);
   });
 
-  it("rejects the find promise when the server returns 5xx", async () => {
-    server.use(
-      http.get(`${API_BASE}/users`, () =>
-        HttpResponse.json({ message: "server down" }, { status: 503 }),
-      ),
-    );
+  it("rejects a handle when the adapter returns without the requested id", async () => {
+    const app = makeStore();
+    // Ask for 1, 2, 3 but the adapter's response omits id "2".
+    app.userAdapter.omitIds = new Set(["2"]);
 
-    const promise = app.finder.find("user", "1");
-    await flushCoalescer();
+    const h1 = app.store.find("user", "1");
+    const h2 = app.store.find("user", "2");
+    const h3 = app.store.find("user", "3");
 
-    await expect(promise).rejects.toThrow(/503/);
+    await flushBatch();
+
+    expect(h1.status).toBe("SUCCESS");
+    expect(h2.status).toBe("ERROR");
+    expect(h2.error?.message).toMatch(/not found/i);
+    expect(h3.status).toBe("SUCCESS");
   });
 
-  it("rejects the find promise when a processor throws", async () => {
-    // Construct a custom finder + store with one model using a throwing
-    // processor. A real consumer configuring a broken processor would get
-    // the same behavior via their own model config.
-    const processor = () => {
-      throw new Error("processor exploded");
-    };
-    const finder = new Finder<TypeToModel>({
+  it("rejects all pending handles when a processor throws", async () => {
+    // A DocumentStore with a processor that throws for the user model.
+    const calls: string[][] = [];
+    const store = new DocumentStore<TestTypes>({
       models: {
         user: {
-          adapter: { find: () => Promise.resolve([{ id: "1", type: "user", attributes: {} }]) },
-          processor,
+          adapter: {
+            async find(ids) {
+              calls.push([...ids]);
+              return ids.map((id) => ({ id, name: `User${id}` }));
+            },
+          },
+          processor: () => {
+            throw new Error("processor exploded");
+          },
         },
-        post: { adapter: { find: () => Promise.resolve([]) } },
-        "card-stack": { adapter: { find: () => Promise.resolve({ data: [] }) } },
+        post: { adapter: makePostAdapter() },
       },
     });
-    new DocumentStore<TypeToModel>({ finder });
 
-    const p = finder.find("user", "1");
-    await flushCoalescer();
+    const h1 = store.find("user", "1");
+    const h2 = store.find("user", "2");
 
-    await expect(p).rejects.toThrow(/processor exploded/);
+    await flushBatch();
+
+    expect(h1.status).toBe("ERROR");
+    expect(h2.status).toBe("ERROR");
+    expect(h1.error?.message).toMatch(/processor exploded/);
+  });
+});
+
+// =============================================================================
+// Pipeline works regardless of how the adapter fulfills find(ids).
+// =============================================================================
+
+describe("Finder is adapter-agnostic", () => {
+  it("works with an adapter that fans out per id (fake async per-id fetch)", async () => {
+    // A minimal fan-out adapter: Promise.all of per-id async tasks. Finder
+    // still batches at its layer — this adapter receives one call with
+    // all 3 ids, and internally resolves them in parallel.
+    const calls: string[][] = [];
+    const store = new DocumentStore<TestTypes>({
+      models: {
+        user: {
+          adapter: {
+            async find(ids) {
+              calls.push([...ids]);
+              return Promise.all(ids.map(async (id) => ({ id, name: `User${id}` })));
+            },
+          },
+        },
+        post: { adapter: makePostAdapter() },
+      },
+    });
+
+    const h1 = store.find("user", "1");
+    const h2 = store.find("user", "2");
+    const h3 = store.find("user", "3");
+
+    await flushBatch();
+
+    expect(calls).toHaveLength(1);
+    expect([...calls[0]].sort()).toEqual(["1", "2", "3"]);
+    expect(h1.data?.name).toBe("User1");
+    expect(h2.data?.name).toBe("User2");
+    expect(h3.data?.name).toBe("User3");
   });
 });

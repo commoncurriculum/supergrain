@@ -1,4 +1,3 @@
-import type { Finder } from "./finder";
 import type { DocumentTypes } from "./memory";
 
 // =============================================================================
@@ -41,9 +40,16 @@ export type Status = "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
  * - `fetchedAt === undefined`
  * - `promise === undefined`
  *
- * All fields are reactive: reading them inside a `tracked()` scope subscribes
- * to changes. Handle identity is stable — `DocumentStore.find("user", "1")`
- * returns the same handle on every call.
+ * Two reactive channels drive the handle:
+ * 1. `data` is a computed signal over `memoryEngine.find(type, id)`. It
+ *    updates automatically whenever memory changes at that key — fetch
+ *    completion, external `insertDocument`, socket push, `clearMemory`.
+ * 2. `status`, `error`, `promise` are managed by `DocumentStore.find` based
+ *    on the fetch outcome (resolves → SUCCESS, rejects → ERROR). `fetchedAt`
+ *    updates on fetch-driven success only, not on unrelated memory writes.
+ *
+ * Handle identity is stable — `DocumentStore.find("user", "1")` returns the
+ * same handle on every call.
  */
 export interface DocumentHandle<T> {
   readonly status: Status;
@@ -69,11 +75,14 @@ export interface DocumentHandle<T> {
 }
 
 // =============================================================================
-// DocumentsHandle — reactive handle returned by DocumentStore.findMany
+// DocumentsHandle — aggregated reactive handle over a batch of document keys.
+// Used by the React layer's `useDocuments` / `useHasMany`, which compose on
+// `DocumentStore.find` per id. Collapsing the resulting fetches into one
+// adapter call is the Finder's job.
 // =============================================================================
 
 /**
- * Aggregated reactive handle for a batch of documents fetched by ids.
+ * Aggregated reactive handle for a batch of documents referenced by ids.
  *
  * Same state machine as `DocumentHandle<T>`, rolled up across the set:
  *
@@ -84,7 +93,7 @@ export interface DocumentHandle<T> {
  * Use when you need a single aggregate state ("show spinner until all
  * docs ready"). For per-doc state in a list, render subcomponents that
  * each call `DocumentStore.find` — the batching across them still
- * collapses into one network request.
+ * collapses into one adapter call.
  */
 export interface DocumentsHandle<T> {
   readonly status: Status;
@@ -98,15 +107,110 @@ export interface DocumentsHandle<T> {
 }
 
 // =============================================================================
+// DocumentAdapter — consumer-owned transport
+// =============================================================================
+
+/**
+ * Talks to the API. Takes N ids and returns a raw response of whatever
+ * shape the API produces. The adapter owns *how* the data is fetched:
+ *
+ * - one bulk GET (`/users?ids=1&ids=2`)
+ * - N parallel single-doc GETs (`Promise.all(ids.map(id => fetch(...)))`)
+ * - a websocket request/response cycle
+ * - anything else
+ *
+ * The library doesn't inspect the raw response — only the paired
+ * `ResponseProcessor` does. The adapter's only contract is: given ids,
+ * eventually return some raw value (or reject).
+ *
+ * Contract:
+ * - `find` is called with a chunk of at most `DocumentStoreConfig.batchSize`
+ *   ids, grouped by type (the library dedupes concurrent same-id requests
+ *   before calling the adapter, so the adapter never sees duplicate ids in
+ *   one call).
+ * - A rejection rejects every deferred waiting on that chunk.
+ */
+export interface DocumentAdapter {
+  find(ids: Array<string>): Promise<unknown>;
+}
+
+// =============================================================================
+// ResponseProcessor — raw response → inserts
+// =============================================================================
+
+/**
+ * Transforms a raw adapter response into store inserts.
+ *
+ * A processor parses the raw response and calls `store.insertDocument(type,
+ * doc)` for every document it wants cached — both the primary docs for the
+ * type that was fetched, and any sideloaded docs of other types. It returns
+ * nothing; the library looks up each requested `(type, id)` via
+ * `store.findInMemory` after the processor completes to resolve deferreds.
+ * Docs not found in memory after processing → the corresponding deferred
+ * rejects with a "not found" error.
+ *
+ * The `type` argument is the type the caller originally passed to
+ * `find(type, id)` (the same type every doc in this batch was requested
+ * under). Processors whose raw response doesn't carry type info — e.g.
+ * the `defaultProcessor` for APIs that return `{ id, ... }` with no type
+ * field — use this argument as the primary type. Processors for envelope
+ * formats that include type inline (like JSON-API's `data.type` /
+ * `included[i].type`) can read type from the envelope and ignore the
+ * argument.
+ *
+ * Contract:
+ * - Synchronous. For async normalization, do it in the adapter before it returns.
+ * - Must call `store.insertDocument(type, doc)` for every doc it wants
+ *   cached — the library does NOT auto-insert anything from a processor.
+ * - If the processor throws, all deferreds waiting on this chunk reject
+ *   with the thrown error.
+ */
+export type ResponseProcessor<M extends DocumentTypes> = (
+  raw: unknown,
+  store: DocumentStore<M>,
+  type: keyof M & string,
+) => void;
+
+// =============================================================================
+// Per-model config
+// =============================================================================
+
+/**
+ * Per-model wiring: the adapter that talks to the API and the optional
+ * processor that normalizes its response.
+ *
+ * If `processor` is omitted, the library uses `defaultProcessor` — assumes
+ * the adapter returns a doc or an array of docs, each inserted under the
+ * model's type using the doc's own `id`. For envelopes (JSON-API, GraphQL,
+ * bespoke), pass `jsonApiProcessor` from
+ * `@supergrain/document-store/processors/json-api` or a custom
+ * `ResponseProcessor`.
+ */
+export interface ModelConfig<M extends DocumentTypes> {
+  adapter: DocumentAdapter;
+  processor?: ResponseProcessor<M>;
+}
+
+// =============================================================================
 // DocumentStore config
 // =============================================================================
 
 export interface DocumentStoreConfig<M extends DocumentTypes> {
   /**
-   * Finder used for `DocumentStore.find` fallback when a document isn't in
-   * memory. Construct with `new Finder({...})` and pass it here.
+   * Per-type adapter + optional processor wiring. The map's keys are the
+   * types the store can serve; values supply the transport + parser.
    */
-  finder: Finder<M>;
+  models: { [K in keyof M]: ModelConfig<M> };
+  /**
+   * Batch-window duration in ms. `find(type, id)` calls within this window
+   * are collapsed into one `adapter.find(ids)` invocation. Default: 15.
+   */
+  batchWindowMs?: number;
+  /**
+   * Max ids per `adapter.find` call. Larger batches are chunked. Default: 60
+   * (fits typical backend `IN`-clause / query-param limits; guards URL length).
+   */
+  batchSize?: number;
 }
 
 // =============================================================================
@@ -116,25 +220,30 @@ export interface DocumentStoreConfig<M extends DocumentTypes> {
 /**
  * Reactive document store.
  *
- * Thin orchestrator over a `MemoryEngine` (reactive in-memory cache) and a
- * `Finder` (batched fetching). The constructor attaches the store to the
- * finder so `DocumentStore.find` can fall back to the finder on cache miss.
+ * One-step wiring: the constructor takes per-model adapter/processor config
+ * plus optional batching knobs and owns all the plumbing internally (a
+ * `MemoryEngine` for reactive caching, an internal `Finder` for batched
+ * fetching). No separate Finder construction, no two-step attach.
  *
  * @example
  * ```ts
- * const finder = new Finder<TypeToModel>({
- *   models: { user: { adapter: userAdapter } },
+ * const store = new DocumentStore<TypeToModel>({
+ *   models: {
+ *     user: { adapter: userAdapter },
+ *     "card-stack": { adapter: cardStackAdapter, processor: jsonApiProcessor },
+ *   },
+ *   batchWindowMs: 15,
+ *   batchSize: 60,
  * });
- * const store = new DocumentStore<TypeToModel>({ finder });
  * ```
  */
 export class DocumentStore<M extends DocumentTypes> {
-  constructor(config: DocumentStoreConfig<M>) {
-    config.finder.attachStore(this);
+  constructor(_config: DocumentStoreConfig<M>) {
+    throw new Error("@supergrain/document-store: DocumentStore constructor is not yet implemented");
   }
 
   /**
-   * Find a document. Checks memory first, falls back to the finder
+   * Find a document. Checks memory first, falls back to the internal finder
    * (which batches, fetches, and inserts). Returns a reactive handle.
    *
    * - `null`/`undefined` id → idle handle, no fetch attempted
@@ -145,24 +254,8 @@ export class DocumentStore<M extends DocumentTypes> {
   }
 
   /**
-   * Find many documents by ids. Batches into a single adapter call, returns
-   * an aggregate reactive handle.
-   *
-   * - Empty `ids` → idle handle
-   * - Same `(type, ids)` on repeat calls returns the same handle (identity
-   *   based on type + sorted-joined ids)
-   */
-  findMany<K extends keyof M & string>(
-    _type: K,
-    _ids: ReadonlyArray<string>,
-  ): DocumentsHandle<M[K]> {
-    throw new Error("@supergrain/document-store: DocumentStore.findMany is not yet implemented");
-  }
-
-  /**
-   * Direct memory lookup. No fetch, no finder. Returns the document
-   * or undefined. Reactive — reads inside a tracked() scope subscribe
-   * to changes.
+   * Direct memory lookup. No fetch. Returns the document or undefined.
+   * Reactive — reads inside a tracked() scope subscribe to changes.
    */
   findInMemory<K extends keyof M & string>(_type: K, _id: string): M[K] | undefined {
     throw new Error(
@@ -171,11 +264,11 @@ export class DocumentStore<M extends DocumentTypes> {
   }
 
   /**
-   * Insert or update a document in the store. Keyed by `doc.type` and
-   * `doc.id`. Fully reactive — any handles or tracked scopes reading
-   * this document will update.
+   * Insert or update a document under the given type. Keyed by
+   * `(type, doc.id)`. Fully reactive — any handles or tracked scopes reading
+   * this key will update.
    */
-  insertDocument(_doc: M[keyof M]): void {
+  insertDocument<K extends keyof M & string>(_type: K, _doc: M[K]): void {
     throw new Error(
       "@supergrain/document-store: DocumentStore.insertDocument is not yet implemented",
     );

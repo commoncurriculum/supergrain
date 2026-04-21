@@ -9,13 +9,15 @@
   **Breaking changes:**
 
   - `@supergrain/core`: `createStore` is renamed to `createReactive`. Same behavior, clearer vocabulary — the primitive builds a reactive proxy; the word "store" is reserved for the app-wide API in `@supergrain/react`.
-  - `@supergrain/react`: `provideStore(store)` is removed. Replace with the new `createStore(() => initial)` factory, which takes an initializer function and returns `{ Provider, useStore }`. The Provider creates a fresh store on each mount, so SSR and tests are isolated by construction.
+  - `@supergrain/react`: `provideStore(store)` is removed. Replace with either (a) the free-standing `StoreProvider` + `useStore` exports backed by a module-level singleton context, or (b) the `createStoreContext()` factory for libraries / micro-frontends that need isolation. In both cases the Provider builds a fresh store on each mount via an `init` function, so SSR and tests are isolated by construction.
 
   **New:**
 
   - `@supergrain/react` ships `useReactive(initial)` for per-component reactive state. No Provider needed for state scoped to a single component.
+  - `@supergrain/react` ships `StoreProvider` + `useStore` as the default singleton path, and `createStoreContext()` as the factory escape hatch for isolated stores.
+  - Module-augmentation `StoreRegistry` lets consumers declare the default store shape once (`interface StoreRegistry { store: AppState }`) and drop the per-call-site generic on `useStore()` / `<StoreProvider>`.
 
-  **Migration:**
+  **Migration — default path (most apps):**
 
   ```ts
   // Before
@@ -27,10 +29,20 @@
   // <Store.Provider>, Store.useStore()
 
   // After
-  import { createStore } from "@supergrain/react";
+  import { StoreProvider, useStore } from "@supergrain/react";
 
-  const { Provider, useStore } = createStore<AppState>(() => ({ ... }));
-  // <Provider>, useStore()
+  function initState(): AppState { return { ... }; }
+  // <StoreProvider<AppState> init={initState}>...</StoreProvider>
+  // useStore<AppState>() inside descendants
+  ```
+
+  **Migration — isolated stores (libraries, micro-frontends):**
+
+  ```ts
+  import { createStoreContext } from "@supergrain/react";
+
+  const libState = createStoreContext<LibState>();
+  // libState.Provider, libState.useStore — bound to their own React Context
   ```
 
   For per-component state:

@@ -3,19 +3,22 @@ import type { DocumentStore } from "../../src";
 import { describe, it, expect } from "vitest";
 
 import { jsonApiProcessor } from "../../src/processors/json-api";
-import { makePost, makeUser, type Post, type TypeToModel, type User } from "../example-app";
+import { makePost, makeUser, type TypeToModel } from "../example-app";
 
 // =============================================================================
-// Fake store — minimal DocumentStore stand-in that records inserts as a
-// plain array. Tests assert on the `inserts` array (what documents got
-// cached), not on call counts.
+// Fake store — captures inserts as (type, doc) tuples.
 // =============================================================================
+
+interface Insert<K extends keyof TypeToModel = keyof TypeToModel> {
+  type: K;
+  doc: TypeToModel[K];
+}
 
 function makeFakeStore() {
-  const inserts: Array<TypeToModel[keyof TypeToModel]> = [];
+  const inserts: Array<Insert> = [];
   const fake = {
-    insertDocument(doc: TypeToModel[keyof TypeToModel]) {
-      inserts.push(doc);
+    insertDocument<K extends keyof TypeToModel & string>(type: K, doc: TypeToModel[K]) {
+      inserts.push({ type, doc } as Insert);
     },
   } as unknown as DocumentStore<TypeToModel>;
   return { store: fake, inserts };
@@ -23,78 +26,90 @@ function makeFakeStore() {
 
 // =============================================================================
 // jsonApiProcessor
+//
+// Unlike defaultProcessor, this processor reads `type` from each doc in the
+// envelope (JSON-API requires resource objects to carry `type`). The `type`
+// argument is accepted for API-parity but ignored — the envelope itself is
+// authoritative.
 // =============================================================================
 
 describe("jsonApiProcessor", () => {
-  it("inserts documents from `data` and returns them", () => {
+  it("inserts `data` documents keyed by each doc's own envelope type", () => {
     const { store, inserts } = makeFakeStore();
-    const user = makeUser("1");
+    // A JSON-API-shaped user doc. (For this library User has no type
+    // field, but jsonApiProcessor wants one — JSON-API demands it. So we
+    // synthesize a JSON-API-shaped envelope here.)
+    const userWithType = { ...makeUser("1"), type: "user" as const };
 
-    const returned = jsonApiProcessor<TypeToModel, User>({ data: [user] }, store);
+    jsonApiProcessor({ data: [userWithType] }, store, "user");
 
-    expect(inserts).toEqual([user]);
-    expect(returned).toEqual([user]);
+    expect(inserts).toEqual([{ type: "user", doc: userWithType }]);
   });
 
-  it("sideloads documents from `included` into the store", () => {
+  it("sideloads `included` documents by their own envelope type", () => {
     const { store, inserts } = makeFakeStore();
-    const user = makeUser("1");
-    const sideloadedPost = makePost("10");
+    const userWithType = { ...makeUser("1"), type: "user" as const };
+    const postWithType = { ...makePost("10"), type: "post" as const };
 
-    jsonApiProcessor<TypeToModel, User>({ data: [user], included: [sideloadedPost] }, store);
+    jsonApiProcessor({ data: [userWithType], included: [postWithType] }, store, "user");
 
-    expect(inserts).toEqual([user, sideloadedPost]);
-  });
-
-  it("returns only `data`, never `included`", () => {
-    const { store } = makeFakeStore();
-    const user = makeUser("1");
-    const sideloaded = makePost("10");
-
-    const returned = jsonApiProcessor<TypeToModel, User>(
-      { data: [user], included: [sideloaded] },
-      store,
-    );
-
-    expect(returned).toEqual([user]);
-    expect(returned).not.toContain(sideloaded as unknown as User);
+    expect(inserts).toEqual([
+      { type: "user", doc: userWithType },
+      { type: "post", doc: postWithType },
+    ]);
   });
 
   it("handles missing `included` (field is optional)", () => {
     const { store, inserts } = makeFakeStore();
-    const user = makeUser("1");
+    const userWithType = { ...makeUser("1"), type: "user" as const };
 
-    const returned = jsonApiProcessor<TypeToModel, User>({ data: [user] }, store);
+    jsonApiProcessor({ data: [userWithType] }, store, "user");
 
-    expect(inserts).toEqual([user]);
-    expect(returned).toEqual([user]);
+    expect(inserts).toEqual([{ type: "user", doc: userWithType }]);
   });
 
-  it("handles empty `data`", () => {
+  it("handles empty `data` (sideloads still apply)", () => {
     const { store, inserts } = makeFakeStore();
+    const postWithType = { ...makePost("10"), type: "post" as const };
 
-    const returned = jsonApiProcessor<TypeToModel, User>(
-      { data: [], included: [makePost("10") as Post] },
-      store,
-    );
+    jsonApiProcessor({ data: [], included: [postWithType] }, store, "user");
 
-    expect(returned).toEqual([]);
-    // Included is still sideloaded even when data is empty.
-    expect(inserts.length).toBe(1);
+    expect(inserts).toEqual([{ type: "post", doc: postWithType }]);
   });
 
   it("handles mixed-type sideloads in `included`", () => {
     const { store, inserts } = makeFakeStore();
-    const user = makeUser("1");
+    const userWithType = { ...makeUser("1"), type: "user" as const };
+    const post10 = { ...makePost("10"), type: "post" as const };
+    const post11 = { ...makePost("11"), type: "post" as const };
+    const user2 = { ...makeUser("2"), type: "user" as const };
 
-    jsonApiProcessor<TypeToModel, User>(
-      {
-        data: [user],
-        included: [makePost("10"), makePost("11"), makeUser("2")],
-      },
-      store,
+    jsonApiProcessor({ data: [userWithType], included: [post10, post11, user2] }, store, "user");
+
+    expect(inserts).toHaveLength(4);
+    const byType = inserts.reduce<Record<string, number>>(
+      (acc, i) => ({ ...acc, [i.type]: (acc[i.type] ?? 0) + 1 }),
+      {},
     );
+    expect(byType).toEqual({ user: 2, post: 2 });
+  });
 
-    expect(inserts.length).toBe(4);
+  it("returns void — the library looks up resolved docs from memory afterwards", () => {
+    const { store } = makeFakeStore();
+    const userWithType = { ...makeUser("1"), type: "user" as const };
+    const result = jsonApiProcessor({ data: [userWithType] }, store, "user");
+    expect(result).toBeUndefined();
+  });
+
+  it("ignores the `type` argument — uses each envelope doc's own type instead", () => {
+    // Demonstrates JSON-API's semantics: the envelope is self-describing.
+    // Even if the caller's fetch type was "user", an `included` doc of
+    // type "post" gets inserted under "post", not "user".
+    const { store, inserts } = makeFakeStore();
+    const postWithType = { ...makePost("10"), type: "post" as const };
+
+    jsonApiProcessor({ data: [], included: [postWithType] }, store, "user");
+
+    expect(inserts[0]?.type).toBe("post");
   });
 });

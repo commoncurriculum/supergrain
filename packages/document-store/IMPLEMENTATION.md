@@ -8,40 +8,42 @@ the intent and internal mechanics behind them.
 
 ## Architecture
 
-Five pieces, each with a single responsibility:
+One public class (`DocumentStore`) composed over three internal pieces,
+each with a single responsibility:
 
 ```
-┌───────────────────────────────────────────────────┐
-│  DocumentStore  — public orchestrator             │
-│                   find, findMany, findInMemory,   │
-│                   insertDocument, clearMemory     │
-└───────────┬─────────────────────────┬─────────────┘
-            │ delegates reads/writes  │ delegates fetches
-            ▼                         ▼
-┌───────────────────────┐   ┌─────────────────────────┐
-│  MemoryEngine         │   │  Finder                 │
-│  reactive in-memory   │   │  batched fetching       │
-│  Map<type:id, doc>    │   │  find(type,id) → Promise│
-│  insert, find, clear  │   │  dedup + chunk          │
-└───────────────────────┘   └───────────┬─────────────┘
-                                        │ calls
-                                        ▼
-                            ┌─────────────────────────┐
-                            │  adapter (per-model)    │
-                            │  find(ids) → Promise<raw>│
-                            └───────────┬─────────────┘
-                                        │ raw response
-                                        ▼
-                            ┌─────────────────────────┐
-                            │  processor (per-model)  │
-                            │  (raw, store) → docs    │
-                            └─────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│  DocumentStore  — public orchestrator                         │
+│                   find, findInMemory, insertDocument,         │
+│                   clearMemory                                 │
+└─────┬──────────────────────────┬──────────────────────────────┘
+      │ delegates reads/writes   │ delegates fetches (internal)
+      ▼                          ▼
+┌───────────────────┐   ┌───────────────────────────┐
+│  MemoryEngine     │   │  Finder (INTERNAL)        │
+│  reactive cache   │   │  batching / dedup /       │
+│  insert, find,    │   │  chunking                 │
+│  clear            │   │  find(type,id) → Promise  │
+└───────────────────┘   └───────────┬───────────────┘
+                                    │ calls (per chunk, per type)
+                                    ▼
+                        ┌───────────────────────────┐
+                        │  adapter (per-model)      │
+                        │  find(ids) → Promise<raw> │
+                        └───────────┬───────────────┘
+                                    │ raw response
+                                    ▼
+                        ┌───────────────────────────┐
+                        │  processor (per-model)    │
+                        │  (raw, store, type) → void│
+                        └───────────────────────────┘
 ```
 
-**DocumentStore** doesn't know how to fetch. **MemoryEngine** doesn't
-know about network or handles. **Finder** doesn't know response shapes.
-**Processor** doesn't know about batching. **Adapter** is a pure
-transport. Each piece is swappable.
+**DocumentStore** owns the public API and handle lifecycle. **MemoryEngine**
+doesn't know about network or handles. **Finder** is internal — not in the
+package's public exports — and handles batching/dedup/chunking. **Adapter**
+is a pure transport (consumer-owned). **Processor** is a stateless transform
+that inserts into the store.
 
 > Naming note: the class is `DocumentStore` (not `Store`) to
 > disambiguate from `@supergrain/react`'s `StoreProvider` / `useStore`,
@@ -52,26 +54,57 @@ transport. Each piece is swappable.
 
 ## Wiring
 
-DocumentStore and Finder reference each other, so wiring is two-step:
+One-step. The `DocumentStore` constructor takes per-model adapter +
+processor config and optional batching knobs; it constructs the internal
+`MemoryEngine` and `Finder` itself.
 
 ```ts
-const finder = new Finder<M>({ models: {...} });       // no store yet
-const store  = new DocumentStore<M>({ finder });        // attaches self to finder
+const store = new DocumentStore<M>({
+  models: {
+    user: { adapter: userAdapter },
+    "card-stack": { adapter: cardStackAdapter, processor: jsonApiProcessor },
+  },
+  batchWindowMs: 15, // optional, default 15
+  batchSize: 60, // optional, default 60
+});
 ```
 
-The `DocumentStore` constructor calls `config.finder.attachStore(this)`.
-Calling `finder.find(...)` before a store is attached must throw
-synchronously — this is the only case where `finder.find` doesn't return
-a pending Promise.
+`Finder` isn't exported. Consumers don't touch it; its behavior is tuned
+through `batchWindowMs` and `batchSize` on the store config.
+
+---
+
+## Type requirements
+
+Consumer document types need only carry `id: string`. The library keys
+every operation by the `type` argument supplied at the API boundary
+(`find(type, id)`, `insertDocument(type, doc)`, `findInMemory(type, id)`) —
+nothing in the library reads a `type` field off a doc.
+
+```ts
+type DocumentTypes = Record<string, { id: string }>;
+
+type TypeToModel = {
+  user: { id: string; name: string };               // no `type` field needed
+  post: { id: string; title: string };
+  "card-stack": { id: string; type: "card-stack"; attributes: { ... } };
+  // ^ `type` here is just a convenience for the consumer; the library
+  // doesn't read it. JSON-API envelopes supply type inline and
+  // jsonApiProcessor reads it from the envelope, not from the cached doc.
+};
+```
+
+This is intentional: APIs that don't emit `type` on documents (many REST
+endpoints, custom formats) work without any wrapper.
 
 ---
 
 ## DocumentStore
 
 The `DocumentStore<M>` class is a thin orchestrator that composes a
-`MemoryEngine<M>` (reactive cache) and a `Finder<M>` (fetching). All
-memory operations delegate to the engine; `find` checks the engine
-first and falls back to the finder on miss.
+`MemoryEngine<M>` (reactive cache) and a `Finder<M>` (internal fetching
+pipeline). All memory operations delegate to the engine; `find` checks
+the engine first and falls back to the finder on miss.
 
 ### `find(type, id | null | undefined) → DocumentHandle<T>`
 
@@ -92,15 +125,15 @@ Logic:
    transition the handle to `SUCCESS` (or `ERROR` on rejection).
 
 The handle is **reactive**: reading `handle.data` inside a `tracked()`
-scope subscribes to changes. When `insertDocument` writes a new version
-of the doc, handles reading it re-render.
+scope subscribes to changes. `data` is a computed signal over
+`memory.find(type, id)`, so it auto-updates on any write at that key
+— fetch completion, external `insertDocument`, socket push,
+`clearMemory`.
 
-### `findMany(type, ids) → DocumentsHandle<T>`
-
-Like `find`, but for a batch. Returns an aggregated reactive handle
-with the same state machine rolled up across the set. Empty `ids` →
-idle handle. Same `(type, ids)` returns the same handle (identity based
-on type + sorted-joined ids).
+> No `findMany` on the store. Batch reads happen at the React layer
+> (`useDocuments` / `useHasMany`) by composing per-id `find` calls.
+> Collapsing the resulting N fetches into one adapter call is the
+> Finder's job, not a separate store method.
 
 ### `findInMemory(type, id) → T | undefined`
 
@@ -108,9 +141,9 @@ Direct delegation to `memoryEngine.find(type, id)`. Also reactive —
 subscribing to a missing doc is valid; when it's later inserted,
 dependent scopes re-run.
 
-### `insertDocument(doc) → void`
+### `insertDocument(type, doc) → void`
 
-Delegates to `memoryEngine.insert(doc)`. Keyed by `(doc.type, doc.id)`.
+Delegates to `memoryEngine.insert(type, doc)`. Keyed by `(type, doc.id)`.
 Overwrites any existing document at that key. Fully reactive.
 
 Last-write-wins: no revision tracking, no optimistic conflict resolution
@@ -150,7 +183,7 @@ The reactive storage primitive. `DocumentStore` composes one.
 
 ```ts
 class MemoryEngine<M extends DocumentTypes> {
-  insert(doc: M[keyof M]): void;
+  insert<K extends keyof M & string>(type: K, doc: M[K]): void;
   find<K extends keyof M & string>(type: K, id: string): M[K] | undefined;
   clear(): void;
 }
@@ -167,45 +200,38 @@ testable.
 
 ---
 
-## Finder
+## Finder (internal)
 
-The `Finder<M>` class owns the batching pipeline.
+Not exported from the package root. Lives in `src/finder.ts`; constructed
+by `DocumentStore` in its own constructor. Split into a separate module
+purely for separation of concerns — batching / dedup / chunking has
+nothing to do with cache storage or handle lifecycle — but it's not
+pluggable.
 
-Constructor stores:
+Constructor receives:
 
-- `config.models` (adapter + optional processor per type)
-- `config.batchWindowMs` (default **15** — roughly one frame / tick; long
-  enough to collapse the renders a typical list triggers, short enough to
-  not feel laggy)
-- `config.batchSize` (default **60** — fits under common backend `IN`
+- Per-model config (adapter + optional processor), forwarded from
+  `DocumentStoreConfig.models`
+- `batchWindowMs` (default **15** — roughly one frame / tick; long
+  enough to collapse the renders a typical list triggers, short enough
+  to not feel laggy)
+- `batchSize` (default **60** — fits under common backend `IN`
   clause / query-param limits and avoids URL length issues)
-- internal `#store: DocumentStore<M> | undefined` (set by `attachStore`)
+- A direct reference to the parent `DocumentStore` (passed via `this`
+  from the store's constructor). No two-step `attachStore` ceremony.
 
 ### `find(type, id) → Promise<T>`
 
 Queues a request, returns a promise that resolves when the document
-arrives via the batch pipeline.
+arrives via the pipeline.
 
-Must throw synchronously (not reject) if no store has been attached.
-Must throw synchronously if `type` is not in `config.models`.
+Rejects (synchronously throws) if `type` is not in the configured models.
 
-### `attachStore(store) → void`
+### Pipeline
 
-Called once by the `DocumentStore` constructor. Stores the reference
-internally so batched fetch results can be inserted.
+On each `finder.find(type, id)` call:
 
-**Called twice**: throws. The library only supports one store per
-finder — re-attaching would silently invalidate in-flight deferreds
-expecting the original store. Construct a fresh finder if you need a
-new one.
-
----
-
-## Batching pipeline
-
-On each `find(type, id)` call:
-
-1. If `#store.findInMemory(type, id)` returns a value, resolve
+1. If `store.findInMemory(type, id)` returns a value, resolve
    immediately (no queue, no adapter call).
 2. Otherwise, check if there's already an in-flight request for
    `(type, id)` — **dedup**. If yes, return that same promise.
@@ -218,17 +244,18 @@ batchWindowMs)`.
 ### `drainBatch()`
 
 1. Take the pending queue, group by `type`.
-2. For each type group, dedupe ids (preserving the deferred list per
-   id — multiple finders for the same id share one fetch).
+2. For each type group, dedupe ids (multiple deferreds for the same id
+   already share one entry).
 3. Chunk each type's ids into groups of at most `batchSize`.
 4. For each chunk:
    a. Call `adapter.find(ids)`.
    b. On success: pass the raw response to the model's processor
-   (`config.models[type].processor ?? defaultProcessor`). The
-   processor inserts documents and returns the array of
-   requested-id documents. For each deferred: resolve with the
-   matching doc by id; if not found in the returned array, reject
-   with "document not found".
+   (`config.models[type].processor ?? defaultProcessor`), along with
+   the `store` reference and the chunk's type. The processor inserts
+   documents via `store.insertDocument(type, doc)` and returns
+   `void`. Then, for each deferred in the chunk, look up the doc by
+   its key: `store.findInMemory(type, deferred.id)`. Found → resolve
+   with it. Not found → reject with `Error("document not found")`.
    c. On adapter error: reject all deferreds for that chunk with the
    error.
 5. Clear the batch timer.
@@ -268,8 +295,17 @@ interface DocumentAdapter {
 ```
 
 That's it. The adapter is a consumer-owned transport — it decides
-URL shape, HTTP method, request/response format. The library never
-inspects the raw response; only the processor does.
+_how_ data gets fetched for a given set of ids:
+
+- one bulk GET (`/users?ids=1&ids=2`)
+- N parallel single-doc GETs (`Promise.all(ids.map(id => fetch(...)))`)
+- a websocket request/response cycle
+- anything else
+
+The library doesn't inspect the raw response; only the paired processor
+does. Adapters are free to fulfill the contract however they want — the
+tests in `adapters.test.ts` show both a bulk-style adapter (`user`) and
+a fan-out-style adapter (`post`) working against the same store.
 
 Adapters throw (reject) on network/server errors. The finder treats
 any rejection as a fetch failure for the whole chunk.
@@ -279,35 +315,47 @@ any rejection as a fetch failure for the whole chunk.
 ## Processor
 
 A processor is a **plain function** — no `.process()` method, no
-class. Processors are pure stateless transforms; a function is the
-right primitive.
+class. Processors are stateless transforms; a function is the right
+primitive.
 
 ```ts
-type ResponseProcessor<M, T> = (raw: unknown, store: DocumentStore<M>) => Array<T>;
+type ResponseProcessor<M extends DocumentTypes> = (
+  raw: unknown,
+  store: DocumentStore<M>,
+  type: keyof M & string,
+) => void;
 ```
 
-Given the raw adapter response and the store, a processor:
+Given the raw adapter response, the store, and the type the caller
+originally passed to `find(type, id)`, a processor:
 
-1. Extracts all documents it wants cached (possibly including
-   sideloaded docs of other types).
-2. Calls `store.insertDocument(doc)` for each.
-3. Returns the array of documents matching the originally-requested
-   ids — this is what the finder uses to resolve pending deferreds.
+1. Parses the raw shape (opaque to the library).
+2. Calls `store.insertDocument(type, doc)` for every doc it wants
+   cached — primary docs under the fetch type, sideloads under their
+   own types.
+3. Returns `void`. The finder subsequently reads the inserted docs
+   back via `store.findInMemory(type, id)` to resolve deferreds.
+
+The `type` argument is useful when the raw response doesn't carry
+type info (e.g. `[{ id: "1", name: "..." }, ...]` from a REST
+endpoint). Processors whose envelope includes type inline (JSON-API's
+`data.type` / `included[i].type`) can read type from the envelope and
+ignore the argument.
 
 ### `defaultProcessor` — exported from `/processors`
 
 Used when `ModelConfig.processor` is omitted. Handles the simple case:
 
 ```ts
-function defaultProcessor(raw, store) {
+function defaultProcessor(raw, store, type) {
   const docs = Array.isArray(raw) ? raw : [raw];
-  for (const doc of docs) store.insertDocument(doc);
-  return docs;
+  for (const doc of docs) store.insertDocument(type, doc);
 }
 ```
 
 The adapter returns either a single document or an array of documents.
-Each is keyed by its own `type`/`id`. No envelope, no sideloading.
+Each is inserted under the caller's `type` using the doc's own `id`.
+No envelope, no sideloading, no type-on-doc assumption.
 
 ### `jsonApiProcessor` — exported from `/processors/json-api`
 
@@ -317,17 +365,18 @@ in per-model:
 ```ts
 import { jsonApiProcessor } from "@supergrain/document-store/processors/json-api";
 
-new Finder<M>({
+new DocumentStore<M>({
   models: {
     user: { adapter: userAdapter, processor: jsonApiProcessor },
-    ...
+    // ...
   },
 });
 ```
 
-Concatenates `data + included`, inserts every document by its own
-`type`/`id`, and returns `data` (the originally-requested documents).
-Sideloaded `included` resources land in the store but aren't returned.
+Inserts every document in `data + included`, keyed by each doc's own
+`type` field from the envelope (JSON-API requires resource objects to
+carry `type`). The `type` argument passed in is ignored — sideloads
+especially span many types unrelated to the fetched one.
 
 The subpath also exports JSON-API-shape TypeScript helpers:
 `Relationship<T>`, `RelationshipArray<T>`, and `JsonApiDocument<Type,
@@ -336,7 +385,7 @@ Attrs, Rels>`.
 ### Custom processors
 
 Consumers can write their own for any other envelope (GraphQL, REST
-envelopes, etc.). Just a function with the `ResponseProcessor<M, T>`
+envelopes, etc.). Just a function with the `ResponseProcessor<M>`
 signature.
 
 Processors are **synchronous**. If you need async normalization, do it
@@ -355,6 +404,21 @@ chunk with the thrown error. Same semantics as an adapter error.
 DocumentStore builds handles as signal-backed reactive objects via
 `@supergrain/core` primitives. Consumers never construct a handle
 directly — they read them off `DocumentStore.find`.
+
+### Reactive composition
+
+Two channels drive the handle's fields:
+
+1. **Memory signal** — `handle.data` is a computed signal over
+   `memoryEngine.find(type, id)`. It updates automatically whenever
+   memory changes at that key, regardless of who wrote it (fetch
+   completion, external `insertDocument`, socket push, `clearMemory`).
+2. **Explicit lifecycle updates** — `status`, `error`, `promise`,
+   `fetchedAt` are managed by `DocumentStore.find` based on the promise
+   outcome from Finder. On fetch path: set PENDING, then chain
+   `.then → SUCCESS` / `.catch → ERROR`. On memory-hit path: set
+   SUCCESS immediately. `fetchedAt` updates only on fetch-driven
+   success, not on unrelated memory writes.
 
 ### Lifecycle
 
@@ -432,41 +496,71 @@ Internally, the free-standing exports are literally `defaultContext.*`
 where `defaultContext = createDocumentStoreContext()`. Zero runtime
 cost for consumers who never touch the factory.
 
-Subpath `useBelongsTo` / `useHasMany` (from `/react/json-api`) compose
-on the default context. Libraries using the factory that also want
-JSON-API hooks write ~5 lines on top of `libStore.useDocument`.
+Subpath `useBelongsTo` / `useHasMany` / `useHasManyIndividually` (from
+`/react/json-api`) compose on the default context. Libraries using the
+factory that also want JSON-API hooks write ~5 lines on top of
+`libStore.useDocument`.
+
+`useHasMany` and `useHasManyIndividually` differ only in output shape:
+
+- `useHasMany(model, rel)` → one `DocumentsHandle<T>` aggregating every
+  related doc (one `status`, one `promise`, `data: ReadonlyArray<T>`).
+  Use when the list renders as a single unit ("show spinner until all
+  loaded").
+- `useHasManyIndividually(model, rel)` → `ReadonlyArray<DocumentHandle<T>>`,
+  one handle per related doc, each with its own `status`/`data`/`error`.
+  Use when each list item owns its own loading / error UI (skeleton rows,
+  per-card fallbacks). Fetching is still batched into one
+  `adapter.find(ids)` call — the split is only in what the hook returns.
 
 ---
 
 ## Testing contracts
 
-Failing tests pin the behavior. Source files map 1:1 to tests:
+Failing tests pin the behavior. Source files map to tests (plus two
+non-1:1 test files that test integration / adapter behavior):
 
 - `src/memory.ts` ↔ `tests/memory.test.ts` — insert, find, overwrite,
-  keying by (type,id), clear
+  keying by (type,id), clear, documents without a `type` field, reactivity
+  (per-key subscribe, single batched re-run on clear)
 - `src/processors/index.ts` ↔ `tests/processors/index.test.ts` —
-  `defaultProcessor` (single doc, array, no envelope unwrap)
+  `defaultProcessor` (single doc, array, uses the `type` argument, no
+  envelope unwrap, no type-on-doc assumption)
 - `src/processors/json-api.ts` ↔ `tests/processors/json-api.test.ts` —
   `jsonApiProcessor` (`{data,included}` unwrap, sideload, empty data,
-  mixed types)
-- `src/finder.ts` ↔ `tests/finder.test.ts` — API surface, batching
-  window + custom window, dedup (concurrent + in-flight), chunking
-  (default + custom batchSize), processor integration, adapter errors,
-  server errors, processor errors
+  mixed types, reads type from envelope, ignores the `type` argument)
+- `src/finder.ts` ↔ `tests/finder.test.ts` — batching within a tick
+  window, per-type isolation, dedup (concurrent + in-flight, same-id
+  handle identity), chunking (default + custom batchSize), error
+  propagation from adapter/processor, adapter-style agnosticism (bulk
+  vs fan-out). Uses in-memory adapters with public `calls` state — no
+  network, no MSW, no mocks or spies. Request shapes are **not** tested
+  here; those belong in adapter tests.
 - `src/store.ts` ↔ `tests/store.test.ts` — public API, memory
   delegation, handle state transitions (IDLE/PENDING/SUCCESS/ERROR),
-  handle identity, adapter-error bubbling
+  handle identity, reactive updates via external `insertDocument`,
+  last-write-wins fetch vs mid-flight local insert, error-recovery
+  creates a new promise, `clearMemory` handle transitions
+- `tests/adapters.test.ts` (no 1:1 source file) — verifies that
+  `example-app.ts`'s bulk adapter (`user`) and fan-out adapter (`post`)
+  produce the network request shapes they claim. MSW-based. Proves the
+  pipeline is agnostic to adapter implementation.
 - `src/react/index.ts` ↔ `tests/react/index.test.tsx` —
-  DocumentStoreProvider, useDocumentStore, useDocument (factory path),
-  isolation between factory instances
+  DocumentStoreProvider, useDocumentStore, useDocument, useDocuments
+  (loading/success/idle/error), factory isolation
 - `src/react/json-api.ts` ↔ `tests/react/json-api.test.tsx` —
-  `useBelongsTo`, `useHasMany` API surface
+  `useBelongsTo` (loading → loaded, memory-first, reactive re-render
+  on external insert, null-data idle), `useHasMany` (aggregate
+  loading → full list, memory-first, empty-data idle),
+  `useHasManyIndividually` (per-item loading/success, memory-first
+  per item, per-doc reactive updates, empty-data returns empty array)
 
-Tests share a single `tests/example-app.ts` that demonstrates all
-config options: `ModelConfig.adapter`, `ModelConfig.processor`,
-`FinderConfig.batchWindowMs`, `FinderConfig.batchSize`. Network is
-faked with MSW (`msw/node`): real fetch-based adapters, intercepted at
-the fetch layer, with a request log for assertions.
+Tests share a single `tests/example-app.ts` that demonstrates the full
+config surface: `ModelConfig.adapter`, `ModelConfig.processor`,
+`DocumentStoreConfig.batchWindowMs`, `DocumentStoreConfig.batchSize`.
+Adapters are real fetch-based, intercepted by MSW (`msw/node`). One
+bulk + one fan-out + one JSON-API-bulk, so both adapter styles get
+coverage.
 
 Before adding implementation, read through these files — the tests
 are the source of truth for edge cases this doc doesn't cover.
@@ -479,10 +573,10 @@ The store is built on `@supergrain/core` signals. Implementation
 guidance:
 
 - `MemoryEngine` holds a `Map<string, Signal<T | undefined>>` keyed
-  by `"<type>:<id>"`. `insert` writes. `find` reads.
+  by `"<type>:<id>"`. `insert(type, doc)` writes. `find(type, id)` reads.
 - Each `DocumentHandle` internally subscribes to the per-document
-  signal for its `(type, id)` and propagates changes into its own
-  reactive fields.
+  signal for its `(type, id)` via a computed `data` field, and
+  propagates changes into its dependent reactive fields.
 - `clearMemory` resets all document signals to `undefined` in a
   single batch so dependent scopes re-run once, not N times.
 

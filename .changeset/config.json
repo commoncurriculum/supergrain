@@ -3,7 +3,7 @@
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "fixed": [
-    ["@supergrain/core", "@supergrain/operators", "@supergrain/react", "@supergrain/store"]
+    ["@supergrain/core", "@supergrain/operators", "@supergrain/react", "@supergrain/document-store"]
   ],
   "linked": [],
   "access": "public",

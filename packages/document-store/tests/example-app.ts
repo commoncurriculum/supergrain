@@ -2,22 +2,30 @@
 // example-app.ts
 // =============================================================================
 //
-// Realistic consumer wiring for @supergrain/document-store. In a real codebase this
-// would live at `services/store.ts` (or equivalent): domain models, HTTP
-// adapters (real fetch-based), and the one-time Finder + Store composition
-// that components import.
+// Realistic consumer wiring for @supergrain/document-store. In a real codebase
+// this would live at `services/store.ts` (or equivalent): domain models, HTTP
+// adapters (real fetch-based), and the one-time DocumentStore composition.
 //
-// Tests use MSW (Mock Service Worker) to intercept the network at the
-// fetch layer. Adapters don't know they're being tested — they just call
-// fetch() like they would in production. MSW answers with canned documents
-// and records every request for assertion.
+// Adapters intentionally cover two styles:
 //
-// Config options visible in createApp:
-//   - ModelConfig.adapter          (every model)
-//   - ModelConfig.processor        (card-stack uses jsonApiProcessor;
-//                                   user and post use the default)
-//   - FinderConfig.batchWindowMs   (overridable via createApp options)
-//   - FinderConfig.batchSize       (overridable via createApp options)
+//   user       — BULK fetch: one GET /users?id=1&id=2 per chunk
+//   post       — FAN-OUT fetch: N parallel GET /posts/:id, merged
+//   card-stack — BULK fetch + JSON-API envelope (processor uses jsonApi)
+//
+// The library doesn't care which style an adapter picks; the store wires the
+// same regardless. Tests use this to prove both styles work end-to-end.
+//
+// Tests use MSW (Mock Service Worker) to intercept the network at the fetch
+// layer. Adapters don't know they're being tested — they just call fetch()
+// like they would in production. MSW answers with canned documents and
+// records every request for assertion.
+//
+// Config options visible in initStore:
+//   - ModelConfig.adapter                 (every model)
+//   - ModelConfig.processor               (card-stack uses jsonApiProcessor;
+//                                          user and post use the default)
+//   - DocumentStoreConfig.batchWindowMs   (overridable via initStore options)
+//   - DocumentStoreConfig.batchSize       (overridable via initStore options)
 //
 // Test lifecycle (put at the top of each test file):
 //   beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -29,20 +37,23 @@ import { http, HttpResponse, type HttpHandler } from "msw";
 import { setupServer } from "msw/node";
 import { vi } from "vitest";
 
-import { DocumentStore, Finder, type DocumentAdapter } from "../src";
+import { DocumentStore, type DocumentAdapter, type DocumentStoreConfig } from "../src";
 import { jsonApiProcessor } from "../src/processors/json-api";
 
 // ─── Domain models ──────────────────────────────────────────────────────────
+//
+// User has NO `type` field — the library doesn't require one. The type is
+// supplied externally at every API boundary (`store.find("user", id)` etc.).
+// Post also omits type. CardStack retains type because JSON-API's envelope
+// carries it inline, and jsonApiProcessor reads it from there.
 
 export interface User {
   id: string;
-  type: "user";
   attributes: { firstName: string; lastName: string; email: string };
 }
 
 export interface Post {
   id: string;
-  type: "post";
   attributes: { title: string; body: string; authorId: string };
 }
 
@@ -63,7 +74,6 @@ export type TypeToModel = {
 export function makeUser(id: string, overrides: Partial<User["attributes"]> = {}): User {
   return {
     id,
-    type: "user",
     attributes: {
       firstName: `User${id}`,
       lastName: "Test",
@@ -76,7 +86,6 @@ export function makeUser(id: string, overrides: Partial<User["attributes"]> = {}
 export function makePost(id: string, overrides: Partial<Post["attributes"]> = {}): Post {
   return {
     id,
-    type: "post",
     attributes: {
       title: `Post${id}`,
       body: "body",
@@ -108,22 +117,21 @@ export function makeCardStack(
 export const API_BASE = "https://api.example.com";
 
 // ─── Adapters ───────────────────────────────────────────────────────────────
-// Real fetch-based adapters — the code path a production consumer would
-// write. Each adapter owns its own transport (URL, HTTP method, response
-// shape). The library only requires `find(ids): Promise<unknown>` —
-// everything else is a consumer choice, so in a real codebase you might
-// have one adapter talking to a JSON-API service, another to GraphQL,
-// and another to a bespoke bulk endpoint.
 //
-// These three adapters happen to share a convention for simplicity: each
-// one GETs its endpoint with repeated `id` query params. That convention
-// is inline in each adapter — not extracted into a shared helper — so
-// swapping one out doesn't require touching the others.
+// `userAdapter` — bulk style. One GET carries all ids. Typical of an API
+// with `GET /users?id=1&id=2` or `GET /users?ids=1,2` support.
 //
-// MSW intercepts the fetch call in tests; in production these would hit
-// an actual server.
+// `postAdapter` — fan-out style. No bulk endpoint; the adapter fires N
+// parallel single-doc GETs and `Promise.all`s them. Typical of an API that
+// only supports `GET /posts/:id`. Fails the batch if any sub-request fails.
+//
+// `cardStackAdapter` — bulk style, but returns a JSON-API envelope
+// (`{ data, included }`). Paired with `jsonApiProcessor`.
+//
+// The library only requires `find(ids: string[]): Promise<unknown>` —
+// everything beyond that is a consumer choice.
 
-const userAdapter: DocumentAdapter = {
+export const userAdapter: DocumentAdapter = {
   async find(ids) {
     const qs = ids.map((id) => `id=${encodeURIComponent(id)}`).join("&");
     const res = await fetch(`${API_BASE}/users?${qs}`);
@@ -132,16 +140,19 @@ const userAdapter: DocumentAdapter = {
   },
 };
 
-const postAdapter: DocumentAdapter = {
+export const postAdapter: DocumentAdapter = {
   async find(ids) {
-    const qs = ids.map((id) => `id=${encodeURIComponent(id)}`).join("&");
-    const res = await fetch(`${API_BASE}/posts?${qs}`);
-    if (!res.ok) throw new Error(`/posts responded ${res.status}`);
-    return res.json();
+    return Promise.all(
+      ids.map(async (id) => {
+        const res = await fetch(`${API_BASE}/posts/${encodeURIComponent(id)}`);
+        if (!res.ok) throw new Error(`/posts/${id} responded ${res.status}`);
+        return res.json();
+      }),
+    );
   },
 };
 
-const cardStackAdapter: DocumentAdapter = {
+export const cardStackAdapter: DocumentAdapter = {
   async find(ids) {
     const qs = ids.map((id) => `id=${encodeURIComponent(id)}`).join("&");
     const res = await fetch(`${API_BASE}/card-stacks?${qs}`);
@@ -151,18 +162,18 @@ const cardStackAdapter: DocumentAdapter = {
 };
 
 // ─── Default MSW handlers ───────────────────────────────────────────────────
-// One handler per endpoint, each answering id lookups with canned
-// documents. Tests can override any handler with `server.use(...)` —
-// e.g. to return an error, an empty list, or a specific document.
+// Bulk endpoints for users + card-stacks; per-id endpoint for posts (to
+// match the fan-out adapter). Tests can override any handler via
+// `server.use(...)` — e.g. to return an error, an empty list, etc.
 
 export const defaultHandlers: Array<HttpHandler> = [
   http.get(`${API_BASE}/users`, ({ request }) => {
     const ids = new URL(request.url).searchParams.getAll("id");
     return HttpResponse.json(ids.map((id) => makeUser(id)));
   }),
-  http.get(`${API_BASE}/posts`, ({ request }) => {
-    const ids = new URL(request.url).searchParams.getAll("id");
-    return HttpResponse.json(ids.map((id) => makePost(id)));
+  http.get(`${API_BASE}/posts/:id`, ({ params }) => {
+    const id = String(params.id);
+    return HttpResponse.json(makePost(id));
   }),
   http.get(`${API_BASE}/card-stacks`, ({ request }) => {
     const ids = new URL(request.url).searchParams.getAll("id");
@@ -175,8 +186,9 @@ export const defaultHandlers: Array<HttpHandler> = [
 
 // ─── MSW server + request log ───────────────────────────────────────────────
 // The test's "fake network". `requests()` returns every fetch the library
-// has triggered since the last `clearRequests()`. Tests assert on count
-// and pathname; id-correctness is proven via the promise results.
+// has triggered since the last `clearRequests()`. Adapter tests assert on
+// count + URL shape; store/finder tests rely on resolved promises +
+// memory state rather than request counts.
 
 export interface RequestRecord {
   method: string;
@@ -199,35 +211,41 @@ export function clearRequests(): void {
   requestLog.length = 0;
 }
 
-// ─── App wiring ─────────────────────────────────────────────────────────────
-// The core: Finder + Store composition, done once. In a real app, the
-// returned `store` is what every component imports. The three models
-// demonstrate the full model-config surface:
+// ─── Store wiring ───────────────────────────────────────────────────────────
+// One-step DocumentStore construction. Models + batching knobs in one
+// config object; no separate Finder. The three models exercise the full
+// config surface:
 //
 //   user        — adapter only (uses defaultProcessor implicitly)
-//   post        — adapter only (uses defaultProcessor implicitly)
+//   post        — adapter only, fan-out style (uses defaultProcessor)
 //   card-stack  — adapter + custom processor (jsonApiProcessor)
+//
+// This is the shape a real app writes: a function that takes no args (or
+// injects env/config via closure) and returns a configured DocumentStore.
+// Mount it under a <DocumentStoreProvider init={initStore}> and components
+// use the hooks to read from it.
+//
+// The optional `overrides` arg is only for tests that need to exercise
+// non-default batching knobs; a real consumer would call `initStore()`
+// with no args.
 
-export interface AppOverrides {
+export interface StoreOverrides {
   batchWindowMs?: number;
   batchSize?: number;
 }
 
-export function createApp(overrides: AppOverrides = {}) {
-  const finder = new Finder<TypeToModel>({
+export function initStore(overrides: StoreOverrides = {}): DocumentStore<TypeToModel> {
+  const config: DocumentStoreConfig<TypeToModel> = {
     models: {
       user: { adapter: userAdapter },
       post: { adapter: postAdapter },
       "card-stack": { adapter: cardStackAdapter, processor: jsonApiProcessor },
     },
-    batchWindowMs: overrides.batchWindowMs ?? 15,
-    batchSize: overrides.batchSize,
-  });
-  const store = new DocumentStore<TypeToModel>({ finder });
-  return { store, finder };
+  };
+  if (overrides.batchWindowMs !== undefined) config.batchWindowMs = overrides.batchWindowMs;
+  if (overrides.batchSize !== undefined) config.batchSize = overrides.batchSize;
+  return new DocumentStore<TypeToModel>(config);
 }
-
-export type App = ReturnType<typeof createApp>;
 
 // ─── Timer helpers ──────────────────────────────────────────────────────────
 

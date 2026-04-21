@@ -67,8 +67,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@supergrain/core": "workspace:*",
-    "@supergrain/operators": "workspace:*"
+    "@supergrain/core": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",

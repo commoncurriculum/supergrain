@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       packages:
-        description: 'Packages to release (comma-separated: core, react, store, or "all")'
+        description: 'Packages to release (comma-separated: core, react, operators, document-store, or "all")'
         required: true
         type: string
         default: "all"
@@ -65,7 +65,8 @@ jobs:
           if [ "$PACKAGES_INPUT" = "all" ]; then
             echo "\"@supergrain/core\": $BUMP_TYPE" >> "$CHANGESET_FILE"
             echo "\"@supergrain/react\": $BUMP_TYPE" >> "$CHANGESET_FILE"
-            echo "\"@supergrain/store\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+            echo "\"@supergrain/operators\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+            echo "\"@supergrain/document-store\": $BUMP_TYPE" >> "$CHANGESET_FILE"
           else
             # Split comma-separated packages
             IFS=',' read -ra PKGS <<< "$PACKAGES_INPUT"
@@ -79,8 +80,11 @@ jobs:
                 react)
                   echo "\"@supergrain/react\": $BUMP_TYPE" >> "$CHANGESET_FILE"
                   ;;
-                store)
-                  echo "\"@supergrain/store\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+                operators)
+                  echo "\"@supergrain/operators\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+                  ;;
+                document-store)
+                  echo "\"@supergrain/document-store\": $BUMP_TYPE" >> "$CHANGESET_FILE"
                   ;;
                 *)
                   echo "Warning: Unknown package '$pkg', skipping"

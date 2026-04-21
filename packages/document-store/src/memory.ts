@@ -7,19 +7,21 @@
  *
  * Each key is a type string (e.g. "user", "card-stack"), each value is the
  * full model type as defined by the consumer. The library doesn't impose
- * any structure on the model — it's passed through as-is. The only
- * requirement is `id: string` and `type: string` fields so the store can
- * identify and cache documents.
+ * structure on the model beyond requiring an `id: string`. The type is
+ * supplied externally at every API boundary (`find(type, id)`,
+ * `insertDocument(type, doc)`), so nothing in the library reads the doc's
+ * own `type` field — consumers whose API omits type from documents can
+ * still use this library without modification.
  *
  * @example
  * ```ts
  * type TypeToModel = {
- *   user: User;
+ *   user: User;           // User need only carry `id: string`
  *   "card-stack": CardStack;
  * };
  * ```
  */
-export type DocumentTypes = Record<string, { id: string; type: string }>;
+export type DocumentTypes = Record<string, { id: string }>;
 
 // =============================================================================
 // TypeRegistry — for module augmentation
@@ -58,9 +60,11 @@ export type RegisteredTypes = TypeRegistry extends { types: infer T extends Docu
 /**
  * Reactive in-memory document cache.
  *
- * Keyed by `(doc.type, doc.id)`. Writes via `insert` overwrite last-write-wins.
- * Reads via `find` are reactive — reading inside a `tracked()` scope subscribes
- * to changes at that key, so later `insert` / `clear` calls re-run the scope.
+ * Keyed by the externally-supplied `(type, id)` pair — type is an argument to
+ * every method, not a field on the doc. Writes via `insert` overwrite
+ * last-write-wins. Reads via `find` are reactive — reading inside a
+ * `tracked()` scope subscribes to changes at that key, so later
+ * `insert` / `clear` calls re-run the scope.
  *
  * This is the storage primitive `DocumentStore` composes over. It knows
  * nothing about fetching, handles, or processors — just reactive
@@ -68,10 +72,11 @@ export type RegisteredTypes = TypeRegistry extends { types: infer T extends Docu
  */
 export class MemoryEngine<M extends DocumentTypes> {
   /**
-   * Insert or update a document. Keyed by `doc.type` and `doc.id`.
-   * Any reactive scopes reading this key re-run.
+   * Insert or update a document under the given type. The doc's only
+   * required field is `id: string` — type is supplied as the first arg.
+   * Any reactive scopes reading `(type, doc.id)` re-run.
    */
-  insert(_doc: M[keyof M]): void {
+  insert<K extends keyof M & string>(_type: K, _doc: M[K]): void {
     throw new Error("@supergrain/document-store: MemoryEngine.insert is not yet implemented");
   }
 
