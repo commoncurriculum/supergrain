@@ -1,6 +1,7 @@
 import type { ReactiveNode } from "alien-signals";
 
-import { effect as alienEffect, getCurrentSub, setCurrentSub } from "@supergrain/core";
+import { effect as alienEffect } from "@supergrain/core";
+import { getCurrentSub, setCurrentSub } from "@supergrain/core/internal";
 import { type FC, memo, useReducer, useEffect } from "react";
 
 interface TrackedState {
@@ -79,9 +80,15 @@ export function tracked<P extends object>(Component: FC<P>) {
 
     const prev = getCurrentSub();
     setCurrentSub(fu.__sg.effectNode);
-    const result = Component(props); // eslint-disable-line new-cap -- React function component call
-    setCurrentSub(prev);
-    return result;
+    try {
+      return Component(props); // eslint-disable-line new-cap -- React function component call
+    } finally {
+      // try/finally guards against React Suspense, where Component(props) throws
+      // a Promise. Without this, activeSub would stay pointed at this component's
+      // effect node and every subsequent signal read in the app would subscribe
+      // to the wrong (now dead) effect.
+      setCurrentSub(prev);
+    }
   };
 
   return memo(Tracked);

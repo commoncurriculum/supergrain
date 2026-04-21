@@ -1,7 +1,6 @@
 import type { StoreState, DocumentPromise, DocumentTypes, FetchHandler } from "./types";
 
 import { createReactive, computed } from "@supergrain/core";
-import { update } from "@supergrain/operators";
 
 import { DocumentPromiseImpl } from "./document-promise";
 
@@ -34,15 +33,14 @@ export class Store<T extends DocumentTypes = DocumentTypes> {
     if (!existingDoc) {
       this.triggerFetch(modelTypeStr, id);
 
-      // Set just this document's state without copying the entire map
-      update(this.store, {
-        $set: {
-          [`documents.${modelTypeStr}.${key}`]: {
-            content: undefined,
-            status: "pending" as const,
-          },
-        },
-      });
+      // Set just this document's state without copying the entire map.
+      // Direct mutation against the reactive proxy fires the same signals that
+      // `update({ $set: ... })` would, without needing a dynamic-key path string.
+      this.store.documents[modelTypeStr] ??= {};
+      this.store.documents[modelTypeStr][key] = {
+        content: undefined,
+        status: "pending",
+      };
     }
 
     const documentState = computed(() => this.store.documents[modelTypeStr]?.[key]);
@@ -56,30 +54,24 @@ export class Store<T extends DocumentTypes = DocumentTypes> {
     const key = String(id);
     const modelTypeStr = String(modelType);
 
-    update(this.store, {
-      $set: {
-        [`documents.${modelTypeStr}.${key}`]: {
-          content: data,
-          status: "fulfilled" as const,
-          lastFetched: Date.now(),
-        },
-      },
-    });
+    this.store.documents[modelTypeStr] ??= {};
+    this.store.documents[modelTypeStr][key] = {
+      content: data,
+      status: "fulfilled",
+      lastFetched: Date.now(),
+    };
   }
 
   setDocumentError<K extends keyof T>(modelType: K, id: string | number, error: string): void {
     const key = String(id);
     const modelTypeStr = String(modelType);
 
-    update(this.store, {
-      $set: {
-        [`documents.${modelTypeStr}.${key}`]: {
-          content: undefined,
-          status: "rejected" as const,
-          error,
-        },
-      },
-    });
+    this.store.documents[modelTypeStr] ??= {};
+    this.store.documents[modelTypeStr][key] = {
+      content: undefined,
+      status: "rejected",
+      error,
+    };
   }
 
   private async triggerFetch(modelType: string, id: string | number): Promise<void> {

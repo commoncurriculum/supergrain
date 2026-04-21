@@ -11,6 +11,7 @@
     "dev": "vitepress dev docs",
     "test": "vitest",
     "test:validate": "pnpm --filter @supergrain/doc-tests run test:validate",
+    "build": "pnpm --filter=\"@supergrain/core\" --filter=\"@supergrain/operators\" --filter=\"@supergrain/react\" --filter=\"@supergrain/store\" --workspace-concurrency=1 run build",
     "bench:core": "vitest bench --root packages/core",
     "lint": "pnpm -r run lint",
     "size": "pnpm --filter=\"@supergrain/core\" --filter=\"@supergrain/react\" run --sequential build && pnpm --filter=\"@supergrain/core\" --filter=\"@supergrain/react\" run --sequential size",

@@ -10,6 +10,29 @@ type ArrayKey = `${number}`;
 
 type Join<K extends string, P extends string> = `${K}.${P}`;
 
+/**
+ * Recursive dotted-path type for `T`, bounded by depth `D` (default `5`).
+ *
+ * **Depth limit (default 5):**
+ * TypeScript caps recursion in conditional types — when this type recurses
+ * past its instantiation depth limit, the compiler aborts with TS2589
+ * ("Type instantiation is excessively deep and possibly infinite") or
+ * silently produces `any`. The `Depth`/`PrevDepth` decrementer here keeps
+ * recursion bounded so that doesn't happen.
+ *
+ * **What happens past the limit:**
+ * Paths *deeper* than `D` levels are simply absent from the union `Path<T>`
+ * resolves to — so the strict path operation maps (`SetPathOperations`,
+ * `UnsetPathOperations`, ...) will reject them. Consumers that need deeper
+ * paths must pass an explicit `D`: `Path<MyShape, 6>`.
+ *
+ * **Cost of raising `D`:**
+ * Every level multiplies the union size that `tsc` materialises for every
+ * `update()` call site in consumers. For deeply-nested or wide types this
+ * compounds quickly and shows up as noticeably slower IDE feedback +
+ * `tsc --noEmit` runs. Don't bump the default without measuring against a
+ * realistic consumer schema first.
+ */
 export type Path<T, D extends Depth = 5> = [D] extends [0]
   ? never
   : T extends Primitive | ((...args: never[]) => unknown)
@@ -56,9 +79,6 @@ export type ArrayPath<T> = Extract<
   }[Path<T>],
   string
 >;
-
-type LoosePathMap<K extends string, V> = Partial<Record<K, V>> & Record<string, V>;
-type LooseUnknownPathMap<K extends string, V> = Partial<Record<K, V>> & Record<string, unknown>;
 
 function isContainer(value: unknown): value is Record<string, unknown> | unknown[] {
   return value !== null && typeof value === "object";
@@ -127,24 +147,27 @@ export function deleteValueAtPath(target: object, path: string): void {
   }
 }
 
-export type SetPathOperations<T extends object> = LooseUnknownPathMap<
-  Path<T>,
-  PathValue<T, Path<T>>
->;
+export type SetPathOperations<T extends object> = {
+  [P in Path<T>]?: PathValue<T, P>;
+};
 
-export type UnsetPathOperations<T extends object> = LoosePathMap<Path<T>, true | 1>;
+export type UnsetPathOperations<T extends object> = {
+  [P in Path<T>]?: true | 1;
+};
 
-export type NumericPathOperations<T extends object> = LoosePathMap<NumericPath<T>, number>;
+export type NumericPathOperations<T extends object> = {
+  [P in NumericPath<T>]?: number;
+};
 
-export type ArrayWriteOperations<T extends object> = LooseUnknownPathMap<
-  ArrayPath<T>,
-  PathValue<T, ArrayPath<T>> extends (infer Item)[] ? Item | ArrayModifiers<Item> : never
->;
+export type ArrayWriteOperations<T extends object> = {
+  [P in ArrayPath<T>]?: PathValue<T, P> extends (infer Item)[]
+    ? Item | ArrayModifiers<Item>
+    : never;
+};
 
-export type ArrayPullOperations<T extends object> = LooseUnknownPathMap<
-  ArrayPath<T>,
-  PathValue<T, ArrayPath<T>> extends (infer Item)[] ? Item | Partial<Item> : never
->;
+export type ArrayPullOperations<T extends object> = {
+  [P in ArrayPath<T>]?: PathValue<T, P> extends (infer Item)[] ? Item | Partial<Item> : never;
+};
 
 export interface ArrayModifiers<T> {
   $each: T[];

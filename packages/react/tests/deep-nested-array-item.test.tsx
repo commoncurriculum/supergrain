@@ -59,23 +59,23 @@ describe("Deep Nested Array Item Tests", () => {
 
     const rendersAfterDeepUpdate = componentRenderCount;
 
-    // Test 2: Update a different deep property to test specificity
+    // Test 2: Update a different deep property to test specificity (new prop — bypass typing)
     await act(async () => {
       update(store, {
         $set: {
           "items.0.obj.objTwo.newProp": "hello",
         },
-      });
+      } as any);
       await flushMicrotasks();
     });
 
-    // Test 3: Update a completely different part of the structure
+    // Test 3: Update a completely different part of the structure (new prop — bypass typing)
     await act(async () => {
       update(store, {
         $set: {
           "items.0.differentProp": "unrelated",
         },
-      });
+      } as any);
       await flushMicrotasks();
     });
 

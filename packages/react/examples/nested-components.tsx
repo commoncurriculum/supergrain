@@ -1,7 +1,7 @@
+import { createReactive } from "@supergrain/core";
+import { update } from "@supergrain/operators";
 import React from "react";
 
-import { createReactive } from "../../core/src/index";
-import { update } from "../../operators/src/index";
 import { tracked } from "../src/index";
 
 // Create a store with separate properties for different component levels
@@ -45,7 +45,7 @@ const Child = tracked(() => {
       <h3>Child Component</h3>
       <p>Value: {store.child.value}</p>
       <p>Render count: {childRenders}</p>
-      <button onClick={() => update({ $set: { "child.value": store.child.value + 1 } })}>
+      <button onClick={() => update(store, { $set: { "child.value": store.child.value + 1 } })}>
         Increment Child
       </button>
     </div>
@@ -68,7 +68,7 @@ const Parent = tracked(() => {
       <h2>Parent Component</h2>
       <p>Value: {store.parent.value}</p>
       <p>Render count: {parentRenders}</p>
-      <button onClick={() => update({ $set: { "parent.value": store.parent.value + 10 } })}>
+      <button onClick={() => update(store, { $set: { "parent.value": store.parent.value + 10 } })}>
         Increment Parent
       </button>
       <Child />
@@ -95,7 +95,7 @@ const GrandParent = tracked(() => {
       <p>Theme: {store.shared.theme}</p>
       <button
         onClick={() =>
-          update({
+          update(store, {
             $set: { "grandparent.value": store.grandparent.value + 100 },
           })
         }
@@ -105,7 +105,7 @@ const GrandParent = tracked(() => {
       <button
         onClick={() => {
           const newTheme = store.shared.theme === "light" ? "dark" : "light";
-          update({ $set: { "shared.theme": newTheme } });
+          update(store, { $set: { "shared.theme": newTheme } });
         }}
       >
         Toggle Theme (affects only Grandparent)
@@ -205,7 +205,7 @@ export function NestedComponentsExample() {
         <button
           onClick={() => {
             // Reset all values
-            update({
+            update(store, {
               $set: {
                 "grandparent.value": 1,
                 "parent.value": 10,

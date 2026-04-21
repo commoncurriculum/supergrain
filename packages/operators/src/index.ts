@@ -1,6 +1,1 @@
-export {
-  update,
-  type LooseUpdateOperations,
-  type StrictUpdateOperations,
-  type UpdateOperations,
-} from "./operators";
+export { update, type StrictUpdateOperations, type UpdateOperations } from "./operators";

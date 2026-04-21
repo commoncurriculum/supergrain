@@ -5,6 +5,7 @@ export default defineConfig({
   base: "/supergrain/",
   description:
     "A reactive store library with super fine-grained reactivity powered by alien-signals",
+  ignoreDeadLinks: true,
 
   head: [["link", { rel: "icon", type: "image/svg+xml", href: "/hero-grain.svg" }]],
 
@@ -15,7 +16,6 @@ export default defineConfig({
       { text: "Home", link: "/" },
       { text: "Guide", link: "#installation" },
       { text: "Comparison", link: "/comparison" },
-      { text: "GitHub", link: "https://github.com/commoncurriculum/supergrain" },
     ],
 
     socialLinks: [{ icon: "github", link: "https://github.com/commoncurriculum/supergrain" }],

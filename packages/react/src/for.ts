@@ -1,11 +1,5 @@
-import {
-  effect as alienEffect,
-  getCurrentSub,
-  setCurrentSub,
-  unwrap,
-  getNodesIfExist,
-  $TRACK,
-} from "@supergrain/core";
+import { effect as alienEffect, unwrap, getNodesIfExist, $TRACK } from "@supergrain/core";
+import { getCurrentSub, setCurrentSub } from "@supergrain/core/internal";
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 // useLayoutEffect warns during SSR. Fall back to useEffect on the server.

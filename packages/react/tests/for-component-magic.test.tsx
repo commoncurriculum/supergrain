@@ -1,12 +1,11 @@
 import {
   createReactive,
-  startBatch,
-  endBatch,
   enableProfiling,
   disableProfiling,
   resetProfiler,
   getProfile,
 } from "@supergrain/core";
+import { startBatch, endBatch } from "@supergrain/core/internal";
 import { update } from "@supergrain/operators";
 import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
