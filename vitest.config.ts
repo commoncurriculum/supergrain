@@ -32,10 +32,20 @@ export default defineConfig({
           },
         },
       },
-      // @supergrain/silo is intentionally excluded: its suite is
-      // failing-pins around a not-yet-implemented skeleton. Run directly with
-      // `pnpm --filter=@supergrain/silo test`.
-
+      // jsdom environment for silo tests (store, finder, processors, React hooks)
+      {
+        plugins: [react()],
+        test: {
+          include: ["packages/silo/**/*.test.{ts,tsx}"],
+          environment: "jsdom",
+        },
+        resolve: {
+          alias: {
+            "@supergrain/kernel": resolve(__dirname, "./packages/kernel/src"),
+            "@supergrain/mill": resolve(__dirname, "./packages/mill/src"),
+          },
+        },
+      },
       // Browser environment for React tests (kernel/react subpath)
       {
         plugins: [react()],
