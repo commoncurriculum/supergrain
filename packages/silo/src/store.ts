@@ -1,5 +1,28 @@
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
 
+import { batch, createReactive } from "@supergrain/kernel";
+
+import { Finder, type InternalHandle, type InternalState } from "./finder";
+
+interface Resolvers<T> {
+  promise: Promise<T>;
+  resolve: (v: T) => void;
+  reject: (e: unknown) => void;
+}
+
+const NOOP_RESOLVE: (v: unknown) => void = () => {};
+const NOOP_REJECT: (e: unknown) => void = () => {};
+
+function withResolvers<T>(): Resolvers<T> {
+  let resolve: (v: T) => void = NOOP_RESOLVE as (v: T) => void;
+  let reject: (e: unknown) => void = NOOP_REJECT;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 // =============================================================================
 // Model types
 // =============================================================================
@@ -287,11 +310,290 @@ export interface DocumentStore<
  * This is the non-React primitive. React integrations wrap this via
  * `createDocumentStoreContext()`.
  */
+const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
+  status: "IDLE" as const,
+  data: undefined,
+  hasData: false,
+  isPending: false,
+  isFetching: false,
+  fetchedAt: undefined,
+  error: undefined,
+  promise: undefined,
+});
+
+function makeIdleHandle(): InternalHandle {
+  return {
+    status: "IDLE",
+    data: undefined,
+    hasData: false,
+    isPending: false,
+    isFetching: false,
+    fetchedAt: undefined,
+    error: undefined,
+    promise: undefined,
+    resolve: undefined,
+    reject: undefined,
+  };
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || value === undefined) return JSON.stringify(value);
+  if (typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => stableStringify(v)).join(",")}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
+}
+
+function resetHandle(handle: InternalHandle): void {
+  if (handle.isFetching) {
+    // Clear data but leave lifecycle alone — the in-flight fetch will
+    // complete and re-populate normally.
+    handle.data = undefined;
+    handle.hasData = false;
+    return;
+  }
+  handle.status = "IDLE";
+  handle.data = undefined;
+  handle.hasData = false;
+  handle.isPending = false;
+  handle.isFetching = false;
+  handle.error = undefined;
+  handle.promise = undefined;
+  handle.fetchedAt = undefined;
+}
+
 export function createDocumentStore<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
->(_config: DocumentStoreConfig<M, Q>): DocumentStore<M, Q> {
-  throw new Error("@supergrain/silo: createDocumentStore is not yet implemented");
+>(config: DocumentStoreConfig<M, Q>): DocumentStore<M, Q> {
+  const finder = new Finder<M, Q>(config);
+  // Strip the `Branded<T>` marker from the reactive proxy's type so indexed
+  // writes (`state.documents[type] = {...}`) compile. The runtime proxy
+  // behavior is identical; the brand is purely a compile-time identification
+  // token that otherwise blocks direct assignment into nested generics.
+  const state = createReactive<InternalState>({
+    documents: {},
+    queries: {},
+  }) as InternalState;
+
+  function kickOffDocumentFetch(type: keyof M & string, id: string): void {
+    const { promise, resolve, reject } = withResolvers<unknown>();
+    // Suppress unhandled-rejection warnings without affecting user's ability
+    // to observe the rejection via `await handle.promise`.
+    promise.catch(() => {});
+    batch(() => {
+      const handle = state.documents[type]![id]!;
+      handle.status = "PENDING";
+      handle.isPending = true;
+      handle.isFetching = true;
+      handle.error = undefined;
+      handle.promise = promise;
+      handle.resolve = resolve;
+      handle.reject = reject;
+    });
+    finder.queueDocument(type, id);
+  }
+
+  function kickOffQueryFetch(
+    type: keyof Q & string,
+    paramsKey: string,
+    params: Q[keyof Q & string]["params"],
+  ): void {
+    const { promise, resolve, reject } = withResolvers<unknown>();
+    promise.catch(() => {});
+    batch(() => {
+      const handle = state.queries[type]![paramsKey]!;
+      handle.status = "PENDING";
+      handle.isPending = true;
+      handle.isFetching = true;
+      handle.error = undefined;
+      handle.promise = promise;
+      handle.resolve = resolve;
+      handle.reject = reject;
+    });
+    finder.queueQuery(type, paramsKey, params);
+  }
+
+  const store: DocumentStore<M, Q> = {
+    find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
+      if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
+
+      state.documents[type] ??= {};
+      let handle = state.documents[type]![id];
+      if (!handle) {
+        state.documents[type]![id] = makeIdleHandle();
+        handle = state.documents[type]![id]!;
+      }
+      if (handle.status === "IDLE") {
+        kickOffDocumentFetch(type, id);
+      }
+      return handle as unknown as DocumentHandle<M[K]>;
+    },
+
+    findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined {
+      return state.documents[type]?.[id]?.data as M[K] | undefined;
+    },
+
+    insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
+      // Freeze stored docs so the kernel's proxy `get` trap returns them
+      // as-is (createReactiveProxy short-circuits on frozen targets),
+      // preserving reference identity for consumers that compare handle.data
+      // to the doc they inserted.
+      if (!Object.isFrozen(doc)) Object.freeze(doc);
+
+      batch(() => {
+        state.documents[type] ??= {};
+        const bucket = state.documents[type]!;
+        const existing = bucket[doc.id];
+
+        if (!existing) {
+          bucket[doc.id] = {
+            status: "SUCCESS",
+            data: doc,
+            hasData: true,
+            isPending: false,
+            isFetching: false,
+            fetchedAt: new Date(),
+            error: undefined,
+            promise: Promise.resolve(doc),
+            resolve: undefined,
+            reject: undefined,
+          };
+          return;
+        }
+
+        existing.data = doc;
+        existing.hasData = true;
+
+        if (existing.status === "PENDING") {
+          // Resolve the in-flight promise in-place; the Finder's later
+          // settlement will find resolvers cleared and only overwrite `data`.
+          existing.status = "SUCCESS";
+          existing.isPending = false;
+          existing.isFetching = false;
+          existing.error = undefined;
+          existing.fetchedAt = new Date();
+          existing.resolve?.(doc);
+          existing.resolve = undefined;
+          existing.reject = undefined;
+        } else if (existing.status === "IDLE" || existing.status === "ERROR") {
+          existing.status = "SUCCESS";
+          existing.isPending = false;
+          existing.isFetching = false;
+          existing.error = undefined;
+          existing.promise = Promise.resolve(doc);
+          existing.fetchedAt = new Date();
+        }
+        // SUCCESS: only `data` + `hasData` update — promise reference stays stable.
+      });
+    },
+
+    findQuery<K extends keyof Q & string>(
+      type: K,
+      params: Q[K]["params"] | null | undefined,
+    ): QueryHandle<Q[K]["result"]> {
+      if (params === null || params === undefined)
+        return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
+
+      const paramsKey = stableStringify(params);
+      state.queries[type] ??= {};
+      let handle = state.queries[type]![paramsKey];
+      if (!handle) {
+        state.queries[type]![paramsKey] = makeIdleHandle();
+        handle = state.queries[type]![paramsKey]!;
+      }
+      if (handle.status === "IDLE") {
+        kickOffQueryFetch(type, paramsKey, params);
+      }
+      return handle as unknown as QueryHandle<Q[K]["result"]>;
+    },
+
+    findQueryInMemory<K extends keyof Q & string>(
+      type: K,
+      params: Q[K]["params"],
+    ): Q[K]["result"] | undefined {
+      const paramsKey = stableStringify(params);
+      return state.queries[type]?.[paramsKey]?.data as Q[K]["result"] | undefined;
+    },
+
+    insertQueryResult<K extends keyof Q & string>(
+      type: K,
+      params: Q[K]["params"],
+      result: Q[K]["result"],
+    ): void {
+      if (result !== null && typeof result === "object" && !Object.isFrozen(result)) {
+        Object.freeze(result);
+      }
+
+      const paramsKey = stableStringify(params);
+
+      batch(() => {
+        state.queries[type] ??= {};
+        const bucket = state.queries[type]!;
+        const existing = bucket[paramsKey];
+
+        if (!existing) {
+          bucket[paramsKey] = {
+            status: "SUCCESS",
+            data: result,
+            hasData: true,
+            isPending: false,
+            isFetching: false,
+            fetchedAt: new Date(),
+            error: undefined,
+            promise: Promise.resolve(result),
+            resolve: undefined,
+            reject: undefined,
+          };
+          return;
+        }
+
+        existing.data = result;
+        existing.hasData = true;
+
+        if (existing.status === "PENDING") {
+          existing.status = "SUCCESS";
+          existing.isPending = false;
+          existing.isFetching = false;
+          existing.error = undefined;
+          existing.fetchedAt = new Date();
+          existing.resolve?.(result);
+          existing.resolve = undefined;
+          existing.reject = undefined;
+        } else if (existing.status === "IDLE" || existing.status === "ERROR") {
+          existing.status = "SUCCESS";
+          existing.isPending = false;
+          existing.isFetching = false;
+          existing.error = undefined;
+          existing.promise = Promise.resolve(result);
+          existing.fetchedAt = new Date();
+        }
+      });
+    },
+
+    clearMemory(): void {
+      batch(() => {
+        for (const typeKey of Object.keys(state.documents)) {
+          const bucket = state.documents[typeKey];
+          if (bucket) {
+            for (const id of Object.keys(bucket)) resetHandle(bucket[id]!);
+          }
+        }
+        for (const typeKey of Object.keys(state.queries)) {
+          const bucket = state.queries[typeKey];
+          if (bucket) {
+            for (const paramsKey of Object.keys(bucket)) resetHandle(bucket[paramsKey]!);
+          }
+        }
+      });
+    },
+  };
+
+  finder.attach(state, store);
+  return store;
 }
 
 // Re-export query handle types so `store.findQuery(...)` call sites don't
