@@ -47,62 +47,28 @@ An entity cache with request batching. Think TanStack Query, except the fetched 
 Declare your models and adapters, build the store, then read documents anywhere in the tree:
 
 ```tsx
-import { createDocumentStore, type DocumentAdapter } from "@supergrain/silo";
+import { createDocumentStore, type DocumentAdapter, type QueryAdapter } from "@supergrain/silo";
 import { createDocumentStoreContext } from "@supergrain/silo/react";
 
-// 1. Model + adapter. The adapter takes N ids and returns raw docs.
+// 1. Models are keyed by id. Queries are keyed by a params object — for
+//    endpoints whose response only makes sense with its params (dashboards,
+//    search, paginated lists).
 interface User {
   id: string;
   attributes: { firstName: string; lastName: string };
 }
 type Models = { user: User };
+type Queries = {
+  dashboard: { params: { workspaceId: string }; result: { totalUsers: number } };
+};
 
+// 2. Adapters. Both take N keys and return raw responses — bulk endpoint,
+//    fan-out, websocket, whatever. Silo doesn't care how you hit the wire.
 const userAdapter: DocumentAdapter = {
   async find(ids) {
     return Promise.all(ids.map((id) => fetch(`/api/users/${id}`).then((r) => r.json())));
   },
 };
-
-// 2. Context factory — one store type, one Provider, typed hooks.
-const { Provider, useDocument } = createDocumentStoreContext<Models>();
-
-// 3. Mount the Provider once. `init` runs per mount → SSR/tests are isolated.
-function App() {
-  return (
-    <Provider
-      init={() =>
-        createDocumentStore<Models>({
-          models: { user: { adapter: userAdapter } },
-        })
-      }
-    >
-      <UserList />
-    </Provider>
-  );
-}
-
-// 4. Read documents by (type, id). `useDocument` returns a stable, reactive handle.
-function UserCard({ id }: { id: string }) {
-  const user = useDocument("user", id);
-  if (user.isPending) return <Skeleton />;
-  if (user.error) return <ErrorState error={user.error} />;
-  return <div>{user.data?.attributes.firstName}</div>;
-}
-```
-
-The adapter above is **fan-out** style — N parallel `GET /:id` requests per batch, merged. If your API has a bulk endpoint, return all the docs from one `fetch` instead; silo doesn't care how you hit the wire. Either way, rendering 50 `<UserCard>`s in one pass collapses to **one** `userAdapter.find(ids)` call — batching is automatic, not opt-in. Handles are reactive: a later `store.insertDocument("user", updated)` (socket push, mutation response, admin edit) re-renders just the cards whose data changed — no query keys, no `invalidateQueries`.
-
-### Params-keyed queries
-
-For endpoints whose response only makes sense with its params — dashboards, search results, paginated lists — add a `queries` config alongside `models` and read with `useQuery`:
-
-```tsx
-import type { QueryAdapter } from "@supergrain/silo";
-
-type Queries = {
-  dashboard: { params: { workspaceId: string }; result: { totalUsers: number } };
-};
-
 const dashboardAdapter: QueryAdapter<Queries["dashboard"]["params"]> = {
   async find(paramsList) {
     return Promise.all(
@@ -111,12 +77,32 @@ const dashboardAdapter: QueryAdapter<Queries["dashboard"]["params"]> = {
   },
 };
 
+// 3. Context factory — one Provider, typed hooks.
 const { Provider, useDocument, useQuery } = createDocumentStoreContext<Models, Queries>();
 
-createDocumentStore<Models, Queries>({
-  models: { user: { adapter: userAdapter } },
-  queries: { dashboard: { adapter: dashboardAdapter } },
-});
+// 4. Mount the Provider once. `init` runs per mount → SSR/tests isolated.
+function App() {
+  return (
+    <Provider
+      init={() =>
+        createDocumentStore<Models, Queries>({
+          models: { user: { adapter: userAdapter } },
+          queries: { dashboard: { adapter: dashboardAdapter } },
+        })
+      }
+    >
+      <Dashboard workspaceId="w1" />
+    </Provider>
+  );
+}
+
+// 5. Read by (type, id) or (type, params). Both return reactive handles with
+//    the same lifecycle fields (isPending, error, data, promise, ...).
+function UserCard({ id }: { id: string }) {
+  const user = useDocument("user", id);
+  if (user.isPending) return <Skeleton />;
+  return <div>{user.data?.attributes.firstName}</div>;
+}
 
 function Dashboard({ workspaceId }: { workspaceId: string }) {
   const dashboard = useQuery("dashboard", { workspaceId });
@@ -125,7 +111,11 @@ function Dashboard({ workspaceId }: { workspaceId: string }) {
 }
 ```
 
-Same handle shape as `useDocument`, same Suspense story, same batching — the only difference is the key. Params are stable-stringified so `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` hit the same cache slot. Query processors can also call `store.insertDocument(...)` to normalize nested entities into the documents cache, so a `usersByRole` query populates the users cache for `useDocument("user", id)` elsewhere.
+The `userAdapter` above is **fan-out** style — N parallel `GET /:id` requests per batch, merged. Swap in a bulk endpoint (one `fetch` returning all ids) and nothing else changes. Either way, rendering 50 `<UserCard>`s in one pass collapses to **one** `userAdapter.find(ids)` call — batching is automatic, not opt-in.
+
+Query params are stable-stringified so `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` hit the same cache slot. Query processors can also call `store.insertDocument(...)` to normalize nested entities into the documents cache — a `usersByRole` query populates the users cache for `useDocument("user", id)` elsewhere.
+
+Handles are reactive: a later `store.insertDocument("user", updated)` (socket push, mutation response, admin edit) re-renders just the cards whose data changed — no query keys, no `invalidateQueries`.
 
 [Full silo docs →](./packages/silo/README.md)
 
