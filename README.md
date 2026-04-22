@@ -53,11 +53,9 @@ import { createDocumentStoreContext } from "@supergrain/silo/react";
 // 1. Models are keyed by id. Queries are keyed by a params object — for
 //    endpoints whose response only makes sense with its params (dashboards,
 //    search, paginated lists).
-interface User {
-  id: string;
-  attributes: { firstName: string; lastName: string };
-}
-type Models = { user: User };
+type Models = {
+  user: { id: string; attributes: { firstName: string; lastName: string } };
+};
 type Queries = {
   posts: {
     params: { authorId: string; status: "published" | "draft"; limit: number };
