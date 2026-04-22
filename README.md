@@ -59,7 +59,10 @@ interface User {
 }
 type Models = { user: User };
 type Queries = {
-  dashboard: { params: { workspaceId: string }; result: { totalUsers: number } };
+  posts: {
+    params: { authorId: string; status: "published" | "draft"; limit: number };
+    result: { posts: Array<{ id: string; title: string }>; nextCursor: string | null };
+  };
 };
 
 // 2. Adapters. Both take N keys and return raw responses — bulk endpoint,
@@ -69,10 +72,17 @@ const userAdapter: DocumentAdapter = {
     return Promise.all(ids.map((id) => fetch(`/api/users/${id}`).then((r) => r.json())));
   },
 };
-const dashboardAdapter: QueryAdapter<Queries["dashboard"]["params"]> = {
+const postsAdapter: QueryAdapter<Queries["posts"]["params"]> = {
   async find(paramsList) {
     return Promise.all(
-      paramsList.map((p) => fetch(`/api/dashboards/${p.workspaceId}`).then((r) => r.json())),
+      paramsList.map((p) => {
+        const qs = new URLSearchParams({
+          authorId: p.authorId,
+          status: p.status,
+          limit: String(p.limit),
+        });
+        return fetch(`/api/posts?${qs}`).then((r) => r.json());
+      }),
     );
   },
 };
@@ -87,11 +97,11 @@ function App() {
       init={() =>
         createDocumentStore<Models, Queries>({
           models: { user: { adapter: userAdapter } },
-          queries: { dashboard: { adapter: dashboardAdapter } },
+          queries: { posts: { adapter: postsAdapter } },
         })
       }
     >
-      <Dashboard workspaceId="w1" />
+      <AuthorPosts authorId="u1" />
     </Provider>
   );
 }
@@ -104,16 +114,22 @@ function UserCard({ id }: { id: string }) {
   return <div>{user.data?.attributes.firstName}</div>;
 }
 
-function Dashboard({ workspaceId }: { workspaceId: string }) {
-  const dashboard = useQuery("dashboard", { workspaceId });
-  if (dashboard.isPending) return <Skeleton />;
-  return <div>{dashboard.data?.totalUsers} users</div>;
+function AuthorPosts({ authorId }: { authorId: string }) {
+  const posts = useQuery("posts", { authorId, status: "published", limit: 20 });
+  if (posts.isPending) return <Skeleton />;
+  return (
+    <ul>
+      {posts.data?.posts.map((p) => (
+        <li key={p.id}>{p.title}</li>
+      ))}
+    </ul>
+  );
 }
 ```
 
 The `userAdapter` above is **fan-out** style — N parallel `GET /:id` requests per batch, merged. Swap in a bulk endpoint (one `fetch` returning all ids) and nothing else changes. Either way, rendering 50 `<UserCard>`s in one pass collapses to **one** `userAdapter.find(ids)` call — batching is automatic, not opt-in.
 
-Query params are stable-stringified so `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` hit the same cache slot. Query processors can also call `store.insertDocument(...)` to normalize nested entities into the documents cache — a `usersByRole` query populates the users cache for `useDocument("user", id)` elsewhere.
+Query params are stable-stringified so `{ authorId, status, limit }` and `{ limit, authorId, status }` hit the same cache slot. Query processors can also call `store.insertDocument(...)` to normalize nested entities into the documents cache — the posts query can insert each `Post` as a document, so a sibling `useDocument("post", id)` elsewhere in the tree reads the same data without a refetch.
 
 Handles are reactive: a later `store.insertDocument("user", updated)` (socket push, mutation response, admin edit) re-renders just the cards whose data changed — no query keys, no `invalidateQueries`.
 
