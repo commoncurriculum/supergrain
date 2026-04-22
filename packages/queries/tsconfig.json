@@ -12,8 +12,8 @@
     "noUnusedParameters": true,
     "baseUrl": ".",
     "paths": {
-      "@supergrain/core": ["../core/src"],
-      "@supergrain/document-store": ["../document-store/src"]
+      "@supergrain/kernel": ["../kernel/src"],
+      "@supergrain/silo": ["../silo/src"]
     }
   },
   "include": ["src", "tests"]

@@ -1,7 +1,7 @@
 {
   "name": "@supergrain/queries",
   "version": "0.0.1",
-  "description": "Pagination + live-subscription query primitive for @supergrain/document-store",
+  "description": "Pagination + live-subscription query primitive for @supergrain/silo",
   "keywords": [
     "query",
     "reactive",
@@ -48,8 +48,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@supergrain/core": "workspace:*",
-    "@supergrain/document-store": "workspace:*"
+    "@supergrain/kernel": "workspace:*",
+    "@supergrain/silo": "workspace:*"
   },
   "devDependencies": {
     "@vitest/browser": "4.1.0",

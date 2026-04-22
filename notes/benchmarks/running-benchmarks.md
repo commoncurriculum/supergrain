@@ -29,7 +29,7 @@ Covers: proxy overhead (raw proxy vs plain object), memory/GC patterns, signal c
 ## Adding Benchmarks
 
 1. Core comparison -> `core-comparison.bench.ts`; detailed -> `additional.bench.ts`
-2. Include @supergrain/core and solid-js/store versions
+2. Include @supergrain/kernel and solid-js/store versions
 3. Add reactive context validation for reactive tests
 4. Include plain JS baseline when measuring overhead
 

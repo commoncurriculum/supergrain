@@ -1,0 +1,93 @@
+{
+  "name": "@supergrain/silo",
+  "version": "3.0.0",
+  "description": "Document-oriented store for Supergrain with TypeScript support",
+  "keywords": [
+    "document",
+    "reactive",
+    "store",
+    "supergrain",
+    "typescript"
+  ],
+  "homepage": "https://commoncurriculum.github.io/supergrain/",
+  "bugs": {
+    "url": "https://github.com/commoncurriculum/supergrain/issues"
+  },
+  "license": "MIT",
+  "author": "Scott Messinger",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/commoncurriculum/supergrain.git",
+    "directory": "packages/silo"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./processors": {
+      "types": "./dist/processors/index.d.ts",
+      "import": "./dist/processors/index.js",
+      "require": "./dist/processors/index.cjs"
+    },
+    "./processors/json-api": {
+      "types": "./dist/processors/json-api.d.ts",
+      "import": "./dist/processors/json-api.js",
+      "require": "./dist/processors/json-api.cjs"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "require": "./dist/react/index.cjs"
+    },
+    "./react/json-api": {
+      "types": "./dist/react/json-api.d.ts",
+      "import": "./dist/react/json-api.js",
+      "require": "./dist/react/json-api.cjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepack": "cp ../../README.md .",
+    "postpack": "rm README.md",
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "lint": "oxlint -c ../../.oxlintrc.json src/",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supergrain/kernel": "workspace:*"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/browser": "4.1.0",
+    "msw": "^2.13.4",
+    "playwright": "^1.55.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "vitest": "4.1.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}

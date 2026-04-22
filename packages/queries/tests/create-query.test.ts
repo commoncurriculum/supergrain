@@ -1,4 +1,4 @@
-import { createDocumentStore, type DocumentStore } from "@supergrain/document-store";
+import { createDocumentStore, type DocumentStore } from "@supergrain/silo";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createQuery, type QueryAdapter } from "../src";

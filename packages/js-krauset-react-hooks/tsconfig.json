@@ -7,5 +7,5 @@
     "composite": true
   },
   "include": ["src", "tests"],
-  "references": [{ "path": "../core" }, { "path": "../react" }]
+  "references": [{ "path": "../kernel" }]
 }

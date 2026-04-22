@@ -10,9 +10,9 @@
  * - Update operators (DOC_TEST_46)
  */
 
-import { createReactive } from "@supergrain/core";
-import { update } from "@supergrain/operators";
-import { tracked } from "@supergrain/react";
+import { createReactive } from "@supergrain/kernel";
+import { tracked } from "@supergrain/kernel/react";
+import { update } from "@supergrain/mill";
 import { describe, it, expect } from "vitest";
 
 describe("README Core Examples", () => {

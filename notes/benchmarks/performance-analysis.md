@@ -2,18 +2,18 @@
 
 ## Executive Summary
 
-After correcting the benchmark methodology to ensure Solid.js effects run synchronously using `createComputed` instead of `createEffect`, we now have accurate performance comparisons. The actual performance gap between @supergrain/core and solid-js is significant but not catastrophic.
+After correcting the benchmark methodology to ensure Solid.js effects run synchronously using `createComputed` instead of `createEffect`, we now have accurate performance comparisons. The actual performance gap between @supergrain/kernel and solid-js is significant but not catastrophic.
 
 ## Corrected Performance Metrics
 
 ### Real Performance Comparison
 
-| Operation                             | @supergrain/core | solid-js        | Performance Gap  |
-| ------------------------------------- | ---------------- | --------------- | ---------------- |
-| **Reactive reads (10k in effect)**    | 2,377 ops/sec    | 63,955 ops/sec  | **27x slower**   |
-| **Non-reactive reads (100k)**         | 376 ops/sec      | 24,964 ops/sec  | **66x slower**   |
-| **Property updates (1k with effect)** | ~11,000 ops/sec  | ~11,700 ops/sec | **1.06x slower** |
-| **Store creation (1k stores)**        | Fast             | Slower          | **82x faster**   |
+| Operation                             | @supergrain/kernel | solid-js        | Performance Gap  |
+| ------------------------------------- | ------------------ | --------------- | ---------------- |
+| **Reactive reads (10k in effect)**    | 2,377 ops/sec      | 63,955 ops/sec  | **27x slower**   |
+| **Non-reactive reads (100k)**         | 376 ops/sec        | 24,964 ops/sec  | **66x slower**   |
+| **Property updates (1k with effect)** | ~11,000 ops/sec    | ~11,700 ops/sec | **1.06x slower** |
+| **Store creation (1k stores)**        | Fast               | Slower          | **82x faster**   |
 
 ## Key Findings
 
@@ -35,30 +35,30 @@ The original benchmarks were showing "0ms" or extremely fast times for Solid.js 
 
 #### Reactive Property Access: 27-55x slower
 
-- @supergrain/core: ~1,200-2,400 ops/sec
+- @supergrain/kernel: ~1,200-2,400 ops/sec
 - solid-js: ~64,000-67,000 ops/sec
 - This is the main performance bottleneck
 
 #### Non-Reactive Property Access: 66x slower
 
-- @supergrain/core: ~376 ops/sec
+- @supergrain/kernel: ~376 ops/sec
 - solid-js: ~25,000 ops/sec
 - Proxy overhead is significant even outside reactive contexts
 
 #### Property Updates: Nearly Equal (1.06x slower)
 
-- @supergrain/core: ~11,000 ops/sec
+- @supergrain/kernel: ~11,000 ops/sec
 - solid-js: ~11,700 ops/sec
 - Performance is competitive for write operations
 
 #### Store Creation: 82x faster
 
-- @supergrain/core creates stores much faster
+- @supergrain/kernel creates stores much faster
 - Likely due to simpler initialization
 
 ## Performance Breakdown
 
-### Where @supergrain/core Struggles
+### Where @supergrain/kernel Struggles
 
 1. **Proxy Overhead (Primary Issue)**
    - Every property access goes through proxy traps
@@ -75,7 +75,7 @@ The original benchmarks were showing "0ms" or extremely fast times for Solid.js 
    - Each level of nesting adds proxy overhead
    - Recursive wrapping compounds the problem
 
-### Where @supergrain/core Performs Well
+### Where @supergrain/kernel Performs Well
 
 1. **Write Operations**
    - Nearly equal performance to solid-js
@@ -160,8 +160,8 @@ Given the architecture:
 
 ## Conclusion
 
-The corrected benchmarks show that @supergrain/core is **27-66x slower** for read operations compared to solid-js, not the previously reported 12,000x. This is primarily due to proxy overhead, which accounts for approximately 60x slowdown by itself.
+The corrected benchmarks show that @supergrain/kernel is **27-66x slower** for read operations compared to solid-js, not the previously reported 12,000x. This is primarily due to proxy overhead, which accounts for approximately 60x slowdown by itself.
 
-However, write performance is nearly identical (only 1.06x slower), and @supergrain/core offers unique features like MongoDB-style operators. The performance gap for reads is significant but not insurmountable for many applications, especially those that are not read-heavy in hot paths.
+However, write performance is nearly identical (only 1.06x slower), and @supergrain/kernel offers unique features like MongoDB-style operators. The performance gap for reads is significant but not insurmountable for many applications, especially those that are not read-heavy in hot paths.
 
-The key insight is that the proxy-based architecture has fundamental performance limitations that cannot be fully overcome without architectural changes. Users should be aware of these tradeoffs when choosing between @supergrain/core and solid-js.
+The key insight is that the proxy-based architecture has fundamental performance limitations that cannot be fully overcome without architectural changes. Users should be aware of these tradeoffs when choosing between @supergrain/kernel and solid-js.

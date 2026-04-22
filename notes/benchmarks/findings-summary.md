@@ -48,12 +48,12 @@ store.data[X].label = "...";
 
 Benchmarks corrected to use `createComputed` instead of async `createEffect`. See [performance-analysis.md](./performance-analysis.md) for methodology.
 
-| Operation          | @supergrain/core | solid-js        | Gap              |
-| ------------------ | ---------------- | --------------- | ---------------- |
-| Reactive reads     | 2,377 ops/sec    | 63,955 ops/sec  | **27x slower**   |
-| Non-reactive reads | 376 ops/sec      | 24,964 ops/sec  | **66x slower**   |
-| Property updates   | ~11,000 ops/sec  | ~11,700 ops/sec | **1.06x slower** |
-| Store creation     | Very fast        | Slower          | **82x faster**   |
+| Operation          | @supergrain/kernel | solid-js        | Gap              |
+| ------------------ | ------------------ | --------------- | ---------------- |
+| Reactive reads     | 2,377 ops/sec      | 63,955 ops/sec  | **27x slower**   |
+| Non-reactive reads | 376 ops/sec        | 24,964 ops/sec  | **66x slower**   |
+| Property updates   | ~11,000 ops/sec    | ~11,700 ops/sec | **1.06x slower** |
+| Store creation     | Very fast          | Slower          | **82x faster**   |
 
 ### Proxy Overhead vs Plain Objects
 

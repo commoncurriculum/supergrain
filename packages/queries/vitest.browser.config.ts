@@ -19,8 +19,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@supergrain/core": resolve(__dirname, "../core/src"),
-      "@supergrain/document-store": resolve(__dirname, "../document-store/src"),
+      "@supergrain/kernel": resolve(__dirname, "../kernel/src"),
+      "@supergrain/silo": resolve(__dirname, "../silo/src"),
       "@supergrain/queries": resolve(__dirname, "./src"),
     },
   },

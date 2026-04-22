@@ -41,7 +41,7 @@ jobs:
         run: pnpm run lint
 
       - name: Build packages
-        run: pnpm -r --filter="@supergrain/core" --filter="@supergrain/operators" --filter="@supergrain/react" --filter="@supergrain/document-store" build
+        run: pnpm -r --filter="@supergrain/kernel" --filter="@supergrain/mill" --filter="@supergrain/silo" build
 
       - name: TypeCheck all packages
         run: pnpm run typecheck

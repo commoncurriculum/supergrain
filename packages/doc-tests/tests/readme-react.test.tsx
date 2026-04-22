@@ -14,7 +14,7 @@ import {
   useComputed,
   useSignalEffect,
   For,
-} from "@supergrain/react";
+} from "@supergrain/kernel/react";
 import { render, screen, act, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 

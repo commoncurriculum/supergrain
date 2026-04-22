@@ -1,6 +1,6 @@
 # Proxy Optimization Trade-offs
 
-> **Status:** Current. Documents proxy handler optimizations in @supergrain/core and what edge-case functionality was intentionally dropped.
+> **Status:** Current. Documents proxy handler optimizations in @supergrain/kernel and what edge-case functionality was intentionally dropped.
 > **Result:** 2.69x faster property access overall (22x from Reflect.get removal alone). All 62 tests pass.
 
 ## Optimization 1: `Reflect.get` to Direct Property Access
@@ -66,4 +66,4 @@ These optimizations rely on:
 | Medium     | Mixed class+store patterns, dynamic property manipulation                     |
 | High       | Custom getters on store objects, proxy-wrapping-proxy, complex `this` binding |
 
-High-risk scenarios are outside @supergrain/core's design intent. Users needing complex object behavior should use class-based patterns outside the reactive store.
+High-risk scenarios are outside @supergrain/kernel's design intent. Users needing complex object behavior should use class-based patterns outside the reactive store.

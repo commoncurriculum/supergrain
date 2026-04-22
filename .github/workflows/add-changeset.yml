@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       packages:
-        description: 'Packages to release (comma-separated: core, react, operators, document-store, or "all")'
+        description: 'Packages to release (comma-separated: kernel, mill, silo, or "all")'
         required: true
         type: string
         default: "all"
@@ -63,10 +63,9 @@ jobs:
 
           # Add packages based on input
           if [ "$PACKAGES_INPUT" = "all" ]; then
-            echo "\"@supergrain/core\": $BUMP_TYPE" >> "$CHANGESET_FILE"
-            echo "\"@supergrain/react\": $BUMP_TYPE" >> "$CHANGESET_FILE"
-            echo "\"@supergrain/operators\": $BUMP_TYPE" >> "$CHANGESET_FILE"
-            echo "\"@supergrain/document-store\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+            echo "\"@supergrain/kernel\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+            echo "\"@supergrain/mill\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+            echo "\"@supergrain/silo\": $BUMP_TYPE" >> "$CHANGESET_FILE"
           else
             # Split comma-separated packages
             IFS=',' read -ra PKGS <<< "$PACKAGES_INPUT"
@@ -74,17 +73,14 @@ jobs:
               # Trim whitespace
               pkg=$(echo "$pkg" | xargs)
               case "$pkg" in
-                core)
-                  echo "\"@supergrain/core\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+                kernel)
+                  echo "\"@supergrain/kernel\": $BUMP_TYPE" >> "$CHANGESET_FILE"
                   ;;
-                react)
-                  echo "\"@supergrain/react\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+                mill)
+                  echo "\"@supergrain/mill\": $BUMP_TYPE" >> "$CHANGESET_FILE"
                   ;;
-                operators)
-                  echo "\"@supergrain/operators\": $BUMP_TYPE" >> "$CHANGESET_FILE"
-                  ;;
-                document-store)
-                  echo "\"@supergrain/document-store\": $BUMP_TYPE" >> "$CHANGESET_FILE"
+                silo)
+                  echo "\"@supergrain/silo\": $BUMP_TYPE" >> "$CHANGESET_FILE"
                   ;;
                 *)
                   echo "Warning: Unknown package '$pkg', skipping"

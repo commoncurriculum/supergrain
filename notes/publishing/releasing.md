@@ -43,8 +43,8 @@ That's it.
 Create multiple changesets before releasing -- they combine into a single release PR:
 
 ```bash
-pnpm changeset  # patch for @supergrain/react (bug fix)
-pnpm changeset  # minor for @supergrain/core (new feature)
+pnpm changeset  # patch for @supergrain/kernel/react (bug fix)
+pnpm changeset  # minor for @supergrain/kernel (new feature)
 pnpm changeset  # major for @supergrain/store (breaking change)
 ```
 

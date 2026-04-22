@@ -14,7 +14,7 @@ type FunctionInfo = {
   body?: ts.Node;
 };
 
-const targetPath = process.argv[2] ?? "packages/core/src/store.ts";
+const targetPath = process.argv[2] ?? "packages/kernel/src/store.ts";
 
 const program = ts.createProgram([targetPath], {
   target: ts.ScriptTarget.ES2022,

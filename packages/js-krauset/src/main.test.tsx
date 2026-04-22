@@ -287,8 +287,8 @@ describe("fresh store push regression", () => {
   afterEach(() => cleanup());
 
   it("push on a fresh store triggers re-render without prior assignment", async () => {
-    const { createReactive } = await import("@supergrain/core");
-    const { tracked, For } = await import("@supergrain/react");
+    const { createReactive } = await import("@supergrain/kernel");
+    const { tracked, For } = await import("@supergrain/kernel/react");
 
     const freshStore = createReactive<{ data: { id: number; label: string }[] }>({ data: [] });
 

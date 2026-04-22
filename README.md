@@ -20,17 +20,17 @@ A fast, ergonomic reactive store for React.
 
 ## Packages
 
-- [`@supergrain/core`](./packages/core) — framework-agnostic reactive primitives (`createReactive`, `computed`, `effect`, `batch`)
-- [`@supergrain/react`](./packages/react) — React hooks and components (`useReactive`, `createStore`, `tracked`, `useComputed`, `useSignalEffect`, `<For>`)
-- [`@supergrain/operators`](./packages/operators) — MongoDB-style update operators (`$set`, `$inc`, `$push`, `$pull`, ...)
+- [`@supergrain/kernel`](./packages/kernel) — framework-agnostic reactive primitives (`createReactive`, `computed`, `effect`, `batch`)
+- [`@supergrain/kernel/react`](./packages/kernel/src/react) — React hooks and components (`useReactive`, `createStore`, `tracked`, `useComputed`, `useSignalEffect`, `<For>`)
+- [`@supergrain/mill`](./packages/mill) — MongoDB-style update operators (`$set`, `$inc`, `$push`, `$pull`, ...)
 
 ## Install
 
 ```bash
-npm install @supergrain/core @supergrain/react
+npm install @supergrain/kernel @supergrain/kernel/react
 ```
 
-Most apps need `@supergrain/core` and `@supergrain/react`. Add `@supergrain/operators` for batched/path-based updates.
+Most apps need `@supergrain/kernel` and `@supergrain/kernel/react`. Add `@supergrain/mill` for batched/path-based updates.
 
 ## Quick Start
 
@@ -43,7 +43,7 @@ For state scoped to a single component, `useReactive` returns a reactive proxy t
 ```tsx
 // [#DOC_TEST_LOCAL_STATE](packages/doc-tests/tests/readme-react.test.tsx)
 
-import { tracked, useReactive } from "@supergrain/react";
+import { tracked, useReactive } from "@supergrain/kernel/react";
 
 const Counter = tracked(() => {
   const state = useReactive({ count: 0 });
@@ -62,7 +62,7 @@ For state shared across components, `createStore` returns a `Provider` and a `us
 ```tsx
 // [#DOC_TEST_QUICK_START](packages/doc-tests/tests/readme-react.test.tsx)
 // store.ts
-import { createStore } from "@supergrain/react";
+import { createStore } from "@supergrain/kernel/react";
 
 export interface Todo {
   id: number;
@@ -99,7 +99,7 @@ import { App } from "./App";
 
 ```tsx
 // TodoItem.tsx
-import { tracked, useComputed } from "@supergrain/react";
+import { tracked, useComputed } from "@supergrain/kernel/react";
 import { useStore, type Todo } from "./store";
 
 export const TodoItem = tracked(({ todo }: { todo: Todo }) => {
@@ -123,7 +123,7 @@ export const TodoItem = tracked(({ todo }: { todo: Todo }) => {
 
 ```tsx
 // App.tsx
-import { tracked, useComputed, useSignalEffect, For } from "@supergrain/react";
+import { tracked, useComputed, useSignalEffect, For } from "@supergrain/kernel/react";
 import { useStore } from "./store";
 import { TodoItem } from "./TodoItem";
 
@@ -151,7 +151,7 @@ Checking a todo re-renders only that `TodoItem`. Changing selection re-renders o
 
 ### Core
 
-From `@supergrain/core`. Framework-agnostic primitives.
+From `@supergrain/kernel`. Framework-agnostic primitives.
 
 - `createReactive<T>(initial)`
 
@@ -170,7 +170,7 @@ From `@supergrain/core`. Framework-agnostic primitives.
 
 ### React
 
-From `@supergrain/react`. React-specific hooks and components.
+From `@supergrain/kernel/react`. React-specific hooks and components.
 
 - `useReactive<T>(initial)`
 
@@ -367,7 +367,7 @@ store.data[2] = tmp; // effects fire again — data is [C, B, A]
 Wrap multi-step mutations in `batch()` so effects fire once with the final state:
 
 ```ts
-import { batch } from "@supergrain/core";
+import { batch } from "@supergrain/kernel";
 
 batch(() => {
   const tmp = store.data[0];
@@ -406,13 +406,13 @@ Supergrain delivers fine-grained reactivity with per-component signal scoping at
 
 ## Update Operators (Optional)
 
-For complex updates — batched mutations, array manipulations, dot-notation paths — install `@supergrain/operators` and import `update`. The operator names and semantics are inspired by MongoDB's update operators — `$set`, `$inc`, `$push`, etc. behave the same way.
+For complex updates — batched mutations, array manipulations, dot-notation paths — install `@supergrain/mill` and import `update`. The operator names and semantics are inspired by MongoDB's update operators — `$set`, `$inc`, `$push`, etc. behave the same way.
 
 ```typescript
 // [#DOC_TEST_46](packages/doc-tests/tests/readme-core.test.ts)
 
-import { createReactive } from "@supergrain/core";
-import { update } from "@supergrain/operators";
+import { createReactive } from "@supergrain/kernel";
+import { update } from "@supergrain/mill";
 
 const store = createReactive({
   count: 0,

@@ -1,6 +1,6 @@
 # React Adapter Architecture
 
-> **Status:** Partially superseded. The core design was implemented in `@supergrain/react`, but the actual API diverged significantly. The current API uses `tracked()` + `For` + `$$` + `DirectFor`. The earlier `useTracked` hook has been superseded by `tracked()`. See `packages/react/src/` for current implementation.
+> **Status:** Partially superseded. The core design was implemented in `@supergrain/kernel/react`, but the actual API diverged significantly. The current API uses `tracked()` + `For` + `$$` + `DirectFor`. The earlier `useTracked` hook has been superseded by `tracked()`. See `packages/react/src/` for current implementation.
 > **Still valuable:** The design rationale, benchmark findings, and implementation patterns below remain useful reference.
 
 ## Goal
@@ -87,7 +87,7 @@ function createEffectStore() {
 }
 ```
 
-Note: The actual implementation in `tracked()` (formerly `useTracked`) uses `useReducer` + `effect()` from `@supergrain/core` rather than this `useSyncExternalStore` pattern.
+Note: The actual implementation in `tracked()` (formerly `useTracked`) uses `useReducer` + `effect()` from `@supergrain/kernel` rather than this `useSyncExternalStore` pattern.
 
 ## Benchmark Findings
 

@@ -9,9 +9,9 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@supergrain/core": ["../core/src"],
-      "@supergrain/react": ["../react/src"],
-      "@supergrain/document-store": ["../document-store/src"]
+      "@supergrain/kernel": ["../kernel/src"],
+      "@supergrain/kernel/react": ["../kernel/src/react"],
+      "@supergrain/silo": ["../silo/src"]
     }
   },
   "include": ["tests/**/*", "vitest.config.ts", "vitest.node.config.ts"],

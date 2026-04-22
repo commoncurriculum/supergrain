@@ -32,7 +32,7 @@ Also included `DirectFor`, a list component that used `cloneNode` + signal effec
 
 _Removed: 2026-03-22_
 
-A benchmark component using `@supergrain/core/internal` APIs (`$NODE`, `$RAW`) to manually wire signals to DOM nodes. Used to measure the theoretical performance ceiling of signal-to-DOM without React. Also included Solid-js benchmark variants for comparison.
+A benchmark component using `@supergrain/kernel/internal` APIs (`$NODE`, `$RAW`) to manually wire signals to DOM nodes. Used to measure the theoretical performance ceiling of signal-to-DOM without React. Also included Solid-js benchmark variants for comparison.
 
 **What was deleted**: `packages/react/benchmarks/direct-dom.bench.tsx`, `gap-analysis.bench.tsx`, `gap-detail.bench.tsx`, and the Direct DOM / Solid-js sections from `benchmark-correctness.test.tsx`.
 

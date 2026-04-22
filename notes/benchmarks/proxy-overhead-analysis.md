@@ -2,7 +2,7 @@
 
 > **Status:** Historical analysis. Some findings led to optimizations (lazy signal creation, direct mutations). The proxy architecture remains, as the DX tradeoff is intentional.
 >
-> **Key finding:** @supergrain/core proxy overhead ranges from 50x to 990x vs direct object access, depending on the operation. The primary contributors are proxy handler complexity, signal creation patterns, and symbol property access.
+> **Key finding:** @supergrain/kernel proxy overhead ranges from 50x to 990x vs direct object access, depending on the operation. The primary contributors are proxy handler complexity, signal creation patterns, and symbol property access.
 
 ## Summary of Overhead
 

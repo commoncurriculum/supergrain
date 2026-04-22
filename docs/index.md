@@ -40,7 +40,7 @@ layout: page
   <div class="hero-code">
 
 ```tsx
-import { tracked, useReactive, For } from "@supergrain/react";
+import { tracked, useReactive, For } from "@supergrain/kernel/react";
 
 const TodoList = tracked(() => {
   const { todos } = useReactive({

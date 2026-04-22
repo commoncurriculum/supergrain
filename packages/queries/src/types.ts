@@ -1,4 +1,4 @@
-import type { DocumentStore, DocumentTypes } from "@supergrain/document-store";
+import type { DocumentStore, DocumentTypes } from "@supergrain/silo";
 
 // =============================================================================
 // Query adapter

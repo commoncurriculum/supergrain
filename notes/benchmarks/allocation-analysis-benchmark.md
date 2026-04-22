@@ -1,6 +1,6 @@
 # Allocation Analysis Benchmark Code
 
-> **Status**: Historical. Benchmark code archive -- identifies allocation/overhead sources in @supergrain/core.
+> **Status**: Historical. Benchmark code archive -- identifies allocation/overhead sources in @supergrain/kernel.
 > **TL;DR**: Measured function call overhead (Reflect.get 22x, getCurrentSub 14x, hasOwnProperty 3x), symbol access (37x), signal creation (18x), and per-object memory costs (~430+ bytes). Findings fed into the 4 optimizations in [safe-optimizations-benchmark.md](./safe-optimizations-benchmark.md).
 
 ## Benchmark Code
@@ -14,7 +14,7 @@ import { signal, getCurrentSub } from "alien-signals";
  * Allocation Analysis Benchmark
  *
  * This benchmark focuses on identifying the specific allocations and overhead
- * sources that contribute to the performance degradation in @supergrain/core.
+ * sources that contribute to the performance degradation in @supergrain/kernel.
  */
 
 describe("Allocation Analysis: Function Call Overhead", () => {
@@ -253,7 +253,7 @@ describe("Allocation Analysis: WeakMap Overhead", () => {
 });
 
 describe("Allocation Analysis: Memory Allocation Patterns", () => {
-  bench("Simulate @supergrain/core object creation: 1k objects", () => {
+  bench("Simulate @supergrain/kernel object creation: 1k objects", () => {
     const objects = [];
     for (let i = 0; i < 1_000; i++) {
       const obj = { id: i, name: `item-${i}`, value: i * 2 };

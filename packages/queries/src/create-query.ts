@@ -1,7 +1,7 @@
 import type { CreateQueryParams, Query, QueryModel } from "./types";
-import type { DocumentTypes } from "@supergrain/document-store";
+import type { DocumentTypes } from "@supergrain/silo";
 
-import { signal } from "@supergrain/core";
+import { signal } from "@supergrain/kernel";
 
 import { fibonacciBackoff } from "./backoff";
 

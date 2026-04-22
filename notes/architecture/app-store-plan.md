@@ -2,7 +2,7 @@
 
 > **Status:** Implemented as `@supergrain/store`.
 >
-> **TL;DR:** A document-oriented store built on `@supergrain/core` that provides `findDoc`/`insertDocument` by type and ID, with full TypeScript safety via a global type registry. Uses a single unified store (not Map<string, Store>) for cross-document reactivity, atomic batched updates, and simpler state management.
+> **TL;DR:** A document-oriented store built on `@supergrain/kernel` that provides `findDoc`/`insertDocument` by type and ID, with full TypeScript safety via a global type registry. Uses a single unified store (not Map<string, Store>) for cross-document reactivity, atomic batched updates, and simpler state management.
 
 ## Goal
 
@@ -117,7 +117,7 @@ function findDoc<K extends keyof DocumentTypes>(
 ### Core AppStore Class
 
 ```typescript
-import { createStore, computed } from "@supergrain/core";
+import { createStore, computed } from "@supergrain/kernel";
 
 class AppStore {
   private store: AppStoreState;

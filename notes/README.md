@@ -36,7 +36,7 @@ How to run: [Running Benchmarks](benchmarks/running-benchmarks.md) | [Krausest S
 
 ## React Adapter
 
-- [useTracked](react-adapter/useTracked.md) -- **Superseded by `tracked()`.** Original React integration hook (see `tracked()` in `@supergrain/react`)
+- [useTracked](react-adapter/useTracked.md) -- **Superseded by `tracked()`.** Original React integration hook (see `tracked()` in `@supergrain/kernel/react`)
 - Evolution: [v2](react-adapter/v2-initial-design.md) → [v3](react-adapter/v3-tracking-discovery.md) → [v4](react-adapter/v4-nested-components.md) → [useTracked](react-adapter/useTracked.md)
 
 ## Performance

@@ -12,7 +12,7 @@ export default defineConfig({
   build: {
     // This is a placeholder and will be overridden in each package's config
     lib: {
-      entry: resolve(__dirname, "packages/core/src/index.ts"),
+      entry: resolve(__dirname, "packages/kernel/src/index.ts"),
       name: "supergrain",
       formats: ["es", "umd"],
       fileName: (format) => `supergrain.${format}.js`,

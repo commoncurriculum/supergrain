@@ -1,4 +1,4 @@
-# Safe Compile-Time Optimizations for @supergrain/core
+# Safe Compile-Time Optimizations for @supergrain/kernel
 
 > **Status:** Design document -- not implemented. Superseded in part by the Vite compiler plugin investigation (see [vite-compiler-plugin-plan.md](./vite-compiler-plugin-plan.md)), which pursued a narrower version of these ideas and found that compiled `readSignal` calls were slower than proxy reads in practice (see [compiled-reads-investigation.md](../performance/compiled-reads-investigation.md)).
 >
