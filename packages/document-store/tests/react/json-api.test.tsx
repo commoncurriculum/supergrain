@@ -1,10 +1,11 @@
 import type { Relationship, RelationshipArray } from "../../src/processors/json-api";
 
+import { tracked } from "@supergrain/react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { DocumentStore, type DocumentAdapter } from "../../src";
+import { createDocumentStore, type DocumentAdapter } from "../../src";
 import { createDocumentStoreContext } from "../../src/react";
 import { useBelongsTo, useHasMany, useHasManyIndividually } from "../../src/react/json-api";
 
@@ -74,22 +75,24 @@ const cardStackAdapter: DocumentAdapter = {
   find: () => new Promise(() => {}),
 };
 
-function initStore(): DocumentStore<TypeToModel> {
-  return new DocumentStore<TypeToModel>({
-    models: {
-      planbook: { adapter: planbookAdapter },
-      card: { adapter: cardAdapter },
-      "card-stack": { adapter: cardStackAdapter },
-    },
-  });
-}
-
-// File-scoped isolated context — typed for TypeToModel, doesn't pollute the
-// global TypeRegistry.
 const { Provider, useDocument, useDocumentStore } = createDocumentStoreContext<TypeToModel>();
 
-function Wrap({ init, children }: { init: () => DocumentStore<TypeToModel>; children: ReactNode }) {
-  return <Provider init={init}>{children}</Provider>;
+function Wrap({ children }: { children: ReactNode }) {
+  return (
+    <Provider
+      init={() =>
+        createDocumentStore<TypeToModel>({
+          models: {
+            planbook: { adapter: planbookAdapter },
+            card: { adapter: cardAdapter },
+            "card-stack": { adapter: cardStackAdapter },
+          },
+        })
+      }
+    >
+      {children}
+    </Provider>
+  );
 }
 
 const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
@@ -102,7 +105,7 @@ afterEach(() => cleanup());
 // useHasMany to resolve the related docs.
 // =============================================================================
 
-function RelatedPlanbook({ stackId }: { stackId: string }) {
+const RelatedPlanbook = tracked(function RelatedPlanbook({ stackId }: { stackId: string }) {
   const stackHandle = useDocument("card-stack", stackId);
   const planbookHandle = useBelongsTo(stackHandle.data ?? null, "planbook");
 
@@ -111,26 +114,31 @@ function RelatedPlanbook({ stackId }: { stackId: string }) {
   if (planbookHandle.isPending) return <span data-testid="planbook">loading planbook</span>;
   if (planbookHandle.error) return <span data-testid="planbook">error</span>;
   return <span data-testid="planbook">{planbookHandle.data?.attributes.title}</span>;
-}
+});
 
-function RelatedCards({ stackId }: { stackId: string }) {
+const RelatedCards = tracked(function RelatedCards({ stackId }: { stackId: string }) {
   const stackHandle = useDocument("card-stack", stackId);
-  const cardsHandle = useHasMany(stackHandle.data ?? null, "cards");
+  const cardHandles = useHasMany(stackHandle.data ?? null, "cards");
 
   if (stackHandle.isPending) return <span data-testid="cards">loading stack</span>;
-  if (cardsHandle.status === "IDLE") return <span data-testid="cards">no cards</span>;
-  if (cardsHandle.isPending) return <span data-testid="cards">loading cards</span>;
-  if (cardsHandle.error) return <span data-testid="cards">error</span>;
+  if (cardHandles.length === 0) return <span data-testid="cards">no cards</span>;
+  if (cardHandles.some((handle) => handle.error)) return <span data-testid="cards">error</span>;
+  if (cardHandles.some((handle) => handle.isPending))
+    return <span data-testid="cards">loading cards</span>;
   return (
     <ul data-testid="cards">
-      {cardsHandle.data?.map((c) => (
-        <li key={c.id}>{c.attributes.title}</li>
+      {cardHandles.map((handle, i) => (
+        <li key={handle.data?.id ?? i}>{handle.data?.attributes.title}</li>
       ))}
     </ul>
   );
-}
+});
 
-function CardListIndividually({ stackId }: { stackId: string }) {
+const CardListIndividually = tracked(function CardListIndividually({
+  stackId,
+}: {
+  stackId: string;
+}) {
   const stackHandle = useDocument("card-stack", stackId);
   const cardHandles = useHasManyIndividually(stackHandle.data ?? null, "cards");
 
@@ -145,11 +153,17 @@ function CardListIndividually({ stackId }: { stackId: string }) {
       ))}
     </ul>
   );
-}
+});
 
 // Imperative buttons — simulate socket pushes / admin edits. Models external
 // code writing directly to the store.
-function UpdatePlanbookButton({ id, title }: { id: string; title: string }) {
+const UpdatePlanbookButton = tracked(function UpdatePlanbookButton({
+  id,
+  title,
+}: {
+  id: string;
+  title: string;
+}) {
   const store = useDocumentStore();
   return (
     <button
@@ -165,9 +179,15 @@ function UpdatePlanbookButton({ id, title }: { id: string; title: string }) {
       update planbook
     </button>
   );
-}
+});
 
-function UpdateCardButton({ id, title }: { id: string; title: string }) {
+const UpdateCardButton = tracked(function UpdateCardButton({
+  id,
+  title,
+}: {
+  id: string;
+  title: string;
+}) {
   const store = useDocumentStore();
   return (
     <button
@@ -183,7 +203,25 @@ function UpdateCardButton({ id, title }: { id: string; title: string }) {
       update {id}
     </button>
   );
-}
+});
+
+const SeedStack = tracked(function SeedStack({ stack }: { stack: CardStack }) {
+  const store = useDocumentStore();
+  store.insertDocument("card-stack", stack);
+  return null;
+});
+
+const SeedPlanbook = tracked(function SeedPlanbook({ planbook }: { planbook: Planbook }) {
+  const store = useDocumentStore();
+  store.insertDocument("planbook", planbook);
+  return null;
+});
+
+const SeedCard = tracked(function SeedCard({ card }: { card: Card }) {
+  const store = useDocumentStore();
+  store.insertDocument("card", card);
+  return null;
+});
 
 // =============================================================================
 // Helpers to build test stacks with controlled relationship shapes.
@@ -215,14 +253,9 @@ function makeStack(overrides: {
 
 describe("useBelongsTo", () => {
   it("fetches the related doc and the UI transitions from loading to loaded", async () => {
-    function init() {
-      const store = initStore();
-      store.insertDocument("card-stack", makeStack({ id: "s1", planbookId: "p42" }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedStack stack={makeStack({ id: "s1", planbookId: "p42" })} />
         <RelatedPlanbook stackId="s1" />
       </Wrap>,
     );
@@ -235,19 +268,12 @@ describe("useBelongsTo", () => {
   });
 
   it("shows the related doc immediately when it's already in memory", async () => {
-    function init() {
-      const store = initStore();
-      store.insertDocument("planbook", {
-        id: "p42",
-        type: "planbook",
-        attributes: { title: "Cached Planbook" },
-      });
-      store.insertDocument("card-stack", makeStack({ id: "s1", planbookId: "p42" }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedPlanbook
+          planbook={{ id: "p42", type: "planbook", attributes: { title: "Cached Planbook" } }}
+        />
+        <SeedStack stack={makeStack({ id: "s1", planbookId: "p42" })} />
         <RelatedPlanbook stackId="s1" />
       </Wrap>,
     );
@@ -262,14 +288,9 @@ describe("useBelongsTo", () => {
   });
 
   it("re-renders the UI when the related doc is updated externally", async () => {
-    function init() {
-      const store = initStore();
-      store.insertDocument("card-stack", makeStack({ id: "s1", planbookId: "p42" }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedStack stack={makeStack({ id: "s1", planbookId: "p42" })} />
         <RelatedPlanbook stackId="s1" />
         <UpdatePlanbookButton id="p42" title="Renamed" />
       </Wrap>,
@@ -286,14 +307,9 @@ describe("useBelongsTo", () => {
   });
 
   it("returns an idle handle when the relationship's data is null (no related doc)", () => {
-    function init() {
-      const store = initStore();
-      store.insertDocument("card-stack", makeStack({ id: "s1", planbookId: null }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedStack stack={makeStack({ id: "s1", planbookId: null })} />
         <RelatedPlanbook stackId="s1" />
       </Wrap>,
     );
@@ -308,14 +324,9 @@ describe("useBelongsTo", () => {
 
 describe("useHasMany", () => {
   it("fetches all related docs and the UI transitions from loading to a full list", async () => {
-    function init() {
-      const store = initStore();
-      store.insertDocument("card-stack", makeStack({ id: "s1", cardIds: ["c1", "c2", "c3"] }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedStack stack={makeStack({ id: "s1", cardIds: ["c1", "c2", "c3"] })} />
         <RelatedCards stackId="s1" />
       </Wrap>,
     );
@@ -332,21 +343,11 @@ describe("useHasMany", () => {
   });
 
   it("shows the full list immediately when every related doc is already in memory", async () => {
-    function init() {
-      const store = initStore();
-      for (const id of ["c1", "c2"]) {
-        store.insertDocument("card", {
-          id,
-          type: "card",
-          attributes: { title: `Cached ${id}` },
-        });
-      }
-      store.insertDocument("card-stack", makeStack({ id: "s1", cardIds: ["c1", "c2"] }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedCard card={{ id: "c1", type: "card", attributes: { title: "Cached c1" } }} />
+        <SeedCard card={{ id: "c2", type: "card", attributes: { title: "Cached c2" } }} />
+        <SeedStack stack={makeStack({ id: "s1", cardIds: ["c1", "c2"] })} />
         <RelatedCards stackId="s1" />
       </Wrap>,
     );
@@ -361,14 +362,9 @@ describe("useHasMany", () => {
   });
 
   it("returns an idle handle when the relationship's data is empty", () => {
-    function init() {
-      const store = initStore();
-      store.insertDocument("card-stack", makeStack({ id: "s1", cardIds: [] }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedStack stack={makeStack({ id: "s1", cardIds: [] })} />
         <RelatedCards stackId="s1" />
       </Wrap>,
     );
@@ -384,14 +380,9 @@ describe("useHasMany", () => {
 
 describe("useHasManyIndividually", () => {
   it("renders each item's own loading state, then each item's own data", async () => {
-    function init() {
-      const store = initStore();
-      store.insertDocument("card-stack", makeStack({ id: "s1", cardIds: ["c1", "c2", "c3"] }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedStack stack={makeStack({ id: "s1", cardIds: ["c1", "c2", "c3"] })} />
         <CardListIndividually stackId="s1" />
       </Wrap>,
     );
@@ -412,19 +403,10 @@ describe("useHasManyIndividually", () => {
   it("shows cached items immediately and only unrelated items stay pending", async () => {
     // c1 is pre-seeded; c2 has to be fetched. The individual handles let
     // us render c1's title immediately while c2 still shows "loading…".
-    function init() {
-      const store = initStore();
-      store.insertDocument("card", {
-        id: "c1",
-        type: "card",
-        attributes: { title: "Cached c1" },
-      });
-      store.insertDocument("card-stack", makeStack({ id: "s1", cardIds: ["c1", "c2"] }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedCard card={{ id: "c1", type: "card", attributes: { title: "Cached c1" } }} />
+        <SeedStack stack={makeStack({ id: "s1", cardIds: ["c1", "c2"] })} />
         <CardListIndividually stackId="s1" />
       </Wrap>,
     );
@@ -439,14 +421,9 @@ describe("useHasManyIndividually", () => {
   });
 
   it("updates a single item reactively when only that doc is updated externally", async () => {
-    function init() {
-      const store = initStore();
-      store.insertDocument("card-stack", makeStack({ id: "s1", cardIds: ["c1", "c2"] }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedStack stack={makeStack({ id: "s1", cardIds: ["c1", "c2"] })} />
         <CardListIndividually stackId="s1" />
         <UpdateCardButton id="c1" title="Renamed c1" />
       </Wrap>,
@@ -465,14 +442,9 @@ describe("useHasManyIndividually", () => {
   });
 
   it("returns an empty array when the relationship's data is empty", () => {
-    function init() {
-      const store = initStore();
-      store.insertDocument("card-stack", makeStack({ id: "s1", cardIds: [] }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedStack stack={makeStack({ id: "s1", cardIds: [] })} />
         <CardListIndividually stackId="s1" />
       </Wrap>,
     );

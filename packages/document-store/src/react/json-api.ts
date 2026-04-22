@@ -1,5 +1,5 @@
 import type { Relationship, RelationshipArray } from "../processors/json-api";
-import type { DocumentHandle, DocumentsHandle } from "../store";
+import type { DocumentHandle } from "../store";
 
 // =============================================================================
 // WithRelationships — any JSON-API model that has a relationships map.
@@ -76,29 +76,30 @@ export function useBelongsTo<Model extends WithRelationships, RelName extends Be
 // =============================================================================
 
 /**
- * Resolve a JSON-API `hasMany` relationship to a reactive aggregate handle
- * over the related documents.
+ * Resolve a JSON-API `hasMany` relationship to one reactive handle per
+ * related document.
  *
  * Reads `model.relationships[relationName].data` to get the array of
- * `{ type, id }` references, then calls `useDocuments(type, ids)` under
- * the hood. The return handle's `data` type is inferred from
+ * `{ type, id }` references, then maps them through `useDocumentStore().find`
+ * under the hood. The return handles' `data` type is inferred from
  * `RelationshipArray<T>` — declare your relationships as
  * `cards: RelationshipArray<Card>` and this hook returns
- * `DocumentsHandle<Card>` with no cast at the call site.
+ * `ReadonlyArray<DocumentHandle<Card>>` with no cast at the call site.
  *
- * Empty relationship data or a `null`/`undefined` model returns an idle handle.
+ * Empty relationship data or a `null`/`undefined` model returns an empty array.
  *
  * @example
  * ```tsx
  * const cards = useHasMany(planbook, "cardStacks");
- * if (cards.isPending) return <Spinner />;
- * return cards.data?.map((c) => <Card key={c.id} card={c} />);
+ * return cards.map((card, i) =>
+ *   card.isPending ? <Skeleton key={i} /> : <Card key={card.data?.id ?? i} card={card.data!} />,
+ * );
  * ```
  */
 export function useHasMany<Model extends WithRelationships, RelName extends HasManyKeys<Model>>(
   _model: Model | null | undefined,
   _relationName: RelName,
-): DocumentsHandle<HasManyTarget<Model, RelName>> {
+): ReadonlyArray<DocumentHandle<HasManyTarget<Model, RelName>>> {
   throw new Error("@supergrain/document-store/react/json-api: useHasMany is not yet implemented");
 }
 
@@ -107,11 +108,11 @@ export function useHasMany<Model extends WithRelationships, RelName extends HasM
 // =============================================================================
 
 /**
- * Same as `useHasMany`, but returns **one `DocumentHandle` per related doc**
- * instead of a single aggregated `DocumentsHandle`. Use this when each item
- * in the list needs its own loading / error UI — e.g. a list where a skeleton
- * row should appear for each still-loading card, or where one failed card
- * shouldn't prevent the others from rendering.
+ * Same return shape as `useHasMany`, but named explicitly to emphasize the
+ * per-item nature of the result. Use this when each item in the list needs
+ * its own loading / error UI — e.g. a list where a skeleton row should
+ * appear for each still-loading card, or where one failed card shouldn't
+ * prevent the others from rendering.
  *
  * Each handle has its own independent `status`, `data`, `error`, and
  * `promise`. Fetching across the array is still batched into a single

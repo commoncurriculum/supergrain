@@ -16,7 +16,7 @@
   **New:**
 
   - `@supergrain/react` ships `useReactive(initial)` for per-component reactive state. No Provider needed for state scoped to a single component.
-  - `@supergrain/document-store/react` ships `DocumentStoreProvider` + `useDocument` / `useDocuments` / `useDocumentStore` as the default singleton path, and `createDocumentStoreContext()` as the factory escape hatch for isolated stores.
+  - `@supergrain/document-store/react` ships `createDocumentStoreContext()` as the React context factory, returning `Provider` + `useDocument` / `useDocumentStore` for a configured store.
   - Module-augmentation `TypeRegistry` lets consumers declare their document-type map once and get typed hooks everywhere without per-call-site generics.
 
   **Migration:**

@@ -153,25 +153,3 @@ export interface QueryHandle<T> {
   readonly fetchedAt: Date | undefined;
   readonly promise: Promise<T> | undefined;
 }
-
-// =============================================================================
-// QueriesHandle — aggregate handle over a batch of query-param sets
-// =============================================================================
-
-/**
- * Aggregated reactive handle for a batch of queries of the same type,
- * referenced by an array of params objects. Same state machine as
- * `QueryHandle<T>`, rolled up across the batch (`PENDING` while any
- * query still loading for its first time; `SUCCESS` when all resolve;
- * `ERROR` if any fail).
- */
-export interface QueriesHandle<T> {
-  readonly status: Status;
-  readonly data: ReadonlyArray<T> | undefined;
-  readonly error: Error | undefined;
-  readonly isPending: boolean;
-  readonly isFetching: boolean;
-  readonly hasData: boolean;
-  readonly fetchedAt: Date | undefined;
-  readonly promise: Promise<ReadonlyArray<T>> | undefined;
-}

@@ -38,7 +38,8 @@ import { setupServer } from "msw/node";
 import { vi } from "vitest";
 
 import {
-  DocumentStore,
+  createDocumentStore,
+  type DocumentStore,
   type DocumentAdapter,
   type DocumentStoreConfig,
   type QueryAdapter,
@@ -276,18 +277,19 @@ export function clearRequests(): void {
 }
 
 // ─── Store wiring ───────────────────────────────────────────────────────────
-// One-step DocumentStore construction. Models + batching knobs in one
-// config object; no separate Finder. The three models exercise the full
+// Store config + non-React store creation for tests. The React-facing API wraps
+// the same plain store object via `createDocumentStoreContext()`.
+// These tests still need a direct store object to exercise the underlying
+// document/query methods and finder behavior. The three models exercise the full
 // config surface:
 //
 //   user        — adapter only (uses defaultProcessor implicitly)
 //   post        — adapter only, fan-out style (uses defaultProcessor)
 //   card-stack  — adapter + custom processor (jsonApiProcessor)
 //
-// This is the shape a real app writes: a function that takes no args (or
-// injects env/config via closure) and returns a configured DocumentStore.
-// Mount it under a <DocumentStoreProvider init={initStore}> and components
-// use the hooks to read from it.
+// `makeStoreConfig()` is the shape a real app would pass to
+// `createDocumentStore(config)`. `initStore()` is the non-React helper
+// the tests use to materialize the underlying store API directly.
 //
 // The optional `overrides` arg is only for tests that need to exercise
 // non-default batching knobs; a real consumer would call `initStore()`
@@ -298,7 +300,9 @@ export interface StoreOverrides {
   batchSize?: number;
 }
 
-export function initStore(overrides: StoreOverrides = {}): DocumentStore<TypeToModel, TypeToQuery> {
+export function makeStoreConfig(
+  overrides: StoreOverrides = {},
+): DocumentStoreConfig<TypeToModel, TypeToQuery> {
   const config: DocumentStoreConfig<TypeToModel, TypeToQuery> = {
     models: {
       user: { adapter: userAdapter },
@@ -311,7 +315,11 @@ export function initStore(overrides: StoreOverrides = {}): DocumentStore<TypeToM
   };
   if (overrides.batchWindowMs !== undefined) config.batchWindowMs = overrides.batchWindowMs;
   if (overrides.batchSize !== undefined) config.batchSize = overrides.batchSize;
-  return new DocumentStore<TypeToModel, TypeToQuery>(config);
+  return config;
+}
+
+export function initStore(overrides: StoreOverrides = {}): DocumentStore<TypeToModel, TypeToQuery> {
+  return createDocumentStore(makeStoreConfig(overrides));
 }
 
 // ─── Timer helpers ──────────────────────────────────────────────────────────

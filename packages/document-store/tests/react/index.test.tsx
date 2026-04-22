@@ -1,14 +1,15 @@
+import { tracked } from "@supergrain/react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { type ReactNode, StrictMode } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { type DocumentStore } from "../../src";
+import { createDocumentStore } from "../../src";
 import { createDocumentStoreContext } from "../../src/react";
 import {
   API_BASE,
   clearRequests,
-  initStore,
+  makeStoreConfig,
   makeUser,
   server,
   type TypeToModel,
@@ -37,50 +38,59 @@ afterEach(() => {
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-const { Provider, useDocument, useDocuments, useDocumentStore, useQuery, useQueries } =
-  createDocumentStoreContext<TypeToModel, TypeToQuery>();
+const { Provider, useDocument, useDocumentStore, useQuery } = createDocumentStoreContext<
+  TypeToModel,
+  TypeToQuery
+>();
 
-function Wrap({
-  init = initStore,
-  children,
-}: {
-  init?: () => DocumentStore<TypeToModel, TypeToQuery>;
-  children: ReactNode;
-}) {
+function Wrap({ children }: { children: ReactNode }) {
   return (
     <StrictMode>
-      <Provider init={init}>{children}</Provider>
+      <Provider init={() => createDocumentStore(makeStoreConfig())}>{children}</Provider>
     </StrictMode>
   );
 }
+
+const SeedUser = tracked(function SeedUser({ user }: { user: User }) {
+  const store = useDocumentStore();
+  store.insertDocument("user", user);
+  return null;
+});
 
 // =============================================================================
 // Realistic components the tests render — same shape a consumer would write.
 // =============================================================================
 
-function UserBadge({ userId }: { userId: string | null | undefined }) {
+const UserBadge = tracked(function UserBadge({ userId }: { userId: string | null | undefined }) {
   const handle = useDocument("user", userId);
   if (handle.status === "IDLE") return <span>no user</span>;
   if (handle.isPending) return <span>loading</span>;
   if (handle.error) return <span>error: {handle.error.message}</span>;
   return <span>{handle.data?.attributes.firstName}</span>;
-}
+});
 
-function UserList({ ids }: { ids: ReadonlyArray<string> }) {
-  const handle = useDocuments("user", ids);
-  if (handle.status === "IDLE") return <span>no users</span>;
-  if (handle.isPending) return <span>loading</span>;
-  if (handle.error) return <span>error</span>;
+const UserList = tracked(function UserList({ ids }: { ids: ReadonlyArray<string> }) {
+  const store = useDocumentStore();
+  const handles = ids.map((id) => store.find("user", id));
+
+  if (handles.length === 0) return <span>no users</span>;
+  if (handles.some((handle) => handle.error)) return <span>error</span>;
+  if (handles.some((handle) => handle.isPending)) return <span>loading</span>;
+
   return (
     <ul>
-      {handle.data?.map((u) => (
-        <li key={u.id}>{u.attributes.firstName}</li>
-      ))}
+      {handles.map((handle) =>
+        handle.data ? <li key={handle.data.id}>{handle.data.attributes.firstName}</li> : null,
+      )}
     </ul>
   );
-}
+});
 
-function DashboardView({ workspaceId }: { workspaceId: number | null }) {
+const DashboardView = tracked(function DashboardView({
+  workspaceId,
+}: {
+  workspaceId: number | null;
+}) {
   const handle = useQuery(
     "dashboard",
     workspaceId == null ? null : { workspaceId, filters: { active: true } },
@@ -89,30 +99,13 @@ function DashboardView({ workspaceId }: { workspaceId: number | null }) {
   if (handle.isPending) return <span>loading dashboard</span>;
   if (handle.error) return <span>error: {handle.error.message}</span>;
   return <span>users: {handle.data?.totalActiveUsers}</span>;
-}
-
-function DashboardsGrid({ workspaceIds }: { workspaceIds: ReadonlyArray<number> }) {
-  const handle = useQueries(
-    "dashboard",
-    workspaceIds.map((id) => ({ workspaceId: id, filters: { active: true } })),
-  );
-  if (handle.status === "IDLE") return <span>no dashboards</span>;
-  if (handle.isPending) return <span>loading dashboards</span>;
-  if (handle.error) return <span>error</span>;
-  return (
-    <ul data-testid="dashboards">
-      {handle.data?.map((d, i) => (
-        <li key={i}>users: {d.totalActiveUsers}</li>
-      ))}
-    </ul>
-  );
-}
+});
 
 // =============================================================================
 // Provider — hooks work inside it, throw outside it.
 // =============================================================================
 
-describe("DocumentStoreProvider", () => {
+describe("createDocumentStoreContext Provider", () => {
   it("makes the store available to descendants — useDocument fetches and renders", async () => {
     render(
       <Wrap>
@@ -148,17 +141,9 @@ describe("useDocument", () => {
   });
 
   it("shows cached data immediately with no loading state (memory-first path)", () => {
-    // Pre-seed user 1. The badge should render "Alice" synchronously without
-    // ever passing through a loading state — proves find() hits memory before
-    // delegating to the finder.
-    function init() {
-      const store = initStore();
-      store.insertDocument("user", makeUser("1", { firstName: "Alice" }));
-      return store;
-    }
-
     render(
-      <Wrap init={init}>
+      <Wrap>
+        <SeedUser user={makeUser("1", { firstName: "Alice" })} />
         <UserBadge userId="1" />
       </Wrap>,
     );
@@ -169,10 +154,10 @@ describe("useDocument", () => {
 });
 
 // =============================================================================
-// useDocuments
+// useDocumentStore composition over many documents
 // =============================================================================
 
-describe("useDocuments", () => {
+describe("useDocumentStore + find composition", () => {
   it("renders loading then the full list for a batch of ids", async () => {
     render(
       <Wrap>
@@ -223,7 +208,7 @@ describe("useDocuments", () => {
 
 describe("useDocumentStore", () => {
   it("exposes the store for imperative writes (e.g. socket push → insertDocument)", () => {
-    function PushSimulator({ user }: { user: User }) {
+    const PushSimulator = tracked(function PushSimulator({ user }: { user: User }) {
       // A component that simulates an external source (websocket, admin tool,
       // etc.) writing directly to the store. Real apps do this inside effects
       // that subscribe to transport events.
@@ -233,7 +218,7 @@ describe("useDocumentStore", () => {
           simulate push
         </button>
       );
-    }
+    });
 
     render(
       <Wrap>
@@ -303,38 +288,6 @@ describe("useQuery", () => {
 });
 
 // =============================================================================
-// useQueries
-// =============================================================================
-
-describe("useQueries", () => {
-  it("fetches a batch of queries and renders the full list", async () => {
-    render(
-      <Wrap>
-        <DashboardsGrid workspaceIds={[7, 8]} />
-      </Wrap>,
-    );
-
-    expect(screen.getByText("loading dashboards")).toBeDefined();
-
-    await tick();
-
-    const list = screen.getByTestId("dashboards");
-    expect(list.textContent).toContain("users: 70");
-    expect(list.textContent).toContain("users: 80");
-  });
-
-  it("returns an idle handle for an empty paramsList", () => {
-    render(
-      <Wrap>
-        <DashboardsGrid workspaceIds={[]} />
-      </Wrap>,
-    );
-
-    expect(screen.getByText("no dashboards")).toBeDefined();
-  });
-});
-
-// =============================================================================
 // Factory isolation — two factory instances keep their stores separate.
 // =============================================================================
 
@@ -343,33 +296,35 @@ describe("createDocumentStoreContext isolation", () => {
     const tenantA = createDocumentStoreContext<TypeToModel, TypeToQuery>();
     const tenantB = createDocumentStoreContext<TypeToModel, TypeToQuery>();
 
-    function initA() {
-      const store = initStore();
+    const SeedA = tracked(function SeedA() {
+      const store = tenantA.useDocumentStore();
       store.insertDocument("user", makeUser("1", { firstName: "AliceA" }));
-      return store;
-    }
+      return null;
+    });
 
-    function initB() {
-      const store = initStore();
+    const SeedB = tracked(function SeedB() {
+      const store = tenantB.useDocumentStore();
       store.insertDocument("user", makeUser("1", { firstName: "BobB" }));
-      return store;
-    }
+      return null;
+    });
 
-    function UserFromA() {
+    const UserFromA = tracked(function UserFromA() {
       const handle = tenantA.useDocument("user", "1");
       return <span data-testid="tenant-a">{handle.data?.attributes.firstName ?? "—"}</span>;
-    }
-    function UserFromB() {
+    });
+    const UserFromB = tracked(function UserFromB() {
       const handle = tenantB.useDocument("user", "1");
       return <span data-testid="tenant-b">{handle.data?.attributes.firstName ?? "—"}</span>;
-    }
+    });
 
     render(
       <>
-        <tenantA.Provider init={initA}>
+        <tenantA.Provider init={() => createDocumentStore(makeStoreConfig())}>
+          <SeedA />
           <UserFromA />
         </tenantA.Provider>
-        <tenantB.Provider init={initB}>
+        <tenantB.Provider init={() => createDocumentStore(makeStoreConfig())}>
+          <SeedB />
           <UserFromB />
         </tenantB.Provider>
       </>,

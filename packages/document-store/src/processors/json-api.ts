@@ -40,7 +40,7 @@ export interface Relationship<TargetModel = unknown> {
  * The `TargetModel` generic anchors the related model type for inference by
  * `useHasMany` — declare `cards: RelationshipArray<Card>` on your model's
  * relationships map and the hook will type its return as
- * `DocumentsHandle<Card>` without an explicit generic at the call site.
+ * `ReadonlyArray<DocumentHandle<Card>>` without an explicit generic at the call site.
  * Phantom; never read at runtime.
  *
  * An empty `data` array means "has no related resources" (vs. an absent
@@ -95,11 +95,11 @@ export interface JsonApiDocument<
  * Opt in per-model:
  *
  * ```ts
- * new DocumentStore<M>({
+ * createDocumentStore<M>(() => ({
  *   models: {
  *     user: { adapter: userAdapter, processor: jsonApiProcessor },
  *   },
- * });
+ * }));
  * ```
  */
 export function jsonApiProcessor<M extends DocumentTypes>(

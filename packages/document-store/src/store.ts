@@ -1,5 +1,5 @@
 import type { DocumentTypes } from "./memory";
-import type { QueriesHandle, QueryConfig, QueryHandle, QueryTypes } from "./queries";
+import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
 
 // =============================================================================
 // Status
@@ -8,7 +8,7 @@ import type { QueriesHandle, QueryConfig, QueryHandle, QueryTypes } from "./quer
 /**
  * - `IDLE`    – no fetch attempted (id was null/undefined)
  * - `PENDING` – first fetch in flight, no data yet
- * - `SUCCESS` – data present (may also be refetching; check `isFetching`)
+ * - `SUCCESS` – data present
  * - `ERROR`   – fetch failed, no fallback data available
  */
 export type Status = "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
@@ -20,16 +20,14 @@ export type Status = "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
 /**
  * Reactive handle for a single document.
  *
- * A signal-backed view, not a class — the implementation builds one via
- * `@supergrain/core` primitives internally. A reactive state machine:
+ * A reactive view, not a class. A reactive state machine:
  *
  * ```
  * IDLE ──(id becomes non-null, not cached)──► PENDING
  * IDLE ──(id becomes non-null, cached)─────► SUCCESS
  * PENDING ──(finder resolves)──► SUCCESS
  * PENDING ──(finder rejects) ──► ERROR
- * SUCCESS ──(refetch)──► SUCCESS (with isFetching: true mid-flight)
- * ERROR   ──(refetch)──► PENDING, then SUCCESS (new promise object)
+ * ERROR   ──(later insertDocument)──► SUCCESS (new promise object)
  * ```
  *
  * Idle invariant — when `status === "IDLE"`, all of:
@@ -41,15 +39,11 @@ export type Status = "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
  * - `fetchedAt === undefined`
  * - `promise === undefined`
  *
- * Two reactive channels drive the handle:
- * 1. `data` is a computed signal over `memoryEngine.find(type, id)`. It
- *    updates automatically whenever memory changes at that key — fetch
- *    completion, external `insertDocument`, socket push, `clearMemory`.
- * 2. `status`, `error`, `promise` are managed by `DocumentStore.find` based
- *    on the fetch outcome (resolves → SUCCESS, rejects → ERROR). `fetchedAt`
- *    updates on fetch-driven success only, not on unrelated memory writes.
+ * `find`, the internal finder, and `insertDocument` update the handle's
+ * fields directly as the lifecycle progresses. Reads inside a `tracked()`
+ * scope subscribe per-property.
  *
- * Handle identity is stable — `DocumentStore.find("user", "1")` returns the
+ * Handle identity is stable — `store.find("user", "1")` returns the
  * same handle on every call.
  */
 export interface DocumentHandle<T> {
@@ -58,7 +52,7 @@ export interface DocumentHandle<T> {
   readonly error: Error | undefined;
   /** True only before the first successful load. */
   readonly isPending: boolean;
-  /** True whenever any fetch (initial OR refetch) is in flight. */
+  /** True whenever a fetch is in flight for this handle. */
   readonly isFetching: boolean;
   readonly hasData: boolean;
   /** Client wall-clock Date of the last successful fetch. */
@@ -67,44 +61,11 @@ export interface DocumentHandle<T> {
    * Stable Promise for use with React 19's `use()`.
    *
    * - Resolves exactly once on first successful load.
-   * - Refetches do NOT create new promises — they update `data`/`isFetching`.
    * - If the first fetch errors, the promise rejects once.
-   * - A successful refetch AFTER an error creates a NEW promise object (so a
-   *   Suspense boundary inside an error boundary can recover).
+   * - A later `insertDocument` after an error creates a NEW resolved promise
+   *   object so a Suspense boundary inside an error boundary can recover.
    */
   readonly promise: Promise<T> | undefined;
-}
-
-// =============================================================================
-// DocumentsHandle — aggregated reactive handle over a batch of document keys.
-// Used by the React layer's `useDocuments` / `useHasMany`, which compose on
-// `DocumentStore.find` per id. Collapsing the resulting fetches into one
-// adapter call is the Finder's job.
-// =============================================================================
-
-/**
- * Aggregated reactive handle for a batch of documents referenced by ids.
- *
- * Same state machine as `DocumentHandle<T>`, rolled up across the set:
- *
- * - `PENDING` while any doc is still loading for its first time
- * - `SUCCESS` when all have resolved (`data` is the full array)
- * - `ERROR` if any failed (`error` is the first failure seen)
- *
- * Use when you need a single aggregate state ("show spinner until all
- * docs ready"). For per-doc state in a list, render subcomponents that
- * each call `DocumentStore.find` — the batching across them still
- * collapses into one adapter call.
- */
-export interface DocumentsHandle<T> {
-  readonly status: Status;
-  readonly data: ReadonlyArray<T> | undefined;
-  readonly error: Error | undefined;
-  readonly isPending: boolean;
-  readonly isFetching: boolean;
-  readonly hasData: boolean;
-  readonly fetchedAt: Date | undefined;
-  readonly promise: Promise<ReadonlyArray<T>> | undefined;
 }
 
 // =============================================================================
@@ -230,143 +191,56 @@ export interface DocumentStoreConfig<
 }
 
 // =============================================================================
-// DocumentStore
+// DocumentStore API
 // =============================================================================
 
-/**
- * Reactive document store.
- *
- * One-step wiring: the constructor takes per-model adapter/processor config
- * (plus optional per-query config and batching knobs) and owns all the
- * plumbing internally (a `MemoryEngine` for reactive caching, an internal
- * `Finder` for batched fetching). No separate Finder construction, no
- * two-step attach.
- *
- * The second generic `Q` is optional (defaults to an empty query map) and
- * lets consumers declare query-keyed models alongside document-keyed ones.
- * Consumers with only documents pass one generic (`M`); the query surface
- * is additive and adds no cost if unused.
- *
- * @example
- * ```ts
- * // Documents only (common case)
- * const store = new DocumentStore<TypeToModel>({
- *   models: {
- *     user: { adapter: userAdapter },
- *     "card-stack": { adapter: cardStackAdapter, processor: jsonApiProcessor },
- *   },
- *   batchWindowMs: 15,
- *   batchSize: 60,
- * });
- *
- * // Documents + queries
- * const mixed = new DocumentStore<TypeToModel, TypeToQuery>({
- *   models: { user: { adapter: userAdapter } },
- *   queries: { dashboard: { adapter: dashboardAdapter } },
- * });
- * ```
- */
-export class DocumentStore<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>> {
-  constructor(_config: DocumentStoreConfig<M, Q>) {
-    throw new Error("@supergrain/document-store: DocumentStore constructor is not yet implemented");
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Documents — entities keyed by `id: string`
-  // ───────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Find a document. Checks memory first, falls back to the internal finder
-   * (which batches, fetches, and inserts). Returns a reactive handle.
-   *
-   * - `null`/`undefined` id → idle handle, no fetch attempted
-   * - Same `(type, id)` always returns the same handle object (stable identity)
-   */
-  find<K extends keyof M & string>(_type: K, _id: string | null | undefined): DocumentHandle<M[K]> {
-    throw new Error("@supergrain/document-store: DocumentStore.find is not yet implemented");
-  }
-
-  /**
-   * Direct memory lookup for a document. No fetch. Returns the document or
-   * undefined. Reactive — reads inside a tracked() scope subscribe to changes.
-   */
-  findInMemory<K extends keyof M & string>(_type: K, _id: string): M[K] | undefined {
-    throw new Error(
-      "@supergrain/document-store: DocumentStore.findInMemory is not yet implemented",
-    );
-  }
-
-  /**
-   * Insert or update a document under the given type. Keyed by
-   * `(type, doc.id)`. Fully reactive — any handles or tracked scopes reading
-   * this key will update.
-   */
-  insertDocument<K extends keyof M & string>(_type: K, _doc: M[K]): void {
-    throw new Error(
-      "@supergrain/document-store: DocumentStore.insertDocument is not yet implemented",
-    );
-  }
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Queries — results keyed by structured params
-  // ───────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Find a query result. Checks memory first (keyed by the stringified
-   * params), falls back to the internal finder. Returns a reactive handle.
-   *
-   * - `null`/`undefined` params → idle handle, no fetch attempted
-   * - Deep-equal params always return the same handle object (stable
-   *   identity across `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }`)
-   */
+export interface DocStoreAPI<
+  M extends DocumentTypes,
+  Q extends QueryTypes = Record<string, never>,
+> {
+  find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]>;
+  findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined;
+  insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void;
   findQuery<K extends keyof Q & string>(
-    _type: K,
-    _params: Q[K]["params"] | null | undefined,
-  ): QueryHandle<Q[K]["result"]> {
-    throw new Error("@supergrain/document-store: DocumentStore.findQuery is not yet implemented");
-  }
-
-  /**
-   * Direct memory lookup for a query result. No fetch. Returns the result
-   * or undefined. Reactive — reads inside a tracked() scope subscribe to
-   * changes.
-   */
+    type: K,
+    params: Q[K]["params"] | null | undefined,
+  ): QueryHandle<Q[K]["result"]>;
   findQueryInMemory<K extends keyof Q & string>(
-    _type: K,
-    _params: Q[K]["params"],
-  ): Q[K]["result"] | undefined {
-    throw new Error(
-      "@supergrain/document-store: DocumentStore.findQueryInMemory is not yet implemented",
-    );
-  }
-
-  /**
-   * Insert or update a query result under the given type + params. Keyed by
-   * `(type, stableStringify(params))`. Fully reactive — any handles or
-   * tracked scopes reading this key will update. Deep-equal params hit the
-   * same slot.
-   */
+    type: K,
+    params: Q[K]["params"],
+  ): Q[K]["result"] | undefined;
   insertQueryResult<K extends keyof Q & string>(
-    _type: K,
-    _params: Q[K]["params"],
-    _result: Q[K]["result"],
-  ): void {
-    throw new Error(
-      "@supergrain/document-store: DocumentStore.insertQueryResult is not yet implemented",
-    );
-  }
+    type: K,
+    params: Q[K]["params"],
+    result: Q[K]["result"],
+  ): void;
+  clearMemory(): void;
+}
 
-  // ───────────────────────────────────────────────────────────────────────────
-  // Shared
-  // ───────────────────────────────────────────────────────────────────────────
+/**
+ * Public store shape returned by the document-store factory's internal init.
+ *
+ * This is a plain object API, not a constructable class.
+ */
+export type DocumentStore<
+  M extends DocumentTypes,
+  Q extends QueryTypes = Record<string, never>,
+> = DocStoreAPI<M, Q>;
 
-  /** Clear all documents and query results from memory. */
-  clearMemory(): void {
-    throw new Error("@supergrain/document-store: DocumentStore.clearMemory is not yet implemented");
-  }
+/**
+ * Create a plain document store object.
+ *
+ * This is the non-React primitive. React integrations wrap this via
+ * `createDocumentStoreContext()`.
+ */
+export function createDocumentStore<
+  M extends DocumentTypes,
+  Q extends QueryTypes = Record<string, never>,
+>(_config: DocumentStoreConfig<M, Q>): DocumentStore<M, Q> {
+  throw new Error("@supergrain/document-store: createDocumentStore is not yet implemented");
 }
 
 // Re-export query handle types so `store.findQuery(...)` call sites don't
-// need a second import path. QueryHandle / QueriesHandle are defined in
+// need a second import path. QueryHandle is defined in
 // ./queries; this pass-through keeps the public surface single-origin.
-export type { QueriesHandle, QueryHandle };
+export type { QueryHandle };

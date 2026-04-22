@@ -25,7 +25,7 @@ import { effect } from "@supergrain/core";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DocumentStore } from "../src/store";
+import { createDocumentStore } from "../src/store";
 import {
   API_BASE,
   clearRequests,
@@ -240,7 +240,7 @@ describe("Finder pipeline with query params", () => {
     // Ensures the library does NOT stringify before handing off — the
     // adapter sees the original object shape.
     const received: Array<ReadonlyArray<DashboardParams>> = [];
-    const captureStore = new DocumentStore<TypeToModel, TypeToQuery>({
+    const captureStore = createDocumentStore<TypeToModel, TypeToQuery>({
       models: {
         user: { adapter: { find: async () => [] } },
         post: { adapter: { find: async () => [] } },
@@ -285,7 +285,7 @@ describe("Queries share memory with documents", () => {
       dashWithUser: { params: { id: number }; result: { userId: string } };
     };
 
-    const store = new DocumentStore<Types, Queries>({
+    const store = createDocumentStore<Types, Queries>({
       models: {
         user: { adapter: { find: async () => [] } },
       },
