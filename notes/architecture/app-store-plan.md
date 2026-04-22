@@ -1,8 +1,10 @@
-# App-Level Store Design
+# App-Level Store Design (Superseded)
 
-> **Status:** Implemented as `@supergrain/store`.
+> **Status:** SUPERSEDED. The package shipped as `@supergrain/silo` with a different public API — `find` / `findQuery` / `insertDocument` / `insertQueryResult` on a store object built by `createDocumentStore(config)`, plus a `DocumentHandle` shape with finer-grained lifecycle fields (`status`, `isPending`, `isFetching`, `hasData`, `fetchedAt`, `promise`). The request-coalescing Finder is internal rather than a separate service. React bindings come from `createDocumentStoreContext()` in `@supergrain/silo/react`.
 >
-> **TL;DR:** A document-oriented store built on `@supergrain/kernel` that provides `findDoc`/`insertDocument` by type and ID, with full TypeScript safety via a global type registry. Uses a single unified store (not Map<string, Store>) for cross-document reactivity, atomic batched updates, and simpler state management.
+> **Current spec:** [packages/silo/IMPLEMENTATION.md](../../packages/silo/IMPLEMENTATION.md).
+>
+> **Original TL;DR (kept for historical context):** A document-oriented store built on `@supergrain/kernel` that provides `findDoc`/`insertDocument` by type and ID, with full TypeScript safety via a global type registry. Uses a single unified store (not Map<string, Store>) for cross-document reactivity, atomic batched updates, and simpler state management.
 
 ## Goal
 
