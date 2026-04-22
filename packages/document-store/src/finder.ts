@@ -1,64 +1,93 @@
-import type { DocumentTypes } from "./memory";
-import type { DocumentStore, ModelConfig } from "./store";
+import type { QueryTypes } from "./queries";
+import type { DocumentStoreConfig, DocumentTypes } from "./store";
 
 // =============================================================================
-// Finder — INTERNAL batching / dedup / chunking pipeline.
+// Finder — INTERNAL batching / chunking pipeline.
 //
-// Not exported from the package root. Constructed by `DocumentStore` in its
-// own constructor; not consumer-facing. Lives in its own module for
-// separation of concerns — batching machinery has nothing to do with cache
-// storage or handle lifecycle.
+// Not exported from the package root. Constructed in the closure of
+// `createDocumentStore(config)`, once per store instance. Consumers configure
+// it through `DocumentStoreConfig.batchWindowMs` / `batchSize` and never see it
+// directly.
+//
+// Dedup is NOT handled here — it lives one layer up. A second
+// `store.find(type, id)` during an in-flight fetch sees a handle with
+// `status === "PENDING"`, skips kickoff, and returns the existing handle. The
+// Finder's queue therefore never receives duplicate keys within a batch window.
 // =============================================================================
 
 /**
- * Internal config shape handed in by `DocumentStore`.
+ * Internal queue entry. One per `store.find` / `store.findQuery` call that
+ * misses memory and needs a fetch.
  *
- * Kept internal — consumers configure via `DocumentStoreConfig`, which the
- * store unpacks and forwards here.
+ * The `surface` discriminator lets the drain route each entry to the right
+ * per-model or per-query config (adapter + processor).
  */
-export interface FinderConfig<M extends DocumentTypes> {
-  models: { [K in keyof M]: ModelConfig<M> };
-  /** Batch window in ms. Default: 15. */
-  batchWindowMs?: number;
-  /** Max ids per adapter.find call. Default: 60. */
-  batchSize?: number;
-}
+export type QueueEntry =
+  | { surface: "documents"; type: string; id: string }
+  | { surface: "queries"; type: string; paramsKey: string; params: unknown };
 
 /**
- * Batched document finder (internal).
+ * Batched finder (internal).
  *
  * Responsibilities:
- * - Buffer `find(type, id)` calls within a tick window (default 15ms)
- * - Dedup in-flight requests — concurrent `find("user", "1")` calls share one promise
- * - Chunk groups of ids at `batchSize` (default 60)
- * - Call the per-model `adapter.find(chunkIds)` once per chunk
- * - Run the per-model processor (`defaultProcessor` if omitted) — processor
- *   inserts into the store via `store.insertDocument(type, doc)`
- * - After the processor returns, look up each requested `(type, id)` via
- *   `store.findInMemory` to resolve the corresponding deferred. Not found
- *   in memory → reject that deferred with "not found"
+ * - Buffer `queueDocument` / `queueQuery` calls within a tick window
+ *   (default 15ms).
+ * - Group queued entries by `(surface, type)`, chunk each group at
+ *   `batchSize` (default 60).
+ * - Per chunk, await the configured adapter's `find(...)`, run the paired
+ *   processor (`defaultProcessor` / `defaultQueryProcessor` if omitted),
+ *   then settle handles in a `batch()`. Settlement reads each requested
+ *   key's handle back through the finder's closure-captured references to
+ *   determine success/failure.
  *
- * The adapter is free to fulfill `find(ids)` however it wants — one bulk
- * request, N parallel requests, websocket, whatever. Finder only cares
+ * The adapter is free to fulfill `find(keys)` however it wants — one bulk
+ * request, N parallel requests, websocket, whatever. The finder only cares
  * that it eventually returns or rejects.
+ *
+ * Internal wiring — the Finder needs two per-store references at runtime:
+ * 1. The internal state tree (for handle lifecycle writes).
+ * 2. The public `DocumentStore` proxy (to pass to processors, which call
+ *    `store.insertDocument` / `store.insertQueryResult`).
+ *
+ * Both are per-store, created alongside the Finder inside
+ * `createDocumentStore`'s closure. How those references reach the Finder
+ * (constructor args, setter, closure capture) is an implementation choice
+ * left to the real impl — not part of this stub's surface.
  */
-export class Finder<M extends DocumentTypes> {
-  // Store reference is supplied at construction time (passed from
-  // DocumentStore as `this`). No two-step `attachStore` ceremony.
-  constructor(_config: FinderConfig<M>, _store: DocumentStore<M>) {
+export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>> {
+  constructor(_config: DocumentStoreConfig<M, Q>) {
     throw new Error("@supergrain/document-store: Finder constructor is not yet implemented");
   }
 
   /**
-   * Request a document. Batches with other requests in the same tick
-   * window, calls the adapter, runs the processor, then looks the doc up
-   * in memory to resolve the returned promise.
+   * Queue a document fetch. Called by `DocumentStore.find` on a cache miss,
+   * immediately after the handle has been flipped to `PENDING` with a stable
+   * `promise` + `resolve` / `reject` resolvers.
    *
-   * Rejects if `type` is not in `config.models`, if the adapter rejects,
-   * if the processor throws, or if the requested id is not present in
-   * memory after the processor runs.
+   * The finder pushes `{ surface: "documents", type, id }` onto its queue
+   * and starts a `setTimeout(drain, batchWindowMs)` if no drain is pending.
+   *
+   * Returns `void` — the caller already has the handle and observes
+   * completion via `handle.promise` / `handle.status`.
    */
-  find<K extends keyof M & string>(_type: K, _id: string): Promise<M[K]> {
-    throw new Error("@supergrain/document-store: Finder.find is not yet implemented");
+  queueDocument<K extends keyof M & string>(_type: K, _id: string): void {
+    throw new Error("@supergrain/document-store: Finder.queueDocument is not yet implemented");
+  }
+
+  /**
+   * Queue a query fetch. Same contract as `queueDocument`, keyed by the
+   * stable-stringified params instead of an id.
+   *
+   * `paramsKey` is the stable stringification the store already computed for
+   * cache lookup; the finder re-uses it for queue identity. `params` is the
+   * original object, handed to the adapter raw (the adapter sees the object
+   * shape, never the string key).
+   */
+  queueQuery<K extends keyof Q & string>(
+    _type: K,
+    _paramsKey: string,
+    _params: Q[K]["params"],
+  ): void {
+    throw new Error("@supergrain/document-store: Finder.queueQuery is not yet implemented");
   }
 }

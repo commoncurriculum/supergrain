@@ -1,8 +1,8 @@
 # @supergrain/document-store — Implementation Spec
 
 A design document for implementing the document-store read layer. The
-class skeletons and failing tests define the contract; this doc explains
-the intent and internal mechanics behind them.
+type signatures, stub functions, and failing tests define the contract;
+this doc explains the intent and internal mechanics behind them.
 
 ---
 
@@ -12,10 +12,11 @@ the intent and internal mechanics behind them.
   is a stable, Suspense-safe reference designed for React 19 `use()`.
   Consumers opt in at the call site with `use(handle.promise)`; consumers
   who want inline loading branch on `handle.status`. The same hook serves
-  both. Stable promise identity across refetches (so `use()` doesn't
-  re-suspend) and a fresh promise object after an error → success
-  transition (so a Suspense boundary nested in an error boundary can
-  recover) are part of the contract.
+  both. Identity is stable for a single fetch (so `use()` doesn't
+  re-suspend as `data` mutates via `insertDocument`), and a fresh promise
+  object is created after an error → success transition (so a Suspense
+  boundary nested in an error boundary can recover). Both are part of
+  the contract.
 - **Request batching is first-class.** N `useDocument` calls within
   `batchWindowMs` collapse into one `adapter.find(ids)` call. This is
   what makes Suspense actually scalable — naive Suspense-throwing hooks
@@ -41,26 +42,24 @@ in the same app.
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │  createDocumentStore<M, Q>(config)                            │
-│    returns plain store object                                 │
+│    returns DocumentStore<M, Q> — method surface only:         │
+│      find, findInMemory, insertDocument, clearMemory,         │
+│      findQuery, findQueryInMemory, insertQueryResult          │
 │                                                               │
 │  createDocumentStoreContext<M, Q>()                           │
 │    returns { Provider, useDocumentStore,                      │
 │              useDocument, useQuery }                          │
-│                                                               │
-│  Provider init: () => DocumentStore<M, Q>                     │
+│    Provider init: () => DocumentStore<M, Q>                   │
 │    — runs once per Provider mount                             │
 │                                                               │
-│  The reactive state tree the factory builds:                  │
-│    documents: { [type]: { [id]: Handle } }                    │
-│    queries:   { [type]: { [paramsKey]: Handle } }             │
-│    find, findInMemory, insertDocument,                        │
-│    clearMemory,                                               │
-│    findQuery, findQueryInMemory, insertQueryResult            │
-│                                                               │
-│  Finder lives in store creation closure:                      │
-│    new Finder<M, Q>(config) — not on the reactive tree        │
+│  Closure-private per store instance:                          │
+│    state = createReactive({ documents: {}, queries: {} })     │
+│      documents: { [type]: { [id]: Handle } }                  │
+│      queries:   { [type]: { [paramsKey]: Handle } }           │
+│    finder = new Finder<M, Q>(config)                          │
 └─────────────────────────────┬─────────────────────────────────┘
-                              │ delegates fetches (internal)
+                              │ methods read/write `state`,
+                              │ queue misses into `finder`
                               ▼
                   ┌───────────────────────────┐
                   │  Finder (INTERNAL)        │
@@ -152,7 +151,7 @@ function createDocumentStoreContext<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
 >(): {
-  Provider: (props: { children: ReactNode }) => ReactNode;
+  Provider: (props: { init: () => DocumentStore<M, Q>; children: ReactNode }) => ReactNode;
   useDocumentStore: () => DocumentStore<M, Q>;
   useDocument: <K extends keyof M & string>(
     type: K,
@@ -165,10 +164,10 @@ function createDocumentStoreContext<
 };
 ```
 
-Compare to `createReactive(...)` + `createStoreContext<T>()` in
-`@supergrain/react`: plain primitive first, React context wrapper
-second. The store hook is renamed `useDocumentStore` to avoid collision
-when both context factories are used in the same app.
+Compare to `createReactive(...)` in `@supergrain/core` +
+`createStoreContext<T>()` in `@supergrain/react`: plain primitive first,
+React context wrapper second. The store hook is renamed `useDocumentStore`
+to avoid collision when both context factories are used in the same app.
 
 ---
 
@@ -207,11 +206,14 @@ use the same primitive as React apps.
 ```ts
 function createDocumentStore<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>>(
   config: DocumentStoreConfig<M, Q>,
-): DocStoreAPI<M, Q> {
-  const finder = new Finder<M, Q>(config); // non-reactive, per-mount
+): DocumentStore<M, Q> {
+  const finder = new Finder<M, Q>(config); // non-reactive, per store instance
+  // Internal reactive tree — not part of the DocumentStore type, but where
+  // `find` / `insertDocument` / etc. read and write via closure.
+  // `createReactive` (from @supergrain/core) wraps the plain object in a
+  // reactive proxy; nested handles get lazy-wrapped on first read.
+  const state: InternalState<M, Q> = createReactive({ documents: {}, queries: {} });
   return {
-    documents: {},
-    queries: {},
     find(type, id) {
       /* ... */
     },
@@ -237,60 +239,40 @@ function createDocumentStore<M extends DocumentTypes, Q extends QueryTypes = Rec
 }
 ```
 
-`DocStoreAPI<M, Q>` is the state shape; `DocStoreState` is its data
-portion:
+`DocumentStore<M, Q>` is the public method surface (see `src/store.ts`).
+The internal state tree — the actual storage — is an implementation
+detail that lives in the factory's closure:
 
 ```ts
-type DocStoreState<M extends DocumentTypes, Q extends QueryTypes> = {
+type InternalState<M extends DocumentTypes, Q extends QueryTypes> = {
   documents: { [K in keyof M]?: Record<string, Handle<M[K]>> };
   queries: { [K in keyof Q]?: Record<string, Handle<Q[K]["result"]>> };
-};
-
-type DocStoreAPI<M extends DocumentTypes, Q extends QueryTypes> = DocStoreState<M, Q> & {
-  find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]>;
-  findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined;
-  insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void;
-  clearMemory(): void;
-  findQuery<K extends keyof Q & string>(
-    type: K,
-    params: Q[K]["params"] | null | undefined,
-  ): QueryHandle<Q[K]["result"]>;
-  findQueryInMemory<K extends keyof Q & string>(
-    type: K,
-    params: Q[K]["params"],
-  ): Q[K]["result"] | undefined;
-  insertQueryResult<K extends keyof Q & string>(
-    type: K,
-    params: Q[K]["params"],
-    result: Q[K]["result"],
-  ): void;
 };
 ```
 
 Handles are plain objects stored at nested positions
 (`state.documents[type][id]` / `state.queries[type][paramsKey]`). They
-are not separately proxied — the root store proxy's `get` trap
+are not separately proxied — the root reactive proxy's `get` trap
 auto-wraps nested plain objects lazily via `proxyCache` (from
 `@supergrain/core`), which also guarantees stable identity across reads.
 Fields on a handle are regular properties; reads through the store
 proxy subscribe, writes fire signals.
 
-`Finder` lives in the init function's closure — one Finder per Provider
-mount. It's a class instance, not on the reactive tree, so
+`Finder` lives in `createDocumentStore`'s closure — one Finder per
+store instance. It's a class instance, not on the reactive tree, so
 `useDocumentStore()` consumers don't see it and nothing subscribes to
 its internals.
 
 ### Access patterns
 
-- `this.documents[type]?.[id]` — document handle for a key, or
+- `state.documents[type]?.[id]` — document handle for a key, or
   `undefined` if never created.
-- `this.documents[type] ??= {}; this.documents[type][id] = handle;` —
+- `state.documents[type] ??= {}; state.documents[type][id] = handle;` —
   creates the type bucket lazily on insert.
-- `this.queries[type]?.[paramsKey]` — query handle.
+- `state.queries[type]?.[paramsKey]` — query handle.
 
-Method bodies use `this` (the proxy, bound by JS's normal method-call
-semantics) for all state access. No captured store ref inside the init
-function — whatever proxy `useStore()` returns is what methods see.
+Method bodies read and write through the closure-captured `state`
+proxy. Reads subscribe inside a `tracked()` scope; writes fire signals.
 
 ---
 
@@ -302,11 +284,14 @@ Returns a **stable, reactive handle**. Same `(type, id)` always returns
 the same handle (identity preserved by the proxy's `proxyCache`).
 
 ```ts
-find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
+function find<K extends keyof M & string>(
+  type: K,
+  id: string | null | undefined,
+): DocumentHandle<M[K]> {
   if (id == null) return IDLE_HANDLE as DocumentHandle<M[K]>;
 
-  this.documents[type] ??= {};
-  let handle = this.documents[type][id];
+  state.documents[type] ??= {};
+  let handle = state.documents[type][id];
   if (!handle) {
     handle = {
       status: "IDLE",
@@ -318,11 +303,11 @@ find<K extends keyof M & string>(type: K, id: string | null | undefined): Docume
       error: undefined,
       promise: undefined,
     };
-    this.documents[type][id] = handle;
+    state.documents[type][id] = handle;
   }
 
   if (handle.status === "IDLE") {
-    kickOffDocumentFetch(this, type, id, finder);  // finder from closure
+    kickOffDocumentFetch(state, type, id, finder);
   }
   return handle;
 }
@@ -333,7 +318,7 @@ null-id call.
 
 ### `findInMemory(type, id) → T | undefined`
 
-Returns `this.documents[type]?.[id]?.data`. Reactive — if the slot is
+Returns `state.documents[type]?.[id]?.data`. Reactive — if the slot is
 empty, the read subscribes; a later `insertDocument` re-runs dependent
 scopes.
 
@@ -343,12 +328,12 @@ Keyed by `(type, doc.id)`. Last-write-wins. Creates the handle if none
 exists at the slot.
 
 ```ts
-insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
-  this.documents[type] ??= {};
-  const existing = this.documents[type][doc.id];
+function insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
+  state.documents[type] ??= {};
+  const existing = state.documents[type][doc.id];
 
   if (!existing) {
-    this.documents[type][doc.id] = {
+    state.documents[type][doc.id] = {
       status: "SUCCESS",
       data: doc,
       hasData: true,
@@ -364,7 +349,24 @@ insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
   batch(() => {
     existing.data = doc;
     existing.hasData = true;
-    if (existing.status === "ERROR" || existing.status === "IDLE" || existing.status === "PENDING") {
+
+    if (existing.status === "PENDING") {
+      // In-flight fetch: resolve the existing promise with the local value
+      // and clear the resolvers. The promise REFERENCE stays stable — so
+      // `use(handle.promise)` observers unsuspend with the local value. When
+      // the in-flight fetch later settles, the Finder finds no resolvers and
+      // only overwrites `data` (last-write-wins).
+      existing.status = "SUCCESS";
+      existing.isPending = false;
+      existing.isFetching = false;
+      existing.error = undefined;
+      existing.fetchedAt = new Date();
+      existing.resolve?.(doc);
+      existing.resolve = undefined;
+      existing.reject = undefined;
+    } else if (existing.status === "IDLE" || existing.status === "ERROR") {
+      // No live promise (IDLE) or a rejected one (ERROR): create a fresh
+      // resolved promise so Suspense consumers see a usable value.
       existing.status = "SUCCESS";
       existing.isPending = false;
       existing.isFetching = false;
@@ -372,7 +374,7 @@ insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
       existing.promise = Promise.resolve(doc);
       existing.fetchedAt = new Date();
     }
-    // Last-write-wins: the fetched value may overwrite the doc we just set.
+    // SUCCESS: only `data` + `hasData` update — promise stays stable.
   });
 }
 ```
@@ -382,15 +384,15 @@ insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
 Drops data and resets lifecycle on every handle in one `batch()`:
 
 ```ts
-clearMemory(): void {
+function clearMemory(): void {
   batch(() => {
-    for (const typeKey of Object.keys(this.documents)) {
-      const bucket = this.documents[typeKey as keyof M];
+    for (const typeKey of Object.keys(state.documents)) {
+      const bucket = state.documents[typeKey as keyof M];
       if (!bucket) continue;
       for (const id of Object.keys(bucket)) resetHandle(bucket[id]);
     }
-    for (const typeKey of Object.keys(this.queries)) {
-      const bucket = this.queries[typeKey as keyof Q];
+    for (const typeKey of Object.keys(state.queries)) {
+      const bucket = state.queries[typeKey as keyof Q];
       if (!bucket) continue;
       for (const paramsKey of Object.keys(bucket)) resetHandle(bucket[paramsKey]);
     }
@@ -436,14 +438,14 @@ being nested inside the store proxy.
 
 ```ts
 function kickOffDocumentFetch<K extends keyof M & string>(
-  store: DocStoreAPI<M, Q>, // the proxy (passed as `this` from find)
+  state: InternalState<M, Q>,
   type: K,
   id: string,
   finder: Finder<M, Q>,
 ): void {
   const { promise, resolve, reject } = Promise.withResolvers<M[K]>();
   batch(() => {
-    const handle = store.documents[type]![id]!;
+    const handle = state.documents[type]![id]!;
     handle.status = "PENDING";
     handle.isPending = true;
     handle.isFetching = true;
@@ -452,13 +454,13 @@ function kickOffDocumentFetch<K extends keyof M & string>(
     handle.resolve = resolve;
     handle.reject = reject;
   });
-  finder.queueDocument(type, id, store);
+  finder.queueDocument(type, id);
 }
 ```
 
 **3. `Finder.queueDocument`.** Pushes `{ surface: "documents", type, id }`
-onto its private queue, stashes the store-proxy reference if not already
-held, starts `setTimeout(drain, batchWindowMs)` if no drain is pending.
+onto its private queue, starts `setTimeout(drain, batchWindowMs)` if no
+drain is pending.
 
 **4. `Finder.drain` (batch window elapsed).** Groups the queue by
 surface + type, dedupes keys, chunks at `batchSize`. For a document
@@ -481,7 +483,7 @@ async drainDocumentChunk(type, chunkIds) {
     batch(() => {
       processor(raw, this.storeRef, type);  // processor writes via insertDocument
       for (const id of chunkIds) {
-        const handle = this.storeRef.documents[type]?.[id];
+        const handle = this.state.documents[type]?.[id];
         if (!handle) continue;
         if (handle.hasData) {
           handle.status = "SUCCESS";
@@ -535,8 +537,11 @@ lifecycle.
     through the store method, which handles both new-handle creation
     and error recovery.
 - **One promise per handle.** Created by `Promise.withResolvers()` at
-  kickoff, stored as `handle.promise`, settled by the Finder calling
-  `handle.resolve` / `handle.reject`. No parallel promise map anywhere.
+  kickoff, stored as `handle.promise`. Settled by either the Finder
+  (normal fetch path) or by `insertDocument` landing while PENDING —
+  whichever fires first clears the resolvers; the second no-ops on
+  `handle.resolve?.(...)`. No parallel promise map anywhere. The
+  reference only changes via the ERROR → SUCCESS recovery path.
 - **Dedup via handle state.** A second `store.find(type, id)` call
   during an in-flight fetch sees `handle.status === "PENDING"`, skips
   the kickoff, returns the existing handle with its existing promise.
@@ -545,7 +550,7 @@ lifecycle.
 
 Identical flow with these substitutions:
 
-- Slot: `store.queries[type][paramsKey]` (where
+- Slot: `state.queries[type][paramsKey]` (where
   `paramsKey = stableStringify(params)`).
 - Adapter input: `paramsList` instead of `ids`.
 - Processor signature: `(raw, store, type, paramsList) => void`.
@@ -558,10 +563,10 @@ via handle status — all the same.
 
 ## Finder (internal)
 
-Not exported. Lives in `src/finder.ts`; constructed inside the
-`createDocumentStore` init function (one per Provider mount). Separated
-for clarity — batching / chunking has nothing to do with cache storage
-or handle lifecycle.
+Not exported. Lives in `src/finder.ts`; constructed inside
+`createDocumentStore` (one per store instance). Separated for clarity —
+batching / chunking has nothing to do with cache storage or handle
+lifecycle.
 
 Constructor receives the config and builds:
 
@@ -580,18 +585,23 @@ type QueueEntry =
 
 private queue: Array<QueueEntry> = [];
 private timer: ReturnType<typeof setTimeout> | undefined;
-private storeRef: DocStoreAPI<M, Q> | undefined; // proxy, set on first queue call
 ```
 
-That's it. No pending promise map — resolvers live on the handle. No
-in-flight tracking map — dedup is a read of the handle's own status.
+Plus closure-captured references to the internal state tree (for handle
+lifecycle writes during drain) and the public `DocumentStore` proxy (to
+pass into processors, which call `store.insertDocument` /
+`store.insertQueryResult`). Both are per-store, created in
+`createDocumentStore`'s closure.
 
-### `queueDocument(type, id, store)` / `queueQuery(type, paramsKey, params, store)`
+No pending promise map — resolvers live on the handle. No in-flight
+tracking map — dedup is a read of the handle's own status, done one
+layer up in `store.find`.
 
-Pushes one entry onto the queue, stashes the proxy reference, starts
-the drain timer if not running. All return `void` — callers already
-have the handle and observe completion via `handle.promise` /
-`handle.status`.
+### `queueDocument(type, id)` / `queueQuery(type, paramsKey, params)`
+
+Pushes one entry onto the queue, starts the drain timer if not running.
+Returns `void` — callers already have the handle and observe
+completion via `handle.promise` / `handle.status`.
 
 ### Drain
 
@@ -649,7 +659,7 @@ Stateless transform; a function is the right primitive.
 ```ts
 type ResponseProcessor<M extends DocumentTypes> = (
   raw: unknown,
-  store: DocStoreAPI<M, any>,
+  store: DocumentStore<M>,
   type: keyof M & string,
 ) => void;
 ```
@@ -743,8 +753,12 @@ or untracked scope.
 IDLE ──(id becomes non-null)────────► PENDING (fetch kicked off)
 IDLE ──(insertDocument arrives)─────► SUCCESS (no fetch needed)
 
-PENDING ──(Finder resolves)──► SUCCESS
-PENDING ──(Finder rejects) ──► ERROR
+PENDING ──(Finder resolves)────────► SUCCESS
+PENDING ──(Finder rejects) ────────► ERROR
+PENDING ──(insertDocument arrives)─► SUCCESS (resolves the kickoff
+                                     promise in-place with the local
+                                     value; the in-flight fetch later
+                                     overwrites `data` — last-write-wins)
 
 SUCCESS ──(new insertDocument with fresher doc)──► SUCCESS (data updated)
 ERROR   ──(later insertDocument with valid doc)──► SUCCESS (new promise)
@@ -762,23 +776,28 @@ on an IDLE handle kicks off a fresh fetch (creating a new promise).
 
 - `undefined` while the handle is IDLE.
 - Pending on the first fetch.
-- Resolves once on success and stays resolved; is not replaced on
-  subsequent mutations to `data` via `insertDocument`.
-- Rejects once on first error.
+- Resolves exactly once on first success — whether via the Finder's fetch
+  settlement or via an `insertDocument` arriving while the handle is
+  PENDING. Same reference in both cases; `use()` doesn't re-suspend.
+- Stays resolved across subsequent `insertDocument` calls that update
+  `data`. Same reference — not replaced.
+- Rejects once on first fetch error.
 - If `insertDocument` lands after an ERROR (recovery path), the handle
   gets a **new** resolved promise so a Suspense boundary inside an
-  error boundary can recover.
+  error boundary can recover. This is the only case where the promise
+  reference changes post-kickoff.
 
 ---
 
 ## React binding
 
-`createDocumentStore<M, Q>(init)` returns the Provider plus the React
-hooks, all bound to the single store instance created for that Provider
-mount. `useDocumentStore()` returns the full reactive state with its
-method surface (same role as `useStore` in the base store pattern,
-renamed to avoid collision). The document-specific hooks are thin
-wrappers that call `useDocumentStore()` and delegate to its methods:
+`createDocumentStoreContext<M, Q>()` returns a Provider plus hooks, all
+bound to a fresh React context. The Provider's `init` prop builds the
+store (via `createDocumentStore(config)`) once per mount. `useDocumentStore()`
+returns that store's method surface (same role as `useStore` in the base
+store pattern, renamed to avoid collision). The document-specific hooks
+are thin wrappers that call `useDocumentStore()` and delegate to its
+methods:
 
 ```ts
 function useDocument<K extends keyof M & string>(
@@ -804,11 +823,11 @@ mechanism. Per-property fine-grained: a component reading only
 ### JSON-API subpath
 
 `useBelongsTo` / `useHasMany` / `useHasManyIndividually` (from
-`/react/json-api`) compose on the store's `useDocument` /
-`useDocumentStore`. Because they need the hooks, they take a
-`useDocumentStore` reference (or the specific single-document hook)
-as arguments — or, for the common case, use the default-singleton
-exports from the main factory call.
+`/react/json-api`) take `(model, relationName)` and resolve the related
+handle(s) by reading `model.relationships[relationName].data` and
+delegating to `useDocument` / `useDocumentStore().find(...)` internally.
+The hooks pull the store from React context — consumers don't pass a
+`useDocumentStore` reference in.
 
 - `useBelongsTo(model, rel)` → `DocumentHandle<T>` via `useDocument`.
 - `useHasMany(model, rel)` composes by mapping related ids through
@@ -824,10 +843,6 @@ exports from the main factory call.
 Failing tests pin the behavior. Source files map to tests (plus two
 non-1:1 test files that test integration / adapter behavior):
 
-- `src/memory.ts` ↔ `tests/memory.test.ts` — if the file ends up
-  containing just type exports (DocumentTypes, TypeRegistry,
-  RegisteredTypes), memory-level tests fold into `store.test.ts`. If
-  a thin typed facade survives, the existing tests still apply.
 - `src/processors/index.ts` ↔ `tests/processors/index.test.ts` —
   `defaultProcessor` and `defaultQueryProcessor`.
 - `src/processors/json-api.ts` ↔ `tests/processors/json-api.test.ts` —
@@ -861,18 +876,20 @@ via its methods and observe state via public reads.
 
 The document-store uses the same single-reactive-tree model as the base
 store pattern in `@supergrain/react`: one Provider mount creates one
-reactive object tree, and the store hook returns that proxy.
+reactive object tree; `useDocumentStore()` returns the store's method
+surface, whose methods read and write that tree in closure.
 
-- One reactive tree per Provider mount: the state returned by init.
+- One reactive tree per store instance (one store per Provider mount).
   Documents, queries, and handles all live nested inside it.
 - Handles are plain object literals at `state.documents[type][id]` /
   `state.queries[type][paramsKey]`. They are not separately made
   reactive by consumer code. The store proxy's `get` trap wraps them
   lazily on read (via `@supergrain/core`'s `proxyCache`), and that
   wrapping also preserves identity across reads.
-- Writes inside the store's methods (called via the proxy; `this`
-  bound to the proxy) happen through the proxy's set traps, firing
-  per-property signals.
+- Writes inside the store's methods go through the closure-captured
+  `state` proxy — the factory builds `state` once and every method
+  reads/writes through it. Set traps on the proxy fire per-property
+  signals.
 - Multi-field writes at lifecycle transitions are wrapped in `batch()`
   from `@supergrain/core` so subscribers see one coherent state change.
 - Settlement hooks (`resolve` / `reject`) live on the handle alongside
@@ -894,8 +911,8 @@ params — dashboards, search results, filtered lists, pagination
 cursors.
 
 Config forks at the top level: `models` for document-keyed entities,
-`queries` for params-keyed results. One store, one reactive tree, one
-Finder; two parallel method families.
+`queries` for params-keyed results. One store, one reactive state tree,
+one Finder; two parallel method families.
 
 ```ts
 type TypeToModel = { user: User; post: Post };
@@ -903,21 +920,22 @@ type TypeToQuery = {
   dashboard: { params: { workspaceId: number }; result: Dashboard };
 };
 
-export const {
-  Provider,
-  useDocumentStore,
-  useDocument,
-  useQuery,
-  /* ... */
-} = createDocumentStore<TypeToModel, TypeToQuery>(() => ({
-  models: {
-    user: { adapter: userAdapter },
-    post: { adapter: postAdapter },
-  },
-  queries: {
-    dashboard: { adapter: dashboardAdapter },
-  },
-}));
+export const { Provider, useDocumentStore, useDocument, useQuery } = createDocumentStoreContext<
+  TypeToModel,
+  TypeToQuery
+>();
+
+function initStore() {
+  return createDocumentStore<TypeToModel, TypeToQuery>({
+    models: {
+      user: { adapter: userAdapter },
+      post: { adapter: postAdapter },
+    },
+    queries: {
+      dashboard: { adapter: dashboardAdapter },
+    },
+  });
+}
 ```
 
 ### Second generic, defaults empty
@@ -970,7 +988,7 @@ shape.
 ```ts
 type QueryProcessor<M, Q, Type extends keyof Q & string> = (
   raw: unknown,
-  store: DocStoreAPI<M, Q>,
+  store: DocumentStore<M, Q>,
   type: Type,
   paramsList: ReadonlyArray<Q[Type]["params"]>,
 ) => void;

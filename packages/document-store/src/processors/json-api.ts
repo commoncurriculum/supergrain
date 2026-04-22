@@ -1,5 +1,4 @@
-import type { DocumentTypes } from "../memory";
-import type { DocumentStore } from "../store";
+import type { DocumentStore, DocumentTypes } from "../store";
 
 // =============================================================================
 // JSON-API types

@@ -14,8 +14,8 @@ import {
 
 // =============================================================================
 // Fake store — captures inserts as (type, doc) tuples. Tests assert on the
-// captured tuples rather than on the real MemoryEngine, since processor
-// behavior is independent of cache implementation.
+// captured tuples rather than on the real store, since processor behavior
+// is independent of cache implementation.
 // =============================================================================
 
 interface Insert<K extends keyof TypeToModel = keyof TypeToModel> {

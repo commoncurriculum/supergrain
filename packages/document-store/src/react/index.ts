@@ -1,6 +1,5 @@
-import type { DocumentTypes, RegisteredTypes } from "../memory";
 import type { QueryHandle, QueryTypes, RegisteredQueries } from "../queries";
-import type { DocumentHandle, DocumentStore } from "../store";
+import type { DocumentHandle, DocumentStore, DocumentTypes, RegisteredTypes } from "../store";
 
 import { createContext, createElement, useContext, useState, type ReactNode } from "react";
 

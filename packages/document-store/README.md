@@ -188,14 +188,14 @@ A reactive state machine for a single document. All fields are signals — readi
 
 ```ts
 interface DocumentHandle<T> {
-  status: "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
-  data: T | undefined;
-  error: Error | undefined;
-  isPending: boolean; // true before first successful load
-  isFetching: boolean; // true during any fetch (initial or refetch)
-  hasData: boolean;
-  fetchedAt: Date | undefined;
-  promise: Promise<T> | undefined; // stable; pass to use()
+  readonly status: "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
+  readonly data: T | undefined;
+  readonly error: Error | undefined;
+  readonly isPending: boolean; // true before first successful load
+  readonly isFetching: boolean; // true while a fetch is in flight for this handle
+  readonly hasData: boolean;
+  readonly fetchedAt: Date | undefined;
+  readonly promise: Promise<T> | undefined; // stable; pass to use()
 }
 ```
 
@@ -547,27 +547,27 @@ These aren't "same library, different maturity" — they're genuinely different 
 
 ### Capability comparison
 
-| Capability                                             | TQ (today) | document-store (today) | document-store (ceiling)                      |
-| ------------------------------------------------------ | :--------: | :--------------------: | --------------------------------------------- |
-| Fetch by id                                            |     ✓      |           ✓            | —                                             |
-| Fetch by arbitrary query                               |     ✓      |           ✗            | generalize adapter keys                       |
-| Request dedup                                          |     ✓      |           ✓            | —                                             |
-| **Multi-key batching into one request**                |     ✗      |           ✓            | —                                             |
-| **Stable-id normalization**                            |     ✗      |           ✓            | —                                             |
-| **Cross-query sync (edit user → every view updates)**  | ✗ (manual) |           ✓            | —                                             |
-| **Stable reactive handles (fine-grained field reads)** |     ✗      |           ✓            | —                                             |
-| Suspense via `use()`                                   | ✓ (opt-in) |       ✓ (opt-in)       | —                                             |
-| Invalidation                                           |     ✓      |           ✗            | add `invalidate` / `invalidateType`           |
-| Stale-time / gc-time                                   |     ✓      |           ✗            | add `staleMs`; compare against `fetchedAt`    |
-| Refetch on focus / reconnect / interval                |     ✓      |           ✗            | add opt-in hooks                              |
-| Retry with backoff                                     |     ✓      |           ✗            | add to Finder                                 |
-| Cancellation                                           |     ✓      |           ✗            | thread `AbortSignal` through adapter          |
-| Pagination / infinite queries                          |     ✓      |           ✗            | wrapper hook that extends an id-list          |
-| Mutations + optimistic + rollback                      |     ✓      |           ✗            | next-PR write layer built on `insertDocument` |
-| SSR / hydration                                        |     ✓      |           ✗            | serialize MemoryEngine map, rehydrate         |
-| Persistence (localStorage / IDB)                       |     ✓      |           ✗            | serialize map on write, restore on init       |
-| Devtools                                               |     ✓      |           ✗            | expose cache map + event stream               |
-| Ecosystem / community / docs                           |   Large    |         Small          | —                                             |
+| Capability                                             | TQ (today) | document-store (today) | document-store (ceiling)                       |
+| ------------------------------------------------------ | :--------: | :--------------------: | ---------------------------------------------- |
+| Fetch by id                                            |     ✓      |           ✓            | —                                              |
+| Fetch by arbitrary query                               |     ✓      |           ✗            | generalize adapter keys                        |
+| Request dedup                                          |     ✓      |           ✓            | —                                              |
+| **Multi-key batching into one request**                |     ✗      |           ✓            | —                                              |
+| **Stable-id normalization**                            |     ✗      |           ✓            | —                                              |
+| **Cross-query sync (edit user → every view updates)**  | ✗ (manual) |           ✓            | —                                              |
+| **Stable reactive handles (fine-grained field reads)** |     ✗      |           ✓            | —                                              |
+| Suspense via `use()`                                   | ✓ (opt-in) |       ✓ (opt-in)       | —                                              |
+| Invalidation                                           |     ✓      |           ✗            | add `invalidate` / `invalidateType`            |
+| Stale-time / gc-time                                   |     ✓      |           ✗            | add `staleMs`; compare against `fetchedAt`     |
+| Refetch on focus / reconnect / interval                |     ✓      |           ✗            | add opt-in hooks                               |
+| Retry with backoff                                     |     ✓      |           ✗            | add to Finder                                  |
+| Cancellation                                           |     ✓      |           ✗            | thread `AbortSignal` through adapter           |
+| Pagination / infinite queries                          |     ✓      |           ✗            | wrapper hook that extends an id-list           |
+| Mutations + optimistic + rollback                      |     ✓      |           ✗            | next-PR write layer built on `insertDocument`  |
+| SSR / hydration                                        |     ✓      |           ✗            | serialize the store's reactive tree, rehydrate |
+| Persistence (localStorage / IDB)                       |     ✓      |           ✗            | serialize map on write, restore on init        |
+| Devtools                                               |     ✓      |           ✗            | expose cache map + event stream                |
+| Ecosystem / community / docs                           |   Large    |         Small          | —                                              |
 
 **Bold rows are architectural** — they live in the primitive and can't be retrofitted without a rewrite. Everything else is **additive**: bolt-on features that land without touching core design. The "ceiling" column is the planned-additive path; none of it requires architectural change to get to.
 

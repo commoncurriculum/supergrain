@@ -1,5 +1,4 @@
-import type { DocumentTypes, TypeRegistry } from "./memory";
-import type { DocumentStore, Status } from "./store";
+import type { DocumentStore, DocumentTypes, Status, TypeRegistry } from "./store";
 
 // =============================================================================
 // QueryTypes — shape of a consumer's query type map

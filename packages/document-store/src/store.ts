@@ -1,5 +1,61 @@
-import type { DocumentTypes } from "./memory";
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
+
+// =============================================================================
+// Model types
+// =============================================================================
+
+/**
+ * Consumer-defined map of type name → model shape.
+ *
+ * Each key is a type string (e.g. "user", "card-stack"), each value is the
+ * full model type as defined by the consumer. The library doesn't impose
+ * structure on the model beyond requiring an `id: string`. The type is
+ * supplied externally at every API boundary (`find(type, id)`,
+ * `insertDocument(type, doc)`), so nothing in the library reads the doc's
+ * own `type` field — consumers whose API omits type from documents can
+ * still use this library without modification.
+ *
+ * @example
+ * ```ts
+ * type TypeToModel = {
+ *   user: User;           // User need only carry `id: string`
+ *   "card-stack": CardStack;
+ * };
+ * ```
+ */
+export type DocumentTypes = Record<string, { id: string }>;
+
+// =============================================================================
+// TypeRegistry — for module augmentation
+// =============================================================================
+
+/**
+ * Module-augmentation registry. Consumers augment this once to tell the
+ * library which `DocumentTypes` map (and, optionally, `QueryTypes` map) to
+ * use, and every hook picks them up automatically without explicit generics
+ * at call sites.
+ *
+ * @example
+ * ```ts
+ * // in app bootstrap, once:
+ * declare module "@supergrain/document-store" {
+ *   interface TypeRegistry {
+ *     types: TypeToModel;
+ *     queries: TypeToQuery;
+ *   }
+ * }
+ * ```
+ */
+// oxlint-disable-next-line no-empty-interface
+export interface TypeRegistry {}
+
+/**
+ * Resolved type map — reads from `TypeRegistry.types` if the consumer has
+ * augmented it, falls back to the open `DocumentTypes` constraint otherwise.
+ */
+export type RegisteredTypes = TypeRegistry extends { types: infer T extends DocumentTypes }
+  ? T
+  : DocumentTypes;
 
 // =============================================================================
 // Status
@@ -191,10 +247,18 @@ export interface DocumentStoreConfig<
 }
 
 // =============================================================================
-// DocumentStore API
+// DocumentStore — public store surface returned by createDocumentStore
 // =============================================================================
 
-export interface DocStoreAPI<
+/**
+ * The public store surface. A plain object, not a class: built by
+ * `createDocumentStore(config)` and mounted by the React Provider.
+ *
+ * Consumers interact with the store exclusively through these methods.
+ * Internal state (the reactive tree of nested document/query handles,
+ * the Finder instance held in closure) is not part of this type.
+ */
+export interface DocumentStore<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
 > {
@@ -216,16 +280,6 @@ export interface DocStoreAPI<
   ): void;
   clearMemory(): void;
 }
-
-/**
- * Public store shape returned by the document-store factory's internal init.
- *
- * This is a plain object API, not a constructable class.
- */
-export type DocumentStore<
-  M extends DocumentTypes,
-  Q extends QueryTypes = Record<string, never>,
-> = DocStoreAPI<M, Q>;
 
 /**
  * Create a plain document store object.

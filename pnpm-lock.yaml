@@ -219,10 +219,10 @@ importers:
       '@supergrain/core':
         specifier: workspace:*
         version: link:../core
-      '@supergrain/operators':
-        specifier: workspace:*
-        version: link:../operators
     devDependencies:
+      '@supergrain/react':
+        specifier: workspace:*
+        version: link:../react
       '@testing-library/dom':
         specifier: ^10.4.1
         version: 10.4.1

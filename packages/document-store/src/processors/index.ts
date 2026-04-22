@@ -1,6 +1,5 @@
-import type { DocumentTypes } from "../memory";
 import type { QueryTypes } from "../queries";
-import type { DocumentStore } from "../store";
+import type { DocumentStore, DocumentTypes } from "../store";
 
 // =============================================================================
 // defaultProcessor — insert by (type, id), no envelope

@@ -51,11 +51,11 @@ describe("Store — public API", () => {
 });
 
 // =============================================================================
-// Memory delegation (MemoryEngine behavior is tested in memory.test.ts —
-// these tests only confirm that Store wires through to it correctly).
+// Memory operations — insert / findInMemory / clearMemory round-trip through
+// the reactive tree the store owns.
 // =============================================================================
 
-describe("Store delegates memory operations to MemoryEngine", () => {
+describe("Store memory operations", () => {
   it("insertDocument makes the document retrievable via findInMemory", () => {
     const user = makeUser("1");
     store.insertDocument("user", user);

@@ -12,13 +12,13 @@ export type {
   DocumentHandle,
   DocumentStore,
   DocumentStoreConfig,
-  DocStoreAPI,
+  DocumentTypes,
   ModelConfig,
+  RegisteredTypes,
   ResponseProcessor,
   Status,
+  TypeRegistry,
 } from "./store";
-
-export type { DocumentTypes, TypeRegistry, RegisteredTypes } from "./memory";
 
 export type {
   QueryAdapter,
