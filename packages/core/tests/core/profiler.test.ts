@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { createReactive, effect, startBatch, endBatch } from "../../src";
+import { createReactive, effect } from "../../src";
+import { startBatch, endBatch } from "../../src/internal";
 import { enableProfiling, disableProfiling, resetProfiler, getProfile } from "../../src/profiler";
 
 describe("Profiler", () => {

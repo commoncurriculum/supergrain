@@ -1,7 +1,7 @@
 // Main entry point for @supergrain/react
 
 // Export For component for optimized array rendering
-export { For } from "./use-store";
+export { For } from "./for";
 
 // Export tracked() component wrapper for per-component signal scoping
 export { tracked } from "./tracked";

@@ -134,13 +134,13 @@ describe("Parent Invalidation Depth Tests", () => {
     expect(arrayRenderCount).toBe(1);
     expect(arrayItemRenderCount).toBe(1);
 
-    // Test 1: Update deeply nested object property
+    // Test 1: Update deeply nested object property (path past Path<T> default depth)
     await act(async () => {
       update(store, {
         $set: {
           "level0.level1.level2.level3.level4.value": "updated-deep",
         },
-      });
+      } as any);
       await flushMicrotasks();
     });
 
@@ -172,7 +172,7 @@ describe("Parent Invalidation Depth Tests", () => {
     // arrayItem accesses array[0] OBJECT but not nested.deep.value — should NOT re-render
     expect(arrayItemRenderCount).toBe(arrayItemBefore);
 
-    // Test 3: Update intermediate level directly — replaces level2 object
+    // Test 3: Update intermediate level directly — replaces level2 object with a different shape
     const level2Before = level2RenderCount;
     const level3Before = level3RenderCount;
     const level4Before = level4RenderCount;
@@ -181,7 +181,7 @@ describe("Parent Invalidation Depth Tests", () => {
         $set: {
           "level0.level1.level2": { newProp: "direct-update" },
         },
-      });
+      } as any);
       await flushMicrotasks();
     });
     // level2 accessed level2 which was replaced → should re-render exactly once

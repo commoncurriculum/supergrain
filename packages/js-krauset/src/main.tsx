@@ -1,7 +1,6 @@
 import {
   createReactive,
-  startBatch,
-  endBatch,
+  batch,
   enableProfiling,
   resetProfiler,
   getProfile,
@@ -129,28 +128,28 @@ export const add = () => {
 };
 
 export const update = () => {
-  startBatch();
-  for (let i = 0; i < store.data.length; i += 10) {
-    store.data[i].label = store.data[i].label + " !!!";
-  }
-  endBatch();
+  batch(() => {
+    for (let i = 0; i < store.data.length; i += 10) {
+      store.data[i].label = store.data[i].label + " !!!";
+    }
+  });
 };
 
 export const clear = () => {
-  startBatch();
-  store.data = [];
-  store.selected = null;
-  endBatch();
+  batch(() => {
+    store.data = [];
+    store.selected = null;
+  });
 };
 
 export const swapRows = () => {
   if (store.data.length > 998) {
-    startBatch();
-    const row1 = store.data[1];
-    const row998 = store.data[998];
-    store.data[1] = row998;
-    store.data[998] = row1;
-    endBatch();
+    batch(() => {
+      const row1 = store.data[1];
+      const row998 = store.data[998];
+      store.data[1] = row998;
+      store.data[998] = row1;
+    });
   }
 };
 

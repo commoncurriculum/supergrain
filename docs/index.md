@@ -22,7 +22,7 @@ layout: page
         <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">Deep reactivity&nbsp;—</span> <code>store.a.b[0].c</code>, or whatever nested shape you want</span></li>
         <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">TypeScript inference&nbsp;—</span> no generics, no casts</span></li>
         <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">Works with SSR&nbsp;—</span> Next.js, RSC, React 19</span></li>
-        <li><span class="yep-check">✓</span><span class="yep-body">~5kb gzipped</span></li>
+        <li><span class="yep-check">✓</span><span class="yep-body">3.6 kB min+brotli (including core)</span></li>
       </ul>
     </div>
     <div class="hero-values-group hero-values-group--nope">
@@ -114,6 +114,11 @@ const TodoList = tracked(() => {
       <div class="bench-name">react-tracked</div>
       <div class="bench-bar"><div class="bench-fill" style="width: 88.9%"></div></div>
       <div class="bench-score">1.76</div>
+    </div>
+    <div class="bench-row">
+      <div class="bench-name">valtio</div>
+      <div class="bench-bar"><div class="bench-fill" style="width: 95.5%"></div></div>
+      <div class="bench-score">1.89</div>
     </div>
     <div class="bench-row">
       <div class="bench-name">redux</div>

@@ -1,5 +1,31 @@
 # @supergrain/core
 
+## Unreleased
+
+### Major Changes
+
+- Remove `startBatch`, `endBatch`, `getCurrentSub`, and `setCurrentSub` from the public `@supergrain/core` exports. They mutate global state (a batch-depth counter and the active subscriber slot) and leak unsafely on exception.
+
+  **Migration:**
+
+  Replace `startBatch`/`endBatch` pairs with `batch(fn)`, which wraps the same primitives in a try/finally so the batch depth always unwinds (and rejects async callbacks that would leak).
+
+  ```ts
+  import { startBatch, endBatch } from "@supergrain/core";
+  startBatch();
+  store.data[0] = "a";
+  store.data[1] = "b";
+  endBatch();
+
+  import { batch } from "@supergrain/core";
+  batch(() => {
+    store.data[0] = "a";
+    store.data[1] = "b";
+  });
+  ```
+
+  The raw primitives are still available via the `@supergrain/core/internal` subpath for sibling Supergrain packages that need them.
+
 ## 3.0.0
 
 ### Major Changes

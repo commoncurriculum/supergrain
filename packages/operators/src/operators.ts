@@ -2,10 +2,11 @@ import { unwrap, getNodesIfExist } from "@supergrain/core";
 import {
   bumpOwnKeysSignal,
   bumpVersion,
+  endBatch,
   profileSignalWrite,
   setProperty,
+  startBatch,
 } from "@supergrain/core/internal";
-import { startBatch, endBatch } from "alien-signals";
 
 import {
   type ArrayPullOperations,
@@ -355,6 +356,17 @@ const operators: Record<string, (target: object, operations: any) => void> = {
   $max,
 };
 
+/**
+ * Strict, type-aware update operations for a target shape `T`.
+ *
+ * Each operator's value type is derived from `T`:
+ *   - `$set` / `$unset` accept any path within `T` (see `Path<T>`).
+ *   - `$inc` / `$min` / `$max` accept numeric paths only.
+ *   - `$push` / `$pull` / `$addToSet` accept array paths only.
+ *
+ * Per-path value typing is enforced: `$set: { "user.name": 42 }` is rejected
+ * when `user.name` is typed as `string`.
+ */
 export type StrictUpdateOperations<T extends object> = Partial<{
   $set: SetPathOperations<T>;
   $unset: UnsetPathOperations<T>;
@@ -367,21 +379,13 @@ export type StrictUpdateOperations<T extends object> = Partial<{
   $max: NumericPathOperations<T>;
 }>;
 
-export type LooseUpdateOperations = Partial<{
-  $set: Record<string, unknown>;
-  $unset: Record<string, true | 1>;
-  $inc: Record<string, number>;
-  $push: Record<string, unknown>;
-  $pull: Record<string, unknown>;
-  $addToSet: Record<string, unknown>;
-  $rename: Record<string, string>;
-  $min: Record<string, number>;
-  $max: Record<string, number>;
-}>;
-
-export type UpdateOperations<T extends object = Record<string, any>> =
-  | LooseUpdateOperations
-  | StrictUpdateOperations<T>;
+/**
+ * Default operations type for `update()`.
+ *
+ * Strict — callers must supply paths that match `Path<T>` and values that
+ * match `PathValue<T, P>` per path.
+ */
+export type UpdateOperations<T extends object = Record<string, any>> = StrictUpdateOperations<T>;
 
 export function update<T extends object>(target: T, operations: UpdateOperations<T>): void {
   const raw = unwrap(target) as object;

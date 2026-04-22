@@ -96,6 +96,10 @@ export function deleteProperty(target: any, key: PropertyKey): void {
   }
 }
 
+// Local alias so the proxy trap (also named `deleteProperty`) can call the
+// standalone helper without colliding with the trap's own name.
+const deletePropertyAndBump = deleteProperty;
+
 export const writeHandler: Pick<ProxyHandler<object>, "set" | "deleteProperty"> = {
   set(target: any, prop: PropertyKey, value: any): boolean {
     setProperty(target, prop, value);
@@ -114,8 +118,7 @@ export const writeHandler: Pick<ProxyHandler<object>, "set" | "deleteProperty"> 
       }
       return true;
     }
-    throw new Error(
-      'Direct deletion of store state is not allowed. Use the "$unset" operator in the update function.',
-    );
+    deletePropertyAndBump(target, prop);
+    return true;
   },
 };

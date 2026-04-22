@@ -223,14 +223,14 @@ describe("Deep Nesting Operations in React Components", () => {
 
     const { container } = render(<OrganizationComponent store={state} />);
 
-    // Update a deeply nested task title
+    // Update a deeply nested task title (path past Path<T> default depth — cast to bypass)
     await act(async () => {
       update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks.0.title":
             "Database Refactoring",
         },
-      });
+      } as any);
       await flushMicrotasks();
     });
 
@@ -244,7 +244,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     const { container } = render(<OrganizationComponent store={state} />);
 
-    // Add a new task to existing project
+    // Add a new task to existing project (path past Path<T> default depth — cast to bypass)
     await act(async () => {
       update(state, {
         $push: {
@@ -254,7 +254,7 @@ describe("Deep Nesting Operations in React Components", () => {
             completed: false,
           },
         },
-      });
+      } as any);
       await flushMicrotasks();
     });
 
@@ -271,7 +271,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     const { container } = render(<OrganizationComponent store={state} />);
 
-    // First add another task so we have something to reorder
+    // First add another task so we have something to reorder (path past depth limit)
     await act(async () => {
       update(state, {
         $push: {
@@ -281,7 +281,7 @@ describe("Deep Nesting Operations in React Components", () => {
             completed: false,
           },
         },
-      });
+      } as any);
       await flushMicrotasks();
     });
 
@@ -293,7 +293,7 @@ describe("Deep Nesting Operations in React Components", () => {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks": reorderedTasks,
         },
-      });
+      } as any);
       await flushMicrotasks();
     });
 
@@ -309,13 +309,13 @@ describe("Deep Nesting Operations in React Components", () => {
 
     const { container } = render(<OrganizationComponent store={state} />);
 
-    // Update project progress
+    // Update project progress (path past depth limit)
     await act(async () => {
       update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.metrics.progress": 0.85,
         },
-      });
+      } as any);
       await flushMicrotasks();
     });
 
@@ -432,13 +432,13 @@ describe("Deep Nesting Operations in React Components", () => {
 
     expect(renderCount).toBe(1); // No re-render because task wasn't accessed
 
-    // Update the accessed task - should re-render
+    // Update the accessed task - should re-render (path past depth limit)
     await act(async () => {
       update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks.0.title": "Updated Task",
         },
-      });
+      } as any);
       await flushMicrotasks();
     });
 
@@ -582,13 +582,13 @@ describe("Deep Nesting Operations in React Components", () => {
       "Database Migration",
     );
 
-    // Update a deep nested task property - should only re-render affected components
+    // Update a deep nested task property — path past depth limit
     await act(async () => {
       update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks.0.completed": true,
         },
-      });
+      } as any);
       await flushMicrotasks();
     });
 

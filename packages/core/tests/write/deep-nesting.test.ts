@@ -186,12 +186,12 @@ describe("Deep Nesting Operations (Type Safe)", () => {
       update(state, { $set: { "organization.name": "NewTechCorp" } });
       expect(accessCount).toBe(1);
 
-      // Update the tracked deep property
+      // Update the tracked deep property (path past Path<T> default depth — cast to bypass)
       update(state, {
         $set: {
           "organization.departments.0.teams.0.members.0.contact.address.coordinates.lat": 40.7128,
         },
-      });
+      } as any);
       expect(deepValue()).toBe(40.7128);
       expect(accessCount).toBe(2);
     });
@@ -242,7 +242,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.tasks.0.title": "New Migration",
         },
-      });
+      } as any);
       expect(reactions).toEqual(["task-title"]);
     });
 
@@ -264,7 +264,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
             completed: false,
           },
         },
-      });
+      } as any);
 
       expect(taskCounter()).toBe(3);
     });
@@ -338,7 +338,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
             },
           },
         },
-      });
+      } as any);
 
       expect(getTeam(0, 0).members).toHaveLength(3);
       expect(getTeam(0, 0).members[2]!.name).toBe("Carol Davis");
@@ -354,7 +354,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
         $set: {
           "organization.departments.0.teams.0.members.0.projects.0.metadata.resources.tools.deployment.config.autoscaling.triggers.cpu.threshold": 85,
         },
-      });
+      } as any);
 
       const cpuThreshold = getProject(0, 0, 0, 0).metadata.resources.tools.deployment.config
         .autoscaling.triggers.cpu.threshold;
@@ -371,7 +371,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
           "organization.departments.0.metrics.performance.velocity": 5,
           "organization.departments.0.teams.0.members.0.contact.address.coordinates.lat": 0.1,
         },
-      });
+      } as any);
 
       expect(getDept(0).budget).toBe(550000);
       expect(getDept(0).metrics.performance.velocity).toBe(90);
@@ -398,7 +398,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
         $push: {
           "organization.departments.0.teams.0.members.0.skills": "GraphQL",
         },
-      });
+      } as any);
 
       expect(state.organization.name).toBe("MegaTech");
       expect(getDept(0).name).toBe("Engineering & Innovation");
@@ -452,7 +452,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
         $pull: {
           "organization.departments.0.teams.0.members": { id: "emp-2" },
         },
-      });
+      } as any);
 
       expect(getTeam(0, 0).members).toHaveLength(1);
       expect(getTeam(0, 0).members[0]!.id).toBe("emp-1");
@@ -540,7 +540,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
             },
           },
         },
-      });
+      } as any);
 
       expect((state.organization as any).compliance).toBeDefined();
       expect((state.organization as any).compliance.certifications).toEqual(["ISO-27001", "SOC-2"]);
@@ -557,7 +557,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
             external: {},
           },
         },
-      });
+      } as any);
 
       // Then add multiple levels deep
       update(state, {
@@ -575,7 +575,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
             },
           },
         },
-      });
+      } as any);
 
       const sf = (state.organization as any).integrations.external.salesforce;
       expect(sf.enabled).toBe(true);
@@ -596,7 +596,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
             status: "initializing",
           },
         },
-      });
+      } as any);
 
       const statusTracker = computed(() => {
         reactionCount++;
@@ -611,7 +611,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
         $set: {
           "organization.newSystem.status": "running",
         },
-      });
+      } as any);
 
       expect(statusTracker()).toBe("running");
       expect(reactionCount).toBe(2);
