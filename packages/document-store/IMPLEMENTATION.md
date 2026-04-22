@@ -6,6 +6,26 @@ the intent and internal mechanics behind them.
 
 ---
 
+## Goals
+
+- **Suspense-compatible, not Suspense-mandatory.** `DocumentHandle.promise`
+  is a stable, Suspense-safe reference designed for React 19 `use()`.
+  Consumers opt in at the call site with `use(handle.promise)`; consumers
+  who want inline loading branch on `handle.status`. The same hook serves
+  both. Stable promise identity across refetches (so `use()` doesn't
+  re-suspend) and a fresh promise object after an error → success
+  transition (so a Suspense boundary nested in an error boundary can
+  recover) are part of the contract.
+- **Request batching is first-class.** N `useDocument` calls within
+  `batchWindowMs` collapse into one `adapter.find(ids)` call. This is
+  what makes Suspense actually scalable — naive Suspense-throwing hooks
+  cause request waterfalls; the Finder prevents them by design.
+- **Stable reactive handles.** `store.find(type, id)` returns the same
+  object on repeat calls. Fields mutate reactively. No render-cycle
+  identity churn, no selector ceremony.
+
+---
+
 ## Architecture
 
 One public class (`DocumentStore`) composed over three internal pieces,
@@ -595,3 +615,10 @@ guidance:
   separately if needed)
 - Cancellation of in-flight fetches (e.g. on `clearMemory` or on
   `DocumentStoreProvider` unmount)
+- **Auto-suspending hooks.** `useDocument` returns a `DocumentHandle<T>`
+  and never throws to Suspense on its own. Suspense is a one-line opt-in
+  at the call site (`use(handle.promise)`), not the default. An
+  auto-suspending wrapper is a trivial 3-line hook anyone can write on
+  top of `useDocument`; going the other direction (recovering the handle
+  from an auto-suspending hook) isn't possible. B → A is cheap, A → B is
+  impossible, so the primitive is B.
