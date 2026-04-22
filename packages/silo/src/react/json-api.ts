@@ -1,6 +1,10 @@
 import type { Relationship, RelationshipArray } from "../processors/json-api";
 import type { DocumentHandle } from "../store";
 
+import { useContext } from "react";
+
+import { DocumentStoreContext } from "./context";
+
 // =============================================================================
 // WithRelationships — any JSON-API model that has a relationships map.
 // The map may freely mix belongsTo (`Relationship`) and hasMany
@@ -65,10 +69,23 @@ type HasManyTarget<Model extends WithRelationships, K extends keyof Model["relat
  * ```
  */
 export function useBelongsTo<Model extends WithRelationships, RelName extends BelongsToKeys<Model>>(
-  _model: Model | null | undefined,
-  _relationName: RelName,
+  model: Model | null | undefined,
+  relationName: RelName,
 ): DocumentHandle<BelongsToTarget<Model, RelName>> {
-  throw new Error("@supergrain/silo/react/json-api: useBelongsTo is not yet implemented");
+  const store = useContext(DocumentStoreContext);
+  if (store === null) {
+    throw new Error(
+      "@supergrain/silo/react/json-api: useBelongsTo must be used within the Provider returned by createDocumentStoreContext()",
+    );
+  }
+  const ref = model?.relationships[relationName as string]?.data as
+    | { type: string; id: string }
+    | null
+    | undefined;
+  const type = ref?.type ?? "";
+  const id = ref ? ref.id : null;
+  // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
+  return store.find(type, id) as DocumentHandle<BelongsToTarget<Model, RelName>>;
 }
 
 // =============================================================================
@@ -97,10 +114,24 @@ export function useBelongsTo<Model extends WithRelationships, RelName extends Be
  * ```
  */
 export function useHasMany<Model extends WithRelationships, RelName extends HasManyKeys<Model>>(
-  _model: Model | null | undefined,
-  _relationName: RelName,
+  model: Model | null | undefined,
+  relationName: RelName,
 ): ReadonlyArray<DocumentHandle<HasManyTarget<Model, RelName>>> {
-  throw new Error("@supergrain/silo/react/json-api: useHasMany is not yet implemented");
+  const store = useContext(DocumentStoreContext);
+  if (store === null) {
+    throw new Error(
+      "@supergrain/silo/react/json-api: useHasMany must be used within the Provider returned by createDocumentStoreContext()",
+    );
+  }
+  const refs = (model?.relationships[relationName as string]?.data ?? []) as ReadonlyArray<{
+    type: string;
+    id: string;
+  }>;
+  return refs.map(
+    (ref) =>
+      // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
+      store.find(ref.type, ref.id) as DocumentHandle<HasManyTarget<Model, RelName>>,
+  );
 }
 
 // =============================================================================
@@ -139,8 +170,8 @@ export function useHasManyIndividually<
   Model extends WithRelationships,
   RelName extends HasManyKeys<Model>,
 >(
-  _model: Model | null | undefined,
-  _relationName: RelName,
+  model: Model | null | undefined,
+  relationName: RelName,
 ): ReadonlyArray<DocumentHandle<HasManyTarget<Model, RelName>>> {
-  throw new Error("@supergrain/silo/react/json-api: useHasManyIndividually is not yet implemented");
+  return useHasMany(model, relationName);
 }

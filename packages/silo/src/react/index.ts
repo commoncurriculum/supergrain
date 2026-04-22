@@ -3,6 +3,8 @@ import type { DocumentHandle, DocumentStore, DocumentTypes, RegisteredTypes } fr
 
 import { createContext, createElement, useContext, useState, type ReactNode } from "react";
 
+import { DocumentStoreContext } from "./context";
+
 /**
  * Create an isolated document-store React binding — Context + Provider + hooks,
  * all tied to a fresh React Context that doesn't collide with any other call
@@ -33,7 +35,15 @@ export function createDocumentStoreContext<
     children: ReactNode;
   }): ReactNode {
     const [store] = useState(init);
-    return createElement(Context.Provider, { value: store }, children);
+    return createElement(
+      Context.Provider,
+      { value: store },
+      createElement(
+        DocumentStoreContext.Provider,
+        { value: store as unknown as DocumentStore<DocumentTypes, QueryTypes> },
+        children,
+      ),
+    );
   }
 
   function useDocumentStore(): DocumentStore<M, Q> {
