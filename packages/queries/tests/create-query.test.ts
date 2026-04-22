@@ -1,4 +1,4 @@
-import { DocumentStore } from "@supergrain/document-store";
+import { createDocumentStore, type DocumentStore } from "@supergrain/document-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createQuery, type QueryAdapter } from "../src";
@@ -24,7 +24,7 @@ type TypeToModel = {
 };
 
 function makeStore(): DocumentStore<TypeToModel> {
-  return new DocumentStore<TypeToModel>({
+  return createDocumentStore<TypeToModel>({
     models: {
       planbooks_for_user: { adapter: { find: () => Promise.resolve({ data: [] }) } },
       planbook: { adapter: { find: () => Promise.resolve({ data: [] }) } },
