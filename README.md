@@ -44,19 +44,54 @@ Click a todo and only that one `<li>` re-renders. Not the list. Not the siblings
 
 An entity cache with request batching. Think TanStack Query, except the fetched documents are reactive state you can also mutate directly — one cache, not two.
 
-```tsx
-import { useDocument } from "@supergrain/silo/react";
+Declare your models and adapters, build the store, then read documents anywhere in the tree:
 
+```tsx
+import { createDocumentStore, type DocumentAdapter } from "@supergrain/silo";
+import { createDocumentStoreContext } from "@supergrain/silo/react";
+
+// 1. Model + adapter. The adapter takes N ids and returns a raw response.
+interface User {
+  id: string;
+  attributes: { firstName: string; lastName: string };
+}
+type Models = { user: User };
+
+const userAdapter: DocumentAdapter = {
+  async find(ids) {
+    const qs = ids.map((id) => `id=${id}`).join("&");
+    return (await fetch(`/api/users?${qs}`)).json();
+  },
+};
+
+// 2. Context factory — one store type, one Provider, typed hooks.
+const { Provider, useDocument } = createDocumentStoreContext<Models>();
+
+// 3. Mount the Provider once. `init` runs per mount → SSR/tests are isolated.
+function App() {
+  return (
+    <Provider
+      init={() =>
+        createDocumentStore<Models>({
+          models: { user: { adapter: userAdapter } },
+        })
+      }
+    >
+      <UserList />
+    </Provider>
+  );
+}
+
+// 4. Read documents by (type, id). `useDocument` returns a stable, reactive handle.
 function UserCard({ id }: { id: string }) {
   const user = useDocument("user", id);
-
   if (user.isPending) return <Skeleton />;
   if (user.error) return <ErrorState error={user.error} />;
   return <div>{user.data?.attributes.firstName}</div>;
 }
 ```
 
-Render 50 `<UserCard>`s in one pass and they collapse into a single `adapter.find(ids)` call. The handles are reactive: a later `store.insertDocument("user", updated)` (socket push, mutation response, admin edit) re-renders just the cards whose data changed — no query keys, no `invalidateQueries`.
+Render 50 `<UserCard>`s in one pass and they collapse into a single `userAdapter.find(ids)` call — the batching is automatic, not opt-in. The handles are reactive: a later `store.insertDocument("user", updated)` (socket push, mutation response, admin edit) re-renders just the cards whose data changed — no query keys, no `invalidateQueries`.
 
 Opt into Suspense with one line at the call site (`use(user.promise)`); leave it out to keep inline loading UI. Both shapes are supported from the same hook.
 
