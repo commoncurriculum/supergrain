@@ -247,14 +247,20 @@ describe("Store", () => {
     });
 
     it("should increment version for writes even before a property is tracked", () => {
+      // The version signal's value is fed by a process-wide counter so the
+      // specific numbers aren't meaningful — only that each write produces a
+      // fresh value so `Object.is`-based signal propagation notifies
+      // subscribers.
       const state = createReactive<any>({ a: 1 });
 
-      expect(state[$VERSION]).toBe(0);
+      const v0 = state[$VERSION];
       state.b = 2;
-      expect(state[$VERSION]).toBe(1);
+      const v1 = state[$VERSION];
+      expect(v1).not.toBe(v0);
 
       update(state, { $set: { a: 3 } });
-      expect(state[$VERSION]).toBe(2);
+      const v2 = state[$VERSION];
+      expect(v2).not.toBe(v1);
     });
   });
 });

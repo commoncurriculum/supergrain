@@ -23,7 +23,7 @@ export default defineConfig({
       formats: ["es", "cjs"],
     },
     rollupOptions: {
-      external: ["react", "react-dom", "react/jsx-runtime", "@supergrain/kernel"],
+      external: ["react", "react-dom", "react/jsx-runtime", "@supergrain/kernel", "alien-signals"],
       output: [
         {
           format: "es",

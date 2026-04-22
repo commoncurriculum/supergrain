@@ -1,6 +1,15 @@
 import { $OWN_KEYS, $VERSION, unwrap, getNodes, getNodesIfExist } from "./core";
 import { profileSignalWrite } from "./profiler";
 
+// Monotonic counter feeding every counter-style signal write. The value only
+// needs to differ from the previous one so `Object.is` detects a change and
+// subscribers re-run; its specific number is not observed by anyone. Using a
+// module-local `++` avoids `signal(signal() + 1)` — the signal read there
+// would subscribe the active `currentSub` to the very signal we're about to
+// write, turning every proxy mutation inside a tracked render into a
+// self-triggering loop.
+let BUMP = 0;
+
 export function bumpVersion(target: object): void {
   let nodes = getNodesIfExist(target);
   if (!nodes) {
@@ -9,7 +18,7 @@ export function bumpVersion(target: object): void {
   }
   const v = nodes[$VERSION];
   if (v) {
-    v(v() + 1);
+    v(++BUMP);
   }
 }
 
@@ -22,7 +31,7 @@ export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, an
   const ownKeysSignal = resolvedNodes[$OWN_KEYS];
   if (ownKeysSignal) {
     profileSignalWrite();
-    ownKeysSignal(ownKeysSignal() + 1);
+    ownKeysSignal(++BUMP);
   }
 }
 
