@@ -50,7 +50,7 @@ Declare your models and adapters, build the store, then read documents anywhere 
 import { createDocumentStore, type DocumentAdapter } from "@supergrain/silo";
 import { createDocumentStoreContext } from "@supergrain/silo/react";
 
-// 1. Model + adapter. The adapter takes N ids and returns a raw response.
+// 1. Model + adapter. The adapter takes N ids and returns raw docs.
 interface User {
   id: string;
   attributes: { firstName: string; lastName: string };
@@ -59,8 +59,7 @@ type Models = { user: User };
 
 const userAdapter: DocumentAdapter = {
   async find(ids) {
-    const qs = ids.map((id) => `id=${id}`).join("&");
-    return (await fetch(`/api/users?${qs}`)).json();
+    return Promise.all(ids.map((id) => fetch(`/api/users/${id}`).then((r) => r.json())));
   },
 };
 
@@ -91,7 +90,7 @@ function UserCard({ id }: { id: string }) {
 }
 ```
 
-Render 50 `<UserCard>`s in one pass and they collapse into a single `userAdapter.find(ids)` call — the batching is automatic, not opt-in. The handles are reactive: a later `store.insertDocument("user", updated)` (socket push, mutation response, admin edit) re-renders just the cards whose data changed — no query keys, no `invalidateQueries`.
+The adapter above is **fan-out** style — N parallel `GET /:id` requests per batch, merged. If your API has a bulk endpoint, return all the docs from one `fetch` instead; silo doesn't care how you hit the wire. Either way, rendering 50 `<UserCard>`s in one pass collapses to **one** `userAdapter.find(ids)` call — batching is automatic, not opt-in. Handles are reactive: a later `store.insertDocument("user", updated)` (socket push, mutation response, admin edit) re-renders just the cards whose data changed — no query keys, no `invalidateQueries`.
 
 Opt into Suspense with one line at the call site (`use(user.promise)`); leave it out to keep inline loading UI. Both shapes are supported from the same hook.
 
