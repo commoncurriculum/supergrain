@@ -36,7 +36,8 @@
     },
     "./internal": {
       "types": "./src/internal.ts",
-      "import": "./src/internal.ts"
+      "import": "./dist/internal.js",
+      "require": "./dist/internal.cjs"
     },
     "./react": {
       "types": "./src/react/index.ts",

@@ -17,13 +17,21 @@ export default defineConfig({
     lib: {
       entry: {
         index: resolve(__dirname, "src/index.ts"),
+        internal: resolve(__dirname, "src/internal.ts"),
         "react/index": resolve(__dirname, "src/react/index.ts"),
       },
       name: "@supergrain/kernel",
       formats: ["es", "cjs"],
     },
     rollupOptions: {
-      external: ["react", "react-dom", "react/jsx-runtime", "@supergrain/kernel", "alien-signals"],
+      external: [
+        "react",
+        "react-dom",
+        "react/jsx-runtime",
+        "@supergrain/kernel",
+        "@supergrain/kernel/internal",
+        "alien-signals",
+      ],
       output: [
         {
           format: "es",

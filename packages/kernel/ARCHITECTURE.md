@@ -1,71 +1,47 @@
-# Core Architecture
+# Kernel Architecture
 
-`@supergrain/kernel` is organized around four internal layers:
+`@supergrain/kernel` is organized around a small set of internal layers:
 
 - `core.ts`
-  Shared primitives: brand/types, symbol slots, raw unwrapping, and per-property signal storage.
+  Symbols (`$NODE`, `$PROXY`, `$RAW`, `$VERSION`, `$OWN_KEYS`, `$TRACK`, `$BRAND`), brand types (`Branded<T>`, `Signal<T>`), per-target signal-node storage (`getNodes`, `getNodesIfExist`, `getNode`), and `unwrap`.
 - `read.ts`
-  Read-time behavior: proxy reads, dependency tracking, and compiled readonly views.
+  The Proxy `get` / `ownKeys` / `has` / `getOwnPropertyDescriptor` traps. Lazy signal allocation per accessed property, ownKeys subscription via `$TRACK`, array-mutator batching, and the `proxyCache` that pins one proxy per raw target for stable identity. Frozen targets pass through unwrapped.
 - `write.ts`
-  Write-time behavior: direct mutation handling, structural invalidation, and version bumps.
-- `typed.ts`
-  Schema-backed compiled views layered on top of the read primitives.
+  The Proxy `set` / `deleteProperty` traps via the standalone `setProperty` / `deleteProperty` helpers. Bumps per-property signals only when the value actually changed, plus an array-length signal and a per-target version signal for structural subscribers.
+- `store.ts`
+  The `createReactive(initial)` factory. Normalizes the root (must be a plain object or array) and wraps it via `createReactiveProxy`.
+- `batch.ts`
+  Public `batch(fn)` — wraps `startBatch`/`endBatch` in try/finally and rejects async callbacks so the depth counter never leaks.
+- `profiler.ts`
+  Opt-in counters for signal reads, skips, and writes. Zero cost when disabled.
+- `internal.ts`
+  Subpath entrypoint for sibling Supergrain packages (mill, kernel/react). Exposes the raw write helpers and the un-wrapped `startBatch`/`endBatch`/`getCurrentSub`/`setCurrentSub` primitives that have footguns the public API hides.
+- `react/`
+  The React subpath — `tracked`, `useReactive`, `createStoreContext`, `useComputed`, `useSignalEffect`, `<For>`. Reaches the kernel runtime via the public `@supergrain/kernel` and `@supergrain/kernel/internal` subpaths so the React bundle stays decoupled from kernel's internal layout.
 
-## Runtime Model
+## Runtime model
 
-`createStore()` returns a reactive proxy plus an update function.
+`createReactive(initial)` returns a reactive Proxy over the root object. Every property read inside an active subscriber (`getCurrentSub()` non-null) lazily allocates a per-property signal node and subscribes the active sub to it. Writes through the Proxy go through `setProperty`, which writes the raw value, then notifies the per-property signal (and an array-length signal for arrays, plus a per-target version signal for structural subscribers).
 
-- Proxy reads subscribe through signal nodes created on demand.
-- Proxy writes and operator writes flow through `setProperty()`.
-- Batch updates use `alien-signals` batching around `update()`.
-- The root state must be a plain object or array. Primitive roots are rejected.
+- Reads with no active subscriber short-circuit past signal allocation and return the raw value (the `getCurrentSub() == null` skip path).
+- Nested objects and arrays are wrapped on demand via `createReactiveProxy`, with `proxyCache` ensuring one proxy per raw target — handle identity stays stable across reads.
+- Frozen targets (e.g. `Object.freeze`d documents stored by `@supergrain/silo`) bypass the proxy and return as-is, preserving reference identity for inserted documents.
+- Array mutators (`push`, `pop`, `splice`, `sort`, `reverse`, `fill`, `copyWithin`, `shift`, `unshift`) are wrapped in `startBatch`/`endBatch` so their internal multi-step writes coalesce into a single notification — synchronous effects don't observe partial states.
 
-## View Contracts
+## Signal layer
 
-`createView()` and typed views are readonly facades over the same signal graph.
-
-- Their public properties are enumerable own getters so they behave like normal objects.
-- Internal signal state is stored on a hidden `_n` slot.
-- Views are frozen after creation to make the readonly contract explicit at runtime.
-- Writes must go through the store proxy or the update function, not the view facade.
-
-## Typed Store Contract
-
-Typed stores have an additional invariant:
-
-- A raw object may only be associated with one typed schema entry.
-
-Reusing the same raw object with a different typed schema throws immediately instead of silently returning a mismatched cached view.
-
-## Path Updates
-
-Operator paths are centralized in `path.ts`.
-
-- Empty paths are rejected.
-- Empty path segments such as `user..name` are rejected.
-- Path traversal and parent creation are shared across operators to keep mutation semantics consistent.
-- Unstructured stores use permissive string-path updates.
-- Typed stores use stricter path/value typing on their returned update function.
-- Array operators require an existing array target and throw for mismatched paths.
-- Numeric operators require an existing numeric target when the path already exists.
-- `$rename` refuses to overwrite an existing destination path implicitly.
+Signal propagation is delegated to [`alien-signals`](https://github.com/stackblitz/alien-signals). The `signal` / `computed` / `effect` primitives are re-exported from `@supergrain/kernel` for direct use; the lower-level `startBatch` / `endBatch` / `getCurrentSub` / `setCurrentSub` primitives are deliberately not re-exported from the package root because they mutate global state and leak on exception. Use `batch(fn)` instead. Sibling Supergrain packages that need the raw primitives (e.g. for tracking-context manipulation in `tracked()`) import from `@supergrain/kernel/internal`.
 
 ## Public API
 
-The package root intentionally exports the supported consumer surface:
+The `@supergrain/kernel` root exports:
 
-- `createStore`
-- `createView`
-- `unwrap`
-- `$BRAND`
-- update operator types/functions
-- `alien-signals` primitives re-exported for convenience
+- `createReactive`, `unwrap`, `$BRAND`, `Signal`, `Branded`
+- `signal`, `computed`, `effect` (re-exported from `alien-signals`)
+- `batch`
+- `enableProfiling`, `disableProfiling`, `resetProfiler`, `getProfile`, `Profile`
+- `getNodesIfExist`, `$TRACK` (used by `tracked()` and other React-side machinery)
 
-Low-level mutation helpers and internal symbol slots remain internal so the runtime can evolve without pinning those details as public API.
+The `@supergrain/kernel/react` subpath exports the React bindings; see the package README.
 
-## Internal Entry Point
-
-Repo-local benchmarks and tests that need internals import from `src/internal.ts`.
-
-- This keeps internal access explicit.
-- It avoids making internal runtime details part of the package-root contract.
+The `@supergrain/kernel/internal` subpath is published but documented as not part of the SemVer contract — it exists to let sibling Supergrain packages reach internal write helpers without re-implementing them.
