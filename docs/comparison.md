@@ -58,7 +58,7 @@ Source refs: [`packages/core/src/read.ts`](https://github.com/commoncurriculum/s
 - **Reactive primitive.** Signal propagation uses [alien-signals](https://github.com/stackblitz/alien-signals), the same primitive Vue Vapor is built on. Push-based updates, topological ordering, glitch-free `computed` chains — no manual scheduling.
 - **Fine-grained tracking.** `tracked()` wraps the component's render in an alien-signals `effect()` scope. Proxy reads during render auto-subscribe that scope to exactly the signals they touched. When a signal fires, only the components that actually read it re-render — no selectors, no universal fan-out.
 - **React bridge.** `tracked()` uses `useReducer` + alien-signals `effect()` — not `useSyncExternalStore`. The effect scope captures which signals the component read; when one fires, the reducer forces a re-render of just that component.
-- **Mutation.** In-place: `store.user.profile.name = "Bob"` fires exactly one signal. No spreading, no updater functions, no snapshot layer. `batch()` groups multiple mutations into a single notification cycle.
+- **Mutation.** In-place: `store.user.profile.name = "Bob"` updates the affected property with fine-grained notifications rather than invalidating everything that depends on the store. Internally, writes may also bump the target object's version / structural signal. No spreading, no updater functions, no snapshot layer. `batch()` groups multiple mutations into a single notification cycle.
 
 ### Footguns / Downsides
 
