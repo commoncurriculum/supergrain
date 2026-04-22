@@ -102,9 +102,20 @@ export interface JsonApiDocument<
  * ```
  */
 export function jsonApiProcessor<M extends DocumentTypes>(
-  _raw: unknown,
-  _store: DocumentStore<M>,
+  raw: unknown,
+  store: DocumentStore<M>,
   _type: keyof M & string,
 ): void {
-  throw new Error("@supergrain/silo: jsonApiProcessor is not yet implemented");
+  const envelope = raw as {
+    data?: ReadonlyArray<{ id: string; type: string }>;
+    included?: ReadonlyArray<{ id: string; type: string }>;
+  };
+  const data = envelope.data ?? [];
+  const included = envelope.included ?? [];
+  for (const doc of data) {
+    store.insertDocument(doc.type as keyof M & string, doc as unknown as M[keyof M & string]);
+  }
+  for (const doc of included) {
+    store.insertDocument(doc.type as keyof M & string, doc as unknown as M[keyof M & string]);
+  }
 }

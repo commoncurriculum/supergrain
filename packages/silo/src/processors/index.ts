@@ -30,11 +30,12 @@ import type { DocumentStore, DocumentTypes } from "../store";
  * implementation of the JSON-API envelope.
  */
 export function defaultProcessor<M extends DocumentTypes>(
-  _raw: unknown,
-  _store: DocumentStore<M>,
-  _type: keyof M & string,
+  raw: unknown,
+  store: DocumentStore<M>,
+  type: keyof M & string,
 ): void {
-  throw new Error("@supergrain/silo: defaultProcessor is not yet implemented");
+  const docs = Array.isArray(raw) ? raw : [raw];
+  for (const doc of docs) store.insertDocument(type, doc as M[keyof M & string]);
 }
 
 // =============================================================================
@@ -69,10 +70,17 @@ export function defaultProcessor<M extends DocumentTypes>(
  */
 // oxlint-disable-next-line max-params
 export function defaultQueryProcessor<M extends DocumentTypes, Q extends QueryTypes>(
-  _raw: unknown,
-  _store: DocumentStore<M, Q>,
-  _type: keyof Q & string,
-  _paramsList: ReadonlyArray<unknown>,
+  raw: unknown,
+  store: DocumentStore<M, Q>,
+  type: keyof Q & string,
+  paramsList: ReadonlyArray<unknown>,
 ): void {
-  throw new Error("@supergrain/silo: defaultQueryProcessor is not yet implemented");
+  const results = raw as ReadonlyArray<unknown>;
+  for (let i = 0; i < paramsList.length; i++) {
+    store.insertQueryResult(
+      type,
+      paramsList[i] as Q[keyof Q & string]["params"],
+      results[i] as Q[keyof Q & string]["result"],
+    );
+  }
 }
