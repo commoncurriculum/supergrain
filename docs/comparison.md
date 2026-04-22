@@ -16,7 +16,7 @@ Supergrain isn't the only fine-grained reactive library for React. This page put
 
 **Signal-based libraries** — automatic fine-grained reactivity driven by a reactive primitive (signal, observable, atom, or proxy-tracked property). Supergrain belongs in this group.
 
-- [MobX](#mobx) — proxy + observables + `observer()` HOC
+- [MobX](#mobx) — observables + reactions + `observer()` HOC
 - [Preact Signals](#preact-signals) — `signal(value)` containers
 - [Jotai](#jotai) — atoms
 - [Valtio](#valtio) — proxy + snapshots
@@ -58,7 +58,7 @@ Source refs: [`packages/core/src/read.ts`](https://github.com/commoncurriculum/s
 - **Reactive primitive.** Signal propagation uses [alien-signals](https://github.com/stackblitz/alien-signals), the same primitive Vue Vapor is built on. Push-based updates, topological ordering, glitch-free `computed` chains — no manual scheduling.
 - **Fine-grained tracking.** `tracked()` wraps the component's render in an alien-signals `effect()` scope. Proxy reads during render auto-subscribe that scope to exactly the signals they touched. When a signal fires, only the components that actually read it re-render — no selectors, no universal fan-out.
 - **React bridge.** `tracked()` uses `useReducer` + alien-signals `effect()` — not `useSyncExternalStore`. The effect scope captures which signals the component read; when one fires, the reducer forces a re-render of just that component.
-- **Mutation.** In-place: `store.user.name = "Bob"` fires exactly one signal. No spreading, no updater functions, no snapshot layer. `batch()` groups multiple mutations into a single notification cycle.
+- **Mutation.** In-place: `store.user.profile.name = "Bob"` fires exactly one signal. No spreading, no updater functions, no snapshot layer. `batch()` groups multiple mutations into a single notification cycle.
 
 ## useState
 
@@ -202,6 +202,8 @@ Source refs: [`docs/observable-state.md`](https://github.com/mobxjs/mobx/blob/ma
 
 ```ts
 import { signal } from "@preact/signals-react";
+// With the Babel transform enabled (recommended). Without it,
+// call `useSignals()` from `@preact/signals-react/runtime`.
 
 const count = signal(0);
 const user = signal({ profile: { name: "John" } });
@@ -286,7 +288,7 @@ Source refs: [`README.md`](https://github.com/pmndrs/valtio/blob/main/README.md)
 - **Reactive primitive.** Property-access tracking via the `proxy-compare` library. `useSnapshot` creates an immutable snapshot on each update and wraps it in a tracking proxy to detect which properties were read during render.
 - **Fine-grained tracking.** The tracking proxy records every property accessed during render; the component re-renders when any of those properties changes in a future snapshot.
 - **React bridge.** `useSnapshot` subscribes via `useSyncExternalStore`. Supergrain skips the snapshot layer entirely — reads go through the live proxy, tracked by alien-signals.
-- **Mutation.** Direct mutation allowed: `state.count = 5`, `state.user.name = "Bob"`. The React path rebuilds snapshots and re-runs property-access comparison on updates. Supergrain's writes are in-place and `batch()` groups them into a single notification cycle.
+- **Mutation.** Direct mutation allowed: `state.count = 5`, `state.user.profile.name = "Bob"`. The React path rebuilds snapshots and re-runs property-access comparison on updates. Supergrain's writes are in-place and `batch()` groups them into a single notification cycle.
 
 ## TanStack Store
 
@@ -327,7 +329,7 @@ Source refs: [`packages/store/src/alien.ts`](https://github.com/TanStack/store/b
 - **Reactive primitive.** Same alien-signals graph — `link(dep, sub, version)` dependency tracking, `ReactiveFlags` bitfield, `propagate` / `checkDirty` / `shallowPropagate` pipeline.
 - **Fine-grained tracking.** Selector-driven. Every `setState` notifies every subscriber; `useSelector` runs its selector and uses the `compare` option (default `===`) to bail out of the re-render. Supergrain's `tracked()` wraps render in an alien-signals `effect()` scope, so only signals the component actually read trigger a re-render — no universal fan-out.
 - **React bridge.** `useSyncExternalStoreWithSelector` from `use-sync-external-store/shim/with-selector`. Supergrain uses `useReducer` + alien-signals `effect()` — it benchmarked `useSyncExternalStore` for per-item subscriptions during its optimization pass and rejected it at 74% slower for row-level work. TanStack's single-atom + selector model sidesteps that cost because there's only one `useSyncExternalStore` subscription per `useSelector` call, not per item.
-- **Mutation.** Immutable updater: `store.setState((prev) => ({ ...prev, count: 5 }))`. Deep nested changes require spreading every layer. Supergrain's writes are in-place: `store.user.name = "Bob"` fires exactly one signal.
+- **Mutation.** Immutable updater: `store.setState((prev) => ({ ...prev, count: 5 }))`. Deep nested changes require spreading every layer. Supergrain's writes are in-place: `store.user.profile.name = "Bob"` fires exactly one signal.
 - **Derived / async.** First-class computed atoms (`createAtom((prev) => fn(prev))`) and async atoms (`createAsyncAtom` returns a discriminated-union state atom — `{ status: 'pending' }`, `{ status: 'done', data }`, or `{ status: 'error', error }`). Supergrain has `useComputed` for derived values; async is user-land (drive state into the store from an effect).
 
 Full research notes in `notes/comparisons/tanstack-store.md`.
