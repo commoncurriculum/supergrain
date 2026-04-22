@@ -74,16 +74,12 @@ const userAdapter: DocumentAdapter = {
 };
 const postsAdapter: QueryAdapter<Queries["posts"]["params"]> = {
   async find(paramsList) {
-    return Promise.all(
-      paramsList.map((p) => {
-        const qs = new URLSearchParams({
-          authorId: p.authorId,
-          status: p.status,
-          limit: String(p.limit),
-        });
-        return fetch(`/api/posts?${qs}`).then((r) => r.json());
-      }),
-    );
+    const res = await fetch("/api/posts/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ queries: paramsList }),
+    });
+    return res.json(); // one array of results, aligned 1:1 with paramsList
   },
 };
 
@@ -127,7 +123,7 @@ function AuthorPosts({ authorId }: { authorId: string }) {
 }
 ```
 
-The `userAdapter` above is **fan-out** style — N parallel `GET /:id` requests per batch, merged. Swap in a bulk endpoint (one `fetch` returning all ids) and nothing else changes. Either way, rendering 50 `<UserCard>`s in one pass collapses to **one** `userAdapter.find(ids)` call — batching is automatic, not opt-in.
+Two adapter styles shown above: `userAdapter` is **fan-out** — N parallel `GET /:id` requests per batch, merged. `postsAdapter` is **bulk** — one POST with all params in the body, one response with all results. Either shape works; silo doesn't care how you hit the wire, only that you eventually return something the processor can read. Rendering 50 `<UserCard>`s in one pass still collapses to **one** `userAdapter.find(ids)` call — batching is automatic, not opt-in.
 
 Query params are stable-stringified so `{ authorId, status, limit }` and `{ limit, authorId, status }` hit the same cache slot. Query processors can also call `store.insertDocument(...)` to normalize nested entities into the documents cache — the posts query can insert each `Post` as a document, so a sibling `useDocument("post", id)` elsewhere in the tree reads the same data without a refetch.
 
