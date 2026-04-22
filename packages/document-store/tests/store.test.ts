@@ -1,7 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
-import { type DocumentStore } from "../src";
 import {
   API_BASE,
   clearRequests,
@@ -10,7 +9,6 @@ import {
   makeUser,
   requests,
   server,
-  type TypeToModel,
 } from "./example-app";
 
 // =============================================================================
@@ -26,7 +24,7 @@ afterAll(() => server.close());
 // consumer code.
 // =============================================================================
 
-let store: DocumentStore<TypeToModel>;
+let store: ReturnType<typeof initStore>;
 
 beforeEach(() => {
   vi.useFakeTimers();

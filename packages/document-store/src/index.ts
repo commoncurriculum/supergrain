@@ -19,6 +19,16 @@ export type {
 
 export type { DocumentTypes, TypeRegistry, RegisteredTypes } from "./memory";
 
+export type {
+  QueriesHandle,
+  QueryAdapter,
+  QueryConfig,
+  QueryHandle,
+  QueryProcessor,
+  QueryTypes,
+  RegisteredQueries,
+} from "./queries";
+
 // Finder is intentionally not exported — it's an internal implementation
 // detail of DocumentStore (batching / dedup / chunking). Consumers configure
 // it through `DocumentStoreConfig.batchWindowMs` and `DocumentStoreConfig.batchSize`.

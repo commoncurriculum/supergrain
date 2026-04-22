@@ -1,4 +1,5 @@
 import type { DocumentTypes } from "./memory";
+import type { QueriesHandle, QueryConfig, QueryHandle, QueryTypes } from "./queries";
 
 // =============================================================================
 // Status
@@ -195,20 +196,35 @@ export interface ModelConfig<M extends DocumentTypes> {
 // DocumentStore config
 // =============================================================================
 
-export interface DocumentStoreConfig<M extends DocumentTypes> {
+export interface DocumentStoreConfig<
+  M extends DocumentTypes,
+  Q extends QueryTypes = Record<string, never>,
+> {
   /**
-   * Per-type adapter + optional processor wiring. The map's keys are the
-   * types the store can serve; values supply the transport + parser.
+   * Per-type adapter + optional processor wiring for documents (entities
+   * keyed by `id: string`). The map's keys are the types the store can
+   * serve; values supply the transport + parser.
    */
   models: { [K in keyof M]: ModelConfig<M> };
   /**
-   * Batch-window duration in ms. `find(type, id)` calls within this window
-   * are collapsed into one `adapter.find(ids)` invocation. Default: 15.
+   * Per-type adapter + optional processor wiring for queries (results
+   * keyed by structured params objects). Optional — omit if your app
+   * only needs document lookups. Queries share the store's memory and
+   * finder with documents: a query processor can call
+   * `store.insertDocument(...)` to normalize nested entities into the
+   * documents cache.
+   */
+  queries?: { [K in keyof Q & string]: QueryConfig<M, Q, K> };
+  /**
+   * Batch-window duration in ms. `find(type, id)` and `findQuery(type, params)`
+   * calls within this window collapse into their respective
+   * `adapter.find(...)` invocations. Default: 15.
    */
   batchWindowMs?: number;
   /**
-   * Max ids per `adapter.find` call. Larger batches are chunked. Default: 60
-   * (fits typical backend `IN`-clause / query-param limits; guards URL length).
+   * Max keys per `adapter.find` call. Applies to both document adapters
+   * (ids) and query adapters (params). Larger batches are chunked.
+   * Default: 60.
    */
   batchSize?: number;
 }
@@ -221,12 +237,19 @@ export interface DocumentStoreConfig<M extends DocumentTypes> {
  * Reactive document store.
  *
  * One-step wiring: the constructor takes per-model adapter/processor config
- * plus optional batching knobs and owns all the plumbing internally (a
- * `MemoryEngine` for reactive caching, an internal `Finder` for batched
- * fetching). No separate Finder construction, no two-step attach.
+ * (plus optional per-query config and batching knobs) and owns all the
+ * plumbing internally (a `MemoryEngine` for reactive caching, an internal
+ * `Finder` for batched fetching). No separate Finder construction, no
+ * two-step attach.
+ *
+ * The second generic `Q` is optional (defaults to an empty query map) and
+ * lets consumers declare query-keyed models alongside document-keyed ones.
+ * Consumers with only documents pass one generic (`M`); the query surface
+ * is additive and adds no cost if unused.
  *
  * @example
  * ```ts
+ * // Documents only (common case)
  * const store = new DocumentStore<TypeToModel>({
  *   models: {
  *     user: { adapter: userAdapter },
@@ -235,12 +258,22 @@ export interface DocumentStoreConfig<M extends DocumentTypes> {
  *   batchWindowMs: 15,
  *   batchSize: 60,
  * });
+ *
+ * // Documents + queries
+ * const mixed = new DocumentStore<TypeToModel, TypeToQuery>({
+ *   models: { user: { adapter: userAdapter } },
+ *   queries: { dashboard: { adapter: dashboardAdapter } },
+ * });
  * ```
  */
-export class DocumentStore<M extends DocumentTypes> {
-  constructor(_config: DocumentStoreConfig<M>) {
+export class DocumentStore<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>> {
+  constructor(_config: DocumentStoreConfig<M, Q>) {
     throw new Error("@supergrain/document-store: DocumentStore constructor is not yet implemented");
   }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Documents — entities keyed by `id: string`
+  // ───────────────────────────────────────────────────────────────────────────
 
   /**
    * Find a document. Checks memory first, falls back to the internal finder
@@ -254,8 +287,8 @@ export class DocumentStore<M extends DocumentTypes> {
   }
 
   /**
-   * Direct memory lookup. No fetch. Returns the document or undefined.
-   * Reactive — reads inside a tracked() scope subscribe to changes.
+   * Direct memory lookup for a document. No fetch. Returns the document or
+   * undefined. Reactive — reads inside a tracked() scope subscribe to changes.
    */
   findInMemory<K extends keyof M & string>(_type: K, _id: string): M[K] | undefined {
     throw new Error(
@@ -274,8 +307,66 @@ export class DocumentStore<M extends DocumentTypes> {
     );
   }
 
-  /** Clear all documents from memory. */
+  // ───────────────────────────────────────────────────────────────────────────
+  // Queries — results keyed by structured params
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Find a query result. Checks memory first (keyed by the stringified
+   * params), falls back to the internal finder. Returns a reactive handle.
+   *
+   * - `null`/`undefined` params → idle handle, no fetch attempted
+   * - Deep-equal params always return the same handle object (stable
+   *   identity across `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }`)
+   */
+  findQuery<K extends keyof Q & string>(
+    _type: K,
+    _params: Q[K]["params"] | null | undefined,
+  ): QueryHandle<Q[K]["result"]> {
+    throw new Error("@supergrain/document-store: DocumentStore.findQuery is not yet implemented");
+  }
+
+  /**
+   * Direct memory lookup for a query result. No fetch. Returns the result
+   * or undefined. Reactive — reads inside a tracked() scope subscribe to
+   * changes.
+   */
+  findQueryInMemory<K extends keyof Q & string>(
+    _type: K,
+    _params: Q[K]["params"],
+  ): Q[K]["result"] | undefined {
+    throw new Error(
+      "@supergrain/document-store: DocumentStore.findQueryInMemory is not yet implemented",
+    );
+  }
+
+  /**
+   * Insert or update a query result under the given type + params. Keyed by
+   * `(type, stableStringify(params))`. Fully reactive — any handles or
+   * tracked scopes reading this key will update. Deep-equal params hit the
+   * same slot.
+   */
+  insertQueryResult<K extends keyof Q & string>(
+    _type: K,
+    _params: Q[K]["params"],
+    _result: Q[K]["result"],
+  ): void {
+    throw new Error(
+      "@supergrain/document-store: DocumentStore.insertQueryResult is not yet implemented",
+    );
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Shared
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** Clear all documents and query results from memory. */
   clearMemory(): void {
     throw new Error("@supergrain/document-store: DocumentStore.clearMemory is not yet implemented");
   }
 }
+
+// Re-export query handle types so `store.findQuery(...)` call sites don't
+// need a second import path. QueryHandle / QueriesHandle are defined in
+// ./queries; this pass-through keeps the public surface single-origin.
+export type { QueriesHandle, QueryHandle };

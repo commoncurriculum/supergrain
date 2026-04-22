@@ -1,4 +1,5 @@
 import type { DocumentTypes } from "../memory";
+import type { QueryTypes } from "../queries";
 import type { DocumentStore } from "../store";
 
 // =============================================================================
@@ -35,4 +36,44 @@ export function defaultProcessor<M extends DocumentTypes>(
   _type: keyof M & string,
 ): void {
   throw new Error("@supergrain/document-store: defaultProcessor is not yet implemented");
+}
+
+// =============================================================================
+// defaultQueryProcessor — pair results with input params by position
+// =============================================================================
+
+/**
+ * The default processor used for queries when `QueryConfig.processor` is
+ * omitted.
+ *
+ * Assumes the adapter returns an array of results aligned 1:1 with the
+ * input params (`paramsList[i]` produced `results[i]`). The processor
+ * pairs them by position and calls
+ * `store.insertQueryResult(type, paramsList[i], results[i])` for each.
+ *
+ * ```ts
+ * // paramsList: [{ workspaceId: 7 }, { workspaceId: 8 }]
+ * // adapter returns: [dashboardForWs7, dashboardForWs8]
+ * // → insertQueryResult("dashboard", { workspaceId: 7 }, dashboardForWs7)
+ * // → insertQueryResult("dashboard", { workspaceId: 8 }, dashboardForWs8)
+ * ```
+ *
+ * This default does NOT normalize nested entities. If your query response
+ * embeds documents that should populate the documents cache (so
+ * `useDocument(type, id)` elsewhere benefits), write a custom processor
+ * that calls `store.insertDocument(...)` for each nested entity in
+ * addition to `store.insertQueryResult(...)` for the wrapper result.
+ *
+ * If the adapter returns a different shape (length mismatch, envelope,
+ * sideloads), write a custom processor — this default only handles the
+ * position-paired case.
+ */
+// oxlint-disable-next-line max-params
+export function defaultQueryProcessor<M extends DocumentTypes, Q extends QueryTypes>(
+  _raw: unknown,
+  _store: DocumentStore<M, Q>,
+  _type: keyof Q & string,
+  _paramsList: ReadonlyArray<unknown>,
+): void {
+  throw new Error("@supergrain/document-store: defaultQueryProcessor is not yet implemented");
 }

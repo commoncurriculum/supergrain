@@ -1,14 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { type DocumentStore } from "../src";
-import {
-  clearRequests,
-  flushCoalescer,
-  initStore,
-  requests,
-  server,
-  type TypeToModel,
-} from "./example-app";
+import { clearRequests, flushCoalescer, initStore, requests, server } from "./example-app";
 
 // =============================================================================
 // Adapter tests.
@@ -27,7 +19,7 @@ import {
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterAll(() => server.close());
 
-let store: DocumentStore<TypeToModel>;
+let store: ReturnType<typeof initStore>;
 
 beforeEach(() => {
   vi.useFakeTimers();

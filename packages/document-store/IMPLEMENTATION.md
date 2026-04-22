@@ -545,7 +545,8 @@ non-1:1 test files that test integration / adapter behavior):
   (per-key subscribe, single batched re-run on clear)
 - `src/processors/index.ts` ↔ `tests/processors/index.test.ts` —
   `defaultProcessor` (single doc, array, uses the `type` argument, no
-  envelope unwrap, no type-on-doc assumption)
+  envelope unwrap, no type-on-doc assumption) and `defaultQueryProcessor`
+  (pairs results with `paramsList` by position, single-entry batch, returns void)
 - `src/processors/json-api.ts` ↔ `tests/processors/json-api.test.ts` —
   `jsonApiProcessor` (`{data,included}` unwrap, sideload, empty data,
   mixed types, reads type from envelope, ignores the `type` argument)
@@ -561,13 +562,21 @@ non-1:1 test files that test integration / adapter behavior):
   handle identity, reactive updates via external `insertDocument`,
   last-write-wins fetch vs mid-flight local insert, error-recovery
   creates a new promise, `clearMemory` handle transitions
+- `src/queries.ts` (types only) ↔ `tests/queries.test.ts` — query
+  surface on `DocumentStore`: `findQuery` (memory-first, stable-identity
+  for deep-equal params, network on miss, ERROR on adapter rejection),
+  `insertQueryResult` + `findQueryInMemory` (slot write, deep-equal
+  slot, reactive updates), finder pipeline with raw object params
+  (dedup by deep-equal, batching, raw params handed to adapter),
+  `clearMemory` drops both surfaces, query processors can call
+  `insertDocument` to normalize nested entities into the documents cache
 - `tests/adapters.test.ts` (no 1:1 source file) — verifies that
   `example-app.ts`'s bulk adapter (`user`) and fan-out adapter (`post`)
   produce the network request shapes they claim. MSW-based. Proves the
   pipeline is agnostic to adapter implementation.
 - `src/react/index.ts` ↔ `tests/react/index.test.tsx` —
-  DocumentStoreProvider, useDocumentStore, useDocument, useDocuments
-  (loading/success/idle/error), factory isolation
+  DocumentStoreProvider, useDocumentStore, useDocument, useDocuments,
+  useQuery, useQueries (loading/success/idle/error), factory isolation
 - `src/react/json-api.ts` ↔ `tests/react/json-api.test.tsx` —
   `useBelongsTo` (loading → loaded, memory-first, reactive re-render
   on external insert, null-data idle), `useHasMany` (aggregate
@@ -592,13 +601,176 @@ are the source of truth for edge cases this doc doesn't cover.
 The store is built on `@supergrain/core` signals. Implementation
 guidance:
 
-- `MemoryEngine` holds a `Map<string, Signal<T | undefined>>` keyed
-  by `"<type>:<id>"`. `insert(type, doc)` writes. `find(type, id)` reads.
+- Internally, memory is one `Map<string, Signal<T | undefined>>` with
+  namespaced keys: `"model:<type>:<id>"` for documents,
+  `"query:<type>:<stableStringify(params)>"` for queries (see the
+  Queries section). The `model:` / `query:` prefix prevents collisions
+  when a document type and a query type share a name. `MemoryEngine`'s
+  public surface (`insert(type, doc)` / `find(type, id)`) operates on
+  the document form; query reads/writes go through
+  `DocumentStore.findQuery` / `insertQueryResult`.
 - Each `DocumentHandle` internally subscribes to the per-document
   signal for its `(type, id)` via a computed `data` field, and
   propagates changes into its dependent reactive fields.
 - `clearMemory` resets all document signals to `undefined` in a
   single batch so dependent scopes re-run once, not N times.
+
+---
+
+## Queries
+
+A second, additive surface on the same `DocumentStore`. Queries are
+results keyed by **structured params objects** instead of `id: string`.
+Use them for endpoints whose response is meaningful only in the context
+of its query params — dashboards, search results, filtered lists,
+pagination cursors.
+
+The config surface forks at the top level: `models` for document-keyed
+entities, `queries` for params-keyed results. One store, one memory,
+one finder; two parallel method families.
+
+```ts
+type TypeToModel = { user: User; post: Post };
+type TypeToQuery = {
+  dashboard: { params: { workspaceId: number }; result: Dashboard };
+};
+
+const store = new DocumentStore<TypeToModel, TypeToQuery>({
+  models: {
+    user: { adapter: userAdapter },
+    post: { adapter: postAdapter },
+  },
+  queries: {
+    dashboard: { adapter: dashboardAdapter },
+  },
+  batchWindowMs: 15,
+  batchSize: 60,
+});
+```
+
+### Second generic, defaults empty
+
+`DocumentStore<M, Q = Record<string, never>>`. Consumers with only
+documents pass one generic and see no query surface; the query methods
+still exist but constrained to the empty map so `findQuery(...)` is a
+type error. The documents API is fully backward-compatible — adding
+queries to an existing store is a local change.
+
+### Method parallelism
+
+Documents and queries mirror each other method-for-method:
+
+| Documents                   | Queries                                   |
+| --------------------------- | ----------------------------------------- |
+| `find(type, id)`            | `findQuery(type, params)`                 |
+| `findInMemory(type, id)`    | `findQueryInMemory(type, params)`         |
+| `insertDocument(type, doc)` | `insertQueryResult(type, params, result)` |
+
+Same status/promise/data/reactive semantics. The return types
+(`DocumentHandle<T>` vs. `QueryHandle<T>`) are structurally identical
+— the alias makes call-site types read clearly.
+
+### Cache keying
+
+Memory is one `Map<string, Signal<T>>`, with namespaced keys so
+documents and queries can't collide:
+
+- `"model:user:42"` — document slot
+- `"query:dashboard:<stableStringify({workspaceId:7,filters:{active:true}})>"` — query slot
+
+Stable stringification sorts object keys recursively before
+serializing, so `{a:1,b:2}` and `{b:2,a:1}` hit the same slot.
+Stringification is **internal only** — adapters and processors see the
+raw params objects.
+
+Supported param types: JSON-serializable values (primitives, plain
+objects, arrays). Not supported: Date, Map, Set, class instances,
+functions, undefined. Consumers stringify these themselves before
+passing.
+
+### Shared finder
+
+One finder handles both documents and queries. The pending queue is
+unified: `find(type, id)` and `findQuery(type, params)` calls within
+`batchWindowMs` collapse into their respective `adapter.find(...)`
+invocations in the same drain cycle. Dedup is per-slot (namespace +
+stringified key), so a document `(user, "42")` and a query
+`(dashboard, "42")` never conflate.
+
+### QueryAdapter
+
+```ts
+interface QueryAdapter<Params> {
+  find(paramsList: Array<Params>): Promise<unknown>;
+}
+```
+
+Structurally identical to `DocumentAdapter` but generic over the params
+shape. Same bulk-vs-fan-out agnosticism; the library doesn't inspect
+the response.
+
+### QueryProcessor + `defaultQueryProcessor`
+
+```ts
+type QueryProcessor<M, Q, Type extends keyof Q & string> = (
+  raw: unknown,
+  store: DocumentStore<M, Q>,
+  type: Type,
+  paramsList: ReadonlyArray<Q[Type]["params"]>,
+) => void;
+```
+
+Same shape as `ResponseProcessor` plus a fourth `paramsList` argument
+— the chunk's input params, in the same order the adapter received
+them. Processors call `store.insertQueryResult(type, paramsList[i], result)`
+to cache results at the right slot.
+
+Query processors can also call `store.insertDocument(...)` to normalize
+nested entities into the documents cache. This is the key
+cross-surface hook: a `usersByRole` query that fetches users can
+insert each user as a document, giving `useDocument("user", id)` reads
+elsewhere in the app free cache hits.
+
+`defaultQueryProcessor` handles the simplest case — adapter returns an
+array of results aligned 1:1 with `paramsList`; the processor pairs
+them by position:
+
+```ts
+function defaultQueryProcessor(raw, store, type, paramsList) {
+  const results = raw as Array<unknown>;
+  for (let i = 0; i < paramsList.length; i++) {
+    store.insertQueryResult(type, paramsList[i], results[i]);
+  }
+}
+```
+
+No normalization (nested entities stay in the query result only). For
+normalization, write a custom processor.
+
+### React hooks
+
+`useQuery(type, params)` and `useQueries(type, paramsList)` mirror
+`useDocument` / `useDocuments`. Same Suspense opt-in (`use(handle.promise)`),
+same reactive handle identity, same null-params → idle handle semantics.
+
+### Handle lifecycle
+
+Identical to `DocumentHandle` — `IDLE → PENDING → SUCCESS/ERROR`. The
+state machine, promise stability, error-recovery fresh-promise semantics
+all apply unchanged.
+
+### When to use which
+
+- **Documents** when the data has identity across queries: entities
+  that can be looked up by id and appear in multiple views. User #42
+  is the same user whether you fetched them directly or they came back
+  in a list.
+- **Queries** when the data only makes sense with its params: dashboards,
+  search results, paginated cursors, filtered lists. The params are
+  the identity.
+
+When in doubt, ask: "Would I ever want `useDocument(type, id)` to share
+memory with this?" If yes → document. If no → query.
 
 ---
 

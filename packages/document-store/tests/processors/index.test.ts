@@ -2,8 +2,15 @@ import type { DocumentStore } from "../../src";
 
 import { describe, it, expect } from "vitest";
 
-import { defaultProcessor } from "../../src/processors";
-import { makePost, makeUser, type TypeToModel } from "../example-app";
+import { defaultProcessor, defaultQueryProcessor } from "../../src/processors";
+import {
+  makeDashboard,
+  makePost,
+  makeUser,
+  type DashboardParams,
+  type TypeToModel,
+  type TypeToQuery,
+} from "../example-app";
 
 // =============================================================================
 // Fake store — captures inserts as (type, doc) tuples. Tests assert on the
@@ -23,6 +30,22 @@ function makeFakeStore() {
       inserts.push({ type, doc } as Insert);
     },
   } as unknown as DocumentStore<TypeToModel>;
+  return { store: fake, inserts };
+}
+
+interface QueryInsert {
+  type: string;
+  params: unknown;
+  result: unknown;
+}
+
+function makeFakeQueryStore() {
+  const inserts: Array<QueryInsert> = [];
+  const fake = {
+    insertQueryResult(type: string, params: unknown, result: unknown) {
+      inserts.push({ type, params, result });
+    },
+  } as unknown as DocumentStore<TypeToModel, TypeToQuery>;
   return { store: fake, inserts };
 }
 
@@ -88,5 +111,70 @@ describe("defaultProcessor", () => {
     expect(inserts).toHaveLength(2);
     expect(inserts[0].type).toBe("user");
     expect(inserts[1].type).toBe("user");
+  });
+});
+
+// =============================================================================
+// defaultQueryProcessor
+//
+// Used when `QueryConfig.processor` is omitted. The adapter is expected to
+// return an array of results aligned 1:1 with `paramsList`; the processor
+// pairs them by position and inserts under the query's type slot.
+// =============================================================================
+
+describe("defaultQueryProcessor", () => {
+  it("pairs results with paramsList by position", () => {
+    const { store, inserts } = makeFakeQueryStore();
+    const paramsList: Array<DashboardParams> = [
+      { workspaceId: 7, filters: { active: true } },
+      { workspaceId: 8, filters: { active: false } },
+    ];
+    const results = [
+      makeDashboard({ totalActiveUsers: 70 }),
+      makeDashboard({ totalActiveUsers: 80 }),
+    ];
+
+    defaultQueryProcessor(results, store, "dashboard", paramsList);
+
+    expect(inserts).toEqual([
+      { type: "dashboard", params: paramsList[0], result: results[0] },
+      { type: "dashboard", params: paramsList[1], result: results[1] },
+    ]);
+  });
+
+  it("hands each params object through by reference — no stringification by the processor", () => {
+    // The library stable-stringifies for cache lookup internally; the
+    // processor itself never stringifies. It must pass the original
+    // params object reference through to insertQueryResult.
+    const { store, inserts } = makeFakeQueryStore();
+    const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
+    const result = makeDashboard({ totalActiveUsers: 70 });
+
+    defaultQueryProcessor([result], store, "dashboard", [params]);
+
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].params).toBe(params);
+    expect(inserts[0].result).toBe(result);
+  });
+
+  it("uses the caller's `type` argument for every insert", () => {
+    const { store, inserts } = makeFakeQueryStore();
+    const paramsList: Array<DashboardParams> = [
+      { workspaceId: 7, filters: { active: true } },
+      { workspaceId: 8, filters: { active: true } },
+    ];
+    const results = [makeDashboard(), makeDashboard()];
+
+    defaultQueryProcessor(results, store, "dashboard", paramsList);
+
+    expect(inserts.every((i) => i.type === "dashboard")).toBe(true);
+  });
+
+  it("returns void — the library looks up resolved query results from memory afterwards", () => {
+    const { store } = makeFakeQueryStore();
+    const result = defaultQueryProcessor([makeDashboard()], store, "dashboard", [
+      { workspaceId: 7, filters: { active: true } },
+    ]);
+    expect(result).toBeUndefined();
   });
 });

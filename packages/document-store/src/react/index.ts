@@ -1,4 +1,5 @@
 import type { DocumentTypes, RegisteredTypes } from "../memory";
+import type { QueriesHandle, QueryHandle, QueryTypes, RegisteredQueries } from "../queries";
 import type { DocumentHandle, DocumentsHandle, DocumentStore } from "../store";
 
 import { createContext, createElement, useContext, useState, type ReactNode } from "react";
@@ -34,9 +35,12 @@ import { createContext, createElement, useContext, useState, type ReactNode } fr
  * If you need JSON-API hooks bound to your isolated context, compose them
  * yourself on top of `libStore.useDocument` / `libStore.useDocuments`.
  */
-export function createDocumentStoreContext<M extends DocumentTypes = RegisteredTypes>(): {
-  Provider: (props: { init: () => DocumentStore<M>; children: ReactNode }) => ReactNode;
-  useDocumentStore: () => DocumentStore<M>;
+export function createDocumentStoreContext<
+  M extends DocumentTypes = RegisteredTypes,
+  Q extends QueryTypes = RegisteredQueries,
+>(): {
+  Provider: (props: { init: () => DocumentStore<M, Q>; children: ReactNode }) => ReactNode;
+  useDocumentStore: () => DocumentStore<M, Q>;
   useDocument: <K extends keyof M & string>(
     type: K,
     id: string | null | undefined,
@@ -45,21 +49,29 @@ export function createDocumentStoreContext<M extends DocumentTypes = RegisteredT
     type: K,
     ids: ReadonlyArray<string>,
   ) => DocumentsHandle<M[K]>;
+  useQuery: <K extends keyof Q & string>(
+    type: K,
+    params: Q[K]["params"] | null | undefined,
+  ) => QueryHandle<Q[K]["result"]>;
+  useQueries: <K extends keyof Q & string>(
+    type: K,
+    paramsList: ReadonlyArray<Q[K]["params"]>,
+  ) => QueriesHandle<Q[K]["result"]>;
 } {
-  const Context = createContext<DocumentStore<M> | null>(null);
+  const Context = createContext<DocumentStore<M, Q> | null>(null);
 
   function Provider({
     init,
     children,
   }: {
-    init: () => DocumentStore<M>;
+    init: () => DocumentStore<M, Q>;
     children: ReactNode;
   }): ReactNode {
     const [store] = useState(init);
     return createElement(Context.Provider, { value: store }, children);
   }
 
-  function useDocumentStore(): DocumentStore<M> {
+  function useDocumentStore(): DocumentStore<M, Q> {
     const store = useContext(Context);
     if (store === null) {
       throw new Error(
@@ -87,7 +99,25 @@ export function createDocumentStoreContext<M extends DocumentTypes = RegisteredT
     throw new Error("@supergrain/document-store/react: useDocuments is not yet implemented");
   }
 
-  return { Provider, useDocumentStore, useDocument, useDocuments };
+  function useQuery<K extends keyof Q & string>(
+    _type: K,
+    _params: Q[K]["params"] | null | undefined,
+  ): QueryHandle<Q[K]["result"]> {
+    // Validates Provider is mounted; implementation will call
+    // `store.findQuery(type, params)` on this store reference.
+    useDocumentStore();
+    throw new Error("@supergrain/document-store/react: useQuery is not yet implemented");
+  }
+
+  function useQueries<K extends keyof Q & string>(
+    _type: K,
+    _paramsList: ReadonlyArray<Q[K]["params"]>,
+  ): QueriesHandle<Q[K]["result"]> {
+    useDocumentStore();
+    throw new Error("@supergrain/document-store/react: useQueries is not yet implemented");
+  }
+
+  return { Provider, useDocumentStore, useDocument, useDocuments, useQuery, useQueries };
 }
 
 // =============================================================================
@@ -108,13 +138,17 @@ const defaultContext = createDocumentStoreContext();
  *   mount via `init`, so each Provider instance (per SSR request, per
  *   test) gets its own store.
  * - `useDocumentStore` — escape hatch for imperative ops (insertDocument,
- *   clearMemory). For reads, prefer `useDocument` / `useDocuments`.
+ *   insertQueryResult, clearMemory). For reads, prefer the hooks.
  * - `useDocument` — reactive single-doc read by `(type, id)`.
- * - `useDocuments` — reactive batch read by `(type, ids)`.
+ * - `useDocuments` — reactive batch doc read by `(type, ids)`.
+ * - `useQuery` — reactive single-query-result read by `(type, params)`.
+ * - `useQueries` — reactive batch query-result read by `(type, paramsList)`.
  */
 export const {
   Provider: DocumentStoreProvider,
   useDocumentStore,
   useDocument,
   useDocuments,
+  useQuery,
+  useQueries,
 } = defaultContext;

@@ -12,6 +12,7 @@ import {
   makeUser,
   server,
   type TypeToModel,
+  type TypeToQuery,
   type User,
 } from "../example-app";
 
@@ -36,14 +37,14 @@ afterEach(() => {
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-const { Provider, useDocument, useDocuments, useDocumentStore } =
-  createDocumentStoreContext<TypeToModel>();
+const { Provider, useDocument, useDocuments, useDocumentStore, useQuery, useQueries } =
+  createDocumentStoreContext<TypeToModel, TypeToQuery>();
 
 function Wrap({
   init = initStore,
   children,
 }: {
-  init?: () => DocumentStore<TypeToModel>;
+  init?: () => DocumentStore<TypeToModel, TypeToQuery>;
   children: ReactNode;
 }) {
   return (
@@ -74,6 +75,34 @@ function UserList({ ids }: { ids: ReadonlyArray<string> }) {
     <ul>
       {handle.data?.map((u) => (
         <li key={u.id}>{u.attributes.firstName}</li>
+      ))}
+    </ul>
+  );
+}
+
+function DashboardView({ workspaceId }: { workspaceId: number | null }) {
+  const handle = useQuery(
+    "dashboard",
+    workspaceId == null ? null : { workspaceId, filters: { active: true } },
+  );
+  if (handle.status === "IDLE") return <span>no dashboard</span>;
+  if (handle.isPending) return <span>loading dashboard</span>;
+  if (handle.error) return <span>error: {handle.error.message}</span>;
+  return <span>users: {handle.data?.totalActiveUsers}</span>;
+}
+
+function DashboardsGrid({ workspaceIds }: { workspaceIds: ReadonlyArray<number> }) {
+  const handle = useQueries(
+    "dashboard",
+    workspaceIds.map((id) => ({ workspaceId: id, filters: { active: true } })),
+  );
+  if (handle.status === "IDLE") return <span>no dashboards</span>;
+  if (handle.isPending) return <span>loading dashboards</span>;
+  if (handle.error) return <span>error</span>;
+  return (
+    <ul data-testid="dashboards">
+      {handle.data?.map((d, i) => (
+        <li key={i}>users: {d.totalActiveUsers}</li>
       ))}
     </ul>
   );
@@ -225,13 +254,94 @@ describe("useDocumentStore", () => {
 });
 
 // =============================================================================
+// useQuery
+// =============================================================================
+
+describe("useQuery", () => {
+  it("fetches a query via the adapter and renders loading → data", async () => {
+    render(
+      <Wrap>
+        <DashboardView workspaceId={7} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("loading dashboard")).toBeDefined();
+
+    await tick();
+
+    // dashboard MSW handler encodes workspaceId * 10 into totalActiveUsers.
+    expect(screen.getByText("users: 70")).toBeDefined();
+  });
+
+  it("returns an idle handle when params is null", () => {
+    render(
+      <Wrap>
+        <DashboardView workspaceId={null} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("no dashboard")).toBeDefined();
+  });
+
+  it("surfaces an adapter error as error state", async () => {
+    server.use(
+      http.get(`${API_BASE}/dashboards`, () =>
+        HttpResponse.json({ message: "boom" }, { status: 500 }),
+      ),
+    );
+
+    render(
+      <Wrap>
+        <DashboardView workspaceId={7} />
+      </Wrap>,
+    );
+
+    await tick();
+
+    expect(screen.getByText(/error:/)).toBeDefined();
+  });
+});
+
+// =============================================================================
+// useQueries
+// =============================================================================
+
+describe("useQueries", () => {
+  it("fetches a batch of queries and renders the full list", async () => {
+    render(
+      <Wrap>
+        <DashboardsGrid workspaceIds={[7, 8]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("loading dashboards")).toBeDefined();
+
+    await tick();
+
+    const list = screen.getByTestId("dashboards");
+    expect(list.textContent).toContain("users: 70");
+    expect(list.textContent).toContain("users: 80");
+  });
+
+  it("returns an idle handle for an empty paramsList", () => {
+    render(
+      <Wrap>
+        <DashboardsGrid workspaceIds={[]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("no dashboards")).toBeDefined();
+  });
+});
+
+// =============================================================================
 // Factory isolation — two factory instances keep their stores separate.
 // =============================================================================
 
 describe("createDocumentStoreContext isolation", () => {
   it("two independent stores render their own data side-by-side", () => {
-    const tenantA = createDocumentStoreContext<TypeToModel>();
-    const tenantB = createDocumentStoreContext<TypeToModel>();
+    const tenantA = createDocumentStoreContext<TypeToModel, TypeToQuery>();
+    const tenantB = createDocumentStoreContext<TypeToModel, TypeToQuery>();
 
     function initA() {
       const store = initStore();

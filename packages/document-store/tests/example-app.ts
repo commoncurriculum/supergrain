@@ -37,7 +37,12 @@ import { http, HttpResponse, type HttpHandler } from "msw";
 import { setupServer } from "msw/node";
 import { vi } from "vitest";
 
-import { DocumentStore, type DocumentAdapter, type DocumentStoreConfig } from "../src";
+import {
+  DocumentStore,
+  type DocumentAdapter,
+  type DocumentStoreConfig,
+  type QueryAdapter,
+} from "../src";
 import { jsonApiProcessor } from "../src/processors/json-api";
 
 // ─── Domain models ──────────────────────────────────────────────────────────
@@ -67,6 +72,29 @@ export type TypeToModel = {
   user: User;
   post: Post;
   "card-stack": CardStack;
+};
+
+// ─── Query types ────────────────────────────────────────────────────────────
+//
+// Dashboard — a query-keyed model. Params are a structured `{ workspaceId,
+// filters }` object; the result is the dashboard payload with no natural
+// `id`. The library stable-stringifies the params for cache identity.
+//
+// `TypeToQuery` is the consumer's query type map — parallel to `TypeToModel`.
+// Each entry declares `params` (the cache key) and `result` (the payload).
+
+export interface Dashboard {
+  totalActiveUsers: number;
+  recentPostIds: Array<string>;
+}
+
+export interface DashboardParams {
+  workspaceId: number;
+  filters: { active: boolean };
+}
+
+export type TypeToQuery = {
+  dashboard: { params: DashboardParams; result: Dashboard };
 };
 
 // ─── Document factories (test-only) ─────────────────────────────────────────
@@ -107,6 +135,14 @@ export function makeCardStack(
       slug: `card-stack-${id}`,
       ...overrides,
     },
+  };
+}
+
+export function makeDashboard(overrides: Partial<Dashboard> = {}): Dashboard {
+  return {
+    totalActiveUsers: 42,
+    recentPostIds: ["1", "2", "3"],
+    ...overrides,
   };
 }
 
@@ -161,6 +197,26 @@ export const cardStackAdapter: DocumentAdapter = {
   },
 };
 
+// `dashboardAdapter` — query-keyed model. Params are structured objects, so
+// the adapter receives `Array<DashboardParams>` (raw, not stringified). Fan-out
+// style — one GET per params object, returning results in the same order so
+// `defaultQueryProcessor` can pair them by position.
+export const dashboardAdapter: QueryAdapter<DashboardParams> = {
+  async find(paramsList) {
+    return Promise.all(
+      paramsList.map(async (p) => {
+        const qs = new URLSearchParams({
+          ws: String(p.workspaceId),
+          active: String(p.filters.active),
+        });
+        const res = await fetch(`${API_BASE}/dashboards?${qs.toString()}`);
+        if (!res.ok) throw new Error(`/dashboards responded ${res.status}`);
+        return res.json();
+      }),
+    );
+  },
+};
+
 // ─── Default MSW handlers ───────────────────────────────────────────────────
 // Bulk endpoints for users + card-stacks; per-id endpoint for posts (to
 // match the fan-out adapter). Tests can override any handler via
@@ -181,6 +237,14 @@ export const defaultHandlers: Array<HttpHandler> = [
       data: ids.map((id) => makeCardStack(id)),
       included: [],
     });
+  }),
+  http.get(`${API_BASE}/dashboards`, ({ request }) => {
+    // Echo back a dashboard whose totalActiveUsers encodes the workspaceId so
+    // tests can distinguish responses for different params.
+    const ws = Number(new URL(request.url).searchParams.get("ws"));
+    return HttpResponse.json(
+      makeDashboard({ totalActiveUsers: ws * 10, recentPostIds: [`ws${ws}-post`] }),
+    );
   }),
 ];
 
@@ -234,17 +298,20 @@ export interface StoreOverrides {
   batchSize?: number;
 }
 
-export function initStore(overrides: StoreOverrides = {}): DocumentStore<TypeToModel> {
-  const config: DocumentStoreConfig<TypeToModel> = {
+export function initStore(overrides: StoreOverrides = {}): DocumentStore<TypeToModel, TypeToQuery> {
+  const config: DocumentStoreConfig<TypeToModel, TypeToQuery> = {
     models: {
       user: { adapter: userAdapter },
       post: { adapter: postAdapter },
       "card-stack": { adapter: cardStackAdapter, processor: jsonApiProcessor },
     },
+    queries: {
+      dashboard: { adapter: dashboardAdapter },
+    },
   };
   if (overrides.batchWindowMs !== undefined) config.batchWindowMs = overrides.batchWindowMs;
   if (overrides.batchSize !== undefined) config.batchSize = overrides.batchSize;
-  return new DocumentStore<TypeToModel>(config);
+  return new DocumentStore<TypeToModel, TypeToQuery>(config);
 }
 
 // ─── Timer helpers ──────────────────────────────────────────────────────────
