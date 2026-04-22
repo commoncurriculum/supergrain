@@ -1,31 +1,21 @@
 # Supergrain
 
-Reactive primitives for React, and the document store built on top of them.
+Reactive state management for React — with an API query layer built on top.
 
-Supergrain is two libraries:
+- **[@supergrain/kernel](./packages/kernel)** is the state library. Read and mutate plain objects; only the components that actually touched the changed property re-render.
+- **[@supergrain/silo](./packages/silo)** is an API query layer built on top. Request-batched by default, Suspense-compatible, typed by model. Fetched documents live in the same reactive graph as the rest of your state.
 
-- **[@supergrain/kernel](./packages/kernel)** — a fast, ergonomic reactive store. Plain-object reads and writes, fine-grained re-renders, no selectors.
-- **[@supergrain/silo](./packages/silo)** — a Suspense-compatible document cache built on the kernel. Request-batched, stable handles, typed by model.
+On [Krauset's js-framework-benchmark](https://krausest.github.io/js-framework-benchmark/current.html), Supergrain ties raw `useState` (1.52 weighted) and beats every other state library — RxJS, Zustand, MobX, Redux, Valtio.
 
-Plus one optional helper:
+## State: `@supergrain/kernel`
 
-- **[@supergrain/mill](./packages/mill)** — MongoDB-style update operators (`$set`, `$inc`, `$push`, ...) for batched, path-aware writes.
-
-## When to reach for each
-
-- **Local / app state → kernel.** Single-page state, component-scoped state, shared-across-the-app state. If it lives in memory and doesn't come from the network, this is the one.
-- **Server data → silo.** Anything you fetch by id or query. Documents with identity, JSON-API envelopes, cross-component sharing of fetched data.
-- **Complex or batched writes → mill.** Reach for it only when you want the MongoDB operator vocabulary; everyday writes are just `store.x = 1`.
-
-## A taste
-
-### kernel
+Mutate state directly. No actions, no reducers, no selectors, no `useMemo` / `useCallback` dance.
 
 ```tsx
 import { tracked, useReactive, For } from "@supergrain/kernel/react";
 
 const TodoList = tracked(() => {
-  const { todos } = useReactive({
+  const state = useReactive({
     todos: [
       { id: 1, text: "Ship it", done: false },
       { id: 2, text: "Sleep", done: true },
@@ -33,7 +23,7 @@ const TodoList = tracked(() => {
   });
 
   return (
-    <For each={todos}>
+    <For each={state.todos}>
       {(todo) => (
         <li onClick={() => (todo.done = !todo.done)}>
           {todo.done ? "✓" : "○"} {todo.text}
@@ -44,9 +34,15 @@ const TodoList = tracked(() => {
 });
 ```
 
-Only the item you click re-renders. No keys, no memoization, no selectors.
+Click a todo and only that one `<li>` re-renders. Not the list. Not the siblings. No keys, no memoization.
 
-### silo
+`useReactive` is for component-scoped state; `createStore` is for app-wide state with a Provider. Writes are synchronous (read your own writes immediately); deep mutations (`store.org.teams[0].active = true`) are tracked at any nesting depth.
+
+[Full kernel docs →](./packages/kernel/README.md)
+
+## Queries: `@supergrain/silo`
+
+An entity cache with request batching. Think TanStack Query, except the fetched documents are reactive state you can also mutate directly — one cache, not two.
 
 ```tsx
 import { useDocument } from "@supergrain/silo/react";
@@ -60,47 +56,35 @@ function UserCard({ id }: { id: string }) {
 }
 ```
 
-N `UserCard`s in one render collapse into one `adapter.find(ids)` call. No query keys, no options bags.
+Render 50 `<UserCard>`s in one pass and they collapse into a single `adapter.find(ids)` call. The handles are reactive: a later `store.insertDocument("user", updated)` (socket push, mutation response, admin edit) re-renders just the cards whose data changed — no query keys, no `invalidateQueries`.
 
-### mill
+Opt into Suspense with one line at the call site (`use(user.promise)`); leave it out to keep inline loading UI. Both shapes are supported from the same hook.
 
-```ts
-import { update } from "@supergrain/mill";
-
-update(store, {
-  $set: { "user.name": "Bob" },
-  $inc: { count: 2 },
-  $push: { items: "g" },
-});
-```
-
-All three operators apply atomically under one batch.
+[Full silo docs →](./packages/silo/README.md)
 
 ## Install
 
 ```bash
-# Reactive primitives
+# State only
 npm install @supergrain/kernel
 
-# Document store
-npm install @supergrain/silo @supergrain/kernel
-
-# Update operators (optional)
-npm install @supergrain/mill @supergrain/kernel
+# State + API queries
+npm install @supergrain/kernel @supergrain/silo
 ```
 
-## Full docs
+The React bindings ship in the same packages (`@supergrain/kernel/react`, `@supergrain/silo/react`) and require `react >= 18.2`.
 
-- **Kernel** — [quick start, API, features, FAQ](./packages/kernel/README.md)
-- **Silo** — [quick start, API, batching, processors, comparison to TanStack Query](./packages/silo/README.md)
-- **Mill** — [operator reference](./packages/mill/README.md)
-- **Comparison guide** — [side-by-side with useState, Zustand, Redux, MobX](./docs/comparison.md)
+## Also available
+
+- **[@supergrain/mill](./packages/mill/README.md)** — MongoDB-style update operators (`$set`, `$inc`, `$push`, `$pull`, `$addToSet`, `$min`, `$max`, `$unset`) for batched, path-aware writes. Optional — plain `store.x = 1` is the usual path; reach for `mill` when you want to apply several updates atomically or use dot notation for deeply nested writes.
+
+## Comparison
+
+[Side-by-side with useState, Zustand, Redux, MobX →](./docs/comparison.md)
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### Development
+Contributions welcome. Clone, install, test:
 
 ```bash
 git clone https://github.com/commoncurriculum/supergrain.git
@@ -111,17 +95,12 @@ pnpm test
 pnpm run typecheck
 ```
 
-### Publishing Releases
+### Releases
 
-This project uses [Changesets](https://github.com/changesets/changesets) for automated releases. You can create changesets via:
+This project uses [Changesets](https://github.com/changesets/changesets) for automated releases. Create one via the [Add Changeset workflow](https://github.com/commoncurriculum/supergrain/actions/workflows/add-changeset.yml) or with `pnpm changeset`. GitHub Actions handles versioning, changelogs, and NPM publishing.
 
-- **GitHub UI**: Use the [Add Changeset workflow](https://github.com/commoncurriculum/supergrain/actions/workflows/add-changeset.yml) (no terminal needed!)
-- **Terminal**: Run `pnpm changeset`
-
-GitHub Actions automatically handles versioning, changelogs, and publishing to NPM.
-
-- [NPM Setup Guide](https://github.com/commoncurriculum/supergrain/blob/main/notes/publishing/npm-setup.md) — Complete guide for setting up NPM publishing
-- [Releasing Guide](https://github.com/commoncurriculum/supergrain/blob/main/notes/publishing/releasing.md) — Step-by-step instructions for creating releases
+- [NPM Setup Guide](https://github.com/commoncurriculum/supergrain/blob/main/notes/publishing/npm-setup.md)
+- [Releasing Guide](https://github.com/commoncurriculum/supergrain/blob/main/notes/publishing/releasing.md)
 
 ## License
 

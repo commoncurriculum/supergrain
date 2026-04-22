@@ -157,6 +157,6 @@ const TodoList = tracked(() => {
 
 <div class="readme-content">
 
-<!--@include: ../README.md-->
+<!--@include: ../packages/kernel/README.md-->
 
 </div>
