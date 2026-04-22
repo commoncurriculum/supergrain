@@ -21,35 +21,36 @@
     "directory": "packages/silo"
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
     "./processors": {
-      "types": "./dist/processors/index.d.ts",
+      "types": "./src/processors/index.ts",
       "import": "./dist/processors/index.js",
       "require": "./dist/processors/index.cjs"
     },
     "./processors/json-api": {
-      "types": "./dist/processors/json-api.d.ts",
+      "types": "./src/processors/json-api.ts",
       "import": "./dist/processors/json-api.js",
       "require": "./dist/processors/json-api.cjs"
     },
     "./react": {
-      "types": "./dist/react/index.d.ts",
+      "types": "./src/react/index.ts",
       "import": "./dist/react/index.js",
       "require": "./dist/react/index.cjs"
     },
     "./react/json-api": {
-      "types": "./dist/react/json-api.d.ts",
+      "types": "./src/react/json-api.ts",
       "import": "./dist/react/json-api.js",
       "require": "./dist/react/json-api.cjs"
     }
