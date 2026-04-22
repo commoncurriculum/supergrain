@@ -47,19 +47,20 @@ export function createDocumentStoreContext<
   }
 
   function useDocument<K extends keyof M & string>(
-    _type: K,
-    _id: string | null | undefined,
+    type: K,
+    id: string | null | undefined,
   ): DocumentHandle<M[K]> {
-    useDocumentStore();
-    throw new Error("@supergrain/silo/react: useDocument is not yet implemented");
+    const store = useDocumentStore();
+    // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
+    return store.find(type, id);
   }
 
   function useQuery<K extends keyof Q & string>(
-    _type: K,
-    _params: Q[K]["params"] | null | undefined,
+    type: K,
+    params: Q[K]["params"] | null | undefined,
   ): QueryHandle<Q[K]["result"]> {
-    useDocumentStore();
-    throw new Error("@supergrain/silo/react: useQuery is not yet implemented");
+    const store = useDocumentStore();
+    return store.findQuery(type, params);
   }
 
   return { Provider, useDocumentStore, useDocument, useQuery };
