@@ -13,7 +13,8 @@ Project documentation, research findings, and design decisions for Supergrain.
 - [React Adapter Architecture](architecture/react-adapter-architecture.md) -- Proposed vs shipped React integration design
 - [Safe Compile-Time Optimizations](architecture/safe-compile-time-optimizations.md) -- Unimplemented compile-time ideas
 - [Vite Compiler Plugin](architecture/vite-compiler-plugin-plan.md) -- Original plan (readSignal abandoned; createView + $$() shipped)
-- [App Store](architecture/app-store-plan.md) -- **Superseded** by the shipped design for `@supergrain/silo` (see [packages/silo/IMPLEMENTATION.md](../packages/silo/IMPLEMENTATION.md))
+- [Silo Architecture](architecture/silo-architecture.md) -- Design spec for `@supergrain/silo` (document-store read layer)
+- [App Store](architecture/app-store-plan.md) -- **Superseded** by [silo-architecture.md](architecture/silo-architecture.md)
 
 ## Benchmarks
 
