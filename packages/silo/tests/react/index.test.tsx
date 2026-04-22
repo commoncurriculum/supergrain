@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { type ReactNode, StrictMode } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { createDocumentStore } from "../../src";
+import { type DocumentStore } from "../../src";
 import { createDocumentStoreContext } from "../../src/react";
 import {
   API_BASE,
@@ -38,15 +38,13 @@ afterEach(() => {
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-const { Provider, useDocument, useDocumentStore, useQuery } = createDocumentStoreContext<
-  TypeToModel,
-  TypeToQuery
->();
+const { Provider, useDocument, useDocumentStore, useQuery } =
+  createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
 
 function Wrap({ children }: { children: ReactNode }) {
   return (
     <StrictMode>
-      <Provider init={() => createDocumentStore(makeStoreConfig())}>{children}</Provider>
+      <Provider config={makeStoreConfig()}>{children}</Provider>
     </StrictMode>
   );
 }
@@ -293,8 +291,8 @@ describe("useQuery", () => {
 
 describe("createDocumentStoreContext isolation", () => {
   it("two independent stores render their own data side-by-side", () => {
-    const tenantA = createDocumentStoreContext<TypeToModel, TypeToQuery>();
-    const tenantB = createDocumentStoreContext<TypeToModel, TypeToQuery>();
+    const tenantA = createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
+    const tenantB = createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
 
     const SeedA = tracked(function SeedA() {
       const store = tenantA.useDocumentStore();
@@ -319,11 +317,11 @@ describe("createDocumentStoreContext isolation", () => {
 
     render(
       <>
-        <tenantA.Provider init={() => createDocumentStore(makeStoreConfig())}>
+        <tenantA.Provider config={makeStoreConfig()}>
           <SeedA />
           <UserFromA />
         </tenantA.Provider>
-        <tenantB.Provider init={() => createDocumentStore(makeStoreConfig())}>
+        <tenantB.Provider config={makeStoreConfig()}>
           <SeedB />
           <UserFromB />
         </tenantB.Provider>

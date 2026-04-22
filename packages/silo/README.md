@@ -22,7 +22,7 @@ React bindings are optional — `@supergrain/silo/react` requires `react >= 18.2
 
 ```ts
 // services/store.ts
-import { createDocumentStore, type DocumentAdapter } from "@supergrain/silo";
+import { type DocumentAdapter, type DocumentStore } from "@supergrain/silo";
 import { createDocumentStoreContext } from "@supergrain/silo/react";
 
 export interface User {
@@ -48,20 +48,15 @@ const postAdapter: DocumentAdapter = {
   },
 };
 
-export const {
-  Provider: DocumentStoreProvider,
-  useDocumentStore,
-  useDocument,
-} = createDocumentStoreContext<TypeToModel>();
+export const { Provider, useDocumentStore, useDocument } =
+  createDocumentStoreContext<DocumentStore<TypeToModel>>();
 
-export function initDocumentStore() {
-  return createDocumentStore<TypeToModel>({
-    models: {
-      user: { adapter: userAdapter },
-      post: { adapter: postAdapter },
-    },
-  });
-}
+export const config = {
+  models: {
+    user: { adapter: userAdapter },
+    post: { adapter: postAdapter },
+  },
+};
 ```
 
 Adapters above are **fan-out** style — N parallel `GET /:id` requests, merged. The library doesn't care how you fetch; it just hands the adapter a list of ids and takes back a raw response. If your API exposes a bulk endpoint, one `GET` with all the ids works just as well:
@@ -80,21 +75,37 @@ const userAdapter: DocumentAdapter = {
 
 ```tsx
 // main.tsx
-import { DocumentStoreProvider } from "./services/store";
-import { initDocumentStore } from "./services/store";
+import { Provider, config } from "./services/store";
 
-<DocumentStoreProvider init={initDocumentStore}>
+<Provider config={config}>
   <App />
-</DocumentStoreProvider>;
+</Provider>;
 ```
 
-Each Provider mount builds a fresh store from the Provider's `init`, so SSR requests and tests are isolated by construction.
+The Provider wraps `config` in `createDocumentStore()` exactly once per mount, so every SSR request, every test, and every React tree gets an isolated store by construction. You can't accidentally share a store across requests.
+
+For hydration or other one-time setup, pass `onMount`:
+
+```tsx
+<Provider
+  config={config}
+  onMount={(store) => {
+    for (const user of window.__HYDRATION__.users) {
+      store.insertDocument("user", user);
+    }
+  }}
+>
+  <App />
+</Provider>
+```
+
+`onMount` runs synchronously once per mount, before children render, so seeded data is visible on the initial paint.
 
 ### 3. Read documents
 
 ```tsx
 // UserCard.tsx
-import { useDocument } from "@supergrain/silo/react";
+import { useDocument } from "./services/store";
 
 export function UserCard({ id }: { id: string }) {
   const user = useDocument("user", id);
@@ -112,7 +123,7 @@ export function UserCard({ id }: { id: string }) {
 ```tsx
 // UserCard.tsx
 import { use } from "react";
-import { useDocument } from "@supergrain/silo/react";
+import { useDocument } from "./services/store";
 
 export function UserCard({ id }: { id: string }) {
   const user = useDocument("user", id);
@@ -164,23 +175,22 @@ Methods:
 - `findQueryInMemory(type, params)` → `T | undefined`
 - `insertQueryResult(type, params, result)` → `void`
 
-### `createDocumentStoreContext<M, Q = Record<string, never>>()`
+### `createDocumentStoreContext<S extends DocumentStore<any, any>>()`
 
-The React context wrapper. It mirrors the `createStoreContext()` pattern
-from `@supergrain/kernel/react`.
+The React context wrapper. Mirrors `createStoreContext<T>()` from `@supergrain/kernel/react`: the type parameter `S` is the store type; the Provider takes the same `config` you'd pass to `createDocumentStore()` and constructs the store internally once per mount.
 
 ```ts
-const {
-  Provider: DocumentStoreProvider,
-  useDocumentStore,
-  useDocument,
-  useQuery,
-} = createDocumentStoreContext<TypeToModel, TypeToQuery>();
+type DocStore = DocumentStore<TypeToModel, TypeToQuery>;
 
-<DocumentStoreProvider init={initDocumentStore}>
+const { Provider, useDocumentStore, useDocument, useQuery } =
+  createDocumentStoreContext<DocStore>();
+
+<Provider config={{ models, queries }} onMount={(store) => seed(store)}>
   <App />
-</DocumentStoreProvider>
+</Provider>
 ```
+
+For non-React use, import `createDocumentStore` directly from `@supergrain/silo`.
 
 ### `DocumentHandle<T>`
 
@@ -214,9 +224,12 @@ ERROR   ──(new data inserted)──► SUCCESS (with a fresh promise object)
 
 From `@supergrain/silo/react`:
 
-- `DocumentStoreProvider({ init, children })` — mounts one store per Provider instance. `init` runs once on mount.
+All returned from `createDocumentStoreContext<S>()`; destructure and re-export from your store module.
+
+- `Provider({ config, initial?, onMount?, children })` — wraps `config` in `createDocumentStore()` exactly once per mount. Optional `initial` seeds documents/query results before the first render; optional `onMount` runs synchronously after seeding for imperative setup.
 - `useDocument(type, id | null | undefined)` → `DocumentHandle<T>`. `null`/`undefined` id returns an idle handle (useful for conditional fetching — `useDocument("user", isLoggedIn ? myId : null)`).
 - `useDocumentStore()` → store API. Escape hatch for imperative ops (`insertDocument`, `clearMemory`, query methods).
+- `useQuery(type, params | null | undefined)` → `QueryHandle<Result>`. Same null-handling as `useDocument`.
 - For lists, call `useDocumentStore().find(type, id)` for each id. Batching still happens under the hood; the public primitive stays one resource → one handle.
 
 ### Factory for isolated stores
@@ -224,22 +237,20 @@ From `@supergrain/silo/react`:
 Most apps create one document-store context in their app wiring. Libraries shipping their own document store, micro-frontends, or test harnesses that need isolated instances create their own separate context call:
 
 ```ts
-import { createDocumentStore } from "@supergrain/silo";
+import { type DocumentStore } from "@supergrain/silo";
 import { createDocumentStoreContext } from "@supergrain/silo/react";
 
-const libStore = createDocumentStoreContext<LibTypes>();
+const libStore = createDocumentStoreContext<DocumentStore<LibTypes>>();
 export const { Provider, useDocument, useDocumentStore } = libStore;
 
-function initLibStore() {
-  return createDocumentStore<LibTypes>({
-    models: {
-      /* ... */
-    },
-  });
-}
+export const libConfig = {
+  models: {
+    /* ... */
+  },
+};
 ```
 
-The returned Provider/hooks are bound to that specific context factory call.
+The returned Provider/hooks are bound to that specific context factory call. Each `<Provider config={libConfig}>` mount constructs its own store, so two trees mounted side-by-side don't share memory.
 
 ## Batching, in detail
 

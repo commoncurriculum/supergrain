@@ -11,12 +11,12 @@
   - Package rename: `@supergrain/store` → `@supergrain/silo`. Update imports, and update subpath imports too: `@supergrain/silo`, `/processors`, `/processors/json-api`, `/react`, `/react/json-api`. The `Store` class is now `DocumentStore`; `StoreConfig` is `DocumentStoreConfig`.
   - `@supergrain/store-react` is absorbed into `@supergrain/silo/react` (the separate package is gone).
   - `@supergrain/kernel`: `createStore` is renamed to `createReactive`. Same behavior, clearer vocabulary — the primitive builds a reactive proxy; the word "store" is reserved for the app-wide APIs in `@supergrain/kernel/react` and `@supergrain/silo`.
-  - `@supergrain/kernel/react`: `provideStore(store)` is removed. Replace with either (a) the free-standing `StoreProvider` + `useStore` exports backed by a module-level singleton context, or (b) the `createStoreContext()` factory for libraries / micro-frontends that need isolation.
+  - `@supergrain/kernel/react`: `provideStore(store)` is removed. Replace with `createStoreContext<T>()` — call it once at module scope, destructure `{ Provider, useStore }`, and pass your initial state to the Provider via the `initial` prop. The Provider wraps it in `createReactive(...)` exactly once per mount, so SSR requests and tests are isolated by construction.
 
   **New:**
 
   - `@supergrain/kernel/react` ships `useReactive(initial)` for per-component reactive state. No Provider needed for state scoped to a single component.
-  - `@supergrain/silo/react` ships `createDocumentStoreContext()` as the React context factory, returning `Provider` + `useDocument` / `useDocumentStore` for a configured store.
+  - `@supergrain/silo/react` ships `createDocumentStoreContext<DocumentStore<Models, Queries>>()` as the React context factory, returning `{ Provider, useDocumentStore, useDocument, useQuery }`. Pass your `DocumentStoreConfig` to the Provider via the `config` prop; the Provider calls `createDocumentStore(config)` exactly once per mount. Optional `initial` seeds documents and query results before the first render; optional `onMount` runs imperative setup after seeding.
   - Module-augmentation `TypeRegistry` lets consumers declare their document-type map once and get typed hooks everywhere without per-call-site generics.
 
   **Migration:**
@@ -28,10 +28,11 @@
   import { provideStore } from "@supergrain/kernel/react";
 
   // After
-  import { DocumentStore, Finder } from "@supergrain/silo";
-  import { DocumentStoreProvider, useDocument } from "@supergrain/silo/react";
+  import { createDocumentStoreContext } from "@supergrain/silo/react";
+  import { createStoreContext } from "@supergrain/kernel/react";
+  // For non-React use:
+  import { createDocumentStore } from "@supergrain/silo";
   import { createReactive } from "@supergrain/kernel";
-  import { StoreProvider, useStore } from "@supergrain/kernel/react";
   ```
 
 ### Patch Changes

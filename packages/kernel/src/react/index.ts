@@ -12,16 +12,9 @@ export { useComputed } from "./use-computed";
 // Export useReactive for per-component reactive state
 export { useReactive } from "./use-reactive";
 
-// Export StoreProvider + useStore for app-wide reactive state (singleton default).
-// Export createStoreContext for isolated stores (libraries, micro-frontends).
-// Export StoreRegistry/RegisteredStore for module-augmentation typing.
-export {
-  StoreProvider,
-  useStore,
-  createStoreContext,
-  type StoreRegistry,
-  type RegisteredStore,
-} from "./create-store";
+// Export createStoreContext for typed store bindings. Call once at module
+// scope, destructure, re-export; components import from your module.
+export { createStoreContext } from "./create-store";
 
 // Export useSignalEffect for signal-tracked side effects tied to component lifecycle
 export { useSignalEffect } from "./use-signal-effect";

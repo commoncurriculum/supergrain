@@ -8,10 +8,10 @@ import { createContext } from "react";
 // `useHasMany` — which aren't tied to a specific factory call — can still
 // reach the store in the nearest subtree.
 //
-// Per-factory Contexts still exist in `create-document-store-context.ts`:
-// they preserve tight typing for `useDocumentStore` / `useDocument` at the
-// call site and enable sibling-Provider isolation (each Provider sets both
-// its own Context and this ambient one, so each subtree sees its own store).
+// Per-factory Contexts still exist in `./index.ts`: they preserve tight typing
+// for `useDocumentStore` / `useDocument` at the call site and enable
+// sibling-Provider isolation (each Provider sets both its own Context and
+// this ambient one, so each subtree sees its own store).
 export const DocumentStoreContext = createContext<DocumentStore<DocumentTypes, QueryTypes> | null>(
   null,
 );

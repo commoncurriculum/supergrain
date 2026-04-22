@@ -8,8 +8,7 @@
 
 import {
   tracked,
-  StoreProvider,
-  useStore,
+  createStoreContext,
   useReactive,
   useComputed,
   useSignalEffect,
@@ -55,18 +54,24 @@ describe("README React Examples", () => {
       selected: number | null;
     }
 
-    function initState(): AppState {
-      return {
-        todos: [
-          { id: 1, text: "Learn Supergrain", completed: false },
-          { id: 2, text: "Build something", completed: false },
-        ],
-        selected: null,
-      };
-    }
+    const { Provider, useStore } = createStoreContext<AppState>();
+
+    const initial: AppState = {
+      todos: [
+        { id: 1, text: "Learn Supergrain", completed: false },
+        { id: 2, text: "Build something", completed: false },
+      ],
+      selected: null,
+    };
+
+    let storeRef: AppState = null!;
+    const Probe = () => {
+      storeRef = useStore();
+      return null;
+    };
 
     const TodoItem = tracked(({ todo }: { todo: Todo }) => {
-      const s = useStore<AppState>();
+      const s = useStore();
       const isSelected = useComputed(() => s.selected === todo.id);
 
       return (
@@ -84,7 +89,7 @@ describe("README React Examples", () => {
     const titleSpy = vi.spyOn(document, "title", "set");
 
     const App = tracked(() => {
-      const s = useStore<AppState>();
+      const s = useStore();
       const remaining = useComputed(() => s.todos.filter((t) => !t.completed).length);
 
       useSignalEffect(() => {
@@ -100,18 +105,11 @@ describe("README React Examples", () => {
       );
     });
 
-    // Probe the store from inside the Provider so the test can mutate it.
-    let storeRef: AppState = null!;
-    const Probe = () => {
-      storeRef = useStore<AppState>();
-      return null;
-    };
-
     render(
-      <StoreProvider<AppState> init={initState}>
+      <Provider initial={initial}>
         <Probe />
         <App />
-      </StoreProvider>,
+      </Provider>,
     );
 
     expect(screen.getByText("Todos (2)")).toBeInTheDocument();

@@ -52,7 +52,7 @@
   **Breaking changes:**
 
   - `@supergrain/kernel`: `createStore` is renamed to `createReactive`. Same behavior, clearer vocabulary — the primitive builds a reactive proxy; the word "store" is reserved for the app-wide API in `@supergrain/kernel/react`.
-  - `@supergrain/kernel/react`: `provideStore(store)` is removed. Replace with the new `createStore(() => initial)` factory, which takes an initializer function and returns `{ Provider, useStore }`. The Provider creates a fresh store on each mount, so SSR and tests are isolated by construction.
+  - `@supergrain/kernel/react`: `provideStore(store)` is removed. Replace with `createStoreContext<T>()`, which returns `{ Provider, useStore }`. Pass your initial state to the Provider via the `initial` prop; the Provider wraps it in `createReactive(...)` exactly once per mount, so SSR and tests are isolated by construction.
 
   **New:**
 

@@ -38,7 +38,7 @@ const TodoList = tracked(() => {
 
 Click a todo and only that one `<li>` re-renders. Not the list. Not the siblings. No keys, no memoization.
 
-`useReactive` is for component-scoped state; `createStore` is for app-wide state with a Provider. Writes are synchronous (read your own writes immediately); deep mutations (`store.org.teams[0].active = true`) are tracked at any nesting depth.
+`useReactive` is for component-scoped state; `createStoreContext` is for app-wide state with a Provider. Writes are synchronous (read your own writes immediately); deep mutations (`store.org.teams[0].active = true`) are tracked at any nesting depth.
 
 [Full kernel docs →](./packages/kernel/README.md)
 
@@ -49,7 +49,7 @@ An entity cache with request batching. Think TanStack Query, except the fetched 
 Declare your models and adapters, build the store, then read documents anywhere in the tree:
 
 ```tsx
-import { createDocumentStore, type DocumentAdapter, type QueryAdapter } from "@supergrain/silo";
+import { type DocumentAdapter, type DocumentStore, type QueryAdapter } from "@supergrain/silo";
 import { createDocumentStoreContext } from "@supergrain/silo/react";
 
 // 1. Models are keyed by id. Queries are keyed by a params object — for
@@ -84,18 +84,18 @@ const postsAdapter: QueryAdapter<Queries["posts"]["params"]> = {
 };
 
 // 3. Context factory — one Provider, typed hooks.
-const { Provider, useDocument, useQuery } = createDocumentStoreContext<Models, Queries>();
+const { Provider, useDocument, useQuery } =
+  createDocumentStoreContext<DocumentStore<Models, Queries>>();
 
-// 4. Mount the Provider once. `init` runs per mount → SSR/tests isolated.
+// 4. Mount the Provider once. The Provider wraps `config` in
+//    createDocumentStore() per mount → SSR/tests isolated by construction.
 function App() {
   return (
     <Provider
-      init={() =>
-        createDocumentStore<Models, Queries>({
-          models: { user: { adapter: userAdapter } },
-          queries: { posts: { adapter: postsAdapter } },
-        })
-      }
+      config={{
+        models: { user: { adapter: userAdapter } },
+        queries: { posts: { adapter: postsAdapter } },
+      }}
     >
       <AuthorPosts authorId="u1" />
     </Provider>

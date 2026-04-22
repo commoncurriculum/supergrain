@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createDocumentStore, type DocumentAdapter } from "../../src";
+import { type DocumentAdapter, type DocumentStore } from "../../src";
 import { createDocumentStoreContext } from "../../src/react";
 import { useBelongsTo, useHasMany, useHasManyIndividually } from "../../src/react/json-api";
 
@@ -75,20 +75,19 @@ const cardStackAdapter: DocumentAdapter = {
   find: () => new Promise(() => {}),
 };
 
-const { Provider, useDocument, useDocumentStore } = createDocumentStoreContext<TypeToModel>();
+const { Provider, useDocument, useDocumentStore } =
+  createDocumentStoreContext<DocumentStore<TypeToModel>>();
 
 function Wrap({ children }: { children: ReactNode }) {
   return (
     <Provider
-      init={() =>
-        createDocumentStore<TypeToModel>({
-          models: {
-            planbook: { adapter: planbookAdapter },
-            card: { adapter: cardAdapter },
-            "card-stack": { adapter: cardStackAdapter },
-          },
-        })
-      }
+      config={{
+        models: {
+          planbook: { adapter: planbookAdapter },
+          card: { adapter: cardAdapter },
+          "card-stack": { adapter: cardStackAdapter },
+        },
+      }}
     >
       {children}
     </Provider>

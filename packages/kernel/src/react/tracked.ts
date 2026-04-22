@@ -24,10 +24,10 @@ interface TrackedState {
  *
  * @example
  * ```tsx
- * // <StoreProvider init={() => ({ selected: null as number | null })}>...
+ * // <Provider initial={{ selected: null as number | null }}>...
  *
  * const Row = tracked(({ item }) => {
- *   const store = useStore<AppState>()
+ *   const store = useStore()
  *   // item.label read is scoped to this Row's effect.
  *   // A label change on this item re-renders only this Row.
  *   const isSelected = useComputed(() => store.selected === item.id)

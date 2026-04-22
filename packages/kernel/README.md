@@ -18,7 +18,7 @@ The React subpath (`@supergrain/kernel/react`) ships in the same package and req
 
 ## Quick Start
 
-Supergrain has two APIs for state. Use `useReactive` for state that lives inside a single component. Use `createStore` for state shared across your app.
+Supergrain has two APIs for state. Use `useReactive` for state that lives inside a single component. Use `createStoreContext` for state shared across your app.
 
 ### Local state — `useReactive`
 
@@ -37,16 +37,16 @@ const Counter = tracked(() => {
 
 Wrap the component in `tracked()` to get fine-grained re-renders: only the properties you read are tracked.
 
-### App-wide state — `createStore`
+### App-wide state — `createStoreContext`
 
-For state shared across components, `createStore` returns a `Provider` and a `useStore` hook bound to one typed store. The Provider builds a fresh store on each mount, so SSR requests and tests are isolated by construction.
+For state shared across components, call `createStoreContext<T>()` once at module scope and destructure `{ Provider, useStore }`. The Provider takes an `initial` prop; it constructs a reactive store from that data exactly once per mount, so every SSR request, every test, and every React tree gets an isolated store by construction.
 
-**Step 1: Define the store.** The initializer runs once per Provider mount.
+**Step 1: Describe the shape and call the factory.**
 
 ```tsx
 // [#DOC_TEST_QUICK_START](../doc-tests/tests/readme-react.test.tsx)
 // store.ts
-import { createStore } from "@supergrain/kernel/react";
+import { createStoreContext } from "@supergrain/kernel/react";
 
 export interface Todo {
   id: number;
@@ -58,23 +58,25 @@ export interface AppState {
   selected: number | null;
 }
 
-export const { Provider, useStore } = createStore<AppState>(() => ({
-  todos: [
-    { id: 1, text: "Learn Supergrain", completed: false },
-    { id: 2, text: "Build something", completed: false },
-  ],
-  selected: null,
-}));
+export const { Provider, useStore } = createStoreContext<AppState>();
 ```
 
-**Step 2: Mount the Provider at the root.**
+**Step 2: Mount the Provider at the root.** Pass the initial data; the Provider wraps it in `createReactive` per-mount, so SSR and tests are isolated automatically.
 
 ```tsx
 // main.tsx
 import { Provider } from "./store";
 import { App } from "./App";
 
-<Provider>
+<Provider
+  initial={{
+    todos: [
+      { id: 1, text: "Learn Supergrain", completed: false },
+      { id: 2, text: "Build something", completed: false },
+    ],
+    selected: null,
+  }}
+>
   <App />
 </Provider>;
 ```
@@ -160,9 +162,9 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
 
   > Per-component reactive state. Creates the proxy once on mount; the identity stays stable across renders. Use for state scoped to a single component — no Provider needed.
 
-- `createStore<T>(() => initial)`
+- `createStoreContext<T>()`
 
-  > Returns `{ Provider, useStore }` for app-wide or subtree-wide state. The Provider creates a fresh store on mount (each request/test gets its own), and `useStore()` reads it from context. The proxy's identity never changes, so the context value is stable and won't trigger React re-renders.
+  > Returns `{ Provider, useStore }` bound to a fresh React Context. Call once at module scope, destructure, re-export. The Provider takes an `initial: T` prop and wraps it in `createReactive()` once per mount — SSR requests and tests are isolated by construction. Each factory call mints a distinct Context, so two sibling Providers coexist without collision.
 
 - `tracked(Component)`
 

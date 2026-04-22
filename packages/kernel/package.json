@@ -114,7 +114,7 @@
     {
       "name": "@supergrain/kernel/react (incl. kernel)",
       "path": "dist/react/index.js",
-      "import": "{ tracked, createStore, useReactive, useComputed, useSignalEffect, For }",
+      "import": "{ tracked, createStoreContext, useReactive, useComputed, useSignalEffect, For }",
       "ignore": [
         "react",
         "react-dom"

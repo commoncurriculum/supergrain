@@ -1,10 +1,4 @@
-import {
-  tracked,
-  StoreProvider,
-  useStore,
-  createStoreContext,
-  useComputed,
-} from "@supergrain/kernel/react";
+import { tracked, createStoreContext, useComputed } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
 import { describe, it, expect, afterEach } from "vitest";
 
@@ -15,29 +9,34 @@ interface AppState {
   selected: number | null;
 }
 
-// =============================================================================
-// Default singleton path — StoreProvider + useStore
-// =============================================================================
+describe("createStoreContext", () => {
+  it("returns an object with Provider and useStore", () => {
+    const ctx = createStoreContext<AppState>();
+    expect(typeof ctx.Provider).toBe("function");
+    expect(typeof ctx.useStore).toBe("function");
+  });
 
-describe("StoreProvider + useStore (default singleton)", () => {
-  it("Provider exposes the store to descendants via useStore", () => {
+  it("Provider exposes a reactive store to descendants via useStore", () => {
+    const { Provider, useStore } = createStoreContext<AppState>();
+
     const Child = tracked(() => {
-      const s = useStore<AppState>();
+      const s = useStore();
       return <span data-testid="val">{String(s.selected)}</span>;
     });
 
     const { getByTestId } = render(
-      <StoreProvider<AppState> init={() => ({ items: [], selected: null })}>
+      <Provider initial={{ items: [], selected: null }}>
         <Child />
-      </StoreProvider>,
+      </Provider>,
     );
 
     expect(getByTestId("val").textContent).toBe("null");
   });
 
   it("throws when useStore is called outside Provider", () => {
+    const { useStore } = createStoreContext<AppState>();
     const Bad = () => {
-      useStore<AppState>();
+      useStore();
       return null;
     };
 
@@ -45,23 +44,23 @@ describe("StoreProvider + useStore (default singleton)", () => {
   });
 
   it("store from the Provider is reactive", async () => {
+    const { Provider, useStore } = createStoreContext<AppState>();
+
     let storeRef: AppState = null!;
     const Probe = () => {
-      storeRef = useStore<AppState>();
+      storeRef = useStore();
       return null;
     };
     const Child = tracked(() => {
-      const s = useStore<AppState>();
+      const s = useStore();
       return <span data-testid="label">{s.items[0]!.label}</span>;
     });
 
     const { getByTestId } = render(
-      <StoreProvider<AppState>
-        init={() => ({ items: [{ id: 1, label: "hello" }], selected: null })}
-      >
+      <Provider initial={{ items: [{ id: 1, label: "hello" }], selected: null }}>
         <Probe />
         <Child />
-      </StoreProvider>,
+      </Provider>,
     );
 
     expect(getByTestId("label").textContent).toBe("hello");
@@ -74,11 +73,13 @@ describe("StoreProvider + useStore (default singleton)", () => {
   });
 
   it("context value is stable — store mutations don't trigger context re-renders", async () => {
-    let childRenders = 0;
+    const { Provider, useStore } = createStoreContext<AppState>();
+
     let storeRef: AppState = null!;
+    let childRenders = 0;
 
     const Probe = () => {
-      storeRef = useStore<AppState>();
+      storeRef = useStore();
       return null;
     };
     const Counter = () => {
@@ -87,10 +88,10 @@ describe("StoreProvider + useStore (default singleton)", () => {
     };
 
     render(
-      <StoreProvider<AppState> init={() => ({ items: [], selected: null })}>
+      <Provider initial={{ items: [], selected: null }}>
         <Probe />
         <Counter />
-      </StoreProvider>,
+      </Provider>,
     );
     expect(childRenders).toBe(1);
 
@@ -101,65 +102,53 @@ describe("StoreProvider + useStore (default singleton)", () => {
   });
 
   it("works with useComputed for the firewall pattern", async () => {
-    let rowRenders = 0;
+    const { Provider, useStore } = createStoreContext<AppState>();
+
     let storeRef: AppState = null!;
+    let rowRenders = 0;
 
     const Probe = () => {
-      storeRef = useStore<AppState>();
+      storeRef = useStore();
       return null;
     };
     const Row = tracked(({ id }: { id: number }) => {
       rowRenders++;
-      const s = useStore<AppState>();
+      const s = useStore();
       const isSelected = useComputed(() => s.selected === id);
       return <div data-testid={`row-${id}`}>{isSelected ? "selected" : "not"}</div>;
     });
 
     const { getByTestId } = render(
-      <StoreProvider<AppState>
-        init={() => ({
+      <Provider
+        initial={{
           items: [
             { id: 1, label: "one" },
             { id: 2, label: "two" },
             { id: 3, label: "three" },
           ],
           selected: null,
-        })}
+        }}
       >
         <Probe />
         <Row id={1} />
         <Row id={2} />
         <Row id={3} />
-      </StoreProvider>,
+      </Provider>,
     );
     expect(rowRenders).toBe(3);
 
-    // Select row 2: only row 2 re-renders
     await act(async () => {
       storeRef.selected = 2;
     });
     expect(rowRenders).toBe(4);
     expect(getByTestId("row-2").textContent).toBe("selected");
 
-    // Switch to row 1: row 2 (true→false) and row 1 (false→true) re-render
     await act(async () => {
       storeRef.selected = 1;
     });
     expect(rowRenders).toBe(6);
     expect(getByTestId("row-1").textContent).toBe("selected");
     expect(getByTestId("row-2").textContent).toBe("not");
-  });
-});
-
-// =============================================================================
-// createStoreContext — escape hatch for isolation
-// =============================================================================
-
-describe("createStoreContext (isolation)", () => {
-  it("returns an object with Provider and useStore", () => {
-    const ctx = createStoreContext<AppState>();
-    expect(typeof ctx.Provider).toBe("function");
-    expect(typeof ctx.useStore).toBe("function");
   });
 
   it("supports multiple independent stores that don't collide", async () => {
@@ -189,8 +178,8 @@ describe("createStoreContext (isolation)", () => {
     });
 
     const { getByTestId } = render(
-      <Auth.Provider init={() => ({ user: "alice" })}>
-        <UI.Provider init={() => ({ theme: "dark" })}>
+      <Auth.Provider initial={{ user: "alice" }}>
+        <UI.Provider initial={{ theme: "dark" }}>
           <Probe />
           <Display />
         </UI.Provider>
@@ -223,10 +212,10 @@ describe("createStoreContext (isolation)", () => {
 
     const { getByTestId } = render(
       <>
-        <ctx.Provider init={() => ({ count: 0 })}>
+        <ctx.Provider initial={{ count: 0 }}>
           <First />
         </ctx.Provider>
-        <ctx.Provider init={() => ({ count: 0 })}>
+        <ctx.Provider initial={{ count: 0 }}>
           <Second />
         </ctx.Provider>
       </>,
@@ -239,29 +228,5 @@ describe("createStoreContext (isolation)", () => {
     });
     expect(getByTestId("first").textContent).toBe("42");
     expect(getByTestId("second").textContent).toBe("0");
-  });
-
-  it("doesn't collide with the default StoreProvider", () => {
-    const ctx = createStoreContext<{ isolated: true }>();
-
-    let defaultStore: AppState = null!;
-    let isolatedStore: { isolated: true } = null!;
-
-    const Probe = () => {
-      defaultStore = useStore<AppState>();
-      isolatedStore = ctx.useStore();
-      return null;
-    };
-
-    render(
-      <StoreProvider<AppState> init={() => ({ items: [], selected: null })}>
-        <ctx.Provider init={() => ({ isolated: true })}>
-          <Probe />
-        </ctx.Provider>
-      </StoreProvider>,
-    );
-
-    expect(defaultStore.items).toEqual([]);
-    expect(isolatedStore.isolated).toBe(true);
   });
 });
