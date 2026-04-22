@@ -11,7 +11,7 @@ A fast, ergonomic reactive store for React.
 ## Install
 
 ```bash
-npm install @supergrain/kernel
+pnpm add @supergrain/kernel
 ```
 
 The React subpath (`@supergrain/kernel/react`) ships in the same package and requires `react >= 18.2`.

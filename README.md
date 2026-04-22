@@ -92,18 +92,83 @@ function UserCard({ id }: { id: string }) {
 
 The adapter above is **fan-out** style — N parallel `GET /:id` requests per batch, merged. If your API has a bulk endpoint, return all the docs from one `fetch` instead; silo doesn't care how you hit the wire. Either way, rendering 50 `<UserCard>`s in one pass collapses to **one** `userAdapter.find(ids)` call — batching is automatic, not opt-in. Handles are reactive: a later `store.insertDocument("user", updated)` (socket push, mutation response, admin edit) re-renders just the cards whose data changed — no query keys, no `invalidateQueries`.
 
-Opt into Suspense with one line at the call site (`use(user.promise)`); leave it out to keep inline loading UI. Both shapes are supported from the same hook.
+### Params-keyed queries
+
+For endpoints whose response only makes sense with its params — dashboards, search results, paginated lists — add a `queries` config alongside `models` and read with `useQuery`:
+
+```tsx
+import type { QueryAdapter } from "@supergrain/silo";
+
+type Queries = {
+  dashboard: { params: { workspaceId: string }; result: { totalUsers: number } };
+};
+
+const dashboardAdapter: QueryAdapter<Queries["dashboard"]["params"]> = {
+  async find(paramsList) {
+    return Promise.all(
+      paramsList.map((p) => fetch(`/api/dashboards/${p.workspaceId}`).then((r) => r.json())),
+    );
+  },
+};
+
+const { Provider, useDocument, useQuery } = createDocumentStoreContext<Models, Queries>();
+
+createDocumentStore<Models, Queries>({
+  models: { user: { adapter: userAdapter } },
+  queries: { dashboard: { adapter: dashboardAdapter } },
+});
+
+function Dashboard({ workspaceId }: { workspaceId: string }) {
+  const dashboard = useQuery("dashboard", { workspaceId });
+  if (dashboard.isPending) return <Skeleton />;
+  return <div>{dashboard.data?.totalUsers} users</div>;
+}
+```
+
+Same handle shape as `useDocument`, same Suspense story, same batching — the only difference is the key. Params are stable-stringified so `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` hit the same cache slot. Query processors can also call `store.insertDocument(...)` to normalize nested entities into the documents cache, so a `usersByRole` query populates the users cache for `useDocument("user", id)` elsewhere.
 
 [Full silo docs →](./packages/silo/README.md)
+
+## Suspense
+
+Every document handle exposes a stable `.promise` for React 19's `use()`. Opt in at the call site — one line per component, no `{ suspense: true }` flag and no separate hook.
+
+```tsx
+import { use, Suspense } from "react";
+import { useDocument } from "@supergrain/silo/react";
+
+function UserCard({ id }: { id: string }) {
+  const user = useDocument("user", id);
+  use(user.promise); // suspends on first load; never re-suspends on refetch
+
+  return <div>{user.data!.attributes.firstName}</div>;
+}
+
+function UserList() {
+  return (
+    <Suspense fallback={<Skeleton />}>
+      <UserCard id="1" />
+      <UserCard id="2" />
+      <UserCard id="3" />
+    </Suspense>
+  );
+}
+```
+
+The promise resolves exactly once on first success — later `insertDocument` calls update `data` in place but the promise reference stays stable, so `use()` doesn't re-suspend. After an error, a recovery `insertDocument` produces a **new** resolved promise so a Suspense boundary nested in an error boundary can recover.
+
+Because fetches are batched, naive `use(user.promise)` calls sprinkled through a list **don't waterfall** — the three `<UserCard>`s above collapse into one `userAdapter.find(["1", "2", "3"])` call before suspending. This is the piece that usually makes Suspense unusable at scale; here it's the default.
+
+Want inline loading UI instead? Drop the `use(user.promise)` line and read `user.isPending` / `user.error` directly. Same hook, same handle, no config switch.
 
 ## Install
 
 ```bash
 # State only
-npm install @supergrain/kernel
+pnpm add @supergrain/kernel
 
 # State + API queries
-npm install @supergrain/kernel @supergrain/silo
+pnpm add @supergrain/kernel @supergrain/silo
 ```
 
 The React bindings ship in the same packages (`@supergrain/kernel/react`, `@supergrain/silo/react`) and require `react >= 18.2`.

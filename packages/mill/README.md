@@ -11,7 +11,7 @@ Use this when you want:
 ## Install
 
 ```bash
-npm install @supergrain/mill @supergrain/kernel
+pnpm add @supergrain/mill @supergrain/kernel
 ```
 
 ## Usage

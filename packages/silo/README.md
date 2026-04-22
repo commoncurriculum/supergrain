@@ -11,7 +11,7 @@ A reactive document cache for React — Suspense-compatible, request-batched, ze
 ## Install
 
 ```bash
-npm install @supergrain/silo @supergrain/kernel
+pnpm add @supergrain/silo @supergrain/kernel
 ```
 
 React bindings are optional — `@supergrain/silo/react` requires `react >= 18.2`.
