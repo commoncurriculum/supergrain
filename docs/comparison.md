@@ -52,6 +52,8 @@ const Counter = tracked(() => {
 
 **Internals.**
 
+Source refs: [`packages/core/src/read.ts`](https://github.com/commoncurriculum/supergrain/blob/main/packages/core/src/read.ts), [`packages/react/src/tracked.ts`](https://github.com/commoncurriculum/supergrain/blob/main/packages/react/src/tracked.ts), [`packages/core/src/batch.ts`](https://github.com/commoncurriculum/supergrain/blob/main/packages/core/src/batch.ts)
+
 - **State shape.** Every object in the tree is wrapped in its own JavaScript Proxy, created lazily via `wrap()` on first access. Each property gets its own signal on first read. No explicit observables, no atom declarations — the reactive graph mirrors the object's shape.
 - **Reactive primitive.** Signal propagation uses [alien-signals](https://github.com/stackblitz/alien-signals), the same primitive Vue Vapor is built on. Push-based updates, topological ordering, glitch-free `computed` chains — no manual scheduling.
 - **Fine-grained tracking.** `tracked()` wraps the component's render in an alien-signals `effect()` scope. Proxy reads during render auto-subscribe that scope to exactly the signals they touched. When a signal fires, only the components that actually read it re-render — no selectors, no universal fan-out.
@@ -82,6 +84,8 @@ setState((prev) => ({
 
 **Internals.**
 
+Source refs: [`ReactFiberHooks.js`](https://github.com/facebook/react/blob/main/packages/react-reconciler/src/ReactFiberHooks.js)
+
 - **State shape.** State lives on the component's fiber — no store, no graph, just a pair returned from the hook.
 - **Reactive primitive.** None. React compares old and new state by reference (`Object.is`); if they differ, it schedules a re-render of that component and its subtree.
 - **Fine-grained tracking.** Not possible. Any change to the state object re-renders the whole component.
@@ -99,10 +103,10 @@ const useStore = create<State>()((set) => ({
 }))
 
 // Mutate
-set({ count: 5 })
+useStore.setState({ count: 5 })
 
 // Deep nested — manual spreading
-set(state => ({
+useStore.setState(state => ({
   user: { ...state.user, profile: { ...state.user.profile, name: 'Bob' } }
 }))
 
@@ -115,11 +119,13 @@ const Counter = () => {
 
 **Internals.**
 
+Source refs: [`README.md`](https://github.com/pmndrs/zustand/blob/main/README.md), [`src/vanilla.ts`](https://github.com/pmndrs/zustand/blob/main/src/vanilla.ts), [`src/traditional.ts`](https://github.com/pmndrs/zustand/blob/main/src/traditional.ts)
+
 - **State shape.** A closure holding the state object and a `Set` of listeners. No proxy, no reactive graph — state is a plain object.
 - **Reactive primitive.** None per-property. Every `setState` notifies every subscriber; fine-grained behavior comes entirely from selector equality checks, not reactive tracking.
 - **Fine-grained tracking.** Selector-driven. The hook runs your selector on every change and bails out when the result matches by reference (`Object.is`). The developer writes the selector and picks the right granularity.
 - **React bridge.** Each `useStore(selector)` subscribes to the listener set; when notified, it re-runs the selector and re-renders only if the result changed.
-- **Mutation.** Immutable: `set({ count: 5 })` or `set((prev) => ({ ... }))`. `Object.assign` shallow-merges into the current state. No batching — each `set` notifies every subscriber.
+- **Mutation.** Immutable: `useStore.setState({ count: 5 })` or `useStore.setState((prev) => ({ ... }))`. `Object.assign` shallow-merges into the current state. No batching — each `setState` notifies every subscriber.
 
 ## Redux / RTK
 
@@ -135,10 +141,10 @@ const slice = createSlice({
   },
 })
 
-// Mutate — need a reducer for each mutation
+// Mutate — typically modeled through named actions / reducers
 dispatch(setCount(5))
 
-// Deep nested — need a reducer for each path
+// Deep nested — still routed through actions / reducers
 dispatch(setName('Bob'))
 
 // Fine-grained — requires useSelector
@@ -150,11 +156,13 @@ const Counter = () => {
 
 **Internals.**
 
-- **State shape.** Immutable state behind a reducer. Every dispatch produces a new root reference.
+Source refs: [`createSlice.ts`](https://github.com/reduxjs/redux-toolkit/blob/main/packages/toolkit/src/createSlice.ts), [`createReducer.test.ts`](https://github.com/reduxjs/redux-toolkit/blob/main/packages/toolkit/src/tests/createReducer.test.ts), [`useSelector.ts`](https://github.com/reduxjs/react-redux/blob/master/src/hooks/useSelector.ts)
+
+- **State shape.** Immutable state behind a reducer. Updates that change state produce new references; no-op paths can return the existing state.
 - **Reactive primitive.** None per-property. Every dispatched action fans out to every subscriber; selectors bail out on reference equality.
 - **Fine-grained tracking.** Selector-driven via `useSelector`. Re-runs on every dispatch; re-renders only when the returned value changes by reference.
 - **React bridge.** `react-redux` subscribes each `useSelector` to store dispatches and ties into React's re-render scheduling.
-- **Mutation.** Actions + reducers. RTK's `createSlice` uses Immer under the hood, so "mutations" written inside reducers are compiled to immutable updates. Action history plus Immer drafts make RTK the heaviest option on memory.
+- **Mutation.** Actions + reducers. RTK's `createSlice` uses Immer under the hood, so "mutations" written inside reducers are compiled to immutable updates. You can also return immutable copies directly.
 
 ## MobX
 
@@ -180,9 +188,11 @@ const Counter = observer(() => {
 })
 ```
 
-**Internals.** Proxy-based and fine-grained like Supergrain, but observability is opt-in and the graph uses MobX's own reaction pattern rather than alien-signals.
+**Internals.** Fine-grained like Supergrain, but observability is opt-in and the graph uses MobX's own reaction pattern rather than alien-signals.
 
-- **State shape.** Proxy-backed observables, but observability is opt-in — you mark what's reactive via `observable()` / `makeAutoObservable` / decorators. Supergrain's proxy wraps the whole tree automatically; nested objects are lazily proxied via `wrap()` on first access with no declarations.
+Source refs: [`docs/observable-state.md`](https://github.com/mobxjs/mobx/blob/main/docs/observable-state.md), [`docs/react-integration.md`](https://github.com/mobxjs/mobx/blob/main/docs/react-integration.md), [`useObserver.ts`](https://github.com/mobxjs/mobx/blob/main/packages/mobx-react-lite/src/useObserver.ts)
+
+- **State shape.** Observable objects, arrays, maps, and fields, but observability is opt-in — you mark what's reactive via `observable()` / `makeAutoObservable` / decorators. `observable()` returns a proxied clone for dynamic objects; `makeAutoObservable(this)` annotates an existing class instance. Supergrain's proxy wraps the whole tree automatically; nested objects are lazily proxied via `wrap()` on first access with no declarations.
 - **Reactive primitive.** Reaction-based observer pattern. Each observable maintains an `observers_` set and propagates changes through `propagateChanged()`. Supergrain uses alien-signals — push-based, topologically ordered, glitch-free computed chains.
 - **Fine-grained tracking.** `observer()` HOC runs the render inside a `Reaction` that captures observable reads and re-runs the component when any read observable changes.
 - **React bridge.** `observer()` wraps components with `useSyncExternalStore` internally. Supergrain's `tracked()` uses `useReducer` + alien-signals `effect()` — no `useSyncExternalStore` snapshot.
@@ -208,9 +218,11 @@ const Counter = () => <p>{count.value}</p>;
 
 **Internals.**
 
+Source refs: [`packages/react/README.md`](https://github.com/preactjs/signals/blob/main/packages/react/README.md), [`packages/react/runtime/src/index.ts`](https://github.com/preactjs/signals/blob/main/packages/react/runtime/src/index.ts)
+
 - **State shape.** Individual `signal(value)` containers. Each reactive unit is its own object; nested state requires nested signals or replacing the whole object on update. Supergrain's proxy returns bare property values (`store.user.name` is a string, not `signal.value`) and creates signals lazily under the hood.
 - **Reactive primitive.** Preact's own signal runtime. Reads go through `signal.value`, a property getter that registers the current effect as a subscriber.
-- **Fine-grained tracking.** The component's render scope subscribes to every signal it `.value`-accesses; when one fires, the component re-renders.
+- **Fine-grained tracking.** The component's render scope subscribes to every signal it `.value`-accesses; when one fires, the component re-renders. If you pass a signal directly into JSX instead of reading `.value`, the React adapter can update the bound text node directly.
 - **React bridge.** `@preact/signals-react` tracks a 32-bit version counter per subscribed scope and notifies React through `useSyncExternalStore` when it changes. (A Babel transform variant auto-injects the subscription.)
 - **Mutation.** Direct write to `.value`: `count.value = 5`. Deep nested changes require replacing the whole object or nesting signals per field.
 
@@ -238,7 +250,9 @@ const Counter = () => <p>{useAtomValue(countAtom)}</p>;
 
 **Internals.**
 
-- **State shape.** Decomposed into atoms. Each atom is a separate reactive unit (~72 bytes: dependency map, version, value, error, pending set). No shared object tree — you wire atoms together with derived atoms. Supergrain is the inverse shape: one proxy, signals created lazily per property, memory that scales with object complexity rather than atom count.
+Source refs: [`README.md`](https://github.com/pmndrs/jotai/blob/main/README.md), [`src/react/useAtomValue.ts`](https://github.com/pmndrs/jotai/blob/main/src/react/useAtomValue.ts)
+
+- **State shape.** Decomposed into atoms. Each atom is a separate reactive unit. No shared object tree — you wire atoms together with derived atoms. Supergrain is the inverse shape: one proxy, signals created lazily per property, memory that scales with object complexity rather than atom count.
 - **Reactive primitive.** Atom graph. Derived atoms depend on primitive atoms; a context-scoped store tracks dependencies between them.
 - **Fine-grained tracking.** One subscription per atom. `useAtomValue(countAtom)` subscribes only to that atom; only components using it re-render when it changes.
 - **React bridge.** `useAtomValue` is backed by `useReducer` + `useEffect`; each hook subscribes to a single atom via `store.sub(atom, callback)`.
@@ -264,13 +278,15 @@ const Counter = () => {
 };
 ```
 
-**Internals.** Closest to Supergrain on the **API axis** — also a proxy, also allows direct mutation with no observable declarations. Where it diverges is the React bridge: an immutable snapshot layer rebuilt on every update.
+**Internals.** Closest to Supergrain on the **API axis** — also a proxy, also allows direct mutation with no observable declarations. Where it diverges is the React bridge: an immutable snapshot layer wrapped in a render-tracking proxy.
+
+Source refs: [`README.md`](https://github.com/pmndrs/valtio/blob/main/README.md), [`src/react.ts`](https://github.com/pmndrs/valtio/blob/main/src/react.ts), [`tests/basic.test.tsx`](https://github.com/pmndrs/valtio/blob/main/tests/basic.test.tsx)
 
 - **State shape.** Proxy wraps the whole object tree (like Supergrain). Nested objects are auto-proxied on mutation.
 - **Reactive primitive.** Property-access tracking via the `proxy-compare` library. `useSnapshot` creates an immutable snapshot on each update and wraps it in a tracking proxy to detect which properties were read during render.
 - **Fine-grained tracking.** The tracking proxy records every property accessed during render; the component re-renders when any of those properties changes in a future snapshot.
 - **React bridge.** `useSnapshot` subscribes via `useSyncExternalStore`. Supergrain skips the snapshot layer entirely — reads go through the live proxy, tracked by alien-signals.
-- **Mutation.** Direct mutation allowed: `state.count = 5`, `state.user.name = "Bob"`. But every mutation triggers a snapshot regeneration that walks the state structure, and there's no automatic batching — multiple mutations trigger multiple snapshot cycles. Supergrain's writes are in-place and `batch()` groups them into a single notification cycle.
+- **Mutation.** Direct mutation allowed: `state.count = 5`, `state.user.name = "Bob"`. The React path rebuilds snapshots and re-runs property-access comparison on updates. Supergrain's writes are in-place and `batch()` groups them into a single notification cycle.
 
 ## TanStack Store
 
@@ -305,6 +321,8 @@ const Counter = () => {
 
 TanStack forked and vendored alien-signals; Supergrain imports it from npm. Below that shared graph, the two libraries look very different:
 
+Source refs: [`packages/store/src/alien.ts`](https://github.com/TanStack/store/blob/main/packages/store/src/alien.ts), [`packages/store/src/store.ts`](https://github.com/TanStack/store/blob/main/packages/store/src/store.ts), [`packages/store/src/atom.ts`](https://github.com/TanStack/store/blob/main/packages/store/src/atom.ts), [`packages/react-store/src/useSelector.ts`](https://github.com/TanStack/store/blob/main/packages/react-store/src/useSelector.ts)
+
 - **State shape.** `Store<T>` wraps a **single** `Atom<T>` holding the whole state object. Supergrain wraps the whole tree in a proxy and creates a signal per property lazily, so reactive granularity is per-field rather than per-store.
 - **Reactive primitive.** Same alien-signals graph — `link(dep, sub, version)` dependency tracking, `ReactiveFlags` bitfield, `propagate` / `checkDirty` / `shallowPropagate` pipeline.
 - **Fine-grained tracking.** Selector-driven. Every `setState` notifies every subscriber; `useSelector` runs its selector and uses the `compare` option (default `===`) to bail out of the re-render. Supergrain's `tracked()` wraps render in an alien-signals `effect()` scope, so only signals the component actually read trigger a re-render — no universal fan-out.
@@ -318,20 +336,22 @@ Full research notes in `notes/comparisons/tanstack-store.md`.
 
 Solid isn't a React library, but it's the architecture Supergrain borrows from: proxy-wrapped stores where each property is backed by a signal, with fine-grained DOM updates driven by the compiler. Solid's compiler creates a direct signal→DOM mapping, which eliminates virtual-DOM diffing entirely.
 
+Source refs: [`README.md`](https://github.com/solidjs/solid/blob/main/README.md), [`packages/solid/store/src/store.ts`](https://github.com/solidjs/solid/blob/main/packages/solid/store/src/store.ts)
+
 Supergrain can't rely on compilation — React owns the render cycle — so `tracked()` exists to bridge signals into React's top-down reconciliation. Each tracked component runs inside its own signal-tracking scope; when a signal it read fires, only that component re-renders. This is the per-component signal scoping that makes fine-grained reactivity possible in React without a Babel transform or `useSyncExternalStore` snapshot.
 
 ## Summary
 
 Signal-based React libraries cluster around a few internal patterns:
 
-| Library        | Reactive unit                        | React bridge                                       | Nested state                        |
-| -------------- | ------------------------------------ | -------------------------------------------------- | ----------------------------------- |
-| MobX           | Explicit observables                 | `observer()` + `useSyncExternalStore`              | Requires `observable()` calls       |
-| Preact Signals | `signal(value)` containers           | Version tracking + `useSyncExternalStore`          | Nested signals or replace-on-update |
-| Jotai          | Atoms                                | `useAtomValue` (`useReducer` + `useEffect`)        | Atomic decomposition                |
-| Valtio         | Proxy + snapshots                    | `useSnapshot` + `useSyncExternalStore`             | Auto-proxied on mutation            |
-| TanStack Store | Single atom (forked alien-signals)   | `useSelector` + `useSyncExternalStoreWithSelector` | Spread through `setState`           |
-| Supergrain     | Proxy + alien-signals (per-property) | `tracked()` (`useReducer` + `effect()`)            | Auto-proxied via `wrap()`           |
+| Library        | Reactive unit                        | React bridge                                       | Nested state                         |
+| -------------- | ------------------------------------ | -------------------------------------------------- | ------------------------------------ |
+| MobX           | Explicit observables                 | `observer()` + `useSyncExternalStore`              | `makeAutoObservable` or `observable` |
+| Preact Signals | `signal(value)` containers           | Version tracking + `useSyncExternalStore`          | Nested signals or replace-on-update  |
+| Jotai          | Atoms                                | `useAtomValue` (`useReducer` + `useEffect`)        | Atomic decomposition                 |
+| Valtio         | Proxy + snapshots                    | `useSnapshot` + `useSyncExternalStore`             | Auto-proxied on mutation             |
+| TanStack Store | Single atom (forked alien-signals)   | `useSelector` + `useSyncExternalStoreWithSelector` | Spread through `setState`            |
+| Supergrain     | Proxy + alien-signals (per-property) | `tracked()` (`useReducer` + `effect()`)            | Auto-proxied via `wrap()`            |
 
 Supergrain's specific combination:
 
