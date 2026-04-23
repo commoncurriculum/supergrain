@@ -4,35 +4,31 @@
 
 ### Major Changes
 
-- 3dc7b57: Rename `@supergrain/store` to `@supergrain/silo`, rename the `createStore` primitive in `@supergrain/kernel` to `createReactive`, and reshape the React integration.
+- Initial release of `@supergrain/silo` (renamed from the unpublished `@supergrain/store` / `@supergrain/document-store` workspace package). A reactive document cache for React with first-class request batching.
 
-  **Breaking changes:**
+  - **`createDocumentStore(config)`** — plain primitive, returns `{ find, findInMemory, insertDocument, clearMemory, findQuery, findQueryInMemory, insertQueryResult }`. One reactive tree per store.
+  - **`createDocumentStoreContext<S>()`** (from `@supergrain/silo/react`) — returns `{ Provider, useDocumentStore, useDocument, useQuery }`. The Provider takes `config: DocumentStoreConfig<M, Q>` (required), optional `initial` for declarative seeding (`{ model: { [type]: { [id]: doc } }, query: { [type]: [{ params, result }] } }`), and optional `onMount: (store) => void` for imperative setup (preloads, subscriptions). The Provider calls `createDocumentStore(config)` exactly once per mount, so SSR requests, tests, and React trees are isolated by construction.
+  - **Finder** (internal) — batches `find(type, id)` calls within `batchWindowMs` (default 15ms) and chunks at `batchSize` (default 60) per `adapter.find(ids)` call. 50 `useDocument` calls collapse to one network request.
+  - **Processors** — `defaultProcessor` (any REST endpoint returning `{id, ...}` or `[{id, ...}]`), `defaultQueryProcessor` (results aligned 1:1 with input params by position), and `jsonApiProcessor` (handles `{ data, included }` envelopes; sideloaded docs drop into the documents cache automatically).
+  - **JSON-API relationship hooks** — `useBelongsTo` / `useHasMany` / `useHasManyIndividually` from `@supergrain/silo/react/json-api`. Type-inferred from `Relationship<T>` / `RelationshipArray<T>`; reach the store via a shared ambient Context populated by every Provider.
+  - **Module-augmentation `TypeRegistry`** lets consumers declare their document-type map once and get typed hooks everywhere without per-call-site generics.
 
-  - Package rename: `@supergrain/store` → `@supergrain/silo`. Update imports, and update subpath imports too: `@supergrain/silo`, `/processors`, `/processors/json-api`, `/react`, `/react/json-api`. The `Store` class is now `DocumentStore`; `StoreConfig` is `DocumentStoreConfig`.
-  - `@supergrain/store-react` is absorbed into `@supergrain/silo/react` (the separate package is gone).
-  - `@supergrain/kernel`: `createStore` is renamed to `createReactive`. Same behavior, clearer vocabulary — the primitive builds a reactive proxy; the word "store" is reserved for the app-wide APIs in `@supergrain/kernel/react` and `@supergrain/silo`.
-  - `@supergrain/kernel/react`: `provideStore(store)` is removed. Replace with `createStoreContext<T>()` — call it once at module scope, destructure `{ Provider, useStore }`, and pass your initial state to the Provider via the `initial` prop. The Provider wraps it in `createReactive(...)` exactly once per mount, so SSR requests and tests are isolated by construction.
+  Handle lifecycle (`IDLE → PENDING → SUCCESS | ERROR`) is pinned property-by-property on a stable handle object — `store.find("user", "1")` returns the same object on every call, with fields that mutate in place when data lands. Suspense via `use(handle.promise)`; the promise reference is stable across `insertDocument` so suspended components don't re-suspend on cache updates.
 
-  **New:**
-
-  - `@supergrain/kernel/react` ships `useReactive(initial)` for per-component reactive state. No Provider needed for state scoped to a single component.
-  - `@supergrain/silo/react` ships `createDocumentStoreContext<DocumentStore<Models, Queries>>()` as the React context factory, returning `{ Provider, useDocumentStore, useDocument, useQuery }`. Pass your `DocumentStoreConfig` to the Provider via the `config` prop; the Provider calls `createDocumentStore(config)` exactly once per mount. Optional `initial` seeds documents and query results before the first render; optional `onMount` runs imperative setup after seeding.
-  - Module-augmentation `TypeRegistry` lets consumers declare their document-type map once and get typed hooks everywhere without per-call-site generics.
-
-  **Migration:**
+  **Migration from a custom document cache:**
 
   ```ts
-  // Before
-  import { Store } from "@supergrain/store";
-  import { createStore } from "@supergrain/kernel";
-  import { provideStore } from "@supergrain/kernel/react";
-
   // After
+  import type { DocumentStore } from "@supergrain/silo";
   import { createDocumentStoreContext } from "@supergrain/silo/react";
-  import { createStoreContext } from "@supergrain/kernel/react";
-  // For non-React use:
-  import { createDocumentStore } from "@supergrain/silo";
-  import { createReactive } from "@supergrain/kernel";
+
+  type DocStore = DocumentStore<TypeToModel, TypeToQuery>;
+  export const { Provider, useDocument, useDocumentStore, useQuery } =
+    createDocumentStoreContext<DocStore>();
+
+  // <Provider config={{ models: {...}, queries: {...} }}><App /></Provider>
+  // const user = useDocument("user", id);
+  // const dashboard = useQuery("dashboard", { workspaceId: 7 });
   ```
 
 ### Patch Changes
