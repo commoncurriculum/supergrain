@@ -4,6 +4,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "customConditions": ["@supergrain/source"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
