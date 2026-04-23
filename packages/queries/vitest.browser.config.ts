@@ -1,6 +1,7 @@
 import { playwright } from "@vitest/browser-playwright";
-import { resolve } from "path";
 import { defineConfig } from "vitest/config";
+
+const conditions = ["@supergrain/source"];
 
 export default defineConfig({
   test: {
@@ -17,11 +18,6 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     globals: true,
   },
-  resolve: {
-    alias: {
-      "@supergrain/kernel": resolve(__dirname, "../kernel/src"),
-      "@supergrain/silo": resolve(__dirname, "../silo/src"),
-      "@supergrain/queries": resolve(__dirname, "./src"),
-    },
-  },
+  resolve: { conditions },
+  ssr: { resolve: { conditions } },
 });
