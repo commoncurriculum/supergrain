@@ -9,7 +9,7 @@ export { getNodesIfExist, $TRACK } from "./core";
 // reach the raw primitives via `@supergrain/kernel/internal`.
 export { effect, signal, computed } from "alien-signals";
 export { batch } from "./batch";
-export { resource, type Resource, type ResourceContext } from "./resource";
+export { resource, dispose, type ResourceContext } from "./resource";
 export { reactivePromise, reactiveTask, type ReactivePromise, type ReactiveTask } from "./async";
 export {
   enableProfiling,

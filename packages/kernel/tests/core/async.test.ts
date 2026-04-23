@@ -20,17 +20,15 @@ describe("reactivePromise", () => {
     expect(rp.isReady).toBe(false);
     expect(rp.isSettled).toBe(false);
 
-    await rp;
+    await rp.promise;
 
-    expect(rp.value).toBe(42);
+    expect(rp.data).toBe(42);
     expect(rp.error).toBe(null);
     expect(rp.isPending).toBe(false);
     expect(rp.isResolved).toBe(true);
     expect(rp.isRejected).toBe(false);
     expect(rp.isSettled).toBe(true);
     expect(rp.isReady).toBe(true);
-
-    rp.dispose();
   });
 
   it("transitions to rejected state and preserves previous value", async () => {
@@ -46,22 +44,20 @@ describe("reactivePromise", () => {
     });
 
     d1.resolve(100);
-    await rp;
-    expect(rp.value).toBe(100);
+    await rp.promise;
+    expect(rp.data).toBe(100);
     expect(rp.isReady).toBe(true);
 
     trigger(1); // triggers rerun
     d2.reject(new Error("boom"));
-    await rp.catch(() => {});
+    await rp.promise.catch(() => {});
 
     expect(rp.isRejected).toBe(true);
     expect(rp.isResolved).toBe(false);
     expect(rp.error).toBeInstanceOf(Error);
     expect((rp.error as Error).message).toBe("boom");
-    expect(rp.value).toBe(100); // preserved
+    expect(rp.data).toBe(100); // preserved
     expect(rp.isReady).toBe(true); // sticky
-
-    rp.dispose();
   });
 
   it("re-runs when a tracked signal changes", async () => {
@@ -69,31 +65,29 @@ describe("reactivePromise", () => {
     const fn = vi.fn(async () => id() * 10);
 
     const rp = reactivePromise(fn);
-    await rp;
-    expect(rp.value).toBe(10);
+    await rp.promise;
+    expect(rp.data).toBe(10);
     expect(fn).toHaveBeenCalledTimes(1);
 
     id(2);
-    await rp;
-    expect(rp.value).toBe(20);
+    await rp.promise;
+    expect(rp.data).toBe(20);
     expect(fn).toHaveBeenCalledTimes(2);
 
     id(5);
-    await rp;
-    expect(rp.value).toBe(50);
+    await rp.promise;
+    expect(rp.data).toBe(50);
     expect(fn).toHaveBeenCalledTimes(3);
-
-    rp.dispose();
   });
 
   it("aborts the previous run's AbortSignal when deps change", async () => {
     const trigger = signal(0);
     const aborts: boolean[] = [];
 
-    const rp = reactivePromise(async (abort) => {
+    reactivePromise(async (abortSignal) => {
       trigger();
       const d = deferred<string>();
-      abort.addEventListener("abort", () => {
+      abortSignal.addEventListener("abort", () => {
         aborts.push(true);
         d.resolve("aborted");
       });
@@ -104,7 +98,9 @@ describe("reactivePromise", () => {
     await Promise.resolve(); // let microtasks flush
     expect(aborts.length).toBeGreaterThanOrEqual(1);
 
-    rp.dispose();
+    // Force a final abort by triggering one more rerun
+    trigger(2);
+    await Promise.resolve();
     expect(aborts.at(-1)).toBe(true);
   });
 
@@ -123,55 +119,35 @@ describe("reactivePromise", () => {
     trigger(1); // start second run
     d1.resolve("first");
     await d1.promise;
-    // rp.value should NOT be "first" because the second run is newer
-    expect(rp.value).toBe(null);
+    // rp.data should NOT be "first" because the second run is newer
+    expect(rp.data).toBe(null);
 
     d2.resolve("second");
-    await rp;
-    expect(rp.value).toBe("second");
-
-    rp.dispose();
+    await rp.promise;
+    expect(rp.data).toBe("second");
   });
 
-  it("dispose() stops further re-runs", async () => {
-    const trigger = signal(0);
-    const fn = vi.fn(async () => trigger());
-
-    const rp = reactivePromise(fn);
-    await rp;
-    expect(fn).toHaveBeenCalledTimes(1);
-
-    rp.dispose();
-    trigger(1);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(fn).toHaveBeenCalledTimes(1); // no rerun
-  });
-
-  it("is thenable and awaits resolve to current run's result", async () => {
+  it("promise resolves to the current run's result", async () => {
     const rp = reactivePromise(async () => "hello");
-    const v = await rp;
+    const v = await rp.promise;
     expect(v).toBe("hello");
-    rp.dispose();
   });
 
-  it("catch handles rejection", async () => {
+  it("promise.catch handles rejection", async () => {
     const rp = reactivePromise(async () => {
       throw new Error("fail");
     });
-    const caught = await rp.catch((e) => (e as Error).message);
+    const caught = await rp.promise.catch((e) => (e as Error).message);
     expect(caught).toBe("fail");
-    rp.dispose();
   });
 
   it("handles synchronous throws in asyncFn", async () => {
-    const rp = reactivePromise(() => {
+    const rp = reactivePromise<string>(() => {
       throw new Error("sync-fail");
     });
-    await rp.catch(() => {});
+    await rp.promise.catch(() => {});
     expect(rp.isRejected).toBe(true);
     expect((rp.error as Error).message).toBe("sync-fail");
-    rp.dispose();
   });
 });
 
@@ -187,7 +163,7 @@ describe("reactiveTask", () => {
 
     const v = await p;
     expect(v).toBe(10);
-    expect(task.value).toBe(10);
+    expect(task.data).toBe(10);
     expect(task.isResolved).toBe(true);
     expect(task.isPending).toBe(false);
     expect(task.isReady).toBe(true);
@@ -214,11 +190,11 @@ describe("reactiveTask", () => {
     d1.resolve("stale");
     await p1;
     // value should not be "stale" — the second run is current
-    expect(task.value).toBe(null);
+    expect(task.data).toBe(null);
 
     d2.resolve("fresh");
     await p2;
-    expect(task.value).toBe("fresh");
+    expect(task.data).toBe("fresh");
   });
 
   it("records errors without clobbering a prior success", async () => {
@@ -228,14 +204,14 @@ describe("reactiveTask", () => {
     });
 
     await task.run("ok");
-    expect(task.value).toBe("yes");
+    expect(task.data).toBe("yes");
     expect(task.isReady).toBe(true);
 
     await task.run("fail").catch(() => {});
     expect(task.isRejected).toBe(true);
     expect(task.isResolved).toBe(false);
     expect((task.error as Error).message).toBe("no");
-    expect(task.value).toBe("yes"); // preserved
+    expect(task.data).toBe("yes"); // preserved
     expect(task.isReady).toBe(true); // sticky
   });
 

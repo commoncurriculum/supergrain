@@ -1,85 +1,105 @@
-import { signal, effect } from "alien-signals";
+import { effect } from "alien-signals";
 
-import { batch } from "./batch";
-import { getCurrentSub, setCurrentSub } from "./internal";
+import { createReactive } from "./store";
 
 /**
- * A stateful reactive value with a lifecycle (setup → rerun → dispose).
+ * A resource is a reactive function with cleanup logic.
  *
- * Resources are the synchronous-or-asynchronous generalization of
- * `reactivePromise`. Unlike a plain `signal()`, a resource has a
- * **producer side-effect** — a `setup` function that runs when the
- * resource is created, reruns when any tracked signal it depends on
- * changes, and can register cleanup callbacks. Unlike a plain `effect()`,
- * a resource exposes a reactive **value** that consumers can read.
+ * The state object you pass as the first argument becomes a reactive
+ * proxy (via `createReactive`). Setup mutates fields on it directly —
+ * same mutation-first idiom as everything else in the library. Setup
+ * runs on create, re-runs whenever any reactive value it read changes
+ * (after running the previous run's cleanup), and runs final cleanup
+ * on `dispose(resource)`.
  *
- * Typical uses: timers (`setInterval`), subscriptions (`WebSocket`,
- * `IntersectionObserver`), browser APIs (`matchMedia`), async data fetches,
- * and anything else where you'd otherwise hand-roll a signal + effect pair
- * with cleanup.
+ * Two cleanup mechanisms, one rule each:
+ * - **Sync setup** returns the cleanup: `return () => teardown()`.
+ * - **Async setup** registers via `ctx.onCleanup(() => teardown())`.
+ *   `return` can't work in async (it resolves a Promise, not a
+ *   function). Types enforce this.
  *
- * Dep-tracking rules mirror `effect()`: any reactive read during the
- * *synchronous* portion of `setup` becomes a dep. Reads after an `await`
- * won't track — grab what you need up front.
+ * `ctx.abortSignal` trips on every rerun and on `dispose`. Pass it to
+ * `fetch`, `addEventListener({ signal })`, `IntersectionObserver`, or
+ * any other API that accepts an `AbortSignal` — cancellation is
+ * automatic.
  *
- * @example Clock
+ * The return value is the reactive state proxy itself. Read fields
+ * directly (`user.data`). To stop the resource permanently (aborting
+ * in-flight work, running cleanups), call `dispose(resource)` — a free
+ * function imported from the same module. At React call sites,
+ * `useResource` disposes automatically on unmount.
+ *
+ * @example Clock (sync, return cleanup)
  * ```ts
- * const now = resource(Date.now(), ({ set, onCleanup }) => {
- *   const id = setInterval(() => set(Date.now()), 1000);
- *   onCleanup(() => clearInterval(id));
+ * const now = resource({ value: Date.now() }, (state) => {
+ *   const id = setInterval(() => { state.value = Date.now(); }, 1000);
+ *   return () => clearInterval(id);
  * });
- * // now.value ticks every second; now.dispose() stops it.
+ * // now.value ticks every second; dispose(now) stops it.
  * ```
  *
  * @example Async fetch with reactive input
  * ```ts
  * const userId = signal(1);
- * const user = resource<User | undefined>(undefined, async ({ set, signal }) => {
- *   const id = userId(); // tracked — changes trigger rerun (prev aborted)
- *   const res = await fetch(`/users/${id}`, { signal });
- *   set(await res.json());
- * });
+ * const user = resource(
+ *   { data: null as User | null, error: null as Error | null, isLoading: true },
+ *   async (state, { abortSignal }) => {
+ *     state.isLoading = true;
+ *     state.error = null;
+ *     try {
+ *       const res = await fetch(`/users/${userId()}`, { signal: abortSignal });
+ *       state.data = await res.json();
+ *     } catch (e) {
+ *       state.error = e as Error;
+ *     } finally {
+ *       state.isLoading = false;
+ *     }
+ *   },
+ * );
+ * ```
+ *
+ * @example Async subscription with onCleanup
+ * ```ts
+ * const chat = resource(
+ *   { messages: [] as Message[] },
+ *   async (state, { onCleanup }) => {
+ *     const socket = new WebSocket("wss://...");
+ *     onCleanup(() => socket.close());
+ *     socket.addEventListener("message", (e) => {
+ *       state.messages.push(JSON.parse(e.data));
+ *     });
+ *   },
+ * );
  * ```
  */
-export interface Resource<T> {
-  /** Reactive current value. Reading inside `tracked()` subscribes. */
-  readonly value: T;
-  /** Stop the producer effect, abort in-flight work, and run cleanups. Idempotent. */
-  dispose(): void;
-}
-
-export interface ResourceContext<T> {
-  /** Set the current value. Batched. */
-  set(value: T): void;
-  /** Read the current value without subscribing to it (avoids self-dep loops). */
-  peek(): T;
+export interface ResourceContext {
   /**
-   * Register a cleanup to run on the next rerun (before new setup) and on
-   * final dispose. Use for resources you create imperatively inside setup
-   * that the returned `() => void` sugar wouldn't cover — e.g. when setup
-   * is `async` and can't statically return its cleanup.
+   * An `AbortSignal` that trips when setup re-runs (tracked deps changed)
+   * or when `dispose(resource)` is called. Pass it to APIs that accept
+   * one — `fetch`, `addEventListener({ signal })`, observers — and
+   * cancellation is wired automatically.
+   */
+  readonly abortSignal: AbortSignal;
+  /**
+   * Register a cleanup that runs before the next rerun and on final
+   * `dispose`. Use this inside async setups (where `return cleanup`
+   * doesn't work because the return value is a Promise). For sync
+   * setups, prefer the return-cleanup pattern — it's equivalent.
    */
   onCleanup(fn: () => void): void;
-  /**
-   * An `AbortSignal` that aborts when the resource reruns or disposes.
-   * Hand to `fetch`, `addEventListener`, or any API that accepts one —
-   * teardown is handled for you.
-   */
-  readonly signal: AbortSignal;
 }
 
 /**
- * Create a resource.
- *
- * Sync setup can return a cleanup function directly (`() => void`); async
- * setup must register cleanups via `onCleanup` (since the return value is
- * a Promise). Both styles are supported.
+ * Disposer registry keyed on the reactive state object returned by
+ * `resource()`. `dispose(resource)` looks up the teardown by reference.
  */
-export function resource<T>(
+const disposers = new WeakMap<object, () => void>();
+
+export function resource<T extends object>(
   initial: T,
-  setup: (ctx: ResourceContext<T>) => void | (() => void) | Promise<void | (() => void)>,
-): Resource<T> {
-  const state = signal<T>(initial);
+  setup: (state: T, ctx: ResourceContext) => void | (() => void) | Promise<void>,
+): T {
+  const state = createReactive(initial) as T;
   let cleanups: Array<() => void> = [];
   let controller: AbortController | undefined = undefined;
   let disposed = false;
@@ -94,9 +114,6 @@ export function resource<T>(
       try {
         fn();
       } catch (error) {
-        // Swallowing keeps one bad cleanup from blocking others, matching
-        // React's useEffect cleanup semantics. Surface to console so it's
-        // not silent.
         console.error("[supergrain/resource] cleanup threw:", error);
       }
     }
@@ -109,25 +126,14 @@ export function resource<T>(
     runCleanups();
     controller = new AbortController();
 
-    const ctx: ResourceContext<T> = {
-      set: (v) => {
-        if (gen === generation) batch(() => state(v));
-      },
-      peek: () => {
-        // Detach from the current subscriber so reading own state inside
-        // setup doesn't create a self-loop (set → rerun → peek → ...).
-        const prev = getCurrentSub();
-        setCurrentSub(undefined);
-        try {
-          return state();
-        } finally {
-          setCurrentSub(prev);
-        }
-      },
+    const ctx: ResourceContext = {
+      abortSignal: controller.signal,
       onCleanup: (fn) => {
-        // If the resource has since reruns-advanced past this registration,
-        // run the cleanup immediately so it still executes.
-        if (gen !== generation) {
+        // If the resource has since rerun past this registration (can
+        // happen when onCleanup is called inside an async setup after
+        // the run was superseded), run the cleanup immediately so it
+        // still executes.
+        if (gen !== generation || disposed) {
           try {
             fn();
           } catch (error) {
@@ -137,48 +143,48 @@ export function resource<T>(
         }
         cleanups.push(fn);
       },
-      signal: controller.signal,
     };
 
-    const result = setup(ctx);
+    const result = setup(state, ctx);
 
-    // Sync setup returning a cleanup fn — register it.
     if (typeof result === "function") {
+      // Sync setup returned a cleanup.
       cleanups.push(result);
     } else if (result && typeof (result as Promise<unknown>).then === "function") {
-      // Async setup — schedule cleanup registration if it returns one.
-      (result as Promise<void | (() => void)>).then(
-        (fn) => {
-          if (typeof fn === "function") {
-            if (gen === generation) cleanups.push(fn);
-            else {
-              // Resource has advanced — run the cleanup now.
-              try {
-                fn();
-              } catch (error) {
-                console.error("[supergrain/resource] stale async cleanup threw:", error);
-              }
-            }
-          }
-        },
-        (error) => {
-          // Let aborts pass silently; surface real errors.
-          if (error instanceof DOMException && error.name === "AbortError") return;
-          if (gen === generation) console.error("[supergrain/resource] setup rejected:", error);
-        },
-      );
+      // Async setup — swallow unhandled rejections at the boundary.
+      // Real error reporting inside setup should use try/catch and mutate state.
+      (result as Promise<void>).catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        if (gen === generation) {
+          console.error("[supergrain/resource] async setup rejected:", error);
+        }
+      });
     }
   });
 
-  return {
-    get value() {
-      return state();
-    },
-    dispose() {
-      if (disposed) return;
-      disposed = true;
-      stopEffect();
-      runCleanups();
-    },
-  };
+  disposers.set(state, () => {
+    if (disposed) return;
+    disposed = true;
+    stopEffect();
+    runCleanups();
+  });
+
+  return state;
+}
+
+/**
+ * Stop a resource permanently. Aborts in-flight work via its
+ * `AbortSignal`, runs all registered cleanups, and halts the reactive
+ * effect so the setup will not re-run. Idempotent and safe to call on
+ * any object — no-op if the object wasn't created by `resource()` or
+ * has already been disposed.
+ *
+ * In React, `useResource` disposes automatically on unmount. You only
+ * need to call this for module-scope resources or in tests.
+ */
+export function dispose(resource: object): void {
+  const fn = disposers.get(resource);
+  if (!fn) return;
+  disposers.delete(resource);
+  fn();
 }

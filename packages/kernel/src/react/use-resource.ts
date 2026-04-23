@@ -1,50 +1,56 @@
-import { resource, type Resource, type ResourceContext } from "@supergrain/kernel";
+import { resource, dispose, type ResourceContext } from "@supergrain/kernel";
 import { useEffect, useMemo } from "react";
 
 /**
- * Creates a `resource` scoped to the component lifecycle. Disposes the
- * underlying effect (running cleanups, aborting in-flight work) when the
- * component unmounts or when `deps` change.
+ * Creates a `resource` scoped to the component lifecycle. Disposes on
+ * unmount (aborting in-flight work, running cleanups) and rebuilds when
+ * `deps` change.
  *
  * Pass `deps` for non-signal values that should invalidate the whole
- * resource (e.g. a prop that changes the shape of the setup). Signal reads
- * inside `setup` are tracked automatically — don't put them in `deps`.
- *
- * This is the general-purpose equivalent of `useReactivePromise`. Use it
- * for timers, observers, subscriptions, or any stateful effect whose value
- * you want to read reactively. For async data fetches specifically,
- * `useReactivePromise` is shorter (ergonomic sugar around the same idea).
+ * resource (e.g. a prop that changes the shape of the setup). Signal
+ * reads inside `setup` are tracked automatically — don't put them in
+ * `deps`.
  *
  * @example Clock
  * ```tsx
  * const Clock = tracked(() => {
- *   const now = useResource(Date.now(), ({ set, onCleanup }) => {
- *     const id = setInterval(() => set(Date.now()), 1000);
- *     onCleanup(() => clearInterval(id));
+ *   const now = useResource({ value: Date.now() }, (state) => {
+ *     const id = setInterval(() => { state.value = Date.now(); }, 1000);
+ *     return () => clearInterval(id);
  *   });
  *   return <time>{new Date(now.value).toLocaleTimeString()}</time>;
  * });
  * ```
  *
- * @example Media query listener
+ * @example Async fetch
  * ```tsx
- * const useIsDark = () => useResource(
- *   matchMedia("(prefers-color-scheme: dark)").matches,
- *   ({ set }) => {
- *     const mql = matchMedia("(prefers-color-scheme: dark)");
- *     const handler = () => set(mql.matches);
- *     mql.addEventListener("change", handler);
- *     return () => mql.removeEventListener("change", handler);
- *   }
- * );
+ * const Profile = tracked(({ id }: { id: string }) => {
+ *   const user = useResource(
+ *     { data: null as User | null, error: null as Error | null, isLoading: true },
+ *     async (state, { abortSignal }) => {
+ *       try {
+ *         const res = await fetch(`/users/${id}`, { signal: abortSignal });
+ *         state.data = await res.json();
+ *       } catch (e) {
+ *         state.error = e as Error;
+ *       } finally {
+ *         state.isLoading = false;
+ *       }
+ *     },
+ *     [id],
+ *   );
+ *   if (user.isLoading) return <Spinner />;
+ *   if (user.error) return <ErrorMessage error={user.error} />;
+ *   return <UserCard user={user.data!} />;
+ * });
  * ```
  */
-export function useResource<T>(
+export function useResource<T extends object>(
   initial: T,
-  setup: (ctx: ResourceContext<T>) => void | (() => void) | Promise<void | (() => void)>,
+  setup: (state: T, ctx: ResourceContext) => void | (() => void) | Promise<void>,
   deps: ReadonlyArray<unknown> = [],
-): Resource<T> {
-  const r = useMemo(() => resource(initial, setup), deps); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => r.dispose(), [r]);
-  return r;
+): T {
+  const state = useMemo(() => resource(initial, setup), deps); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => dispose(state), [state]);
+  return state;
 }

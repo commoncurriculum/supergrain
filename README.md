@@ -133,60 +133,198 @@ Handles are reactive: a later `store.insertDocument("user", updated)` (socket pu
 
 ## Side effects as reactive values: `resource`
 
-React has no first-class way to represent _"a reactive value produced by a side effect with its own lifecycle."_ You assemble it from `useState` + `useEffect` + `useRef`. Two parts of that assembly are things React genuinely can't do cleanly; the rest is boilerplate reduction.
+> A resource is a reactive function with cleanup logic.
 
-**Correctness: async races.** Component renders with `id=1`, fetch starts. Prop changes to `id=2`, new fetch starts. If `id=1`'s response arrives _after_ `id=2`'s, you render the wrong user. The hook fix is an `AbortController` in a ref, abort-on-rerun in the cleanup, plus a stale-response guard for requests that can't honor the abort. People write this wrong constantly.
+React has no first-class way to express "a reactive value produced by a side effect with its own lifecycle." You assemble it from `useState` + `useEffect` + `useRef`, plus an `AbortController`, plus a generation counter if you want to avoid stale responses. Every app writes this repeatedly, and every app ships the subtle bugs.
+
+### Hand-rolled vs `resource`
+
+Hand-rolled with primitives, doing it right:
+
+```tsx
+import { createReactive, effect, signal } from "@supergrain/kernel";
+
+const userId = signal(1);
+const user = createReactive({
+  data: null as User | null,
+  error: null as Error | null,
+  isLoading: false,
+});
+
+let currentAbort: AbortController | undefined;
+let generation = 0;
+
+const stop = effect(() => {
+  const gen = ++generation;
+  currentAbort?.abort();
+  currentAbort = new AbortController();
+  const abortSignal = currentAbort.signal;
+
+  const id = userId(); // tracked — reruns on change
+  user.isLoading = true;
+  user.error = null;
+
+  (async () => {
+    try {
+      const res = await fetch(`/users/${id}`, { signal: abortSignal });
+      const data = await res.json();
+      if (gen === generation) {
+        user.data = data;
+        user.isLoading = false;
+      }
+    } catch (e) {
+      if (gen === generation && !abortSignal.aborted) {
+        user.error = e as Error;
+        user.isLoading = false;
+      }
+    }
+  })();
+});
+
+// To dispose later:
+stop();
+currentAbort?.abort();
+```
+
+Same thing with `resource`:
+
+```ts
+import { resource, signal } from "@supergrain/kernel";
+
+const userId = signal(1);
+const user = resource(
+  { data: null as User | null, error: null as Error | null, isLoading: false },
+  async (state, { abortSignal }) => {
+    state.isLoading = true;
+    state.error = null;
+    try {
+      const res = await fetch(`/users/${userId()}`, { signal: abortSignal });
+      state.data = await res.json();
+    } catch (e) {
+      state.error = e as Error;
+    } finally {
+      state.isLoading = false;
+    }
+  },
+);
+```
+
+### What `resource` packages up
+
+Six concerns that every hand-rolled version has to get right:
+
+1. **`AbortController` lifecycle tied to effect reruns** — fresh per run, aborted on rerun or dispose.
+2. **Generation counter** — so stale async responses from a prior run don't clobber state when inputs change mid-fetch.
+3. **Ordered cleanup before re-setup** — the old run's teardown runs _before_ the new setup starts. Get this wrong and you double-subscribe.
+4. **`onCleanup` registration** — cleanups registered inside async setups (where `return cleanup` doesn't work) still need to fire.
+5. **Idempotent dispose** — safe to call twice, safe to call during an in-flight rerun.
+6. **Sync and async setup shapes** — sync returns its cleanup (`return () => ...`), async uses `onCleanup` (because `return` resolves a Promise, not a function). Types enforce this.
+
+Hand-rolled, each of these is a few lines. Together, ~20 lines of correctness-critical plumbing that the same app writes over and over. The bugs people ship are the ones on this list — missed generation check, abort dropped, cleanup ordering wrong.
+
+### Mutation-first
+
+`state` is a reactive object (via `createReactive`). Setup mutates fields directly — no setter calls, no signal API:
+
+```ts
+state.isLoading = true; // same as everywhere else in supergrain
+state.data = await res.json();
+```
+
+Reading is flat, matching every async-data library (SWR, TanStack Query, Apollo, URQL, silo):
+
+```ts
+user.data; // the reactive value
+user.error;
+user.isLoading;
+```
+
+### Lives outside the component tree
+
+A resource is not a hook. You pick its lifetime, and it reacts to its inputs regardless of whether anything is rendered:
+
+```ts
+// Module-scope resource driven by a module-scope signal.
+const channelId = signal("general");
+
+export const chatMessages = resource(
+  { messages: [] as Message[] },
+  async (state, { onCleanup }) => {
+    const socket = new WebSocket(`wss://chat/${channelId()}`); // tracked
+    onCleanup(() => socket.close());
+    socket.addEventListener("message", (e) => {
+      state.messages.push(JSON.parse(e.data));
+    });
+  },
+);
+
+// Read from any component — no Provider, no hook:
+const MessageCount = tracked(() => <span>{chatMessages.messages.length}</span>);
+
+// Read from non-component code — analytics, tests, workers:
+button.addEventListener("click", () => track("send", chatMessages.messages.at(-1)?.id));
+
+// Drive reruns from anywhere:
+channelId("random"); // old socket closes, new one opens, messages resets
+```
+
+Rules of Hooks forces custom hooks into component instances or Context. A resource has no such restriction.
+
+### In React
+
+`useResource` scopes the lifetime to the component:
 
 ```tsx
 import { tracked, useResource } from "@supergrain/kernel/react";
 
 const Profile = tracked(({ id }: { id: string }) => {
-  const user = useResource<User | null>(
-    null,
-    async ({ set, signal }) => {
-      const res = await fetch(`/users/${id}`, { signal });
-      set(await res.json());
+  const user = useResource(
+    { data: null as User | null, error: null as Error | null, isLoading: true },
+    async (state, { abortSignal }) => {
+      try {
+        const res = await fetch(`/users/${id}`, { signal: abortSignal });
+        state.data = await res.json();
+      } catch (e) {
+        state.error = e as Error;
+      } finally {
+        state.isLoading = false;
+      }
     },
-    [id],
+    [id], // deps — rebuild when these change
   );
 
-  return <div>{user.value?.name}</div>;
+  if (user.isLoading) return <Spinner />;
+  if (user.error) return <ErrorMessage error={user.error} />;
+  return <UserCard user={user.data!} />;
 });
 ```
 
-`signal` trips on every rerun. Hand it to `fetch` and cancellation is automatic. If a response arrives after a newer fetch started, the resource's generation counter discards it — the UI can't display stale data even if the network responds out of order.
+The hook disposes on unmount — aborts in-flight work, runs cleanups, halts the effect.
 
-**Capability: state that lives outside the component tree.** You want a live value reachable from any component _and_ from non-component code (event handlers, analytics, tests, workers), driven by a reactive input that lives at app scope. A custom hook can't do this — Rules of Hooks forces state into a component instance or into Context, and the state is inert until some component mounts and calls the hook.
+### `reactivePromise` — sugar for the async-data case
+
+When you want the standard async envelope (`data`, `error`, `isPending`, `isResolved`, `isReady`, plus a `promise` field for `await` / React 19 `use()`), `reactivePromise` is built on `resource` and fills in the envelope for you:
 
 ```ts
-import { signal, resource } from "@supergrain/kernel";
-
-// App-scope reactive input and a module-scope resource that reacts to it.
-const channelId = signal("general");
-
-export const chatMessages = resource<Message[]>([], ({ set, peek, onCleanup }) => {
-  const socket = new WebSocket(`wss://chat/${channelId()}`); // tracked
-  socket.addEventListener("message", (e) => set([...peek(), JSON.parse(e.data)]));
-  onCleanup(() => socket.close());
+const userQuery = reactivePromise(async (abortSignal) => {
+  const id = userId();
+  const res = await fetch(`/users/${id}`, { signal: abortSignal });
+  return res.json();
 });
 
-// Read from any component — no hook, no Provider:
-const MessageCount = tracked(() => <span>{chatMessages.value.length}</span>);
-
-// Read from non-component code — event handler, analytics, test, worker:
-button.addEventListener("click", () => track("send", chatMessages.value.at(-1)?.id));
-
-// Drive reruns from anywhere — a router, a keyboard shortcut, a saga:
-channelId("random"); // old socket closes, new one opens, messages resets
+userQuery.data; // User | null
+userQuery.isPending; // boolean
+userQuery.error; // unknown
+await userQuery.promise; // explicit thenable, matching silo's handle.promise
 ```
 
-A resource isn't a hook — it's a signal with a lifecycle. You choose its lifetime (module scope, component scope via `useResource`, or something in between), and it reacts to its inputs regardless of where those inputs live or what's rendered.
+Same lifecycle as `resource`. Just no boilerplate for the standard envelope shape.
 
-**Also: the boilerplate savings are real.** Even when neither of the above applies — a plain `setInterval`, a one-off `matchMedia` listener — `useResource` is shorter and tighter than `useState + useEffect + useRef`, skips the deps array, and puts the cleanup next to the setup it undoes. Not the headline pitch, but it adds up.
+### Reach for `resource` when
 
-**Reach for `resource` when** the value is produced by an effect with its own lifecycle. Typical cases: async fetches with changing inputs, WebSocket / SSE streams, `setInterval`, `matchMedia`, `IntersectionObserver`, `ResizeObserver`, geolocation watches, `requestAnimationFrame` loops.
+The value is produced by an effect with its own lifecycle. Typical cases: async fetches with changing inputs, WebSocket / SSE streams, `setInterval`, `matchMedia`, `IntersectionObserver`, `ResizeObserver`, geolocation watches, `requestAnimationFrame` loops.
 
-Prefer `reactivePromise` / `useReactivePromise` when the value is specifically the result of a Promise and you want the full envelope (`isPending`, `isResolved`, `isRejected`, thenable). That's ergonomic sugar over `resource` for the async-data case — same lifecycle, extra state fields.
+Reach for `reactivePromise` when your work is literally "call an async function, get the envelope." Reach for `resource` when you want a custom state shape, multiple side effects, or a producer that isn't a Promise.
 
 ## DOM behavior: `modifier`
 
@@ -254,14 +392,14 @@ Change `settings.scrollThreshold` and the modifier reruns (old observer disconne
 
 ## Which primitive answers which question?
 
-| Question                                                     | Primitive                                | Example                                                 |
-| ------------------------------------------------------------ | ---------------------------------------- | ------------------------------------------------------- |
-| "A domain entity from my API — shared, batched, cached."     | `silo` (`useDocument`, `useQuery`)       | `useDocument("user", id)`                               |
-| "A reactive value produced by a side effect I own."          | `resource` / `useResource`               | WebSocket, timer, observer, ad-hoc async fetch          |
-| "The same, but specifically an async Promise with envelope." | `reactivePromise` / `useReactivePromise` | `isPending`, `isResolved`, thenable — sugar on resource |
-| "Behavior attached to a specific DOM element."               | `modifier` / `useModifier`               | click-outside, focus trap, autofocus, ResizeObserver    |
-| "A reactive side effect, no element."                        | `useSignalEffect`                        | syncing a signal to `document.title`, logging           |
-| "A derived value."                                           | `computed` / `useComputed`               | filtered list length, total cost                        |
+| Question                                                 | Primitive                                | Example                                                       |
+| -------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
+| "A domain entity from my API — shared, batched, cached." | `silo` (`useDocument`, `useQuery`)       | `useDocument("user", id)`                                     |
+| "A reactive value produced by a side effect I own."      | `resource` / `useResource`               | WebSocket, timer, observer, custom-shape async fetch          |
+| "An async Promise with the standard envelope."           | `reactivePromise` / `useReactivePromise` | `data`, `error`, `isPending`, `promise` — sugar over resource |
+| "Behavior attached to a specific DOM element."           | `modifier` / `useModifier`               | click-outside, focus trap, autofocus, ResizeObserver          |
+| "A reactive side effect, no element."                    | `useSignalEffect`                        | syncing a signal to `document.title`, logging                 |
+| "A derived value."                                       | `computed` / `useComputed`               | filtered list length, total cost                              |
 
 ## Suspense
 

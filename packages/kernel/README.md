@@ -155,16 +155,20 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
 
   > Coalesces signal writes inside `fn` into a single notification. Throws if `fn` returns a Promise (must be sync).
 
-- `resource<T>(initial, setup)`
+- `resource<T extends object>(initial, setup)`
 
-  > Reactive value produced by a setup function with cleanup. Setup runs on create, reruns on tracked signal change (cleanup first), and exposes an `AbortSignal` that aborts on rerun/dispose. Sync or async. Use for timers, observers, subscriptions, media queries — anything where you'd otherwise hand-roll a `useState` + `useEffect` + `useRef` triple.
+  > A reactive function with cleanup logic. `initial` is wrapped in `createReactive`; setup mutates fields directly. Setup runs on create, reruns on tracked signal change (cleanup first), and exposes an `AbortSignal` that trips on rerun/dispose. Sync setups `return () => cleanup`; async setups register cleanups via `ctx.onCleanup(...)`. Use for timers, observers, subscriptions, media queries, WebSockets — anything where you'd otherwise hand-roll a `useState` + `useEffect` + `useRef` + `AbortController` triple.
+
+- `dispose(resource)`
+
+  > Free function that stops a resource permanently: aborts in-flight work, runs cleanups, halts the effect. Idempotent, safe to call on anything (no-op if not a resource or already disposed). In React, `useResource` disposes automatically on unmount.
 
 - `reactivePromise<T>(asyncFn)`
 
-  > Ergonomic async envelope on top of `resource`. Same lifecycle (re-runs on tracked signal change, aborts previous), plus `{ value, error, isPending, isResolved, isRejected, isSettled, isReady }` and a thenable for `await`.
+  > Ergonomic async envelope on top of `resource`. Same lifecycle (re-runs on tracked signal change, aborts previous), plus `{ data, error, isPending, isResolved, isRejected, isSettled, isReady, promise }`. Field names and shape match SWR / TanStack Query / Apollo / silo exactly. `await rp.promise` for explicit thenable access; `use(rp.promise)` for React 19 Suspense.
 
 - `reactiveTask<Args, T>(asyncFn)`
-  > Imperative async command. Same state fields as `reactivePromise`, but doesn't auto-run — call `.run(...args)` to trigger. Use for user-initiated mutations (save, submit) where you want loading/error state without tracking inputs.
+  > Imperative async command. Same envelope fields as `reactivePromise` (flat: `data`, `error`, `isPending`, ...), plus a `run(...args)` method. Doesn't auto-run — call `task.run(...)` to trigger. Use for user-initiated mutations (save, submit) where you want loading/error state without tracking inputs.
 
 ### React
 

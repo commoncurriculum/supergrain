@@ -1,31 +1,31 @@
 import { describe, it, expect, vi } from "vitest";
 
-import { resource, signal } from "../../src";
+import { resource, dispose, signal } from "../../src";
 
 describe("resource()", () => {
-  it("exposes the initial value before setup sets anything", () => {
-    const r = resource(0, () => {
-      // no set — value stays at initial
+  it("returns the initial state reactively", () => {
+    const r = resource({ value: 0 }, () => {
+      // setup doesn't touch state; initial stays
     });
     expect(r.value).toBe(0);
-    r.dispose();
+    dispose(r);
   });
 
-  it("updates .value when setup calls set()", () => {
-    const r = resource(0, ({ set }) => {
-      set(42);
+  it("setup can mutate state directly via assignment", () => {
+    const r = resource({ value: 0 }, (state) => {
+      state.value = 42;
     });
     expect(r.value).toBe(42);
-    r.dispose();
+    dispose(r);
   });
 
   it("tracks signal reads in setup and reruns when they change", () => {
     const input = signal(1);
     const setupSpy = vi.fn();
 
-    const r = resource(0, ({ set }) => {
+    const r = resource({ value: 0 }, (state) => {
       setupSpy();
-      set(input() * 10);
+      state.value = input() * 10;
     });
 
     expect(r.value).toBe(10);
@@ -35,17 +35,16 @@ describe("resource()", () => {
     expect(r.value).toBe(20);
     expect(setupSpy).toHaveBeenCalledTimes(2);
 
-    r.dispose();
+    dispose(r);
   });
 
-  it("runs cleanup registered via onCleanup before each rerun", () => {
+  it("runs returned cleanup before each rerun", () => {
     const trigger = signal(0);
     const cleanup = vi.fn();
 
-    const r = resource<number>(0, ({ set, onCleanup }) => {
-      const n = trigger();
-      set(n);
-      onCleanup(cleanup);
+    const r = resource({ value: 0 }, (state) => {
+      state.value = trigger();
+      return cleanup;
     });
 
     expect(cleanup).not.toHaveBeenCalled();
@@ -56,34 +55,34 @@ describe("resource()", () => {
     trigger(2);
     expect(cleanup).toHaveBeenCalledTimes(2);
 
-    r.dispose();
+    dispose(r);
     expect(cleanup).toHaveBeenCalledTimes(3);
   });
 
-  it("runs cleanup returned from sync setup", () => {
+  it("runs cleanup registered via onCleanup", () => {
     const trigger = signal(0);
     const cleanup = vi.fn();
 
-    const r = resource(0, ({ set }) => {
-      set(trigger());
-      return cleanup;
+    const r = resource({ value: 0 }, (state, { onCleanup }) => {
+      state.value = trigger();
+      onCleanup(cleanup);
     });
 
     expect(cleanup).not.toHaveBeenCalled();
     trigger(1);
     expect(cleanup).toHaveBeenCalledTimes(1);
 
-    r.dispose();
+    dispose(r);
     expect(cleanup).toHaveBeenCalledTimes(2);
   });
 
-  it("aborts the signal on rerun and dispose", () => {
+  it("trips the AbortSignal on rerun and dispose", () => {
     const trigger = signal(0);
-    let signals: Array<AbortSignal> = [];
+    const signals: Array<AbortSignal> = [];
 
-    const r = resource(0, ({ signal: sig, set }) => {
-      signals.push(sig);
-      set(trigger());
+    const r = resource({ value: 0 }, (state, { abortSignal }) => {
+      signals.push(abortSignal);
+      state.value = trigger();
     });
 
     expect(signals).toHaveLength(1);
@@ -94,7 +93,7 @@ describe("resource()", () => {
     expect(signals[0]!.aborted).toBe(true);
     expect(signals[1]!.aborted).toBe(false);
 
-    r.dispose();
+    dispose(r);
     expect(signals[1]!.aborted).toBe(true);
   });
 
@@ -102,48 +101,48 @@ describe("resource()", () => {
     const trigger = signal(0);
     const setupSpy = vi.fn();
 
-    const r = resource(0, ({ set }) => {
+    const r = resource({ value: 0 }, (state) => {
       setupSpy();
-      set(trigger());
+      state.value = trigger();
     });
 
     expect(setupSpy).toHaveBeenCalledTimes(1);
-    r.dispose();
+    dispose(r);
 
     trigger(1);
     trigger(2);
     expect(setupSpy).toHaveBeenCalledTimes(1);
-    // Value frozen at last pre-dispose state
     expect(r.value).toBe(0);
   });
 
-  it("peek() reads current value without subscribing", () => {
-    const r = resource(0, ({ set, peek }) => {
-      // Using peek to read own state without creating a dep loop
-      set(peek() + 1);
-    });
-    expect(r.value).toBe(1);
-    r.dispose();
+  it("dispose is idempotent", () => {
+    const cleanup = vi.fn();
+    const r = resource({ value: 0 }, () => cleanup);
+
+    dispose(r);
+    dispose(r);
+    dispose(r);
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
   it("supports async setup that registers cleanup via onCleanup", async () => {
     const cleanup = vi.fn();
-    let resolved = false;
+    const r = resource<{ status: string }>(
+      { status: "loading" },
+      async (state, { onCleanup, abortSignal }) => {
+        onCleanup(cleanup);
+        await new Promise((res) => setTimeout(res, 0));
+        if (abortSignal.aborted) return;
+        state.status = "done";
+      },
+    );
 
-    const r = resource<string>("loading", async ({ set, onCleanup, signal: sig }) => {
-      onCleanup(cleanup);
-      await new Promise((r) => setTimeout(r, 0));
-      if (sig.aborted) return;
-      set("done");
-      resolved = true;
-    });
+    expect(r.status).toBe("loading");
+    await new Promise((res) => setTimeout(res, 5));
+    expect(r.status).toBe("done");
 
-    expect(r.value).toBe("loading");
-    await new Promise((r) => setTimeout(r, 5));
-    expect(resolved).toBe(true);
-    expect(r.value).toBe("done");
-
-    r.dispose();
+    dispose(r);
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
@@ -151,24 +150,47 @@ describe("resource()", () => {
     const input = signal(1);
     const results: Array<number> = [];
 
-    const r = resource<number | undefined>(undefined, async ({ set, signal: sig }) => {
+    const r = resource({ value: null as number | null }, async (state, { abortSignal }) => {
       const v = input();
-      await new Promise((r) => setTimeout(r, 10));
-      if (sig.aborted) return;
-      set(v);
+      await new Promise((res) => setTimeout(res, 10));
+      if (abortSignal.aborted) return;
+      state.value = v;
       results.push(v);
     });
 
-    // Change input before the first setTimeout resolves
-    await new Promise((r) => setTimeout(r, 2));
+    await new Promise((res) => setTimeout(res, 2));
     input(2);
 
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((res) => setTimeout(res, 30));
 
     // Only the second run's result should land
     expect(results).toEqual([2]);
     expect(r.value).toBe(2);
 
-    r.dispose();
+    dispose(r);
+  });
+
+  it("exposes a reactive proxy — mutations are tracked per-field", () => {
+    const r = resource(
+      { data: null as string | null, error: null as Error | null, isLoading: true },
+      (state) => {
+        state.data = "hello";
+        state.isLoading = false;
+      },
+    );
+
+    expect(r.data).toBe("hello");
+    expect(r.isLoading).toBe(false);
+    expect(r.error).toBe(null);
+
+    dispose(r);
+  });
+});
+
+describe("dispose()", () => {
+  it("no-op on non-resource objects", () => {
+    // should not throw
+    dispose({});
+    dispose({ foo: 1 });
   });
 });

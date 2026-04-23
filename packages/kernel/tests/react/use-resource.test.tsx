@@ -6,9 +6,11 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 afterEach(() => cleanup());
 
 describe("useResource()", () => {
-  it("exposes the resource value reactively", () => {
+  it("exposes the reactive state to JSX", () => {
     const Component = tracked(() => {
-      const r = useResource(7, ({ set }) => set(42));
+      const r = useResource({ value: 7 }, (state) => {
+        state.value = 42;
+      });
       return <span data-testid="val">{r.value}</span>;
     });
 
@@ -21,9 +23,9 @@ describe("useResource()", () => {
     const setupSpy = vi.fn();
 
     const Component = tracked(() => {
-      const r = useResource(0, ({ set }) => {
+      const r = useResource({ value: 0 }, (state) => {
         setupSpy();
-        set(store.n * 10);
+        state.value = store.n * 10;
       });
       return <span data-testid="val">{r.value}</span>;
     });
@@ -41,29 +43,29 @@ describe("useResource()", () => {
 
   it("disposes on unmount — cleanups run, further signal changes are ignored", async () => {
     const store = createReactive({ n: 1 });
-    const cleanup = vi.fn();
+    const cleanupSpy = vi.fn();
     const setupSpy = vi.fn();
 
     const Component = tracked(() => {
-      const r = useResource(0, ({ set }) => {
+      const r = useResource({ value: 0 }, (state) => {
         setupSpy();
-        set(store.n);
-        return cleanup;
+        state.value = store.n;
+        return cleanupSpy;
       });
       return <span>{r.value}</span>;
     });
 
     const { unmount } = render(<Component />);
     expect(setupSpy).toHaveBeenCalledTimes(1);
-    expect(cleanup).not.toHaveBeenCalled();
+    expect(cleanupSpy).not.toHaveBeenCalled();
 
     unmount();
-    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(cleanupSpy).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       store.n = 99;
     });
-    // Resource is disposed — setup must not run again
+    // Disposed — setup must not run again
     expect(setupSpy).toHaveBeenCalledTimes(1);
   });
 });
