@@ -22,11 +22,10 @@ import { useCallback, useRef } from "react";
  * <input ref={useModifier(onKeydown, "Enter", () => submit())} />
  * ```
  *
- * The identity function today; branded in types so future versions can
- * attach metadata (e.g. `modifier.update`, `modifier.compose`) without a
- * breaking API change. Users should always go through this factory when
- * authoring a reusable modifier — the brand makes usage discoverable via
- * TypeScript tooling.
+ * Currently the identity function. Reusable modifiers should still be
+ * authored through this factory so future versions can attach metadata
+ * (e.g. `modifier.update`, `modifier.compose`) without requiring call-site
+ * changes.
  */
 export type Modifier<E extends Element, A extends unknown[]> = (
   el: E,
@@ -54,8 +53,13 @@ export function modifier<E extends Element, A extends unknown[]>(
  * args inside `setup` and combine with a signal, or lift the arg to a
  * signal.
  *
- * **React 19 cleanup ref callbacks** are used — the returned function is
- * the ref callback; its return value is the cleanup React runs on detach.
+ * **React 18 & 19** — a stable callback ref; detach is detected via
+ * `el === null` rather than React 19's cleanup-returning ref.
+ *
+ * **Modifier identity** — `m` is read from a ref, matching `args`. Passing
+ * a different modifier on a later render does NOT tear down and re-run;
+ * the next rerun (via signal change or args change) picks up the latest.
+ * In practice modifiers are module-scope constants, so identity is stable.
  *
  * @example Click outside
  * ```tsx
@@ -86,46 +90,58 @@ export function modifier<E extends Element, A extends unknown[]>(
 export function useModifier<E extends Element, A extends unknown[]>(
   m: Modifier<E, A>,
   ...args: A
-): (el: E | null) => (() => void) | void {
+): (el: E | null) => void {
   const argsRef = useRef<A>(args);
   argsRef.current = args;
 
-  // Stable ref callback. React 19 calls it with an element on attach and
-  // invokes the returned cleanup on detach. A stable identity keeps React
-  // from tearing down on every render.
+  const modifierRef = useRef<Modifier<E, A>>(m);
+  modifierRef.current = m;
+
+  // eslint-disable-next-line unicorn/no-null -- sentinel for "not attached"
+  const elementRef = useRef<E | null>(null);
+  // eslint-disable-next-line unicorn/no-null -- sentinel for "no effect running"
+  const stopEffectRef = useRef<(() => void) | null>(null);
+  // eslint-disable-next-line unicorn/no-null -- sentinel for "no cleanup registered"
+  const userCleanupRef = useRef<(() => void) | null>(null);
+
+  const runUserCleanup = useCallback(() => {
+    if (!userCleanupRef.current) return;
+    try {
+      userCleanupRef.current();
+    } catch (error) {
+      console.error("[supergrain/modifier] cleanup threw:", error);
+    }
+    userCleanupRef.current = null; // eslint-disable-line unicorn/no-null
+  }, []);
+
+  const teardown = useCallback(() => {
+    if (stopEffectRef.current) {
+      stopEffectRef.current();
+      stopEffectRef.current = null; // eslint-disable-line unicorn/no-null
+    }
+    runUserCleanup();
+    elementRef.current = null; // eslint-disable-line unicorn/no-null
+  }, [runUserCleanup]);
+
+  // Stable callback ref. React 18 & 19 both call with an element on attach
+  // and `null` on detach. Stable identity avoids tearing down on every
+  // render; `m` and `args` flow through refs.
   return useCallback(
     (el: E | null) => {
-      if (el === null) return;
+      if (el === null) {
+        teardown();
+        return;
+      }
+      if (elementRef.current === el) return;
 
-      // eslint-disable-next-line unicorn/no-null -- sentinel for "no cleanup registered"
-      let userCleanup: (() => void) | null = null;
-      const stopEffect = effect(() => {
-        // Tear down prior run before re-setup.
-        if (userCleanup) {
-          try {
-            userCleanup();
-          } catch (error) {
-            console.error("[supergrain/modifier] cleanup threw:", error);
-          }
-          userCleanup = null; // eslint-disable-line unicorn/no-null
-        }
-        const result = m(el, ...argsRef.current);
-        if (typeof result === "function") userCleanup = result;
+      teardown();
+      elementRef.current = el;
+      stopEffectRef.current = effect(() => {
+        runUserCleanup();
+        const result = modifierRef.current(el, ...argsRef.current);
+        if (typeof result === "function") userCleanupRef.current = result;
       });
-
-      return () => {
-        stopEffect();
-        if (userCleanup) {
-          try {
-            userCleanup();
-          } catch (error) {
-            console.error("[supergrain/modifier] cleanup threw:", error);
-          }
-        }
-      };
     },
-    // Stable across renders; latest args flow via argsRef.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [teardown, runUserCleanup],
   );
 }

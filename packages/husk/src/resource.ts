@@ -94,6 +94,11 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
 
       const ctx: ResourceContext = {
         abortSignal: controller.signal,
+        // If the resource has been disposed (or superseded) by the time
+        // this fires — e.g. `dispose()` ran while an async setup was
+        // awaiting — run the cleanup immediately instead of pushing it
+        // into a list that will never drain. This is the dispose-race
+        // safeguard; don't remove without reworking the async contract.
         onCleanup: (fn) => {
           if (gen !== generation || disposed) {
             try {
@@ -114,8 +119,13 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
       if (typeof result === "function") {
         cleanups.push(result);
       } else if (result && typeof (result as Promise<unknown>).then === "function") {
-        (result as Promise<void>).catch((error) => {
-          if (error instanceof DOMException && error.name === "AbortError") return;
+        // Promise-resolved values are intentionally ignored — async setups
+        // register cleanup via `ctx.onCleanup(...)`, which is `disposed`-safe
+        // (runs immediately if the resource was torn down mid-await). Check
+        // `error.name` rather than `instanceof DOMException` so this works
+        // in runtimes where DOMException isn't a global.
+        (result as Promise<void>).catch((error: unknown) => {
+          if ((error as { name?: string } | null)?.name === "AbortError") return;
           if (gen === generation) {
             console.error("[supergrain/resource] async setup rejected:", error);
           }
