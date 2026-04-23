@@ -6,8 +6,8 @@
 
 - Updated dependencies [de3b0c4]
 - Updated dependencies [3dc7b57]
-  - @supergrain/kernel@4.0.0
-  - @supergrain/kernel/react@4.0.0
+  - @supergrain/kernel@3.0.0
+  - @supergrain/kernel/react@3.0.0
 
 ## 1.0.1
 

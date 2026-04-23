@@ -1,8 +1,6 @@
 # @supergrain/silo
 
-## 4.0.0
-
-First release under the `@supergrain/silo` name. Version bumped to 4.x alongside `@supergrain/kernel` and `@supergrain/mill` to mark the new lineage.
+## 3.0.0
 
 ### Major Changes
 
@@ -35,7 +33,27 @@ First release under the `@supergrain/silo` name. Version bumped to 4.x alongside
 
 ### Patch Changes
 
-- Updated dependencies — `@supergrain/kernel@4.0.0` (see kernel CHANGELOG for the full breaking-change list including the `createStore` → `createReactive` rename, the `provideStore` removal, and the `startBatch` / `endBatch` removal).
+- de3b0c4: Extract MongoDB-style update operators into a new package, `@supergrain/mill`.
+
+  **Breaking change:**
+
+  `update`, `UpdateOperations`, `LooseUpdateOperations`, and `StrictUpdateOperations` are no longer exported from `@supergrain/kernel`. Install `@supergrain/mill` and import them from there.
+
+  **Migration:**
+
+  ```ts
+  import { createReactive, update } from "@supergrain/kernel";
+
+  import { createReactive } from "@supergrain/kernel";
+  import { update } from "@supergrain/mill";
+  ```
+
+  **Why:** Update operators are convenience sugar built on top of the proxy primitive. Splitting them out keeps `@supergrain/kernel` focused on the reactive primitive and lets apps that only use direct mutation skip the extra bytes.
+
+- Updated dependencies [de3b0c4]
+- Updated dependencies [3dc7b57]
+  - @supergrain/kernel@3.0.0
+  - @supergrain/mill@3.0.0
 
 ## 2.0.1
 

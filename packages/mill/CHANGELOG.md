@@ -1,29 +1,8 @@
 # @supergrain/mill
 
-## 4.0.0
+## 3.1.0
 
-First release under the `@supergrain/mill` name (formerly part of `@supergrain/kernel`, briefly `@supergrain/operators`). Version bumped to 4.x alongside `@supergrain/kernel` and `@supergrain/silo` to mark the new lineage.
-
-### Major Changes
-
-- de3b0c4: Extract MongoDB-style update operators into a new package, `@supergrain/mill`.
-
-  **Breaking change (vs. `@supergrain/kernel` 3.x):**
-
-  `update`, `UpdateOperations`, `LooseUpdateOperations`, and `StrictUpdateOperations` are no longer exported from `@supergrain/kernel`. Install `@supergrain/mill` and import them from there.
-
-  **Migration:**
-
-  ```ts
-  // Before
-  import { createReactive, update } from "@supergrain/kernel";
-
-  // After
-  import { createReactive } from "@supergrain/kernel";
-  import { update } from "@supergrain/mill";
-  ```
-
-  **Why:** Update operators are convenience sugar built on top of the proxy primitive. Splitting them out keeps `@supergrain/kernel` focused on the reactive primitive and lets apps that only use direct mutation skip the extra bytes.
+### Minor Changes
 
 - Make `UpdateOperations<T>` strict — per-path value typing is now enforced.
 
@@ -31,7 +10,7 @@ First release under the `@supergrain/mill` name (formerly part of `@supergrain/k
 
   `UpdateOperations<T>` was previously a union of `LooseUpdateOperations | StrictUpdateOperations<T>`. Because TypeScript only requires one side of a union to match, the loose half silently disabled per-operator path/value typing for every caller — making `StrictUpdateOperations<T>` effectively decorative.
 
-  In 4.0.0 there is no escape hatch:
+  As of 3.1.0 there is no escape hatch:
 
   - `LooseUpdateOperations` has been **removed entirely** (no longer exported).
   - `UpdateOperations<T>` aliases `StrictUpdateOperations<T>` directly.
@@ -67,4 +46,30 @@ First release under the `@supergrain/mill` name (formerly part of `@supergrain/k
 ### Patch Changes
 
 - Document the recursion-depth limit on `Path<T>` (default `D = 5`). Paths deeper than the limit are simply absent from the union `Path<T>` resolves to — strict path operation maps will reject them. Consumers that need deeper paths must pass an explicit `D`. Raising `D` significantly increases compile time at every consumer call site, so the default trades autocomplete depth for compile speed.
-- Updated dependencies — `@supergrain/kernel@4.0.0`
+
+## 3.0.0
+
+### Major Changes
+
+- de3b0c4: Extract MongoDB-style update operators into a new package, `@supergrain/mill`.
+
+  **Breaking change:**
+
+  `update`, `UpdateOperations`, `LooseUpdateOperations`, and `StrictUpdateOperations` are no longer exported from `@supergrain/kernel`. Install `@supergrain/mill` and import them from there.
+
+  **Migration:**
+
+  ```ts
+  import { createReactive, update } from "@supergrain/kernel";
+
+  import { createReactive } from "@supergrain/kernel";
+  import { update } from "@supergrain/mill";
+  ```
+
+  **Why:** Update operators are convenience sugar built on top of the proxy primitive. Splitting them out keeps `@supergrain/kernel` focused on the reactive primitive and lets apps that only use direct mutation skip the extra bytes.
+
+### Patch Changes
+
+- Updated dependencies [de3b0c4]
+- Updated dependencies [3dc7b57]
+  - @supergrain/kernel@3.0.0
