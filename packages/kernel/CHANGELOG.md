@@ -1,6 +1,8 @@
 # @supergrain/kernel
 
-## 3.0.0
+## 4.0.0
+
+First release under the `@supergrain/kernel` name (formerly `@supergrain/core`). Version bumped from 3.x → 4.x to mark the package-rename + carve-out lineage break.
 
 ### Major Changes
 
