@@ -152,7 +152,19 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
   > Runs `fn` immediately and re-runs it whenever its dependencies change. Returns a stop function. Use outside React; for components, prefer `useSignalEffect`.
 
 - `batch(fn)`
+
   > Coalesces signal writes inside `fn` into a single notification. Throws if `fn` returns a Promise (must be sync).
+
+- `resource<T>(initial, setup)`
+
+  > Reactive value produced by a setup function with cleanup. Setup runs on create, reruns on tracked signal change (cleanup first), and exposes an `AbortSignal` that aborts on rerun/dispose. Sync or async. Use for timers, observers, subscriptions, media queries — anything where you'd otherwise hand-roll a `useState` + `useEffect` + `useRef` triple.
+
+- `reactivePromise<T>(asyncFn)`
+
+  > Ergonomic async envelope on top of `resource`. Same lifecycle (re-runs on tracked signal change, aborts previous), plus `{ value, error, isPending, isResolved, isRejected, isSettled, isReady }` and a thenable for `await`.
+
+- `reactiveTask<Args, T>(asyncFn)`
+  > Imperative async command. Same state fields as `reactivePromise`, but doesn't auto-run — call `.run(...args)` to trigger. Use for user-initiated mutations (save, submit) where you want loading/error state without tracking inputs.
 
 ### React
 
@@ -177,6 +189,22 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
 - `useSignalEffect(() => sideEffect)`
 
   > Shorthand for `useEffect(() => effect(fn), [])`. Runs a signal-tracked side effect that re-runs when tracked signals change and cleans up on unmount. Does **not** cause the component to re-render.
+
+- `useResource<T>(initial, setup, deps?)`
+
+  > Component-scoped `resource`. Disposes on unmount (aborts in-flight work, runs cleanups) and rebuilds when `deps` change.
+
+- `useReactivePromise<T>(asyncFn, deps?)`
+
+  > Component-scoped `reactivePromise`. Same shape, auto-disposed on unmount.
+
+- `useReactiveTask<Args, T>(asyncFn, deps?)`
+
+  > Component-scoped `reactiveTask`. Identity is stable across renders when `deps` don't change — safe to pass to children or into effect deps.
+
+- `modifier<E, Args>(fn)` + `useModifier(m, ...args)`
+
+  > Reusable setup/teardown attached to a DOM element via `ref`. `modifier` defines the behavior (returns cleanup like `useEffect`); `useModifier` binds it to a component and produces a stable ref callback. Args flow through an internal ref so a fresh handler per render doesn't re-attach. Signals read inside setup trigger a targeted teardown+re-setup on change without re-rendering the component.
 
 - `<For each={array} parent={ref?}>{item => ...}</For>`
   > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.

@@ -131,6 +131,138 @@ Handles are reactive: a later `store.insertDocument("user", updated)` (socket pu
 
 [Full silo docs →](./packages/silo/README.md)
 
+## Side effects as reactive values: `resource`
+
+React has no first-class way to represent _"a reactive value produced by a side effect with its own lifecycle."_ You assemble it from `useState` + `useEffect` + `useRef`. Two parts of that assembly are things React genuinely can't do cleanly; the rest is boilerplate reduction.
+
+**Correctness: async races.** Component renders with `id=1`, fetch starts. Prop changes to `id=2`, new fetch starts. If `id=1`'s response arrives _after_ `id=2`'s, you render the wrong user. The hook fix is an `AbortController` in a ref, abort-on-rerun in the cleanup, plus a stale-response guard for requests that can't honor the abort. People write this wrong constantly.
+
+```tsx
+import { tracked, useResource } from "@supergrain/kernel/react";
+
+const Profile = tracked(({ id }: { id: string }) => {
+  const user = useResource<User | null>(
+    null,
+    async ({ set, signal }) => {
+      const res = await fetch(`/users/${id}`, { signal });
+      set(await res.json());
+    },
+    [id],
+  );
+
+  return <div>{user.value?.name}</div>;
+});
+```
+
+`signal` trips on every rerun. Hand it to `fetch` and cancellation is automatic. If a response arrives after a newer fetch started, the resource's generation counter discards it — the UI can't display stale data even if the network responds out of order.
+
+**Capability: state that lives outside the component tree.** You want a live value reachable from any component _and_ from non-component code (event handlers, analytics, tests, workers), driven by a reactive input that lives at app scope. A custom hook can't do this — Rules of Hooks forces state into a component instance or into Context, and the state is inert until some component mounts and calls the hook.
+
+```ts
+import { signal, resource } from "@supergrain/kernel";
+
+// App-scope reactive input and a module-scope resource that reacts to it.
+const channelId = signal("general");
+
+export const chatMessages = resource<Message[]>([], ({ set, peek, onCleanup }) => {
+  const socket = new WebSocket(`wss://chat/${channelId()}`); // tracked
+  socket.addEventListener("message", (e) => set([...peek(), JSON.parse(e.data)]));
+  onCleanup(() => socket.close());
+});
+
+// Read from any component — no hook, no Provider:
+const MessageCount = tracked(() => <span>{chatMessages.value.length}</span>);
+
+// Read from non-component code — event handler, analytics, test, worker:
+button.addEventListener("click", () => track("send", chatMessages.value.at(-1)?.id));
+
+// Drive reruns from anywhere — a router, a keyboard shortcut, a saga:
+channelId("random"); // old socket closes, new one opens, messages resets
+```
+
+A resource isn't a hook — it's a signal with a lifecycle. You choose its lifetime (module scope, component scope via `useResource`, or something in between), and it reacts to its inputs regardless of where those inputs live or what's rendered.
+
+**Also: the boilerplate savings are real.** Even when neither of the above applies — a plain `setInterval`, a one-off `matchMedia` listener — `useResource` is shorter and tighter than `useState + useEffect + useRef`, skips the deps array, and puts the cleanup next to the setup it undoes. Not the headline pitch, but it adds up.
+
+**Reach for `resource` when** the value is produced by an effect with its own lifecycle. Typical cases: async fetches with changing inputs, WebSocket / SSE streams, `setInterval`, `matchMedia`, `IntersectionObserver`, `ResizeObserver`, geolocation watches, `requestAnimationFrame` loops.
+
+Prefer `reactivePromise` / `useReactivePromise` when the value is specifically the result of a Promise and you want the full envelope (`isPending`, `isResolved`, `isRejected`, thenable). That's ergonomic sugar over `resource` for the async-data case — same lifecycle, extra state fields.
+
+## DOM behavior: `modifier`
+
+Attach behavior to a specific DOM element and clean it up when the element goes away. Two parts of this are things React's primitives can't compose cleanly; the rest is boilerplate reduction.
+
+**Correctness: fresh handler without re-attach.** Register a `keydown` listener on mount. The handler calls `onSave`, a prop that changes each render. Two options, both wrong:
+
+```tsx
+// (a) deps = [] → listener stays, handler is stale (calls old onSave)
+useEffect(() => {
+  const h = (e: KeyboardEvent) => {
+    if (e.metaKey && e.key === "s") onSave();
+  };
+  window.addEventListener("keydown", h);
+  return () => window.removeEventListener("keydown", h);
+}, []);
+
+// (b) deps = [onSave] → listener re-registers on every parent re-render
+useEffect(() => {
+  /* same */
+}, [onSave]);
+```
+
+The canonical fix is a `useRef` holding the latest handler that the listener reads through. Modifiers do this automatically — args are always fresh, the listener is registered once:
+
+```tsx
+import { modifier, useModifier } from "@supergrain/kernel/react";
+
+const keyboardShortcut = modifier<HTMLElement, [string, () => void]>((el, key, handler) => {
+  const h = (e: KeyboardEvent) => {
+    if (e.metaKey && e.key === key) handler();
+  };
+  el.addEventListener("keydown", h);
+  return () => el.removeEventListener("keydown", h);
+});
+
+function Editor({ onSave }: { onSave: () => void }) {
+  // onSave is a fresh closure each render; listener attaches once.
+  return (
+    <div tabIndex={0} ref={useModifier(keyboardShortcut, "s", onSave)}>
+      …
+    </div>
+  );
+}
+```
+
+**Capability: element-scoped behavior that reacts to a supergrain signal.** You want a `ResizeObserver` whose threshold changes when a signal changes, without re-registering the observer OR re-rendering the component. React's primitives don't compose here: `useEffect` can't subscribe to a signal reactively, and nothing that subscribes reactively (`useSignalEffect`, `tracked()`) gives you the element. Modifiers wrap setup in an `effect`, so signals read during setup trigger a targeted teardown + re-setup on change — React stays out of it:
+
+```tsx
+const trackIntersect = modifier<HTMLElement, [() => void]>((el, onVisible) => {
+  const threshold = settings.scrollThreshold; // supergrain signal — tracked
+  const observer = new IntersectionObserver(([entry]) => entry.isIntersecting && onVisible(), {
+    threshold,
+  });
+  observer.observe(el);
+  return () => observer.disconnect();
+});
+```
+
+Change `settings.scrollThreshold` and the modifier reruns (old observer disconnected, new one with the fresh threshold attached). The surrounding component never re-renders.
+
+**Also: the boilerplate savings are real.** A ref callback done right is `useCallback((el) => { ... }, [deps])` plus a `useRef` for latest args plus explicit mount/unmount tracking. `useModifier` subsumes all three: the returned ref callback is stable by default (no `useCallback` needed), args stay fresh via an internal ref, and React 19's cleanup-returning ref callback wires teardown.
+
+**Reach for `modifier` when** behavior is tied to a specific DOM element and needs setup/teardown. Typical cases: focus traps, click-outside, drag handles, autofocus, keyboard shortcuts, scroll spies, `ResizeObserver` / `IntersectionObserver`, adapters for non-React libraries (d3, CodeMirror, Monaco).
+
+## Which primitive answers which question?
+
+| Question                                                     | Primitive                                | Example                                                 |
+| ------------------------------------------------------------ | ---------------------------------------- | ------------------------------------------------------- |
+| "A domain entity from my API — shared, batched, cached."     | `silo` (`useDocument`, `useQuery`)       | `useDocument("user", id)`                               |
+| "A reactive value produced by a side effect I own."          | `resource` / `useResource`               | WebSocket, timer, observer, ad-hoc async fetch          |
+| "The same, but specifically an async Promise with envelope." | `reactivePromise` / `useReactivePromise` | `isPending`, `isResolved`, thenable — sugar on resource |
+| "Behavior attached to a specific DOM element."               | `modifier` / `useModifier`               | click-outside, focus trap, autofocus, ResizeObserver    |
+| "A reactive side effect, no element."                        | `useSignalEffect`                        | syncing a signal to `document.title`, logging           |
+| "A derived value."                                           | `computed` / `useComputed`               | filtered list length, total cost                        |
+
 ## Suspense
 
 Every document handle exposes a stable `.promise` for React 19's `use()`. Opt in at the call site — one line per component, no `{ suspense: true }` flag and no separate hook.
