@@ -148,3 +148,168 @@ describe("modifier() / useModifier()", () => {
     expect(cleanups).toEqual([0, 1]);
   });
 });
+
+describe("onClickOutside popover scenario", () => {
+  const onClickOutside = modifier<HTMLElement, [() => void]>((el, onOutside) => {
+    const handler = (e: MouseEvent) => {
+      if (!el.contains(e.target as Node)) onOutside();
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  });
+
+  it("fires onClose for outside click, not for inside click", async () => {
+    const onClose = vi.fn();
+
+    function App() {
+      return (
+        <>
+          <div ref={useModifier(onClickOutside, onClose)} data-testid="popover">
+            <button type="button" data-testid="inside">
+              inside
+            </button>
+          </div>
+          <button type="button" data-testid="outside">
+            outside
+          </button>
+        </>
+      );
+    }
+
+    const { getByTestId } = render(<App />);
+
+    await act(async () => {
+      getByTestId("inside").click();
+    });
+    expect(onClose).not.toHaveBeenCalled();
+
+    await act(async () => {
+      getByTestId("outside").click();
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      getByTestId("outside").click();
+    });
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("parent re-renders do not re-attach the modifier", async () => {
+    const attachSpy = vi.fn();
+    const cleanupSpy = vi.fn();
+
+    const tracking = modifier<HTMLElement, [() => void]>((el, onOutside) => {
+      attachSpy();
+      const handler = (e: MouseEvent) => {
+        if (!el.contains(e.target as Node)) onOutside();
+      };
+      document.addEventListener("click", handler);
+      return () => {
+        cleanupSpy();
+        document.removeEventListener("click", handler);
+      };
+    });
+
+    function Parent() {
+      const [count, setCount] = useState(0);
+      // Fresh closure every render — must not cause re-attach
+      return (
+        <>
+          <div ref={useModifier(tracking, () => count)} data-testid="popover">
+            popover
+          </div>
+          <button type="button" data-testid="bump" onClick={() => setCount((c) => c + 1)}>
+            {count}
+          </button>
+        </>
+      );
+    }
+
+    const { getByTestId } = render(<Parent />);
+    expect(attachSpy).toHaveBeenCalledTimes(1);
+    expect(cleanupSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      getByTestId("bump").click();
+    });
+    await act(async () => {
+      getByTestId("bump").click();
+    });
+    await act(async () => {
+      getByTestId("bump").click();
+    });
+
+    // Three parent re-renders, but the modifier stayed attached
+    expect(attachSpy).toHaveBeenCalledTimes(1);
+    expect(cleanupSpy).not.toHaveBeenCalled();
+    expect(getByTestId("bump").textContent).toBe("3");
+  });
+
+  it("unmount removes the document listener — subsequent clicks do not fire handler", async () => {
+    const onClose = vi.fn();
+
+    function App() {
+      return (
+        <div ref={useModifier(onClickOutside, onClose)} data-testid="popover">
+          popover
+        </div>
+      );
+    }
+
+    const { unmount } = render(<App />);
+
+    // Detach the popover
+    unmount();
+
+    // After unmount, clicking the document must NOT invoke onClose —
+    // the cleanup should have removed the listener.
+    await act(async () => {
+      document.body.click();
+    });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("multiple mounted popovers each get their own listener, and cleanup independently", async () => {
+    const closeA = vi.fn();
+    const closeB = vi.fn();
+
+    function Popover({ testid, onClose }: { testid: string; onClose: () => void }) {
+      return (
+        <div ref={useModifier(onClickOutside, onClose)} data-testid={testid}>
+          {testid}
+        </div>
+      );
+    }
+
+    function App({ showB }: { showB: boolean }) {
+      return (
+        <>
+          <Popover testid="a" onClose={closeA} />
+          {showB ? <Popover testid="b" onClose={closeB} /> : null}
+          <button type="button" data-testid="outside">
+            outside
+          </button>
+        </>
+      );
+    }
+
+    const { getByTestId, rerender } = render(<App showB={true} />);
+
+    // Clicking inside A doesn't close A, but it IS outside of B, so B closes
+    await act(async () => {
+      getByTestId("a").click();
+    });
+    expect(closeA).toHaveBeenCalledTimes(0);
+    expect(closeB).toHaveBeenCalledTimes(1);
+
+    // Unmount B, keep A mounted
+    rerender(<App showB={false} />);
+
+    await act(async () => {
+      getByTestId("outside").click();
+    });
+    // A fires, B is gone (its listener was removed on unmount)
+    expect(closeA).toHaveBeenCalledTimes(1);
+    expect(closeB).toHaveBeenCalledTimes(1);
+  });
+});
