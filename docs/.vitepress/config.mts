@@ -14,6 +14,7 @@ export default defineConfig({
 
     nav: [
       { text: "Home", link: "/" },
+      { text: "Husk", link: "/husk" },
       { text: "Silo", link: "/silo" },
       { text: "Comparison", link: "/comparison" },
     ],

@@ -1,5 +1,6 @@
+import { modifier, useModifier } from "@supergrain/husk/react";
 import { createReactive } from "@supergrain/kernel";
-import { modifier, tracked, useModifier } from "@supergrain/kernel/react";
+import { tracked } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
 import { useState } from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";

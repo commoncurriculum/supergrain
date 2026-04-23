@@ -1,6 +1,7 @@
+import { signal } from "@supergrain/kernel";
 import { describe, it, expect, vi } from "vitest";
 
-import { reactivePromise, reactiveTask, signal } from "../../src";
+import { reactivePromise, reactiveTask } from "../../src";
 
 function deferred<T>() {
   let resolve!: (v: T) => void;

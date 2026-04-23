@@ -3,6 +3,7 @@
 Reactive state management for React — with an API query layer built on top.
 
 - **[@supergrain/kernel](./packages/kernel)** is the state library. Read and mutate plain objects; only the components that actually touched the changed property re-render.
+- **[@supergrain/husk](./packages/husk)** is the side-effects layer. `resource`, `reactivePromise`, `reactiveTask`, and `modifier` — reactive-function-with-cleanup primitives for async fetches, subscriptions, observers, and DOM behaviors.
 - **[@supergrain/silo](./packages/silo)** is an API query layer built on top. Request-batched by default, Suspense-compatible. Fetched documents live in the same reactive graph as the rest of your state.
 
 **End-to-end typed.** Declare your model shape once and it flows through every call: `store.user.name = "Alice"`, `useDocument("user", id)`, and `useQuery("posts", { authorId, status, limit })` are all type-checked against your declared types. No casts, no manual annotations, no selector overloads.
@@ -131,275 +132,57 @@ Handles are reactive: a later `store.insertDocument("user", updated)` (socket pu
 
 [Full silo docs →](./packages/silo/README.md)
 
-## Side effects as reactive values: `resource`
+## Side effects and DOM behaviors: `@supergrain/husk`
 
-> A resource is a reactive function with cleanup logic.
-
-React has no first-class way to express "a reactive value produced by a side effect with its own lifecycle." You assemble it from `useState` + `useEffect` + `useRef`, plus an `AbortController`, plus a generation counter if you want to avoid stale responses. Every app writes this repeatedly, and every app ships the subtle bugs.
-
-### Hand-rolled vs `resource`
-
-Hand-rolled with primitives, doing it right:
+The layer between kernel's raw reactivity and application-specific data layers. Ships the primitives for "reactive value produced by a side effect with its own lifecycle" plus element-scoped DOM behaviors.
 
 ```tsx
-import { createReactive, effect, signal } from "@supergrain/kernel";
+import { tracked, useReactive } from "@supergrain/kernel/react";
+import { useReactivePromise } from "@supergrain/husk/react";
 
-const userId = signal(1);
-const user = createReactive({
-  data: null as User | null,
-  error: null as Error | null,
-  isLoading: false,
-});
-
-let currentAbort: AbortController | undefined;
-let generation = 0;
-
-const stop = effect(() => {
-  const gen = ++generation;
-  currentAbort?.abort();
-  currentAbort = new AbortController();
-  const abortSignal = currentAbort.signal;
-
-  const id = userId(); // tracked — reruns on change
-  user.isLoading = true;
-  user.error = null;
-
-  (async () => {
-    try {
-      const res = await fetch(`/users/${id}`, { signal: abortSignal });
-      const data = await res.json();
-      if (gen === generation) {
-        user.data = data;
-        user.isLoading = false;
-      }
-    } catch (e) {
-      if (gen === generation && !abortSignal.aborted) {
-        user.error = e as Error;
-        user.isLoading = false;
-      }
-    }
-  })();
-});
-
-// To dispose later:
-stop();
-currentAbort?.abort();
-```
-
-Same thing with `resource`:
-
-```ts
-import { resource, signal } from "@supergrain/kernel";
-
-const userId = signal(1);
-const user = resource(
-  { data: null as User | null, error: null as Error | null, isLoading: false },
-  async (state, { abortSignal }) => {
-    state.isLoading = true;
-    state.error = null;
-    try {
-      const res = await fetch(`/users/${userId()}`, { signal: abortSignal });
-      state.data = await res.json();
-    } catch (e) {
-      state.error = e as Error;
-    } finally {
-      state.isLoading = false;
-    }
-  },
-);
-```
-
-### What `resource` packages up
-
-Six concerns that every hand-rolled version has to get right:
-
-1. **`AbortController` lifecycle tied to effect reruns** — fresh per run, aborted on rerun or dispose.
-2. **Generation counter** — so stale async responses from a prior run don't clobber state when inputs change mid-fetch.
-3. **Ordered cleanup before re-setup** — the old run's teardown runs _before_ the new setup starts. Get this wrong and you double-subscribe.
-4. **`onCleanup` registration** — cleanups registered inside async setups (where `return cleanup` doesn't work) still need to fire.
-5. **Idempotent dispose** — safe to call twice, safe to call during an in-flight rerun.
-6. **Sync and async setup shapes** — sync returns its cleanup (`return () => ...`), async uses `onCleanup` (because `return` resolves a Promise, not a function). Types enforce this.
-
-Hand-rolled, each of these is a few lines. Together, ~20 lines of correctness-critical plumbing that the same app writes over and over. The bugs people ship are the ones on this list — missed generation check, abort dropped, cleanup ordering wrong.
-
-### Mutation-first
-
-`state` is a reactive object (via `createReactive`). Setup mutates fields directly — no setter calls, no signal API:
-
-```ts
-state.isLoading = true; // same as everywhere else in supergrain
-state.data = await res.json();
-```
-
-Reading is flat, matching every async-data library (SWR, TanStack Query, Apollo, URQL, silo):
-
-```ts
-user.data; // the reactive value
-user.error;
-user.isLoading;
-```
-
-### Lives outside the component tree
-
-A resource is not a hook. You pick its lifetime, and it reacts to its inputs regardless of whether anything is rendered:
-
-```ts
-// Module-scope resource driven by a module-scope signal.
-const channelId = signal("general");
-
-export const chatMessages = resource(
-  { messages: [] as Message[] },
-  async (state, { onCleanup }) => {
-    const socket = new WebSocket(`wss://chat/${channelId()}`); // tracked
-    onCleanup(() => socket.close());
-    socket.addEventListener("message", (e) => {
-      state.messages.push(JSON.parse(e.data));
-    });
-  },
-);
-
-// Read from any component — no Provider, no hook:
-const MessageCount = tracked(() => <span>{chatMessages.messages.length}</span>);
-
-// Read from non-component code — analytics, tests, workers:
-button.addEventListener("click", () => track("send", chatMessages.messages.at(-1)?.id));
-
-// Drive reruns from anywhere:
-channelId("random"); // old socket closes, new one opens, messages resets
-```
-
-Rules of Hooks forces custom hooks into component instances or Context. A resource has no such restriction.
-
-### In React
-
-`useResource` scopes the lifetime to the component:
-
-```tsx
-import { tracked, useResource } from "@supergrain/kernel/react";
-
-const Profile = tracked(({ id }: { id: string }) => {
-  const user = useResource(
-    { data: null as User | null, error: null as Error | null, isLoading: true },
-    async (state, { abortSignal }) => {
-      try {
-        const res = await fetch(`/users/${id}`, { signal: abortSignal });
-        state.data = await res.json();
-      } catch (e) {
-        state.error = e as Error;
-      } finally {
-        state.isLoading = false;
-      }
-    },
-    [id], // deps — rebuild when these change
-  );
-
-  if (user.isLoading) return <Spinner />;
-  if (user.error) return <ErrorMessage error={user.error} />;
-  return <UserCard user={user.data!} />;
-});
-```
-
-The hook disposes on unmount — aborts in-flight work, runs cleanups, halts the effect.
-
-### `reactivePromise` — sugar for the async-data case
-
-When you want the standard async envelope (`data`, `error`, `isPending`, `isResolved`, `isReady`, plus a `promise` field for `await` / React 19 `use()`), `reactivePromise` is built on `resource` and fills in the envelope for you:
-
-```ts
-const userQuery = reactivePromise(async (abortSignal) => {
-  const id = userId();
-  const res = await fetch(`/users/${id}`, { signal: abortSignal });
-  return res.json();
-});
-
-userQuery.data; // User | null
-userQuery.isPending; // boolean
-userQuery.error; // unknown
-await userQuery.promise; // explicit thenable, matching silo's handle.promise
-```
-
-Same lifecycle as `resource`. Just no boilerplate for the standard envelope shape.
-
-### Reach for `resource` when
-
-The value is produced by an effect with its own lifecycle. Typical cases: async fetches with changing inputs, WebSocket / SSE streams, `setInterval`, `matchMedia`, `IntersectionObserver`, `ResizeObserver`, geolocation watches, `requestAnimationFrame` loops.
-
-Reach for `reactivePromise` when your work is literally "call an async function, get the envelope." Reach for `resource` when you want a custom state shape, multiple side effects, or a producer that isn't a Promise.
-
-## DOM behavior: `modifier`
-
-Attach behavior to a specific DOM element and clean it up when the element goes away. Two parts of this are things React's primitives can't compose cleanly; the rest is boilerplate reduction.
-
-**Correctness: fresh handler without re-attach.** Register a `keydown` listener on mount. The handler calls `onSave`, a prop that changes each render. Two options, both wrong:
-
-```tsx
-// (a) deps = [] → listener stays, handler is stale (calls old onSave)
-useEffect(() => {
-  const h = (e: KeyboardEvent) => {
-    if (e.metaKey && e.key === "s") onSave();
-  };
-  window.addEventListener("keydown", h);
-  return () => window.removeEventListener("keydown", h);
-}, []);
-
-// (b) deps = [onSave] → listener re-registers on every parent re-render
-useEffect(() => {
-  /* same */
-}, [onSave]);
-```
-
-The canonical fix is a `useRef` holding the latest handler that the listener reads through. Modifiers do this automatically — args are always fresh, the listener is registered once:
-
-```tsx
-import { modifier, useModifier } from "@supergrain/kernel/react";
-
-const keyboardShortcut = modifier<HTMLElement, [string, () => void]>((el, key, handler) => {
-  const h = (e: KeyboardEvent) => {
-    if (e.metaKey && e.key === key) handler();
-  };
-  el.addEventListener("keydown", h);
-  return () => el.removeEventListener("keydown", h);
-});
-
-function Editor({ onSave }: { onSave: () => void }) {
-  // onSave is a fresh closure each render; listener attaches once.
-  return (
-    <div tabIndex={0} ref={useModifier(keyboardShortcut, "s", onSave)}>
-      …
-    </div>
-  );
-}
-```
-
-**Capability: element-scoped behavior that reacts to a supergrain signal.** You want a `ResizeObserver` whose threshold changes when a signal changes, without re-registering the observer OR re-rendering the component. React's primitives don't compose here: `useEffect` can't subscribe to a signal reactively, and nothing that subscribes reactively (`useSignalEffect`, `tracked()`) gives you the element. Modifiers wrap setup in an `effect`, so signals read during setup trigger a targeted teardown + re-setup on change — React stays out of it:
-
-```tsx
-const trackIntersect = modifier<HTMLElement, [() => void]>((el, onVisible) => {
-  const threshold = settings.scrollThreshold; // supergrain signal — tracked
-  const observer = new IntersectionObserver(([entry]) => entry.isIntersecting && onVisible(), {
-    threshold,
+const Profile = tracked(() => {
+  const state = useReactive({ userId: 1 });
+  const user = useReactivePromise(async (signal) => {
+    const res = await fetch(`/users/${state.userId}`, { signal });
+    return res.json() as Promise<User>;
   });
-  observer.observe(el);
-  return () => observer.disconnect();
+  return (
+    <>
+      <button onClick={() => state.userId++}>Next</button>
+      {user.data && <UserCard user={user.data} />}
+    </>
+  );
 });
 ```
 
-Change `settings.scrollThreshold` and the modifier reruns (old observer disconnected, new one with the fresh threshold attached). The surrounding component never re-renders.
+Click the button → `state.userId` increments → the resource's effect reruns → old `fetch` aborts via `signal` → new one starts. The component re-renders only when `user.data` changes.
 
-**Also: the boilerplate savings are real.** A ref callback done right is `useCallback((el) => { ... }, [deps])` plus a `useRef` for latest args plus explicit mount/unmount tracking. `useModifier` subsumes all three: the returned ref callback is stable by default (no `useCallback` needed), args stay fresh via an internal ref, and React 19's cleanup-returning ref callback wires teardown.
+Four effect primitives, one DOM primitive, one mental model: **lifecycle-bound work that reacts to tracked change.**
 
-**Reach for `modifier` when** behavior is tied to a specific DOM element and needs setup/teardown. Typical cases: focus traps, click-outside, drag handles, autofocus, keyboard shortcuts, scroll spies, `ResizeObserver` / `IntersectionObserver`, adapters for non-React libraries (d3, CodeMirror, Monaco).
+| Need                                                                 | Reach for                                |
+| -------------------------------------------------------------------- | ---------------------------------------- |
+| Async fetch with tracked inputs — want the standard envelope         | `reactivePromise` / `useReactivePromise` |
+| Reusable primitive called from many places, args visible at call     | `defineResource` + `useResource`         |
+| One-off side effect with a custom state shape                        | `resource` / `useResource`               |
+| User-triggered work (save, submit) — no auto-run                     | `reactiveTask` / `useReactiveTask`       |
+| Behavior attached to a specific DOM element (observers, focus traps) | `modifier` / `useModifier`               |
+
+The key win over hand-rolling with `useState` + `useEffect` + `useRef` + `AbortController`: all the subtle correctness concerns (abort lifecycle, generation counter, cleanup ordering, stale-response discard, idempotent dispose, sync-vs-async setup) are packaged up once. And for `modifier` specifically, **signal reads inside setup trigger targeted re-attach on the element without re-rendering the component** — something `useEffect` can't compose because it doesn't subscribe to signals.
+
+[Full husk docs →](./packages/husk/README.md)
 
 ## Which primitive answers which question?
 
-| Question                                                 | Primitive                                | Example                                                       |
-| -------------------------------------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
-| "A domain entity from my API — shared, batched, cached." | `silo` (`useDocument`, `useQuery`)       | `useDocument("user", id)`                                     |
-| "A reactive value produced by a side effect I own."      | `resource` / `useResource`               | WebSocket, timer, observer, custom-shape async fetch          |
-| "An async Promise with the standard envelope."           | `reactivePromise` / `useReactivePromise` | `data`, `error`, `isPending`, `promise` — sugar over resource |
-| "Behavior attached to a specific DOM element."           | `modifier` / `useModifier`               | click-outside, focus trap, autofocus, ResizeObserver          |
-| "A reactive side effect, no element."                    | `useSignalEffect`                        | syncing a signal to `document.title`, logging                 |
-| "A derived value."                                       | `computed` / `useComputed`               | filtered list length, total cost                              |
+| Question                                                 | Primitive                                | Example                                                        |
+| -------------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------- |
+| "A domain entity from my API — shared, batched, cached." | `silo` (`useDocument`, `useQuery`)       | `useDocument("user", id)`                                      |
+| "An async Promise with the standard envelope."           | `reactivePromise` / `useReactivePromise` | `data`, `error`, `isPending`, `promise` — inline               |
+| "A reusable primitive, args at call site."               | `defineResource` + `useResource`         | `fetchUser`, `subscribeChannel`, anything you call many places |
+| "A one-off side effect with a custom state shape."       | `resource` / `useResource`               | WebSocket, timer, observer where you need a unique shape       |
+| "User-triggered work (save, submit) — no auto-run."      | `reactiveTask` / `useReactiveTask`       | mutations, form submits                                        |
+| "Behavior attached to a specific DOM element."           | `modifier` / `useModifier`               | click-outside, focus trap, autofocus, ResizeObserver           |
+| "A reactive side effect, no element."                    | `useSignalEffect`                        | syncing a signal to `document.title`, logging                  |
+| "A derived value."                                       | `computed` / `useComputed`               | filtered list length, total cost                               |
 
 ## Suspense
 
@@ -439,14 +222,18 @@ Want inline loading UI instead? Drop the `use(user.promise)` line and read `user
 # State only
 pnpm add @supergrain/kernel
 
+# State + side-effect primitives
+pnpm add @supergrain/kernel @supergrain/husk
+
 # State + API queries
 pnpm add @supergrain/kernel @supergrain/silo
 ```
 
-The React bindings ship in the same packages (`@supergrain/kernel/react`, `@supergrain/silo/react`) and require `react >= 18.2`.
+React bindings ship at `@supergrain/<pkg>/react` subpaths and require `react >= 18.2`.
 
 ## Also available
 
+- **[@supergrain/husk](./packages/husk/README.md)** — Reactive side-effect primitives: `resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`, plus the `modifier` / `useModifier` DOM primitive. Layer between kernel's reactive core and application data layers.
 - **[@supergrain/mill](./packages/mill/README.md)** — MongoDB-style update operators (`$set`, `$inc`, `$push`, `$pull`, `$addToSet`, `$min`, `$max`, `$unset`) for batched, path-aware writes. Optional — plain `store.x = 1` is the usual path; reach for `mill` when you want to apply several updates atomically or use dot notation for deeply nested writes.
 
 ## Comparison

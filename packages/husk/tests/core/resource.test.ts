@@ -1,6 +1,7 @@
+import { createReactive, signal } from "@supergrain/kernel";
 import { describe, it, expect, vi } from "vitest";
 
-import { resource, dispose, signal } from "../../src";
+import { resource, defineResource, dispose } from "../../src";
 
 describe("resource()", () => {
   it("returns the initial state reactively", () => {
@@ -184,6 +185,156 @@ describe("resource()", () => {
     expect(r.error).toBe(null);
 
     dispose(r);
+  });
+});
+
+describe("defineResource()", () => {
+  it("returns a factory that produces independent instances", () => {
+    const factory = defineResource<void, { value: number }>(
+      () => ({ value: 0 }),
+      (state) => {
+        state.value = 42;
+      },
+    );
+
+    const a = factory();
+    const b = factory();
+
+    expect(a.value).toBe(42);
+    expect(b.value).toBe(42);
+    expect(a).not.toBe(b);
+
+    a.value = 100;
+    expect(b.value).toBe(42); // independent state
+
+    dispose(a);
+    dispose(b);
+  });
+
+  it("tracks reactive reads in argsFn and reruns setup when they change", () => {
+    const setupSpy = vi.fn();
+    const factory = defineResource<number, { doubled: number }>(
+      () => ({ doubled: 0 }),
+      (state, n) => {
+        setupSpy(n);
+        state.doubled = n * 2;
+      },
+    );
+
+    const store = createReactive({ n: 3 });
+    const r = factory(() => store.n);
+
+    expect(r.doubled).toBe(6);
+    expect(setupSpy).toHaveBeenCalledTimes(1);
+    expect(setupSpy).toHaveBeenLastCalledWith(3);
+
+    store.n = 7;
+    expect(r.doubled).toBe(14);
+    expect(setupSpy).toHaveBeenCalledTimes(2);
+    expect(setupSpy).toHaveBeenLastCalledWith(7);
+
+    dispose(r);
+  });
+
+  it("does NOT track reactive reads inside setup", () => {
+    const setupSpy = vi.fn();
+    const store = createReactive({ side: 0 });
+
+    const factory = defineResource<number, { value: number }>(
+      () => ({ value: 0 }),
+      (state, n) => {
+        setupSpy();
+        // Reactive read inside setup must NOT drive reruns
+        state.value = n + store.side;
+      },
+    );
+
+    const r = factory(() => 1);
+
+    expect(r.value).toBe(1);
+    expect(setupSpy).toHaveBeenCalledTimes(1);
+
+    store.side = 100;
+    // setup must not rerun — reads inside setup are untracked
+    expect(setupSpy).toHaveBeenCalledTimes(1);
+    expect(r.value).toBe(1);
+
+    dispose(r);
+  });
+
+  it("supports factories with no args (Args = void)", () => {
+    let runs = 0;
+    const factory = defineResource<void, { count: number }>(
+      () => ({ count: 0 }),
+      (state) => {
+        state.count = ++runs;
+      },
+    );
+
+    const r = factory();
+    expect(r.count).toBe(1);
+    dispose(r);
+  });
+
+  it("trips AbortSignal and runs cleanups on rerun", () => {
+    const aborts: Array<AbortSignal> = [];
+    const cleanupSpy = vi.fn();
+
+    const factory = defineResource<number, { value: number }>(
+      () => ({ value: 0 }),
+      (state, n, { abortSignal, onCleanup }) => {
+        aborts.push(abortSignal);
+        state.value = n;
+        onCleanup(cleanupSpy);
+      },
+    );
+
+    const input = signal(1);
+    const r = factory(() => input());
+
+    expect(aborts).toHaveLength(1);
+    expect(aborts[0]!.aborted).toBe(false);
+
+    input(2);
+    expect(aborts).toHaveLength(2);
+    expect(aborts[0]!.aborted).toBe(true);
+    expect(cleanupSpy).toHaveBeenCalledTimes(1);
+
+    dispose(r);
+    expect(aborts[1]!.aborted).toBe(true);
+    expect(cleanupSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("each factory-produced instance has its own lifecycle", () => {
+    const cleanups = vi.fn();
+
+    const factory = defineResource<number, { value: number }>(
+      () => ({ value: 0 }),
+      (state, n) => {
+        state.value = n;
+        return cleanups;
+      },
+    );
+
+    const s1 = signal(1);
+    const s2 = signal(10);
+    const a = factory(() => s1());
+    const b = factory(() => s2());
+
+    expect(a.value).toBe(1);
+    expect(b.value).toBe(10);
+
+    s1(2);
+    expect(a.value).toBe(2);
+    expect(b.value).toBe(10);
+    expect(cleanups).toHaveBeenCalledTimes(1);
+
+    dispose(a);
+    expect(cleanups).toHaveBeenCalledTimes(2);
+    expect(b.value).toBe(10); // unaffected
+
+    dispose(b);
+    expect(cleanups).toHaveBeenCalledTimes(3);
   });
 });
 

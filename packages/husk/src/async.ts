@@ -1,29 +1,20 @@
+import { createReactive } from "@supergrain/kernel";
+
 import { resource } from "./resource";
-import { createReactive } from "./store";
 
 /**
  * A reactive async value. The envelope fields (`data`, `error`,
  * `isPending`, etc.) live on a reactive object — read them inside a
  * `tracked()` component or an `effect()` and you subscribe per-field.
  *
- * Ergonomic sugar over `resource()` for the async-envelope case. The
- * lifecycle (run on create, rerun on tracked signal change, abort
- * previous) is delegated to `resource`; this adds the standard
- * `{ data, error, isPending, ... }` envelope plus a `promise` field for
- * `await` and React 19 `use()`.
+ * Inline sugar over `resource` for the async-envelope case. Reactive
+ * reads in the sync prefix of `asyncFn` (before the first `await`) are
+ * tracked — when they change, the current run is aborted via
+ * `abortSignal` and a fresh run starts.
  *
- * The async function re-runs whenever any signal it read (before its
- * first `await`) changes. Previous in-flight runs are aborted via the
- * `AbortSignal` argument; their resolutions are discarded.
- *
- * Field names match the ecosystem (SWR / TanStack Query / Apollo / URQL)
- * and `@supergrain/silo` exactly: `.data` for the resolved value,
+ * Field names match the ecosystem (SWR / TanStack Query / Apollo /
+ * URQL) and `@supergrain/silo` exactly: `.data` for the resolved value,
  * `.promise` for the stable thenable handle.
- *
- * **Dep-tracking caveat:** only signals read *before the first `await`*
- * in `asyncFn` are tracked. Reads after `await` won't register as deps,
- * because the synchronous subscriber frame has already unwound. Grab
- * what you need up front.
  */
 export interface ReactivePromise<T> {
   readonly data: T | null;
@@ -39,9 +30,7 @@ export interface ReactivePromise<T> {
 /**
  * Imperative async command. No auto-tracking; call `run(...)` to
  * trigger. Same envelope fields as `ReactivePromise`. Use for
- * user-initiated mutations (form submits, save buttons); use
- * `reactivePromise()` for derived async values that re-run when a signal
- * changes.
+ * user-initiated mutations (form submits, save buttons).
  */
 export interface ReactiveTask<Args extends unknown[], T> {
   readonly data: T | null;
@@ -92,10 +81,9 @@ function deferred<T>(): Deferred<T> {
     resolve = res;
     reject = rej;
   });
-  // Suppress unhandled-rejection warnings. Users observe rejections
-  // via `await rp.promise` / `rp.promise.catch(...)` — attaching a
-  // catch here creates a new branch, it doesn't swallow the rejection
-  // for users.
+  // Suppress unhandled-rejection warnings. Users observe rejections via
+  // `await rp.promise` / `rp.promise.catch(...)` — attaching a catch
+  // here creates a new branch, it doesn't swallow the rejection.
   promise.catch(() => {});
   return { promise, resolve, reject };
 }
@@ -104,25 +92,21 @@ function deferred<T>(): Deferred<T> {
  * @example
  * ```ts
  * const userId = signal(1);
- * const userQuery = reactivePromise(async (abortSignal) => {
- *   const id = userId();                                  // tracked
- *   const res = await fetch(`/users/${id}`, { signal: abortSignal });
+ * const user = reactivePromise(async (signal) => {
+ *   const res = await fetch(`/users/${userId()}`, { signal });
  *   return res.json();
  * });
- * // userQuery.data, userQuery.isPending, etc.
- * // await userQuery.promise
- * userId(2); // previous fetch aborted, new one starts
+ *
+ * user.data;        // T | null
+ * user.isPending;   // boolean
+ * await user.promise;
+ *
+ * userId(2); // old fetch aborted, new one starts
  * ```
  */
 export function reactivePromise<T>(
   asyncFn: (abortSignal: AbortSignal) => Promise<T>,
 ): ReactivePromise<T> {
-  const initial = deferred<T>();
-
-  // Delegate the lifecycle (track deps, rerun on change, abort previous,
-  // cleanup on dispose) to resource. We mutate the envelope fields and
-  // replace state.promise each run so consumers watching `rp.promise`
-  // see the latest handle.
   return resource<PromiseEnvelope<T>>(
     {
       data: null,
@@ -132,7 +116,7 @@ export function reactivePromise<T>(
       isRejected: false,
       isSettled: false,
       isReady: false,
-      promise: initial.promise,
+      promise: deferred<T>().promise,
     },
     (state, { abortSignal }) => {
       const d = deferred<T>();
@@ -171,7 +155,7 @@ export function reactivePromise<T>(
         },
       );
     },
-  );
+  ) as ReactivePromise<T>;
 }
 
 /**
@@ -184,6 +168,7 @@ export function reactivePromise<T>(
  *   });
  *   return res.json();
  * });
+ *
  * <button onClick={() => saveUser.run(id, name)} disabled={saveUser.isPending}>
  *   Save
  * </button>
@@ -194,8 +179,6 @@ export function reactiveTask<Args extends unknown[], T>(
 ): ReactiveTask<Args, T> {
   let generation = 0;
 
-  // Envelope as a reactive object. Users read `task.data`, `task.isPending`,
-  // and call `task.run(...)` — all flat access.
   const state = createReactive<TaskEnvelope<Args, T>>({
     data: null,
     error: null,
@@ -204,9 +187,6 @@ export function reactiveTask<Args extends unknown[], T>(
     isRejected: false,
     isSettled: false,
     isReady: false,
-    // `run` is a function on the reactive proxy. Reading it tracks (same
-    // as any field), but its reference never changes, so subscribers
-    // never invalidate on it. Method calls work naturally.
     run: (...args: Args): Promise<T> => {
       const gen = ++generation;
       state.isPending = true;

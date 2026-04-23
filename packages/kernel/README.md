@@ -155,20 +155,7 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
 
   > Coalesces signal writes inside `fn` into a single notification. Throws if `fn` returns a Promise (must be sync).
 
-- `resource<T extends object>(initial, setup)`
-
-  > A reactive function with cleanup logic. `initial` is wrapped in `createReactive`; setup mutates fields directly. Setup runs on create, reruns on tracked signal change (cleanup first), and exposes an `AbortSignal` that trips on rerun/dispose. Sync setups `return () => cleanup`; async setups register cleanups via `ctx.onCleanup(...)`. Use for timers, observers, subscriptions, media queries, WebSockets — anything where you'd otherwise hand-roll a `useState` + `useEffect` + `useRef` + `AbortController` triple.
-
-- `dispose(resource)`
-
-  > Free function that stops a resource permanently: aborts in-flight work, runs cleanups, halts the effect. Idempotent, safe to call on anything (no-op if not a resource or already disposed). In React, `useResource` disposes automatically on unmount.
-
-- `reactivePromise<T>(asyncFn)`
-
-  > Ergonomic async envelope on top of `resource`. Same lifecycle (re-runs on tracked signal change, aborts previous), plus `{ data, error, isPending, isResolved, isRejected, isSettled, isReady, promise }`. Field names and shape match SWR / TanStack Query / Apollo / silo exactly. `await rp.promise` for explicit thenable access; `use(rp.promise)` for React 19 Suspense.
-
-- `reactiveTask<Args, T>(asyncFn)`
-  > Imperative async command. Same envelope fields as `reactivePromise` (flat: `data`, `error`, `isPending`, ...), plus a `run(...args)` method. Doesn't auto-run — call `task.run(...)` to trigger. Use for user-initiated mutations (save, submit) where you want loading/error state without tracking inputs.
+> Side-effect primitives (`resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`) and the `modifier` DOM helper live in [`@supergrain/husk`](../husk/README.md) — a thin layer built on top of this package.
 
 ### React
 
@@ -194,24 +181,10 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
 
   > Shorthand for `useEffect(() => effect(fn), [])`. Runs a signal-tracked side effect that re-runs when tracked signals change and cleans up on unmount. Does **not** cause the component to re-render.
 
-- `useResource<T>(initial, setup, deps?)`
-
-  > Component-scoped `resource`. Disposes on unmount (aborts in-flight work, runs cleanups) and rebuilds when `deps` change.
-
-- `useReactivePromise<T>(asyncFn, deps?)`
-
-  > Component-scoped `reactivePromise`. Same shape, auto-disposed on unmount.
-
-- `useReactiveTask<Args, T>(asyncFn, deps?)`
-
-  > Component-scoped `reactiveTask`. Identity is stable across renders when `deps` don't change — safe to pass to children or into effect deps.
-
-- `modifier<E, Args>(fn)` + `useModifier(m, ...args)`
-
-  > Reusable setup/teardown attached to a DOM element via `ref`. `modifier` defines the behavior (returns cleanup like `useEffect`); `useModifier` binds it to a component and produces a stable ref callback. Args flow through an internal ref so a fresh handler per render doesn't re-attach. Signals read inside setup trigger a targeted teardown+re-setup on change without re-rendering the component.
-
 - `<For each={array} parent={ref?}>{item => ...}</For>`
   > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
+
+> React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](../husk/README.md).
 
 See how Supergrain compares to useState, Zustand, Redux, and MobX in the [comparison guide](https://github.com/commoncurriculum/supergrain/blob/main/docs/comparison.md).
 
