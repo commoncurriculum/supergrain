@@ -1,5 +1,6 @@
-import { resolve } from "path";
 import { defineConfig } from "vitest/config";
+
+const conditions = ["@supergrain/source"];
 
 export default defineConfig({
   test: {
@@ -7,11 +8,6 @@ export default defineConfig({
     globals: true,
     include: ["**/readme-validation.test.ts"],
   },
-  resolve: {
-    alias: {
-      "@supergrain/kernel": resolve(__dirname, "../kernel/src"),
-      "@supergrain/kernel/react": resolve(__dirname, "../kernel/src/react"),
-      "@supergrain/silo": resolve(__dirname, "../silo/src"),
-    },
-  },
+  resolve: { conditions },
+  ssr: { resolve: { conditions } },
 });

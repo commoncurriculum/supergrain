@@ -1,52 +1,44 @@
 import react from "@vitejs/plugin-react";
 import { playwright } from "@vitest/browser-playwright";
-import { resolve } from "path";
 import { defineConfig } from "vitest/config";
+
+// Routes every `@supergrain/*` import to source TypeScript. Matches
+// `customConditions` in tsconfig.json. Both `resolve.conditions` (main)
+// and `ssr.resolve.conditions` (node-env tests) must be set; vitest's
+// node/jsdom runs go through Vite's SSR resolver which has its own
+// condition list.
+const conditions = ["@supergrain/source"];
+const resolve = { conditions };
+const ssr = { resolve: { conditions } };
 
 export default defineConfig({
   test: {
     projects: [
-      // Node environment for kernel core tests (default)
       {
         test: {
           include: ["packages/kernel/tests/{core,read,write}/**/*.test.{ts,tsx}"],
           environment: "node",
         },
-        resolve: {
-          alias: {
-            "@supergrain/kernel": resolve(__dirname, "./packages/kernel/src"),
-            "@supergrain/mill": resolve(__dirname, "./packages/mill/src"),
-          },
-        },
+        resolve,
+        ssr,
       },
-      // Node environment for mill tests
       {
         test: {
           include: ["packages/mill/**/*.test.{ts,tsx}"],
           environment: "node",
         },
-        resolve: {
-          alias: {
-            "@supergrain/kernel": resolve(__dirname, "./packages/kernel/src"),
-            "@supergrain/mill": resolve(__dirname, "./packages/mill/src"),
-          },
-        },
+        resolve,
+        ssr,
       },
-      // jsdom environment for silo tests (store, finder, processors, React hooks)
       {
         plugins: [react()],
         test: {
           include: ["packages/silo/**/*.test.{ts,tsx}"],
           environment: "jsdom",
         },
-        resolve: {
-          alias: {
-            "@supergrain/kernel": resolve(__dirname, "./packages/kernel/src"),
-            "@supergrain/mill": resolve(__dirname, "./packages/mill/src"),
-          },
-        },
+        resolve,
+        ssr,
       },
-      // Browser environment for React tests (kernel/react subpath)
       {
         plugins: [react()],
         test: {
@@ -64,12 +56,8 @@ export default defineConfig({
           setupFiles: ["./packages/kernel/tests/react/setup.ts"],
           globals: true,
         },
-        resolve: {
-          alias: {
-            "@supergrain/kernel": resolve(__dirname, "./packages/kernel/src"),
-            "@supergrain/mill": resolve(__dirname, "./packages/mill/src"),
-          },
-        },
+        resolve,
+        ssr,
       },
     ],
   },

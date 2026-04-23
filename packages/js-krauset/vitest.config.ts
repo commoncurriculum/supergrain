@@ -1,7 +1,8 @@
 import react from "@vitejs/plugin-react";
 import { playwright } from "@vitest/browser-playwright";
-import { resolve } from "path";
 import { defineConfig } from "vitest/config";
+
+const conditions = ["@supergrain/source"];
 
 export default defineConfig({
   plugins: [react()],
@@ -20,10 +21,6 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}"],
     exclude: ["src/dist.test.ts"],
   },
-  resolve: {
-    alias: {
-      "@supergrain/kernel": resolve(__dirname, "../kernel/src/index.ts"),
-      "@supergrain/kernel/react": resolve(__dirname, "../kernel/src/react/index.ts"),
-    },
-  },
+  resolve: { conditions },
+  ssr: { resolve: { conditions } },
 });

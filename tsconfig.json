@@ -4,6 +4,12 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    // `@supergrain/source` is a workspace-only export condition: it's opted into
+    // by this tsconfig and each package's vitest config so tooling resolves
+    // `@supergrain/*` imports to `src/` instead of `dist/`. npm consumers never
+    // set this condition and fall through to `import`/`require` → `dist/*`, so
+    // packages don't need to ship `src/` in `files`.
+    "customConditions": ["@supergrain/source"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

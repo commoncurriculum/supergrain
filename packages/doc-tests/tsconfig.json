@@ -6,13 +6,7 @@
     "jsx": "react-jsx",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
-    "baseUrl": ".",
-    "paths": {
-      "@supergrain/kernel": ["../kernel/src"],
-      "@supergrain/kernel/react": ["../kernel/src/react"],
-      "@supergrain/silo": ["../silo/src"]
-    }
+    "skipLibCheck": true
   },
   "include": ["tests/**/*", "vitest.config.ts", "vitest.node.config.ts"],
   "exclude": ["node_modules", "dist"]

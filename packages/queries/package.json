@@ -29,6 +29,7 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "@supergrain/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
