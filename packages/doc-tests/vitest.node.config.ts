@@ -9,9 +9,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@supergrain/core": resolve(__dirname, "../core/src"),
-      "@supergrain/react": resolve(__dirname, "../react/src"),
-      "@supergrain/store": resolve(__dirname, "../store/src"),
+      "@supergrain/kernel": resolve(__dirname, "../kernel/src"),
+      "@supergrain/kernel/react": resolve(__dirname, "../kernel/src/react"),
+      "@supergrain/silo": resolve(__dirname, "../silo/src"),
     },
   },
 });

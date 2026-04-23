@@ -17,6 +17,7 @@
     "id-length": "off",
     "max-lines": "off",
     "max-lines-per-function": "off",
-    "curly": "off"
+    "curly": "off",
+    "typescript/array-type": ["error", { "default": "generic" }]
   }
 }

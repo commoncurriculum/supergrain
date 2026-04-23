@@ -3,9 +3,8 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "esModuleInterop": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "composite": true
   },
-  "include": ["src", "tests"],
-  "references": [{ "path": "../core" }, { "path": "../react" }]
+  "include": ["src", "tests"]
 }

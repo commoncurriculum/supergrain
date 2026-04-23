@@ -13,7 +13,7 @@ Project documentation, research findings, and design decisions for Supergrain.
 - [React Adapter Architecture](architecture/react-adapter-architecture.md) -- Proposed vs shipped React integration design
 - [Safe Compile-Time Optimizations](architecture/safe-compile-time-optimizations.md) -- Unimplemented compile-time ideas
 - [Vite Compiler Plugin](architecture/vite-compiler-plugin-plan.md) -- Original plan (readSignal abandoned; createView + $$() shipped)
-- [App Store](architecture/app-store-plan.md) -- Design for @supergrain/store
+- [Silo Architecture](architecture/silo-architecture.md) -- Design spec for `@supergrain/silo` (document-store read layer)
 
 ## Benchmarks
 
@@ -36,7 +36,7 @@ How to run: [Running Benchmarks](benchmarks/running-benchmarks.md) | [Krausest S
 
 ## React Adapter
 
-- [useTracked](react-adapter/useTracked.md) -- **Superseded by `tracked()`.** Original React integration hook (see `tracked()` in `@supergrain/react`)
+- [useTracked](react-adapter/useTracked.md) -- **Superseded by `tracked()`.** Original React integration hook (see `tracked()` in `@supergrain/kernel/react`)
 - Evolution: [v2](react-adapter/v2-initial-design.md) → [v3](react-adapter/v3-tracking-discovery.md) → [v4](react-adapter/v4-nested-components.md) → [useTracked](react-adapter/useTracked.md)
 
 ## Performance

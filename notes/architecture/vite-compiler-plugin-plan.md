@@ -2,7 +2,7 @@
 
 > **Status: Partially implemented, core approach abandoned.**
 >
-> - `Branded<T>` type: DONE (in `@supergrain/core`)
+> - `Branded<T>` type: DONE (in `@supergrain/kernel`)
 > - Vite plugin scaffold: DONE (in `@supergrain/vite-plugin`)
 > - `readSignal` compilation: ABANDONED -- proven slower than proxy (see [compiled-reads-investigation.md](../performance/compiled-reads-investigation.md))
 > - What actually shipped: `createView()` prototype getters + `$$()` direct DOM bindings
@@ -122,7 +122,7 @@ function TodoList() {
 ## API
 
 ```ts
-import { createStore } from "@supergrain/core";
+import { createStore } from "@supergrain/kernel";
 
 const [store, update] = createStore({
   id: 1,
@@ -182,7 +182,7 @@ export default { plugins: [supergrain()] };
 ### 2. `readSignal()` in core
 
 - Convert prototype correctness tests to use `readSignal()`
-- One new export in `@supergrain/core`, sharing the same `signal()` import (shared reactive graph)
+- One new export in `@supergrain/kernel`, sharing the same `signal()` import (shared reactive graph)
 
 ### 3. `@supergrain/vite-plugin` package
 
@@ -192,7 +192,7 @@ export default { plugins: [supergrain()] };
 - Auto-insertion tests (components with branded props get `useTracked`)
 - TypeScript type checker (incremental) identifies `$BRAND` on types
 - One AST rewrite rule: branded `PropertyAccessExpression` -> `readSignal(expr, 'prop')()`
-- Auto-inserts `import { readSignal } from '@supergrain/core'`
+- Auto-inserts `import { readSignal } from '@supergrain/kernel'`
 - Detects React components with branded parameters, auto-inserts `useTracked`
 - MagicString for source-mapped edits
 

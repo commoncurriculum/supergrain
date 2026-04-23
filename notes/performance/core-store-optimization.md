@@ -10,12 +10,12 @@
 
 ### Before Optimization
 
-| Operation                | @supergrain/core | solid-js/store     | Gap               |
-| ------------------------ | ---------------- | ------------------ | ----------------- |
-| Reactive reads (10k)     | 2,931 ops/sec    | 17,230,822 ops/sec | **5,878x slower** |
-| Array removal (1k items) | 4.7 ops/sec      | 3,383 ops/sec      | **716x slower**   |
-| Entity retrieval (1k)    | 1,916 ops/sec    | 35,171 ops/sec     | **18x slower**    |
-| Entity creation (1k)     | 1,947 ops/sec    | 5,246 ops/sec      | **2.7x slower**   |
+| Operation                | @supergrain/kernel | solid-js/store     | Gap               |
+| ------------------------ | ------------------ | ------------------ | ----------------- |
+| Reactive reads (10k)     | 2,931 ops/sec      | 17,230,822 ops/sec | **5,878x slower** |
+| Array removal (1k items) | 4.7 ops/sec        | 3,383 ops/sec      | **716x slower**   |
+| Entity retrieval (1k)    | 1,916 ops/sec      | 35,171 ops/sec     | **18x slower**    |
+| Entity creation (1k)     | 1,947 ops/sec      | 5,246 ops/sec      | **2.7x slower**   |
 
 ### After Phase 2 Optimization
 

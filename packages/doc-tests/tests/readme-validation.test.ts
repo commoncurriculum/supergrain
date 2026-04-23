@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 
 describe("README Documentation Validation", () => {
   const rootDir = join(__dirname, "../../..");
-  // Collect all documentation markdown: README.md + docs/*.md
+  // Collect all documentation markdown: root README.md + docs/*.md + packages/*/README.md
   const docFiles = [join(rootDir, "README.md")];
   const docsDir = join(rootDir, "docs");
   if (existsSync(docsDir)) {
@@ -20,6 +20,13 @@ describe("README Documentation Validation", () => {
       if (file.endsWith(".md")) {
         docFiles.push(join(docsDir, file));
       }
+    }
+  }
+  const packagesDir = join(rootDir, "packages");
+  if (existsSync(packagesDir)) {
+    for (const pkg of readdirSync(packagesDir)) {
+      const pkgReadme = join(packagesDir, pkg, "README.md");
+      if (existsSync(pkgReadme)) docFiles.push(pkgReadme);
     }
   }
   const readmeContent = docFiles.map((f) => readFileSync(f, "utf-8")).join("\n");

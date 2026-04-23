@@ -4,7 +4,7 @@
 
 ## Already Configured
 
-- Scoped package names: `@supergrain/core`, `@supergrain/react`, `@supergrain/store`
+- Scoped package names: `@supergrain/kernel`, `@supergrain/kernel/react`, `@supergrain/store`
 - Public access: all packages have `publishConfig.access: "public"`
 - Root package marked private (prevents accidental publish)
 - Changesets configuration (`.changeset/config.json`)
@@ -42,8 +42,8 @@ pnpm changeset
 - Wait for "Release: Version Packages" PR
 - Review and merge
 - Verify packages at:
-  - https://www.npmjs.com/package/@supergrain/core
-  - https://www.npmjs.com/package/@supergrain/react
+  - https://www.npmjs.com/package/@supergrain/kernel
+  - https://www.npmjs.com/package/@supergrain/kernel/react
   - https://www.npmjs.com/package/@supergrain/store
 
 ## Troubleshooting
@@ -61,5 +61,5 @@ See [npm-setup.md](npm-setup.md) and [releasing.md](releasing.md) for detailed g
 Future releases are automatic: create changesets, merge the release PR, packages publish.
 
 ```bash
-npm install @supergrain/core @supergrain/react @supergrain/store
+npm install @supergrain/kernel @supergrain/kernel/react @supergrain/store
 ```

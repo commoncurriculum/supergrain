@@ -4,13 +4,13 @@
 
 ## What's a Scoped Package?
 
-NPM scoped packages use `@scope/package-name` format (e.g., `@supergrain/core`). They provide namespace organization, can be public or private, and require an NPM organization account.
+NPM scoped packages use `@scope/package-name` format (e.g., `@supergrain/kernel`). They provide namespace organization, can be public or private, and require an NPM organization account.
 
 ## Current Configuration
 
 All of the following is already set up:
 
-1. **Package names:** `@supergrain/core`, `@supergrain/react`, `@supergrain/store`
+1. **Package names:** `@supergrain/kernel`, `@supergrain/kernel/react`, `@supergrain/store`
 2. **Public access:** All packages have `publishConfig.access: "public"`
 3. **Root private:** Root `package.json` has `"private": true`
 4. **Changesets:** `.changeset/config.json` has `"access": "public"`

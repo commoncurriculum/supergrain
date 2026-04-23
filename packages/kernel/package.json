@@ -1,0 +1,125 @@
+{
+  "name": "@supergrain/kernel",
+  "version": "3.0.0",
+  "description": "Core reactive store implementation for Supergrain.",
+  "keywords": [
+    "kernel",
+    "reactive",
+    "signals",
+    "store",
+    "supergrain"
+  ],
+  "homepage": "https://commoncurriculum.github.io/supergrain/",
+  "bugs": {
+    "url": "https://github.com/commoncurriculum/supergrain/issues"
+  },
+  "license": "MIT",
+  "author": "Scott Messinger",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/commoncurriculum/supergrain.git",
+    "directory": "packages/kernel"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs.js",
+  "module": "./dist/index.es.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.es.js",
+      "require": "./dist/index.cjs.js"
+    },
+    "./internal": {
+      "types": "./src/internal.ts",
+      "import": "./dist/internal.js",
+      "require": "./dist/internal.cjs"
+    },
+    "./react": {
+      "types": "./src/react/index.ts",
+      "import": "./dist/react/index.js",
+      "require": "./dist/react/index.cjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepack": "cp ../../README.md .",
+    "postpack": "rm README.md",
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "lint": "oxlint -c ../../.oxlintrc.json src/",
+    "size": "size-limit",
+    "test": "vitest run",
+    "test:react": "vitest run --config vitest.browser.config.ts",
+    "bench": "vitest bench",
+    "bench:core": "vitest bench benchmarks/core-comparison.bench.ts",
+    "bench:all": "vitest bench benchmarks/*.bench.ts",
+    "bench:additional": "vitest bench benchmarks/additional.bench.ts",
+    "bench:libraries": "vitest bench benchmarks/state-libraries.bench.ts",
+    "bench:react": "vitest bench --config vitest.bench.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "alien-signals": "^2.0.7"
+  },
+  "devDependencies": {
+    "@preact/signals-core": "^1.14.0",
+    "@rollup/plugin-strip": "^3.0.4",
+    "@solidjs/testing-library": "^0.8.10",
+    "@supergrain/mill": "workspace:*",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.18.3",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/browser": "4.1.0",
+    "arktype": "^2.2.0",
+    "jotai": "^2.14.0",
+    "magic-string": "^0.30.17",
+    "mobx": "^6.13.7",
+    "playwright": "^1.55.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "solid-js": "^1.9.9",
+    "typescript": "^5.9.2",
+    "valtio": "^2.1.7",
+    "vite": "^7.1.5",
+    "vitest": "4.1.0",
+    "zustand": "^5.0.8"
+  },
+  "peerDependencies": {
+    "arktype": ">=2.0.0",
+    "react": "^18.2.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "arktype": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "size-limit": [
+    {
+      "name": "@supergrain/kernel",
+      "path": "dist/index.es.js",
+      "import": "{ createReactive }"
+    },
+    {
+      "name": "@supergrain/kernel/react (incl. kernel)",
+      "path": "dist/react/index.js",
+      "import": "{ tracked, createStoreContext, useReactive, useComputed, useSignalEffect, For }",
+      "ignore": [
+        "react",
+        "react-dom"
+      ]
+    }
+  ]
+}

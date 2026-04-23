@@ -6,6 +6,5 @@
     "moduleResolution": "node",
     "composite": true
   },
-  "include": ["src", "tests"],
-  "references": [{ "path": "../core" }, { "path": "../react" }]
+  "include": ["src", "tests"]
 }

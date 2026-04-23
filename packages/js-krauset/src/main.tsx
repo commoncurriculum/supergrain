@@ -4,8 +4,8 @@ import {
   enableProfiling,
   resetProfiler,
   getProfile,
-} from "@supergrain/core";
-import { tracked, For, useComputed } from "@supergrain/react";
+} from "@supergrain/kernel";
+import { tracked, For, useComputed } from "@supergrain/kernel/react";
 import { Profiler, useCallback, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";

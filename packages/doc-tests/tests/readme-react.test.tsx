@@ -8,12 +8,12 @@
 
 import {
   tracked,
-  createStore,
+  createStoreContext,
   useReactive,
   useComputed,
   useSignalEffect,
   For,
-} from "@supergrain/react";
+} from "@supergrain/kernel/react";
 import { render, screen, act, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
@@ -54,13 +54,21 @@ describe("README React Examples", () => {
       selected: number | null;
     }
 
-    const { Provider, useStore } = createStore<AppState>(() => ({
+    const { Provider, useStore } = createStoreContext<AppState>();
+
+    const initial: AppState = {
       todos: [
         { id: 1, text: "Learn Supergrain", completed: false },
         { id: 2, text: "Build something", completed: false },
       ],
       selected: null,
-    }));
+    };
+
+    let storeRef: AppState = null!;
+    const Probe = () => {
+      storeRef = useStore();
+      return null;
+    };
 
     const TodoItem = tracked(({ todo }: { todo: Todo }) => {
       const s = useStore();
@@ -97,15 +105,8 @@ describe("README React Examples", () => {
       );
     });
 
-    // Probe the store from inside the Provider so the test can mutate it.
-    let storeRef: AppState = null!;
-    const Probe = () => {
-      storeRef = useStore();
-      return null;
-    };
-
     render(
-      <Provider>
+      <Provider initial={initial}>
         <Probe />
         <App />
       </Provider>,

@@ -25,7 +25,7 @@ store.user.address.city;
 readSignal(readSignal(readSignal(store, "user"), "address"), "city");
 ```
 
-**Bug 1 -- Dual-module imports:** The plugin added `import { readSignal } from '@supergrain/core'` but test files imported from `../src`. Two module instances meant two signal systems. Fix: plugin adds `readSignal` to the existing import source.
+**Bug 1 -- Dual-module imports:** The plugin added `import { readSignal } from '@supergrain/kernel'` but test files imported from `../src`. Two module instances meant two signal systems. Fix: plugin adds `readSignal` to the existing import source.
 
 **Bug 2 -- readSignal returned raw values:** `readSignal` returned `node()` (the raw signal value). For nested objects, this broke tracking because raw objects have no signals. Fix: added `wrap(node())`, but this made readSignal do the same work as the proxy plus extra overhead.
 

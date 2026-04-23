@@ -1,6 +1,6 @@
 # Row Operations Benchmarks
 
-> **Status:** Reference data. Simulates common table/list UI operations on a 1,000-row dataset using @supergrain/core.
+> **Status:** Reference data. Simulates common table/list UI operations on a 1,000-row dataset using @supergrain/kernel.
 
 ## Results
 

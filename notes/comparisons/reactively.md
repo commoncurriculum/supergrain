@@ -71,7 +71,7 @@ Cache length values instead of repeated property access.
 
 ### 5. Bundle Size
 
-- Tree shaking via package splitting (`@supergrain/core`, `@supergrain/react`, `@supergrain/dev`)
+- Tree shaking via package splitting (`@supergrain/kernel`, `@supergrain/kernel/react`, `@supergrain/dev`)
 - Bit flags instead of objects where possible
 
 **Expected impact:** 20-30% size reduction

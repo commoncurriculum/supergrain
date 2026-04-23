@@ -15,7 +15,7 @@
 | Fine-grained tracking | Selector-driven: `useSelector(store, (s) => s.count)` + compare bailout | Automatic via proxy traps inside `tracked()` render scope              |
 | React bridge          | `useSyncExternalStoreWithSelector`                                      | `useReducer` + alien-signals `effect()`                                |
 | Derived state         | Computed atoms: `createAtom((prev) => fn(prev))`                        | `useComputed(() => expr)` wrapping alien-signals `computed`            |
-| Batching              | `batch(fn)` counter + `flush()` queue                                   | `batch(fn)` from `@supergrain/core` (same shape)                       |
+| Batching              | `batch(fn)` counter + `flush()` queue                                   | `batch(fn)` from `@supergrain/kernel` (same shape)                     |
 | Async support         | `createAsyncAtom` returns a discriminated-union status atom             | No first-class async primitive                                         |
 
 ## Core internals (verbatim source)
@@ -197,7 +197,7 @@ Supergrain uses `useReducer` + alien-signals `effect()`. The effect scope captur
 
 See `notes/architecture/react-adapter-architecture.md`:
 
-> The actual implementation in `tracked()` (formerly `useTracked`) uses `useReducer` + `effect()` from `@supergrain/core` rather than this `useSyncExternalStore` pattern.
+> The actual implementation in `tracked()` (formerly `useTracked`) uses `useReducer` + `effect()` from `@supergrain/kernel` rather than this `useSyncExternalStore` pattern.
 
 And `notes/failed-approaches/react-performance-optimization-attempts.md`:
 

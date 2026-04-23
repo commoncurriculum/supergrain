@@ -52,7 +52,7 @@ const Counter = tracked(() => {
 
 **Internals.**
 
-Source refs: [`packages/core/src/read.ts`](https://github.com/commoncurriculum/supergrain/blob/main/packages/core/src/read.ts), [`packages/react/src/tracked.ts`](https://github.com/commoncurriculum/supergrain/blob/main/packages/react/src/tracked.ts), [`packages/core/src/batch.ts`](https://github.com/commoncurriculum/supergrain/blob/main/packages/core/src/batch.ts)
+Source refs: [`packages/kernel/src/read.ts`](https://github.com/commoncurriculum/supergrain/blob/main/packages/kernel/src/read.ts), [`packages/kernel/src/react/tracked.ts`](https://github.com/commoncurriculum/supergrain/blob/main/packages/kernel/src/react/tracked.ts), [`packages/kernel/src/batch.ts`](https://github.com/commoncurriculum/supergrain/blob/main/packages/kernel/src/batch.ts)
 
 - **State shape.** Every object in the tree is wrapped in its own JavaScript Proxy, created lazily via `wrap()` on first access. Each property gets its own signal on first read. No explicit observables, no atom declarations — the reactive graph mirrors the object's shape.
 - **Reactive primitive.** Signal propagation uses [alien-signals](https://github.com/stackblitz/alien-signals), the same primitive Vue Vapor is built on. Push-based updates, topological ordering, glitch-free `computed` chains — no manual scheduling.

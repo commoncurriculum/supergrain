@@ -23,8 +23,8 @@ export default defineConfig({
   // and removes the need for a pnpm workspace when you copy this package.
   resolve: {
     alias: {
-      "@supergrain/core": resolve(__dirname, "../core/src/index.ts"),
-      "@supergrain/react": resolve(__dirname, "../react/src/index.ts"),
+      "@supergrain/kernel": resolve(__dirname, "../kernel/src/index.ts"),
+      "@supergrain/kernel/react": resolve(__dirname, "../kernel/src/react/index.ts"),
     },
   },
 

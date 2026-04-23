@@ -1,6 +1,6 @@
 # Additional Benchmarks
 
-> **Status:** Reference data for @supergrain/core performance characteristics.
+> **Status:** Reference data for @supergrain/kernel performance characteristics.
 >
 > Covers proxy overhead, effect lifecycle, array operations, and complex scenarios. Benchmarked with Vitest bench on Node.js.
 

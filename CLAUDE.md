@@ -6,9 +6,10 @@ This document provides important instructions for AI assistants working on the S
 
 Supergrain is a reactive store library with fine-grained reactivity. The project uses pnpm workspaces with multiple packages:
 
-- `@supergrain/core` - Core reactive store implementation
-- `@supergrain/react` - React integration and hooks
-- `@supergrain/store` - Document-oriented store for app-level state management
+- `@supergrain/kernel` - Core reactive store implementation
+- `@supergrain/kernel/react` - React integration and hooks
+- `@supergrain/silo` - Document-oriented store for app-level state management
+- `@supergrain/mill` - MongoDB-style update operators ($set, $push, ...)
 - `@supergrain/documentation` - Documentation and example tests
 - `js-framework-benchmark-react-supergrain` - Performance benchmarks
 
@@ -73,7 +74,7 @@ The documentation package (`@supergrain/documentation`) contains special tests t
 
 ## Benchmark Package (`packages/js-krauset`)
 
-This package contains the js-framework-benchmark implementation for supergrain. It uses React 19 + `@supergrain/core` + `@supergrain/react`.
+This package contains the js-framework-benchmark implementation for supergrain. It uses React 19 + `@supergrain/kernel` + `@supergrain/kernel/react`.
 
 ### How it works
 
@@ -84,7 +85,7 @@ This package contains the js-framework-benchmark implementation for supergrain. 
 
 ### Development workflow
 
-Changes to `packages/core` or `packages/react` are immediately reflected via pnpm workspace links and vite aliases. No need to rebuild or republish.
+Changes to `packages/kernel` (including `packages/kernel/src/react`) are immediately reflected via pnpm workspace links and vite aliases. No need to rebuild or republish.
 
 ```bash
 cd packages/js-krauset
@@ -145,7 +146,7 @@ Build is unminified so profiles show real function names.
 The benchmark repo submission lives at `https://github.com/commoncurriculum/js-framework-benchmark` on the `add-supergrain` branch. When copying files to the benchmark repo:
 
 1. Copy `src/main.tsx`, `index.html`, `vite.config.ts`, `tsconfig.json`
-2. Create a standalone `package.json` with published npm versions (e.g., `@supergrain/core: "1.0.4"`) instead of `workspace:*`
+2. Create a standalone `package.json` with published npm versions (e.g., `@supergrain/kernel: "1.0.4"`) instead of `workspace:*`
 3. Remove the vite alias (the benchmark repo uses published packages, not local source)
 4. Add `"customURL": "/dist"` to the `js-framework-benchmark` section of package.json
 

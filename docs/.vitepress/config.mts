@@ -14,7 +14,7 @@ export default defineConfig({
 
     nav: [
       { text: "Home", link: "/" },
-      { text: "Guide", link: "#installation" },
+      { text: "Silo", link: "/silo" },
       { text: "Comparison", link: "/comparison" },
     ],
 

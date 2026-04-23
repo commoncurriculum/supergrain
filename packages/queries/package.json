@@ -1,0 +1,60 @@
+{
+  "name": "@supergrain/queries",
+  "version": "0.0.1",
+  "description": "Pagination + live-subscription query primitive for @supergrain/silo",
+  "keywords": [
+    "query",
+    "reactive",
+    "store",
+    "supergrain",
+    "typescript"
+  ],
+  "homepage": "https://commoncurriculum.github.io/supergrain/",
+  "bugs": {
+    "url": "https://github.com/commoncurriculum/supergrain/issues"
+  },
+  "license": "MIT",
+  "author": "Scott Messinger",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/commoncurriculum/supergrain.git",
+    "directory": "packages/queries"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepack": "cp ../../README.md .",
+    "postpack": "rm README.md",
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "lint": "oxlint -c ../../.oxlintrc.json src/",
+    "test": "vitest run --config vitest.browser.config.ts",
+    "test:watch": "vitest --config vitest.browser.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supergrain/kernel": "workspace:*",
+    "@supergrain/silo": "workspace:*"
+  },
+  "devDependencies": {
+    "@vitest/browser": "4.1.0",
+    "@vitest/browser-playwright": "4.1.0",
+    "playwright": "^1.55.0",
+    "vitest": "4.1.0"
+  }
+}

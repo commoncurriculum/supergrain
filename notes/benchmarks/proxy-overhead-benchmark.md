@@ -1,6 +1,6 @@
 # Proxy Overhead Benchmark Code
 
-This document contains the benchmark code that was used to measure @supergrain/core's proxy overhead compared to direct object access.
+This document contains the benchmark code that was used to measure @supergrain/kernel's proxy overhead compared to direct object access.
 
 ## Purpose
 
@@ -49,7 +49,7 @@ const SIMPLE_PROXY = new Proxy(SIMPLE_OBJECT, {
   get: (target, prop) => Reflect.get(target, prop),
 });
 
-// Create @supergrain/core versions
+// Create @supergrain/kernel versions
 const [STORABLE_SIMPLE] = createStore(SIMPLE_OBJECT);
 const [STORABLE_NESTED] = createStore(NESTED_OBJECT);
 const [STORABLE_ARRAY] = createStore({ items: ARRAY_DATA });
@@ -75,7 +75,7 @@ describe("Proxy Overhead: Simple Property Access", () => {
     // sum prevents optimization
   });
 
-  bench("@supergrain/core: 1M property reads", () => {
+  bench("@supergrain/kernel: 1M property reads", () => {
     let sum = 0;
     for (let i = 0; i < 1_000_000; i++) {
       sum += STORABLE_SIMPLE.count;
@@ -96,7 +96,7 @@ describe("Proxy Overhead: Nested Object Access", () => {
     // sum prevents optimization
   });
 
-  bench("@supergrain/core: 100k nested reads", () => {
+  bench("@supergrain/kernel: 100k nested reads", () => {
     let sum = 0;
     for (let i = 0; i < 100_000; i++) {
       sum += STORABLE_NESTED.level1.level2.level3.value;
@@ -117,7 +117,7 @@ describe("Proxy Overhead: Array Operations", () => {
     // sum prevents optimization
   });
 
-  bench("@supergrain/core: 10k iterations (100 items each)", () => {
+  bench("@supergrain/kernel: 10k iterations (100 items each)", () => {
     let sum = 0;
     for (let i = 0; i < 10_000; i++) {
       for (const item of STORABLE_ARRAY.items) {
@@ -146,7 +146,7 @@ describe("Proxy Overhead: Store Creation", () => {
     // objects prevents optimization
   });
 
-  bench("@supergrain/core: create 10k stores", () => {
+  bench("@supergrain/kernel: create 10k stores", () => {
     const objects = [];
     for (let i = 0; i < 10_000; i++) {
       const [store] = createStore({ id: i, name: `item-${i}`, active: i % 2 === 0 });
@@ -218,7 +218,7 @@ describe("Proxy Overhead: Property Descriptor Operations", () => {
     // count prevents optimization
   });
 
-  bench("@supergrain/core: 100k hasOwnProperty calls", () => {
+  bench("@supergrain/kernel: 100k hasOwnProperty calls", () => {
     let count = 0;
     for (let i = 0; i < 100_000; i++) {
       if (Object.prototype.hasOwnProperty.call(STORABLE_SIMPLE, "count")) count++;
@@ -235,7 +235,7 @@ describe("Proxy Overhead: Property Descriptor Operations", () => {
     // count prevents optimization
   });
 
-  bench("@supergrain/core: 100k Object.keys calls", () => {
+  bench("@supergrain/kernel: 100k Object.keys calls", () => {
     let count = 0;
     for (let i = 0; i < 100_000; i++) {
       count += Object.keys(STORABLE_SIMPLE).length;
@@ -257,7 +257,7 @@ describe("Proxy Overhead: Memory Allocation Analysis", () => {
     // count prevents optimization
   });
 
-  bench("Deep object: @supergrain/core access pattern", () => {
+  bench("Deep object: @supergrain/kernel access pattern", () => {
     const [store] = createStore(deepObject);
     let count = 0;
     for (let i = 0; i < 100_000; i++) {
