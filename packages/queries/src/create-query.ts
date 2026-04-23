@@ -50,7 +50,10 @@ export function createQuery<
 
     try {
       const res = await adapter.fetch(id, { offset, limit });
-      if (destroyed) return;
+      if (destroyed) {
+        isFetching(false);
+        return;
+      }
 
       if (res.included) {
         // Sideloaded `included` docs can be of any type — queries requires
@@ -83,7 +86,10 @@ export function createQuery<
       attempts = 0;
       isFetching(false);
     } catch (error) {
-      if (destroyed) return;
+      if (destroyed) {
+        isFetching(false);
+        return;
+      }
       isFetching(false);
       errorSignal(error instanceof Error ? error : new Error(String(error)));
       attempts++;
