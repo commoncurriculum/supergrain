@@ -3,6 +3,7 @@
 Reactive state management for React — with an API query layer built on top.
 
 - **[@supergrain/kernel](./packages/kernel)** is the state library. Read and mutate plain objects; only the components that actually touched the changed property re-render.
+- **[@supergrain/husk](./packages/husk)** is the side-effects layer. `resource`, `reactivePromise`, `reactiveTask`, and `modifier` — reactive-function-with-cleanup primitives for async fetches, subscriptions, observers, and DOM behaviors.
 - **[@supergrain/silo](./packages/silo)** is an API query layer built on top. Request-batched by default, Suspense-compatible. Fetched documents live in the same reactive graph as the rest of your state.
 
 **End-to-end typed.** Declare your model shape once and it flows through every call: `store.user.name = "Alice"`, `useDocument("user", id)`, and `useQuery("posts", { authorId, status, limit })` are all type-checked against your declared types. No casts, no manual annotations, no selector overloads.
@@ -131,6 +132,58 @@ Handles are reactive: a later `store.insertDocument("user", updated)` (socket pu
 
 [Full silo docs →](./packages/silo/README.md)
 
+## Side effects and DOM behaviors: `@supergrain/husk`
+
+The layer between kernel's raw reactivity and application-specific data layers. Ships the primitives for "reactive value produced by a side effect with its own lifecycle" plus element-scoped DOM behaviors.
+
+```tsx
+import { tracked, useReactive } from "@supergrain/kernel/react";
+import { useReactivePromise } from "@supergrain/husk/react";
+
+const Profile = tracked(() => {
+  const state = useReactive({ userId: 1 });
+  const user = useReactivePromise(async (signal) => {
+    const res = await fetch(`/users/${state.userId}`, { signal });
+    return res.json() as Promise<User>;
+  });
+  return (
+    <>
+      <button onClick={() => state.userId++}>Next</button>
+      {user.data && <UserCard user={user.data} />}
+    </>
+  );
+});
+```
+
+Click the button → `state.userId` increments → the resource's effect reruns → old `fetch` aborts via `signal` → new one starts. The component re-renders only when `user.data` changes.
+
+Four effect primitives, one DOM primitive, one mental model: **lifecycle-bound work that reacts to tracked change.**
+
+| Need                                                                 | Reach for                                |
+| -------------------------------------------------------------------- | ---------------------------------------- |
+| Async fetch with tracked inputs — want the standard envelope         | `reactivePromise` / `useReactivePromise` |
+| Reusable primitive called from many places, args visible at call     | `defineResource` + `useResource`         |
+| One-off side effect with a custom state shape                        | `resource` / `useResource`               |
+| User-triggered work (save, submit) — no auto-run                     | `reactiveTask` / `useReactiveTask`       |
+| Behavior attached to a specific DOM element (observers, focus traps) | `modifier` / `useModifier`               |
+
+The key win over hand-rolling with `useState` + `useEffect` + `useRef` + `AbortController`: all the subtle correctness concerns (abort lifecycle, generation counter, cleanup ordering, stale-response discard, idempotent dispose, sync-vs-async setup) are packaged up once. And for `modifier` specifically, **signal reads inside setup trigger targeted re-attach on the element without re-rendering the component** — something `useEffect` can't compose because it doesn't subscribe to signals.
+
+[Full husk docs →](./packages/husk/README.md)
+
+## Which primitive answers which question?
+
+| Question                                                 | Primitive                                | Example                                                        |
+| -------------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------- |
+| "A domain entity from my API — shared, batched, cached." | `silo` (`useDocument`, `useQuery`)       | `useDocument("user", id)`                                      |
+| "An async Promise with the standard envelope."           | `reactivePromise` / `useReactivePromise` | `data`, `error`, `isPending`, `promise` — inline               |
+| "A reusable primitive, args at call site."               | `defineResource` + `useResource`         | `fetchUser`, `subscribeChannel`, anything you call many places |
+| "A one-off side effect with a custom state shape."       | `resource` / `useResource`               | WebSocket, timer, observer where you need a unique shape       |
+| "User-triggered work (save, submit) — no auto-run."      | `reactiveTask` / `useReactiveTask`       | mutations, form submits                                        |
+| "Behavior attached to a specific DOM element."           | `modifier` / `useModifier`               | click-outside, focus trap, autofocus, ResizeObserver           |
+| "A reactive side effect, no element."                    | `useSignalEffect`                        | syncing a signal to `document.title`, logging                  |
+| "A derived value."                                       | `computed` / `useComputed`               | filtered list length, total cost                               |
+
 ## Suspense
 
 Every document handle exposes a stable `.promise` for React 19's `use()`. Opt in at the call site — one line per component, no `{ suspense: true }` flag and no separate hook.
@@ -169,14 +222,18 @@ Want inline loading UI instead? Drop the `use(user.promise)` line and read `user
 # State only
 pnpm add @supergrain/kernel
 
+# State + side-effect primitives
+pnpm add @supergrain/kernel @supergrain/husk
+
 # State + API queries
 pnpm add @supergrain/kernel @supergrain/silo
 ```
 
-The React bindings ship in the same packages (`@supergrain/kernel/react`, `@supergrain/silo/react`) and require `react >= 18.2`.
+React bindings ship at `@supergrain/<pkg>/react` subpaths and require `react >= 18.2`.
 
 ## Also available
 
+- **[@supergrain/husk](./packages/husk/README.md)** — Reactive side-effect primitives: `resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`, plus the `modifier` / `useModifier` DOM primitive. Layer between kernel's reactive core and application data layers.
 - **[@supergrain/mill](./packages/mill/README.md)** — MongoDB-style update operators (`$set`, `$inc`, `$push`, `$pull`, `$addToSet`, `$min`, `$max`, `$unset`) for batched, path-aware writes. Optional — plain `store.x = 1` is the usual path; reach for `mill` when you want to apply several updates atomically or use dot notation for deeply nested writes.
 
 ## Comparison

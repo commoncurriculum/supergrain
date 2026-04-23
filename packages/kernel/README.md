@@ -152,7 +152,10 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
   > Runs `fn` immediately and re-runs it whenever its dependencies change. Returns a stop function. Use outside React; for components, prefer `useSignalEffect`.
 
 - `batch(fn)`
+
   > Coalesces signal writes inside `fn` into a single notification. Throws if `fn` returns a Promise (must be sync).
+
+> Side-effect primitives (`resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`) and the `modifier` DOM helper live in [`@supergrain/husk`](../husk/README.md) — a thin layer built on top of this package.
 
 ### React
 
@@ -180,6 +183,8 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
 
 - `<For each={array} parent={ref?}>{item => ...}</For>`
   > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
+
+> React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](../husk/README.md).
 
 See how Supergrain compares to useState, Zustand, Redux, and MobX in the [comparison guide](https://github.com/commoncurriculum/supergrain/blob/main/docs/comparison.md).
 
