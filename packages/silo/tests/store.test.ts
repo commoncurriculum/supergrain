@@ -280,6 +280,7 @@ describe("Store.clearMemory — handle transitions", () => {
     expect(handle.status).toBe("IDLE");
     expect(handle.data).toBeUndefined();
     expect(handle.hasData).toBe(false);
+    expect(handle.error).toBeUndefined();
     expect(handle.promise).toBeUndefined();
   });
 
@@ -293,6 +294,36 @@ describe("Store.clearMemory — handle transitions", () => {
     await flushCoalescer();
 
     // Fetch completed; processor re-populated the doc on the (now cleared) store.
+    expect(handle.status).toBe("SUCCESS");
+    expect(handle.data?.id).toBe("1");
+  });
+
+  it("clears settled error handles so retries start from a fresh promise", async () => {
+    server.use(
+      http.get(`${API_BASE}/users`, () => HttpResponse.json({ message: "boom" }, { status: 500 })),
+    );
+
+    const handle = store.find("user", "1");
+    await flushCoalescer();
+
+    const rejectedPromise = handle.promise;
+    expect(handle.status).toBe("ERROR");
+    expect(handle.error).toBeInstanceOf(Error);
+
+    store.clearMemory();
+    expect(handle.status).toBe("IDLE");
+    expect(handle.error).toBeUndefined();
+    expect(handle.promise).toBeUndefined();
+
+    server.resetHandlers();
+
+    const retried = store.find("user", "1");
+    expect(retried).toBe(handle);
+    expect(handle.promise).toBeInstanceOf(Promise);
+    expect(handle.promise).not.toBe(rejectedPromise);
+
+    await flushCoalescer();
+
     expect(handle.status).toBe("SUCCESS");
     expect(handle.data?.id).toBe("1");
   });
