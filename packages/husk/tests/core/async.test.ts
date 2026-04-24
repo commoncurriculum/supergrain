@@ -1,7 +1,7 @@
 import { signal } from "@supergrain/kernel";
 import { describe, it, expect, vi } from "vitest";
 
-import { reactivePromise, reactiveTask } from "../../src";
+import { dispose, reactivePromise, reactiveTask } from "../../src";
 
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -241,7 +241,7 @@ describe("reactiveTask", () => {
     expect((task.error as Error).message).toBe("sync-boom");
   });
 
-  it("stale rejection does not update state (gen !== generation)", async () => {
+  it("discards a stale rejection when a newer run starts", async () => {
     const d1 = deferred<string>();
     const d2 = deferred<string>();
     const results = [d1, d2];
@@ -250,21 +250,51 @@ describe("reactiveTask", () => {
     const task = reactiveTask(async () => results[call++]!.promise);
 
     const p1 = task.run();
-    const p2 = task.run(); // gen=2 is now current; gen=1 is stale
+    const p2 = task.run();
 
-    // Reject the stale run first
-    d1.reject(new Error("stale-error"));
+    d1.reject(new Error("stale"));
     await p1.catch(() => {});
-
-    // State should NOT reflect the stale rejection
-    expect(task.isRejected).toBe(false);
     expect(task.error).toBe(null);
+    expect(task.isRejected).toBe(false);
+    expect(task.isPending).toBe(true);
 
-    // Resolve the current run
     d2.resolve("fresh");
     await p2;
     expect(task.data).toBe("fresh");
+    expect(task.error).toBe(null);
+  });
+
+  it("dispose prevents late completions from mutating task state", async () => {
+    const d = deferred<string>();
+    const task = reactiveTask(async () => d.promise);
+
+    const pending = task.run();
+    expect(task.isPending).toBe(true);
+
+    dispose(task);
+    expect(task.isPending).toBe(false);
+
+    d.resolve("done");
+    await pending;
+
+    expect(task.data).toBe(null);
+    expect(task.error).toBe(null);
+    expect(task.isReady).toBe(false);
+    expect(task.isResolved).toBe(false);
     expect(task.isRejected).toBe(false);
+    expect(task.isSettled).toBe(false);
+  });
+
+  it("run() after dispose rejects without mutating state", async () => {
+    const task = reactiveTask(async () => "value");
+    dispose(task);
+
+    await expect(task.run()).rejects.toThrow("reactiveTask has been disposed");
+    expect(task.data).toBe(null);
+    expect(task.error).toBe(null);
+    expect(task.isPending).toBe(false);
+    expect(task.isRejected).toBe(false);
+    expect(task.isSettled).toBe(false);
   });
 });
 

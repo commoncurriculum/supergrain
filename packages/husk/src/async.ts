@@ -1,6 +1,6 @@
 import { createReactive } from "@supergrain/kernel";
 
-import { resource } from "./resource";
+import { registerDisposer, resource } from "./resource";
 
 /**
  * A reactive async value. The envelope fields (`data`, `error`,
@@ -178,6 +178,7 @@ export function reactiveTask<Args extends unknown[], T>(
   asyncFn: (...args: Args) => Promise<T>,
 ): ReactiveTask<Args, T> {
   let generation = 0;
+  let disposed = false;
 
   const state = createReactive<TaskEnvelope<Args, T>>({
     data: null,
@@ -188,6 +189,9 @@ export function reactiveTask<Args extends unknown[], T>(
     isSettled: false,
     isReady: false,
     run: (...args: Args): Promise<T> => {
+      if (disposed) {
+        return Promise.reject(new Error("@supergrain/husk: reactiveTask has been disposed"));
+      }
       const gen = ++generation;
       state.isPending = true;
       state.isResolved = false;
@@ -202,7 +206,7 @@ export function reactiveTask<Args extends unknown[], T>(
 
       return p.then(
         (v) => {
-          if (gen === generation) {
+          if (!disposed && gen === generation) {
             state.data = v;
             state.error = null;
             state.isResolved = true;
@@ -214,7 +218,7 @@ export function reactiveTask<Args extends unknown[], T>(
           return v;
         },
         (error) => {
-          if (gen === generation) {
+          if (!disposed && gen === generation) {
             state.error = error;
             state.isResolved = false;
             state.isRejected = true;
@@ -226,6 +230,13 @@ export function reactiveTask<Args extends unknown[], T>(
       );
     },
   }) as TaskEnvelope<Args, T>;
+
+  registerDisposer(state, () => {
+    if (disposed) return;
+    disposed = true;
+    generation++;
+    state.isPending = false;
+  });
 
   return state;
 }

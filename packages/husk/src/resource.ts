@@ -38,6 +38,10 @@ export type ResourceFactory<Args, T extends object> = [Args] extends [void]
 
 const disposers = new WeakMap<object, () => void>();
 
+export function registerDisposer(target: object, fn: () => void): void {
+  disposers.set(target, fn);
+}
+
 type SetupResult = void | (() => void) | Promise<void>;
 
 function withUntracked<R>(run: () => R): R {
@@ -134,7 +138,7 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
     }),
   );
 
-  disposers.set(state, () => {
+  registerDisposer(state, () => {
     if (disposed) return;
     disposed = true;
     stopEffect();
