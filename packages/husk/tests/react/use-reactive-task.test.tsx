@@ -3,7 +3,7 @@ import type { ReactiveTask } from "@supergrain/husk";
 import { useReactiveTask } from "@supergrain/husk/react";
 import { tracked } from "@supergrain/kernel/react";
 import { act, cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 afterEach(() => cleanup());
 
@@ -49,7 +49,11 @@ describe("useReactiveTask()", () => {
 
     const Component = tracked(() => {
       task = useReactiveTask(async (value: number) => value * (await d.promise));
-      return <span data-testid="value">{task.isPending ? "pending" : task.isReady ? task.data : "idle"}</span>;
+      return (
+        <span data-testid="value">
+          {task.isPending ? "pending" : task.isReady ? task.data : "idle"}
+        </span>
+      );
     });
 
     const { getByTestId, unmount } = render(<Component />);
