@@ -365,10 +365,7 @@ function resetHandle(handle: InternalHandle): void {
   handle.fetchedAt = undefined;
 }
 
-function beginPendingHandle<T>(
-  handle: InternalHandle<T>,
-  resolvers: Resolvers<T>,
-): void {
+function beginPendingHandle<T>(handle: InternalHandle<T>, resolvers: Resolvers<T>): void {
   handle.status = "PENDING";
   handle.isPending = true;
   handle.isFetching = true;
@@ -416,23 +413,23 @@ function settleHandleWithData<T>(handle: InternalHandle<T>, data: T): void {
   }
 }
 
-function ensureHandleBucket(
-  state: InternalState,
-  surface: "documents" | "queries",
+function ensureHandleBucket<T>(
+  buckets: Record<string, Record<string, InternalHandle<T>>>,
   type: string,
-): Record<string, InternalHandle> {
-  state[surface][type] ??= {};
-  return state[surface][type]!;
+): Record<string, InternalHandle<T>> {
+  buckets[type] ??= {};
+  return buckets[type]!;
 }
 
-function ensureHandle(
-  state: InternalState,
-  surface: "documents" | "queries",
+function ensureHandle<T>(
+  buckets: Record<string, Record<string, InternalHandle<T>>>,
   type: string,
   key: string,
-): InternalHandle {
-  const bucket = ensureHandleBucket(state, surface, type);
-  bucket[key] ??= makeIdleHandle();
+): InternalHandle<T> {
+  const bucket = ensureHandleBucket(buckets, type);
+  if (!bucket[key]) {
+    bucket[key] = makeIdleHandle() as InternalHandle<T>;
+  }
   return bucket[key]!;
 }
 
@@ -478,7 +475,7 @@ export function createDocumentStore<
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
       if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
 
-      const handle = ensureHandle(state, "documents", type, id);
+      const handle = ensureHandle(state.documents as Record<string, Record<string, InternalHandle<M[K]>>>, type, id);
       if (handle.status === "IDLE") {
         kickOffDocumentFetch(type, id);
       }
@@ -497,7 +494,10 @@ export function createDocumentStore<
       if (!Object.isFrozen(doc)) Object.freeze(doc);
 
       batch(() => {
-        const bucket = ensureHandleBucket(state, "documents", type);
+        const bucket = ensureHandleBucket(
+          state.documents as Record<string, Record<string, InternalHandle<M[K]>>>,
+          type,
+        );
         const existing = bucket[doc.id];
 
         if (!existing) {
@@ -518,7 +518,11 @@ export function createDocumentStore<
         return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
 
       const paramsKey = stableStringify(params);
-      const handle = ensureHandle(state, "queries", type, paramsKey);
+      const handle = ensureHandle(
+        state.queries as Record<string, Record<string, InternalHandle<Q[K]["result"]>>>,
+        type,
+        paramsKey,
+      );
       if (handle.status === "IDLE") {
         kickOffQueryFetch(type, paramsKey, params);
       }
@@ -545,7 +549,10 @@ export function createDocumentStore<
       const paramsKey = stableStringify(params);
 
       batch(() => {
-        const bucket = ensureHandleBucket(state, "queries", type);
+        const bucket = ensureHandleBucket(
+          state.queries as Record<string, Record<string, InternalHandle<Q[K]["result"]>>>,
+          type,
+        );
         const existing = bucket[paramsKey];
 
         if (!existing) {

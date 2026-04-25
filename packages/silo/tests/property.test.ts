@@ -142,7 +142,9 @@ describe("silo property-based tests", () => {
           }
 
           for (const [paramsKey, params] of seenParams) {
-            expect(store.findQueryInMemory("search", params)).toEqual(expectedQueries.get(paramsKey));
+            expect(store.findQueryInMemory("search", params)).toEqual(
+              expectedQueries.get(paramsKey),
+            );
           }
         }
       }),
