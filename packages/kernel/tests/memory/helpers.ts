@@ -165,21 +165,26 @@ export async function expectCollectible(
         settle?: () => void | Promise<void>;
       }>,
 ): Promise<void> {
-  let refs: Array<WeakRef<object>> = [];
   let finalized = 0;
   const registry = new FinalizationRegistry<number>(() => {
     finalized++;
   });
 
-  {
+  // The factory call and teardown must run in a separate async function frame.
+  // V8 retains all live variables in an async function across every await
+  // suspension point.  If targets/teardown/settle were held directly in this
+  // function body they would still be reachable from the suspended frame during
+  // the GC polling loop below, preventing the targets from being collected.
+  const refs = await (async () => {
     const { targets, teardown, settle } = await factory();
-    refs = targets.map((target, index) => {
+    const weakRefs = targets.map((target, index) => {
       registry.register(target, index);
       return new WeakRef(target);
     });
     await teardown?.();
     await settle?.();
-  }
+    return weakRefs;
+  })();
 
   for (let attempt = 0; attempt < 60; attempt++) {
     await forceGc();

@@ -1,16 +1,27 @@
 import { defineConfig } from "vitest/config";
 
+// @supergrain/source condition makes each package resolve to its TypeScript
+// source files instead of the built dist artefacts.
 const conditions = ["@supergrain/source"];
-const resolve = { conditions };
-const ssr = { resolve: { conditions } };
 
 export default defineConfig({
+  resolve: { conditions },
+  ssr: { resolve: { conditions } },
   test: {
     pool: "forks",
-    // --expose-gc is required so `globalThis.gc()` is available in test workers.
-    // Without it every memory test skips behind `HAS_GC`, and the sentinel test
-    // fails loudly so misconfiguration is never silently invisible.
+    // --expose-gc is required so `globalThis.gc()` is available in test
+    // workers.  Vitest 4 reads `project.config.execArgv` (not the root
+    // test.execArgv) when spawning forked workers.  Using a flat config
+    // (no `projects` array) makes this the single project config, so
+    // execArgv flows through correctly.  The sentinel test in every suite
+    // fails loudly if gc() is absent so mis-configuration is never silent.
     execArgv: ["--expose-gc"],
+    include: [
+      "packages/kernel/tests/memory/**/*.memory.spec.ts",
+      "packages/husk/tests/memory/**/*.memory.spec.ts",
+      "packages/silo/tests/memory/**/*.memory.spec.ts",
+    ],
+    environment: "node",
     fileParallelism: false,
     maxWorkers: 1,
     minWorkers: 1,
@@ -18,31 +29,5 @@ export default defineConfig({
     // gc() calls with microtask yields between them) multiplied by the number
     // of heap-sample rounds. 30 s gives comfortable headroom on slow CI agents.
     testTimeout: 30_000,
-    projects: [
-      {
-        test: {
-          include: ["packages/kernel/tests/memory/**/*.memory.spec.ts"],
-          environment: "node",
-        },
-        resolve,
-        ssr,
-      },
-      {
-        test: {
-          include: ["packages/husk/tests/memory/**/*.memory.spec.ts"],
-          environment: "node",
-        },
-        resolve,
-        ssr,
-      },
-      {
-        test: {
-          include: ["packages/silo/tests/memory/**/*.memory.spec.ts"],
-          environment: "node",
-        },
-        resolve,
-        ssr,
-      },
-    ],
   },
 });
