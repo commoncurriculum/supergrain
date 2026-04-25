@@ -160,7 +160,7 @@ export function useSelector<TSource, TSelected = NoInfer<TSource>>(
 
 This is the React bridge. Every setState fires every subscriber; the selector runs in each subscribed hook and `useSyncExternalStoreWithSelector` uses the `compare` function (default `===`) to decide whether the returned value actually changed and a re-render is needed.
 
-`useGranary` is now deprecated — just an alias for `useSelector`. There's also an experimental `_useGranary` tuple hook that returns `[selected, actionsOrSetState]`.
+`useStore` is now deprecated — just an alias for `useSelector`. There's also an experimental `_useStore` tuple hook that returns `[selected, actionsOrSetState]`.
 
 ## Comparison with Supergrain
 

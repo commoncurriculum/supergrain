@@ -110,22 +110,22 @@ Source refs: [`ReactFiberHooks.js`](https://github.com/facebook/react/blob/main/
 ```typescript
 // [#DOC_TEST_54](packages/doc-tests/tests/readme-core.test.ts)
 
-const useGranary = create<State>()((set) => ({
+const useCounterStore = create<State>()((set) => ({
   count: 0,
   user: { profile: { name: 'John' } },
 }))
 
 // Mutate
-useGranary.setState({ count: 5 })
+useCounterStore.setState({ count: 5 })
 
 // Deep nested — manual spreading
-useGranary.setState(state => ({
+useCounterStore.setState(state => ({
   user: { ...state.user, profile: { ...state.user.profile, name: 'Bob' } }
 }))
 
 // Fine-grained — requires selector
 const Counter = () => {
-  const count = useGranary(state => state.count)
+  const count = useCounterStore(state => state.count)
   return <p>{count}</p>
 }
 ```
@@ -137,8 +137,8 @@ Source refs: [`README.md`](https://github.com/pmndrs/zustand/blob/main/README.md
 - **State shape.** A closure holding the state object and a `Set` of listeners. No proxy, no reactive graph — state is a plain object.
 - **Reactive primitive.** None per-property. Every `setState` notifies every subscriber; fine-grained behavior comes entirely from selector equality checks, not reactive tracking.
 - **Fine-grained tracking.** Selector-driven. The hook runs your selector on every change and bails out when the result matches by reference (`Object.is`). The developer writes the selector and picks the right granularity.
-- **React bridge.** Each `useGranary(selector)` subscribes to the listener set; when notified, it re-runs the selector and re-renders only if the result changed.
-- **Mutation.** Immutable: `useGranary.setState({ count: 5 })` or `useGranary.setState((prev) => ({ ... }))`. `Object.assign` shallow-merges into the current state. No batching — each `setState` notifies every subscriber.
+- **React bridge.** Each `useCounterStore(selector)` subscribes to the listener set; when notified, it re-runs the selector and re-renders only if the result changed.
+- **Mutation.** Immutable: `useCounterStore.setState({ count: 5 })` or `useCounterStore.setState((prev) => ({ ... }))`. `Object.assign` shallow-merges into the current state. No batching — each `setState` notifies every subscriber.
 
 ### Footguns / Downsides
 

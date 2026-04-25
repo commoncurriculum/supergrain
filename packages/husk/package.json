@@ -1,7 +1,7 @@
 {
   "name": "@supergrain/husk",
   "version": "0.1.0",
-  "description": "Reactive side-effect primitives for Supergrain: resources, async envelopes, DOM modifiers.",
+  "description": "Reactive side-effect primitives for Supergrain: resources, async envelopes, DOM behaviors.",
   "keywords": [
     "effects",
     "reactive",

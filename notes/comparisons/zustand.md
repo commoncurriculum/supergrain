@@ -102,7 +102,7 @@ store.user.profile.address.coordinates = { lat, lng };
 
 ```javascript
 // Zustand: manual selector (fires all listeners, selector bails out)
-const coordinates = useGranary((state) => state.user.profile.address.coordinates);
+const coordinates = useZustandStore((state) => state.user.profile.address.coordinates);
 
 // Supergrain: automatic tracking via tracked() (only fires affected effect)
 const state = tracked(store);
