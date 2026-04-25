@@ -365,6 +365,77 @@ function resetHandle(handle: InternalHandle): void {
   handle.fetchedAt = undefined;
 }
 
+function beginPendingHandle<T>(
+  handle: InternalHandle<T>,
+  resolvers: Resolvers<T>,
+): void {
+  handle.status = "PENDING";
+  handle.isPending = true;
+  handle.isFetching = true;
+  handle.error = undefined;
+  handle.promise = resolvers.promise;
+  handle.resolve = resolvers.resolve;
+  handle.reject = resolvers.reject;
+}
+
+function createSuccessHandle<T>(data: T): InternalHandle<T> {
+  return {
+    status: "SUCCESS",
+    data,
+    hasData: true,
+    isPending: false,
+    isFetching: false,
+    fetchedAt: new Date(),
+    error: undefined,
+    promise: Promise.resolve(data),
+    resolve: undefined,
+    reject: undefined,
+  };
+}
+
+function settleHandleWithData<T>(handle: InternalHandle<T>, data: T): void {
+  handle.data = data;
+  handle.hasData = true;
+
+  if (handle.status === "PENDING") {
+    handle.status = "SUCCESS";
+    handle.isPending = false;
+    handle.isFetching = false;
+    handle.error = undefined;
+    handle.fetchedAt = new Date();
+    handle.resolve?.(data);
+    handle.resolve = undefined;
+    handle.reject = undefined;
+  } else if (handle.status === "IDLE" || handle.status === "ERROR") {
+    handle.status = "SUCCESS";
+    handle.isPending = false;
+    handle.isFetching = false;
+    handle.error = undefined;
+    handle.promise = Promise.resolve(data);
+    handle.fetchedAt = new Date();
+  }
+}
+
+function ensureHandleBucket(
+  state: InternalState,
+  surface: "documents" | "queries",
+  type: string,
+): Record<string, InternalHandle> {
+  state[surface][type] ??= {};
+  return state[surface][type]!;
+}
+
+function ensureHandle(
+  state: InternalState,
+  surface: "documents" | "queries",
+  type: string,
+  key: string,
+): InternalHandle {
+  const bucket = ensureHandleBucket(state, surface, type);
+  bucket[key] ??= makeIdleHandle();
+  return bucket[key]!;
+}
+
 export function createDocumentStore<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
@@ -385,14 +456,7 @@ export function createDocumentStore<
     // to observe the rejection via `await handle.promise`.
     promise.catch(() => {});
     batch(() => {
-      const handle = state.documents[type]![id]!;
-      handle.status = "PENDING";
-      handle.isPending = true;
-      handle.isFetching = true;
-      handle.error = undefined;
-      handle.promise = promise;
-      handle.resolve = resolve;
-      handle.reject = reject;
+      beginPendingHandle(state.documents[type]![id]!, { promise, resolve, reject });
     });
     finder.queueDocument(type, id);
   }
@@ -405,14 +469,7 @@ export function createDocumentStore<
     const { promise, resolve, reject } = withResolvers<unknown>();
     promise.catch(() => {});
     batch(() => {
-      const handle = state.queries[type]![paramsKey]!;
-      handle.status = "PENDING";
-      handle.isPending = true;
-      handle.isFetching = true;
-      handle.error = undefined;
-      handle.promise = promise;
-      handle.resolve = resolve;
-      handle.reject = reject;
+      beginPendingHandle(state.queries[type]![paramsKey]!, { promise, resolve, reject });
     });
     finder.queueQuery(type, paramsKey, params);
   }
@@ -421,12 +478,7 @@ export function createDocumentStore<
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
       if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
 
-      state.documents[type] ??= {};
-      let handle = state.documents[type]![id];
-      if (!handle) {
-        state.documents[type]![id] = makeIdleHandle();
-        handle = state.documents[type]![id]!;
-      }
+      const handle = ensureHandle(state, "documents", type, id);
       if (handle.status === "IDLE") {
         kickOffDocumentFetch(type, id);
       }
@@ -445,48 +497,15 @@ export function createDocumentStore<
       if (!Object.isFrozen(doc)) Object.freeze(doc);
 
       batch(() => {
-        state.documents[type] ??= {};
-        const bucket = state.documents[type]!;
+        const bucket = ensureHandleBucket(state, "documents", type);
         const existing = bucket[doc.id];
 
         if (!existing) {
-          bucket[doc.id] = {
-            status: "SUCCESS",
-            data: doc,
-            hasData: true,
-            isPending: false,
-            isFetching: false,
-            fetchedAt: new Date(),
-            error: undefined,
-            promise: Promise.resolve(doc),
-            resolve: undefined,
-            reject: undefined,
-          };
+          bucket[doc.id] = createSuccessHandle(doc);
           return;
         }
 
-        existing.data = doc;
-        existing.hasData = true;
-
-        if (existing.status === "PENDING") {
-          // Resolve the in-flight promise in-place; the Finder's later
-          // settlement will find resolvers cleared and only overwrite `data`.
-          existing.status = "SUCCESS";
-          existing.isPending = false;
-          existing.isFetching = false;
-          existing.error = undefined;
-          existing.fetchedAt = new Date();
-          existing.resolve?.(doc);
-          existing.resolve = undefined;
-          existing.reject = undefined;
-        } else if (existing.status === "IDLE" || existing.status === "ERROR") {
-          existing.status = "SUCCESS";
-          existing.isPending = false;
-          existing.isFetching = false;
-          existing.error = undefined;
-          existing.promise = Promise.resolve(doc);
-          existing.fetchedAt = new Date();
-        }
+        settleHandleWithData(existing, doc);
         // SUCCESS: only `data` + `hasData` update — promise reference stays stable.
       });
     },
@@ -499,12 +518,7 @@ export function createDocumentStore<
         return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
 
       const paramsKey = stableStringify(params);
-      state.queries[type] ??= {};
-      let handle = state.queries[type]![paramsKey];
-      if (!handle) {
-        state.queries[type]![paramsKey] = makeIdleHandle();
-        handle = state.queries[type]![paramsKey]!;
-      }
+      const handle = ensureHandle(state, "queries", type, paramsKey);
       if (handle.status === "IDLE") {
         kickOffQueryFetch(type, paramsKey, params);
       }
@@ -531,46 +545,15 @@ export function createDocumentStore<
       const paramsKey = stableStringify(params);
 
       batch(() => {
-        state.queries[type] ??= {};
-        const bucket = state.queries[type]!;
+        const bucket = ensureHandleBucket(state, "queries", type);
         const existing = bucket[paramsKey];
 
         if (!existing) {
-          bucket[paramsKey] = {
-            status: "SUCCESS",
-            data: result,
-            hasData: true,
-            isPending: false,
-            isFetching: false,
-            fetchedAt: new Date(),
-            error: undefined,
-            promise: Promise.resolve(result),
-            resolve: undefined,
-            reject: undefined,
-          };
+          bucket[paramsKey] = createSuccessHandle(result);
           return;
         }
 
-        existing.data = result;
-        existing.hasData = true;
-
-        if (existing.status === "PENDING") {
-          existing.status = "SUCCESS";
-          existing.isPending = false;
-          existing.isFetching = false;
-          existing.error = undefined;
-          existing.fetchedAt = new Date();
-          existing.resolve?.(result);
-          existing.resolve = undefined;
-          existing.reject = undefined;
-        } else if (existing.status === "IDLE" || existing.status === "ERROR") {
-          existing.status = "SUCCESS";
-          existing.isPending = false;
-          existing.isFetching = false;
-          existing.error = undefined;
-          existing.promise = Promise.resolve(result);
-          existing.fetchedAt = new Date();
-        }
+        settleHandleWithData(existing, result);
       });
     },
 
