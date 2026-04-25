@@ -10,6 +10,10 @@
   "scripts": {
     "dev": "vitepress dev docs",
     "test": "vitest",
+    "test:memory": "pnpm run test:memory:node && pnpm run test:memory:browser",
+    "test:memory:node": "node --expose-gc ./node_modules/vitest/vitest.mjs run --config vitest.memory.node.config.ts",
+    "test:memory:browser": "vitest run --config vitest.memory.browser.config.ts",
+    "test:memory:soak": "SUPERGRAIN_MEMORY_SOAK=1 node --expose-gc ./node_modules/vitest/vitest.mjs run --config vitest.memory.node.config.ts",
     "test:validate": "pnpm --filter @supergrain/doc-tests run test:validate",
     "build": "pnpm --filter=\"@supergrain/kernel\" --filter=\"@supergrain/mill\" --filter=\"@supergrain/silo\" --workspace-concurrency=1 run build",
     "bench:core": "vitest bench --root packages/kernel",
@@ -23,7 +27,8 @@
     "release": "pnpm -r publish",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "playwright:install": "playwright install chromium"
   },
   "dependencies": {
     "alien-signals": "^2.0.7"
