@@ -413,11 +413,28 @@ function settleHandleWithData<T>(handle: InternalHandle<T>, data: T): void {
   }
 }
 
+function createStringKeyedRecord<T>(): Record<string, T> {
+  return {};
+}
+
+function assertSafeRecordKey(key: string): void {
+  if (key === "__proto__" || key === "constructor" || key === "prototype") {
+    throw new Error(`Unsafe cache key "${key}" is not allowed.`);
+  }
+}
+
+function setOwnRecordValue<T>(record: Record<string, T>, key: string, value: T): void {
+  assertSafeRecordKey(key);
+  record[key] = value;
+}
+
 function ensureHandleBucket<T>(
   buckets: Record<string, Record<string, InternalHandle<T>>>,
   type: string,
 ): Record<string, InternalHandle<T>> {
-  buckets[type] ??= {};
+  if (!Object.hasOwn(buckets, type)) {
+    setOwnRecordValue(buckets, type, createStringKeyedRecord<InternalHandle<T>>());
+  }
   return buckets[type]!;
 }
 
@@ -427,8 +444,8 @@ function ensureHandle<T>(
   key: string,
 ): InternalHandle<T> {
   const bucket = ensureHandleBucket(buckets, type);
-  if (!bucket[key]) {
-    bucket[key] = makeIdleHandle() as InternalHandle<T>;
+  if (!Object.hasOwn(bucket, key)) {
+    setOwnRecordValue(bucket, key, makeIdleHandle() as InternalHandle<T>);
   }
   return bucket[key]!;
 }
@@ -443,8 +460,8 @@ export function createDocumentStore<
   // behavior is identical; the brand is purely a compile-time identification
   // token that otherwise blocks direct assignment into nested generics.
   const state = createReactive<InternalState>({
-    documents: {},
-    queries: {},
+    documents: createStringKeyedRecord(),
+    queries: createStringKeyedRecord(),
   }) as InternalState;
 
   function kickOffDocumentFetch(type: keyof M & string, id: string): void {
@@ -475,7 +492,11 @@ export function createDocumentStore<
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
       if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
 
-      const handle = ensureHandle(state.documents as Record<string, Record<string, InternalHandle<M[K]>>>, type, id);
+      const handle = ensureHandle(
+        state.documents as Record<string, Record<string, InternalHandle<M[K]>>>,
+        type,
+        id,
+      );
       if (handle.status === "IDLE") {
         kickOffDocumentFetch(type, id);
       }
@@ -501,7 +522,7 @@ export function createDocumentStore<
         const existing = bucket[doc.id];
 
         if (!existing) {
-          bucket[doc.id] = createSuccessHandle(doc);
+          setOwnRecordValue(bucket, doc.id, createSuccessHandle(doc));
           return;
         }
 
@@ -556,7 +577,7 @@ export function createDocumentStore<
         const existing = bucket[paramsKey];
 
         if (!existing) {
-          bucket[paramsKey] = createSuccessHandle(result);
+          setOwnRecordValue(bucket, paramsKey, createSuccessHandle(result));
           return;
         }
 
