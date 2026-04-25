@@ -1,33 +1,67 @@
 import { tracked } from "@supergrain/kernel/react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
 import { type ReactNode, StrictMode } from "react";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { type DocumentStore } from "../../src";
-import { createDocumentStoreContext } from "../../src/react";
 import {
-  API_BASE,
-  clearRequests,
-  makeStoreConfig,
-  makeUser,
-  server,
-  type TypeToModel,
-  type TypeToQuery,
-  type User,
-} from "../example-app";
+  type DocumentStore,
+  type DocumentStoreConfig,
+  type QueryAdapter,
+  type DocumentAdapter,
+} from "../../src";
+import { createDocumentStoreContext } from "../../src/react";
 
-// =============================================================================
-// MSW lifecycle — the shared example-app MSW server handles /users and /posts.
-// Each test builds a fresh DocumentStore via initStore() so in-memory state is
-// isolated across tests.
-// =============================================================================
+interface User {
+  id: string;
+  attributes: { firstName: string; lastName: string; email: string };
+}
 
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterAll(() => server.close());
+interface Dashboard {
+  totalActiveUsers: number;
+  recentPostIds: Array<string>;
+}
+
+interface DashboardParams {
+  workspaceId: number;
+  filters: { active: boolean };
+}
+
+type TypeToModel = {
+  user: User;
+};
+
+type TypeToQuery = {
+  dashboard: { params: DashboardParams; result: Dashboard };
+};
+
+function makeUser(id: string, overrides: Partial<User["attributes"]> = {}): User {
+  return {
+    id,
+    attributes: {
+      firstName: `User${id}`,
+      lastName: "Test",
+      email: `user${id}@example.com`,
+      ...overrides,
+    },
+  };
+}
+
+function makeDashboard(workspaceId: number): Dashboard {
+  return {
+    totalActiveUsers: workspaceId * 10,
+    recentPostIds: [`ws${workspaceId}-post`],
+  };
+}
+
+let usersShouldFail = false;
+let dashboardsShouldFail = false;
+
+beforeEach(() => {
+  usersShouldFail = false;
+  dashboardsShouldFail = false;
+});
+
 afterEach(() => {
-  server.resetHandlers();
-  clearRequests();
   cleanup();
 });
 
@@ -40,6 +74,35 @@ const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
 const { Provider, useDocument, useDocumentStore, useQuery } =
   createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
+
+const userAdapter: DocumentAdapter = {
+  async find(ids) {
+    if (usersShouldFail) {
+      throw new Error("/users responded 500");
+    }
+    return ids.map((id) => makeUser(id));
+  },
+};
+
+const dashboardAdapter: QueryAdapter<DashboardParams> = {
+  async find(paramsList) {
+    if (dashboardsShouldFail) {
+      throw new Error("/dashboards responded 500");
+    }
+    return paramsList.map((params) => makeDashboard(params.workspaceId));
+  },
+};
+
+function makeStoreConfig(): DocumentStoreConfig<TypeToModel, TypeToQuery> {
+  return {
+    models: {
+      user: { adapter: userAdapter },
+    },
+    queries: {
+      dashboard: { adapter: dashboardAdapter },
+    },
+  };
+}
 
 function Wrap({ children }: { children: ReactNode }) {
   return (
@@ -183,9 +246,7 @@ describe("useDocumentStore + find composition", () => {
   });
 
   it("surfaces a batch error when the endpoint fails", async () => {
-    server.use(
-      http.get(`${API_BASE}/users`, () => HttpResponse.json({ message: "boom" }, { status: 500 })),
-    );
+    usersShouldFail = true;
 
     render(
       <Wrap>
@@ -267,11 +328,7 @@ describe("useQuery", () => {
   });
 
   it("surfaces an adapter error as error state", async () => {
-    server.use(
-      http.get(`${API_BASE}/dashboards`, () =>
-        HttpResponse.json({ message: "boom" }, { status: 500 }),
-      ),
-    );
+    dashboardsShouldFail = true;
 
     render(
       <Wrap>

@@ -31,10 +31,30 @@ export default defineConfig({
         ssr,
       },
       {
+        test: {
+          include: ["packages/silo/tests/**/*.test.{ts,tsx}"],
+          exclude: ["packages/silo/tests/react/**/*.test.{ts,tsx}"],
+          environment: "node",
+        },
+        resolve,
+        ssr,
+      },
+      {
         plugins: [react()],
         test: {
-          include: ["packages/silo/**/*.test.{ts,tsx}"],
-          environment: "jsdom",
+          include: ["packages/silo/tests/react/**/*.test.{ts,tsx}"],
+          browser: {
+            enabled: true,
+            provider: playwright(),
+            headless: true,
+            instances: [
+              {
+                browser: "chromium",
+              },
+            ],
+          },
+          setupFiles: ["./packages/silo/tests/react/setup.ts"],
+          globals: true,
         },
         resolve,
         ssr,
@@ -53,6 +73,34 @@ export default defineConfig({
             ],
           },
           setupFiles: ["./packages/queries/tests/setup.ts"],
+          globals: true,
+        },
+        resolve,
+        ssr,
+      },
+      {
+        test: {
+          include: ["packages/husk/tests/core/**/*.test.{ts,tsx}"],
+          environment: "node",
+        },
+        resolve,
+        ssr,
+      },
+      {
+        plugins: [react()],
+        test: {
+          include: ["packages/husk/tests/react/**/*.test.{ts,tsx}"],
+          browser: {
+            enabled: true,
+            provider: playwright(),
+            headless: true,
+            instances: [
+              {
+                browser: "chromium",
+              },
+            ],
+          },
+          setupFiles: ["./packages/husk/tests/react/setup.ts"],
           globals: true,
         },
         resolve,
