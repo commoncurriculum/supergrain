@@ -192,7 +192,16 @@ function pullFromArray(arr: Array<any>, condition: any): boolean {
 
 // Precise function for addToSet operations
 function addUniqueToArray(arr: Array<any>, itemsToAdd: Array<any>): boolean {
-  const newItems = itemsToAdd.filter((item) => !arr.some((existing) => isEqual(existing, item)));
+  const newItems: Array<any> = [];
+
+  for (const item of itemsToAdd) {
+    const existsInArray = arr.some((existing) => isEqual(existing, item));
+    const existsInNewItems = newItems.some((existing) => isEqual(existing, item));
+
+    if (!existsInArray && !existsInNewItems) {
+      newItems.push(item);
+    }
+  }
 
   if (newItems.length > 0) {
     const startIndex = arr.length;
