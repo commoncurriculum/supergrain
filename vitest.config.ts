@@ -40,6 +40,14 @@ export default defineConfig({
         ssr,
       },
       {
+        test: {
+          include: ["packages/queries/**/*.test.{ts,tsx}"],
+          environment: "jsdom",
+        },
+        resolve,
+        ssr,
+      },
+      {
         plugins: [react()],
         test: {
           include: ["packages/kernel/tests/react/**/*.test.{ts,tsx}"],
