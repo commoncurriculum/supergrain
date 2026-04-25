@@ -132,7 +132,7 @@ const categories: Record<string, string[]> = {
     "updateSignal",
     "signalOper",
   ],
-  supergrain: ["Tracked", "useStore", "getNode", "get", "run"],
+  supergrain: ["Tracked", "useGranary", "getNode", "get", "run"],
   "DOM native": ["removeChild", "appendChild", "createElement", "setAttribute", "after", "before"],
   GC: ["(garbage collector)"],
 };

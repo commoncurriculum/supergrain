@@ -5,7 +5,7 @@ import { type ReactNode, StrictMode } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { type DocumentStore } from "../../src";
-import { createDocumentStoreContext } from "../../src/react";
+import { createSiloContext } from "../../src/react";
 import {
   API_BASE,
   clearRequests,
@@ -38,8 +38,8 @@ afterEach(() => {
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-const { Provider, useDocument, useDocumentStore, useQuery } =
-  createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
+const { Provider, useDocument, useSilo, useQuery } =
+  createSiloContext<DocumentStore<TypeToModel, TypeToQuery>>();
 
 function Wrap({ children }: { children: ReactNode }) {
   return (
@@ -50,7 +50,7 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 const SeedUser = tracked(function SeedUser({ user }: { user: User }) {
-  const store = useDocumentStore();
+  const store = useSilo();
   store.insertDocument("user", user);
   return null;
 });
@@ -68,7 +68,7 @@ const UserBadge = tracked(function UserBadge({ userId }: { userId: string | null
 });
 
 const UserList = tracked(function UserList({ ids }: { ids: ReadonlyArray<string> }) {
-  const store = useDocumentStore();
+  const store = useSilo();
   const handles = ids.map((id) => store.find("user", id));
 
   if (handles.length === 0) return <span>no users</span>;
@@ -103,7 +103,7 @@ const DashboardView = tracked(function DashboardView({
 // Provider — hooks work inside it, throw outside it.
 // =============================================================================
 
-describe("createDocumentStoreContext Provider", () => {
+describe("createSiloContext Provider", () => {
   it("makes the store available to descendants — useDocument fetches and renders", async () => {
     render(
       <Wrap>
@@ -152,10 +152,10 @@ describe("useDocument", () => {
 });
 
 // =============================================================================
-// useDocumentStore composition over many documents
+// useSilo composition over many documents
 // =============================================================================
 
-describe("useDocumentStore + find composition", () => {
+describe("useSilo + find composition", () => {
   it("renders loading then the full list for a batch of ids", async () => {
     render(
       <Wrap>
@@ -200,17 +200,17 @@ describe("useDocumentStore + find composition", () => {
 });
 
 // =============================================================================
-// useDocumentStore — the imperative escape hatch (e.g. for socket pushes,
+// useSilo — the imperative escape hatch (e.g. for socket pushes,
 // "save" buttons, clearMemory on logout).
 // =============================================================================
 
-describe("useDocumentStore", () => {
+describe("useSilo", () => {
   it("exposes the store for imperative writes (e.g. socket push → insertDocument)", () => {
     const PushSimulator = tracked(function PushSimulator({ user }: { user: User }) {
       // A component that simulates an external source (websocket, admin tool,
       // etc.) writing directly to the store. Real apps do this inside effects
       // that subscribe to transport events.
-      const store = useDocumentStore();
+      const store = useSilo();
       return (
         <button type="button" onClick={() => store.insertDocument("user", user)}>
           simulate push
@@ -289,19 +289,19 @@ describe("useQuery", () => {
 // Factory isolation — two factory instances keep their stores separate.
 // =============================================================================
 
-describe("createDocumentStoreContext isolation", () => {
+describe("createSiloContext isolation", () => {
   it("two independent stores render their own data side-by-side", () => {
-    const tenantA = createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
-    const tenantB = createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
+    const tenantA = createSiloContext<DocumentStore<TypeToModel, TypeToQuery>>();
+    const tenantB = createSiloContext<DocumentStore<TypeToModel, TypeToQuery>>();
 
     const SeedA = tracked(function SeedA() {
-      const store = tenantA.useDocumentStore();
+      const store = tenantA.useSilo();
       store.insertDocument("user", makeUser("1", { firstName: "AliceA" }));
       return null;
     });
 
     const SeedB = tracked(function SeedB() {
-      const store = tenantB.useDocumentStore();
+      const store = tenantB.useSilo();
       store.insertDocument("user", makeUser("1", { firstName: "BobB" }));
       return null;
     });

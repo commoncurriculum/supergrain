@@ -3,7 +3,7 @@ import type { QueryHandle, QueryTypes, RegisteredQueries } from "../queries";
 import { createContext, createElement, useContext, useState, type ReactNode } from "react";
 
 import {
-  createDocumentStore,
+  createSilo,
   type DocumentHandle,
   type DocumentStore,
   type DocumentStoreConfig,
@@ -68,9 +68,9 @@ function seedQueries<M extends DocumentTypes, Q extends QueryTypes>(
  * all tied to a fresh React Context that doesn't collide with any other call
  * to this factory.
  *
- * Mirrors `createStoreContext<T>()` from `@supergrain/kernel/react`: the type
+ * Mirrors `createGranaryContext<T>()` from `@supergrain/kernel/react`: the type
  * parameter `S` is the full store type; the Provider takes the same `config`
- * you'd pass to `createDocumentStore` and constructs the store internally
+ * you'd pass to `createSilo` and constructs the store internally
  * exactly once per mount. Every SSR request, every test, every React tree
  * gets an isolated store by construction.
  *
@@ -83,15 +83,15 @@ function seedQueries<M extends DocumentTypes, Q extends QueryTypes>(
  * @example
  * ```tsx
  * type DocStore = DocumentStore<TypeToModel, TypeToQuery>;
- * export const { Provider, useDocumentStore, useDocument, useQuery } =
- *   createDocumentStoreContext<DocStore>();
+ * export const { Provider, useSilo, useDocument, useQuery } =
+ *   createSiloContext<DocStore>();
  *
  * <Provider config={{ models, queries }} onMount={(store) => store.find("user", "1")}>
  *   <App />
  * </Provider>
  * ```
  */
-export function createDocumentStoreContext<
+export function createSiloContext<
   S extends DocumentStore<DocumentTypes, QueryTypes> = DocumentStore<
     RegisteredTypes,
     RegisteredQueries
@@ -103,7 +103,7 @@ export function createDocumentStoreContext<
     onMount?: (store: S) => void;
     children: ReactNode;
   }) => ReactNode;
-  useDocumentStore: () => S;
+  useSilo: () => S;
   useDocument: <K extends keyof ModelsOf<S> & string>(
     type: K,
     id: string | null | undefined,
@@ -130,7 +130,7 @@ export function createDocumentStoreContext<
     children: ReactNode;
   }): ReactNode {
     const [store] = useState<S>(() => {
-      const s = createDocumentStore<M, Q>(config);
+      const s = createSilo<M, Q>(config);
       if (initial?.model) seedModels(s, initial.model);
       if (initial?.query) seedQueries(s, initial.query);
       const sAsS = s as unknown as S;
@@ -148,11 +148,11 @@ export function createDocumentStoreContext<
     );
   }
 
-  function useDocumentStore(): S {
+  function useSilo(): S {
     const store = useContext(Context);
     if (store === null) {
       throw new Error(
-        "@supergrain/silo/react: useDocumentStore must be used within the Provider returned by createDocumentStoreContext()",
+        "@supergrain/silo/react: useSilo must be used within the Provider returned by createSiloContext()",
       );
     }
     return store;
@@ -162,7 +162,7 @@ export function createDocumentStoreContext<
     type: K,
     id: string | null | undefined,
   ): DocumentHandle<M[K]> {
-    const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
+    const store = useSilo() as unknown as DocumentStore<M, Q>;
     // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
     return store.find(type, id);
   }
@@ -171,9 +171,9 @@ export function createDocumentStoreContext<
     type: K,
     params: Q[K]["params"] | null | undefined,
   ): QueryHandle<Q[K]["result"]> {
-    const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
+    const store = useSilo() as unknown as DocumentStore<M, Q>;
     return store.findQuery(type, params);
   }
 
-  return { Provider, useDocumentStore, useDocument, useQuery };
+  return { Provider, useSilo, useDocument, useQuery };
 }

@@ -6,7 +6,7 @@
 //   @supergrain/silo/react               — Provider + hooks
 //   @supergrain/silo/react/json-api      — useBelongsTo / useHasMany
 
-export { createDocumentStore } from "./store";
+export { createSilo } from "./store";
 export type {
   DocumentAdapter,
   DocumentHandle,

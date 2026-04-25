@@ -18,35 +18,35 @@ The React subpath (`@supergrain/kernel/react`) ships in the same package and req
 
 ## Quick Start
 
-Supergrain has two APIs for state. Use `useReactive` for state that lives inside a single component. Use `createStoreContext` for state shared across your app.
+Supergrain has two APIs for state. Use `useGrain` for state that lives inside a single component. Use `createGranaryContext` for state shared across your app.
 
-### Local state — `useReactive`
+### Local state — `useGrain`
 
-For state scoped to a single component, `useReactive` returns a reactive proxy that lives for the component's lifetime. No Provider, no setup — mutate it like a plain object.
+For state scoped to a single component, `useGrain` returns a reactive proxy that lives for the component's lifetime. No Provider, no setup — mutate it like a plain object.
 
 ```tsx
 // [#DOC_TEST_LOCAL_STATE](../doc-tests/tests/readme-react.test.tsx)
 
-import { tracked, useReactive } from "@supergrain/kernel/react";
+import { tracked, useGrain } from "@supergrain/kernel/react";
 
 const Counter = tracked(() => {
-  const state = useReactive({ count: 0 });
+  const state = useGrain({ count: 0 });
   return <button onClick={() => state.count++}>Clicked {state.count} times</button>;
 });
 ```
 
 Wrap the component in `tracked()` to get fine-grained re-renders: only the properties you read are tracked.
 
-### App-wide state — `createStoreContext`
+### App-wide state — `createGranaryContext`
 
-For state shared across components, call `createStoreContext<T>()` once at module scope and destructure `{ Provider, useStore }`. The Provider takes an `initial` prop; it constructs a reactive store from that data exactly once per mount, so every SSR request, every test, and every React tree gets an isolated store by construction.
+For state shared across components, call `createGranaryContext<T>()` once at module scope and destructure `{ Provider, useGranary }`. The Provider takes an `initial` prop; it constructs a reactive store from that data exactly once per mount, so every SSR request, every test, and every React tree gets an isolated store by construction.
 
 **Step 1: Describe the shape and call the factory.**
 
 ```tsx
 // [#DOC_TEST_QUICK_START](../doc-tests/tests/readme-react.test.tsx)
 // store.ts
-import { createStoreContext } from "@supergrain/kernel/react";
+import { createGranaryContext } from "@supergrain/kernel/react";
 
 export interface Todo {
   id: number;
@@ -58,10 +58,10 @@ export interface AppState {
   selected: number | null;
 }
 
-export const { Provider, useStore } = createStoreContext<AppState>();
+export const { Provider, useGranary } = createGranaryContext<AppState>();
 ```
 
-**Step 2: Mount the Provider at the root.** Pass the initial data; the Provider wraps it in `createReactive` per-mount, so SSR and tests are isolated automatically.
+**Step 2: Mount the Provider at the root.** Pass the initial data; the Provider wraps it in `createGrain` per-mount, so SSR and tests are isolated automatically.
 
 ```tsx
 // main.tsx
@@ -81,15 +81,15 @@ import { App } from "./App";
 </Provider>;
 ```
 
-**Step 3: Read the store from any descendant via `useStore()`.**
+**Step 3: Read the store from any descendant via `useGranary()`.**
 
 ```tsx
 // TodoItem.tsx
 import { tracked, useComputed } from "@supergrain/kernel/react";
-import { useStore, type Todo } from "./store";
+import { useGranary, type Todo } from "./store";
 
 export const TodoItem = tracked(({ todo }: { todo: Todo }) => {
-  const store = useStore();
+  const store = useGranary();
   const isSelected = useComputed(() => store.selected === todo.id);
 
   return (
@@ -110,11 +110,11 @@ export const TodoItem = tracked(({ todo }: { todo: Todo }) => {
 ```tsx
 // App.tsx
 import { tracked, useComputed, useSignalEffect, For } from "@supergrain/kernel/react";
-import { useStore } from "./store";
+import { useGranary } from "./store";
 import { TodoItem } from "./TodoItem";
 
 export const App = tracked(() => {
-  const store = useStore();
+  const store = useGranary();
   const remaining = useComputed(() => store.todos.filter((t) => !t.completed).length);
 
   useSignalEffect(() => {
@@ -139,7 +139,7 @@ Checking a todo re-renders only that `TodoItem`. Changing selection re-renders o
 
 From `@supergrain/kernel`. Framework-agnostic primitives.
 
-- `createReactive<T>(initial)`
+- `createGrain<T>(initial)`
 
   > Returns a reactive proxy you can read from and mutate directly. Use it for standalone reactive state outside React, or pair it with the React helpers below to drive component renders.
 
@@ -155,19 +155,19 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
 
   > Coalesces signal writes inside `fn` into a single notification. Throws if `fn` returns a Promise (must be sync).
 
-> Side-effect primitives (`resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`) and the `modifier` DOM helper live in [`@supergrain/husk`](../husk/README.md) — a thin layer built on top of this package.
+> Side-effect primitives (`resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`) and the `behavior` DOM helper live in [`@supergrain/husk`](../husk/README.md) — a thin layer built on top of this package.
 
 ### React
 
 From `@supergrain/kernel/react`. React-specific hooks and components.
 
-- `useReactive<T>(initial)`
+- `useGrain<T>(initial)`
 
   > Per-component reactive state. Creates the proxy once on mount; the identity stays stable across renders. Use for state scoped to a single component — no Provider needed.
 
-- `createStoreContext<T>()`
+- `createGranaryContext<T>()`
 
-  > Returns `{ Provider, useStore }` bound to a fresh React Context. Call once at module scope, destructure, re-export. The Provider takes an `initial: T` prop and wraps it in `createReactive()` once per mount — SSR requests and tests are isolated by construction. Each factory call mints a distinct Context, so two sibling Providers coexist without collision.
+  > Returns `{ Provider, useGranary }` bound to a fresh React Context. Call once at module scope, destructure, re-export. The Provider takes an `initial: T` prop and wraps it in `createGrain()` once per mount — SSR requests and tests are isolated by construction. Each factory call mints a distinct Context, so two sibling Providers coexist without collision.
 
 - `tracked(Component)`
 
@@ -184,7 +184,7 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
 - `<For each={array} parent={ref?}>{item => ...}</For>`
   > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
 
-> React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](../husk/README.md).
+> React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useBehavior`) live in [`@supergrain/husk/react`](../husk/README.md).
 
 See how Supergrain compares to useState, Zustand, Redux, and MobX in the [comparison guide](https://github.com/commoncurriculum/supergrain/blob/main/docs/comparison.md).
 
@@ -195,7 +195,7 @@ See how Supergrain compares to useState, Zustand, Redux, and MobX in the [compar
 Signal-level performance with a proxy experience. No new mental model — if you know JavaScript objects, you know Supergrain.
 
 ```ts
-const store = createReactive({ count: 0, user: { name: "Jane" } });
+const store = createGrain({ count: 0, user: { name: "Jane" } });
 
 // Read like a plain object
 console.log(store.count); // 0
@@ -215,7 +215,7 @@ store.user.name = "Alice";
 Arrays and objects work exactly how you'd expect. Push, splice, assign, delete — all tracked, all reactive.
 
 ```ts
-const store = createReactive({
+const store = createGrain({
   items: ["a", "b", "c"],
   user: { name: "Jane", age: 30 },
 });
@@ -239,7 +239,7 @@ delete store.user.age;
 Nested objects and arrays are reactive at any depth. No `observable()` calls, no `ref()` wrappers — the entire tree is tracked automatically.
 
 ```ts
-const store = createReactive({
+const store = createGrain({
   org: {
     teams: [{ name: "Frontend", members: [{ name: "Alice", active: true }] }],
   },
@@ -260,7 +260,7 @@ store.org.teams[0].members[0].active = false;
 Fine-grained means what _doesn't_ re-render matters most. When one property changes, only the components that actually read that property update.
 
 ```tsx
-const store = createReactive({ count: 0, theme: "light" });
+const store = createGrain({ count: 0, theme: "light" });
 
 // Only re-renders when `count` changes — not when `theme` changes
 const Counter = tracked(() => <p>{store.count}</p>);
@@ -278,7 +278,7 @@ const Theme = tracked(() => <p>{store.theme}</p>);
 Derived values that act as a firewall. `useComputed` re-evaluates when upstream signals change, but only triggers a re-render when the **result** changes.
 
 ```tsx
-const store = createReactive({
+const store = createGrain({
   selected: 3,
   todos: [
     /* 1000 items */
@@ -302,7 +302,7 @@ Signal-tracked side effects that run outside the React render cycle. They re-run
 
 ```tsx
 const App = tracked(() => {
-  const store = Store.useStore();
+  const store = Store.useGranary();
   const remaining = useComputed(() => store.todos.filter((t) => !t.completed).length);
 
   useSignalEffect(() => {
@@ -323,7 +323,7 @@ const App = tracked(() => {
 
 ```tsx
 const App = tracked(() => {
-  const store = Store.useStore();
+  const store = Store.useGranary();
 
   return (
     <For each={store.todos} parent={tableRef}>

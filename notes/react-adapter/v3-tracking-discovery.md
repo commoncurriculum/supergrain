@@ -15,7 +15,7 @@
 ### Why This Breaks with React
 
 ```typescript
-function useStore(store) {
+function useGranary(store) {
   const effect = createEffect(() => {
     // Empty callback -- no store access here
   });

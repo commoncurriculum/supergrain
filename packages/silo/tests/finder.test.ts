@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createDocumentStore, type DocumentStore, type DocumentAdapter } from "../src";
+import { createSilo, type DocumentStore, type DocumentAdapter } from "../src";
 
 // =============================================================================
 // Finder contract tests.
@@ -78,7 +78,7 @@ function makeStore(opts: { batchWindowMs?: number; batchSize?: number } = {}): T
     ...(opts.batchWindowMs !== undefined && { batchWindowMs: opts.batchWindowMs }),
     ...(opts.batchSize !== undefined && { batchSize: opts.batchSize }),
   };
-  const store = createDocumentStore<TestTypes>(config);
+  const store = createSilo<TestTypes>(config);
   return { store, userAdapter, postAdapter };
 }
 
@@ -252,7 +252,7 @@ describe("Finder errors", () => {
   it("rejects all pending handles when a processor throws", async () => {
     // A DocumentStore with a processor that throws for the user model.
     const calls: string[][] = [];
-    const store = createDocumentStore<TestTypes>({
+    const store = createSilo<TestTypes>({
       models: {
         user: {
           adapter: {
@@ -290,7 +290,7 @@ describe("Finder is adapter-agnostic", () => {
     // still batches at its layer — this adapter receives one call with
     // all 3 ids, and internally resolves them in parallel.
     const calls: string[][] = [];
-    const store = createDocumentStore<TestTypes>({
+    const store = createSilo<TestTypes>({
       models: {
         user: {
           adapter: {

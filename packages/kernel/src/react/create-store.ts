@@ -1,31 +1,31 @@
 import { createContext, createElement, useContext, type ReactNode } from "react";
 
-import { useReactive } from "./use-reactive";
+import { useGrain } from "./use-reactive";
 
 /**
  * Create a typed store binding — Context + Provider + hook, all tied to a
  * fresh React Context that doesn't collide with any other call to this
  * factory.
  *
- * Call once at module scope, destructure `{ Provider, useStore }`, re-export;
+ * Call once at module scope, destructure `{ Provider, useGranary }`, re-export;
  * components in your app import the pieces they need from your module.
  *
  * The Provider takes an `initial` prop with your plain state shape. The
- * Provider wraps it in `createReactive()` exactly once per mount, so every
+ * Provider wraps it in `createGrain()` exactly once per mount, so every
  * SSR request, every test, every React tree gets an isolated store by
  * construction — there's no way to accidentally share state across requests.
  *
  * @example
  * ```tsx
  * // src/stores/app.ts
- * import { createStoreContext } from "@supergrain/kernel/react";
+ * import { createGranaryContext } from "@supergrain/kernel/react";
  *
  * interface AppState {
  *   todos: Todo[];
  *   selected: number | null;
  * }
  *
- * export const { Provider, useStore } = createStoreContext<AppState>();
+ * export const { Provider, useGranary } = createGranaryContext<AppState>();
  *
  * // src/App.tsx
  * import { Provider } from "./stores/app";
@@ -35,33 +35,33 @@ import { useReactive } from "./use-reactive";
  * </Provider>;
  *
  * // src/components/TodoItem.tsx
- * import { useStore } from "../stores/app";
- * const state = useStore(); // : AppState
+ * import { useGranary } from "../stores/app";
+ * const state = useGranary(); // : AppState
  * state.todos.push({ id: 1, text: "hi", completed: false });
  * ```
  *
- * For non-React use, import `createReactive` from `@supergrain/kernel` directly.
+ * For non-React use, import `createGrain` from `@supergrain/kernel` directly.
  */
-export function createStoreContext<T extends object>(): {
+export function createGranaryContext<T extends object>(): {
   Provider: (props: { initial: T; children: ReactNode }) => ReactNode;
-  useStore: () => T;
+  useGranary: () => T;
 } {
   const Context = createContext<T | null>(null);
 
   function Provider({ initial, children }: { initial: T; children: ReactNode }): ReactNode {
-    const state = useReactive(initial);
+    const state = useGrain(initial);
     return createElement(Context.Provider, { value: state }, children);
   }
 
-  function useStore(): T {
+  function useGranary(): T {
     const value = useContext(Context);
     if (value === null) {
       throw new Error(
-        "@supergrain/kernel/react: useStore must be used within the Provider returned by createStoreContext()",
+        "@supergrain/kernel/react: useGranary must be used within the Provider returned by createGranaryContext()",
       );
     }
     return value;
   }
 
-  return { Provider, useStore };
+  return { Provider, useGranary };
 }

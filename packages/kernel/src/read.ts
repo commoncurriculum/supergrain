@@ -47,7 +47,7 @@ function wrap<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
     return value;
   }
-  return isWrappable(value) ? createReactiveProxy(value) : value;
+  return isWrappable(value) ? createGrainProxy(value) : value;
 }
 
 function trackSelf(target: object): void {
@@ -88,7 +88,7 @@ const readHandler: Pick<
           profileSignalRead();
           const value = tracked();
           if (isWrappable(value)) {
-            const proxy = createReactiveProxy(value);
+            const proxy = createGrainProxy(value);
             trackArrayVersion(value);
             return proxy;
           }
@@ -172,7 +172,7 @@ const handler: ProxyHandler<object> = {
   ...writeHandler,
 };
 
-export function createReactiveProxy<T extends object>(target: T): T {
+export function createGrainProxy<T extends object>(target: T): T {
   if ((target as any)[$PROXY]) {
     return (target as any)[$PROXY];
   }

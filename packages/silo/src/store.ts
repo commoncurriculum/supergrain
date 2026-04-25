@@ -1,6 +1,6 @@
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
 
-import { batch, createReactive } from "@supergrain/kernel";
+import { batch, createGrain } from "@supergrain/kernel";
 
 import { Finder, type InternalHandle, type InternalState } from "./finder";
 
@@ -270,12 +270,12 @@ export interface DocumentStoreConfig<
 }
 
 // =============================================================================
-// DocumentStore — public store surface returned by createDocumentStore
+// DocumentStore — public store surface returned by createSilo
 // =============================================================================
 
 /**
  * The public store surface. A plain object, not a class: built by
- * `createDocumentStore(config)` and mounted by the React Provider.
+ * `createSilo(config)` and mounted by the React Provider.
  *
  * Consumers interact with the store exclusively through these methods.
  * Internal state (the reactive tree of nested document/query handles,
@@ -308,7 +308,7 @@ export interface DocumentStore<
  * Create a plain document store object.
  *
  * This is the non-React primitive. React integrations wrap this via
- * `createDocumentStoreContext()`.
+ * `createSiloContext()`.
  */
 const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   status: "IDLE" as const,
@@ -365,16 +365,15 @@ function resetHandle(handle: InternalHandle): void {
   handle.fetchedAt = undefined;
 }
 
-export function createDocumentStore<
-  M extends DocumentTypes,
-  Q extends QueryTypes = Record<string, never>,
->(config: DocumentStoreConfig<M, Q>): DocumentStore<M, Q> {
+export function createSilo<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>>(
+  config: DocumentStoreConfig<M, Q>,
+): DocumentStore<M, Q> {
   const finder = new Finder<M, Q>(config);
   // Strip the `Branded<T>` marker from the reactive proxy's type so indexed
   // writes (`state.documents[type] = {...}`) compile. The runtime proxy
   // behavior is identical; the brand is purely a compile-time identification
   // token that otherwise blocks direct assignment into nested generics.
-  const state = createReactive<InternalState>({
+  const state = createGrain<InternalState>({
     documents: {},
     queries: {},
   }) as InternalState;
@@ -439,7 +438,7 @@ export function createDocumentStore<
 
     insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
       // Freeze stored docs so the kernel's proxy `get` trap returns them
-      // as-is (createReactiveProxy short-circuits on frozen targets),
+      // as-is (createGrainProxy short-circuits on frozen targets),
       // preserving reference identity for consumers that compare handle.data
       // to the doc they inserted.
       if (!Object.isFrozen(doc)) Object.freeze(doc);

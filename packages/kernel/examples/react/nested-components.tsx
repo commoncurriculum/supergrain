@@ -1,9 +1,9 @@
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { update } from "@supergrain/mill";
 
 // Create a store with separate properties for different component levels
-const store = createReactive({
+const store = createGrain({
   grandparent: {
     value: 1,
     label: "Grandparent",

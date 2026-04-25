@@ -9,7 +9,7 @@ import { defaultProcessor, defaultQueryProcessor } from "./processors";
 // Finder — INTERNAL batching / chunking pipeline.
 //
 // Not exported from the package root. Constructed in the closure of
-// `createDocumentStore(config)`, once per store instance. Consumers configure
+// `createSilo(config)`, once per store instance. Consumers configure
 // it through `DocumentStoreConfig.batchWindowMs` / `batchSize` and never see it
 // directly.
 // =============================================================================

@@ -1,4 +1,4 @@
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { render, fireEvent, act, cleanup } from "@testing-library/react";
 import React, { FC } from "react";
@@ -159,7 +159,7 @@ describe("React Adapter: Row Operations", () => {
     "tracked - select row: state update + component re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -190,7 +190,7 @@ describe("React Adapter: Row Operations", () => {
     "tracked - swap rows: array update + component re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -236,7 +236,7 @@ describe("React Adapter: Row Operations", () => {
     "full DOM - select row: component render + DOM update",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -266,7 +266,7 @@ describe("React Adapter: Row Operations", () => {
     "full DOM - swap rows: component render + DOM update",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -305,7 +305,7 @@ describe("React Adapter: Row Operations", () => {
     "large dataset - tracked: 10K rows select",
     () => {
       const data = buildData(10000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -336,7 +336,7 @@ describe("React Adapter: Row Operations", () => {
     "large dataset - tracked: 10K rows swap",
     () => {
       const data = buildData(10000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });

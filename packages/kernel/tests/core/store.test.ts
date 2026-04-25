@@ -2,7 +2,7 @@ import { update } from "@supergrain/mill";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import {
-  createReactive,
+  createGrain,
   effect,
   unwrap,
   enableProfiling,
@@ -22,15 +22,15 @@ describe("Store", () => {
     disableProfiling();
   });
 
-  describe("createReactive", () => {
+  describe("createGrain", () => {
     it("should create a store with initial state", () => {
-      const state = createReactive({ count: 0, name: "test" });
+      const state = createGrain({ count: 0, name: "test" });
       expect(state.count).toBe(0);
       expect(state.name).toBe("test");
     });
 
     it("should update state with the update function", () => {
-      const state = createReactive({ count: 0 });
+      const state = createGrain({ count: 0 });
       update(state, { $set: { count: 5 } });
       expect(state.count).toBe(5);
       update(state, { $inc: { count: 1 } });
@@ -38,7 +38,7 @@ describe("Store", () => {
     });
 
     it("should handle nested objects reactively", () => {
-      const state = createReactive({
+      const state = createGrain({
         user: { address: { city: "New York" } },
       });
       let city = "";
@@ -61,7 +61,7 @@ describe("Store", () => {
     });
 
     it("should handle array updates reactively", () => {
-      const state = createReactive<any>({ items: [1, 2, 3] });
+      const state = createGrain<any>({ items: [1, 2, 3] });
       let sum = 0;
       const effectFn = vi.fn(() => {
         sum = 0;
@@ -90,7 +90,7 @@ describe("Store", () => {
     });
 
     it("should batch multiple operators in one update call", () => {
-      const state = createReactive<any>({ a: 1, b: 2 });
+      const state = createGrain<any>({ a: 1, b: 2 });
       let sum = 0;
       const effectFn = vi.fn(() => {
         sum = state.a + state.b;
@@ -117,13 +117,13 @@ describe("Store", () => {
 
   describe("Edge Cases", () => {
     it("should reject non-object root state", () => {
-      expect(() => createReactive(0 as any)).toThrow(/requires the root state/i);
-      expect(() => createReactive("x" as any)).toThrow(/requires the root state/i);
+      expect(() => createGrain(0 as any)).toThrow(/requires the root state/i);
+      expect(() => createGrain("x" as any)).toThrow(/requires the root state/i);
     });
 
     it("should handle frozen objects gracefully", () => {
       const frozen = Object.freeze({ value: 1 });
-      const state = createReactive({ frozen });
+      const state = createGrain({ frozen });
 
       let value = 0;
       effect(() => {
@@ -139,7 +139,7 @@ describe("Store", () => {
     it("should handle circular references", () => {
       const obj: any = { value: 1 };
       obj.self = obj;
-      const state = createReactive(obj);
+      const state = createGrain(obj);
 
       let selfValue = 0;
       effect(() => {
@@ -157,7 +157,7 @@ describe("Store", () => {
     });
 
     it("should handle null and undefined values reactively", () => {
-      const state = createReactive<{
+      const state = createGrain<{
         nullable: string | null;
         undef: string | undefined;
       }>({
@@ -188,7 +188,7 @@ describe("Store", () => {
     });
 
     it("should handle nested reactivity in arrays", () => {
-      const state = createReactive<any>({
+      const state = createGrain<any>({
         users: [
           { name: "Alice", tasks: ["task1"] },
           { name: "Bob", tasks: ["task3"] },
@@ -211,7 +211,7 @@ describe("Store", () => {
     });
 
     it("should handle adding new properties reactively", () => {
-      const state = createReactive<any>({ initial: true });
+      const state = createGrain<any>({ initial: true });
       let keys: string[] = [];
       effect(() => {
         keys = Object.keys(state);
@@ -229,7 +229,7 @@ describe("Store", () => {
     });
 
     it("should allow deletion of properties with $unset", () => {
-      const state = createReactive<any>({ a: 1, b: 2 });
+      const state = createGrain<any>({ a: 1, b: 2 });
       let keys: string[] = [];
       effect(() => {
         keys = Object.keys(state);
@@ -251,7 +251,7 @@ describe("Store", () => {
       // specific numbers aren't meaningful — only that each write produces a
       // fresh value so `Object.is`-based signal propagation notifies
       // subscribers.
-      const state = createReactive<any>({ a: 1 });
+      const state = createGrain<any>({ a: 1 });
 
       const v0 = state[$VERSION];
       state.b = 2;

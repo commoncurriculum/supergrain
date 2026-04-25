@@ -47,7 +47,7 @@ These functions appear in supergrain's profiles but are absent in react-hooks:
 | computedOper                             | useComputed initial evaluation                  | create-1k (1.6ms), create-10k (6.6ms), append-1k (1.0ms) | alien-signals   |
 | get                                      | Proxy get handler                               | create-1k (1.3ms), create-10k (1.4ms), select (1.2ms)    | supergrain      |
 | Tracked                                  | tracked() wrapper function                      | create-10k (1.3ms), remove (1.0ms)                       | supergrain      |
-| useStore                                 | useContext call                                 | create-10k (1.3ms)                                       | React hook      |
+| useGranary                               | useContext call                                 | create-10k (1.3ms)                                       | React hook      |
 | useRef                                   | hook mount                                      | create-10k (1.3ms)                                       | React hook      |
 | link2                                    | alien-signals dependency linking                | create-10k (1.3ms)                                       | alien-signals   |
 | commitHookEffectListMount                | React mounting useEffect                        | create-10k (1.3ms)                                       | React lifecycle |
@@ -138,9 +138,9 @@ Weighted script gap (all significant): **+6.6ms** (including swap's -8.1ms win).
 
 ### IDEA 2: Remove useContext from Row
 
-**What it targets**: `useStore` at 1.3ms in create-10k profile. One of the 5 hooks per Row.
+**What it targets**: `useGranary` at 1.3ms in create-10k profile. One of the 5 hooks per Row.
 
-**What changes**: Pass `store` as prop from For's children callback instead of Row calling `Store.useStore()`.
+**What changes**: Pass `store` as prop from For's children callback instead of Row calling `Store.useGranary()`.
 
 **Combined with Idea 1**: 5 → 2 hooks per Row (useReducer + useMemo). 60% fewer hook operations.
 

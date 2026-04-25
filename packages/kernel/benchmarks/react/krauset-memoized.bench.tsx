@@ -1,4 +1,4 @@
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { render, act } from "@testing-library/react";
 import React, { FC, memo, useCallback } from "react";
@@ -202,7 +202,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "create 1000 rows (unmemoized)",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -219,7 +219,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "create 1000 rows (memoized)",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -241,7 +241,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "select row (unmemoized) - all 1000 rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -269,7 +269,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "select row (memoized) - only 1 row re-renders",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -301,7 +301,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "update every 10th row (unmemoized) - all rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -328,7 +328,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "update every 10th row (memoized) - only 100 rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -360,7 +360,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "swap 2 rows (unmemoized) - all 1000 rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -390,7 +390,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "swap 2 rows (memoized) - only 2 rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -424,7 +424,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "remove 1 row (unmemoized) - all remaining rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -446,7 +446,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "remove 1 row (memoized) - minimal re-renders",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -472,7 +472,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "select row in 10k dataset (unmemoized) - all 10k rows re-render",
     () => {
       const data = buildData(10000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -494,7 +494,7 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "select row in 10k dataset (memoized) - only 1 row re-renders",
     () => {
       const data = buildData(10000);
-      const [store, updateStore] = createReactive<AppState>({
+      const [store, updateStore] = createGrain<AppState>({
         data,
         selected: null,
       });

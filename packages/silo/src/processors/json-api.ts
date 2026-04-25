@@ -94,7 +94,7 @@ export interface JsonApiDocument<
  * Opt in per-model:
  *
  * ```ts
- * createDocumentStore<M>(() => ({
+ * createSilo<M>(() => ({
  *   models: {
  *     user: { adapter: userAdapter, processor: jsonApiProcessor },
  *   },

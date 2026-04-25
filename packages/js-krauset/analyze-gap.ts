@@ -90,7 +90,7 @@ console.log("  Hook 1: useReducer        (forceUpdate trigger)");
 console.log("  Hook 2: useRef            (store effect node + cleanup)");
 console.log("  Hook 3: useEffect         (cleanup on unmount)");
 console.log("  Hook 4: useMemo           (from useComputed — creates computed signal)");
-console.log("  Hook 5: useContext         (from Store.useStore())");
+console.log("  Hook 5: useContext         (from Store.useGranary())");
 console.log("  + alienEffect() creation  (alien-signals effect node)");
 console.log("  + computed() creation     (alien-signals computed for isSelected)");
 console.log("  + getCurrentSub/setCurrentSub per render");
@@ -165,8 +165,8 @@ const sgOnlyFuncs = [
   "commitHookEffectListMount", // mounting effects
 ];
 
-// Also: useStore shows up in profile
-sgOnlyFuncs.push("useStore");
+// Also: useGranary shows up in profile
+sgOnlyFuncs.push("useGranary");
 
 for (const name of Object.keys(reactHooks)) {
   const funcs = getFuncTimes(name);
@@ -205,10 +205,10 @@ console.log("create-1k: 1000 new rows");
   const computedOper = (funcs.get("computedOper") || 0) / 1000;
   const get = (funcs.get("get") || 0) / 1000;
   const getNode = (funcs.get("getNode") || 0) / 1000;
-  const useStore = (funcs.get("useStore") || 0) / 1000;
+  const useGranary = (funcs.get("useGranary") || 0) / 1000;
   const link2 = (funcs.get("link2") || 0) / 1000;
   const commitHook = (funcs.get("commitHookEffectListMount") || 0) / 1000;
-  const total = tracked + computedOper + get + getNode + useStore + link2 + commitHook;
+  const total = tracked + computedOper + get + getNode + useGranary + link2 + commitHook;
 
   console.log(
     `  Tracked wrapper:        ${tracked.toFixed(1)}ms (${((tracked / 1000) * 1000).toFixed(1)}µs/component)`,
@@ -223,7 +223,7 @@ console.log("create-1k: 1000 new rows");
     `  getNode:                ${getNode.toFixed(1)}ms (${((getNode / 1000) * 1000).toFixed(1)}µs/component)`,
   );
   console.log(
-    `  useStore (context):     ${useStore.toFixed(1)}ms (${((useStore / 1000) * 1000).toFixed(1)}µs/component)`,
+    `  useGranary (context):     ${useGranary.toFixed(1)}ms (${((useGranary / 1000) * 1000).toFixed(1)}µs/component)`,
   );
   console.log(
     `  link2 (signal linking): ${link2.toFixed(1)}ms (${((link2 / 1000) * 1000).toFixed(1)}µs/component)`,

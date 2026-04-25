@@ -98,7 +98,7 @@ const cleanup = effect(() => {
 
 The original v2 doc proposed Phase 2/3 features that were never built:
 
-- `useStoreSelector`, `useComputed`, `useStoreEffect` hooks
+- `useGranarySelector`, `useComputed`, `useGranaryEffect` hooks
 - DevTools integration and dependency graph visualization
 - SSR/hydration support
 - Redux/MobX migration adapters

@@ -1,9 +1,4 @@
-import {
-  createReactive,
-  enableProfiling,
-  disableProfiling,
-  resetProfiler,
-} from "@supergrain/kernel";
+import { createGrain, enableProfiling, disableProfiling, resetProfiler } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { update } from "@supergrain/mill";
 import { render, act, cleanup } from "@testing-library/react";
@@ -24,7 +19,7 @@ describe("Parent Invalidation Depth Tests", () => {
 
   it("should test how many levels of parent invalidation occur", async () => {
     // Create deeply nested structure
-    const store = createReactive({
+    const store = createGrain({
       level0: {
         level1: {
           level2: {
@@ -185,7 +180,7 @@ describe("Parent Invalidation Depth Tests", () => {
   });
 
   it("should test array-specific parent invalidation behavior", async () => {
-    const store = createReactive({
+    const store = createGrain({
       items: [
         {
           id: 1,

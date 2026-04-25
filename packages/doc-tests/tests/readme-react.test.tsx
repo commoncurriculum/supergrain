@@ -8,8 +8,8 @@
 
 import {
   tracked,
-  createStoreContext,
-  useReactive,
+  createGranaryContext,
+  useGrain,
   useComputed,
   useSignalEffect,
   For,
@@ -24,7 +24,7 @@ describe("README React Examples", () => {
 
   it("#DOC_TEST_LOCAL_STATE", () => {
     const Counter = tracked(() => {
-      const state = useReactive({ count: 0 });
+      const state = useGrain({ count: 0 });
       return <button onClick={() => state.count++}>Clicked {state.count} times</button>;
     });
 
@@ -54,7 +54,7 @@ describe("README React Examples", () => {
       selected: number | null;
     }
 
-    const { Provider, useStore } = createStoreContext<AppState>();
+    const { Provider, useGranary } = createGranaryContext<AppState>();
 
     const initial: AppState = {
       todos: [
@@ -66,12 +66,12 @@ describe("README React Examples", () => {
 
     let storeRef: AppState = null!;
     const Probe = () => {
-      storeRef = useStore();
+      storeRef = useGranary();
       return null;
     };
 
     const TodoItem = tracked(({ todo }: { todo: Todo }) => {
-      const s = useStore();
+      const s = useGranary();
       const isSelected = useComputed(() => s.selected === todo.id);
 
       return (
@@ -89,7 +89,7 @@ describe("README React Examples", () => {
     const titleSpy = vi.spyOn(document, "title", "set");
 
     const App = tracked(() => {
-      const s = useStore();
+      const s = useGranary();
       const remaining = useComputed(() => s.todos.filter((t) => !t.completed).length);
 
       useSignalEffect(() => {

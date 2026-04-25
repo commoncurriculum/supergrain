@@ -1,4 +1,4 @@
-import { createReactive, computed } from "@supergrain/kernel";
+import { createGrain, computed } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { update } from "@supergrain/mill";
 import { render, act, cleanup } from "@testing-library/react";
@@ -34,7 +34,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
   // Complex nested data structure for comprehensive testing
   const createComplexStore = () => {
-    const state = createReactive({
+    const state = createGrain({
       organization: {
         id: "org-1",
         name: "TechCorp",

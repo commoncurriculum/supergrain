@@ -15,14 +15,14 @@ Removed the `trackArrayVersion()` function and its call from the proxy read hand
 ```typescript
 // Before (in proxy get handler, after getting wrappable value with active subscriber):
 if (isWrappable(value)) {
-  const proxy = createReactiveProxy(value);
+  const proxy = createGrainProxy(value);
   trackArrayVersion(value); // subscribes current effect to array's $VERSION signal
   return proxy;
 }
 
 // After:
 if (isWrappable(value)) {
-  return createReactiveProxy(value);
+  return createGrainProxy(value);
 }
 
 // Also removed the trackArrayVersion function definition and its unused import of $VERSION/getNodes

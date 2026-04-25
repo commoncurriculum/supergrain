@@ -30,7 +30,7 @@
 // https://github.com/stackblitz/alien-signals/
 ```
 
-The file exports `createReactiveSystem({ update, notify, unwatched })` returning `{ link, unlink, propagate, checkDirty, shallowPropagate }`. The structure mirrors alien-signals: doubly-linked subscribers (`prevSub/nextSub/prevDep/nextDep`), a `version` counter on each `Link`, and a `ReactiveFlags` bitflag enum (`None=0, Mutable=1, Watching=2, RecursedCheck=4, Recursed=8, Dirty=16, Pending=32`).
+The file exports `createGrainSystem({ update, notify, unwatched })` returning `{ link, unlink, propagate, checkDirty, shallowPropagate }`. The structure mirrors alien-signals: doubly-linked subscribers (`prevSub/nextSub/prevDep/nextDep`), a `version` counter on each `Link`, and a `ReactiveFlags` bitflag enum (`None=0, Mutable=1, Watching=2, RecursedCheck=4, Recursed=8, Dirty=16, Pending=32`).
 
 So both libraries sit on the same reactive graph algorithm. Supergrain imports `alien-signals` from npm; TanStack forked it and vendored it.
 
@@ -160,7 +160,7 @@ export function useSelector<TSource, TSelected = NoInfer<TSource>>(
 
 This is the React bridge. Every setState fires every subscriber; the selector runs in each subscribed hook and `useSyncExternalStoreWithSelector` uses the `compare` function (default `===`) to decide whether the returned value actually changed and a re-render is needed.
 
-`useStore` is now deprecated — just an alias for `useSelector`. There's also an experimental `_useStore` tuple hook that returns `[selected, actionsOrSetState]`.
+`useGranary` is now deprecated — just an alias for `useSelector`. There's also an experimental `_useGranary` tuple hook that returns `[selected, actionsOrSetState]`.
 
 ## Comparison with Supergrain
 

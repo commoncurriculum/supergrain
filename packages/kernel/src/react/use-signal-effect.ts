@@ -19,12 +19,12 @@ import { useEffect } from "react";
  * @example
  * ```tsx
  * // app/store.ts:
- * //   export const { Provider, useStore } = createStoreContext<AppState>();
+ * //   export const { Provider, useGranary } = createGranaryContext<AppState>();
  * // app/main.tsx:
  * //   <Provider initial={{ todos: [] as Todo[] }}><App /></Provider>
  *
  * const App = tracked(() => {
- *   const store = useStore()
+ *   const store = useGranary()
  *   const remaining = useComputed(() => store.todos.filter(t => !t.completed).length)
  *
  *   useSignalEffect(() => {

@@ -23,7 +23,7 @@ React bindings are optional — `@supergrain/silo/react` requires `react >= 18.2
 ```ts
 // services/store.ts
 import { type DocumentAdapter, type DocumentStore } from "@supergrain/silo";
-import { createDocumentStoreContext } from "@supergrain/silo/react";
+import { createSiloContext } from "@supergrain/silo/react";
 
 export interface User {
   id: string;
@@ -48,8 +48,7 @@ const postAdapter: DocumentAdapter = {
   },
 };
 
-export const { Provider, useDocumentStore, useDocument } =
-  createDocumentStoreContext<DocumentStore<TypeToModel>>();
+export const { Provider, useSilo, useDocument } = createSiloContext<DocumentStore<TypeToModel>>();
 
 export const config = {
   models: {
@@ -82,7 +81,7 @@ import { Provider, config } from "./services/store";
 </Provider>;
 ```
 
-The Provider wraps `config` in `createDocumentStore()` exactly once per mount, so every SSR request, every test, and every React tree gets an isolated store by construction. You can't accidentally share a store across requests.
+The Provider wraps `config` in `createSilo()` exactly once per mount, so every SSR request, every test, and every React tree gets an isolated store by construction. You can't accidentally share a store across requests.
 
 For hydration or other one-time setup, pass `onMount`:
 
@@ -148,12 +147,12 @@ For a full capability-by-capability breakdown, trade-offs, and migration guidanc
 
 ## API
 
-### `createDocumentStore<M, Q = Record<string, never>>(config)`
+### `createSilo<M, Q = Record<string, never>>(config)`
 
 The plain, non-React primitive. It takes config and returns the store object.
 
 ```ts
-const store = createDocumentStore<TypeToModel>({
+const store = createSilo<TypeToModel>({
   models: {
     user: { adapter: userAdapter },
     post: { adapter: postAdapter },
@@ -175,22 +174,22 @@ Methods:
 - `findQueryInMemory(type, params)` → `T | undefined`
 - `insertQueryResult(type, params, result)` → `void`
 
-### `createDocumentStoreContext<S extends DocumentStore<any, any>>()`
+### `createSiloContext<S extends DocumentStore<any, any>>()`
 
-The React context wrapper. Mirrors `createStoreContext<T>()` from `@supergrain/kernel/react`: the type parameter `S` is the store type; the Provider takes the same `config` you'd pass to `createDocumentStore()` and constructs the store internally once per mount.
+The React context wrapper. Mirrors `createGranaryContext<T>()` from `@supergrain/kernel/react`: the type parameter `S` is the store type; the Provider takes the same `config` you'd pass to `createSilo()` and constructs the store internally once per mount.
 
 ```ts
 type DocStore = DocumentStore<TypeToModel, TypeToQuery>;
 
-const { Provider, useDocumentStore, useDocument, useQuery } =
-  createDocumentStoreContext<DocStore>();
+const { Provider, useSilo, useDocument, useQuery } =
+  createSiloContext<DocStore>();
 
 <Provider config={{ models, queries }} onMount={(store) => seed(store)}>
   <App />
 </Provider>
 ```
 
-For non-React use, import `createDocumentStore` directly from `@supergrain/silo`.
+For non-React use, import `createSilo` directly from `@supergrain/silo`.
 
 ### `DocumentHandle<T>`
 
@@ -224,13 +223,13 @@ ERROR   ──(new data inserted)──► SUCCESS (with a fresh promise object)
 
 From `@supergrain/silo/react`:
 
-All returned from `createDocumentStoreContext<S>()`; destructure and re-export from your store module.
+All returned from `createSiloContext<S>()`; destructure and re-export from your store module.
 
-- `Provider({ config, initial?, onMount?, children })` — wraps `config` in `createDocumentStore()` exactly once per mount. Optional `initial` seeds documents/query results before the first render; optional `onMount` runs synchronously after seeding for imperative setup.
+- `Provider({ config, initial?, onMount?, children })` — wraps `config` in `createSilo()` exactly once per mount. Optional `initial` seeds documents/query results before the first render; optional `onMount` runs synchronously after seeding for imperative setup.
 - `useDocument(type, id | null | undefined)` → `DocumentHandle<T>`. `null`/`undefined` id returns an idle handle (useful for conditional fetching — `useDocument("user", isLoggedIn ? myId : null)`).
-- `useDocumentStore()` → store API. Escape hatch for imperative ops (`insertDocument`, `clearMemory`, query methods).
+- `useSilo()` → store API. Escape hatch for imperative ops (`insertDocument`, `clearMemory`, query methods).
 - `useQuery(type, params | null | undefined)` → `QueryHandle<Result>`. Same null-handling as `useDocument`.
-- For lists, call `useDocumentStore().find(type, id)` for each id. Batching still happens under the hood; the public primitive stays one resource → one handle.
+- For lists, call `useSilo().find(type, id)` for each id. Batching still happens under the hood; the public primitive stays one resource → one handle.
 
 ### Factory for isolated stores
 
@@ -238,10 +237,10 @@ Most apps create one document-store context in their app wiring. Libraries shipp
 
 ```ts
 import { type DocumentStore } from "@supergrain/silo";
-import { createDocumentStoreContext } from "@supergrain/silo/react";
+import { createSiloContext } from "@supergrain/silo/react";
 
-const libStore = createDocumentStoreContext<DocumentStore<LibTypes>>();
-export const { Provider, useDocument, useDocumentStore } = libStore;
+const libStore = createSiloContext<DocumentStore<LibTypes>>();
+export const { Provider, useDocument, useSilo } = libStore;
 
 export const libConfig = {
   models: {
@@ -309,7 +308,7 @@ For consumers whose API speaks JSON-API. Opt in per-model:
 ```ts
 import { jsonApiProcessor } from "@supergrain/silo/processors/json-api";
 
-createDocumentStore<M>({
+createSilo<M>({
   models: {
     "card-stack": { adapter: cardStackAdapter, processor: jsonApiProcessor },
   },
@@ -363,7 +362,7 @@ Documents are one surface. The store has a second, additive surface: **queries**
 The config surface forks at the top level — `models` for documents, `queries` for params-keyed results. One store, one memory, one finder.
 
 ```ts
-import { createDocumentStore, type QueryAdapter } from "@supergrain/silo";
+import { createSilo, type QueryAdapter } from "@supergrain/silo";
 
 type TypeToModel = { user: User; post: Post };
 
@@ -379,7 +378,7 @@ const dashboardAdapter: QueryAdapter<{ workspaceId: number }> = {
   },
 };
 
-const store = createDocumentStore<TypeToModel, TypeToQuery>({
+const store = createSilo<TypeToModel, TypeToQuery>({
   models: {
     user: { adapter: userAdapter },
     post: { adapter: postAdapter },
@@ -394,7 +393,7 @@ Consumers with only documents pass one generic and omit `queries`. The second ge
 
 ### Reading queries
 
-Parallel to `useDocument`/`useDocumentStore.find`:
+Parallel to `useDocument`/`useSilo.find`:
 
 ```tsx
 import { useQuery } from "@supergrain/silo/react";
@@ -442,7 +441,7 @@ const usersByRoleAdapter: QueryAdapter<{ role: string }> = {
   },
 };
 
-createDocumentStore<TypeToModel, TypeToQuery>({
+createSilo<TypeToModel, TypeToQuery>({
   models: { user: { adapter: userAdapter } },
   queries: {
     usersByRole: { adapter: usersByRoleAdapter }, // defaultQueryProcessor
@@ -492,7 +491,7 @@ const usersByRoleProcessor: QueryProcessor<TypeToModel, TypeToQuery, "usersByRol
   }
 };
 
-createDocumentStore<TypeToModel, TypeToQuery>({
+createSilo<TypeToModel, TypeToQuery>({
   models: { user: { adapter: userAdapter } },
   queries: {
     usersByRole: { adapter: usersByRoleAdapter, processor: usersByRoleProcessor },

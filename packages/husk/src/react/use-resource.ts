@@ -12,7 +12,7 @@ type SetupResult = void | (() => void) | Promise<void>;
  *
  * ```tsx
  * const Editor = tracked(() => {
- *   const store = useStore();
+ *   const store = useGranary();
  *   const cursor = useResource(
  *     { x: 0, y: 0 },
  *     (state, { onCleanup }) => {
@@ -31,7 +31,7 @@ type SetupResult = void | (() => void) | Promise<void>;
  *
  * ```tsx
  * const Profile = tracked(() => {
- *   const store = useStore();
+ *   const store = useGranary();
  *   const user = useResource(fetchUser, () => store.selectedUserId);
  *   return user.isPending ? <Spinner /> : <UserCard user={user.data!} />;
  * });

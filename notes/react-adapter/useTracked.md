@@ -142,12 +142,12 @@ await act(async () => {
 });
 ```
 
-## Migration from useStore
+## Migration from useGranary
 
 ```tsx
 // Before (broken for nested components)
 function Component() {
-  const state = useStore(store);
+  const state = useGranary(store);
   return <div>{state.value}</div>;
 }
 

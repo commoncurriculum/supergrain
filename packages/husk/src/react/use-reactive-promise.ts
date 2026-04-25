@@ -11,7 +11,7 @@ import { dispose } from "../resource";
  * @example
  * ```tsx
  * const UserCard = tracked(() => {
- *   const store = useStore();
+ *   const store = useGranary();
  *   const user = useReactivePromise(async (signal) => {
  *     const res = await fetch(`/users/${store.selectedUserId}`, { signal });
  *     return res.json() as Promise<User>;

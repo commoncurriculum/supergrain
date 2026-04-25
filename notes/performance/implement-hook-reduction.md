@@ -45,7 +45,7 @@ interface TrackedState {
  * const Store = provideStore(store)
  *
  * const Row = tracked(({ item }) => {
- *   const store = Store.useStore()
+ *   const store = Store.useGranary()
  *   // item.label read is scoped to this Row's effect.
  *   // A label change on this item re-renders only this Row.
  *   const isSelected = useComputed(() => store.selected === item.id)
@@ -58,7 +58,7 @@ interface TrackedState {
  * })
  *
  * const App = tracked(() => {
- *   const store = Store.useStore()
+ *   const store = Store.useGranary()
  *   return (
  *     <For each={store.data}>
  *       {(item) => <Row key={item.id} item={item} />}
@@ -127,13 +127,13 @@ export interface RowProps {
 }
 ```
 
-**Edit B** — Row receives store as prop instead of calling useStore():
+**Edit B** — Row receives store as prop instead of calling useGranary():
 
 ```typescript
 // BEFORE
 export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
   rowRenderCount++;
-  const store = Store.useStore();
+  const store = Store.useGranary();
   const isSelected = useComputed(() => store.selected === item.id);
 
 // AFTER
@@ -160,7 +160,7 @@ export const Row = tracked(({ item, store, onSelect, onRemove }: RowProps) => {
 
 Note: `store` is the reactive proxy created by `createStore()`. Its identity never changes, so it always passes React.memo's shallow equality check — it won't cause extra re-renders.
 
-**Do NOT change** `packages/react/src/provide-store.ts` or the provideStore/useStore API. Change 2 is benchmark-only.
+**Do NOT change** `packages/react/src/provide-store.ts` or the provideStore/useGranary API. Change 2 is benchmark-only.
 
 ## What NOT to change
 

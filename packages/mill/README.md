@@ -19,10 +19,10 @@ pnpm add @supergrain/mill @supergrain/kernel
 ```typescript
 // [#DOC_TEST_46](../doc-tests/tests/readme-core.test.ts)
 
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { update } from "@supergrain/mill";
 
-const store = createReactive({
+const store = createGrain({
   count: 0,
   user: { name: "John", age: 30, middleName: "M" },
   items: ["a", "b", "c"],

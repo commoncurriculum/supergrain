@@ -27,7 +27,7 @@ interface TrackedState {
  * // <Provider initial={{ selected: null as number | null }}>...
  *
  * const Row = tracked(({ item }) => {
- *   const store = useStore()
+ *   const store = useGranary()
  *   // item.label read is scoped to this Row's effect.
  *   // A label change on this item re-renders only this Row.
  *   const isSelected = useComputed(() => store.selected === item.id)
@@ -40,7 +40,7 @@ interface TrackedState {
  * })
  *
  * const App = tracked(() => {
- *   const store = Store.useStore()
+ *   const store = Store.useGranary()
  *   return (
  *     <For each={store.data}>
  *       {(item) => <Row key={item.id} item={item} />}

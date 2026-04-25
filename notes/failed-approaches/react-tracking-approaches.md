@@ -26,7 +26,7 @@ const cleanup = effect(() => {
 
 Set the component's effect as `currentSub` for the entire render.
 
-**Why it failed:** React renders depth-first. Child calls `useStore()`, overwrites parent's subscriber. Parent continues with child's subscriber active — tracks wrong dependencies or loses tracking entirely.
+**Why it failed:** React renders depth-first. Child calls `useGranary()`, overwrites parent's subscriber. Parent continues with child's subscriber active — tracks wrong dependencies or loses tracking entirely.
 
 ### 2. Immediate context restoration (Promise.resolve)
 

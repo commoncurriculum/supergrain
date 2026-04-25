@@ -13,7 +13,7 @@ describe("core package contracts", () => {
   });
 
   it("exposes supported public API from the package root", () => {
-    expect(typeof core.createReactive).toBe("function");
+    expect(typeof core.createGrain).toBe("function");
     expect(typeof core.unwrap).toBe("function");
     expect(core.$BRAND).toBeTypeOf("symbol");
   });

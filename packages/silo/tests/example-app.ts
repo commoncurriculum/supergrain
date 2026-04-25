@@ -38,7 +38,7 @@ import { setupServer } from "msw/node";
 import { vi } from "vitest";
 
 import {
-  createDocumentStore,
+  createSilo,
   type DocumentStore,
   type DocumentAdapter,
   type DocumentStoreConfig,
@@ -278,7 +278,7 @@ export function clearRequests(): void {
 
 // ─── Store wiring ───────────────────────────────────────────────────────────
 // Store config + non-React store creation for tests. The React-facing API wraps
-// the same plain store object via `createDocumentStoreContext()`.
+// the same plain store object via `createSiloContext()`.
 // These tests still need a direct store object to exercise the underlying
 // document/query methods and finder behavior. The three models exercise the full
 // config surface:
@@ -288,7 +288,7 @@ export function clearRequests(): void {
 //   card-stack  — adapter + custom processor (jsonApiProcessor)
 //
 // `makeStoreConfig()` is the shape a real app would pass to
-// `createDocumentStore(config)`. `initStore()` is the non-React helper
+// `createSilo(config)`. `initStore()` is the non-React helper
 // the tests use to materialize the underlying store API directly.
 //
 // The optional `overrides` arg is only for tests that need to exercise
@@ -319,7 +319,7 @@ export function makeStoreConfig(
 }
 
 export function initStore(overrides: StoreOverrides = {}): DocumentStore<TypeToModel, TypeToQuery> {
-  return createDocumentStore(makeStoreConfig(overrides));
+  return createSilo(makeStoreConfig(overrides));
 }
 
 // ─── Timer helpers ──────────────────────────────────────────────────────────

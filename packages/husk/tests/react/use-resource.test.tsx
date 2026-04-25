@@ -1,6 +1,6 @@
 import { defineResource, dispose, resource } from "@supergrain/husk";
 import { useResource } from "@supergrain/husk/react";
-import { createReactive, signal } from "@supergrain/kernel";
+import { createGrain, signal } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -21,7 +21,7 @@ describe("useResource()", () => {
   });
 
   it("reruns setup when a tracked signal changes", async () => {
-    const store = createReactive({ n: 1 });
+    const store = createGrain({ n: 1 });
     const setupSpy = vi.fn();
 
     const Component = tracked(() => {
@@ -52,7 +52,7 @@ describe("useResource()", () => {
         state.doubled = n * 2;
       },
     );
-    const store = createReactive({ n: 3 });
+    const store = createGrain({ n: 3 });
 
     const Component = tracked(() => {
       const r = useResource(factory, () => store.n);
@@ -91,7 +91,7 @@ describe("useResource()", () => {
   });
 
   it("inline: sibling component does NOT re-render when tracked state changes", async () => {
-    const store = createReactive({ n: 1 });
+    const store = createGrain({ n: 1 });
     const consumerRenders = vi.fn();
     const siblingRenders = vi.fn();
 
@@ -134,7 +134,7 @@ describe("useResource()", () => {
         state.v = n;
       },
     );
-    const store = createReactive({ n: 1 });
+    const store = createGrain({ n: 1 });
     const consumerRenders = vi.fn();
     const siblingRenders = vi.fn();
 
@@ -175,7 +175,7 @@ describe("useResource()", () => {
         state.v = n;
       },
     );
-    const store = createReactive({ n: 1 });
+    const store = createGrain({ n: 1 });
     const parentRenders = vi.fn();
     const childRenders = vi.fn();
 
@@ -204,7 +204,7 @@ describe("useResource()", () => {
   });
 
   it("disposes on unmount — cleanups run, further signal changes are ignored", async () => {
-    const store = createReactive({ n: 1 });
+    const store = createGrain({ n: 1 });
     const cleanupSpy = vi.fn();
     const setupSpy = vi.fn();
 

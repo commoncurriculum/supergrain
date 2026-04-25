@@ -2,7 +2,7 @@ import { update } from "@supergrain/mill";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import {
-  createReactive,
+  createGrain,
   effect,
   enableProfiling,
   disableProfiling,
@@ -20,7 +20,7 @@ describe("Array Support", () => {
       { id: 1, title: "Post 1" },
       { id: 2, title: "Post 2" },
     ];
-    store = createReactive({ posts: { all: { items: posts } } });
+    store = createGrain({ posts: { all: { items: posts } } });
   });
 
   afterEach(() => {

@@ -14,10 +14,10 @@
 
   ```ts
   // Before
-  import { createReactive, update } from "@supergrain/kernel";
+  import { createGrain, update } from "@supergrain/kernel";
 
   // After
-  import { createReactive } from "@supergrain/kernel";
+  import { createGrain } from "@supergrain/kernel";
   import { update } from "@supergrain/mill";
   ```
 

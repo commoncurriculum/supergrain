@@ -6,8 +6,8 @@
 
 - 6065b78: Initial release of `@supergrain/silo` — a reactive document cache for React with first-class request batching. Built on `@supergrain/kernel`'s reactive primitive; documents live in the same reactive graph as the rest of your state.
 
-  - **`createDocumentStore(config)`** — plain primitive. Returns `{ find, findInMemory, insertDocument, clearMemory, findQuery, findQueryInMemory, insertQueryResult }`. One reactive tree per store; handles are plain objects nested in that tree.
-  - **`createDocumentStoreContext<S>()`** (from `@supergrain/silo/react`) — returns `{ Provider, useDocumentStore, useDocument, useQuery }` tied to a fresh React Context. The Provider takes `config: DocumentStoreConfig<M, Q>` (required), optional `initial` for declarative seeding (`{ model: { [type]: { [id]: doc } }, query: { [type]: [{ params, result }] } }`), and optional `onMount: (store) => void` for imperative setup (preloads, subscriptions). The Provider calls `createDocumentStore(config)` exactly once per mount, so SSR requests, tests, and React trees are isolated by construction.
+  - **`createSilo(config)`** — plain primitive. Returns `{ find, findInMemory, insertDocument, clearMemory, findQuery, findQueryInMemory, insertQueryResult }`. One reactive tree per store; handles are plain objects nested in that tree.
+  - **`createSiloContext<S>()`** (from `@supergrain/silo/react`) — returns `{ Provider, useSilo, useDocument, useQuery }` tied to a fresh React Context. The Provider takes `config: DocumentStoreConfig<M, Q>` (required), optional `initial` for declarative seeding (`{ model: { [type]: { [id]: doc } }, query: { [type]: [{ params, result }] } }`), and optional `onMount: (store) => void` for imperative setup (preloads, subscriptions). The Provider calls `createSilo(config)` exactly once per mount, so SSR requests, tests, and React trees are isolated by construction.
   - **Finder** (internal) — batches `find(type, id)` calls within `batchWindowMs` (default 15ms) and chunks at `batchSize` (default 60) per `adapter.find(ids)` call. 50 `useDocument` calls in one render collapse to one network request.
   - **Processors** — `defaultProcessor` (any REST endpoint returning `{id, ...}` or `[{id, ...}]`), `defaultQueryProcessor` (results aligned 1:1 with input params by position), and `jsonApiProcessor` (handles `{ data, included }` envelopes; sideloaded docs drop into the documents cache automatically).
   - **JSON-API relationship hooks** — `useBelongsTo` / `useHasMany` / `useHasManyIndividually` from `@supergrain/silo/react/json-api`. Type-inferred from `Relationship<T>` / `RelationshipArray<T>`; reach the store via a shared ambient Context populated by every Provider.
@@ -17,11 +17,11 @@
 
   ```tsx
   import type { DocumentStore } from "@supergrain/silo";
-  import { createDocumentStoreContext } from "@supergrain/silo/react";
+  import { createSiloContext } from "@supergrain/silo/react";
 
   type DocStore = DocumentStore<TypeToModel, TypeToQuery>;
-  export const { Provider, useDocument, useDocumentStore, useQuery } =
-    createDocumentStoreContext<DocStore>();
+  export const { Provider, useDocument, useSilo, useQuery } =
+    createSiloContext<DocStore>();
 
   // <Provider config={{ models: {...}, queries: {...} }}><App /></Provider>
   // const user = useDocument("user", id);
@@ -54,7 +54,7 @@
 
   ### New Features
 
-  - **`provideStore(store)`** — Wraps a store with React context plumbing. Returns `{ Provider, useStore }` for injecting a store into the component tree. The proxy identity is stable so the context value never triggers re-renders.
+  - **`provideStore(store)`** — Wraps a store with React context plumbing. Returns `{ Provider, useGranary }` for injecting a store into the component tree. The proxy identity is stable so the context value never triggers re-renders.
   - **`useComputed(() => expr, deps?)`** — Derived value hook that acts as a firewall. Re-evaluates when upstream signals change, but only triggers a re-render when the result changes. Enables O(2) row selection without per-row flags.
   - **`useSignalEffect(() => sideEffect)`** — Signal-tracked side effect tied to component lifecycle. Re-runs when tracked signals change, cleans up on unmount. Does not cause re-renders.
 

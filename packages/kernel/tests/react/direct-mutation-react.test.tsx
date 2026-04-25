@@ -1,4 +1,4 @@
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { update } from "@supergrain/mill";
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -6,7 +6,7 @@ import { describe, it, expect } from "vitest";
 
 describe("Direct Mutation with React Integration", () => {
   it("should work with click handlers and direct mutations", () => {
-    const store = createReactive({ count: 0, message: "Hello" });
+    const store = createGrain({ count: 0, message: "Hello" });
 
     const App = tracked(() => {
       return (
@@ -52,7 +52,7 @@ describe("Direct Mutation with React Integration", () => {
   });
 
   it("should work with both direct mutations and updateStore calls", () => {
-    const store = createReactive({
+    const store = createGrain({
       directValue: 0,
       operatorValue: 0,
       nested: { directProp: "direct", operatorProp: "operator" },
@@ -120,7 +120,7 @@ describe("Direct Mutation with React Integration", () => {
   });
 
   it("should handle array mutations with React rendering", () => {
-    const store = createReactive({
+    const store = createGrain({
       items: [
         { id: 1, name: "Item 1", completed: false },
         { id: 2, name: "Item 2", completed: false },
@@ -180,7 +180,7 @@ describe("Direct Mutation with React Integration", () => {
   });
 
   it("should demonstrate direct mutation API improvements", () => {
-    const store = createReactive({
+    const store = createGrain({
       counter: 0,
       user: { name: "John", age: 25 },
       todos: [{ id: 1, text: "Learn Storable", done: false }],

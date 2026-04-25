@@ -1,14 +1,14 @@
-import { tracked, useReactive } from "@supergrain/kernel/react";
+import { tracked, useGrain } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
 import { describe, it, expect, afterEach } from "vitest";
 
 afterEach(() => cleanup());
 
-describe("useReactive()", () => {
+describe("useGrain()", () => {
   it("returns a reactive proxy over the initial object", () => {
     let proxyRef: { count: number } = null!;
     const Component = tracked(() => {
-      const state = useReactive({ count: 0 });
+      const state = useGrain({ count: 0 });
       proxyRef = state;
       return <span data-testid="count">{state.count}</span>;
     });
@@ -21,7 +21,7 @@ describe("useReactive()", () => {
   it("proxy identity is stable across renders", async () => {
     const refs: Array<{ count: number }> = [];
     const Component = tracked(() => {
-      const state = useReactive({ count: 0 });
+      const state = useGrain({ count: 0 });
       refs.push(state);
       return (
         <button data-testid="btn" onClick={() => (state.count += 1)}>
@@ -46,7 +46,7 @@ describe("useReactive()", () => {
 
   it("mutations trigger re-renders within the component", async () => {
     const Component = tracked(() => {
-      const state = useReactive({ count: 0 });
+      const state = useGrain({ count: 0 });
       return (
         <button data-testid="btn" onClick={() => (state.count += 1)}>
           {state.count}
@@ -71,7 +71,7 @@ describe("useReactive()", () => {
   it("each mount gets an independent store", async () => {
     const refs: Array<{ count: number }> = [];
     const Component = tracked(() => {
-      const state = useReactive({ count: 0 });
+      const state = useGrain({ count: 0 });
       refs.push(state);
       return <span>{state.count}</span>;
     });

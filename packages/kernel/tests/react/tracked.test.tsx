@@ -1,4 +1,4 @@
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { tracked, For } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
 import { describe, it, expect, afterEach } from "vitest";
@@ -28,7 +28,7 @@ function getRows(container: HTMLElement) {
 describe("tracked()", () => {
   describe("per-component scoping", () => {
     it("label change re-renders only the affected Row, not App", async () => {
-      const store = createReactive<AppState>({ data: [], selected: null });
+      const store = createGrain<AppState>({ data: [], selected: null });
       let appRenders = 0;
       let row1Renders = 0;
       let row2Renders = 0;
@@ -86,7 +86,7 @@ describe("tracked()", () => {
     });
 
     it("selection change re-renders App (reads selected) but only affected Rows via memo", async () => {
-      const store = createReactive<AppState>({ data: [], selected: null });
+      const store = createGrain<AppState>({ data: [], selected: null });
       let appRenders = 0;
 
       const Row = tracked(({ item, isSelected }: { item: RowData; isSelected: boolean }) => {
@@ -139,7 +139,7 @@ describe("tracked()", () => {
     let container: HTMLElement;
 
     function setup() {
-      const s = createReactive<AppState>({ data: [], selected: null });
+      const s = createGrain<AppState>({ data: [], selected: null });
       store = s;
 
       const Row = tracked(({ item, isSelected }: { item: RowData; isSelected: boolean }) => {
@@ -293,7 +293,7 @@ describe("tracked()", () => {
 
   describe("nested tracked components", () => {
     it("parent and child have independent subscriptions", async () => {
-      const store = createReactive({ parent: "p", child: "c" });
+      const store = createGrain({ parent: "p", child: "c" });
       let parentRenders = 0;
       let childRenders = 0;
 

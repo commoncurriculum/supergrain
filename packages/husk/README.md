@@ -6,7 +6,7 @@ Reactive side-effect primitives for Supergrain — the layer between `@supergrai
 - **`defineResource`** — reusable resource factory; args thunks make reruns explicit at the call site.
 - **`reactivePromise`** — async envelope (`data`, `error`, `isPending`, …) with abort on rerun.
 - **`reactiveTask`** — imperative async command (`.run(...)`).
-- **`modifier`** — element-scoped setup/teardown; signals inside setup drive targeted re-attach without re-rendering.
+- **`behavior`** — element-scoped setup/teardown; signals inside setup drive targeted re-attach without re-rendering.
 
 ## Install
 
@@ -24,18 +24,18 @@ React bindings ship at `@supergrain/husk/react` and require `react >= 18.2`.
 | Reusable primitive called many places, args visible at call site | `defineResource` + `useResource`         |
 | One-off side effect with a custom state shape                    | `resource` / `useResource`               |
 | User-triggered work (save, submit) — no auto-run                 | `reactiveTask` / `useReactiveTask`       |
-| Behavior attached to a specific DOM element                      | `modifier` / `useModifier`               |
+| Behavior attached to a specific DOM element                      | `behavior` / `useBehavior`               |
 
 ## `reactivePromise(asyncFn)`
 
 In React, `useReactivePromise(asyncFn)` is component-scoped (auto-disposed on unmount):
 
 ```tsx
-import { tracked, useReactive } from "@supergrain/kernel/react";
+import { tracked, useGrain } from "@supergrain/kernel/react";
 import { useReactivePromise } from "@supergrain/husk/react";
 
 const Profile = tracked(() => {
-  const state = useReactive({ userId: 1 });
+  const state = useGrain({ userId: 1 });
   const user = useReactivePromise(async (signal) => {
     const res = await fetch(`/users/${state.userId}`, { signal });
     return res.json() as Promise<User>;
@@ -49,13 +49,13 @@ const Profile = tracked(() => {
 });
 ```
 
-Outside React, `reactivePromise(asyncFn)` returns the same envelope; pair with module-scope `createReactive`:
+Outside React, `reactivePromise(asyncFn)` returns the same envelope; pair with module-scope `createGrain`:
 
 ```ts
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { reactivePromise } from "@supergrain/husk";
 
-const state = createReactive({ userId: 1 });
+const state = createGrain({ userId: 1 });
 const user = reactivePromise(async (signal) => {
   const res = await fetch(`/users/${state.userId}`, { signal });
   return res.json() as Promise<User>;
@@ -89,11 +89,11 @@ export const subscribeChannel = defineResource<string, { messages: Message[] }>(
 In React:
 
 ```tsx
-import { tracked, useReactive } from "@supergrain/kernel/react";
+import { tracked, useGrain } from "@supergrain/kernel/react";
 import { useResource } from "@supergrain/husk/react";
 
 const ChannelView = tracked(() => {
-  const state = useReactive({ name: "general" });
+  const state = useGrain({ name: "general" });
   const chat = useResource(subscribeChannel, () => state.name);
   return (
     <>
@@ -107,9 +107,9 @@ const ChannelView = tracked(() => {
 Outside React:
 
 ```ts
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 
-const state = createReactive({ name: "general" });
+const state = createGrain({ name: "general" });
 const chat = subscribeChannel(() => state.name);
 state.name = "random"; // old socket closes, new one opens
 ```
@@ -123,11 +123,11 @@ Inline, one-off. Reactive reads in `setup` drive reruns. No deps array — the r
 In React:
 
 ```tsx
-import { tracked, useReactive } from "@supergrain/kernel/react";
+import { tracked, useGrain } from "@supergrain/kernel/react";
 import { useResource } from "@supergrain/husk/react";
 
 const Crosshair = tracked(() => {
-  const opts = useReactive({ enabled: true });
+  const opts = useGrain({ enabled: true });
   const cursor = useResource({ x: 0, y: 0 }, (state, { onCleanup }) => {
     if (!opts.enabled) return; // reactive read — toggle re-runs setup
     const h = (e: MouseEvent) => {
@@ -151,10 +151,10 @@ const Crosshair = tracked(() => {
 Outside React:
 
 ```ts
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { resource } from "@supergrain/husk";
 
-const opts = createReactive({ enabled: true });
+const opts = createGrain({ enabled: true });
 const cursor = resource({ x: 0, y: 0 }, (state, { onCleanup }) => {
   if (!opts.enabled) return;
   const h = (e: MouseEvent) => {
@@ -206,36 +206,36 @@ await saveDraft.run(myDraft);
 saveDraft.data; // Draft | null
 ```
 
-## `modifier(fn)` + `useModifier(m, ...args)`
+## `behavior(fn)` + `useBehavior(m, ...args)`
 
 Element-scoped setup/teardown attached via `ref`. What it buys you that plain `useEffect` can't:
 
 1. **Element-scoped lifecycle**: the setup runs when React attaches the ref, cleanup fires on detach. No `ref.current` timing gymnastics.
 2. **Fresh args without re-register**: args flow through an internal ref — the listener attaches once on mount, but every invocation uses the latest closure.
-3. **Signal reads inside `modifier` re-run setup WITHOUT re-rendering the component.** This is the one `useEffect` genuinely can't compose — `useEffect` doesn't subscribe to signals, and `useSignalEffect` doesn't give you the element.
+3. **Signal reads inside `behavior` re-run setup WITHOUT re-rendering the component.** This is the one `useEffect` genuinely can't compose — `useEffect` doesn't subscribe to signals, and `useSignalEffect` doesn't give you the element.
 4. **Reusable across elements and components.** Define once at module scope, apply anywhere.
 
 ```tsx
-import { createReactive } from "@supergrain/kernel";
-import { modifier, useModifier } from "@supergrain/husk/react";
+import { createGrain } from "@supergrain/kernel";
+import { behavior, useBehavior } from "@supergrain/husk/react";
 
-export const observerSettings = createReactive<{ box: "border-box" | "content-box" }>({
+export const observerSettings = createGrain<{ box: "border-box" | "content-box" }>({
   box: "content-box",
 });
 
 // Point 3: reactive read inside setup, no component re-render on change
-const trackSize = modifier<HTMLElement, [(size: DOMRect) => void]>((el, onResize) => {
+const trackSize = behavior<HTMLElement, [(size: DOMRect) => void]>((el, onResize) => {
   const observer = new ResizeObserver(([entry]) => onResize(entry!.contentRect));
   observer.observe(el, { box: observerSettings.box }); // tracked
   return () => observer.disconnect();
 });
 
 function Panel({ onResize }: { onResize: (r: DOMRect) => void }) {
-  return <div ref={useModifier(trackSize, onResize)}>…</div>;
+  return <div ref={useBehavior(trackSize, onResize)}>…</div>;
 }
 ```
 
-Set `observerSettings.box = "border-box"` from anywhere — the modifier tears down the old observer and attaches a new one with the fresh box option. `Panel` does NOT re-render; only the observer is replaced.
+Set `observerSettings.box = "border-box"` from anywhere — the behavior tears down the old observer and attaches a new one with the fresh box option. `Panel` does NOT re-render; only the observer is replaced.
 
 ## `dispose(resource)`
 
@@ -254,10 +254,10 @@ dispose(user);
 Resources aren't hooks. Define at module scope; read from event handlers, tests, workers — anywhere. Rules of Hooks doesn't apply.
 
 ```ts
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { reactivePromise } from "@supergrain/husk";
 
-const state = createReactive({ userId: 1 });
+const state = createGrain({ userId: 1 });
 const user = reactivePromise(async (signal) =>
   fetch(`/users/${state.userId}`, { signal }).then((r) => r.json()),
 );

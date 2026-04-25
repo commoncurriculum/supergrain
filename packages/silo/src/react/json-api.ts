@@ -75,7 +75,7 @@ export function useBelongsTo<Model extends WithRelationships, RelName extends Be
   const store = useContext(DocumentStoreContext);
   if (store === null) {
     throw new Error(
-      "@supergrain/silo/react/json-api: useBelongsTo must be used within the Provider returned by createDocumentStoreContext()",
+      "@supergrain/silo/react/json-api: useBelongsTo must be used within the Provider returned by createSiloContext()",
     );
   }
   const ref = model?.relationships[relationName as string]?.data as
@@ -97,7 +97,7 @@ export function useBelongsTo<Model extends WithRelationships, RelName extends Be
  * related document.
  *
  * Reads `model.relationships[relationName].data` to get the array of
- * `{ type, id }` references, then maps them through `useDocumentStore().find`
+ * `{ type, id }` references, then maps them through `useSilo().find`
  * under the hood. The return handles' `data` type is inferred from
  * `RelationshipArray<T>` — declare your relationships as
  * `cards: RelationshipArray<Card>` and this hook returns
@@ -120,7 +120,7 @@ export function useHasMany<Model extends WithRelationships, RelName extends HasM
   const store = useContext(DocumentStoreContext);
   if (store === null) {
     throw new Error(
-      "@supergrain/silo/react/json-api: useHasMany must be used within the Provider returned by createDocumentStoreContext()",
+      "@supergrain/silo/react/json-api: useHasMany must be used within the Provider returned by createSiloContext()",
     );
   }
   const refs = (model?.relationships[relationName as string]?.data ?? []) as ReadonlyArray<{
