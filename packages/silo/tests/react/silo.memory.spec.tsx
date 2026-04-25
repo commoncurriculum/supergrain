@@ -1,36 +1,26 @@
+import { tracked } from "@supergrain/kernel/react";
 import { cleanup, render, act } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { cdp, page } from "vitest/browser/context";
+import { cdp } from "vitest/browser";
 
-import { tracked } from "@supergrain/kernel/react";
-
-import { type DocumentStore } from "../../src";
+import { type DocumentStore, type DocumentStoreConfig } from "../../src";
 import { createDocumentStoreContext } from "../../src/react";
-import {
-  makeDashboard,
-  makeStoreConfig,
-  makeUser,
-  type TypeToModel,
-  type TypeToQuery,
-} from "../example-app";
 
 afterEach(() => cleanup());
 
 async function forceBrowserGc(cycles = 4): Promise<void> {
-  await page.evaluate(async (iterations) => {
-    const runtime = globalThis as typeof globalThis & { gc?: () => void };
-    if (typeof runtime.gc !== "function") {
-      throw new Error("Browser memory tests require Chromium to expose gc().");
-    }
-    for (let index = 0; index < iterations; index++) {
-      runtime.gc();
-      await Promise.resolve();
-    }
-  }, cycles);
+  const runtime = globalThis as typeof globalThis & { gc?: () => void };
+  if (typeof runtime.gc !== "function") {
+    throw new Error("Browser memory tests require Chromium to expose gc().");
+  }
+  for (let index = 0; index < cycles; index++) {
+    runtime.gc();
+    await Promise.resolve();
+  }
 }
 
 async function browserHeapUsed(): Promise<number> {
-  const session = cdp();
+  const session = cdp() as { send: (method: string) => Promise<unknown> };
   await session.send("Performance.enable");
   const result = (await session.send("Performance.getMetrics")) as {
     metrics: Array<{ name: string; value: number }>;
@@ -69,8 +59,72 @@ function expectBrowserTrend(
   expect(deltas.at(-1) ?? 0).toBeLessThanOrEqual(options.maxLastDeltaBytes);
 }
 
+interface User {
+  id: string;
+  attributes: { firstName: string; lastName: string; email: string };
+}
+
+interface Dashboard {
+  totalActiveUsers: number;
+  recentPostIds: Array<string>;
+}
+
+interface DashboardParams {
+  workspaceId: number;
+  filters: { active: boolean };
+}
+
+type TypeToModel = {
+  user: User;
+};
+
+type TypeToQuery = {
+  dashboard: { params: DashboardParams; result: Dashboard };
+};
+
 const { Provider, useDocument, useDocumentStore, useQuery } =
   createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
+
+function makeUser(id: string, firstName: string): User {
+  return {
+    id,
+    attributes: {
+      firstName,
+      lastName: "Memory",
+      email: `${id}@example.com`,
+    },
+  };
+}
+
+function makeDashboard(totalActiveUsers: number): Dashboard {
+  return {
+    totalActiveUsers,
+    recentPostIds: ["1", "2", "3"],
+  };
+}
+
+function makeStoreConfig(): DocumentStoreConfig<TypeToModel, TypeToQuery> {
+  return {
+    models: {
+      user: {
+        adapter: {
+          async find() {
+            throw new Error("browser memory test should not hit the adapter");
+          },
+        },
+      },
+    },
+    queries: {
+      dashboard: {
+        adapter: {
+          async find() {
+            throw new Error("browser memory test should not hit the query adapter");
+          },
+        },
+      },
+    },
+  };
+}
 
 const SiloHarness = tracked(function SiloHarness({
   workspaceId,
@@ -89,11 +143,11 @@ const SiloHarness = tracked(function SiloHarness({
       type="button"
       onClick={() => {
         store.clearMemory();
-        store.insertDocument("user", makeUser("1", { firstName: `Reset${seed}` }));
+        store.insertDocument("user", makeUser("1", `Reset${seed}`));
         store.insertQueryResult(
           "dashboard",
           { workspaceId, filters: { active: true } },
-          makeDashboard({ totalActiveUsers: seed }),
+          makeDashboard(seed),
         );
       }}
     >
@@ -114,14 +168,14 @@ describe("silo react memory", () => {
             initial={{
               model: {
                 user: {
-                  "1": makeUser("1", { firstName: `User${seed}` }),
+                  "1": makeUser("1", `User${seed}`),
                 },
               },
               query: {
                 dashboard: [
                   {
                     params: { workspaceId, filters: { active: true } },
-                    result: makeDashboard({ totalActiveUsers: seed }),
+                    result: makeDashboard(seed),
                   },
                 ],
               },

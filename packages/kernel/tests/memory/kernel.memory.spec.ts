@@ -2,6 +2,7 @@ import { describe, it } from "vitest";
 
 import { createReactive, effect } from "../../src";
 import {
+  HAS_GC,
   RUN_SOAK,
   collectHeapSamples,
   expectCollectible,
@@ -45,7 +46,7 @@ function runKernelCycle(seed: number): void {
   stop();
 }
 
-describe("kernel memory", () => {
+describe.runIf(HAS_GC)("kernel memory", () => {
   it("collects reactive roots, nested proxies, and subscriptions after teardown", async () => {
     await expectCollectible(() => {
       const raw = {
@@ -92,7 +93,7 @@ describe("kernel memory", () => {
   });
 });
 
-describe.runIf(RUN_SOAK)("kernel memory soak", () => {
+describe.runIf(HAS_GC && RUN_SOAK)("kernel memory soak", () => {
   it("stays flat during extended array and subscription churn", async () => {
     const samples = await collectHeapSamples(10, (round) => {
       for (let index = 0; index < 160; index++) {

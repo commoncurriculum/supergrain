@@ -8,10 +8,22 @@ const runtime = globalThis as typeof globalThis & {
   };
 };
 
-export const RUN_SOAK = runtime.process?.env?.SUPERGRAIN_MEMORY_SOAK === "1";
+export const RUN_SOAK = runtime.process?.env?.["SUPERGRAIN_MEMORY_SOAK"] === "1";
+
+function getGc(): (() => void) | undefined {
+  if (typeof runtime.gc === "function") return runtime.gc;
+  try {
+    return (0, eval)("gc") as (() => void) | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export const HAS_GC =
+  typeof getGc() === "function" && typeof runtime.process?.memoryUsage === "function";
 
 export function requireGc(): void {
-  if (typeof runtime.gc !== "function") {
+  if (typeof getGc() !== "function") {
     throw new Error("Memory tests require node --expose-gc.");
   }
   if (typeof runtime.process?.memoryUsage !== "function") {
@@ -25,8 +37,9 @@ export async function delay(ms = 0): Promise<void> {
 
 export async function forceGc(cycles = 6): Promise<void> {
   requireGc();
+  const gc = getGc()!;
   for (let index = 0; index < cycles; index++) {
-    runtime.gc?.();
+    gc();
     await Promise.resolve();
     await delay();
   }

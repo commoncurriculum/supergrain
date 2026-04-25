@@ -2,6 +2,7 @@ import { describe, it } from "vitest";
 
 import { createDocumentStore } from "../../src";
 import {
+  HAS_GC,
   RUN_SOAK,
   collectHeapSamples,
   delay,
@@ -146,7 +147,9 @@ async function settleStoreRound(seed: number): Promise<void> {
     }
     const docs =
       seed % 4 === 0
-        ? call.ids.slice(0, Math.max(1, call.ids.length - 1)).map((id, index) => makeUser(id, seed + index))
+        ? call.ids
+            .slice(0, Math.max(1, call.ids.length - 1))
+            .map((id, index) => makeUser(id, seed + index))
         : call.ids.map((id, index) => makeUser(id, seed + index));
     call.deferred.resolve(docs);
   }
@@ -156,7 +159,9 @@ async function settleStoreRound(seed: number): Promise<void> {
       call.deferred.reject(new Error(`query-failure-${seed}`));
       continue;
     }
-    call.deferred.resolve(call.paramsList.map((params, index) => makeDashboard(params, seed + index)));
+    call.deferred.resolve(
+      call.paramsList.map((params, index) => makeDashboard(params, seed + index)),
+    );
   }
 
   await Promise.allSettled([
@@ -171,7 +176,7 @@ async function settleStoreRound(seed: number): Promise<void> {
   await delay();
 }
 
-describe("silo memory", () => {
+describe.runIf(HAS_GC)("silo memory", () => {
   it("collects stores and handles after clearMemory and dropping the store", async () => {
     await expectCollectible(async () => {
       const { store, docCalls, queryCalls } = createAsyncStore();
@@ -222,7 +227,7 @@ describe("silo memory", () => {
   });
 });
 
-describe.runIf(RUN_SOAK)("silo memory soak", () => {
+describe.runIf(HAS_GC && RUN_SOAK)("silo memory soak", () => {
   it("stays flat during extended async finder churn", async () => {
     const samples = await collectHeapSamples(10, async (round) => {
       for (let index = 0; index < 60; index++) {

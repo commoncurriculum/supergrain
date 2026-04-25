@@ -1,8 +1,7 @@
+import { tracked } from "@supergrain/kernel/react";
 import { cleanup, render, act } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cdp, page } from "vitest/browser/context";
-
-import { tracked } from "@supergrain/kernel/react";
+import { cdp } from "vitest/browser";
 
 import { useReactivePromise, useResource } from "../../src/react";
 
@@ -21,20 +20,18 @@ function makePayload(seed: number, width = 18): Array<HuskPayload> {
 }
 
 async function forceBrowserGc(cycles = 4): Promise<void> {
-  await page.evaluate(async (iterations) => {
-    const runtime = globalThis as typeof globalThis & { gc?: () => void };
-    if (typeof runtime.gc !== "function") {
-      throw new Error("Browser memory tests require Chromium to expose gc().");
-    }
-    for (let index = 0; index < iterations; index++) {
-      runtime.gc();
-      await Promise.resolve();
-    }
-  }, cycles);
+  const runtime = globalThis as typeof globalThis & { gc?: () => void };
+  if (typeof runtime.gc !== "function") {
+    throw new Error("Browser memory tests require Chromium to expose gc().");
+  }
+  for (let index = 0; index < cycles; index++) {
+    runtime.gc();
+    await Promise.resolve();
+  }
 }
 
 async function browserHeapUsed(): Promise<number> {
-  const session = cdp();
+  const session = cdp() as { send: (method: string) => Promise<unknown> };
   await session.send("Performance.enable");
   const result = (await session.send("Performance.getMetrics")) as {
     metrics: Array<{ name: string; value: number }>;
@@ -74,15 +71,12 @@ function expectBrowserTrend(
 }
 
 const HuskHarness = tracked(function HuskHarness({ seed }: { seed: number }) {
-  const resourceState = useResource(
-    { cursor: 0, payload: makePayload(seed) },
-    (state) => {
-      state.payload = makePayload(seed);
-      return () => {
-        state.payload = [];
-      };
-    },
-  );
+  const resourceState = useResource({ cursor: 0, payload: makePayload(seed) }, (state) => {
+    state.payload = makePayload(seed);
+    return () => {
+      state.payload = [];
+    };
+  });
 
   const promiseState = useReactivePromise(async (abortSignal) => {
     const current = resourceState.cursor;

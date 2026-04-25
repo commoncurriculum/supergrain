@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 
 import { reactivePromise, reactiveTask, resource, dispose } from "../../src";
 import {
+  HAS_GC,
   RUN_SOAK,
   collectHeapSamples,
   delay,
@@ -62,7 +63,9 @@ async function runHuskCycle(seed: number): Promise<void> {
   const reactive = reactivePromise(async (abortSignal) => {
     const current = promiseTrigger();
     const run = deferred<{ value: number; payload: Array<HuskPayload> }>();
-    abortSignal.addEventListener("abort", () => run.resolve({ value: current, payload: makePayload(seed) }));
+    abortSignal.addEventListener("abort", () =>
+      run.resolve({ value: current, payload: makePayload(seed) }),
+    );
     promiseDeferreds.push(run);
     return run.promise;
   });
@@ -91,14 +94,13 @@ async function runHuskCycle(seed: number): Promise<void> {
   await Promise.allSettled([
     okRun,
     failedRun,
-    reactive.promise.catch(() => undefined),
     ...resourceDeferreds.map((run) => run.promise),
     ...promiseDeferreds.map((run) => run.promise),
   ]);
   await delay();
 }
 
-describe("husk memory", () => {
+describe.runIf(HAS_GC)("husk memory", () => {
   it("collects disposed resources after async cleanup races", async () => {
     await expectCollectible(async () => {
       const trigger = signal(0);
@@ -155,10 +157,7 @@ describe("husk memory", () => {
           for (const run of pending) {
             run.resolve({ value: 1, payload: makePayload(2, 8) });
           }
-          await Promise.allSettled([
-            reactive.promise.catch(() => undefined),
-            ...pending.map((run) => run.promise),
-          ]);
+          await Promise.allSettled(pending.map((run) => run.promise));
           await delay();
         },
       };
@@ -188,7 +187,7 @@ describe("husk memory", () => {
   });
 });
 
-describe.runIf(RUN_SOAK)("husk memory soak", () => {
+describe.runIf(HAS_GC && RUN_SOAK)("husk memory soak", () => {
   it("stays flat during extended async rerun churn", async () => {
     const samples = await collectHeapSamples(10, async (round) => {
       for (let index = 0; index < 100; index++) {
