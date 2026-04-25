@@ -42,7 +42,18 @@ export default defineConfig({
       {
         test: {
           include: ["packages/queries/**/*.test.{ts,tsx}"],
-          environment: "jsdom",
+          browser: {
+            enabled: true,
+            provider: playwright(),
+            headless: true,
+            instances: [
+              {
+                browser: "chromium",
+              },
+            ],
+          },
+          setupFiles: ["./packages/queries/tests/setup.ts"],
+          globals: true,
         },
         resolve,
         ssr,
