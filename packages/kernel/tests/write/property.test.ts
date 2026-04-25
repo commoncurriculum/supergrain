@@ -49,7 +49,11 @@ const kernelOperationArbitrary: fc.Arbitrary<KernelOperation> = fc.oneof(
 );
 
 function normalizeIndex(index: number, length: number): number {
-  return length === 0 ? 0 : index % length;
+  return length === 0 ? 0 : ((index % length) + length) % length;
+}
+
+function normalizeSpliceStart(start: number, length: number): number {
+  return ((start % (length + 1)) + (length + 1)) % (length + 1);
 }
 
 function applyKernelOperation(state: KernelState, operation: KernelOperation): void {
@@ -84,7 +88,7 @@ function applyKernelOperation(state: KernelState, operation: KernelOperation): v
       return;
     }
     case "splice": {
-      const start = operation.start % (state.items.length + 1);
+      const start = normalizeSpliceStart(operation.start, state.items.length);
       const deleteCount = operation.deleteCount % (state.items.length - start + 1);
       state.items.splice(start, deleteCount, ...operation.items);
       return;
