@@ -1,6 +1,7 @@
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
 
 import { batch, createReactive } from "@supergrain/kernel";
+import { setProperty } from "@supergrain/kernel/internal";
 
 import { Finder, type InternalHandle, type InternalState } from "./finder";
 
@@ -425,7 +426,7 @@ function assertSafeRecordKey(key: string): void {
 
 function setOwnRecordValue<T>(record: Record<string, T>, key: string, value: T): void {
   assertSafeRecordKey(key);
-  record[key] = value;
+  setProperty(record, key, value);
 }
 
 function ensureHandleBucket<T>(
