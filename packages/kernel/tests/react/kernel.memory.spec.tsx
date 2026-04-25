@@ -1,4 +1,5 @@
 import { cleanup, render, act } from "@testing-library/react";
+import React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { cdp } from "vitest/browser";
 
@@ -60,13 +61,29 @@ function expectBrowserTrend(
   options: {
     maxGrowthBytes: number;
     maxLastDeltaBytes: number;
+    /** Optional: tail-to-head ratio check (mean of last 2 vs first 2). */
+    maxTailHeadRatio?: number;
   },
 ): void {
   expect(samples.length).toBeGreaterThanOrEqual(2);
   const totalGrowth = samples.at(-1)! - samples[0]!;
   const deltas = samples.slice(1).map((sample, index) => sample - samples[index]!);
-  expect(totalGrowth).toBeLessThanOrEqual(options.maxGrowthBytes);
-  expect(deltas.at(-1) ?? 0).toBeLessThanOrEqual(options.maxLastDeltaBytes);
+  expect(totalGrowth, "total heap growth exceeded budget").toBeLessThanOrEqual(
+    options.maxGrowthBytes,
+  );
+  expect(deltas.at(-1) ?? 0, "last-round heap delta exceeded budget").toBeLessThanOrEqual(
+    options.maxLastDeltaBytes,
+  );
+  if (options.maxTailHeadRatio !== undefined && samples.length >= 4) {
+    const headAvg = (samples[0]! + samples[1]!) / 2;
+    const tailAvg = (samples.at(-1)! + samples.at(-2)!) / 2;
+    if (headAvg > 0) {
+      expect(
+        tailAvg / headAvg,
+        "tail-to-head heap ratio indicates sustained monotonic growth",
+      ).toBeLessThanOrEqual(options.maxTailHeadRatio);
+    }
+  }
 }
 
 const KernelHarness = tracked(function KernelHarness({ seed }: { seed: number }) {
@@ -106,6 +123,57 @@ describe("kernel react memory", () => {
     expectBrowserTrend(samples, {
       maxGrowthBytes: 3_000_000,
       maxLastDeltaBytes: 700_000,
+    });
+  });
+
+  it("keeps Chromium heap flat across StrictMode double-mount churn", async () => {
+    const samples = await collectBrowserSamples(5, async (round) => {
+      for (let index = 0; index < 8; index++) {
+        const view = render(
+          <React.StrictMode>
+            <KernelHarness seed={round * 200 + index} />
+          </React.StrictMode>,
+        );
+        await act(async () => {
+          view.getByTestId("kernel-memory").click();
+        });
+        view.unmount();
+      }
+      cleanup();
+    });
+
+    expectBrowserTrend(samples, {
+      maxGrowthBytes: 3_500_000,
+      maxLastDeltaBytes: 850_000,
+    });
+  });
+
+  it("keeps Chromium heap flat with concurrent component trees", async () => {
+    const samples = await collectBrowserSamples(5, async (round) => {
+      for (let index = 0; index < 4; index++) {
+        const base = round * 400 + index * 4;
+        const views = [
+          render(<KernelHarness seed={base} />),
+          render(<KernelHarness seed={base + 1} />),
+          render(<KernelHarness seed={base + 2} />),
+          render(<KernelHarness seed={base + 3} />),
+        ];
+        await act(async () => {
+          for (const view of views) {
+            view.getByTestId("kernel-memory").click();
+          }
+        });
+        for (const view of views) {
+          view.unmount();
+        }
+      }
+      cleanup();
+    });
+
+    expectBrowserTrend(samples, {
+      maxGrowthBytes: 4_000_000,
+      maxLastDeltaBytes: 900_000,
+      maxTailHeadRatio: 1.8,
     });
   });
 });

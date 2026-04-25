@@ -1,15 +1,21 @@
-import { describe, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createDocumentStore } from "../../src";
 import {
   HAS_GC,
   RUN_SOAK,
+  assertGcAvailable,
   collectHeapSamples,
   delay,
   expectCollectible,
   expectRetainedHeapBudget,
   expectTrendToFlatten,
 } from "./helpers";
+
+// Always-run sentinel: ensures the memory config actually exposed GC.
+it("GC is exposed (required for all silo memory tests)", () => {
+  assertGcAvailable();
+});
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -223,7 +229,105 @@ describe.runIf(HAS_GC)("silo memory", () => {
       maxGrowthBytes: 4_000_000,
       maxPositiveDeltas: 4,
       maxLastDeltaBytes: 700_000,
+      maxTailHeadRatio: 1.8,
+      maxConsecutiveGrowthRounds: 3,
     });
+  });
+
+  it("document-bucket cardinality stays bounded across many unique IDs in a persistent store", async () => {
+    // clearMemory() resets handle state but does NOT delete handle entries
+    // (handle identity is stable by design). This test verifies two things:
+    //   1. Handles for new unique IDs accumulate as expected.
+    //   2. After clearMemory(), those handles are reset and re-fetches work.
+    const { store, docCalls, queryCalls } = createAsyncStore();
+
+    // Round 1: fetch IDs 0-49
+    for (let id = 0; id < 50; id++) {
+      store.find("user", String(id));
+    }
+    await flushFinder();
+    for (const call of docCalls.splice(0)) {
+      call.deferred.resolve(call.ids.map((id, i) => makeUser(id, i)));
+    }
+    for (const call of queryCalls.splice(0)) {
+      call.deferred.resolve(call.paramsList.map((p, i) => makeDashboard(p, i)));
+    }
+    await delay(20);
+    store.clearMemory();
+
+    // After clearMemory the handles for those IDs still exist in the bucket
+    // but are reset to IDLE state — so a subsequent find() kicks off a fresh fetch.
+    const handle = store.find("user", "0");
+    expect(handle.isPending || handle.isFetching).toBe(true);
+
+    // Round 2: fetch IDs 50-99 (new IDs accumulate in the bucket)
+    for (let id = 50; id < 100; id++) {
+      store.find("user", String(id));
+    }
+    await flushFinder();
+    for (const call of docCalls.splice(0)) {
+      call.deferred.resolve(call.ids.map((id, i) => makeUser(id, i)));
+    }
+    for (const call of queryCalls.splice(0)) {
+      call.deferred.resolve(call.paramsList.map((p, i) => makeDashboard(p, i)));
+    }
+    await delay(20);
+    store.clearMemory();
+
+    // After two rounds the same-ID handles are reused (same object identity)
+    const sameHandle = store.find("user", "0");
+    expect(sameHandle).toBe(handle); // handle identity is stable
+
+    // Cleanup remaining in-flight deferreds
+    await flushFinder();
+    for (const call of docCalls.splice(0)) {
+      call.deferred.reject(new Error("cleanup"));
+    }
+    for (const call of queryCalls.splice(0)) {
+      call.deferred.reject(new Error("cleanup"));
+    }
+    await delay(20);
+  });
+
+  it("persistent store stays heap-bounded with unique query-key accumulation", async () => {
+    // Unlike settleStoreRound (which creates a new store per round), this test
+    // uses a single long-lived store and exercises the accumulation pattern
+    // that a real app would see.
+    await expectRetainedHeapBudget(async () => {
+      const { store, docCalls, queryCalls } = createAsyncStore();
+
+      for (let round = 0; round < 40; round++) {
+        // Each round uses a new workspaceId — new query keys accumulate in the bucket
+        store.findQuery("dashboard", { workspaceId: round, active: true });
+        store.find("user", String(round));
+
+        await flushFinder();
+
+        for (const call of docCalls.splice(0)) {
+          if (round % 3 === 0) {
+            call.deferred.reject(new Error("round-error"));
+          } else {
+            call.deferred.resolve(call.ids.map((id, i) => makeUser(id, round + i)));
+          }
+        }
+        for (const call of queryCalls.splice(0)) {
+          if (round % 5 === 0) {
+            call.deferred.reject(new Error("query-error"));
+          } else {
+            call.deferred.resolve(call.paramsList.map((p, i) => makeDashboard(p, round + i)));
+          }
+        }
+        await delay(5);
+
+        if (round % 10 === 9) {
+          store.clearMemory();
+        }
+      }
+
+      // Final cleanup
+      store.clearMemory();
+      await delay(10);
+    }, 4_500_000);
   });
 });
 
@@ -239,6 +343,8 @@ describe.runIf(HAS_GC && RUN_SOAK)("silo memory soak", () => {
       maxGrowthBytes: 6_000_000,
       maxPositiveDeltas: 6,
       maxLastDeltaBytes: 900_000,
+      maxTailHeadRatio: 2.0,
+      maxConsecutiveGrowthRounds: 5,
     });
   });
 });

@@ -4,11 +4,20 @@ import { createReactive, effect } from "../../src";
 import {
   HAS_GC,
   RUN_SOAK,
+  assertGcAvailable,
   collectHeapSamples,
   expectCollectible,
   expectRetainedHeapBudget,
   expectTrendToFlatten,
 } from "./helpers";
+
+// Always-run sentinel: ensures the memory config actually exposed GC.
+// When running under `pnpm test:memory:node` this must pass; if it fails,
+// all the `describe.runIf(HAS_GC)` suites below would silently skip and
+// give false confidence.
+it("GC is exposed (required for all kernel memory tests)", () => {
+  assertGcAvailable();
+});
 
 interface KernelLeaf {
   id: number;
@@ -46,6 +55,73 @@ function runKernelCycle(seed: number): void {
   stop();
 }
 
+/**
+ * Exercises array mutation methods with varying array shapes to stress
+ * the batch/version-signal path used by array mutators.
+ */
+function runArrayShapeCycle(seed: number): void {
+  // Varies array length on each cycle (seed % 12 || 4 gives values 1-11 with
+  // 4 as the fallback when seed is a multiple of 12) to exercise different
+  // batch/version-signal code paths across both short and longer arrays.
+  const state = createReactive({
+    items: Array.from({ length: seed % 12 || 4 }, (_, index) => ({
+      id: index,
+      value: seed + index,
+    })),
+  });
+
+  let sum = 0;
+  const stop = effect(() => {
+    sum = state.items.reduce((acc, item) => acc + item.value, 0);
+  });
+
+  state.items.push({ id: 999, value: seed });
+  state.items.pop();
+  state.items.splice(0, 1, { id: -1, value: seed * 2 });
+  state.items.sort((a, b) => a.value - b.value);
+  state.items.reverse();
+  void sum;
+  stop();
+}
+
+/**
+ * Stresses nested-proxy read paths: many deeply nested objects accessed
+ * inside an effect that is then discarded.
+ */
+function runNestedReadCycle(seed: number): void {
+  type Nested = { value: number; child?: Nested };
+
+  function makeNested(depth: number, base: number): Nested {
+    return depth === 0
+      ? { value: base }
+      : { value: base + depth, child: makeNested(depth - 1, base) };
+  }
+
+  const state = createReactive({
+    root: makeNested(6, seed),
+    list: Array.from({ length: 10 }, (_, index) => makeNested(3, seed + index)),
+  });
+
+  const stop = effect(() => {
+    let n: Nested | undefined = state.root;
+    while (n) {
+      void n.value;
+      n = n.child;
+    }
+    for (const item of state.list) {
+      void item.value;
+      void item.child?.value;
+    }
+  });
+
+  // Mutate some nodes to exercise write paths too
+  state.root.value = seed + 100;
+  if (state.root.child) {
+    state.root.child.value = seed + 200;
+  }
+  stop();
+}
+
 describe.runIf(HAS_GC)("kernel memory", () => {
   it("collects reactive roots, nested proxies, and subscriptions after teardown", async () => {
     await expectCollectible(() => {
@@ -70,10 +146,88 @@ describe.runIf(HAS_GC)("kernel memory", () => {
     });
   });
 
+  it("collects proxy when multiple effects subscribe and all are stopped", async () => {
+    await expectCollectible(() => {
+      const raw = { value: 1, label: "a", items: [1, 2, 3] };
+      const state = createReactive(raw);
+
+      const stops = [
+        effect(() => {
+          void state.value;
+        }),
+        effect(() => {
+          void state.label;
+        }),
+        effect(() => {
+          void state.items.length;
+        }),
+        effect(() => {
+          void state.value;
+          void state.label;
+        }),
+      ];
+
+      state.value = 2;
+      state.label = "b";
+      state.items.push(4);
+
+      return {
+        targets: [raw, state as object],
+        teardown: () => {
+          for (const stop of stops) stop();
+        },
+      };
+    });
+  });
+
+  it("collects nested proxy graph after teardown (deep nesting)", async () => {
+    await expectCollectible(() => {
+      type Node = { id: number; value: number; child?: Node };
+      function makeNode(depth: number): Node {
+        return depth === 0
+          ? { id: depth, value: depth }
+          : { id: depth, value: depth, child: makeNode(depth - 1) };
+      }
+      const raw = makeNode(8);
+      const state = createReactive(raw);
+
+      const stop = effect(() => {
+        let node: Node | undefined = state;
+        while (node) {
+          void node.value;
+          node = node.child;
+        }
+      });
+
+      state.value = 99;
+
+      return {
+        targets: [raw, state as object],
+        teardown: () => stop(),
+      };
+    });
+  });
+
   it("keeps retained heap bounded across repeated proxy and effect churn", async () => {
     await expectRetainedHeapBudget(() => {
       for (let index = 0; index < 180; index++) {
         runKernelCycle(index);
+      }
+    }, 2_500_000);
+  });
+
+  it("keeps retained heap bounded across repeated array-shape churn", async () => {
+    await expectRetainedHeapBudget(() => {
+      for (let index = 0; index < 200; index++) {
+        runArrayShapeCycle(index);
+      }
+    }, 2_500_000);
+  });
+
+  it("keeps retained heap bounded across repeated nested-proxy read churn", async () => {
+    await expectRetainedHeapBudget(() => {
+      for (let index = 0; index < 160; index++) {
+        runNestedReadCycle(index);
       }
     }, 2_500_000);
   });
@@ -89,6 +243,24 @@ describe.runIf(HAS_GC)("kernel memory", () => {
       maxGrowthBytes: 2_500_000,
       maxPositiveDeltas: 4,
       maxLastDeltaBytes: 450_000,
+      maxTailHeadRatio: 1.8,
+      maxConsecutiveGrowthRounds: 3,
+    });
+  });
+
+  it("flattens retained heap across repeated array-shape churn rounds", async () => {
+    const samples = await collectHeapSamples(6, (round) => {
+      for (let index = 0; index < 80; index++) {
+        runArrayShapeCycle(round * 1_000 + index);
+      }
+    });
+
+    expectTrendToFlatten(samples, {
+      maxGrowthBytes: 2_500_000,
+      maxPositiveDeltas: 4,
+      maxLastDeltaBytes: 450_000,
+      maxTailHeadRatio: 1.8,
+      maxConsecutiveGrowthRounds: 3,
     });
   });
 });
@@ -105,6 +277,8 @@ describe.runIf(HAS_GC && RUN_SOAK)("kernel memory soak", () => {
       maxGrowthBytes: 4_000_000,
       maxPositiveDeltas: 6,
       maxLastDeltaBytes: 700_000,
+      maxTailHeadRatio: 2.0,
+      maxConsecutiveGrowthRounds: 5,
     });
   });
 });

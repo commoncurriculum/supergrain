@@ -1,5 +1,6 @@
 import { tracked } from "@supergrain/kernel/react";
 import { cleanup, render, act } from "@testing-library/react";
+import React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { cdp } from "vitest/browser";
 
@@ -50,13 +51,28 @@ function expectBrowserTrend(
   options: {
     maxGrowthBytes: number;
     maxLastDeltaBytes: number;
+    maxTailHeadRatio?: number;
   },
 ): void {
   expect(samples.length).toBeGreaterThanOrEqual(2);
   const totalGrowth = samples.at(-1)! - samples[0]!;
   const deltas = samples.slice(1).map((sample, index) => sample - samples[index]!);
-  expect(totalGrowth).toBeLessThanOrEqual(options.maxGrowthBytes);
-  expect(deltas.at(-1) ?? 0).toBeLessThanOrEqual(options.maxLastDeltaBytes);
+  expect(totalGrowth, "total heap growth exceeded budget").toBeLessThanOrEqual(
+    options.maxGrowthBytes,
+  );
+  expect(deltas.at(-1) ?? 0, "last-round heap delta exceeded budget").toBeLessThanOrEqual(
+    options.maxLastDeltaBytes,
+  );
+  if (options.maxTailHeadRatio !== undefined && samples.length >= 4) {
+    const headAvg = (samples[0]! + samples[1]!) / 2;
+    const tailAvg = (samples.at(-1)! + samples.at(-2)!) / 2;
+    if (headAvg > 0) {
+      expect(
+        tailAvg / headAvg,
+        "tail-to-head heap ratio indicates sustained monotonic growth",
+      ).toBeLessThanOrEqual(options.maxTailHeadRatio);
+    }
+  }
 }
 
 interface User {
@@ -197,6 +213,113 @@ describe("silo react memory", () => {
     expectBrowserTrend(samples, {
       maxGrowthBytes: 4_000_000,
       maxLastDeltaBytes: 900_000,
+    });
+  });
+
+  it("keeps Chromium heap flat across StrictMode Provider churn", async () => {
+    const samples = await collectBrowserSamples(5, async (round) => {
+      for (let index = 0; index < 6; index++) {
+        const workspaceId = round * 200 + index + 1;
+        const seed = round * 200 + index;
+        const view = render(
+          <React.StrictMode>
+            <Provider
+              config={makeStoreConfig()}
+              initial={{
+                model: { user: { "1": makeUser("1", `StrictUser${seed}`) } },
+                query: {
+                  dashboard: [
+                    {
+                      params: { workspaceId, filters: { active: true } },
+                      result: makeDashboard(seed),
+                    },
+                  ],
+                },
+              }}
+            >
+              <SiloHarness workspaceId={workspaceId} seed={seed} />
+            </Provider>
+          </React.StrictMode>,
+        );
+
+        await act(async () => {
+          view.getByTestId("silo-memory").click();
+        });
+
+        view.unmount();
+      }
+      cleanup();
+    });
+
+    expectBrowserTrend(samples, {
+      maxGrowthBytes: 4_500_000,
+      maxLastDeltaBytes: 1_000_000,
+    });
+  });
+
+  // Intentionally creates a fresh config for each rerender to exercise
+  // Provider teardown/remount when config object identity changes.
+  it("keeps Chromium heap flat across changing workspaceId props", async () => {
+    // Rerenders with a different workspaceId to exercise clearMemory + new
+    // query subscription within the same Provider lifetime.
+    const samples = await collectBrowserSamples(5, async (round) => {
+      for (let index = 0; index < 6; index++) {
+        const workspaceId = round * 300 + index + 1;
+        const seed = round * 300 + index;
+        const view = render(
+          <Provider
+            config={makeStoreConfig()}
+            initial={{
+              model: { user: { "1": makeUser("1", `PropUser${seed}`) } },
+              query: {
+                dashboard: [
+                  {
+                    params: { workspaceId, filters: { active: true } },
+                    result: makeDashboard(seed),
+                  },
+                  {
+                    params: { workspaceId: workspaceId + 1, filters: { active: true } },
+                    result: makeDashboard(seed + 1),
+                  },
+                ],
+              },
+            }}
+          >
+            <SiloHarness workspaceId={workspaceId} seed={seed} />
+          </Provider>,
+        );
+
+        await act(async () => {
+          view.rerender(
+            <Provider
+              config={makeStoreConfig()}
+              initial={{
+                model: { user: { "1": makeUser("1", `PropUser${seed + 1}`) } },
+                query: {
+                  dashboard: [
+                    {
+                      params: { workspaceId: workspaceId + 1, filters: { active: true } },
+                      result: makeDashboard(seed + 1),
+                    },
+                  ],
+                },
+              }}
+            >
+              <SiloHarness workspaceId={workspaceId + 1} seed={seed + 1} />
+            </Provider>,
+          );
+          view.getByTestId("silo-memory").click();
+        });
+
+        view.unmount();
+      }
+      cleanup();
+    });
+
+    expectBrowserTrend(samples, {
+      maxGrowthBytes: 4_500_000,
+      maxLastDeltaBytes: 1_000_000,
+      maxTailHeadRatio: 1.8,
     });
   });
 });
