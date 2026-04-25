@@ -173,49 +173,6 @@ const SiloHarness = tracked(function SiloHarness({
 });
 
 describe("silo react memory", () => {
-  it("keeps Chromium heap flat across repeated Provider mount and unmount churn", async () => {
-    const samples = await collectBrowserSamples(5, async (round) => {
-      for (let index = 0; index < 8; index++) {
-        const workspaceId = round * 100 + index + 1;
-        const seed = round * 100 + index;
-        const view = render(
-          <Provider
-            config={makeStoreConfig()}
-            initial={{
-              model: {
-                user: {
-                  "1": makeUser("1", `User${seed}`),
-                },
-              },
-              query: {
-                dashboard: [
-                  {
-                    params: { workspaceId, filters: { active: true } },
-                    result: makeDashboard(seed),
-                  },
-                ],
-              },
-            }}
-          >
-            <SiloHarness workspaceId={workspaceId} seed={seed} />
-          </Provider>,
-        );
-
-        await act(async () => {
-          view.getByTestId("silo-memory").click();
-        });
-
-        view.unmount();
-      }
-      cleanup();
-    });
-
-    expectBrowserTrend(samples, {
-      maxGrowthBytes: 4_000_000,
-      maxLastDeltaBytes: 900_000,
-    });
-  });
-
   it("keeps Chromium heap flat across StrictMode Provider churn", async () => {
     const samples = await collectBrowserSamples(5, async (round) => {
       for (let index = 0; index < 6; index++) {

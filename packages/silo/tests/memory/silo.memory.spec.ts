@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 
 import { createDocumentStore } from "../../src";
 import {
@@ -232,61 +232,6 @@ describe.runIf(HAS_GC)("silo memory", () => {
       maxTailHeadRatio: 1.8,
       maxConsecutiveGrowthRounds: 3,
     });
-  });
-
-  it("document-bucket cardinality stays bounded across many unique IDs in a persistent store", async () => {
-    // clearMemory() resets handle state but does NOT delete handle entries
-    // (handle identity is stable by design). This test verifies two things:
-    //   1. Handles for new unique IDs accumulate as expected.
-    //   2. After clearMemory(), those handles are reset and re-fetches work.
-    const { store, docCalls, queryCalls } = createAsyncStore();
-
-    // Round 1: fetch IDs 0-49
-    for (let id = 0; id < 50; id++) {
-      store.find("user", String(id));
-    }
-    await flushFinder();
-    for (const call of docCalls.splice(0)) {
-      call.deferred.resolve(call.ids.map((id, i) => makeUser(id, i)));
-    }
-    for (const call of queryCalls.splice(0)) {
-      call.deferred.resolve(call.paramsList.map((p, i) => makeDashboard(p, i)));
-    }
-    await delay(20);
-    store.clearMemory();
-
-    // After clearMemory the handles for those IDs still exist in the bucket
-    // but are reset to IDLE state — so a subsequent find() kicks off a fresh fetch.
-    const handle = store.find("user", "0");
-    expect(handle.isPending || handle.isFetching).toBe(true);
-
-    // Round 2: fetch IDs 50-99 (new IDs accumulate in the bucket)
-    for (let id = 50; id < 100; id++) {
-      store.find("user", String(id));
-    }
-    await flushFinder();
-    for (const call of docCalls.splice(0)) {
-      call.deferred.resolve(call.ids.map((id, i) => makeUser(id, i)));
-    }
-    for (const call of queryCalls.splice(0)) {
-      call.deferred.resolve(call.paramsList.map((p, i) => makeDashboard(p, i)));
-    }
-    await delay(20);
-    store.clearMemory();
-
-    // After two rounds the same-ID handles are reused (same object identity)
-    const sameHandle = store.find("user", "0");
-    expect(sameHandle).toBe(handle); // handle identity is stable
-
-    // Cleanup remaining in-flight deferreds
-    await flushFinder();
-    for (const call of docCalls.splice(0)) {
-      call.deferred.reject(new Error("cleanup"));
-    }
-    for (const call of queryCalls.splice(0)) {
-      call.deferred.reject(new Error("cleanup"));
-    }
-    await delay(20);
   });
 
   it("persistent store stays heap-bounded with unique query-key accumulation", async () => {

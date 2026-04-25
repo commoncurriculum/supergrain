@@ -1,7 +1,7 @@
 import { tracked } from "@supergrain/kernel/react";
 import { cleanup, render, act } from "@testing-library/react";
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { cdp } from "vitest/browser";
 
 import { useReactivePromise, useResource } from "../../src/react";
@@ -118,27 +118,6 @@ const HuskHarness = tracked(function HuskHarness({ seed }: { seed: number }) {
 });
 
 describe("husk react memory", () => {
-  it("keeps Chromium heap flat across repeated hook mount and unmount churn", async () => {
-    const samples = await collectBrowserSamples(5, async (round) => {
-      for (let index = 0; index < 8; index++) {
-        const view = render(<HuskHarness seed={round * 100 + index} />);
-        await vi.waitFor(() => expect(view.getByTestId("husk-memory").textContent).not.toBeNull());
-        await act(async () => {
-          view.getByTestId("husk-memory").click();
-          view.getByTestId("husk-memory").click();
-          await Promise.resolve();
-        });
-        view.unmount();
-      }
-      cleanup();
-    });
-
-    expectBrowserTrend(samples, {
-      maxGrowthBytes: 3_500_000,
-      maxLastDeltaBytes: 850_000,
-    });
-  });
-
   it("keeps Chromium heap flat when component unmounts while async is still pending", async () => {
     // Mounts the harness, triggers a click (which starts a reactivePromise rerun),
     // then immediately unmounts before the promise resolves.

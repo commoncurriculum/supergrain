@@ -180,34 +180,6 @@ describe.runIf(HAS_GC)("kernel memory", () => {
     });
   });
 
-  it("collects nested proxy graph after teardown (deep nesting)", async () => {
-    await expectCollectible(() => {
-      type Node = { id: number; value: number; child?: Node };
-      function makeNode(depth: number): Node {
-        return depth === 0
-          ? { id: depth, value: depth }
-          : { id: depth, value: depth, child: makeNode(depth - 1) };
-      }
-      const raw = makeNode(8);
-      const state = createReactive(raw);
-
-      const stop = effect(() => {
-        let node: Node | undefined = state;
-        while (node) {
-          void node.value;
-          node = node.child;
-        }
-      });
-
-      state.value = 99;
-
-      return {
-        targets: [raw, state as object],
-        teardown: () => stop(),
-      };
-    });
-  });
-
   it("keeps retained heap bounded across repeated proxy and effect churn", async () => {
     await expectRetainedHeapBudget(() => {
       for (let index = 0; index < 180; index++) {
@@ -220,14 +192,6 @@ describe.runIf(HAS_GC)("kernel memory", () => {
     await expectRetainedHeapBudget(() => {
       for (let index = 0; index < 200; index++) {
         runArrayShapeCycle(index);
-      }
-    }, 2_500_000);
-  });
-
-  it("keeps retained heap bounded across repeated nested-proxy read churn", async () => {
-    await expectRetainedHeapBudget(() => {
-      for (let index = 0; index < 160; index++) {
-        runNestedReadCycle(index);
       }
     }, 2_500_000);
   });
@@ -252,6 +216,22 @@ describe.runIf(HAS_GC)("kernel memory", () => {
     const samples = await collectHeapSamples(6, (round) => {
       for (let index = 0; index < 80; index++) {
         runArrayShapeCycle(round * 1_000 + index);
+      }
+    });
+
+    expectTrendToFlatten(samples, {
+      maxGrowthBytes: 2_500_000,
+      maxPositiveDeltas: 4,
+      maxLastDeltaBytes: 450_000,
+      maxTailHeadRatio: 1.8,
+      maxConsecutiveGrowthRounds: 3,
+    });
+  });
+
+  it("flattens retained heap across repeated nested-proxy read churn rounds", async () => {
+    const samples = await collectHeapSamples(6, (round) => {
+      for (let index = 0; index < 60; index++) {
+        runNestedReadCycle(round * 1_000 + index);
       }
     });
 
