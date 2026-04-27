@@ -10,7 +10,9 @@ function normalizeInitialState(initialState: unknown): object {
 
   const unwrapped = unwrap(initialState);
   if (typeof unwrapped !== "object") {
-    throw new TypeError("createReactive() requires the root state to be a plain object or array.");
+    throw new TypeError(
+      "createReactive() requires the root state to be a plain object, array, Map, or Set.",
+    );
   }
 
   return unwrapped as object;

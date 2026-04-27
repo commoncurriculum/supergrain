@@ -111,6 +111,12 @@ describe("MongoDB Style Operators", () => {
     expect(state.tags).toEqual(["a", "b", "c", "d"]);
   });
 
+  it("$addToSet: should ignore duplicates inside $each", () => {
+    const state = createReactive({ tags: ["a"] });
+    update(state, { $addToSet: { tags: { $each: ["b", "b", "a", "c", "c"] } } });
+    expect(state.tags).toEqual(["a", "b", "c"]);
+  });
+
   it("$rename: should rename fields", () => {
     const state = createReactive<any>({
       user: { name: "John", address: { street: "123 Main St" } },

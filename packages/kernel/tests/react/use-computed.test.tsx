@@ -1,6 +1,7 @@
 import { createReactive } from "@supergrain/kernel";
 import { tracked, useComputed } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
+import fc from "fast-check";
 import { describe, it, expect, afterEach } from "vitest";
 
 afterEach(() => cleanup());
@@ -113,5 +114,67 @@ describe("useComputed()", () => {
     // Re-render with different id — should create a new computed
     rerender(<Row id={2} />);
     expect(renders).toBe(2);
+  });
+
+  it("only re-renders rows whose derived selected state changes across arbitrary selections", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.constantFrom<number | null>(null, 1, 2, 3), { maxLength: 30 }),
+        async (selections) => {
+          const store = createReactive<{ selected: number | null }>({ selected: null });
+          const renderCounts = new Map<number, number>();
+
+          const Row = tracked(({ id }: { id: number }) => {
+            renderCounts.set(id, (renderCounts.get(id) ?? 0) + 1);
+            const isSelected = useComputed(() => store.selected === id);
+            return <div data-testid={`row-${id}`}>{isSelected ? "yes" : "no"}</div>;
+          });
+
+          const { getByTestId, unmount } = render(
+            <>
+              <Row id={1} />
+              <Row id={2} />
+              <Row id={3} />
+            </>,
+          );
+
+          let previousSelection: number | null = null;
+          const expectedRenderCounts = new Map([
+            [1, 1],
+            [2, 1],
+            [3, 1],
+          ]);
+
+          try {
+            for (const selection of selections) {
+              await act(async () => {
+                store.selected = selection;
+              });
+
+              for (const id of [1, 2, 3]) {
+                const previousValue = previousSelection === id;
+                const nextValue = selection === id;
+                if (previousValue !== nextValue) {
+                  expectedRenderCounts.set(id, expectedRenderCounts.get(id)! + 1);
+                }
+              }
+
+              previousSelection = selection;
+
+              expect(getByTestId("row-1").textContent).toBe(selection === 1 ? "yes" : "no");
+              expect(getByTestId("row-2").textContent).toBe(selection === 2 ? "yes" : "no");
+              expect(getByTestId("row-3").textContent).toBe(selection === 3 ? "yes" : "no");
+            }
+
+            expect(renderCounts.get(1)).toBe(expectedRenderCounts.get(1));
+            expect(renderCounts.get(2)).toBe(expectedRenderCounts.get(2));
+            expect(renderCounts.get(3)).toBe(expectedRenderCounts.get(3));
+          } finally {
+            unmount();
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
   });
 });

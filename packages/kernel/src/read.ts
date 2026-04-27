@@ -1,6 +1,17 @@
 import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 
-import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes } from "./core";
+import { createReactiveMap, createReactiveSet } from "./collections";
+import {
+  $NODE,
+  $OWN_KEYS,
+  $PROXY,
+  $RAW,
+  $TRACK,
+  $VERSION,
+  getNode,
+  getNodes,
+  isWrappable,
+} from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
 import { writeHandler } from "./write";
 
@@ -37,11 +48,6 @@ const ARRAY_MUTATORS = new Set([
 ]);
 
 const proxyCache = new WeakMap<object, object>();
-
-const isWrappable = (value: unknown): value is object =>
-  value !== null &&
-  typeof value === "object" &&
-  (value.constructor === Object || value.constructor === Array);
 
 function wrap<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
@@ -173,6 +179,21 @@ const handler: ProxyHandler<object> = {
 };
 
 export function createReactiveProxy<T extends object>(target: T): T {
+  // Idempotency: if `target` is itself a reactive proxy (object, Map, or Set),
+  // it responds to $RAW with its raw target — return the proxy unchanged
+  // instead of wrapping again. Without this, passing a reactive Map back in
+  // would build a proxy-of-a-proxy because the Map check below also matches.
+  if ((target as any)[$RAW]) {
+    return target;
+  }
+
+  if (target instanceof Map) {
+    return createReactiveMap(target as Map<unknown, unknown>) as unknown as T;
+  }
+  if (target instanceof Set) {
+    return createReactiveSet(target as Set<unknown>) as unknown as T;
+  }
+
   if ((target as any)[$PROXY]) {
     return (target as any)[$PROXY];
   }
