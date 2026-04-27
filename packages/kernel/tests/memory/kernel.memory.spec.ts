@@ -9,6 +9,7 @@ import {
 import { describe, it } from "vitest";
 
 import { createReactive, effect } from "../../src";
+import { makeLeaves, runArrayShapeCycle, runKernelCycle, runNestedReadCycle } from "./fixtures";
 
 // Always-run sentinel: ensures the memory config actually exposed GC.
 // When running under `pnpm test:memory:node` this must pass; if it fails,
@@ -17,109 +18,6 @@ import { createReactive, effect } from "../../src";
 it("GC is exposed (required for all kernel memory tests)", () => {
   assertGcAvailable();
 });
-
-interface KernelLeaf {
-  id: number;
-  label: string;
-  values: Array<number>;
-}
-
-function makeLeaves(seed: number, width = 24): Array<KernelLeaf> {
-  return Array.from({ length: width }, (_, index) => ({
-    id: seed * 1_000 + index,
-    label: `leaf-${seed}-${index}`,
-    values: Array.from({ length: 16 }, (__, offset) => seed + index + offset),
-  }));
-}
-
-function runKernelCycle(seed: number): void {
-  const state = createReactive({
-    cursor: 0,
-    leaves: makeLeaves(seed),
-    nested: { depth: seed, flags: Array.from({ length: 8 }, (_, index) => index % 2 === 0) },
-  });
-
-  const stop = effect(() => {
-    const current = state.leaves[state.cursor]!;
-    void current.label;
-    void current.values.reduce((sum, value) => sum + value, 0);
-    void state.nested.depth;
-    void state.nested.flags.filter(Boolean).length;
-  });
-
-  state.cursor = state.leaves.length - 1;
-  state.leaves[0]!.label = `updated-${seed}`;
-  state.nested.depth += 1;
-  state.nested.flags = [...state.nested.flags].reverse();
-  stop();
-}
-
-/**
- * Exercises array mutation methods with varying array shapes to stress
- * the batch/version-signal path used by array mutators.
- */
-function runArrayShapeCycle(seed: number): void {
-  // Varies array length on each cycle (seed % 12 || 4 gives values 1-11 with
-  // 4 as the fallback when seed is a multiple of 12) to exercise different
-  // batch/version-signal code paths across both short and longer arrays.
-  const state = createReactive({
-    items: Array.from({ length: seed % 12 || 4 }, (_, index) => ({
-      id: index,
-      value: seed + index,
-    })),
-  });
-
-  let sum = 0;
-  const stop = effect(() => {
-    sum = state.items.reduce((acc, item) => acc + item.value, 0);
-  });
-
-  state.items.push({ id: 999, value: seed });
-  state.items.pop();
-  state.items.splice(0, 1, { id: -1, value: seed * 2 });
-  state.items.sort((a, b) => a.value - b.value);
-  state.items.reverse();
-  void sum;
-  stop();
-}
-
-/**
- * Stresses nested-proxy read paths: many deeply nested objects accessed
- * inside an effect that is then discarded.
- */
-function runNestedReadCycle(seed: number): void {
-  type Nested = { value: number; child?: Nested };
-
-  function makeNested(depth: number, base: number): Nested {
-    return depth === 0
-      ? { value: base }
-      : { value: base + depth, child: makeNested(depth - 1, base) };
-  }
-
-  const state = createReactive({
-    root: makeNested(6, seed),
-    list: Array.from({ length: 10 }, (_, index) => makeNested(3, seed + index)),
-  });
-
-  const stop = effect(() => {
-    let n: Nested | undefined = state.root;
-    while (n) {
-      void n.value;
-      n = n.child;
-    }
-    for (const item of state.list) {
-      void item.value;
-      void item.child?.value;
-    }
-  });
-
-  // Mutate some nodes to exercise write paths too
-  state.root.value = seed + 100;
-  if (state.root.child) {
-    state.root.child.value = seed + 200;
-  }
-  stop();
-}
 
 describe.runIf(HAS_GC)("kernel memory", () => {
   it("collects reactive roots, nested proxies, and subscriptions after teardown", async () => {
@@ -195,6 +93,44 @@ describe.runIf(HAS_GC)("kernel memory", () => {
     }, 2_500_000);
   });
 
+  // High-N retention test: validates that the per-round heap drift the trend
+  // tests showed (~50KB/round positive deltas) actually amortizes — the same
+  // cycle run 8x more times must still fit under a 2x budget, not 8x. If a
+  // real leak existed this would blow the budget; if it's V8 noise, retention
+  // amortizes with cycle count and stays bounded.
+  it("retained heap stays sublinear with cycle count (1500 cycles)", async () => {
+    await expectRetainedHeapBudget(() => {
+      for (let index = 0; index < 1500; index++) {
+        runKernelCycle(index);
+      }
+    }, 5_000_000);
+  });
+
+  // Long-lived state: a real app holds one reactive store and continuously
+  // attaches/detaches effects against it. Validates that the per-effect
+  // disposal path doesn't accumulate references on the long-lived state.
+  it("long-lived state stays bounded under continuous effect churn", async () => {
+    await expectRetainedHeapBudget(() => {
+      const state = createReactive({
+        cursor: 0,
+        items: Array.from({ length: 32 }, (_, index) => ({ id: index, value: index })),
+      });
+      const stops: Array<() => void> = [];
+      for (let index = 0; index < 800; index++) {
+        const stop = effect(() => {
+          void state.items[state.cursor % state.items.length]!.value;
+        });
+        stops.push(stop);
+        state.cursor = (state.cursor + 1) % state.items.length;
+        if (index % 4 === 0) {
+          // Detach the oldest few effects, simulating real subscriber churn.
+          stops.splice(0, 4).forEach((dispose) => dispose());
+        }
+      }
+      for (const stop of stops) stop();
+    }, 3_500_000);
+  });
+
   it("flattens retained heap across repeated proxy churn rounds", async () => {
     const samples = await collectHeapSamples(8, (round) => {
       for (let index = 0; index < 80; index++) {
@@ -205,7 +141,8 @@ describe.runIf(HAS_GC)("kernel memory", () => {
     // Absolute budget + tail/head ratio is the robust pair. Per-round delta
     // counts (maxPositiveDeltas, maxConsecutiveGrowthRounds) are too sensitive
     // to V8's small monotonic noise across rounds — they fire on healthy cycles
-    // when the heap drifts upward by a few KB before plateauing.
+    // when the heap drifts upward by a few KB before plateauing. The bounded
+    // total + sublinear scaling tests above are what catch real leaks.
     expectTrendToFlatten(samples, {
       maxGrowthBytes: 2_500_000,
       maxLastDeltaBytes: 450_000,
@@ -240,23 +177,6 @@ describe.runIf(HAS_GC)("kernel memory", () => {
       maxLastDeltaBytes: 450_000,
       maxTailHeadRatio: 1.8,
       maxConsecutiveGrowthRounds: 4,
-    });
-  });
-});
-
-describe.runIf(HAS_GC)("kernel memory soak", () => {
-  it("stays flat during extended array and subscription churn", async () => {
-    const samples = await collectHeapSamples(10, (round) => {
-      for (let index = 0; index < 160; index++) {
-        runKernelCycle(round * 10_000 + index);
-      }
-    });
-
-    expectTrendToFlatten(samples, {
-      maxGrowthBytes: 4_000_000,
-      maxLastDeltaBytes: 700_000,
-      maxTailHeadRatio: 2.0,
-      maxConsecutiveGrowthRounds: 6,
     });
   });
 });

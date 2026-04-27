@@ -21,6 +21,8 @@ export default defineConfig({
       "packages/husk/tests/memory/**/*.memory.spec.ts",
       "packages/silo/tests/memory/**/*.memory.spec.ts",
     ],
+    // Soak tests live in *.memory.soak.spec.ts and have their own config.
+    exclude: ["**/*.memory.soak.spec.ts"],
     environment: "node",
     fileParallelism: false,
     maxWorkers: 1,
