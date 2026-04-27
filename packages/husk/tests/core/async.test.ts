@@ -230,10 +230,10 @@ describe("reactiveTask", () => {
   });
 
   it("handles a synchronous throw inside asyncFn by converting to a rejection", async () => {
-    const task = reactiveTask((_n: number) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const task = reactiveTask((_n: number): Promise<number> => {
       // Not async — throws synchronously before returning a Promise
       throw new Error("sync-boom");
-      return Promise.resolve(0); // unreachable, satisfies return type
     });
 
     await expect(task.run(1)).rejects.toThrow("sync-boom");

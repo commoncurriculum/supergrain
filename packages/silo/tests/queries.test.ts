@@ -378,7 +378,7 @@ describe("Query finder errors", () => {
 
     const handle = store.findQuery("search", { q: "hello" });
     await flushCoalescer();
-    await handle.promise.catch(() => {});
+    await handle.promise!.catch(() => {});
 
     expect(handle.status).toBe("ERROR");
     expect(handle.error?.message).toMatch(/query result not found after fetch/i);
@@ -400,7 +400,7 @@ describe("Query finder errors", () => {
 
     const handle = store.findQuery("boom", { n: 1 });
     await flushCoalescer();
-    await handle.promise.catch(() => {});
+    await handle.promise!.catch(() => {});
 
     expect(handle.status).toBe("ERROR");
     expect(handle.error?.message).toBe("processor-exploded");
