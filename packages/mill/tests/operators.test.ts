@@ -105,7 +105,7 @@ describe("MongoDB Style Operators", () => {
     expect(state.tags).toEqual(["a", "b", "c"]);
   });
 
-  it("$addToSet: should handle $each behavior", () => {
+  it("$addToSet: should handle $each modifier", () => {
     const state = createGrain({ tags: ["a", "b"] });
     update(state, { $addToSet: { tags: { $each: ["c", "a", "d"] } } });
     expect(state.tags).toEqual(["a", "b", "c", "d"]);
