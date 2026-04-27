@@ -5,12 +5,13 @@ import {
   createReactive,
   effect,
   unwrap,
+  batch,
   enableProfiling,
   disableProfiling,
   resetProfiler,
   getProfile,
 } from "../../src";
-import { $VERSION } from "../../src/internal";
+import { $RAW, $PROXY, $NODE, $VERSION } from "../../src/internal";
 
 describe("Store", () => {
   beforeEach(() => {
@@ -261,6 +262,84 @@ describe("Store", () => {
       update(state, { $set: { a: 3 } });
       const v2 = state[$VERSION];
       expect(v2).not.toBe(v1);
+    });
+
+    it("should treat null and undefined initialState as empty object", () => {
+      const stateFromNull = createReactive(null as any);
+      const stateFromUndefined = createReactive(undefined as any);
+      expect(typeof stateFromNull).toBe("object");
+      expect(typeof stateFromUndefined).toBe("object");
+    });
+
+    it("should return true for internal symbols via the 'in' operator", () => {
+      const state = createReactive({ a: 1 });
+      expect($RAW in state).toBe(true);
+      expect($PROXY in state).toBe(true);
+      expect($NODE in state).toBe(true);
+      expect($VERSION in state).toBe(true);
+    });
+
+    it("should return proxy from cache when $PROXY cannot be defined (sealed object)", () => {
+      const obj = Object.seal({ a: 1 });
+      const proxy1 = createReactive(obj);
+      const proxy2 = createReactive(obj);
+      expect(proxy1).toBe(proxy2);
+    });
+
+    it("should fire the deleteProperty proxy trap for non-array objects", () => {
+      const state = createReactive<any>({ a: 1, b: 2 });
+      let keys: string[] = [];
+      effect(() => {
+        keys = Object.keys(state);
+      });
+      expect(keys.sort()).toEqual(["a", "b"]);
+      delete state.a;
+      expect(keys.sort()).toEqual(["b"]);
+    });
+
+    it("should signal-write on deleteProperty when the property has been read in an effect", () => {
+      const state = createReactive<any>({ a: 1 });
+      let value: number | undefined = 0;
+      effect(() => {
+        value = state.a;
+      });
+      expect(value).toBe(1);
+
+      update(state, { $unset: { a: 1 } });
+      expect(value).toBeUndefined();
+    });
+
+    it("should call bumpOwnKeysSignal early-return for delete on untracked array", () => {
+      const state = createReactive<any>({ items: [1, 2, 3] });
+      // Delete from array without any subscriber — bumpOwnKeysSignal gets
+      // called with no nodes (never been tracked), takes the early-return path.
+      delete state.items[0];
+      expect(state.items[0]).toBeUndefined();
+      expect(state.items.length).toBe(3);
+    });
+  });
+
+  describe("batch()", () => {
+    it("should throw when the callback returns a Promise", () => {
+      expect(() => batch(() => Promise.resolve())).toThrow(/synchronous/i);
+    });
+
+    it("should coalesce multiple writes and fire effect once", () => {
+      const state = createReactive({ a: 1, b: 2 });
+      let callCount = 0;
+      let sum = 0;
+      effect(() => {
+        callCount++;
+        sum = state.a + state.b;
+      });
+      expect(callCount).toBe(1);
+
+      batch(() => {
+        state.a = 10;
+        state.b = 20;
+      });
+      expect(sum).toBe(30);
+      expect(callCount).toBe(2);
     });
   });
 });

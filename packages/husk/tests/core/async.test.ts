@@ -228,4 +228,16 @@ describe("reactiveTask", () => {
     expect(task.error).toBe(null);
     expect(task.isResolved).toBe(true);
   });
+
+  it("handles a synchronous throw inside asyncFn by converting to a rejection", async () => {
+    const task = reactiveTask((_n: number) => {
+      // Not async — throws synchronously before returning a Promise
+      throw new Error("sync-boom");
+      return Promise.resolve(0); // unreachable, satisfies return type
+    });
+
+    await expect(task.run(1)).rejects.toThrow("sync-boom");
+    expect(task.isRejected).toBe(true);
+    expect((task.error as Error).message).toBe("sync-boom");
+  });
 });

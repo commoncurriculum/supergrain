@@ -112,4 +112,17 @@ describe("jsonApiProcessor", () => {
 
     expect(inserts[0]?.type).toBe("post");
   });
+
+  it("defaults to empty array when `data` is absent from the envelope", () => {
+    // Branch: envelope.data ?? [] — the `??` fallback path
+    const { store, inserts } = makeFakeStore();
+    const postWithType = { ...makePost("10"), type: "post" as const };
+
+    // No `data` key at all — only `included`
+    jsonApiProcessor({ included: [postWithType] } as any, store, "user");
+
+    // Only the included doc was inserted (data defaulted to [])
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]?.type).toBe("post");
+  });
 });

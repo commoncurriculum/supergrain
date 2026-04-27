@@ -313,3 +313,28 @@ describe("onClickOutside popover scenario", () => {
     expect(closeB).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("error handling", () => {
+  it("logs and swallows an error thrown by a modifier cleanup function", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const throwingMod = modifier<HTMLDivElement, []>(() => {
+      return () => {
+        throw new Error("cleanup-throw");
+      };
+    });
+
+    function Component() {
+      return <div ref={useModifier(throwingMod)} data-testid="el" />;
+    }
+
+    const { unmount } = render(<Component />);
+    unmount(); // triggers cleanup which throws
+
+    expect(errSpy).toHaveBeenCalledWith(
+      "[supergrain/modifier] cleanup threw:",
+      expect.any(Error),
+    );
+    errSpy.mockRestore();
+  });
+});

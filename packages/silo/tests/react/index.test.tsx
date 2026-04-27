@@ -391,3 +391,63 @@ describe("createDocumentStoreContext isolation", () => {
     expect(screen.getByTestId("tenant-b").textContent).toBe("BobB");
   });
 });
+
+// =============================================================================
+// Provider `initial` prop — seeds documents and queries before first render
+// =============================================================================
+
+describe("Provider initial data seeding", () => {
+  it("seeds model documents into the store before the first render", () => {
+    const user1 = makeUser("seed1");
+    const user2 = makeUser("seed2");
+
+    const UserDisplay = tracked(function UserDisplay() {
+      const h1 = useDocument("user", "seed1");
+      const h2 = useDocument("user", "seed2");
+      return (
+        <div>
+          <span data-testid="u1">{h1.data?.attributes.firstName ?? "—"}</span>
+          <span data-testid="u2">{h2.data?.attributes.firstName ?? "—"}</span>
+        </div>
+      );
+    });
+
+    render(
+      <Provider
+        config={makeStoreConfig()}
+        initial={{ model: { user: { seed1: user1, seed2: user2 } } }}
+      >
+        <UserDisplay />
+      </Provider>,
+    );
+
+    // No network request — data was seeded directly into the store
+    expect(screen.getByTestId("u1").textContent).toBe(`User${user1.id}`);
+    expect(screen.getByTestId("u2").textContent).toBe(`User${user2.id}`);
+  });
+
+  it("seeds query results into the store before the first render", () => {
+    const params: DashboardParams = { workspaceId: 99, filters: { active: true } };
+    const result = makeDashboard(99);
+
+    const QueryDisplay = tracked(function QueryDisplay() {
+      const handle = useQuery("dashboard", params);
+      return (
+        <span data-testid="q">
+          {handle.data?.totalActiveUsers ?? "—"}
+        </span>
+      );
+    });
+
+    render(
+      <Provider
+        config={makeStoreConfig()}
+        initial={{ query: { dashboard: [{ params, result }] } }}
+      >
+        <QueryDisplay />
+      </Provider>,
+    );
+
+    expect(screen.getByTestId("q").textContent).toBe(String(result.totalActiveUsers));
+  });
+});

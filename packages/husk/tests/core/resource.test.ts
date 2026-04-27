@@ -338,6 +338,88 @@ describe("defineResource()", () => {
   });
 });
 
+describe("resource() error handling", () => {
+  it("logs and swallows an error thrown from a cleanup function", () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const trigger = signal(0);
+
+    const r = resource({ value: 0 }, (state) => {
+      state.value = trigger();
+      return () => {
+        throw new Error("cleanup-boom");
+      };
+    });
+
+    trigger(1); // triggers rerun → cleanup throws
+    expect(errSpy).toHaveBeenCalledWith(
+      "[supergrain/resource] cleanup threw:",
+      expect.any(Error),
+    );
+
+    errSpy.mockRestore();
+    dispose(r);
+  });
+
+  it("runs onCleanup immediately when the resource is disposed before it fires", async () => {
+    const immediateCleanup = vi.fn();
+    const r = resource<{ status: string }>(
+      { status: "loading" },
+      async (_state, { onCleanup }) => {
+        // Yield so dispose() can run before onCleanup is called
+        await new Promise((res) => setTimeout(res, 5));
+        onCleanup(immediateCleanup); // resource already disposed → runs immediately
+      },
+    );
+
+    dispose(r); // dispose before the async setup registers onCleanup
+    await new Promise((res) => setTimeout(res, 20));
+    expect(immediateCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs and swallows a late-cleanup throw when called after dispose", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const r = resource<{ status: string }>(
+      { status: "loading" },
+      async (_state, { onCleanup }) => {
+        await new Promise((res) => setTimeout(res, 5));
+        onCleanup(() => {
+          throw new Error("late-cleanup-boom");
+        });
+      },
+    );
+
+    dispose(r);
+    await new Promise((res) => setTimeout(res, 20));
+    expect(errSpy).toHaveBeenCalledWith(
+      "[supergrain/resource] late cleanup threw:",
+      expect.any(Error),
+    );
+
+    errSpy.mockRestore();
+  });
+
+  it("logs and swallows a non-AbortError rejection from async setup", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const r = resource<{ status: string }>(
+      { status: "loading" },
+      async () => {
+        await Promise.reject(new Error("async-setup-boom"));
+      },
+    );
+
+    await new Promise((res) => setTimeout(res, 10));
+    expect(errSpy).toHaveBeenCalledWith(
+      "[supergrain/resource] async setup rejected:",
+      expect.any(Error),
+    );
+
+    errSpy.mockRestore();
+    dispose(r);
+  });
+});
+
 describe("dispose()", () => {
   it("no-op on non-resource objects", () => {
     // should not throw

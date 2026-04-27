@@ -355,3 +355,54 @@ describe("Queries share memory with documents", () => {
     expect(store.findQueryInMemory("dashboard", params)).toBeUndefined();
   });
 });
+
+// =============================================================================
+// Query finder error paths — processor omits result or throws
+// =============================================================================
+
+describe("Query finder errors", () => {
+  it("sets query handle to ERROR when processor does not insert the result", async () => {
+    type Types = { user: { id: string; name: string } };
+    type Queries = { search: { params: { q: string }; result: { ids: string[] } } };
+
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: async () => [] } } },
+      queries: {
+        search: {
+          adapter: { async find() { return []; } },
+          // Processor intentionally does NOT call insertQueryResult
+          processor: () => {},
+        },
+      },
+    });
+
+    const handle = store.findQuery("search", { q: "hello" });
+    await flushCoalescer();
+    await handle.promise.catch(() => {});
+
+    expect(handle.status).toBe("ERROR");
+    expect(handle.error?.message).toMatch(/query result not found after fetch/i);
+  });
+
+  it("sets query handle to ERROR when query processor throws", async () => {
+    type Types = { user: { id: string; name: string } };
+    type Queries = { boom: { params: { n: number }; result: { value: number } } };
+
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: async () => [] } } },
+      queries: {
+        boom: {
+          adapter: { async find() { return []; } },
+          processor: () => { throw new Error("processor-exploded"); },
+        },
+      },
+    });
+
+    const handle = store.findQuery("boom", { n: 1 });
+    await flushCoalescer();
+    await handle.promise.catch(() => {});
+
+    expect(handle.status).toBe("ERROR");
+    expect(handle.error?.message).toBe("processor-exploded");
+  });
+});

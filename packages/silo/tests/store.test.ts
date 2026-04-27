@@ -297,3 +297,47 @@ describe("Store.clearMemory — handle transitions", () => {
     expect(handle.data?.id).toBe("1");
   });
 });
+
+describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", () => {
+  it("updates an IDLE handle to SUCCESS when insertDocument is called directly", () => {
+    // Seed a doc so find() returns SUCCESS immediately (no fetch triggered)
+    store.insertDocument("user", makeUser("42"));
+    const handle = store.find("user", "42");
+    expect(handle.status).toBe("SUCCESS");
+
+    // Clear memory so the handle becomes IDLE (no in-flight fetch)
+    store.clearMemory();
+    expect(handle.status).toBe("IDLE");
+
+    // Now insert the document directly (no fetch involved)
+    const user = makeUser("42");
+    store.insertDocument("user", user);
+
+    expect(handle.status).toBe("SUCCESS");
+    expect(handle.hasData).toBe(true);
+    expect(handle.data).toBe(user);
+    expect(handle.isPending).toBe(false);
+    expect(handle.isFetching).toBe(false);
+    expect(handle.error).toBeUndefined();
+  });
+
+  it("updates an ERROR handle to SUCCESS when insertDocument is called directly", async () => {
+    server.use(
+      http.get(`${API_BASE}/users`, () =>
+        HttpResponse.json({ error: "not found" }, { status: 404 }),
+      ),
+    );
+
+    const handle = store.find("user", "err1");
+    await flushCoalescer();
+    expect(handle.status).toBe("ERROR");
+
+    // Recover by inserting directly
+    const user = makeUser("err1");
+    store.insertDocument("user", user);
+
+    expect(handle.status).toBe("SUCCESS");
+    expect(handle.data).toBe(user);
+    expect(handle.error).toBeUndefined();
+  });
+});

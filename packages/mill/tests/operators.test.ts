@@ -233,3 +233,82 @@ describe("MongoDB Style Operators", () => {
     expect(state.user.fullName).toBe("John Doe");
   });
 });
+
+describe("Coverage gaps", () => {
+  it("$push/$pull on a null-valued path produces a descriptive error (describeValue null)", () => {
+    const store = createReactive<any>({ value: null });
+    expect(() => update(store, { $push: { value: "x" } })).toThrow(/null/i);
+    expect(() => update(store, { $pull: { value: "x" } })).toThrow(/null/i);
+  });
+
+  it("$inc on an array-valued path produces a descriptive error (describeValue array)", () => {
+    const store = createReactive<any>({ items: [1, 2] });
+    expect(() => update(store, { $inc: { items: 1 } as any })).toThrow(/array/i);
+  });
+
+  it("$push on a deep path with non-container intermediate throws 'must resolve to existing array'", () => {
+    const store = createReactive<any>({ a: 42 });
+    // "a.items" — `a` is a number, so resolveParentPath returns null
+    expect(() => update(store, { $push: { "a.items": "x" } })).toThrow(
+      /must resolve to an existing array/i,
+    );
+  });
+
+  it("$addToSet deduplicates object elements using deep isEqual", () => {
+    const store = createReactive<any>({ items: [{ id: 1, name: "Alice" }] });
+    // Same object — should not be added
+    update(store, { $addToSet: { items: { id: 1, name: "Alice" } } });
+    expect(store.items).toHaveLength(1);
+    // Different object — should be added
+    update(store, { $addToSet: { items: { id: 2, name: "Bob" } } });
+    expect(store.items).toHaveLength(2);
+    // Object with different key count — not equal
+    update(store, { $addToSet: { items: { id: 1 } } });
+    expect(store.items).toHaveLength(3);
+  });
+
+  it("isEqual uses Set-based lookup for objects with >= 50 keys", () => {
+    // Build two identical 50-key objects
+    const keys = Array.from({ length: 50 }, (_, i) => `key${i}`);
+    const obj1 = Object.fromEntries(keys.map((k) => [k, k]));
+    const obj2 = Object.fromEntries(keys.map((k) => [k, k]));
+    const store = createReactive<any>({ items: [obj1] });
+    // Same 50-key object — should not be added
+    update(store, { $addToSet: { items: obj2 } });
+    expect(store.items).toHaveLength(1);
+    // Mutate one key — should be added
+    const obj3 = { ...obj2, key0: "different" };
+    update(store, { $addToSet: { items: obj3 } });
+    expect(store.items).toHaveLength(2);
+  });
+
+  it("$inc creates a new path when it does not exist", () => {
+    const store = createReactive<any>({});
+    update(store, { $inc: { newCounter: 5 } });
+    expect(store.newCounter).toBe(5);
+  });
+
+  it("$min creates a new path when it does not exist", () => {
+    const store = createReactive<any>({});
+    update(store, { $min: { score: 10 } });
+    expect(store.score).toBe(10);
+  });
+
+  it("$max creates a new path when it does not exist", () => {
+    const store = createReactive<any>({});
+    update(store, { $max: { score: 10 } });
+    expect(store.score).toBe(10);
+  });
+
+  it("$set creates nested paths that do not exist yet (ensureParentPath creates missing segments)", () => {
+    const store = createReactive<any>({});
+    update(store, { $set: { "brand.new.path": "value" } });
+    expect(store.brand.new.path).toBe("value");
+  });
+
+  it("resolveParentPath returns null for 3-level path with non-container at first intermediate", () => {
+    // "a.b.c" where `a` is a number — intermediate check at depth > 0 fails
+    const store = createReactive<any>({ a: 42 });
+    expect(() => update(store, { $push: { "a.b.c": "x" } })).toThrow(/must resolve/i);
+  });
+});

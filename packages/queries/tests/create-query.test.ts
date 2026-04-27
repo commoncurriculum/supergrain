@@ -508,4 +508,31 @@ describe("destroy", () => {
 
     expect(store.findInMemory("planbooks_for_user", "u1")).toBeUndefined();
   });
+
+  it("ignores isFetching after a fetch rejects following destroy()", async () => {
+    const store = makeStore();
+    const { adapter, fetch } = makeAdapter();
+
+    let rejectFetch!: (error: Error) => void;
+    fetch.mockImplementationOnce(
+      () =>
+        new Promise<never>((_resolve, reject) => {
+          rejectFetch = reject;
+        }),
+    );
+
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+    const pending = q.refetch();
+
+    // Destroy while the fetch is still in-flight (not yet settled)
+    q.destroy();
+
+    // Now let the in-flight fetch reject — the catch path checks `destroyed`
+    // and takes the early-return branch (lines 90-91 of create-query.ts)
+    rejectFetch(new Error("post-destroy-failure"));
+    await pending.catch(() => {});
+
+    // isFetching should have been cleared by the destroyed branch
+    expect(q.isFetching).toBe(false);
+  });
 });
