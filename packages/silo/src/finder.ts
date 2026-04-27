@@ -28,8 +28,8 @@ export interface InternalHandle<T = unknown> {
 }
 
 export interface InternalState {
-  documents: Record<string, Record<string, InternalHandle>>;
-  queries: Record<string, Record<string, InternalHandle>>;
+  documents: Map<string, Map<string, InternalHandle>>;
+  queries: Map<string, Map<string, InternalHandle>>;
 }
 
 type QueueEntry =
@@ -140,9 +140,9 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     try {
       batch(() => {
         processor(raw, this.store! as DocumentStore<M>, type as keyof M & string);
-        const bucket = this.state!.documents[type];
+        const bucket = this.state!.documents.get(type);
         for (const id of ids) {
-          const handle = bucket?.[id];
+          const handle = bucket?.get(id);
           if (handle) {
             if (handle.hasData) {
               handle.status = "SUCCESS";
@@ -174,9 +174,9 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   private rejectDocumentChunk(type: string, ids: Array<string>, error: unknown): void {
     const err = error instanceof Error ? error : new Error(String(error));
     batch(() => {
-      const bucket = this.state!.documents[type];
+      const bucket = this.state!.documents.get(type);
       for (const id of ids) {
-        const handle = bucket?.[id];
+        const handle = bucket?.get(id);
         if (handle) {
           handle.status = "ERROR";
           handle.isPending = false;
@@ -226,9 +226,9 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
           type as keyof Q & string,
           paramsList as ReadonlyArray<Q[keyof Q & string]["params"]>,
         );
-        const bucket = this.state!.queries[type];
+        const bucket = this.state!.queries.get(type);
         for (const { paramsKey } of chunk) {
-          const handle = bucket?.[paramsKey];
+          const handle = bucket?.get(paramsKey);
           if (handle) {
             if (handle.hasData) {
               handle.status = "SUCCESS";
@@ -260,9 +260,9 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   private rejectQueryChunk(type: string, chunk: Array<QueryChunkEntry>, error: unknown): void {
     const err = error instanceof Error ? error : new Error(String(error));
     batch(() => {
-      const bucket = this.state!.queries[type];
+      const bucket = this.state!.queries.get(type);
       for (const { paramsKey } of chunk) {
-        const handle = bucket?.[paramsKey];
+        const handle = bucket?.get(paramsKey);
         if (handle) {
           handle.status = "ERROR";
           handle.isPending = false;
