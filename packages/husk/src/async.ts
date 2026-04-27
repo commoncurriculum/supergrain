@@ -190,7 +190,14 @@ export function reactiveTask<Args extends unknown[], T>(
     isReady: false,
     run: (...args: Args): Promise<T> => {
       if (disposed) {
-        return Promise.reject(new Error("@supergrain/husk: reactiveTask has been disposed"));
+        const rejected = Promise.reject(
+          new Error("@supergrain/husk: reactiveTask has been disposed"),
+        );
+        // Attach a handler so fire-and-forget callers (e.g. an onClick that
+        // dispatches `run()` without awaiting) don't surface as unhandled
+        // rejections. Awaiters still observe the rejection.
+        rejected.catch(() => {});
+        return rejected;
       }
       const gen = ++generation;
       state.isPending = true;
@@ -234,7 +241,6 @@ export function reactiveTask<Args extends unknown[], T>(
   registerDisposer(state, () => {
     if (disposed) return;
     disposed = true;
-    generation++;
     state.isPending = false;
   });
 

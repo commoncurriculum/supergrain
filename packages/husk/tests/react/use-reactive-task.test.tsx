@@ -3,6 +3,7 @@ import type { ReactiveTask } from "@supergrain/husk";
 import { useReactiveTask } from "@supergrain/husk/react";
 import { tracked } from "@supergrain/kernel/react";
 import { act, cleanup, render } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 afterEach(() => cleanup());
@@ -66,6 +67,11 @@ describe("useReactiveTask()", () => {
     expect(getByTestId("value").textContent).toBe("pending");
 
     unmount();
+    // Dispose is deferred to a setTimeout so a StrictMode remount can
+    // cancel it; flush before asserting torn-down state.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
     expect(mountedTask.isPending).toBe(false);
 
     await act(async () => {
@@ -78,5 +84,29 @@ describe("useReactiveTask()", () => {
     expect(mountedTask.isReady).toBe(false);
     expect(mountedTask.isResolved).toBe(false);
     expect(mountedTask.isRejected).toBe(false);
+  });
+
+  it("survives StrictMode dev re-mount with a working post-mount task", async () => {
+    let task: ReactiveTask<[number], number> | null = null;
+
+    const Component = tracked(() => {
+      task = useReactiveTask(async (value: number) => value * 2);
+      return <span>{task.isReady ? task.data : "idle"}</span>;
+    });
+
+    render(
+      <StrictMode>
+        <Component />
+      </StrictMode>,
+    );
+
+    const liveTask = task!;
+    // After the StrictMode mount/unmount/remount cycle, the cached task
+    // must still be runnable — its disposer should have been cancelled
+    // before firing.
+    const result = await liveTask.run(5);
+    expect(result).toBe(10);
+    expect(liveTask.data).toBe(10);
+    expect(liveTask.isReady).toBe(true);
   });
 });

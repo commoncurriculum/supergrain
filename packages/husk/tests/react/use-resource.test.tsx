@@ -223,6 +223,11 @@ describe("useResource()", () => {
     expect(cleanupSpy).not.toHaveBeenCalled();
 
     unmount();
+    // Dispose is deferred to a setTimeout so a StrictMode remount can
+    // cancel it; flush before asserting torn-down state.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
     expect(cleanupSpy).toHaveBeenCalledTimes(1);
 
     await act(async () => {

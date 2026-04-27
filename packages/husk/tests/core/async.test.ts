@@ -249,4 +249,16 @@ describe("reactiveTask", () => {
     expect(task.isRejected).toBe(false);
     expect(task.isSettled).toBe(false);
   });
+
+  it("run() after dispose rejects without mutating state", async () => {
+    const task = reactiveTask(async () => "value");
+    dispose(task);
+
+    await expect(task.run()).rejects.toThrow("reactiveTask has been disposed");
+    expect(task.data).toBe(null);
+    expect(task.error).toBe(null);
+    expect(task.isPending).toBe(false);
+    expect(task.isRejected).toBe(false);
+    expect(task.isSettled).toBe(false);
+  });
 });
