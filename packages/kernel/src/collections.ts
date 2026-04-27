@@ -35,11 +35,22 @@ import { profileSignalRead, profileSignalSkip, profileSignalWrite } from "./prof
 // ---------------------------------------------------------------------------
 import { createReactiveProxy } from "./read";
 
-function wrap<T>(value: T): T {
+function isWrappable(value: unknown): value is object {
   if (value === null || typeof value !== "object") {
+    return false;
+  }
+  if (Array.isArray(value) || value instanceof Map || value instanceof Set) {
+    return true;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function wrap<T>(value: T): T {
+  if (!isWrappable(value)) {
     return value;
   }
-  return createReactiveProxy(value as object) as T;
+  return createReactiveProxy(value) as T;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,10 +190,13 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
 
           if (isNew) {
             // New key: batch per-key bump + structural bumps into one notification.
+            // Don't create a per-key signal eagerly here — only update one if a
+            // prior tracked read already created it. Subsequent reads will
+            // create the signal lazily with the current value.
             startBatch();
             try {
-              if (didChange || isNew) {
-                const s = getOrCreateKeySignal(rawKey);
+              const s = keySignals.get(rawKey);
+              if (s) {
                 profileSignalWrite();
                 s(rawValue);
               }
@@ -197,9 +211,11 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
             }
           } else if (didChange) {
             // Existing key, value changed: only per-key bump — no structural change.
-            const s = getOrCreateKeySignal(rawKey);
-            profileSignalWrite();
-            s(rawValue);
+            const s = keySignals.get(rawKey);
+            if (s) {
+              profileSignalWrite();
+              s(rawValue);
+            }
           }
 
           return receiver as Map<K, V>;
@@ -292,14 +308,13 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
       }
 
       // ── keys ─────────────────────────────────────────────────────────────
+      // keys() is structurally dependent only on the key set — it must not
+      // subscribe to per-key value signals, or effects iterating only keys
+      // would re-run on every value change.
       if (prop === "keys") {
         return function* reactiveKeys(): IterableIterator<K> {
           trackOwnKeys(target);
-          for (const [k] of rawTarget.entries()) {
-            if (getCurrentSub()) {
-              profileSignalRead();
-              getOrCreateKeySignal(k)();
-            }
+          for (const k of rawTarget.keys()) {
             yield wrap(k) as K;
           }
         };

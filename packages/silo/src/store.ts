@@ -504,8 +504,10 @@ export function createDocumentStore<
       const bucket = ensureBucket(state.queries, type);
       let handle = bucket.get(paramsKey);
       if (!handle) {
-        handle = makeIdleHandle();
-        bucket.set(paramsKey, handle);
+        bucket.set(paramsKey, makeIdleHandle());
+        // Re-read to get the reactive proxy reference; returning the raw
+        // pre-set value would break handle identity for subsequent calls.
+        handle = bucket.get(paramsKey)!;
       }
       if (handle.status === "IDLE") {
         kickOffQueryFetch(type, paramsKey, params);

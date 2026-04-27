@@ -177,6 +177,14 @@ const handler: ProxyHandler<object> = {
 };
 
 export function createReactiveProxy<T extends object>(target: T): T {
+  // Idempotency: if `target` is itself a reactive proxy (object, Map, or Set),
+  // it responds to $RAW with its raw target — return the proxy unchanged
+  // instead of wrapping again. Without this, passing a reactive Map back in
+  // would build a proxy-of-a-proxy because the Map check below also matches.
+  if ((target as any)[$RAW]) {
+    return target;
+  }
+
   if (target instanceof Map) {
     return createReactiveMap(target as Map<unknown, unknown>) as unknown as T;
   }
