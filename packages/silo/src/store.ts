@@ -23,6 +23,13 @@ function withResolvers<T>(): Resolvers<T> {
   return { promise, resolve, reject };
 }
 
+function ensureBucket<T>(buckets: Map<string, Map<string, T>>, type: string): Map<string, T> {
+  if (!buckets.get(type)) {
+    buckets.set(type, new Map<string, T>());
+  }
+  return buckets.get(type)!;
+}
+
 // =============================================================================
 // Model types
 // =============================================================================
@@ -374,16 +381,6 @@ export function createDocumentStore<
     documents: new Map(),
     queries: new Map(),
   }) as InternalState;
-
-  function ensureBucket<T>(
-    buckets: Map<string, Map<string, T>>,
-    type: string,
-  ): Map<string, T> {
-    if (!buckets.get(type)) {
-      buckets.set(type, new Map<string, T>());
-    }
-    return buckets.get(type)!;
-  }
 
   function kickOffDocumentFetch(type: keyof M & string, id: string): void {
     const { promise, resolve, reject } = withResolvers<unknown>();

@@ -7,9 +7,15 @@ export const $BRAND = Symbol.for("supergrain:brand");
 export type Branded<T> =
   T extends Array<infer U>
     ? Array<Branded<U>>
-    : T extends object
-      ? { [K in keyof T]: Branded<T[K]> } & { readonly [$BRAND]?: true }
-      : T;
+    : T extends (...args: Array<any>) => any
+      ? T
+      : T extends Map<infer K, infer V>
+        ? Map<K, V> & { readonly [$BRAND]?: true }
+        : T extends Set<infer E>
+          ? Set<E> & { readonly [$BRAND]?: true }
+          : T extends object
+            ? { [K in keyof T]: Branded<T[K]> } & { readonly [$BRAND]?: true }
+            : T;
 
 export interface Signal<T> {
   (): T;

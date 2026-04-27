@@ -293,8 +293,6 @@ describe("createReactive(new Map()) — reactive Map", () => {
   it("m.get(rawKey) and m.get(wrappedKey) find the same entry", () => {
     const rawKey = { id: "k1" };
     const m = createReactive(new Map<{ id: string }, number>([[rawKey, 42]]));
-    const wrappedKey = m.get(rawKey) !== undefined ? rawKey : rawKey; // just reference
-
     // Wrap the key through createReactive
     const wrappedObjMap = createReactive(new Map<string, { id: string }>([["ref", rawKey]]));
     const wrappedK = wrappedObjMap.get("ref")!;
@@ -368,7 +366,11 @@ describe("createReactive(new Map()) — reactive Map", () => {
       | { type: "get"; key: string };
 
     const opArb: fc.Arbitrary<Op> = fc.oneof(
-      fc.record({ type: fc.constant<"set">("set"), key: fc.string({ maxLength: 3 }), value: fc.integer() }),
+      fc.record({
+        type: fc.constant<"set">("set"),
+        key: fc.string({ maxLength: 3 }),
+        value: fc.integer(),
+      }),
       fc.record({ type: fc.constant<"delete">("delete"), key: fc.string({ maxLength: 3 }) }),
       fc.constant({ type: "clear" as const }),
       fc.record({ type: fc.constant<"has">("has"), key: fc.string({ maxLength: 3 }) }),

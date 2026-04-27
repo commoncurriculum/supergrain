@@ -1,9 +1,9 @@
 import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 
+import { createReactiveMap, createReactiveSet } from "./collections";
 import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes } from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
 import { writeHandler } from "./write";
-import { createReactiveMap, createReactiveSet } from "./collections";
 
 // Array methods that mutate the array internally do multiple proxy `set`
 // operations (e.g., `push` does `arr[len] = x; arr.length += 1`). Without

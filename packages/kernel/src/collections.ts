@@ -13,19 +13,26 @@
  * `wrap()` dispatch here when the value is a Map or Set.
  */
 
-import { getCurrentSub, startBatch, endBatch } from "alien-signals";
-import { signal } from "alien-signals";
+import { getCurrentSub, startBatch, endBatch, signal } from "alien-signals";
 
-import { $OWN_KEYS, $RAW, $PROXY, $VERSION, getNode, getNodes, getNodesIfExist, unwrap, type Signal } from "./core";
+import {
+  $OWN_KEYS,
+  $RAW,
+  $PROXY,
+  $VERSION,
+  getNode,
+  getNodes,
+  getNodesIfExist,
+  unwrap,
+  type Signal,
+} from "./core";
 import { profileSignalRead, profileSignalSkip, profileSignalWrite } from "./profiler";
-
 // ---------------------------------------------------------------------------
 // Lazy wrap helper — defined here to avoid a circular import from read.ts.
 // We import createReactiveProxy from read.ts; read.ts imports our factories;
 // ES module live-binding semantics make this safe as long as neither module
 // accesses the imported binding at top-level evaluation time (they don't).
 // ---------------------------------------------------------------------------
-
 import { createReactiveProxy } from "./read";
 
 function wrap<T>(value: T): T {
@@ -117,14 +124,11 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
     return s;
   }
 
-  // proxy is declared here so closures inside the handler can reference it.
-  let proxy!: Map<K, V>;
-
   const handler: ProxyHandler<Map<K, V>> = {
-    get(target, prop) {
+    get(target, prop, receiver) {
       // ── Internal symbols ─────────────────────────────────────────────────
       if (prop === $RAW) return target;
-      if (prop === $PROXY) return proxy;
+      if (prop === $PROXY) return receiver;
 
       // ── size ─────────────────────────────────────────────────────────────
       if (prop === "size") {
@@ -198,7 +202,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
             s(rawValue);
           }
 
-          return proxy;
+          return receiver as Map<K, V>;
         };
       }
 
@@ -217,7 +221,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
             const s = keySignals.get(rawKey);
             if (s) {
               profileSignalWrite();
-              s(undefined);
+              s(void 0 as V | undefined);
             }
             bumpOwnKeys(target);
             bumpVersionSignal(target);
@@ -245,7 +249,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
               const s = keySignals.get(k);
               if (s) {
                 profileSignalWrite();
-                s(undefined);
+                s(void 0 as V | undefined);
               }
             }
 
@@ -268,7 +272,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
               profileSignalRead();
               getOrCreateKeySignal(k)();
             }
-            callbackFn(wrap(v) as V, wrap(k) as K, proxy);
+            callbackFn(wrap(v) as V, wrap(k) as K, receiver as Map<K, V>);
           }
         };
       }
@@ -332,13 +336,10 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
     },
   };
 
-  proxy = new Proxy(rawTarget, handler);
+  const proxy = new Proxy(rawTarget, handler);
   collectionProxyCache.set(rawTarget, proxy);
   return proxy;
 }
-
-// ---------------------------------------------------------------------------
-// createReactiveSet
 // ---------------------------------------------------------------------------
 
 export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
@@ -346,13 +347,11 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
     return collectionProxyCache.get(rawTarget) as Set<T>;
   }
 
-  let proxy!: Set<T>;
-
   const handler: ProxyHandler<Set<T>> = {
-    get(target, prop) {
+    get(target, prop, receiver) {
       // ── Internal symbols ─────────────────────────────────────────────────
       if (prop === $RAW) return target;
-      if (prop === $PROXY) return proxy;
+      if (prop === $PROXY) return receiver;
 
       // ── size ─────────────────────────────────────────────────────────────
       if (prop === "size") {
@@ -372,7 +371,7 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
       if (prop === "add") {
         return function reactiveAdd(value: T): Set<T> {
           const rawValue = unwrap(value) as T;
-          if (rawTarget.has(rawValue)) return proxy;
+          if (rawTarget.has(rawValue)) return receiver as Set<T>;
 
           rawTarget.add(rawValue);
 
@@ -382,7 +381,7 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
           bumpOwnKeys(target);
           bumpVersionSignal(target);
 
-          return proxy;
+          return receiver as Set<T>;
         };
       }
 
@@ -416,7 +415,7 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
         ): void {
           trackOwnKeys(target);
           for (const v of rawTarget.values()) {
-            callbackFn(wrap(v) as T, wrap(v) as T, proxy);
+            callbackFn(wrap(v) as T, wrap(v) as T, receiver as Set<T>);
           }
         };
       }
@@ -468,7 +467,7 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
     },
   };
 
-  proxy = new Proxy(rawTarget, handler);
+  const proxy = new Proxy(rawTarget, handler);
   collectionProxyCache.set(rawTarget, proxy);
   return proxy;
 }
