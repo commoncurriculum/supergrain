@@ -1,7 +1,6 @@
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
 
-import { batch, createReactive, unwrap } from "@supergrain/kernel";
-import { setProperty } from "@supergrain/kernel/internal";
+import { batch, createReactive } from "@supergrain/kernel";
 
 import { Finder, type InternalHandle, type InternalState } from "./finder";
 
@@ -414,34 +413,24 @@ function settleHandleWithData<T>(handle: InternalHandle<T>, data: T): void {
   }
 }
 
-function createStringKeyedRecord<T>(): Record<string, T> {
-  return {};
-}
-
-function assertSafeRecordKey(key: string): void {
-  if (key === "__proto__" || key === "constructor" || key === "prototype") {
-    throw new Error(`Unsafe cache key "${key}" is not allowed.`);
-  }
-}
-
-function setOwnRecordValue<T>(record: Record<string, T>, key: string, value: T): void {
-  assertSafeRecordKey(key);
-  // Unwrap so the kernel proxy's `set` trap doesn't recurse into setProperty
-  // and double-bump version/per-key signals on the same nodes.
-  setProperty(unwrap(record), key, value);
+// Null-prototype storage. Any string is a safe own-property key (including
+// `toString`, `__proto__`, `constructor`, …) because the record carries no
+// inherited methods or accessors. The kernel's `isWrappable` admits these.
+function createBucketRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
 }
 
 function ensureHandleBucket<T>(
   buckets: Record<string, Record<string, InternalHandle<T>>>,
   type: string,
 ): Record<string, InternalHandle<T>> {
-  // Check own-property on the raw target. Going through the proxy's
-  // `getOwnPropertyDescriptor` trap calls `trackSelf`, which subscribes the
-  // caller to `$OWN_KEYS` and forces a re-render whenever any sibling type
-  // is added — that's the over-subscription consumers don't want.
-  if (!Object.hasOwn(unwrap(buckets), type)) {
-    setOwnRecordValue(buckets, type, createStringKeyedRecord<InternalHandle<T>>());
+  if (!buckets[type]) {
+    buckets[type] = createBucketRecord<InternalHandle<T>>();
   }
+  // Re-read through the proxy so the caller always gets the wrapped value;
+  // returning the raw object we just assigned would break handle identity
+  // (the proxy cache keys by raw target → wrapper, so a later proxy read
+  // would return a different wrapper than the raw we assigned).
   return buckets[type]!;
 }
 
@@ -451,8 +440,8 @@ function ensureHandle<T>(
   key: string,
 ): InternalHandle<T> {
   const bucket = ensureHandleBucket(buckets, type);
-  if (!Object.hasOwn(unwrap(bucket), key)) {
-    setOwnRecordValue(bucket, key, makeIdleHandle() as InternalHandle<T>);
+  if (!bucket[key]) {
+    bucket[key] = makeIdleHandle() as InternalHandle<T>;
   }
   return bucket[key]!;
 }
@@ -467,8 +456,8 @@ export function createDocumentStore<
   // behavior is identical; the brand is purely a compile-time identification
   // token that otherwise blocks direct assignment into nested generics.
   const state = createReactive<InternalState>({
-    documents: createStringKeyedRecord(),
-    queries: createStringKeyedRecord(),
+    documents: createBucketRecord(),
+    queries: createBucketRecord(),
   }) as InternalState;
 
   function kickOffDocumentFetch(type: keyof M & string, id: string): void {
@@ -526,13 +515,14 @@ export function createDocumentStore<
           state.documents as Record<string, Record<string, InternalHandle<M[K]>>>,
           type,
         );
+        const existing = bucket[doc.id];
 
-        if (!Object.hasOwn(unwrap(bucket), doc.id)) {
-          setOwnRecordValue(bucket, doc.id, createSuccessHandle(doc));
+        if (!existing) {
+          bucket[doc.id] = createSuccessHandle(doc);
           return;
         }
 
-        settleHandleWithData(bucket[doc.id]!, doc);
+        settleHandleWithData(existing, doc);
         // SUCCESS: only `data` + `hasData` update — promise reference stays stable.
       });
     },
@@ -580,13 +570,14 @@ export function createDocumentStore<
           state.queries as Record<string, Record<string, InternalHandle<Q[K]["result"]>>>,
           type,
         );
+        const existing = bucket[paramsKey];
 
-        if (!Object.hasOwn(unwrap(bucket), paramsKey)) {
-          setOwnRecordValue(bucket, paramsKey, createSuccessHandle(result));
+        if (!existing) {
+          bucket[paramsKey] = createSuccessHandle(result);
           return;
         }
 
-        settleHandleWithData(bucket[paramsKey]!, result);
+        settleHandleWithData(existing, result);
       });
     },
 

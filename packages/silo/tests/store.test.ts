@@ -353,3 +353,69 @@ describe("Store.find — subscription isolation", () => {
     }
   });
 });
+
+// =============================================================================
+// Prototype-property safety — ids that collide with Object.prototype methods
+// must not pollute the prototype chain or confuse the cache.
+// =============================================================================
+
+describe("Store — prototype-property safety for cache keys", () => {
+  it("insertDocument with a prototype-name id stores the doc without polluting Object.prototype", () => {
+    // Sentinel: a fresh object that inherits everything from Object.prototype.
+    // If the cache mutates an inherited method (e.g. Object.prototype.toString),
+    // the pollution becomes visible on this sentinel via prototype lookup.
+    const sentinel: Record<string, unknown> = {};
+    const protoNames = ["toString", "hasOwnProperty", "valueOf", "isPrototypeOf"];
+
+    for (const name of protoNames) {
+      // Pristine: the inherited function exists, but has no `.data` / `.hasData`
+      // / `.status` properties on it.
+      const inherited = (sentinel as any)[name];
+      expect(inherited?.data).toBeUndefined();
+      expect(inherited?.hasData).toBeUndefined();
+      expect(inherited?.status).toBeUndefined();
+
+      store.insertDocument("user", makeUser(name));
+
+      // Still pristine after insert.
+      expect((sentinel as any)[name]?.data).toBeUndefined();
+      expect((sentinel as any)[name]?.hasData).toBeUndefined();
+      expect((sentinel as any)[name]?.status).toBeUndefined();
+
+      // And the doc is correctly retrievable — confirms the own-property write
+      // shadowed the prototype lookup.
+      expect(store.findInMemory("user", name)?.id).toBe(name);
+    }
+  });
+
+  it("find() driving a fetch with a prototype-name id resolves correctly without polluting", async () => {
+    const sentinel: Record<string, unknown> = {};
+    const handle = store.find("user", "toString");
+    expect(handle.status).toBe("PENDING");
+
+    await flushCoalescer();
+
+    expect(handle.status).toBe("SUCCESS");
+    expect(handle.data?.id).toBe("toString");
+
+    // Finder writes through the same protected path. No prototype mutation.
+    expect((sentinel as any).toString?.data).toBeUndefined();
+    expect((sentinel as any).toString?.hasData).toBeUndefined();
+    expect((sentinel as any).toString?.status).toBeUndefined();
+  });
+
+  it("accepts __proto__, constructor, and prototype as ids without polluting Object.prototype", () => {
+    // With null-prototype bucket records, these become ordinary own-property
+    // keys — no inherited setter is invoked, no global pollution.
+    const sentinelProto = Object.getPrototypeOf({});
+
+    for (const name of ["__proto__", "constructor", "prototype"]) {
+      store.insertDocument("user", makeUser(name));
+      expect(store.findInMemory("user", name)?.id).toBe(name);
+    }
+
+    // Object.prototype is unchanged.
+    expect(Object.getPrototypeOf({})).toBe(sentinelProto);
+    expect((Object.prototype as any).id).toBeUndefined();
+  });
+});
