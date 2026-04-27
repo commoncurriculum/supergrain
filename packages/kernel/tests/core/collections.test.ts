@@ -649,3 +649,150 @@ describe("Map nested inside createReactive object", () => {
     expect(count()).toBe(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tracking precision — regression coverage for review fixes
+// ---------------------------------------------------------------------------
+
+describe("Map tracking precision", () => {
+  it("keys() does NOT re-run when an existing key's value changes", () => {
+    const m = createReactive(
+      new Map<string, number>([
+        ["a", 1],
+        ["b", 2],
+      ]),
+    );
+    const { count } = tracked(() => [...m.keys()]);
+
+    expect(count()).toBe(1);
+    m.set("a", 99); // value change for existing key — structurally a no-op for keys()
+    m.set("b", 100);
+    expect(count()).toBe(1);
+
+    m.set("c", 3); // structural change
+    expect(count()).toBe(2);
+    m.delete("a"); // structural change
+    expect(count()).toBe(3);
+  });
+
+  it("set() on an unobserved key does not leak signals into iteration tracking", () => {
+    // Indirect coverage for the "don't eagerly create per-key signals on write"
+    // fix: a value-only effect that never reads `k` shouldn't re-run when `k`
+    // changes after the effect is established.
+    const m = createReactive(new Map<string, number>([["read", 1]]));
+    const { count } = tracked(() => m.get("read"));
+
+    expect(count()).toBe(1);
+
+    m.set("never-read", 100);
+    m.set("never-read", 200);
+    m.set("never-read", 300);
+
+    expect(count()).toBe(1);
+  });
+});
+
+describe("Set mutator batching", () => {
+  it("add() fires one notification (not two) for $OWN_KEYS + $VERSION", () => {
+    const s = createReactive(new Set<string>());
+    const effectFn = vi.fn(() => s.size);
+    effect(effectFn);
+    expect(effectFn).toHaveBeenCalledTimes(1);
+
+    s.add("a");
+    expect(effectFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("delete() fires one notification", () => {
+    const s = createReactive(new Set<string>(["a"]));
+    const effectFn = vi.fn(() => s.size);
+    effect(effectFn);
+
+    s.delete("a");
+    expect(effectFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("clear() fires one notification", () => {
+    const s = createReactive(new Set<string>(["a", "b"]));
+    const effectFn = vi.fn(() => s.size);
+    effect(effectFn);
+
+    s.clear();
+    expect(effectFn).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Proxy idempotency / wrap discrimination
+// ---------------------------------------------------------------------------
+
+describe("createReactive idempotency", () => {
+  it("createReactive(reactiveMap) returns the same proxy reference", () => {
+    const m = createReactive(new Map<string, number>([["a", 1]]));
+    const m2 = createReactive(m);
+    expect(m2).toBe(m);
+  });
+
+  it("createReactive(reactiveSet) returns the same proxy reference", () => {
+    const s = createReactive(new Set<string>(["a"]));
+    const s2 = createReactive(s);
+    expect(s2).toBe(s);
+  });
+
+  it("createReactive(reactiveObject) returns the same proxy reference", () => {
+    const o = createReactive({ a: 1 });
+    const o2 = createReactive(o);
+    expect(o2).toBe(o);
+  });
+
+  it("storing a reactive Map back into a reactive object does not double-wrap", () => {
+    const m = createReactive(new Map<string, number>([["x", 1]]));
+    const state = createReactive<{ cache: Map<string, number> | null }>({ cache: null });
+    state.cache = m;
+    expect(state.cache).toBe(m);
+  });
+});
+
+describe("wrap() discrimination — non-plain values pass through", () => {
+  it("Date values stored in a reactive Map are not proxied", () => {
+    const d = new Date(2026, 0, 1);
+    const m = createReactive(new Map<string, Date>());
+    m.set("when", d);
+    const out = m.get("when")!;
+    expect(out).toBe(d); // not wrapped — same reference
+    expect(out.getFullYear()).toBe(2026); // internal slot still works
+  });
+
+  it("RegExp values stored in a reactive Map are not proxied", () => {
+    const r = /abc/g;
+    const m = createReactive(new Map<string, RegExp>());
+    m.set("pat", r);
+    const out = m.get("pat")!;
+    expect(out).toBe(r);
+    expect(out.test("zabcz")).toBe(true);
+  });
+
+  it("class instances stored in a reactive Map are not proxied", () => {
+    class Box {
+      constructor(public n: number) {}
+      double() {
+        return this.n * 2;
+      }
+    }
+    const b = new Box(21);
+    const m = createReactive(new Map<string, Box>());
+    m.set("b", b);
+    const out = m.get("b")!;
+    expect(out).toBe(b);
+    expect(out.double()).toBe(42);
+  });
+
+  it("plain objects stored in a reactive Map ARE proxied", () => {
+    const obj = { a: 1 };
+    const m = createReactive(new Map<string, { a: number }>());
+    m.set("o", obj);
+    const out = m.get("o")!;
+    // The wrapped proxy is a different reference from the raw, but unwraps to it.
+    expect(unwrap(out)).toBe(obj);
+  });
+});

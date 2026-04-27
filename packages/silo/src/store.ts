@@ -382,13 +382,12 @@ export function createDocumentStore<
     queries: new Map(),
   }) as InternalState;
 
-  function kickOffDocumentFetch(type: keyof M & string, id: string): void {
+  function transitionToPending(handle: InternalHandle): void {
     const { promise, resolve, reject } = withResolvers<unknown>();
     // Suppress unhandled-rejection warnings without affecting user's ability
     // to observe the rejection via `await handle.promise`.
     promise.catch(() => {});
     batch(() => {
-      const handle = state.documents.get(type)!.get(id)!;
       handle.status = "PENDING";
       handle.isPending = true;
       handle.isFetching = true;
@@ -397,27 +396,6 @@ export function createDocumentStore<
       handle.resolve = resolve;
       handle.reject = reject;
     });
-    finder.queueDocument(type, id);
-  }
-
-  function kickOffQueryFetch(
-    type: keyof Q & string,
-    paramsKey: string,
-    params: Q[keyof Q & string]["params"],
-  ): void {
-    const { promise, resolve, reject } = withResolvers<unknown>();
-    promise.catch(() => {});
-    batch(() => {
-      const handle = state.queries.get(type)!.get(paramsKey)!;
-      handle.status = "PENDING";
-      handle.isPending = true;
-      handle.isFetching = true;
-      handle.error = undefined;
-      handle.promise = promise;
-      handle.resolve = resolve;
-      handle.reject = reject;
-    });
-    finder.queueQuery(type, paramsKey, params);
   }
 
   const store: DocumentStore<M, Q> = {
@@ -431,7 +409,8 @@ export function createDocumentStore<
         handle = bucket.get(id)!;
       }
       if (handle.status === "IDLE") {
-        kickOffDocumentFetch(type, id);
+        transitionToPending(handle);
+        finder.queueDocument(type, id);
       }
       return handle as unknown as DocumentHandle<M[K]>;
     },
@@ -510,7 +489,8 @@ export function createDocumentStore<
         handle = bucket.get(paramsKey)!;
       }
       if (handle.status === "IDLE") {
-        kickOffQueryFetch(type, paramsKey, params);
+        transitionToPending(handle);
+        finder.queueQuery(type, paramsKey, params);
       }
       return handle as unknown as QueryHandle<Q[K]["result"]>;
     },

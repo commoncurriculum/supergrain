@@ -35,6 +35,20 @@ export function unwrap<T>(value: T): T {
   return (value && (value as any)[$RAW]) || value;
 }
 
+// Single source of truth for what `createReactive` will proxy. Plain objects
+// (incl. null-prototype), arrays, Maps, and Sets only — everything else
+// (Date, RegExp, class instances, functions, primitives) passes through.
+export function isWrappable(value: unknown): value is object {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  if (Array.isArray(value) || value instanceof Map || value instanceof Set) {
+    return true;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 /** Get nodes if they already exist (no creation). Fast path for hot loops. */
 export function getNodesIfExist(target: object): DataNodes | undefined {
   return (target as any)[$NODE];

@@ -1,7 +1,17 @@
 import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 
 import { createReactiveMap, createReactiveSet } from "./collections";
-import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes } from "./core";
+import {
+  $NODE,
+  $OWN_KEYS,
+  $PROXY,
+  $RAW,
+  $TRACK,
+  $VERSION,
+  getNode,
+  getNodes,
+  isWrappable,
+} from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
 import { writeHandler } from "./write";
 
@@ -38,14 +48,6 @@ const ARRAY_MUTATORS = new Set([
 ]);
 
 const proxyCache = new WeakMap<object, object>();
-
-const isWrappable = (value: unknown): value is object =>
-  value !== null &&
-  typeof value === "object" &&
-  (value.constructor === Object ||
-    value.constructor === Array ||
-    value instanceof Map ||
-    value instanceof Set);
 
 function wrap<T>(value: T): T {
   if (typeof value !== "object" || value === null) {

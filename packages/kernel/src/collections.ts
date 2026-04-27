@@ -23,6 +23,7 @@ import {
   getNode,
   getNodes,
   getNodesIfExist,
+  isWrappable,
   unwrap,
   type Signal,
 } from "./core";
@@ -34,17 +35,6 @@ import { profileSignalRead, profileSignalSkip, profileSignalWrite } from "./prof
 // accesses the imported binding at top-level evaluation time (they don't).
 // ---------------------------------------------------------------------------
 import { createReactiveProxy } from "./read";
-
-function isWrappable(value: unknown): value is object {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  if (Array.isArray(value) || value instanceof Map || value instanceof Set) {
-    return true;
-  }
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
 
 function wrap<T>(value: T): T {
   if (!isWrappable(value)) {
@@ -390,11 +380,16 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
 
           rawTarget.add(rawValue);
 
-          const nodes = getNodes(target);
-          getNode(nodes, $VERSION, 0);
-          getNode(nodes, $OWN_KEYS, 0);
-          bumpOwnKeys(target);
-          bumpVersionSignal(target);
+          startBatch();
+          try {
+            const nodes = getNodes(target);
+            getNode(nodes, $VERSION, 0);
+            getNode(nodes, $OWN_KEYS, 0);
+            bumpOwnKeys(target);
+            bumpVersionSignal(target);
+          } finally {
+            endBatch();
+          }
 
           return receiver as Set<T>;
         };
@@ -407,8 +402,13 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
           if (!rawTarget.has(rawValue)) return false;
 
           rawTarget.delete(rawValue);
-          bumpOwnKeys(target);
-          bumpVersionSignal(target);
+          startBatch();
+          try {
+            bumpOwnKeys(target);
+            bumpVersionSignal(target);
+          } finally {
+            endBatch();
+          }
           return true;
         };
       }
@@ -418,8 +418,13 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
         return function reactiveClear(): void {
           if (rawTarget.size === 0) return;
           rawTarget.clear();
-          bumpOwnKeys(target);
-          bumpVersionSignal(target);
+          startBatch();
+          try {
+            bumpOwnKeys(target);
+            bumpVersionSignal(target);
+          } finally {
+            endBatch();
+          }
         };
       }
 
