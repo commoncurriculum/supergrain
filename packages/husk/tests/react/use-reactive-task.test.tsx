@@ -91,22 +91,19 @@ describe("useReactiveTask()", () => {
 
     const Component = tracked(() => {
       task = useReactiveTask(async (value: number) => value * 2);
-      return <span>{task.isReady ? task.data : "idle"}</span>;
+      return <span data-testid="value">{task.isReady ? task.data : "idle"}</span>;
     });
 
-    render(
+    const { getByTestId } = render(
       <StrictMode>
         <Component />
       </StrictMode>,
     );
 
     const liveTask = task!;
-    // After the StrictMode mount/unmount/remount cycle, the cached task
-    // must still be runnable — its disposer should have been cancelled
-    // before firing.
-    const result = await liveTask.run(5);
-    expect(result).toBe(10);
-    expect(liveTask.data).toBe(10);
-    expect(liveTask.isReady).toBe(true);
+    await act(async () => {
+      await liveTask.run(5);
+    });
+    expect(getByTestId("value").textContent).toBe("10");
   });
 });

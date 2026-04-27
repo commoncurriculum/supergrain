@@ -2,7 +2,7 @@ import type { ReactiveNode } from "alien-signals";
 
 import { effect as alienEffect } from "@supergrain/kernel";
 import { getCurrentSub, setCurrentSub } from "@supergrain/kernel/internal";
-import { type FC, memo, useReducer, useEffect } from "react";
+import { type FC, memo, useReducer, useEffect, useRef } from "react";
 
 interface TrackedState {
   cleanup: () => void;
@@ -70,13 +70,27 @@ export function tracked<P extends object>(Component: FC<P>) {
       fu.__sg = { cleanup, effectNode: capturedNode };
     }
 
-    useEffect(
-      () => () => {
-        const state = (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
-        state?.cleanup?.();
-      },
-      [],
-    );
+    // Defer the alien-effect teardown via setTimeout so React 18 StrictMode's
+    // mount→cleanup→remount cycle in dev doesn't kill the effect we still
+    // need post-cycle. The remount fires the effect again, which clears the
+    // pending timer; on a real unmount the timer survives and tears down.
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      return () => {
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null;
+          const fuState = (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
+          if (fuState) {
+            fuState.cleanup();
+            delete (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
+          }
+        }, 0);
+      };
+    }, []);
 
     const prev = getCurrentSub();
     setCurrentSub(fu.__sg.effectNode);
