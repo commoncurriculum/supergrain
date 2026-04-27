@@ -1,7 +1,8 @@
+import { useDisposeOnUnmount } from "@supergrain/kernel/react";
 import { useMemo, useRef } from "react";
 
 import { reactiveTask, type ReactiveTask } from "../async";
-import { useDisposeOnUnmount } from "./use-dispose-on-unmount";
+import { dispose } from "../resource";
 
 /**
  * Component-scoped `reactiveTask`. Task identity is stable across
@@ -31,6 +32,6 @@ export function useReactiveTask<Args extends unknown[], T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
-  useDisposeOnUnmount(task);
+  useDisposeOnUnmount(() => dispose(task));
   return task;
 }
