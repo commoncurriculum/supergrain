@@ -3,6 +3,7 @@ import { useResource } from "@supergrain/husk/react";
 import { createReactive, signal } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
+import fc from "fast-check";
 import { describe, it, expect, afterEach, vi } from "vitest";
 
 afterEach(() => cleanup());
@@ -229,6 +230,55 @@ describe("useResource()", () => {
     });
     // Disposed — setup must not run again
     expect(setupSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("tracks arbitrary distinct argsFn updates and keeps rendered resource state in sync", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.uniqueArray(fc.integer({ min: -20, max: 20 }), { minLength: 1, maxLength: 15 }),
+        async (values) => {
+          const store = createReactive({ n: 0 });
+          const setupSpy = vi.fn();
+
+          const factory = defineResource<number, { value: number }>(
+            () => ({ value: 0 }),
+            (state, n) => {
+              setupSpy(n);
+              state.value = n * 10;
+            },
+          );
+
+          const Component = tracked(() => {
+            const r = useResource(factory, () => store.n);
+            return <span data-testid="value">{r.value}</span>;
+          });
+
+          const { getByTestId, unmount } = render(<Component />);
+
+          try {
+            expect(getByTestId("value").textContent).toBe("0");
+
+            for (const value of values) {
+              await act(async () => {
+                store.n = value;
+              });
+
+              expect(getByTestId("value").textContent).toBe(String(value * 10));
+            }
+
+            const effectiveValues = values.filter((value, index) =>
+              index === 0 ? value !== 0 : value !== values[index - 1],
+            );
+
+            expect(setupSpy).toHaveBeenCalledTimes(effectiveValues.length + 1);
+            expect(setupSpy.mock.calls.map(([value]) => value)).toEqual([0, ...effectiveValues]);
+          } finally {
+            unmount();
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
   });
 });
 

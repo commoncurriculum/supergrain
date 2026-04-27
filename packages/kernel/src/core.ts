@@ -37,7 +37,12 @@ export function getNodesIfExist(target: object): DataNodes | undefined {
 export function getNodes(target: object): DataNodes {
   let nodes = (target as any)[$NODE];
   if (!nodes) {
-    nodes = {} as DataNodes;
+    // Null-prototype: avoid inherited methods (toString, valueOf, hasOwnProperty,
+    // …) being mistaken for per-key signal nodes during writes. With a plain
+    // `{}` here, `setProperty` writing key="valueOf" would resolve `nodes[key]`
+    // to `Object.prototype.valueOf` (truthy function) and call it as a signal
+    // setter, throwing.
+    nodes = Object.create(null) as DataNodes;
     try {
       Object.defineProperty(target, $NODE, {
         value: nodes,
