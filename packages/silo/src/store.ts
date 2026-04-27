@@ -506,7 +506,6 @@ export function createDocumentStore<
       if (!handle) {
         handle = makeIdleHandle();
         bucket.set(paramsKey, handle);
-        handle = bucket.get(paramsKey)!;
       }
       if (handle.status === "IDLE") {
         kickOffQueryFetch(type, paramsKey, params);
