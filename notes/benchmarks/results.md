@@ -133,12 +133,12 @@ countSignal(value);
 
 ```javascript
 // Default: Simple, proxy-based API
-const [state, update] = useGranary({
+const [state, update] = useStore({
   /* ... */
 });
 
 // Escape hatch: Performance-critical paths only
-const [state, update, signals] = useGranary(
+const [state, update, signals] = useStore(
   {
     /* ... */
   },

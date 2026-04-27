@@ -45,10 +45,10 @@ const state = tracked(store)
 
 These were designed but not built. Preserved for future reference:
 
-- `useGranary(initialState)` — local reactive store (like useState with superpowers)
-- `useGranaryValue(globalState)` — connect to global store with auto-tracking
+- `useStore(initialState)` — local reactive store (like useState with superpowers)
+- `useStoreValue(globalState)` — connect to global store with auto-tracking
 - `useDerived(() => ...)` — auto-memoized derived values (no dependency array)
-- `useGranaryEffect(() => ...)` — reactive side effects
+- `useStoreEffect(() => ...)` — reactive side effects
 - `useSignalValue(signal)` — raw signal access for performance-critical paths
 - `getSignal(state, path)` — extract underlying signal from proxied state
 
@@ -107,7 +107,7 @@ Server-side: return non-reactive version (skip effect tracking when `typeof wind
 - [x] `$$` / `useDirectBindings` for direct DOM bindings
 - [x] `DirectFor` for template-based lists
 - [ ] `useComputed` / `useDerived` for derived values
-- [ ] `useGranaryEffect` for reactive side effects
+- [ ] `useStoreEffect` for reactive side effects
 - [ ] `getSignal` utility for raw signal extraction
 - [ ] SSR support
 - [ ] Development mode warnings

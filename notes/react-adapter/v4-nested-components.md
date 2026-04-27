@@ -2,11 +2,11 @@
 
 > **Status:** Historical. The problem described here was solved in v5. This doc served as the task specification for fixing nested component tracking.
 >
-> **Problem:** When parent and child components both use `useGranary()`, their tracking contexts interfere due to React's render order.
+> **Problem:** When parent and child components both use `useStore()`, their tracking contexts interfere due to React's render order.
 
 ## What Was Working (v3)
 
-- Basic store reactivity with `useGranary()` and `useTracked()`
+- Basic store reactivity with `useStore()` and `useTracked()`
 - Fine-grained updates
 - Multiple stores
 - Proper cleanup on unmount
@@ -15,9 +15,9 @@
 
 React renders depth-first:
 
-1. Parent calls `useGranary()`, sets its effect as current subscriber
+1. Parent calls `useStore()`, sets its effect as current subscriber
 2. Parent renders `<Child />`
-3. Child calls `useGranary()`, overwrites parent's subscriber
+3. Child calls `useStore()`, overwrites parent's subscriber
 4. Child renders
 5. Parent continues with child's subscriber still active
 6. Parent tracks wrong dependencies or loses tracking
@@ -29,12 +29,12 @@ it('should handle nested components with proper isolation', async () => {
   const [store, update] = createStore({ parent: 1, child: 10 })
 
   function Child() {
-    useGranary()
+    useStore()
     return <span>{store.child}</span>
   }
 
   function Parent() {
-    useGranary()
+    useStore()
     return <div><span>{store.parent}</span><Child /></div>
   }
 

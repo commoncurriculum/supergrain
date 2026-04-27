@@ -71,7 +71,7 @@ function createUserStore(initialData: UserStore) {
   Object.defineProperty(initialData, $NODE, { value: rootNodes });
   Object.defineProperty(initialData.nested, $NODE, { value: nestedNodes });
 
-  return createGrainProxy(initialData);
+  return createReactiveProxy(initialData);
 }
 ```
 
@@ -84,12 +84,12 @@ Generate specialized `wrap()` functions that skip `isWrappable()` runtime checks
 ```typescript
 // Generic (current)
 function wrap<T>(value: T): T {
-  return isWrappable(value) ? createGrainProxy(value) : value;
+  return isWrappable(value) ? createReactiveProxy(value) : value;
 }
 
 // Generated for known nested type
 function wrapNestedValue(value: { value: number }) {
-  return createGrainProxy(value); // Known wrappable at compile time
+  return createReactiveProxy(value); // Known wrappable at compile time
 }
 ```
 
