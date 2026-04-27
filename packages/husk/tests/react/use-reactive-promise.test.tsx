@@ -151,6 +151,11 @@ describe("useReactivePromise()", () => {
     expect(lastSignal!.aborted).toBe(false);
 
     unmount();
+    // Dispose is deferred to a setTimeout so a StrictMode remount can
+    // cancel it; flush before asserting torn-down state.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
     expect(lastSignal!.aborted).toBe(true);
 
     // After unmount, signal changes must not cause reruns

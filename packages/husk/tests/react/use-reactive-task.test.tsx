@@ -110,6 +110,8 @@ describe("useReactiveTask()", () => {
     expect(getByTestId("value").textContent).toBe("pending");
 
     unmount();
+    // Dispose is deferred to a setTimeout so a StrictMode remount can
+    // cancel it; flush before asserting torn-down state.
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
@@ -146,5 +148,7 @@ describe("useReactiveTask()", () => {
       await liveTask.run(5);
     });
     expect(getByTestId("value").textContent).toBe("10");
+    expect(liveTask.data).toBe(10);
+    expect(liveTask.isReady).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
-import { dispose, resource, type ResourceContext, type ResourceFactory } from "../resource";
+import { resource, type ResourceContext, type ResourceFactory } from "../resource";
+import { useDisposeOnUnmount } from "./use-dispose-on-unmount";
 
 type SetupResult = void | (() => void) | Promise<void>;
 
@@ -63,6 +64,6 @@ export function useResource(first: unknown, second?: unknown): object {
     // and the argsFn/setup closures provide the reactive surface.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => () => dispose(instance), [instance]);
+  useDisposeOnUnmount(instance);
   return instance;
 }
