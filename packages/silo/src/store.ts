@@ -1,6 +1,6 @@
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
 
-import { batch, createReactive } from "@supergrain/kernel";
+import { batch, createReactive, unwrap } from "@supergrain/kernel";
 import { setProperty } from "@supergrain/kernel/internal";
 
 import { Finder, type InternalHandle, type InternalState } from "./finder";
@@ -426,7 +426,9 @@ function assertSafeRecordKey(key: string): void {
 
 function setOwnRecordValue<T>(record: Record<string, T>, key: string, value: T): void {
   assertSafeRecordKey(key);
-  setProperty(record, key, value);
+  // Unwrap so the kernel proxy's `set` trap doesn't recurse into setProperty
+  // and double-bump version/per-key signals on the same nodes.
+  setProperty(unwrap(record), key, value);
 }
 
 function ensureHandleBucket<T>(
@@ -520,14 +522,13 @@ export function createDocumentStore<
           state.documents as Record<string, Record<string, InternalHandle<M[K]>>>,
           type,
         );
-        const existing = bucket[doc.id];
 
-        if (!existing) {
+        if (!Object.hasOwn(bucket, doc.id)) {
           setOwnRecordValue(bucket, doc.id, createSuccessHandle(doc));
           return;
         }
 
-        settleHandleWithData(existing, doc);
+        settleHandleWithData(bucket[doc.id]!, doc);
         // SUCCESS: only `data` + `hasData` update — promise reference stays stable.
       });
     },
@@ -575,14 +576,13 @@ export function createDocumentStore<
           state.queries as Record<string, Record<string, InternalHandle<Q[K]["result"]>>>,
           type,
         );
-        const existing = bucket[paramsKey];
 
-        if (!existing) {
+        if (!Object.hasOwn(bucket, paramsKey)) {
           setOwnRecordValue(bucket, paramsKey, createSuccessHandle(result));
           return;
         }
 
-        settleHandleWithData(existing, result);
+        settleHandleWithData(bucket[paramsKey]!, result);
       });
     },
 
