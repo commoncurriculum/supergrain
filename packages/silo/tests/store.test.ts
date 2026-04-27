@@ -1,3 +1,4 @@
+import { effect } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -295,5 +296,60 @@ describe("Store.clearMemory — handle transitions", () => {
     // Fetch completed; processor re-populated the doc on the (now cleared) store.
     expect(handle.status).toBe("SUCCESS");
     expect(handle.data?.id).toBe("1");
+  });
+});
+
+// =============================================================================
+// Reactive isolation — a subscriber to one (type, id) does not re-run when an
+// unrelated (type, id) is first accessed. Locks in the over-subscription fix.
+// =============================================================================
+
+describe("Store.find — subscription isolation", () => {
+  it("a subscriber to (user, 1) does not re-run when (post, 99) is first accessed", () => {
+    let runs = 0;
+    const dispose = effect(() => {
+      // Mirrors what `tracked()` does: read the same handle properties a
+      // consumer would. The proxy reads register the subscriptions.
+      const handle = store.find("user", "1");
+      void handle.status;
+      void handle.data;
+      runs++;
+    });
+
+    try {
+      const initial = runs;
+      // First-time access on a different type. Pre-fix this would bump
+      // state.documents's $OWN_KEYS and force the effect to re-run.
+      store.find("post", "99");
+      expect(runs).toBe(initial);
+
+      // First-time access on a different id under the SAME type. Pre-fix
+      // this would bump the user bucket's $OWN_KEYS and force a re-run.
+      store.find("user", "2");
+      expect(runs).toBe(initial);
+    } finally {
+      dispose();
+    }
+  });
+
+  it("a subscriber to (user, 1) does not re-run when (post, 99) is first inserted", () => {
+    let runs = 0;
+    const dispose = effect(() => {
+      const handle = store.find("user", "1");
+      void handle.status;
+      void handle.data;
+      runs++;
+    });
+
+    try {
+      const initial = runs;
+      store.insertDocument("post", {
+        id: "99",
+        attributes: { title: "x", body: "", authorId: "" },
+      });
+      expect(runs).toBe(initial);
+    } finally {
+      dispose();
+    }
   });
 });

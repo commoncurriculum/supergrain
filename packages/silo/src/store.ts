@@ -435,7 +435,11 @@ function ensureHandleBucket<T>(
   buckets: Record<string, Record<string, InternalHandle<T>>>,
   type: string,
 ): Record<string, InternalHandle<T>> {
-  if (!Object.hasOwn(buckets, type)) {
+  // Check own-property on the raw target. Going through the proxy's
+  // `getOwnPropertyDescriptor` trap calls `trackSelf`, which subscribes the
+  // caller to `$OWN_KEYS` and forces a re-render whenever any sibling type
+  // is added — that's the over-subscription consumers don't want.
+  if (!Object.hasOwn(unwrap(buckets), type)) {
     setOwnRecordValue(buckets, type, createStringKeyedRecord<InternalHandle<T>>());
   }
   return buckets[type]!;
@@ -447,7 +451,7 @@ function ensureHandle<T>(
   key: string,
 ): InternalHandle<T> {
   const bucket = ensureHandleBucket(buckets, type);
-  if (!Object.hasOwn(bucket, key)) {
+  if (!Object.hasOwn(unwrap(bucket), key)) {
     setOwnRecordValue(bucket, key, makeIdleHandle() as InternalHandle<T>);
   }
   return bucket[key]!;
@@ -523,7 +527,7 @@ export function createDocumentStore<
           type,
         );
 
-        if (!Object.hasOwn(bucket, doc.id)) {
+        if (!Object.hasOwn(unwrap(bucket), doc.id)) {
           setOwnRecordValue(bucket, doc.id, createSuccessHandle(doc));
           return;
         }
@@ -577,7 +581,7 @@ export function createDocumentStore<
           type,
         );
 
-        if (!Object.hasOwn(bucket, paramsKey)) {
+        if (!Object.hasOwn(unwrap(bucket), paramsKey)) {
           setOwnRecordValue(bucket, paramsKey, createSuccessHandle(result));
           return;
         }
