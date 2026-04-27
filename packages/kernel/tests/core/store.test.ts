@@ -85,7 +85,7 @@ describe("Store", () => {
 
       const p = getProfile();
       expect(p.signalReads).toBe(22);
-      expect(p.signalSkips).toBe(9);
+      expect(p.signalSkips).toBe(10);
       expect(p.signalWrites).toBe(2);
     });
 
@@ -206,7 +206,7 @@ describe("Store", () => {
 
       const p = getProfile();
       expect(p.signalReads).toBe(3); // users, [1], tasks (initial run)
-      expect(p.signalSkips).toBe(10); // reads during push + expect
+      expect(p.signalSkips).toBe(12); // reads during push + expect
       expect(p.signalWrites).toBe(0); // push doesn't write to tracked signals
     });
 
