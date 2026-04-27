@@ -493,6 +493,9 @@ importers:
         specifier: workspace:*
         version: link:../kernel
     devDependencies:
+      '@supergrain/husk':
+        specifier: workspace:*
+        version: link:../husk
       '@supergrain/test-utils':
         specifier: workspace:*
         version: link:../test-utils
