@@ -3,6 +3,7 @@ import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 import { $NODE, $OWN_KEYS, $PROXY, $RAW, $TRACK, $VERSION, getNode, getNodes } from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
 import { writeHandler } from "./write";
+import { createReactiveMap, createReactiveSet } from "./collections";
 
 // Array methods that mutate the array internally do multiple proxy `set`
 // operations (e.g., `push` does `arr[len] = x; arr.length += 1`). Without
@@ -41,7 +42,10 @@ const proxyCache = new WeakMap<object, object>();
 const isWrappable = (value: unknown): value is object =>
   value !== null &&
   typeof value === "object" &&
-  (value.constructor === Object || value.constructor === Array);
+  (value.constructor === Object ||
+    value.constructor === Array ||
+    value instanceof Map ||
+    value instanceof Set);
 
 function wrap<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
@@ -173,6 +177,13 @@ const handler: ProxyHandler<object> = {
 };
 
 export function createReactiveProxy<T extends object>(target: T): T {
+  if (target instanceof Map) {
+    return createReactiveMap(target as Map<unknown, unknown>) as unknown as T;
+  }
+  if (target instanceof Set) {
+    return createReactiveSet(target as Set<unknown>) as unknown as T;
+  }
+
   if ((target as any)[$PROXY]) {
     return (target as any)[$PROXY];
   }

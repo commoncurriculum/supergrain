@@ -370,14 +370,20 @@ export function createDocumentStore<
   Q extends QueryTypes = Record<string, never>,
 >(config: DocumentStoreConfig<M, Q>): DocumentStore<M, Q> {
   const finder = new Finder<M, Q>(config);
-  // Strip the `Branded<T>` marker from the reactive proxy's type so indexed
-  // writes (`state.documents[type] = {...}`) compile. The runtime proxy
-  // behavior is identical; the brand is purely a compile-time identification
-  // token that otherwise blocks direct assignment into nested generics.
   const state = createReactive<InternalState>({
-    documents: {},
-    queries: {},
+    documents: new Map(),
+    queries: new Map(),
   }) as InternalState;
+
+  function ensureBucket<T>(
+    buckets: Map<string, Map<string, T>>,
+    type: string,
+  ): Map<string, T> {
+    if (!buckets.get(type)) {
+      buckets.set(type, new Map<string, T>());
+    }
+    return buckets.get(type)!;
+  }
 
   function kickOffDocumentFetch(type: keyof M & string, id: string): void {
     const { promise, resolve, reject } = withResolvers<unknown>();
@@ -385,7 +391,7 @@ export function createDocumentStore<
     // to observe the rejection via `await handle.promise`.
     promise.catch(() => {});
     batch(() => {
-      const handle = state.documents[type]![id]!;
+      const handle = state.documents.get(type)!.get(id)!;
       handle.status = "PENDING";
       handle.isPending = true;
       handle.isFetching = true;
@@ -405,7 +411,7 @@ export function createDocumentStore<
     const { promise, resolve, reject } = withResolvers<unknown>();
     promise.catch(() => {});
     batch(() => {
-      const handle = state.queries[type]![paramsKey]!;
+      const handle = state.queries.get(type)!.get(paramsKey)!;
       handle.status = "PENDING";
       handle.isPending = true;
       handle.isFetching = true;
@@ -421,11 +427,11 @@ export function createDocumentStore<
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
       if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
 
-      state.documents[type] ??= {};
-      let handle = state.documents[type]![id];
+      const bucket = ensureBucket(state.documents, type);
+      let handle = bucket.get(id);
       if (!handle) {
-        state.documents[type]![id] = makeIdleHandle();
-        handle = state.documents[type]![id]!;
+        bucket.set(id, makeIdleHandle());
+        handle = bucket.get(id)!;
       }
       if (handle.status === "IDLE") {
         kickOffDocumentFetch(type, id);
@@ -434,7 +440,7 @@ export function createDocumentStore<
     },
 
     findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined {
-      return state.documents[type]?.[id]?.data as M[K] | undefined;
+      return state.documents.get(type)?.get(id)?.data as M[K] | undefined;
     },
 
     insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
@@ -445,12 +451,11 @@ export function createDocumentStore<
       if (!Object.isFrozen(doc)) Object.freeze(doc);
 
       batch(() => {
-        state.documents[type] ??= {};
-        const bucket = state.documents[type]!;
-        const existing = bucket[doc.id];
+        const bucket = ensureBucket(state.documents, type);
+        const existing = bucket.get(doc.id);
 
         if (!existing) {
-          bucket[doc.id] = {
+          bucket.set(doc.id, {
             status: "SUCCESS",
             data: doc,
             hasData: true,
@@ -461,7 +466,7 @@ export function createDocumentStore<
             promise: Promise.resolve(doc),
             resolve: undefined,
             reject: undefined,
-          };
+          });
           return;
         }
 
@@ -499,11 +504,12 @@ export function createDocumentStore<
         return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
 
       const paramsKey = stableStringify(params);
-      state.queries[type] ??= {};
-      let handle = state.queries[type]![paramsKey];
+      const bucket = ensureBucket(state.queries, type);
+      let handle = bucket.get(paramsKey);
       if (!handle) {
-        state.queries[type]![paramsKey] = makeIdleHandle();
-        handle = state.queries[type]![paramsKey]!;
+        handle = makeIdleHandle();
+        bucket.set(paramsKey, handle);
+        handle = bucket.get(paramsKey)!;
       }
       if (handle.status === "IDLE") {
         kickOffQueryFetch(type, paramsKey, params);
@@ -516,7 +522,7 @@ export function createDocumentStore<
       params: Q[K]["params"],
     ): Q[K]["result"] | undefined {
       const paramsKey = stableStringify(params);
-      return state.queries[type]?.[paramsKey]?.data as Q[K]["result"] | undefined;
+      return state.queries.get(type)?.get(paramsKey)?.data as Q[K]["result"] | undefined;
     },
 
     insertQueryResult<K extends keyof Q & string>(
@@ -531,12 +537,11 @@ export function createDocumentStore<
       const paramsKey = stableStringify(params);
 
       batch(() => {
-        state.queries[type] ??= {};
-        const bucket = state.queries[type]!;
-        const existing = bucket[paramsKey];
+        const bucket = ensureBucket(state.queries, type);
+        const existing = bucket.get(paramsKey);
 
         if (!existing) {
-          bucket[paramsKey] = {
+          bucket.set(paramsKey, {
             status: "SUCCESS",
             data: result,
             hasData: true,
@@ -547,7 +552,7 @@ export function createDocumentStore<
             promise: Promise.resolve(result),
             resolve: undefined,
             reject: undefined,
-          };
+          });
           return;
         }
 
@@ -576,17 +581,11 @@ export function createDocumentStore<
 
     clearMemory(): void {
       batch(() => {
-        for (const typeKey of Object.keys(state.documents)) {
-          const bucket = state.documents[typeKey];
-          if (bucket) {
-            for (const id of Object.keys(bucket)) resetHandle(bucket[id]!);
-          }
+        for (const bucket of state.documents.values()) {
+          for (const handle of bucket.values()) resetHandle(handle);
         }
-        for (const typeKey of Object.keys(state.queries)) {
-          const bucket = state.queries[typeKey];
-          if (bucket) {
-            for (const paramsKey of Object.keys(bucket)) resetHandle(bucket[paramsKey]!);
-          }
+        for (const bucket of state.queries.values()) {
+          for (const handle of bucket.values()) resetHandle(handle);
         }
       });
     },
