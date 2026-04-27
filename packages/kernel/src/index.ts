@@ -1,5 +1,5 @@
 // Export the optimized implementation
-export { createReactive, unwrap, $BRAND, type Signal, type Branded } from "./store";
+export { createGrain, unwrap, $BRAND, type Signal, type Branded } from "./store";
 export { getNodesIfExist, $TRACK } from "./core";
 
 // Re-export signal primitives from alien-signals for convenience.

@@ -1,5 +1,5 @@
 import { useReactivePromise } from "@supergrain/husk/react";
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -37,7 +37,7 @@ describe("useReactivePromise()", () => {
   });
 
   it("reruns when a tracked signal in asyncFn's sync prefix changes", async () => {
-    const store = createReactive({ n: 1 });
+    const store = createGrain({ n: 1 });
     const runs: number[] = [];
 
     const Component = tracked(() => {
@@ -60,7 +60,7 @@ describe("useReactivePromise()", () => {
   });
 
   it("aborts in-flight fetch on rerun (old signal tripped)", async () => {
-    const store = createReactive({ n: 1 });
+    const store = createGrain({ n: 1 });
     const signals: AbortSignal[] = [];
 
     const Component = tracked(() => {
@@ -89,7 +89,7 @@ describe("useReactivePromise()", () => {
   });
 
   it("re-renders only the consuming component, not its sibling", async () => {
-    const store = createReactive({ n: 1 });
+    const store = createGrain({ n: 1 });
     const consumerRenders = vi.fn();
     const siblingRenders = vi.fn();
 
@@ -129,7 +129,7 @@ describe("useReactivePromise()", () => {
   });
 
   it("disposes on unmount — in-flight signal aborts, no further reruns", async () => {
-    const store = createReactive({ n: 1 });
+    const store = createGrain({ n: 1 });
     let lastSignal: AbortSignal | null = null;
     const runs = vi.fn();
 

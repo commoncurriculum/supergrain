@@ -3,7 +3,7 @@
 Reactive state management for React — with an API query layer built on top.
 
 - **[@supergrain/kernel](./packages/kernel)** is the state library. Read and mutate plain objects; only the components that actually touched the changed property re-render.
-- **[@supergrain/husk](./packages/husk)** is the side-effects layer. `resource`, `reactivePromise`, `reactiveTask`, and `modifier` — reactive-function-with-cleanup primitives for async fetches, subscriptions, observers, and DOM behaviors.
+- **[@supergrain/husk](./packages/husk)** is the side-effects layer. `resource`, `reactivePromise`, `reactiveTask`, and `behavior` — reactive-function-with-cleanup primitives for async fetches, subscriptions, observers, and DOM behaviors.
 - **[@supergrain/silo](./packages/silo)** is an API query layer built on top. Request-batched by default, Suspense-compatible. Fetched documents live in the same reactive graph as the rest of your state.
 
 **End-to-end typed.** Declare your model shape once and it flows through every call: `store.user.name = "Alice"`, `useDocument("user", id)`, and `useQuery("posts", { authorId, status, limit })` are all type-checked against your declared types. No casts, no manual annotations, no selector overloads.
@@ -15,10 +15,10 @@ On [Krauset's js-framework-benchmark](https://krausest.github.io/js-framework-be
 Mutate state directly. No actions, no reducers, no selectors, no `useMemo` / `useCallback` dance.
 
 ```tsx
-import { tracked, useReactive, For } from "@supergrain/kernel/react";
+import { tracked, useGrain, For } from "@supergrain/kernel/react";
 
 const TodoList = tracked(() => {
-  const state = useReactive({
+  const state = useGrain({
     todos: [
       { id: 1, text: "Ship it", done: false },
       { id: 2, text: "Sleep", done: true },
@@ -39,7 +39,7 @@ const TodoList = tracked(() => {
 
 Click a todo and only that one `<li>` re-renders. Not the list. Not the siblings. No keys, no memoization.
 
-`useReactive` is for component-scoped state; `createStoreContext` is for app-wide state with a Provider. Writes are synchronous (read your own writes immediately); deep mutations (`store.org.teams[0].active = true`) are tracked at any nesting depth.
+`useGrain` is for component-scoped state; `createGranaryContext` is for app-wide state with a Provider. Writes are synchronous (read your own writes immediately); deep mutations (`store.org.teams[0].active = true`) are tracked at any nesting depth.
 
 [Full kernel docs →](./packages/kernel/README.md)
 
@@ -50,8 +50,8 @@ An entity cache with request batching. Think TanStack Query, except the fetched 
 Declare your models and adapters, build the store, then read documents anywhere in the tree:
 
 ```tsx
-import { type DocumentAdapter, type DocumentStore, type QueryAdapter } from "@supergrain/silo";
-import { createDocumentStoreContext } from "@supergrain/silo/react";
+import { type DocumentAdapter, type QueryAdapter, type Silo } from "@supergrain/silo";
+import { createSiloContext } from "@supergrain/silo/react";
 
 // 1. Models are keyed by id. Queries are keyed by a params object — for
 //    endpoints whose response only makes sense with its params (dashboards,
@@ -85,11 +85,10 @@ const postsAdapter: QueryAdapter<Queries["posts"]["params"]> = {
 };
 
 // 3. Context factory — one Provider, typed hooks.
-const { Provider, useDocument, useQuery } =
-  createDocumentStoreContext<DocumentStore<Models, Queries>>();
+const { Provider, useDocument, useQuery } = createSiloContext<Silo<Models, Queries>>();
 
 // 4. Mount the Provider once. The Provider wraps `config` in
-//    createDocumentStore() per mount → SSR/tests isolated by construction.
+//    createSilo() per mount → SSR/tests isolated by construction.
 function App() {
   return (
     <Provider
@@ -137,11 +136,11 @@ Handles are reactive: a later `store.insertDocument("user", updated)` (socket pu
 The layer between kernel's raw reactivity and application-specific data layers. Ships the primitives for "reactive value produced by a side effect with its own lifecycle" plus element-scoped DOM behaviors.
 
 ```tsx
-import { tracked, useReactive } from "@supergrain/kernel/react";
+import { tracked, useGrain } from "@supergrain/kernel/react";
 import { useReactivePromise } from "@supergrain/husk/react";
 
 const Profile = tracked(() => {
-  const state = useReactive({ userId: 1 });
+  const state = useGrain({ userId: 1 });
   const user = useReactivePromise(async (signal) => {
     const res = await fetch(`/users/${state.userId}`, { signal });
     return res.json() as Promise<User>;
@@ -165,9 +164,9 @@ Four effect primitives, one DOM primitive, one mental model: **lifecycle-bound w
 | Reusable primitive called from many places, args visible at call     | `defineResource` + `useResource`         |
 | One-off side effect with a custom state shape                        | `resource` / `useResource`               |
 | User-triggered work (save, submit) — no auto-run                     | `reactiveTask` / `useReactiveTask`       |
-| Behavior attached to a specific DOM element (observers, focus traps) | `modifier` / `useModifier`               |
+| Behavior attached to a specific DOM element (observers, focus traps) | `behavior` / `useBehavior`               |
 
-The key win over hand-rolling with `useState` + `useEffect` + `useRef` + `AbortController`: all the subtle correctness concerns (abort lifecycle, generation counter, cleanup ordering, stale-response discard, idempotent dispose, sync-vs-async setup) are packaged up once. And for `modifier` specifically, **signal reads inside setup trigger targeted re-attach on the element without re-rendering the component** — something `useEffect` can't compose because it doesn't subscribe to signals.
+The key win over hand-rolling with `useState` + `useEffect` + `useRef` + `AbortController`: all the subtle correctness concerns (abort lifecycle, generation counter, cleanup ordering, stale-response discard, idempotent dispose, sync-vs-async setup) are packaged up once. And for `behavior` specifically, **signal reads inside setup trigger targeted re-attach on the element without re-rendering the component** — something `useEffect` can't compose because it doesn't subscribe to signals.
 
 [Full husk docs →](./packages/husk/README.md)
 
@@ -180,7 +179,7 @@ The key win over hand-rolling with `useState` + `useEffect` + `useRef` + `AbortC
 | "A reusable primitive, args at call site."               | `defineResource` + `useResource`         | `fetchUser`, `subscribeChannel`, anything you call many places |
 | "A one-off side effect with a custom state shape."       | `resource` / `useResource`               | WebSocket, timer, observer where you need a unique shape       |
 | "User-triggered work (save, submit) — no auto-run."      | `reactiveTask` / `useReactiveTask`       | mutations, form submits                                        |
-| "Behavior attached to a specific DOM element."           | `modifier` / `useModifier`               | click-outside, focus trap, autofocus, ResizeObserver           |
+| "Behavior attached to a specific DOM element."           | `behavior` / `useBehavior`               | click-outside, focus trap, autofocus, ResizeObserver           |
 | "A reactive side effect, no element."                    | `useSignalEffect`                        | syncing a signal to `document.title`, logging                  |
 | "A derived value."                                       | `computed` / `useComputed`               | filtered list length, total cost                               |
 
@@ -233,7 +232,7 @@ React bindings ship at `@supergrain/<pkg>/react` subpaths and require `react >= 
 
 ## Also available
 
-- **[@supergrain/husk](./packages/husk/README.md)** — Reactive side-effect primitives: `resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`, plus the `modifier` / `useModifier` DOM primitive. Layer between kernel's reactive core and application data layers.
+- **[@supergrain/husk](./packages/husk/README.md)** — Reactive side-effect primitives: `resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`, plus the `behavior` / `useBehavior` DOM primitive. Layer between kernel's reactive core and application data layers.
 - **[@supergrain/mill](./packages/mill/README.md)** — MongoDB-style update operators (`$set`, `$inc`, `$push`, `$pull`, `$addToSet`, `$min`, `$max`, `$unset`) for batched, path-aware writes. Optional — plain `store.x = 1` is the usual path; reach for `mill` when you want to apply several updates atomically or use dot notation for deeply nested writes.
 
 ## Comparison

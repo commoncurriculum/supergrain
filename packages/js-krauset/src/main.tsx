@@ -1,10 +1,4 @@
-import {
-  createReactive,
-  batch,
-  enableProfiling,
-  resetProfiler,
-  getProfile,
-} from "@supergrain/kernel";
+import { createGrain, batch, enableProfiling, resetProfiler, getProfile } from "@supergrain/kernel";
 import { tracked, For, useComputed } from "@supergrain/kernel/react";
 import { Profiler, useCallback, useRef } from "react";
 import { flushSync } from "react-dom";
@@ -113,7 +107,7 @@ export interface RowProps {
 
 // --- Storable Implementation ---
 
-const store = createReactive<AppState>({
+const store = createGrain<AppState>({
   data: [],
   selected: null,
 });

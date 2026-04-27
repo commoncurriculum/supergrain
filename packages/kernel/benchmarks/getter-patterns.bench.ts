@@ -3,10 +3,10 @@
 import { effect } from "alien-signals";
 import { bench, describe } from "vitest";
 
-import { createReactive, unwrap } from "../src";
+import { createGrain, unwrap } from "../src";
 import { $NODE } from "../src/internal";
 
-const store = createReactive({ title: "Buy milk" });
+const store = createGrain({ title: "Buy milk" });
 const raw = unwrap(store) as any;
 // Ensure signal exists
 effect(() => {

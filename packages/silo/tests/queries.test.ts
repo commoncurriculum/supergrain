@@ -2,7 +2,7 @@
 // tests/queries.test.ts
 // =============================================================================
 //
-// Pins the behavior of queries — the second surface on `DocumentStore`,
+// Pins the behavior of queries — the second surface on `Silo`,
 // parallel to documents but keyed by structured params objects instead of
 // `id: string`. Covers:
 //
@@ -17,7 +17,7 @@
 //     the documents cache via store.insertDocument; documents and queries
 //     coexist independently.
 //
-// Uses the real `DocumentStore` (not a fake) — these are failing tests that
+// Uses the real `Silo` (not a fake) — these are failing tests that
 // pin the contract the implementation must meet.
 // =============================================================================
 
@@ -25,7 +25,7 @@ import { effect } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createDocumentStore } from "../src/store";
+import { createSilo } from "../src/store";
 import {
   API_BASE,
   clearRequests,
@@ -55,7 +55,7 @@ beforeEach(() => {
 // findQuery — reactive handle, stable identity, network on miss
 // =============================================================================
 
-describe("DocumentStore.findQuery", () => {
+describe("Silo.findQuery", () => {
   it("returns an idle handle when params is null", () => {
     const store = initStore();
     const handle = store.findQuery("dashboard", null);
@@ -126,7 +126,7 @@ describe("DocumentStore.findQuery", () => {
 // findQuery — error propagation
 // =============================================================================
 
-describe("DocumentStore.findQuery errors", () => {
+describe("Silo.findQuery errors", () => {
   it("transitions the handle to ERROR when the server rejects", async () => {
     server.use(
       http.get(`${API_BASE}/dashboards`, () =>
@@ -151,7 +151,7 @@ describe("DocumentStore.findQuery errors", () => {
 // insertQueryResult / findQueryInMemory
 // =============================================================================
 
-describe("DocumentStore.insertQueryResult + findQueryInMemory", () => {
+describe("Silo.insertQueryResult + findQueryInMemory", () => {
   it("inserts a query result under the stringified params slot", () => {
     const store = initStore();
     const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
@@ -240,7 +240,7 @@ describe("Finder pipeline with query params", () => {
     // Ensures the library does NOT stringify before handing off — the
     // adapter sees the original object shape.
     const received: Array<ReadonlyArray<DashboardParams>> = [];
-    const captureStore = createDocumentStore<TypeToModel, TypeToQuery>({
+    const captureStore = createSilo<TypeToModel, TypeToQuery>({
       models: {
         user: { adapter: { find: async () => [] } },
         post: { adapter: { find: async () => [] } },
@@ -285,7 +285,7 @@ describe("Queries share memory with documents", () => {
       dashWithUser: { params: { id: number }; result: { userId: string } };
     };
 
-    const store = createDocumentStore<Types, Queries>({
+    const store = createSilo<Types, Queries>({
       models: {
         user: { adapter: { find: async () => [] } },
       },

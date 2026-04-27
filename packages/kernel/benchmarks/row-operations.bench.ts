@@ -2,7 +2,7 @@ import { update } from "@supergrain/mill";
 // Table row operations (select, swap, append, delete) — krauset-style benchmarks.
 import { bench, describe } from "vitest";
 
-import { createReactive, effect } from "../src";
+import { createGrain, effect } from "../src";
 
 // --- Data Generation Utilities ---
 
@@ -97,7 +97,7 @@ describe("Core: Row Operations", () => {
   bench(
     "select row: highlighting a selected row in a table of 1,000 rows",
     () => {
-      const store = createReactive<AppState>({
+      const store = createGrain<AppState>({
         data: buildData(1000),
         selected: null,
       });
@@ -122,7 +122,7 @@ describe("Core: Row Operations", () => {
   bench(
     "swap rows: swapping two rows in a table of 1,000 rows",
     () => {
-      const store = createReactive<AppState>({
+      const store = createGrain<AppState>({
         data: buildData(1000),
         selected: null,
       });

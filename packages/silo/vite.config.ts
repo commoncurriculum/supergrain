@@ -11,7 +11,7 @@ export default defineConfig({
         "react/index": "src/react/index.ts",
         "react/json-api": "src/react/json-api.ts",
       },
-      name: "SupergrainDocumentStore",
+      name: "SupergrainSilo",
       formats: ["es", "cjs"],
     },
     rollupOptions: {

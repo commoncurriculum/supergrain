@@ -1,9 +1,61 @@
 ---
 "@supergrain/kernel": major
+"@supergrain/silo": major
 "@supergrain/husk": minor
 ---
 
-Split side-effect primitives into a new package, `@supergrain/husk`.
+Split side-effect primitives into a new package, `@supergrain/husk`, and align
+the public vocabulary across packages: kernel uses `grain` / `granary`, silo
+uses `silo`, husk replaces `modifier` with `behavior`.
+
+## BREAKING: renames in `@supergrain/kernel` and `@supergrain/kernel/react`
+
+| Before               | After                  |
+| -------------------- | ---------------------- |
+| `createReactive`     | `createGrain`          |
+| `useReactive`        | `useGrain`             |
+| `createStoreContext` | `createGranaryContext` |
+| `useStore`           | `useGranary`           |
+
+```diff
+-import { createReactive } from "@supergrain/kernel";
++import { createGrain } from "@supergrain/kernel";
+
+-import { useReactive, createStoreContext } from "@supergrain/kernel/react";
++import { useGrain, createGranaryContext } from "@supergrain/kernel/react";
+
+-export const { Provider, useStore } = createStoreContext<AppState>();
++export const { Provider, useGranary } = createGranaryContext<AppState>();
+```
+
+## BREAKING: renames in `@supergrain/silo` and `@supergrain/silo/react`
+
+Functions and the store type now use the `silo` vocabulary throughout:
+
+| Before                       | After               |
+| ---------------------------- | ------------------- |
+| `createDocumentStore`        | `createSilo`        |
+| `createDocumentStoreContext` | `createSiloContext` |
+| `useDocumentStore`           | `useSilo`           |
+| `DocumentStore<M, Q>`        | `Silo<M, Q>`        |
+| `DocumentStoreConfig<M, Q>`  | `SiloConfig<M, Q>`  |
+| `InitialDocumentStoreData`   | `InitialSiloData`   |
+
+```diff
+-import { type DocumentStore } from "@supergrain/silo";
+-import { createDocumentStoreContext } from "@supergrain/silo/react";
++import { type Silo } from "@supergrain/silo";
++import { createSiloContext } from "@supergrain/silo/react";
+
+-export const { Provider, useDocumentStore, useDocument, useQuery } =
+-  createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
++export const { Provider, useSilo, useDocument, useQuery } =
++  createSiloContext<Silo<TypeToModel, TypeToQuery>>();
+```
+
+`DocumentHandle<T>`, `DocumentAdapter`, `DocumentTypes`, `useDocument`, and
+`insertDocument` are unchanged — they describe individual documents, where the
+existing vocabulary still fits.
 
 ## New package: `@supergrain/husk`
 
@@ -14,7 +66,7 @@ Split side-effect primitives into a new package, `@supergrain/husk`.
 - **`dispose(resource)`** — free function; stops a resource permanently. Idempotent, safe on any object.
 - **`reactivePromise(asyncFn)`** — inline async envelope (`data`, `error`, `isPending`, `isResolved`, `isRejected`, `isSettled`, `isReady`, `promise`). Reactive reads in `asyncFn`'s sync prefix drive reruns; previous runs abort via `AbortSignal`. Matches SWR / TanStack Query / Apollo / silo field names.
 - **`reactiveTask(asyncFn)`** — imperative `.run(...)` command. Same envelope as `reactivePromise`, no auto-tracking.
-- **`modifier(fn)` + `useModifier(m, ...args)`** — element-scoped setup/teardown. Args flow through an internal ref so fresh closures per render don't re-register; signal reads inside setup trigger targeted re-attach on the element **without re-rendering the component**.
+- **`behavior(fn)` + `useBehavior(m, ...args)`** — element-scoped setup/teardown. Args flow through an internal ref so fresh closures per render don't re-register; signal reads inside setup trigger targeted re-attach on the element **without re-rendering the component**.
 
 Install:
 
@@ -30,7 +82,7 @@ The following were moved out of `@supergrain/kernel` and `@supergrain/kernel/rea
 - `reactivePromise`, `ReactivePromise`
 - `reactiveTask`, `ReactiveTask`
 - `useResource`, `useReactivePromise`, `useReactiveTask`
-- `modifier`, `useModifier`, `Modifier`
+- `behavior`, `useBehavior`, `Behavior`
 
 ### Migration
 
@@ -38,15 +90,15 @@ The following were moved out of `@supergrain/kernel` and `@supergrain/kernel/rea
 -import { resource, defineResource, reactivePromise, reactiveTask, dispose } from "@supergrain/kernel";
 +import { resource, defineResource, reactivePromise, reactiveTask, dispose } from "@supergrain/husk";
 
--import { useResource, useReactivePromise, useReactiveTask, modifier, useModifier } from "@supergrain/kernel/react";
-+import { useResource, useReactivePromise, useReactiveTask, modifier, useModifier } from "@supergrain/husk/react";
+-import { useResource, useReactivePromise, useReactiveTask, behavior, useBehavior } from "@supergrain/kernel/react";
++import { useResource, useReactivePromise, useReactiveTask, behavior, useBehavior } from "@supergrain/husk/react";
 ```
 
-Kernel continues to export the reactive core (`createReactive`, `computed`, `effect`, `signal`, `batch`) and state-centric React bindings (`tracked`, `useReactive`, `useComputed`, `useSignalEffect`, `createStoreContext`, `For`).
+Kernel continues to export the reactive core (`createGrain`, `computed`, `effect`, `signal`, `batch`) and state-centric React bindings (`tracked`, `useGrain`, `useComputed`, `useSignalEffect`, `createGranaryContext`, `For`).
 
 ## Why the split
 
-kernel's tagline is "reactive store for React." `resource` / `reactivePromise` / `reactiveTask` / `modifier` are side-effect primitives built _on top of_ reactivity — different concern, different audience. The ecosystem models these as separate layers (TanStack Query is separate from any state library). Separating lets each package iterate independently and keeps kernel focused on state.
+kernel's tagline is "reactive store for React." `resource` / `reactivePromise` / `reactiveTask` / `behavior` are side-effect primitives built _on top of_ reactivity — different concern, different audience. The ecosystem models these as separate layers (TanStack Query is separate from any state library). Separating lets each package iterate independently and keeps kernel focused on state.
 
 ## Fix: resources created inside `tracked()` render now propagate correctly
 

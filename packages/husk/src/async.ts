@@ -1,4 +1,4 @@
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 
 import { resource } from "./resource";
 
@@ -179,7 +179,7 @@ export function reactiveTask<Args extends unknown[], T>(
 ): ReactiveTask<Args, T> {
   let generation = 0;
 
-  const state = createReactive<TaskEnvelope<Args, T>>({
+  const state = createGrain<TaskEnvelope<Args, T>>({
     data: null,
     error: null,
     isPending: false,

@@ -1,7 +1,7 @@
 import { update } from "@supergrain/mill";
 import { describe, it, expect } from "vitest";
 
-import { createReactive } from "../../src";
+import { createGrain } from "../../src";
 
 interface Task {
   id: string;
@@ -29,7 +29,7 @@ describe("Todo App Core Tests", () => {
       },
     };
 
-    const state = createReactive(initialState);
+    const state = createGrain(initialState);
 
     const newTask: Task = {
       id: "task-1",
@@ -60,7 +60,7 @@ describe("Todo App Core Tests", () => {
       },
     };
 
-    const state = createReactive(initialState);
+    const state = createGrain(initialState);
 
     update(state, {
       $pull: {
@@ -85,7 +85,7 @@ describe("Todo App Core Tests", () => {
       },
     };
 
-    const state = createReactive(initialState);
+    const state = createGrain(initialState);
     const newText = "Updated task text";
 
     update(state, {
@@ -108,7 +108,7 @@ describe("Todo App Core Tests", () => {
       },
     };
 
-    const state = createReactive(initialState);
+    const state = createGrain(initialState);
 
     expect(state.userTaskList.tasks[0]!.isCompleted).toBe(false);
 

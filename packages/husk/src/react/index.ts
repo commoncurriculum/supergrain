@@ -3,4 +3,4 @@
 export { useResource } from "./use-resource";
 export { useReactivePromise } from "./use-reactive-promise";
 export { useReactiveTask } from "./use-reactive-task";
-export { modifier, useModifier, type Modifier } from "./modifier";
+export { behavior, useBehavior, type Behavior } from "./behavior";

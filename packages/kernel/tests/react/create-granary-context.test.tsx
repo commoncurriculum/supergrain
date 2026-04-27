@@ -1,4 +1,4 @@
-import { tracked, createStoreContext, useComputed } from "@supergrain/kernel/react";
+import { tracked, createGranaryContext, useComputed } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
 import { describe, it, expect, afterEach } from "vitest";
 
@@ -9,18 +9,18 @@ interface AppState {
   selected: number | null;
 }
 
-describe("createStoreContext", () => {
-  it("returns an object with Provider and useStore", () => {
-    const ctx = createStoreContext<AppState>();
+describe("createGranaryContext", () => {
+  it("returns an object with Provider and useGranary", () => {
+    const ctx = createGranaryContext<AppState>();
     expect(typeof ctx.Provider).toBe("function");
-    expect(typeof ctx.useStore).toBe("function");
+    expect(typeof ctx.useGranary).toBe("function");
   });
 
-  it("Provider exposes a reactive store to descendants via useStore", () => {
-    const { Provider, useStore } = createStoreContext<AppState>();
+  it("Provider exposes a reactive store to descendants via useGranary", () => {
+    const { Provider, useGranary } = createGranaryContext<AppState>();
 
     const Child = tracked(() => {
-      const s = useStore();
+      const s = useGranary();
       return <span data-testid="val">{String(s.selected)}</span>;
     });
 
@@ -33,10 +33,10 @@ describe("createStoreContext", () => {
     expect(getByTestId("val").textContent).toBe("null");
   });
 
-  it("throws when useStore is called outside Provider", () => {
-    const { useStore } = createStoreContext<AppState>();
+  it("throws when useGranary is called outside Provider", () => {
+    const { useGranary } = createGranaryContext<AppState>();
     const Bad = () => {
-      useStore();
+      useGranary();
       return null;
     };
 
@@ -44,15 +44,15 @@ describe("createStoreContext", () => {
   });
 
   it("store from the Provider is reactive", async () => {
-    const { Provider, useStore } = createStoreContext<AppState>();
+    const { Provider, useGranary } = createGranaryContext<AppState>();
 
     let storeRef: AppState = null!;
     const Probe = () => {
-      storeRef = useStore();
+      storeRef = useGranary();
       return null;
     };
     const Child = tracked(() => {
-      const s = useStore();
+      const s = useGranary();
       return <span data-testid="label">{s.items[0]!.label}</span>;
     });
 
@@ -73,13 +73,13 @@ describe("createStoreContext", () => {
   });
 
   it("context value is stable — store mutations don't trigger context re-renders", async () => {
-    const { Provider, useStore } = createStoreContext<AppState>();
+    const { Provider, useGranary } = createGranaryContext<AppState>();
 
     let storeRef: AppState = null!;
     let childRenders = 0;
 
     const Probe = () => {
-      storeRef = useStore();
+      storeRef = useGranary();
       return null;
     };
     const Counter = () => {
@@ -102,18 +102,18 @@ describe("createStoreContext", () => {
   });
 
   it("works with useComputed for the firewall pattern", async () => {
-    const { Provider, useStore } = createStoreContext<AppState>();
+    const { Provider, useGranary } = createGranaryContext<AppState>();
 
     let storeRef: AppState = null!;
     let rowRenders = 0;
 
     const Probe = () => {
-      storeRef = useStore();
+      storeRef = useGranary();
       return null;
     };
     const Row = tracked(({ id }: { id: number }) => {
       rowRenders++;
-      const s = useStore();
+      const s = useGranary();
       const isSelected = useComputed(() => s.selected === id);
       return <div data-testid={`row-${id}`}>{isSelected ? "selected" : "not"}</div>;
     });
@@ -159,17 +159,17 @@ describe("createStoreContext", () => {
       theme: string;
     }
 
-    const Auth = createStoreContext<AuthState>();
-    const UI = createStoreContext<UIState>();
+    const Auth = createGranaryContext<AuthState>();
+    const UI = createGranaryContext<UIState>();
 
     let uiRef: UIState = null!;
     const Probe = () => {
-      uiRef = UI.useStore();
+      uiRef = UI.useGranary();
       return null;
     };
     const Display = tracked(() => {
-      const auth = Auth.useStore();
-      const ui = UI.useStore();
+      const auth = Auth.useGranary();
+      const ui = UI.useGranary();
       return (
         <span data-testid="display">
           {auth.user}:{ui.theme}
@@ -195,17 +195,17 @@ describe("createStoreContext", () => {
   });
 
   it("each Provider mount gets an isolated store", async () => {
-    const ctx = createStoreContext<{ count: number }>();
+    const ctx = createGranaryContext<{ count: number }>();
 
     let firstRef: { count: number } = null!;
     let secondRef: { count: number } = null!;
     const First = tracked(() => {
-      const s = ctx.useStore();
+      const s = ctx.useGranary();
       firstRef = s;
       return <span data-testid="first">{s.count}</span>;
     });
     const Second = tracked(() => {
-      const s = ctx.useStore();
+      const s = ctx.useGranary();
       secondRef = s;
       return <span data-testid="second">{s.count}</span>;
     });

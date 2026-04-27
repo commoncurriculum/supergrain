@@ -1,5 +1,5 @@
-import { modifier, useModifier } from "@supergrain/husk/react";
-import { createReactive } from "@supergrain/kernel";
+import { behavior, useBehavior } from "@supergrain/husk/react";
+import { createGrain } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
 import { useState } from "react";
@@ -7,18 +7,18 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 
 afterEach(() => cleanup());
 
-describe("modifier() / useModifier()", () => {
+describe("behavior() / useBehavior()", () => {
   it("runs setup on attach and cleanup on unmount", () => {
     const setupSpy = vi.fn();
     const cleanupSpy = vi.fn();
 
-    const testModifier = modifier<HTMLDivElement, []>((el) => {
+    const testBehavior = behavior<HTMLDivElement, []>((el) => {
       setupSpy(el);
       return () => cleanupSpy();
     });
 
     function Component() {
-      return <div ref={useModifier(testModifier)} data-testid="target" />;
+      return <div ref={useBehavior(testBehavior)} data-testid="target" />;
     }
 
     const { getByTestId, unmount } = render(<Component />);
@@ -33,14 +33,14 @@ describe("modifier() / useModifier()", () => {
   it("attaches a DOM event listener and fires on interaction", async () => {
     const clickSpy = vi.fn();
 
-    const onClick = modifier<HTMLButtonElement, [() => void]>((el, handler) => {
+    const onClick = behavior<HTMLButtonElement, [() => void]>((el, handler) => {
       el.addEventListener("click", handler);
       return () => el.removeEventListener("click", handler);
     });
 
     function Component() {
       return (
-        <button ref={useModifier(onClick, () => clickSpy())} data-testid="btn">
+        <button ref={useBehavior(onClick, () => clickSpy())} data-testid="btn">
           click
         </button>
       );
@@ -57,17 +57,17 @@ describe("modifier() / useModifier()", () => {
     const setupSpy = vi.fn();
     const cleanupSpy = vi.fn();
 
-    const testMod = modifier<HTMLDivElement, [string]>((_el, _label) => {
+    const testMod = behavior<HTMLDivElement, [string]>((_el, _label) => {
       setupSpy();
       return () => cleanupSpy();
     });
 
     function Component() {
       const [count, setCount] = useState(0);
-      // New closure each render, but modifier shouldn't re-attach
+      // New closure each render, but behavior shouldn't re-attach
       return (
         <>
-          <div ref={useModifier(testMod, `count-${count}`)} />
+          <div ref={useBehavior(testMod, `count-${count}`)} />
           <button data-testid="bump" onClick={() => setCount((c) => c + 1)}>
             {count}
           </button>
@@ -85,21 +85,21 @@ describe("modifier() / useModifier()", () => {
     await act(async () => {
       getByTestId("bump").click();
     });
-    // Re-render happened twice, but modifier stayed attached
+    // Re-render happened twice, but behavior stayed attached
     expect(setupSpy).toHaveBeenCalledTimes(1);
     expect(cleanupSpy).not.toHaveBeenCalled();
   });
 
   it("reruns setup when a signal read directly in setup changes", async () => {
-    const store = createReactive({ label: "a" });
+    const store = createGrain({ label: "a" });
     const labels: Array<string> = [];
 
-    const watchStoreLabel = modifier<HTMLDivElement, []>(() => {
+    const watchStoreLabel = behavior<HTMLDivElement, []>(() => {
       labels.push(store.label); // direct signal read — tracked
     });
 
     const Component = tracked(() => {
-      return <div ref={useModifier(watchStoreLabel)} />;
+      return <div ref={useBehavior(watchStoreLabel)} />;
     });
 
     render(<Component />);
@@ -117,18 +117,18 @@ describe("modifier() / useModifier()", () => {
   });
 
   it("cleans up between reruns triggered by signal changes", async () => {
-    const store = createReactive({ n: 0 });
+    const store = createGrain({ n: 0 });
     const setups: Array<number> = [];
     const cleanups: Array<number> = [];
 
-    const withCounter = modifier<HTMLDivElement, []>(() => {
+    const withCounter = behavior<HTMLDivElement, []>(() => {
       const n = store.n;
       setups.push(n);
       return () => cleanups.push(n);
     });
 
     const Component = tracked(() => {
-      return <div ref={useModifier(withCounter)} />;
+      return <div ref={useBehavior(withCounter)} />;
     });
 
     render(<Component />);
@@ -150,7 +150,7 @@ describe("modifier() / useModifier()", () => {
 });
 
 describe("onClickOutside popover scenario", () => {
-  const onClickOutside = modifier<HTMLElement, [() => void]>((el, onOutside) => {
+  const onClickOutside = behavior<HTMLElement, [() => void]>((el, onOutside) => {
     const handler = (e: MouseEvent) => {
       if (!el.contains(e.target as Node)) onOutside();
     };
@@ -164,7 +164,7 @@ describe("onClickOutside popover scenario", () => {
     function App() {
       return (
         <>
-          <div ref={useModifier(onClickOutside, onClose)} data-testid="popover">
+          <div ref={useBehavior(onClickOutside, onClose)} data-testid="popover">
             <button type="button" data-testid="inside">
               inside
             </button>
@@ -194,11 +194,11 @@ describe("onClickOutside popover scenario", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
-  it("parent re-renders do not re-attach the modifier", async () => {
+  it("parent re-renders do not re-attach the behavior", async () => {
     const attachSpy = vi.fn();
     const cleanupSpy = vi.fn();
 
-    const tracking = modifier<HTMLElement, [() => void]>((el, onOutside) => {
+    const tracking = behavior<HTMLElement, [() => void]>((el, onOutside) => {
       attachSpy();
       const handler = (e: MouseEvent) => {
         if (!el.contains(e.target as Node)) onOutside();
@@ -215,7 +215,7 @@ describe("onClickOutside popover scenario", () => {
       // Fresh closure every render — must not cause re-attach
       return (
         <>
-          <div ref={useModifier(tracking, () => count)} data-testid="popover">
+          <div ref={useBehavior(tracking, () => count)} data-testid="popover">
             popover
           </div>
           <button type="button" data-testid="bump" onClick={() => setCount((c) => c + 1)}>
@@ -239,7 +239,7 @@ describe("onClickOutside popover scenario", () => {
       getByTestId("bump").click();
     });
 
-    // Three parent re-renders, but the modifier stayed attached
+    // Three parent re-renders, but the behavior stayed attached
     expect(attachSpy).toHaveBeenCalledTimes(1);
     expect(cleanupSpy).not.toHaveBeenCalled();
     expect(getByTestId("bump").textContent).toBe("3");
@@ -250,7 +250,7 @@ describe("onClickOutside popover scenario", () => {
 
     function App() {
       return (
-        <div ref={useModifier(onClickOutside, onClose)} data-testid="popover">
+        <div ref={useBehavior(onClickOutside, onClose)} data-testid="popover">
           popover
         </div>
       );
@@ -275,7 +275,7 @@ describe("onClickOutside popover scenario", () => {
 
     function Popover({ testid, onClose }: { testid: string; onClose: () => void }) {
       return (
-        <div ref={useModifier(onClickOutside, onClose)} data-testid={testid}>
+        <div ref={useBehavior(onClickOutside, onClose)} data-testid={testid}>
           {testid}
         </div>
       );

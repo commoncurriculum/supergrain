@@ -6,7 +6,7 @@ import { createRoot, createEffect, batch } from "solid-js/dist/solid.js";
 import { createStore as createSolidStore } from "solid-js/store/dist/store.js";
 import { bench, describe } from "vitest";
 
-import { createReactive } from "../src";
+import { createGrain } from "../src";
 
 function validationError(message: string) {
   console.warn(message);
@@ -29,7 +29,7 @@ function validationError(message: string) {
 describe("Core: Store Creation", () => {
   bench("@supergrain/kernel: create 1000 stores", () => {
     for (let i = 0; i < 1000; i++) {
-      createReactive({
+      createGrain({
         id: i,
         name: `Item ${i}`,
         nested: { count: i },
@@ -52,7 +52,7 @@ describe("Core: Store Creation", () => {
 });
 
 describe("Core: Property Access (Non-reactive)", () => {
-  const storableStore = createReactive({ user: { age: 30 } });
+  const storableStore = createGrain({ user: { age: 30 } });
   let solidStore: any;
   createRoot((dispose: () => void) => {
     [solidStore] = createSolidStore({ user: { age: 30 } });
@@ -74,7 +74,7 @@ describe("Core: Property Access (Non-reactive)", () => {
 
 describe("Core: Reactive Effect Creation", () => {
   bench("@supergrain/kernel: create effect with 10k property reads", () => {
-    const store = createReactive({ value: 0 });
+    const store = createGrain({ value: 0 });
     let runs = 0;
     const dispose = effect(() => {
       runs++;
@@ -105,7 +105,7 @@ describe("Core: Reactive Effect Creation", () => {
 
 describe("Core: Property Updates with Effects", () => {
   bench("@supergrain/kernel: 1000 sequential updates", async () => {
-    const store = createReactive({ count: 0 });
+    const store = createGrain({ count: 0 });
     let runs = 0;
     const dispose = effect(() => {
       runs++;
@@ -158,7 +158,7 @@ describe("Core: Property Updates with Effects", () => {
 
 describe("Core: Batch Updates", () => {
   bench("@supergrain/kernel: batch update 3 properties", async () => {
-    const store = createReactive({ a: 0, b: 0, c: 0 });
+    const store = createGrain({ a: 0, b: 0, c: 0 });
     let runs = 0;
     const dispose = effect(() => {
       runs++;
@@ -206,7 +206,7 @@ describe("Core: Batch Updates", () => {
 
 describe("Core: Array Operations", () => {
   bench("@supergrain/kernel: 100 array pushes", async () => {
-    const store = createReactive<{ items: number[] }>({ items: [] });
+    const store = createGrain<{ items: number[] }>({ items: [] });
     let runs = 0;
     const dispose = effect(() => {
       runs++;
@@ -257,7 +257,7 @@ describe("Core: Deep Updates", () => {
   const getDeepState = () => ({ l1: { l2: { l3: { value: 0 } } } });
 
   bench("@supergrain/kernel: 100 deep updates", async () => {
-    const store = createReactive(getDeepState());
+    const store = createGrain(getDeepState());
     let runs = 0;
     const dispose = effect(() => {
       runs++;
@@ -306,7 +306,7 @@ describe("Core: Granular Reactivity", () => {
   bench("@supergrain/kernel: update one property in object with 10 properties", async () => {
     const data: any = {};
     for (let i = 0; i < 10; i++) data[`prop${i}`] = { nested: i };
-    const store = createReactive(data);
+    const store = createGrain(data);
     const runs = Array(10).fill(0);
     const disposers: (() => void)[] = [];
 
@@ -373,7 +373,7 @@ describe("Core: Granular Reactivity", () => {
  */
 describe("Core: Non-reactive Store Operations", () => {
   bench("@supergrain/kernel: 1000 non-reactive updates", () => {
-    const _store = createReactive({ count: 0 });
+    const _store = createGrain({ count: 0 });
     for (let i = 0; i < 1000; i++) {
       update(_store, { $set: { count: i + 1 } });
     }

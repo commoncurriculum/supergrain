@@ -1,4 +1,4 @@
-import type { DocumentStore } from "../../src";
+import type { Silo } from "../../src";
 
 import { describe, it, expect } from "vitest";
 
@@ -20,7 +20,7 @@ function makeFakeStore() {
     insertDocument<K extends keyof TypeToModel & string>(type: K, doc: TypeToModel[K]) {
       inserts.push({ type, doc } as Insert);
     },
-  } as unknown as DocumentStore<TypeToModel>;
+  } as unknown as Silo<TypeToModel>;
   return { store: fake, inserts };
 }
 

@@ -40,10 +40,10 @@ layout: page
   <div class="hero-code">
 
 ```tsx
-import { tracked, useReactive, For } from "@supergrain/kernel/react";
+import { tracked, useGrain, For } from "@supergrain/kernel/react";
 
 const TodoList = tracked(() => {
-  const { todos } = useReactive({
+  const { todos } = useGrain({
     todos: [
       { id: 1, text: "Ship it", done: false },
       { id: 2, text: "Sleep", done: true },

@@ -6,16 +6,16 @@
 //   @supergrain/silo/react               — Provider + hooks
 //   @supergrain/silo/react/json-api      — useBelongsTo / useHasMany
 
-export { createDocumentStore } from "./store";
+export { createSilo } from "./store";
 export type {
   DocumentAdapter,
   DocumentHandle,
-  DocumentStore,
-  DocumentStoreConfig,
   DocumentTypes,
   ModelConfig,
   RegisteredTypes,
   ResponseProcessor,
+  Silo,
+  SiloConfig,
   Status,
   TypeRegistry,
 } from "./store";
@@ -31,4 +31,4 @@ export type {
 
 // Finder is intentionally not exported — it's an internal implementation
 // detail of the store (batching / dedup / chunking). Consumers configure
-// it through `DocumentStoreConfig.batchWindowMs` and `DocumentStoreConfig.batchSize`.
+// it through `SiloConfig.batchWindowMs` and `SiloConfig.batchSize`.

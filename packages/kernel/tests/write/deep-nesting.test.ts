@@ -1,7 +1,7 @@
 import { update } from "@supergrain/mill";
 import { describe, it, expect } from "vitest";
 
-import { createReactive, effect, computed } from "../../src";
+import { createGrain, effect, computed } from "../../src";
 
 describe("Deep Nesting Operations (Type Safe)", () => {
   // Helper to safely access deeply nested properties (not used but kept for future reference)
@@ -15,7 +15,7 @@ describe("Deep Nesting Operations (Type Safe)", () => {
 
   // Complex nested data structure for comprehensive testing
   const createComplexStore = () => {
-    const state = createReactive({
+    const state = createGrain({
       organization: {
         id: "org-1",
         name: "TechCorp",

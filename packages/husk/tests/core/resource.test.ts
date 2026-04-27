@@ -1,4 +1,4 @@
-import { createReactive, signal } from "@supergrain/kernel";
+import { createGrain, signal } from "@supergrain/kernel";
 import { describe, it, expect, vi } from "vitest";
 
 import { resource, defineResource, dispose } from "../../src";
@@ -221,7 +221,7 @@ describe("defineResource()", () => {
       },
     );
 
-    const store = createReactive({ n: 3 });
+    const store = createGrain({ n: 3 });
     const r = factory(() => store.n);
 
     expect(r.doubled).toBe(6);
@@ -238,7 +238,7 @@ describe("defineResource()", () => {
 
   it("does NOT track reactive reads inside setup", () => {
     const setupSpy = vi.fn();
-    const store = createReactive({ side: 0 });
+    const store = createGrain({ side: 0 });
 
     const factory = defineResource<number, { value: number }>(
       () => ({ value: 0 }),

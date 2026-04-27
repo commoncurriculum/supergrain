@@ -157,9 +157,9 @@ function categorize(funcName: string, url: string): string {
     if (alienFuncs.some((a) => funcName === a || funcName.includes(a))) return "alien-signals";
 
     // Supergrain
-    const sgFuncs = ["Tracked", "useStore", "getNode", "get", "run"];
+    const sgFuncs = ["Tracked", "useGranary", "getNode", "get", "run"];
     if (funcName === "Tracked") return "supergrain";
-    if (funcName === "useStore") return "supergrain";
+    if (funcName === "useGranary") return "supergrain";
     if (funcName === "getNode") return "supergrain";
     if (funcName === "get" && !funcName.includes("getHost")) return "supergrain";
 

@@ -2,13 +2,13 @@ import { effect } from "@supergrain/kernel";
 import { useCallback, useRef } from "react";
 
 /**
- * A modifier is a function that sets up behavior on a DOM element and
- * returns a cleanup. It's the supergrain counterpart of an Ember modifier:
+ * A behavior is a function that sets up behavior on a DOM element and
+ * returns a cleanup. It's the supergrain counterpart of an Ember behavior:
  * an element-scoped, composable setup/teardown pair.
  *
  * Authored as a plain function:
  * ```ts
- * const onKeydown = modifier<HTMLElement, [string, (e: KeyboardEvent) => void]>(
+ * const onKeydown = behavior<HTMLElement, [string, (e: KeyboardEvent) => void]>(
  *   (el, key, handler) => {
  *     const listener = (e: KeyboardEvent) => { if (e.key === key) handler(e); };
  *     el.addEventListener("keydown", listener);
@@ -17,53 +17,53 @@ import { useCallback, useRef } from "react";
  * );
  * ```
  *
- * Applied via `useModifier`:
+ * Applied via `useBehavior`:
  * ```tsx
- * <input ref={useModifier(onKeydown, "Enter", () => submit())} />
+ * <input ref={useBehavior(onKeydown, "Enter", () => submit())} />
  * ```
  *
- * Currently the identity function. Reusable modifiers should still be
+ * Currently the identity function. Reusable behaviors should still be
  * authored through this factory so future versions can attach metadata
- * (e.g. `modifier.update`, `modifier.compose`) without requiring call-site
+ * (e.g. `behavior.update`, `behavior.compose`) without requiring call-site
  * changes.
  */
-export type Modifier<E extends Element, A extends unknown[]> = (
+export type Behavior<E extends Element, A extends unknown[]> = (
   el: E,
   ...args: A
 ) => (() => void) | void;
 
-export function modifier<E extends Element, A extends unknown[]>(
-  fn: Modifier<E, A>,
-): Modifier<E, A> {
+export function behavior<E extends Element, A extends unknown[]>(
+  fn: Behavior<E, A>,
+): Behavior<E, A> {
   return fn;
 }
 
 /**
- * Apply a modifier to an element via a React ref callback.
+ * Apply a behavior to an element via a React ref callback.
  *
- * Returns a stable ref callback. On attach, runs the modifier with the
- * current args and tracks any signals read inside setup — the modifier
+ * Returns a stable ref callback. On attach, runs the behavior with the
+ * current args and tracks any signals read inside setup — the behavior
  * reruns (teardown → setup) when those signals change, without React
  * touching the element. On detach (unmount or element swap), cleanup runs.
  *
  * **Args stability:** `args` are read from a ref on every rerun, so
  * passing a fresh closure each render (e.g. `() => setCount(c => c + 1)`)
- * does NOT re-attach. The modifier's setup sees the latest args when it
- * runs. If you want the modifier to re-attach on arg changes, read the
+ * does NOT re-attach. The behavior's setup sees the latest args when it
+ * runs. If you want the behavior to re-attach on arg changes, read the
  * args inside `setup` and combine with a signal, or lift the arg to a
  * signal.
  *
  * **React 18 & 19** — a stable callback ref; detach is detected via
  * `el === null` rather than React 19's cleanup-returning ref.
  *
- * **Modifier identity** — `m` is read from a ref, matching `args`. Passing
- * a different modifier on a later render does NOT tear down and re-run;
+ * **Behavior identity** — `m` is read from a ref, matching `args`. Passing
+ * a different behavior on a later render does NOT tear down and re-run;
  * the next rerun (via signal change or args change) picks up the latest.
- * In practice modifiers are module-scope constants, so identity is stable.
+ * In practice behaviors are module-scope constants, so identity is stable.
  *
  * @example Click outside
  * ```tsx
- * const onClickOutside = modifier<HTMLElement, [() => void]>(
+ * const onClickOutside = behavior<HTMLElement, [() => void]>(
  *   (el, onOutside) => {
  *     const handler = (e: MouseEvent) => {
  *       if (!el.contains(e.target as Node)) onOutside();
@@ -74,28 +74,28 @@ export function modifier<E extends Element, A extends unknown[]>(
  * );
  *
  * function Popover({ onClose }: { onClose: () => void }) {
- *   return <div ref={useModifier(onClickOutside, onClose)}>...</div>;
+ *   return <div ref={useBehavior(onClickOutside, onClose)}>...</div>;
  * }
  * ```
  *
  * @example Reactive input (signals drive rerun)
  * ```tsx
- * const watchSize = modifier<HTMLElement, []>((el) => {
+ * const watchSize = behavior<HTMLElement, []>((el) => {
  *   const unit = sizeUnit(); // signal read — rerun on change
  *   // ... use unit in setup ...
  *   return () => { ... };
  * });
  * ```
  */
-export function useModifier<E extends Element, A extends unknown[]>(
-  m: Modifier<E, A>,
+export function useBehavior<E extends Element, A extends unknown[]>(
+  m: Behavior<E, A>,
   ...args: A
 ): (el: E | null) => void {
   const argsRef = useRef<A>(args);
   argsRef.current = args;
 
-  const modifierRef = useRef<Modifier<E, A>>(m);
-  modifierRef.current = m;
+  const behaviorRef = useRef<Behavior<E, A>>(m);
+  behaviorRef.current = m;
 
   // eslint-disable-next-line unicorn/no-null -- sentinel for "not attached"
   const elementRef = useRef<E | null>(null);
@@ -109,7 +109,7 @@ export function useModifier<E extends Element, A extends unknown[]>(
     try {
       userCleanupRef.current();
     } catch (error) {
-      console.error("[supergrain/modifier] cleanup threw:", error);
+      console.error("[supergrain/behavior] cleanup threw:", error);
     }
     userCleanupRef.current = null; // eslint-disable-line unicorn/no-null
   }, []);
@@ -138,7 +138,7 @@ export function useModifier<E extends Element, A extends unknown[]>(
       elementRef.current = el;
       stopEffectRef.current = effect(() => {
         runUserCleanup();
-        const result = modifierRef.current(el, ...argsRef.current);
+        const result = behaviorRef.current(el, ...argsRef.current);
         if (typeof result === "function") userCleanupRef.current = result;
       });
     },

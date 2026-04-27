@@ -1,4 +1,4 @@
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { update } from "@supergrain/mill";
 import { render, screen, act } from "@testing-library/react";
@@ -54,7 +54,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: [],
     };
-    const store = createReactive(initialState);
+    const store = createGrain(initialState);
 
     render(<TodoListComponent store={store} />);
 
@@ -92,7 +92,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: initialTasks,
     };
-    const store = createReactive(initialState);
+    const store = createGrain(initialState);
 
     render(<TodoListComponent store={store} />);
 
@@ -125,7 +125,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: initialTasks,
     };
-    const store = createReactive(initialState);
+    const store = createGrain(initialState);
 
     render(<TodoListComponent store={store} />);
 
@@ -157,7 +157,7 @@ describe("tracked() for Todo App", () => {
       firstName: "Jane",
       tasks: initialTasks,
     };
-    const store = createReactive(initialState);
+    const store = createGrain(initialState);
 
     render(<TodoListComponent store={store} />);
 

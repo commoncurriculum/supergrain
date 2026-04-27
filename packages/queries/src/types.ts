@@ -1,4 +1,4 @@
-import type { DocumentStore, DocumentTypes } from "@supergrain/silo";
+import type { DocumentTypes, Silo } from "@supergrain/silo";
 
 // =============================================================================
 // Query adapter
@@ -29,7 +29,7 @@ export interface QueryAdapter<T> {
 }
 
 // =============================================================================
-// Query model (the shape stored in the document store)
+// Query model (the shape stored in the silo)
 // =============================================================================
 
 /**
@@ -37,7 +37,7 @@ export interface QueryAdapter<T> {
  *
  * A query result is stored as a single (type, id) slot whose value is a
  * `QueryModel`: the accumulated results array plus the next-page cursor.
- * Consumers declare this in their `DocumentTypes` map so the store's
+ * Consumers declare this in their `DocumentTypes` map so the silo's
  * reactivity is keyed by (queryName, queryParamId).
  */
 export interface QueryModel<K extends string, T> {
@@ -76,7 +76,7 @@ export interface CreateQueryParams<
   K extends keyof M & string,
   T extends { offset: number },
 > {
-  store: DocumentStore<M>;
+  store: Silo<M>;
   adapter: QueryAdapter<T>;
   type: K;
   id: string;

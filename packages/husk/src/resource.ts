@@ -1,4 +1,4 @@
-import { createReactive } from "@supergrain/kernel";
+import { createGrain } from "@supergrain/kernel";
 import { getCurrentSub, setCurrentSub } from "@supergrain/kernel/internal";
 import { effect } from "alien-signals";
 
@@ -165,7 +165,7 @@ export function resource<T extends object>(
   setup: (state: T, ctx: ResourceContext) => SetupResult,
 ): T {
   return runResource<void, T>({
-    state: createReactive(initial) as T,
+    state: createGrain(initial) as T,
     getArgs: () => undefined as void,
     invokeSetup: (s, _args, ctx) => setup(s, ctx),
     trackSetup: true,
@@ -189,7 +189,7 @@ export function resource<T extends object>(
  *   },
  * );
  *
- * const store = createReactive({ userId: 1 });
+ * const store = createGrain({ userId: 1 });
  * const user = fetchJson(() => `/users/${store.userId}`);
  * store.userId = 2; // old fetch aborted, new one starts
  * ```
@@ -200,7 +200,7 @@ export function defineResource<Args, T extends object>(
 ): ResourceFactory<Args, T> {
   function instantiate(argsFn?: () => Args): T {
     return runResource<Args, T>({
-      state: createReactive(initial()) as T,
+      state: createGrain(initial()) as T,
       getArgs: () => (argsFn ? argsFn() : (undefined as Args)),
       invokeSetup: setup,
       trackSetup: false,

@@ -1,11 +1,11 @@
-import { createReactive, effect } from "@supergrain/kernel";
+import { createGrain, effect } from "@supergrain/kernel";
 import { describe, it, expect, vi } from "vitest";
 
 import { update } from "../src";
 
 describe("MongoDB Style Operators", () => {
   it("$set: should set top-level and nested properties", () => {
-    const state = createReactive({
+    const state = createGrain({
       user: { name: "John", address: { city: "New York" } },
     });
     update(state, {
@@ -16,7 +16,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("$unset: should remove a property", () => {
-    const state = createReactive({
+    const state = createGrain({
       user: { name: "John", email: "john@doe.com" },
     });
     update(state, { $unset: { "user.email": 1 } });
@@ -25,7 +25,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("$inc: should increment numeric values", () => {
-    const state = createReactive({
+    const state = createGrain({
       stats: { views: 100, likes: 50 },
     });
     update(state, { $inc: { "stats.views": 1, "stats.likes": -5 } });
@@ -34,25 +34,25 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("$push: should add an element to an array", () => {
-    const state = createReactive({ tags: ["a", "b"] });
+    const state = createGrain({ tags: ["a", "b"] });
     update(state, { $push: { tags: "c" } });
     expect(state.tags).toEqual(["a", "b", "c"]);
   });
 
   it("$push: should add multiple elements with $each", () => {
-    const state = createReactive({ tags: ["a", "b"] });
+    const state = createGrain({ tags: ["a", "b"] });
     update(state, { $push: { tags: { $each: ["c", "d"] } } });
     expect(state.tags).toEqual(["a", "b", "c", "d"]);
   });
 
   it("$pull: should remove elements from an array by value", () => {
-    const state = createReactive({ scores: [1, 2, 3, 2, 4] });
+    const state = createGrain({ scores: [1, 2, 3, 2, 4] });
     update(state, { $pull: { scores: 2 } });
     expect(state.scores).toEqual([1, 3, 4]);
   });
 
   it("$pull: should remove elements matching an object", () => {
-    const state = createReactive({
+    const state = createGrain({
       users: [
         { id: 1, name: "A" },
         { id: 2, name: "B" },
@@ -63,7 +63,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("$pull: should invalidate array structure subscribers", () => {
-    const state = createReactive({ scores: [1, 2, 3] });
+    const state = createGrain({ scores: [1, 2, 3] });
     let keys: string[] = [];
 
     effect(() => {
@@ -76,7 +76,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("should handle sparse array writes and later pulls consistently", () => {
-    const state = createReactive<{ scores: number[] }>({ scores: [1] });
+    const state = createGrain<{ scores: number[] }>({ scores: [1] });
 
     update(state, { $set: { "scores.3": 4 } });
     expect(state.scores.length).toBe(4);
@@ -88,7 +88,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("should allow direct mutations and operator updates to compose on arrays", () => {
-    const state = createReactive({ scores: [1, 2] });
+    const state = createGrain({ scores: [1, 2] });
 
     state.scores[0] = 3;
     update(state, { $push: { scores: 4 } });
@@ -98,7 +98,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("$addToSet: should add unique elements to an array", () => {
-    const state = createReactive({ tags: ["a", "b"] });
+    const state = createGrain({ tags: ["a", "b"] });
     update(state, { $addToSet: { tags: "c" } });
     expect(state.tags).toEqual(["a", "b", "c"]);
     update(state, { $addToSet: { tags: "a" } }); // Try adding a duplicate
@@ -106,13 +106,13 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("$addToSet: should handle $each modifier", () => {
-    const state = createReactive({ tags: ["a", "b"] });
+    const state = createGrain({ tags: ["a", "b"] });
     update(state, { $addToSet: { tags: { $each: ["c", "a", "d"] } } });
     expect(state.tags).toEqual(["a", "b", "c", "d"]);
   });
 
   it("$rename: should rename fields", () => {
-    const state = createReactive<any>({
+    const state = createGrain<any>({
       user: { name: "John", address: { street: "123 Main St" } },
     });
     update(state, { $rename: { "user.name": "user.fullName" } });
@@ -124,7 +124,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("$min: should update if value is smaller", () => {
-    const state = createReactive({ score: 100 });
+    const state = createGrain({ score: 100 });
     update(state, { $min: { score: 150 } });
     expect(state.score).toBe(100);
     update(state, { $min: { score: 50 } });
@@ -132,7 +132,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("$max: should update if value is larger", () => {
-    const state = createReactive({ score: 100 });
+    const state = createGrain({ score: 100 });
     update(state, { $max: { score: 50 } });
     expect(state.score).toBe(100);
     update(state, { $max: { score: 150 } });
@@ -140,7 +140,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("should handle reactivity correctly", () => {
-    const state = createReactive({ count: 0 });
+    const state = createGrain({ count: 0 });
     let currentCount = 0;
     const effectFn = vi.fn(() => {
       currentCount = state.count;
@@ -154,7 +154,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("should handle a complex combination of operators", () => {
-    const state = createReactive<any>({
+    const state = createGrain<any>({
       users: [
         { id: 1, name: "Alice", profile: { views: 10, bio: "Old bio" } },
         { id: 2, name: "Bob", profile: { views: 20 } },
@@ -190,7 +190,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("should reject empty or malformed update paths", () => {
-    const state = createReactive({ user: { name: "John" } });
+    const state = createGrain({ user: { name: "John" } });
 
     expect(() => update(state, { $set: { "": "Jane" } as any })).toThrow(/must not be empty/i);
     expect(() => update(state, { $set: { "user..name": "Jane" } as any })).toThrow(
@@ -200,7 +200,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("should reject array operators on non-array paths", () => {
-    const store = createReactive({ user: { name: "John" } });
+    const store = createGrain({ user: { name: "John" } });
 
     expect(() => update(store, { $push: { user: "x" } as any })).toThrow(/array/i);
     expect(() => update(store, { $pull: { user: "x" } as any })).toThrow(/array/i);
@@ -208,7 +208,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("should reject numeric operators on non-number paths", () => {
-    const store = createReactive({ user: { name: "John" } });
+    const store = createGrain({ user: { name: "John" } });
 
     expect(() => update(store, { $inc: { "user.name": 1 } as any })).toThrow(/number/i);
     expect(() => update(store, { $min: { "user.name": 1 } as any })).toThrow(/number/i);
@@ -216,7 +216,7 @@ describe("MongoDB Style Operators", () => {
   });
 
   it("should reject conflicting rename destinations", () => {
-    const state = createReactive({
+    const state = createGrain({
       user: { firstName: "John", fullName: "John Doe" },
     });
 

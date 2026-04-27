@@ -113,12 +113,12 @@
     {
       "name": "@supergrain/kernel",
       "path": "dist/index.es.js",
-      "import": "{ createReactive }"
+      "import": "{ createGrain }"
     },
     {
       "name": "@supergrain/kernel/react (incl. kernel)",
       "path": "dist/react/index.js",
-      "import": "{ tracked, createStoreContext, useReactive, useComputed, useSignalEffect, For }",
+      "import": "{ tracked, createGranaryContext, useGrain, useComputed, useSignalEffect, For }",
       "ignore": [
         "react",
         "react-dom"

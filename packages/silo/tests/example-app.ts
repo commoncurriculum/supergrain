@@ -4,7 +4,7 @@
 //
 // Realistic consumer wiring for @supergrain/silo. In a real codebase
 // this would live at `services/store.ts` (or equivalent): domain models, HTTP
-// adapters (real fetch-based), and the one-time DocumentStore composition.
+// adapters (real fetch-based), and the one-time Silo composition.
 //
 // Adapters intentionally cover two styles:
 //
@@ -24,8 +24,8 @@
 //   - ModelConfig.adapter                 (every model)
 //   - ModelConfig.processor               (card-stack uses jsonApiProcessor;
 //                                          user and post use the default)
-//   - DocumentStoreConfig.batchWindowMs   (overridable via initStore options)
-//   - DocumentStoreConfig.batchSize       (overridable via initStore options)
+//   - SiloConfig.batchWindowMs   (overridable via initStore options)
+//   - SiloConfig.batchSize       (overridable via initStore options)
 //
 // Test lifecycle (put at the top of each test file):
 //   beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -38,11 +38,11 @@ import { setupServer } from "msw/node";
 import { vi } from "vitest";
 
 import {
-  createDocumentStore,
-  type DocumentStore,
+  createSilo,
   type DocumentAdapter,
-  type DocumentStoreConfig,
   type QueryAdapter,
+  type Silo,
+  type SiloConfig,
 } from "../src";
 import { jsonApiProcessor } from "../src/processors/json-api";
 
@@ -278,7 +278,7 @@ export function clearRequests(): void {
 
 // ─── Store wiring ───────────────────────────────────────────────────────────
 // Store config + non-React store creation for tests. The React-facing API wraps
-// the same plain store object via `createDocumentStoreContext()`.
+// the same plain store object via `createSiloContext()`.
 // These tests still need a direct store object to exercise the underlying
 // document/query methods and finder behavior. The three models exercise the full
 // config surface:
@@ -288,7 +288,7 @@ export function clearRequests(): void {
 //   card-stack  — adapter + custom processor (jsonApiProcessor)
 //
 // `makeStoreConfig()` is the shape a real app would pass to
-// `createDocumentStore(config)`. `initStore()` is the non-React helper
+// `createSilo(config)`. `initStore()` is the non-React helper
 // the tests use to materialize the underlying store API directly.
 //
 // The optional `overrides` arg is only for tests that need to exercise
@@ -302,8 +302,8 @@ export interface StoreOverrides {
 
 export function makeStoreConfig(
   overrides: StoreOverrides = {},
-): DocumentStoreConfig<TypeToModel, TypeToQuery> {
-  const config: DocumentStoreConfig<TypeToModel, TypeToQuery> = {
+): SiloConfig<TypeToModel, TypeToQuery> {
+  const config: SiloConfig<TypeToModel, TypeToQuery> = {
     models: {
       user: { adapter: userAdapter },
       post: { adapter: postAdapter },
@@ -318,8 +318,8 @@ export function makeStoreConfig(
   return config;
 }
 
-export function initStore(overrides: StoreOverrides = {}): DocumentStore<TypeToModel, TypeToQuery> {
-  return createDocumentStore(makeStoreConfig(overrides));
+export function initStore(overrides: StoreOverrides = {}): Silo<TypeToModel, TypeToQuery> {
+  return createSilo(makeStoreConfig(overrides));
 }
 
 // ─── Timer helpers ──────────────────────────────────────────────────────────

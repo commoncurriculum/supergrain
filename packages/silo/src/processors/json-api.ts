@@ -1,4 +1,4 @@
-import type { DocumentStore, DocumentTypes } from "../store";
+import type { DocumentTypes, Silo } from "../store";
 
 // =============================================================================
 // JSON-API types
@@ -94,7 +94,7 @@ export interface JsonApiDocument<
  * Opt in per-model:
  *
  * ```ts
- * createDocumentStore<M>(() => ({
+ * createSilo<M>(() => ({
  *   models: {
  *     user: { adapter: userAdapter, processor: jsonApiProcessor },
  *   },
@@ -103,7 +103,7 @@ export interface JsonApiDocument<
  */
 export function jsonApiProcessor<M extends DocumentTypes>(
   raw: unknown,
-  store: DocumentStore<M>,
+  store: Silo<M>,
   _type: keyof M & string,
 ): void {
   const envelope = raw as {

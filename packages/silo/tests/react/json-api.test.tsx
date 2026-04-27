@@ -5,8 +5,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { type DocumentAdapter, type DocumentStore } from "../../src";
-import { createDocumentStoreContext } from "../../src/react";
+import { type DocumentAdapter, type Silo } from "../../src";
+import { createSiloContext } from "../../src/react";
 import { useBelongsTo, useHasMany, useHasManyIndividually } from "../../src/react/json-api";
 
 // =============================================================================
@@ -75,8 +75,7 @@ const cardStackAdapter: DocumentAdapter = {
   find: () => new Promise(() => {}),
 };
 
-const { Provider, useDocument, useDocumentStore } =
-  createDocumentStoreContext<DocumentStore<TypeToModel>>();
+const { Provider, useDocument, useSilo } = createSiloContext<Silo<TypeToModel>>();
 
 function Wrap({ children }: { children: ReactNode }) {
   return (
@@ -163,7 +162,7 @@ const UpdatePlanbookButton = tracked(function UpdatePlanbookButton({
   id: string;
   title: string;
 }) {
-  const store = useDocumentStore();
+  const store = useSilo();
   return (
     <button
       type="button"
@@ -187,7 +186,7 @@ const UpdateCardButton = tracked(function UpdateCardButton({
   id: string;
   title: string;
 }) {
-  const store = useDocumentStore();
+  const store = useSilo();
   return (
     <button
       type="button"
@@ -205,19 +204,19 @@ const UpdateCardButton = tracked(function UpdateCardButton({
 });
 
 const SeedStack = tracked(function SeedStack({ stack }: { stack: CardStack }) {
-  const store = useDocumentStore();
+  const store = useSilo();
   store.insertDocument("card-stack", stack);
   return null;
 });
 
 const SeedPlanbook = tracked(function SeedPlanbook({ planbook }: { planbook: Planbook }) {
-  const store = useDocumentStore();
+  const store = useSilo();
   store.insertDocument("planbook", planbook);
   return null;
 });
 
 const SeedCard = tracked(function SeedCard({ card }: { card: Card }) {
-  const store = useDocumentStore();
+  const store = useSilo();
   store.insertDocument("card", card);
   return null;
 });
