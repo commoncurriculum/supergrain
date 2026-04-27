@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { type ReactNode, StrictMode } from "react";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { type DocumentStore } from "../../src";
+import { type Silo } from "../../src";
 import { createSiloContext } from "../../src/react";
 import {
   API_BASE,
@@ -19,7 +19,7 @@ import {
 
 // =============================================================================
 // MSW lifecycle — the shared example-app MSW server handles /users and /posts.
-// Each test builds a fresh DocumentStore via initStore() so in-memory state is
+// Each test builds a fresh Silo via initStore() so in-memory state is
 // isolated across tests.
 // =============================================================================
 
@@ -39,7 +39,7 @@ afterEach(() => {
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
 const { Provider, useDocument, useSilo, useQuery } =
-  createSiloContext<DocumentStore<TypeToModel, TypeToQuery>>();
+  createSiloContext<Silo<TypeToModel, TypeToQuery>>();
 
 function Wrap({ children }: { children: ReactNode }) {
   return (
@@ -291,8 +291,8 @@ describe("useQuery", () => {
 
 describe("createSiloContext isolation", () => {
   it("two independent stores render their own data side-by-side", () => {
-    const tenantA = createSiloContext<DocumentStore<TypeToModel, TypeToQuery>>();
-    const tenantB = createSiloContext<DocumentStore<TypeToModel, TypeToQuery>>();
+    const tenantA = createSiloContext<Silo<TypeToModel, TypeToQuery>>();
+    const tenantB = createSiloContext<Silo<TypeToModel, TypeToQuery>>();
 
     const SeedA = tracked(function SeedA() {
       const store = tenantA.useSilo();

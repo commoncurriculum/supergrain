@@ -3,7 +3,7 @@ import type { DocumentHandle } from "../store";
 
 import { useContext } from "react";
 
-import { DocumentStoreContext } from "./context";
+import { SiloContext } from "./context";
 
 // =============================================================================
 // WithRelationships — any JSON-API model that has a relationships map.
@@ -72,7 +72,7 @@ export function useBelongsTo<Model extends WithRelationships, RelName extends Be
   model: Model | null | undefined,
   relationName: RelName,
 ): DocumentHandle<BelongsToTarget<Model, RelName>> {
-  const store = useContext(DocumentStoreContext);
+  const store = useContext(SiloContext);
   if (store === null) {
     throw new Error(
       "@supergrain/silo/react/json-api: useBelongsTo must be used within the Provider returned by createSiloContext()",
@@ -84,7 +84,7 @@ export function useBelongsTo<Model extends WithRelationships, RelName extends Be
     | undefined;
   const type = ref?.type ?? "";
   const id = ref ? ref.id : null;
-  // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
+  // oxlint-disable-next-line no-array-method-this-argument -- Silo#find, not Array#find
   return store.find(type, id) as DocumentHandle<BelongsToTarget<Model, RelName>>;
 }
 
@@ -117,7 +117,7 @@ export function useHasMany<Model extends WithRelationships, RelName extends HasM
   model: Model | null | undefined,
   relationName: RelName,
 ): ReadonlyArray<DocumentHandle<HasManyTarget<Model, RelName>>> {
-  const store = useContext(DocumentStoreContext);
+  const store = useContext(SiloContext);
   if (store === null) {
     throw new Error(
       "@supergrain/silo/react/json-api: useHasMany must be used within the Provider returned by createSiloContext()",
@@ -129,7 +129,7 @@ export function useHasMany<Model extends WithRelationships, RelName extends HasM
   }>;
   return refs.map(
     (ref) =>
-      // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
+      // oxlint-disable-next-line no-array-method-this-argument -- Silo#find, not Array#find
       store.find(ref.type, ref.id) as DocumentHandle<HasManyTarget<Model, RelName>>,
   );
 }

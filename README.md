@@ -50,7 +50,7 @@ An entity cache with request batching. Think TanStack Query, except the fetched 
 Declare your models and adapters, build the store, then read documents anywhere in the tree:
 
 ```tsx
-import { type DocumentAdapter, type DocumentStore, type QueryAdapter } from "@supergrain/silo";
+import { type DocumentAdapter, type QueryAdapter, type Silo } from "@supergrain/silo";
 import { createSiloContext } from "@supergrain/silo/react";
 
 // 1. Models are keyed by id. Queries are keyed by a params object — for
@@ -85,7 +85,7 @@ const postsAdapter: QueryAdapter<Queries["posts"]["params"]> = {
 };
 
 // 3. Context factory — one Provider, typed hooks.
-const { Provider, useDocument, useQuery } = createSiloContext<DocumentStore<Models, Queries>>();
+const { Provider, useDocument, useQuery } = createSiloContext<Silo<Models, Queries>>();
 
 // 4. Mount the Provider once. The Provider wraps `config` in
 //    createSilo() per mount → SSR/tests isolated by construction.

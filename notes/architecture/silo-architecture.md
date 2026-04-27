@@ -1,6 +1,6 @@
 # @supergrain/silo — Implementation Spec
 
-A design document for implementing the document-store read layer. The
+A design document for implementing the silo read layer. The
 type signatures, stub functions, and failing tests define the contract;
 this doc explains the intent and internal mechanics behind them.
 
@@ -42,14 +42,14 @@ in the same app.
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │  createSilo<M, Q>(config)                            │
-│    returns DocumentStore<M, Q> — method surface only:         │
+│    returns Silo<M, Q> — method surface only:         │
 │      find, findInMemory, insertDocument, clearMemory,         │
 │      findQuery, findQueryInMemory, insertQueryResult          │
 │                                                               │
 │  createSiloContext<M, Q>()                           │
 │    returns { Provider, useSilo,                      │
 │              useDocument, useQuery }                          │
-│    Provider init: () => DocumentStore<M, Q>                   │
+│    Provider init: () => Silo<M, Q>                   │
 │    — runs once per Provider mount                             │
 │                                                               │
 │  Closure-private per store instance:                          │
@@ -111,13 +111,13 @@ import { createSiloContext } from "@supergrain/silo/react";
 import { jsonApiProcessor } from "@supergrain/silo/processors/json-api";
 
 export const {
-  Provider: DocumentStoreProvider,
+  Provider: SiloProvider,
   useSilo,
   useDocument,
   useQuery,
 } = createSiloContext<TypeToModel, TypeToQuery>();
 
-function initDocumentStore() {
+function initSilo() {
   return createSilo<TypeToModel, TypeToQuery>({
     models: {
       user: { adapter: userAdapter },
@@ -132,9 +132,9 @@ function initDocumentStore() {
 }
 
 // main.tsx
-<DocumentStoreProvider init={initDocumentStore}>
+<SiloProvider init={initSilo}>
   <App />
-</DocumentStoreProvider>;
+</SiloProvider>;
 ```
 
 `Finder` isn't exported. Consumers tune it through `batchWindowMs` /
@@ -144,15 +144,15 @@ Public signatures:
 
 ```ts
 function createSilo<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>>(
-  config: DocumentStoreConfig<M, Q>,
-): DocumentStore<M, Q>;
+  config: SiloConfig<M, Q>,
+): Silo<M, Q>;
 
 function createSiloContext<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
 >(): {
-  Provider: (props: { init: () => DocumentStore<M, Q>; children: ReactNode }) => ReactNode;
-  useSilo: () => DocumentStore<M, Q>;
+  Provider: (props: { init: () => Silo<M, Q>; children: ReactNode }) => ReactNode;
+  useSilo: () => Silo<M, Q>;
   useDocument: <K extends keyof M & string>(
     type: K,
     id: string | null | undefined,
@@ -205,10 +205,10 @@ use the same primitive as React apps.
 
 ```ts
 function createSilo<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>>(
-  config: DocumentStoreConfig<M, Q>,
-): DocumentStore<M, Q> {
+  config: SiloConfig<M, Q>,
+): Silo<M, Q> {
   const finder = new Finder<M, Q>(config); // non-reactive, per store instance
-  // Internal reactive tree — not part of the DocumentStore type, but where
+  // Internal reactive tree — not part of the Silo type, but where
   // `find` / `insertDocument` / etc. read and write via closure.
   // `createGrain` (from @supergrain/kernel) wraps the plain object in a
   // reactive proxy; nested handles get lazy-wrapped on first read.
@@ -239,7 +239,7 @@ function createSilo<M extends DocumentTypes, Q extends QueryTypes = Record<strin
 }
 ```
 
-`DocumentStore<M, Q>` is the public method surface (see `src/store.ts`).
+`Silo<M, Q>` is the public method surface (see `src/store.ts`).
 The internal state tree — the actual storage — is an implementation
 detail that lives in the factory's closure:
 
@@ -588,7 +588,7 @@ private timer: ReturnType<typeof setTimeout> | undefined;
 ```
 
 Plus closure-captured references to the internal state tree (for handle
-lifecycle writes during drain) and the public `DocumentStore` proxy (to
+lifecycle writes during drain) and the public `Silo` proxy (to
 pass into processors, which call `store.insertDocument` /
 `store.insertQueryResult`). Both are per-store, created in
 `createSilo`'s closure.
@@ -659,7 +659,7 @@ Stateless transform; a function is the right primitive.
 ```ts
 type ResponseProcessor<M extends DocumentTypes> = (
   raw: unknown,
-  store: DocumentStore<M>,
+  store: Silo<M>,
   type: keyof M & string,
 ) => void;
 ```
@@ -874,7 +874,7 @@ via its methods and observe state via public reads.
 
 ## Reactivity notes
 
-The document-store uses the same single-reactive-tree model as the base
+The silo uses the same single-reactive-tree model as the base
 store pattern in `@supergrain/kernel/react`: one Provider mount creates one
 reactive object tree; `useSilo()` returns the store's method
 surface, whose methods read and write that tree in closure.
@@ -988,7 +988,7 @@ shape.
 ```ts
 type QueryProcessor<M, Q, Type extends keyof Q & string> = (
   raw: unknown,
-  store: DocumentStore<M, Q>,
+  store: Silo<M, Q>,
   type: Type,
   paramsList: ReadonlyArray<Q[Type]["params"]>,
 ) => void;

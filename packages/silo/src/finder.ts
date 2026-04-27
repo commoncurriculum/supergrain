@@ -1,5 +1,5 @@
 import type { QueryProcessor, QueryTypes } from "./queries";
-import type { DocumentStore, DocumentStoreConfig, DocumentTypes, ResponseProcessor } from "./store";
+import type { DocumentTypes, ResponseProcessor, Silo, SiloConfig } from "./store";
 
 import { batch } from "@supergrain/kernel";
 
@@ -10,7 +10,7 @@ import { defaultProcessor, defaultQueryProcessor } from "./processors";
 //
 // Not exported from the package root. Constructed in the closure of
 // `createSilo(config)`, once per store instance. Consumers configure
-// it through `DocumentStoreConfig.batchWindowMs` / `batchSize` and never see it
+// it through `SiloConfig.batchWindowMs` / `batchSize` and never see it
 // directly.
 // =============================================================================
 
@@ -42,21 +42,21 @@ interface QueryChunkEntry {
 }
 
 export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>> {
-  private config: DocumentStoreConfig<M, Q>;
+  private config: SiloConfig<M, Q>;
   private batchWindowMs: number;
   private batchSize: number;
   private queue: Array<QueueEntry> = [];
   private timer: ReturnType<typeof setTimeout> | undefined = undefined;
   private state: InternalState | undefined = undefined;
-  private store: DocumentStore<M, Q> | undefined = undefined;
+  private store: Silo<M, Q> | undefined = undefined;
 
-  constructor(config: DocumentStoreConfig<M, Q>) {
+  constructor(config: SiloConfig<M, Q>) {
     this.config = config;
     this.batchWindowMs = config.batchWindowMs ?? 15;
     this.batchSize = config.batchSize ?? 60;
   }
 
-  attach(state: InternalState, store: DocumentStore<M, Q>): void {
+  attach(state: InternalState, store: Silo<M, Q>): void {
     this.state = state;
     this.store = store;
   }
@@ -139,7 +139,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
 
     try {
       batch(() => {
-        processor(raw, this.store! as DocumentStore<M>, type as keyof M & string);
+        processor(raw, this.store! as Silo<M>, type as keyof M & string);
         const bucket = this.state!.documents[type];
         for (const id of ids) {
           const handle = bucket?.[id];

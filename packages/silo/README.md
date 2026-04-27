@@ -22,7 +22,7 @@ React bindings are optional — `@supergrain/silo/react` requires `react >= 18.2
 
 ```ts
 // services/store.ts
-import { type DocumentAdapter, type DocumentStore } from "@supergrain/silo";
+import { type DocumentAdapter, type Silo } from "@supergrain/silo";
 import { createSiloContext } from "@supergrain/silo/react";
 
 export interface User {
@@ -48,7 +48,7 @@ const postAdapter: DocumentAdapter = {
   },
 };
 
-export const { Provider, useSilo, useDocument } = createSiloContext<DocumentStore<TypeToModel>>();
+export const { Provider, useSilo, useDocument } = createSiloContext<Silo<TypeToModel>>();
 
 export const config = {
   models: {
@@ -174,15 +174,15 @@ Methods:
 - `findQueryInMemory(type, params)` → `T | undefined`
 - `insertQueryResult(type, params, result)` → `void`
 
-### `createSiloContext<S extends DocumentStore<any, any>>()`
+### `createSiloContext<S extends Silo<any, any>>()`
 
 The React context wrapper. Mirrors `createGranaryContext<T>()` from `@supergrain/kernel/react`: the type parameter `S` is the store type; the Provider takes the same `config` you'd pass to `createSilo()` and constructs the store internally once per mount.
 
 ```ts
-type DocStore = DocumentStore<TypeToModel, TypeToQuery>;
+type AppSilo = Silo<TypeToModel, TypeToQuery>;
 
 const { Provider, useSilo, useDocument, useQuery } =
-  createSiloContext<DocStore>();
+  createSiloContext<AppSilo>();
 
 <Provider config={{ models, queries }} onMount={(store) => seed(store)}>
   <App />
@@ -233,13 +233,13 @@ All returned from `createSiloContext<S>()`; destructure and re-export from your 
 
 ### Factory for isolated stores
 
-Most apps create one document-store context in their app wiring. Libraries shipping their own document store, micro-frontends, or test harnesses that need isolated instances create their own separate context call:
+Most apps create one silo context in their app wiring. Libraries shipping their own silo, micro-frontends, or test harnesses that need isolated instances create their own separate context call:
 
 ```ts
-import { type DocumentStore } from "@supergrain/silo";
+import { type Silo } from "@supergrain/silo";
 import { createSiloContext } from "@supergrain/silo/react";
 
-const libStore = createSiloContext<DocumentStore<LibTypes>>();
+const libStore = createSiloContext<Silo<LibTypes>>();
 export const { Provider, useDocument, useSilo } = libStore;
 
 export const libConfig = {
@@ -551,33 +551,33 @@ Both libraries cache async data, but they make opposite choices about what the c
 
 **TQ: opaque caching.** The cache is keyed by an arbitrary `queryKey` array. The library has no idea what's inside a response — a user in the list query and the same user in the detail query are separate cache entries. Simple mental model; no schema needed. Cost: data duplicates across queries, cross-query sync requires manual `setQueryData`, invalidation is pattern-matching across keys.
 
-**document-store: normalized caching.** Responses aren't opaque — the processor knows what types/ids live inside and scatters them into per-`(type, id)` slots. User #42 lives in one place; every view that references them reads the same reactive object.
+**silo: normalized caching.** Responses aren't opaque — the processor knows what types/ids live inside and scatters them into per-`(type, id)` slots. User #42 lives in one place; every view that references them reads the same reactive object.
 
-These aren't "same library, different maturity" — they're genuinely different bets. TQ refuses to normalize because it complicates the mental model. document-store embraces it for the payoff: automatic cross-query sync without explicit invalidation.
+These aren't "same library, different maturity" — they're genuinely different bets. TQ refuses to normalize because it complicates the mental model. silo embraces it for the payoff: automatic cross-query sync without explicit invalidation.
 
 ### Capability comparison
 
-| Capability                                             | TQ (today) | document-store (today) | document-store (ceiling)                       |
-| ------------------------------------------------------ | :--------: | :--------------------: | ---------------------------------------------- |
-| Fetch by id                                            |     ✓      |           ✓            | —                                              |
-| Fetch by arbitrary query                               |     ✓      |           ✗            | generalize adapter keys                        |
-| Request dedup                                          |     ✓      |           ✓            | —                                              |
-| **Multi-key batching into one request**                |     ✗      |           ✓            | —                                              |
-| **Stable-id normalization**                            |     ✗      |           ✓            | —                                              |
-| **Cross-query sync (edit user → every view updates)**  | ✗ (manual) |           ✓            | —                                              |
-| **Stable reactive handles (fine-grained field reads)** |     ✗      |           ✓            | —                                              |
-| Suspense via `use()`                                   | ✓ (opt-in) |       ✓ (opt-in)       | —                                              |
-| Invalidation                                           |     ✓      |           ✗            | add `invalidate` / `invalidateType`            |
-| Stale-time / gc-time                                   |     ✓      |           ✗            | add `staleMs`; compare against `fetchedAt`     |
-| Refetch on focus / reconnect / interval                |     ✓      |           ✗            | add opt-in hooks                               |
-| Retry with backoff                                     |     ✓      |           ✗            | add to Finder                                  |
-| Cancellation                                           |     ✓      |           ✗            | thread `AbortSignal` through adapter           |
-| Pagination / infinite queries                          |     ✓      |           ✗            | wrapper hook that extends an id-list           |
-| Mutations + optimistic + rollback                      |     ✓      |           ✗            | next-PR write layer built on `insertDocument`  |
-| SSR / hydration                                        |     ✓      |           ✗            | serialize the store's reactive tree, rehydrate |
-| Persistence (localStorage / IDB)                       |     ✓      |           ✗            | serialize map on write, restore on init        |
-| Devtools                                               |     ✓      |           ✗            | expose cache map + event stream                |
-| Ecosystem / community / docs                           |   Large    |         Small          | —                                              |
+| Capability                                             | TQ (today) | silo (today) | silo (ceiling)                                 |
+| ------------------------------------------------------ | :--------: | :----------: | ---------------------------------------------- |
+| Fetch by id                                            |     ✓      |      ✓       | —                                              |
+| Fetch by arbitrary query                               |     ✓      |      ✗       | generalize adapter keys                        |
+| Request dedup                                          |     ✓      |      ✓       | —                                              |
+| **Multi-key batching into one request**                |     ✗      |      ✓       | —                                              |
+| **Stable-id normalization**                            |     ✗      |      ✓       | —                                              |
+| **Cross-query sync (edit user → every view updates)**  | ✗ (manual) |      ✓       | —                                              |
+| **Stable reactive handles (fine-grained field reads)** |     ✗      |      ✓       | —                                              |
+| Suspense via `use()`                                   | ✓ (opt-in) |  ✓ (opt-in)  | —                                              |
+| Invalidation                                           |     ✓      |      ✗       | add `invalidate` / `invalidateType`            |
+| Stale-time / gc-time                                   |     ✓      |      ✗       | add `staleMs`; compare against `fetchedAt`     |
+| Refetch on focus / reconnect / interval                |     ✓      |      ✗       | add opt-in hooks                               |
+| Retry with backoff                                     |     ✓      |      ✗       | add to Finder                                  |
+| Cancellation                                           |     ✓      |      ✗       | thread `AbortSignal` through adapter           |
+| Pagination / infinite queries                          |     ✓      |      ✗       | wrapper hook that extends an id-list           |
+| Mutations + optimistic + rollback                      |     ✓      |      ✗       | next-PR write layer built on `insertDocument`  |
+| SSR / hydration                                        |     ✓      |      ✗       | serialize the store's reactive tree, rehydrate |
+| Persistence (localStorage / IDB)                       |     ✓      |      ✗       | serialize map on write, restore on init        |
+| Devtools                                               |     ✓      |      ✗       | expose cache map + event stream                |
+| Ecosystem / community / docs                           |   Large    |    Small     | —                                              |
 
 **Bold rows are architectural** — they live in the primitive and can't be retrofitted without a rewrite. Everything else is **additive**: bolt-on features that land without touching core design. The "ceiling" column is the planned-additive path; none of it requires architectural change to get to.
 
@@ -588,7 +588,7 @@ These aren't "same library, different maturity" — they're genuinely different 
 - **Zero-discipline fetching.** Write `queryFn` and you're done. Here you write adapter + processor + provider wiring. More up-front work; pays off if normalization matters to you.
 - **Mature ecosystem.** Persisters, devtools, SSR integrations, community plugins.
 
-### What TQ gives up vs document-store
+### What TQ gives up vs silo
 
 - **Cross-query sync without manual wiring.** Edit user #42 with `insertDocument("user", updated42)` — every list, detail view, and relationship re-renders instantly, no network call. TQ needs pattern invalidation precisely _because_ it doesn't normalize; each query has its own copy of the data that drifts.
 - **Request batching.** 50 `<UserCard id={x} />` components collapse into one network request. TQ has no equivalent built into the primitive.
@@ -599,12 +599,12 @@ These aren't "same library, different maturity" — they're genuinely different 
 ### When to pick which
 
 - **Pick TQ today** if you need stale-time, refetch, mutations, or pagination _shipping now_. If "opaque cache, refetch on events" fits your mental model and you don't want to think about normalization. If your queries don't overlap enough for cross-query sync to matter.
-- **Pick document-store** if you want fine-grained reactive state as your primary model and documents should be part of that. If cross-query sync would meaningfully simplify your app (entity updates radiating without keys). If you're okay being on a library with a smaller feature surface today, trusting that the additive features will land.
-- **Use both in one app during migration.** Totally viable. TQ for search/list/cursor queries where opacity is fine; document-store for entity reads that benefit from normalization. They don't step on each other.
+- **Pick silo** if you want fine-grained reactive state as your primary model and documents should be part of that. If cross-query sync would meaningfully simplify your app (entity updates radiating without keys). If you're okay being on a library with a smaller feature surface today, trusting that the additive features will land.
+- **Use both in one app during migration.** Totally viable. TQ for search/list/cursor queries where opacity is fine; silo for entity reads that benefit from normalization. They don't step on each other.
 
 ### Honest caveat
 
-Much of the comparison above contrasts TQ-as-shipped with document-store-as-designed. Some rows (generalized keys, invalidation, mutations) are planned-additive and not in this PR. The _foundation_ is the hard part; those features are ~10-50 LOC each on top. If you're evaluating for a production migration _today_, weight the "today" column, not the "ceiling" column.
+Much of the comparison above contrasts TQ-as-shipped with silo-as-designed. Some rows (generalized keys, invalidation, mutations) are planned-additive and not in this PR. The _foundation_ is the hard part; those features are ~10-50 LOC each on top. If you're evaluating for a production migration _today_, weight the "today" column, not the "ceiling" column.
 
 ## Non-goals (in this version)
 

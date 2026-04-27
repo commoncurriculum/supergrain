@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createSilo, type DocumentStore, type DocumentAdapter } from "../src";
+import { createSilo, type DocumentAdapter, type Silo } from "../src";
 
 // =============================================================================
 // Finder contract tests.
 //
 // Finder is internal (not exported from @supergrain/silo). These
-// tests exercise its behavior through the public DocumentStore API: batching
+// tests exercise its behavior through the public Silo API: batching
 // within a tick window, dedup of concurrent same-id requests, chunking at
 // batchSize, and error propagation from adapter/processor.
 //
@@ -62,7 +62,7 @@ function makePostAdapter(): IntrospectableAdapter {
 }
 
 interface TestApp {
-  store: DocumentStore<TestTypes>;
+  store: Silo<TestTypes>;
   userAdapter: IntrospectableAdapter;
   postAdapter: IntrospectableAdapter;
 }
@@ -250,7 +250,7 @@ describe("Finder errors", () => {
   });
 
   it("rejects all pending handles when a processor throws", async () => {
-    // A DocumentStore with a processor that throws for the user model.
+    // A Silo with a processor that throws for the user model.
     const calls: string[][] = [];
     const store = createSilo<TestTypes>({
       models: {

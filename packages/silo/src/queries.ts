@@ -1,4 +1,4 @@
-import type { DocumentStore, DocumentTypes, Status, TypeRegistry } from "./store";
+import type { DocumentTypes, Silo, Status, TypeRegistry } from "./store";
 
 // =============================================================================
 // QueryTypes — shape of a consumer's query type map
@@ -102,7 +102,7 @@ export type QueryProcessor<
   Type extends keyof Q & string,
 > = (
   raw: unknown,
-  store: DocumentStore<M, Q>,
+  store: Silo<M, Q>,
   type: Type,
   paramsList: ReadonlyArray<Q[Type]["params"]>,
 ) => void;
@@ -131,7 +131,7 @@ export interface QueryConfig<
 }
 
 // =============================================================================
-// QueryHandle — reactive handle returned by DocumentStore.findQuery
+// QueryHandle — reactive handle returned by Silo.findQuery
 // =============================================================================
 
 /**

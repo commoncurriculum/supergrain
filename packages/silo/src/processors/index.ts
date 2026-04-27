@@ -1,5 +1,5 @@
 import type { QueryTypes } from "../queries";
-import type { DocumentStore, DocumentTypes } from "../store";
+import type { DocumentTypes, Silo } from "../store";
 
 // =============================================================================
 // defaultProcessor — insert by (type, id), no envelope
@@ -31,7 +31,7 @@ import type { DocumentStore, DocumentTypes } from "../store";
  */
 export function defaultProcessor<M extends DocumentTypes>(
   raw: unknown,
-  store: DocumentStore<M>,
+  store: Silo<M>,
   type: keyof M & string,
 ): void {
   const docs = Array.isArray(raw) ? raw : [raw];
@@ -71,7 +71,7 @@ export function defaultProcessor<M extends DocumentTypes>(
 // oxlint-disable-next-line max-params
 export function defaultQueryProcessor<M extends DocumentTypes, Q extends QueryTypes>(
   raw: unknown,
-  store: DocumentStore<M, Q>,
+  store: Silo<M, Q>,
   type: keyof Q & string,
   paramsList: ReadonlyArray<unknown>,
 ): void {

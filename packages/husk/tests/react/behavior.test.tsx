@@ -12,13 +12,13 @@ describe("behavior() / useBehavior()", () => {
     const setupSpy = vi.fn();
     const cleanupSpy = vi.fn();
 
-    const testModifier = behavior<HTMLDivElement, []>((el) => {
+    const testBehavior = behavior<HTMLDivElement, []>((el) => {
       setupSpy(el);
       return () => cleanupSpy();
     });
 
     function Component() {
-      return <div ref={useBehavior(testModifier)} data-testid="target" />;
+      return <div ref={useBehavior(testBehavior)} data-testid="target" />;
     }
 
     const { getByTestId, unmount } = render(<Component />);

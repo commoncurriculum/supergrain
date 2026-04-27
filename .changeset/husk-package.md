@@ -1,9 +1,61 @@
 ---
 "@supergrain/kernel": major
+"@supergrain/silo": major
 "@supergrain/husk": minor
 ---
 
-Split side-effect primitives into a new package, `@supergrain/husk`.
+Split side-effect primitives into a new package, `@supergrain/husk`, and align
+the public vocabulary across packages: kernel uses `grain` / `granary`, silo
+uses `silo`, husk replaces `modifier` with `behavior`.
+
+## BREAKING: renames in `@supergrain/kernel` and `@supergrain/kernel/react`
+
+| Before               | After                  |
+| -------------------- | ---------------------- |
+| `createReactive`     | `createGrain`          |
+| `useReactive`        | `useGrain`             |
+| `createStoreContext` | `createGranaryContext` |
+| `useStore`           | `useGranary`           |
+
+```diff
+-import { createReactive } from "@supergrain/kernel";
++import { createGrain } from "@supergrain/kernel";
+
+-import { useReactive, createStoreContext } from "@supergrain/kernel/react";
++import { useGrain, createGranaryContext } from "@supergrain/kernel/react";
+
+-export const { Provider, useStore } = createStoreContext<AppState>();
++export const { Provider, useGranary } = createGranaryContext<AppState>();
+```
+
+## BREAKING: renames in `@supergrain/silo` and `@supergrain/silo/react`
+
+Functions and the store type now use the `silo` vocabulary throughout:
+
+| Before                       | After               |
+| ---------------------------- | ------------------- |
+| `createDocumentStore`        | `createSilo`        |
+| `createDocumentStoreContext` | `createSiloContext` |
+| `useDocumentStore`           | `useSilo`           |
+| `DocumentStore<M, Q>`        | `Silo<M, Q>`        |
+| `DocumentStoreConfig<M, Q>`  | `SiloConfig<M, Q>`  |
+| `InitialDocumentStoreData`   | `InitialSiloData`   |
+
+```diff
+-import { type DocumentStore } from "@supergrain/silo";
+-import { createDocumentStoreContext } from "@supergrain/silo/react";
++import { type Silo } from "@supergrain/silo";
++import { createSiloContext } from "@supergrain/silo/react";
+
+-export const { Provider, useDocumentStore, useDocument, useQuery } =
+-  createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
++export const { Provider, useSilo, useDocument, useQuery } =
++  createSiloContext<Silo<TypeToModel, TypeToQuery>>();
+```
+
+`DocumentHandle<T>`, `DocumentAdapter`, `DocumentTypes`, `useDocument`, and
+`insertDocument` are unchanged — they describe individual documents, where the
+existing vocabulary still fits.
 
 ## New package: `@supergrain/husk`
 

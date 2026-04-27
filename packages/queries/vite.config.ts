@@ -14,7 +14,7 @@ export default defineConfig({
       output: {
         globals: {
           "@supergrain/kernel": "SupergrainCore",
-          "@supergrain/silo": "SupergrainDocumentStore",
+          "@supergrain/silo": "SupergrainSilo",
         },
       },
     },

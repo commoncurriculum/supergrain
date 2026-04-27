@@ -22,7 +22,7 @@ import { useCallback, useRef } from "react";
  * <input ref={useBehavior(onKeydown, "Enter", () => submit())} />
  * ```
  *
- * Currently the identity function. Reusable modifiers should still be
+ * Currently the identity function. Reusable behaviors should still be
  * authored through this factory so future versions can attach metadata
  * (e.g. `behavior.update`, `behavior.compose`) without requiring call-site
  * changes.
@@ -59,7 +59,7 @@ export function behavior<E extends Element, A extends unknown[]>(
  * **Behavior identity** — `m` is read from a ref, matching `args`. Passing
  * a different behavior on a later render does NOT tear down and re-run;
  * the next rerun (via signal change or args change) picks up the latest.
- * In practice modifiers are module-scope constants, so identity is stable.
+ * In practice behaviors are module-scope constants, so identity is stable.
  *
  * @example Click outside
  * ```tsx

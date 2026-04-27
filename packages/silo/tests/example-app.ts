@@ -4,7 +4,7 @@
 //
 // Realistic consumer wiring for @supergrain/silo. In a real codebase
 // this would live at `services/store.ts` (or equivalent): domain models, HTTP
-// adapters (real fetch-based), and the one-time DocumentStore composition.
+// adapters (real fetch-based), and the one-time Silo composition.
 //
 // Adapters intentionally cover two styles:
 //
@@ -24,8 +24,8 @@
 //   - ModelConfig.adapter                 (every model)
 //   - ModelConfig.processor               (card-stack uses jsonApiProcessor;
 //                                          user and post use the default)
-//   - DocumentStoreConfig.batchWindowMs   (overridable via initStore options)
-//   - DocumentStoreConfig.batchSize       (overridable via initStore options)
+//   - SiloConfig.batchWindowMs   (overridable via initStore options)
+//   - SiloConfig.batchSize       (overridable via initStore options)
 //
 // Test lifecycle (put at the top of each test file):
 //   beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -39,10 +39,10 @@ import { vi } from "vitest";
 
 import {
   createSilo,
-  type DocumentStore,
   type DocumentAdapter,
-  type DocumentStoreConfig,
   type QueryAdapter,
+  type Silo,
+  type SiloConfig,
 } from "../src";
 import { jsonApiProcessor } from "../src/processors/json-api";
 
@@ -302,8 +302,8 @@ export interface StoreOverrides {
 
 export function makeStoreConfig(
   overrides: StoreOverrides = {},
-): DocumentStoreConfig<TypeToModel, TypeToQuery> {
-  const config: DocumentStoreConfig<TypeToModel, TypeToQuery> = {
+): SiloConfig<TypeToModel, TypeToQuery> {
+  const config: SiloConfig<TypeToModel, TypeToQuery> = {
     models: {
       user: { adapter: userAdapter },
       post: { adapter: postAdapter },
@@ -318,7 +318,7 @@ export function makeStoreConfig(
   return config;
 }
 
-export function initStore(overrides: StoreOverrides = {}): DocumentStore<TypeToModel, TypeToQuery> {
+export function initStore(overrides: StoreOverrides = {}): Silo<TypeToModel, TypeToQuery> {
   return createSilo(makeStoreConfig(overrides));
 }
 

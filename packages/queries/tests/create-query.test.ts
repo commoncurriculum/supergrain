@@ -1,4 +1,4 @@
-import { createSilo, type DocumentStore } from "@supergrain/silo";
+import { createSilo, type Silo } from "@supergrain/silo";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createQuery, type QueryAdapter } from "../src";
@@ -23,7 +23,7 @@ type TypeToModel = {
   planbook: { id: string; type: "planbook"; title?: string };
 };
 
-function makeStore(): DocumentStore<TypeToModel> {
+function makeStore(): Silo<TypeToModel> {
   return createSilo<TypeToModel>({
     models: {
       planbooks_for_user: { adapter: { find: () => Promise.resolve({ data: [] }) } },

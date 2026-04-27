@@ -93,7 +93,7 @@ export type RegisteredTypes = TypeRegistry extends { types: infer T extends Docu
 export type Status = "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
 
 // =============================================================================
-// DocumentHandle — reactive handle returned by DocumentStore.find
+// DocumentHandle — reactive handle returned by Silo.find
 // =============================================================================
 
 /**
@@ -165,7 +165,7 @@ export interface DocumentHandle<T> {
  * eventually return some raw value (or reject).
  *
  * Contract:
- * - `find` is called with a chunk of at most `DocumentStoreConfig.batchSize`
+ * - `find` is called with a chunk of at most `SiloConfig.batchSize`
  *   ids, grouped by type (the library dedupes concurrent same-id requests
  *   before calling the adapter, so the adapter never sees duplicate ids in
  *   one call).
@@ -208,7 +208,7 @@ export interface DocumentAdapter {
  */
 export type ResponseProcessor<M extends DocumentTypes> = (
   raw: unknown,
-  store: DocumentStore<M>,
+  store: Silo<M>,
   type: keyof M & string,
 ) => void;
 
@@ -233,13 +233,10 @@ export interface ModelConfig<M extends DocumentTypes> {
 }
 
 // =============================================================================
-// DocumentStore config
+// Silo config
 // =============================================================================
 
-export interface DocumentStoreConfig<
-  M extends DocumentTypes,
-  Q extends QueryTypes = Record<string, never>,
-> {
+export interface SiloConfig<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>> {
   /**
    * Per-type adapter + optional processor wiring for documents (entities
    * keyed by `id: string`). The map's keys are the types the store can
@@ -270,7 +267,7 @@ export interface DocumentStoreConfig<
 }
 
 // =============================================================================
-// DocumentStore — public store surface returned by createSilo
+// Silo — public store surface returned by createSilo
 // =============================================================================
 
 /**
@@ -281,10 +278,7 @@ export interface DocumentStoreConfig<
  * Internal state (the reactive tree of nested document/query handles,
  * the Finder instance held in closure) is not part of this type.
  */
-export interface DocumentStore<
-  M extends DocumentTypes,
-  Q extends QueryTypes = Record<string, never>,
-> {
+export interface Silo<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>> {
   find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]>;
   findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined;
   insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void;
@@ -366,8 +360,8 @@ function resetHandle(handle: InternalHandle): void {
 }
 
 export function createSilo<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>>(
-  config: DocumentStoreConfig<M, Q>,
-): DocumentStore<M, Q> {
+  config: SiloConfig<M, Q>,
+): Silo<M, Q> {
   const finder = new Finder<M, Q>(config);
   // Strip the `Branded<T>` marker from the reactive proxy's type so indexed
   // writes (`state.documents[type] = {...}`) compile. The runtime proxy
@@ -416,7 +410,7 @@ export function createSilo<M extends DocumentTypes, Q extends QueryTypes = Recor
     finder.queueQuery(type, paramsKey, params);
   }
 
-  const store: DocumentStore<M, Q> = {
+  const store: Silo<M, Q> = {
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
       if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
 
