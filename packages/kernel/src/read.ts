@@ -38,15 +38,10 @@ const ARRAY_MUTATORS = new Set([
 
 const proxyCache = new WeakMap<object, object>();
 
-const isWrappable = (value: unknown): value is object => {
-  if (value === null || typeof value !== "object") return false;
-  if (Array.isArray(value)) return true;
-  // Plain `{}` and `Object.create(null)` records both qualify. The latter is
-  // the safe shape for caches keyed by untrusted string ids — no inherited
-  // toString/valueOf/etc. to confuse with cached values.
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-};
+const isWrappable = (value: unknown): value is object =>
+  value !== null &&
+  typeof value === "object" &&
+  (value.constructor === Object || value.constructor === Array);
 
 function wrap<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
