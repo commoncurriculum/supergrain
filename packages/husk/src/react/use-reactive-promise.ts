@@ -1,7 +1,8 @@
+import { useDisposeOnUnmount } from "@supergrain/kernel/react";
 import { useMemo } from "react";
 
 import { reactivePromise, type ReactivePromise } from "../async";
-import { useDisposeOnUnmount } from "./use-dispose-on-unmount";
+import { dispose } from "../resource";
 
 /**
  * Component-scoped `reactivePromise`. Reactive reads in `asyncFn`'s
@@ -30,6 +31,6 @@ export function useReactivePromise<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
-  useDisposeOnUnmount(rp);
+  useDisposeOnUnmount(() => dispose(rp));
   return rp;
 }
