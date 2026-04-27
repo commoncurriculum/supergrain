@@ -2,9 +2,8 @@ import { effect } from "@supergrain/kernel";
 import { useCallback, useRef } from "react";
 
 /**
- * A behavior is a function that sets up behavior on a DOM element and
- * returns a cleanup. It's the supergrain counterpart of an Ember behavior:
- * an element-scoped, composable setup/teardown pair.
+ * A behavior is a function that runs setup on a DOM element and returns
+ * a cleanup — an element-scoped, composable setup/teardown pair.
  *
  * Authored as a plain function:
  * ```ts
