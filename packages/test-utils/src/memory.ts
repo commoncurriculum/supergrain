@@ -7,17 +7,11 @@ const runtime = globalThis as typeof globalThis & {
   };
 };
 
-function getGc(): (() => void) | undefined {
-  if (typeof runtime.gc === "function") return runtime.gc;
-  try {
-    return (0, eval)("gc") as (() => void) | undefined;
-  } catch {
-    return undefined;
-  }
-}
-
+// `--expose-gc` always surfaces gc as `globalThis.gc` in Node and via
+// `--js-flags=--expose-gc` in Chromium, so we can read it directly without
+// an eval-based fallback.
 export const HAS_GC =
-  typeof getGc() === "function" && typeof runtime.process?.memoryUsage === "function";
+  typeof runtime.gc === "function" && typeof runtime.process?.memoryUsage === "function";
 
 /**
  * Always-run sentinel for memory configs. When `pnpm test:memory:node` is used
@@ -35,7 +29,7 @@ export function assertGcAvailable(): void {
 }
 
 export function requireGc(): void {
-  if (typeof getGc() !== "function") {
+  if (typeof runtime.gc !== "function") {
     throw new TypeError("Memory tests require node --expose-gc.");
   }
   if (typeof runtime.process?.memoryUsage !== "function") {
@@ -49,7 +43,7 @@ export async function delay(ms = 0): Promise<void> {
 
 export async function forceGc(cycles = 6): Promise<void> {
   requireGc();
-  const gc = getGc()!;
+  const gc = runtime.gc!;
   for (let index = 0; index < cycles; index++) {
     gc();
     await Promise.resolve();

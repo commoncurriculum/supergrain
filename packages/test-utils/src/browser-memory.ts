@@ -12,9 +12,18 @@ export async function forceBrowserGc(cycles = 4): Promise<void> {
   }
 }
 
+interface CdpSession {
+  send: (method: string) => Promise<unknown>;
+}
+
+let performanceEnabled = false;
+
 export async function browserHeapUsed(): Promise<number> {
-  const session = cdp() as { send: (method: string) => Promise<unknown> };
-  await session.send("Performance.enable");
+  const session = cdp() as CdpSession;
+  if (!performanceEnabled) {
+    await session.send("Performance.enable");
+    performanceEnabled = true;
+  }
   const result = (await session.send("Performance.getMetrics")) as {
     metrics: Array<{ name: string; value: number }>;
   };
