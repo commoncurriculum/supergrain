@@ -240,4 +240,59 @@ describe("reactiveTask", () => {
     expect(task.isRejected).toBe(true);
     expect((task.error as Error).message).toBe("sync-boom");
   });
+
+  it("stale rejection does not update state (gen !== generation)", async () => {
+    const d1 = deferred<string>();
+    const d2 = deferred<string>();
+    const results = [d1, d2];
+    let call = 0;
+
+    const task = reactiveTask(async () => results[call++]!.promise);
+
+    const p1 = task.run();
+    const p2 = task.run(); // gen=2 is now current; gen=1 is stale
+
+    // Reject the stale run first
+    d1.reject(new Error("stale-error"));
+    await p1.catch(() => {});
+
+    // State should NOT reflect the stale rejection
+    expect(task.isRejected).toBe(false);
+    expect(task.error).toBe(null);
+
+    // Resolve the current run
+    d2.resolve("fresh");
+    await p2;
+    expect(task.data).toBe("fresh");
+    expect(task.isRejected).toBe(false);
+  });
+});
+
+describe("reactivePromise — stale rejection", () => {
+  it("ignores rejection from a run whose AbortSignal is already aborted", async () => {
+    const trigger = signal(0);
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const rp = reactivePromise<string>(async (abortSignal) => {
+      trigger();
+      return new Promise<string>((_resolve, reject) => {
+        abortSignal.addEventListener("abort", () => {
+          reject(new Error("aborted-by-rerun"));
+        });
+      });
+    });
+
+    // Trigger rerun — aborts the old signal, starts a new run
+    trigger(1);
+    // Let microtasks flush so the old run's rejection handler fires
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The rejection came from an already-aborted signal; state must stay clean
+    expect(rp.isRejected).toBe(false);
+    expect(rp.error).toBe(null);
+
+    errSpy.mockRestore();
+  });
 });

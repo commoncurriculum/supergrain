@@ -536,3 +536,100 @@ describe("destroy", () => {
     expect(q.isFetching).toBe(false);
   });
 });
+
+// =============================================================================
+// Coverage gaps
+// =============================================================================
+
+describe("createQuery — coverage gaps", () => {
+  it("uses the default fibonacci backoff when no custom backoff is provided", async () => {
+    vi.useFakeTimers();
+    try {
+      const store = makeStore();
+      const { adapter, fetch } = makeAdapter();
+      // Reject on first two calls so the default backoff function is actually invoked
+      fetch.mockRejectedValueOnce(new Error("fail-1"));
+      fetch.mockResolvedValueOnce({
+        data: { results: [] as Array<PlanbookRef> },
+        meta: { nextOffset: null },
+      });
+
+      // No explicit backoff — exercises the default `fibonacciBackoff` wrapper (line 33)
+      const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+      await q.refetch();
+      expect(q.error).toBeInstanceOf(Error);
+
+      // Advance timers so the first retry fires (fibonacci backoff for attempt 1)
+      await vi.advanceTimersByTimeAsync(10_000);
+      // At least one retry should have been made
+      expect(fetch.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+      q.destroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fetchPage is a no-op when called after destroy (destroyed=true branch)", async () => {
+    const store = makeStore();
+    const { adapter, fetch } = makeAdapter();
+
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+    q.destroy();
+
+    // refetch calls fetchPage after destroy — exercises the `if (destroyed) return;` at line 46
+    await q.refetch();
+
+    // The adapter should never have been called
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("fetchNextPage with offset>0 and no slot in memory uses empty results (line 76 false)", async () => {
+    const store = makeStore();
+    const { adapter, fetch } = makeAdapter();
+
+    // First fetch: returns page 0 with nextOffset=2
+    fetch.mockResolvedValueOnce({
+      data: { results: [ref("p1", 0), ref("p2", 1)] },
+      meta: { nextOffset: 2 },
+    });
+
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+    await q.refetch();
+    expect(q.nextOffset).toBe(2);
+
+    // Second fetch (offset=2): clears memory inside the mock AFTER the await
+    // so that `readSlot()` returns undefined when line 75 executes.
+    fetch.mockImplementationOnce(async () => {
+      store.clearMemory();
+      return {
+        data: { results: [ref("p3", 2)] },
+        meta: { nextOffset: null },
+      };
+    });
+
+    await q.fetchNextPage();
+    // The slot was cleared inside the mock, so results[2]=ref("p3",2) on an empty base.
+    // No crash expected; the query handle is in a valid state.
+    q.destroy();
+  });
+
+  it("fetch failure with a non-Error value is coerced to Error (line 94 non-Error branch)", async () => {
+    const store = makeStore();
+    const { adapter, fetch } = makeAdapter();
+    fetch.mockRejectedValueOnce("plain string error");
+
+    const q = createQuery({
+      store,
+      adapter,
+      type: "planbooks_for_user",
+      id: "u1",
+      backoff: () => 9_999_999, // prevent retry
+    });
+    await q.refetch();
+
+    expect(q.error).toBeInstanceOf(Error);
+    expect(q.error!.message).toBe("plain string error");
+    q.destroy();
+  });
+});

@@ -317,3 +317,67 @@ describe("Finder is adapter-agnostic", () => {
     expect(h3.data?.name).toBe("User3");
   });
 });
+
+// =============================================================================
+// Coverage gaps — query-only drain and non-Error rejection in queries
+// =============================================================================
+
+describe("Finder — query-only drain (line 105 empty documentGroups)", () => {
+  it("drains only queries when no documents are queued (documentGroups is empty)", async () => {
+    // This exercises the for-of loop on documentGroups when it has zero entries.
+    // Only queries are in the queue so the documentGroups loop body never fires.
+    type Types = { user: { id: string; name: string } };
+    type Queries = { search: { params: { q: string }; result: { total: number } } };
+
+    const queryAdapter: { find: (p: unknown[]) => Promise<unknown>; calls: unknown[][] } = {
+      calls: [],
+      async find(paramsList) {
+        this.calls.push(paramsList);
+        return paramsList.map(() => ({ total: 42 }));
+      },
+    };
+
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: makeUserAdapter() } },
+      queries: { search: { adapter: queryAdapter } },
+    });
+
+    const h = store.findQuery("search", { q: "hello" });
+    await flushBatch();
+
+    expect(h.status).toBe("SUCCESS");
+    expect(h.data?.total).toBe(42);
+    // Document adapter should NOT have been called (no documents queued)
+    expect(queryAdapter.calls).toHaveLength(1);
+  });
+});
+
+describe("Finder — non-Error query rejection (line 261 non-Error branch)", () => {
+  it("wraps a non-Error query adapter rejection in a new Error", async () => {
+    type Types = { user: { id: string; name: string } };
+    type Queries = { search: { params: { q: string }; result: { total: number } } };
+
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: makeUserAdapter() } },
+      queries: {
+        search: {
+          adapter: {
+            // Reject with a plain string, not an Error instance
+            async find() {
+              throw "plain-string-error";
+            },
+          },
+        },
+      },
+    });
+
+    const h = store.findQuery("search", { q: "oops" });
+    await flushBatch();
+    await h.promise?.catch(() => {});
+
+    expect(h.status).toBe("ERROR");
+    // The non-Error string was coerced to an Error instance (line 261)
+    expect(h.error).toBeInstanceOf(Error);
+    expect(h.error?.message).toBe("plain-string-error");
+  });
+});

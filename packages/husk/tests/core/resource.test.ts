@@ -418,6 +418,34 @@ describe("resource() error handling", () => {
     errSpy.mockRestore();
     dispose(r);
   });
+
+  it("silently swallows an AbortError rejection from async setup", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const trigger = signal(0);
+
+    const r = resource<{ status: string }>(
+      { status: "init" },
+      async (_state, ctx) => {
+        trigger(); // track signal so rerun is triggered by signal change
+        await new Promise<void>((_resolve, reject) => {
+          ctx.abortSignal.addEventListener("abort", () => {
+            const err = new Error("aborted");
+            (err as Error & { name: string }).name = "AbortError";
+            reject(err);
+          });
+        });
+      },
+    );
+
+    trigger(1); // triggers rerun → aborts old run → old promise rejects with AbortError
+    await new Promise((res) => setTimeout(res, 20));
+
+    // console.error must NOT have been called — AbortError is silently swallowed
+    expect(errSpy).not.toHaveBeenCalled();
+
+    errSpy.mockRestore();
+    dispose(r);
+  });
 });
 
 describe("dispose()", () => {

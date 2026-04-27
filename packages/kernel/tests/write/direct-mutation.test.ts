@@ -1,7 +1,8 @@
 import { update } from "@supergrain/mill";
 import { describe, it, expect } from "vitest";
 
-import { createReactive } from "../../src";
+import { deleteProperty } from "../../src/write";
+import { createReactive, effect } from "../../src";
 
 describe("Direct Mutation Support", () => {
   it("should allow direct property assignment", () => {
@@ -158,5 +159,55 @@ describe("Direct Mutation Support", () => {
     expect(store.user.name).toBe("Jane");
     expect(store.user.age).toBe(25);
     expect(store.items[0]!.label).toBe("Updated");
+  });
+});
+
+describe("write.ts branch coverage", () => {
+  it("bumpVersion is a no-op when no $VERSION signal exists (object never tracked)", () => {
+    // Mutate a reactive object that was never read inside a tracked effect.
+    // No $VERSION signal is created, so bumpVersion's `if (v)` branch is false.
+    const store = createReactive({ x: 1 });
+    // No effect() subscription — $VERSION signal is never created
+    expect(() => {
+      store.x = 2;
+    }).not.toThrow();
+    expect(store.x).toBe(2);
+  });
+
+  it("deleteProperty: deleting a non-existent key is a no-op (hadKey=false branch)", () => {
+    const store = createReactive({ a: 1 } as Record<string, number>);
+    // Track 'b' so we get signal nodes, but it doesn't exist yet
+    effect(() => void store.b);
+    expect(() => {
+      delete store.b; // key doesn't exist → hadKey=false, skips bumpVersion block
+    }).not.toThrow();
+    expect(store.b).toBeUndefined();
+  });
+
+  it("deleteProperty (standalone): handles array target (Array.isArray branch)", () => {
+    // Call the standalone deleteProperty directly on an array to exercise the
+    // `Array.isArray(target) ? target.length : -1` true branch.
+    const arr = [10, 20, 30];
+    deleteProperty(arr, 1);
+    expect(arr[1]).toBeUndefined();
+    expect(arr[0]).toBe(10);
+  });
+
+  it("writeHandler.deleteProperty: deleting an existing array index bumps ownKeys", () => {
+    const store = createReactive({ arr: [1, 2, 3] });
+    let ownKeysBumped = 0;
+    effect(() => {
+      // Accessing a function property on a reactive array calls trackSelf(),
+      // which subscribes the effect to the $OWN_KEYS signal.
+      void (store.arr as unknown[]).push;
+      ownKeysBumped++;
+    });
+    ownKeysBumped = 0;
+
+    // Delete an existing array index via the proxy — triggers writeHandler.deleteProperty
+    // where Array.isArray(target)=true and hadKey=true → bumpOwnKeysSignal is called
+    delete (store.arr as unknown as Record<string, unknown>)["0"];
+    expect(ownKeysBumped).toBe(1);
+    expect((store.arr as unknown as Record<string, unknown>)["0"]).toBeUndefined();
   });
 });

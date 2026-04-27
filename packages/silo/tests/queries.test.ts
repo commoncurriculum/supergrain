@@ -406,3 +406,68 @@ describe("Query finder errors", () => {
     expect(handle.error?.message).toBe("processor-exploded");
   });
 });
+
+// =============================================================================
+// insertQueryResult — IDLE and ERROR status transitions
+// =============================================================================
+
+describe("insertQueryResult — IDLE and ERROR transitions", () => {
+  it("transitions a handle from IDLE → SUCCESS via insertQueryResult", async () => {
+    // Strategy: insertQueryResult creates a SUCCESS handle on first call.
+    // clearMemory() resets it to IDLE (isFetching was false, so resetHandle
+    // sets status=IDLE). A second insertQueryResult call finds the IDLE handle
+    // and takes the `else if (status === "IDLE")` branch (lines 566-572).
+    const store = createDocumentStore<TypeToModel, TypeToQuery>({
+      models: {
+        user: { adapter: { find: async () => [] } },
+        post: { adapter: { find: async () => [] } },
+        "card-stack": { adapter: { find: async () => ({ data: [], included: [] }) } },
+      },
+      queries: {
+        dashboard: { adapter: { find: () => new Promise(() => {}) } },
+      },
+    });
+
+    const params: DashboardParams = { workspaceId: 99, filters: { active: false } };
+    const d1 = makeDashboard({ totalActiveUsers: 990 });
+    const d2 = makeDashboard({ totalActiveUsers: 991 });
+
+    // First call: no existing slot → creates a new SUCCESS handle (not the IDLE branch)
+    store.insertQueryResult("dashboard", params, d1);
+    // clearMemory resets the (non-fetching) SUCCESS handle to IDLE
+    store.clearMemory();
+    // Second call: existing IDLE handle → exercises the IDLE → SUCCESS branch
+    store.insertQueryResult("dashboard", params, d2);
+
+    const inMemory = store.findQueryInMemory("dashboard", params);
+    expect(inMemory?.totalActiveUsers).toBe(991);
+  });
+
+  it("transitions an ERROR query handle to SUCCESS via insertQueryResult", async () => {
+    const store = initStore();
+    const params: DashboardParams = { workspaceId: 77, filters: { active: true } };
+
+    // Simulate a failed fetch so the handle enters ERROR state.
+    server.use(
+      http.get(`${API_BASE}/dashboards`, () =>
+        HttpResponse.json({}, { status: 500 }),
+      ),
+    );
+
+    const handle = store.findQuery("dashboard", params);
+    await flushCoalescer();
+    await handle.promise?.catch(() => {});
+    expect(handle.status).toBe("ERROR");
+
+    // Reset MSW to avoid interfering with other tests
+    server.resetHandlers();
+
+    // Now insert a result directly into the ERROR handle (lines 566-572)
+    const dashboard = makeDashboard({ totalActiveUsers: 770 });
+    store.insertQueryResult("dashboard", params, dashboard);
+
+    expect(handle.status).toBe("SUCCESS");
+    expect(handle.data?.totalActiveUsers).toBe(770);
+    expect(handle.isPending).toBe(false);
+  });
+});
