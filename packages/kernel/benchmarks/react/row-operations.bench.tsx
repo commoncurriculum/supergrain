@@ -1,5 +1,6 @@
 import { createGrain } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
+import { update } from "@supergrain/mill";
 import { render, fireEvent, act, cleanup } from "@testing-library/react";
 import React, { FC } from "react";
 import { bench, describe, afterEach } from "vitest";
@@ -106,13 +107,13 @@ interface AppState {
   selected: number | null;
 }
 
-const BenchmarkComponent = tracked(({ store, updateStore }: { store: any; updateStore: any }) => {
-  const selectRow = (id: number) => updateStore({ $set: { selected: id } });
+const BenchmarkComponent = tracked(({ store }: { store: any }) => {
+  const selectRow = (id: number) => update(store, { $set: { selected: id } });
   const swapRows = () => {
     if (store.data.length > 998) {
       const row1 = store.data[1];
       const row998 = store.data[998];
-      updateStore({ $set: { "data.1": row998, "data.998": row1 } });
+      update(store, { $set: { "data.1": row998, "data.998": row1 } });
     }
   };
 
@@ -159,7 +160,7 @@ describe("React Adapter: Row Operations", () => {
     "tracked - select row: state update + component re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createGrain<AppState>({
+      const store = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -173,7 +174,7 @@ describe("React Adapter: Row Operations", () => {
       render(<MinimalComponent />);
 
       act(() => {
-        updateStore({ $set: { selected: data[500].id } });
+        update(store, { $set: { selected: data[500].id } });
       });
 
       if (lastSelected !== data[500].id) {
@@ -190,7 +191,7 @@ describe("React Adapter: Row Operations", () => {
     "tracked - swap rows: array update + component re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createGrain<AppState>({
+      const store = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -207,7 +208,7 @@ describe("React Adapter: Row Operations", () => {
       const originalRow998 = data[998];
 
       act(() => {
-        updateStore({
+        update(store, {
           $set: {
             "data.1": originalRow998,
             "data.998": originalRow1,
@@ -236,13 +237,13 @@ describe("React Adapter: Row Operations", () => {
     "full DOM - select row: component render + DOM update",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createGrain<AppState>({
+      const store = createGrain<AppState>({
         data,
         selected: null,
       });
 
       // Initial render (not measured)
-      const { container } = render(<BenchmarkComponent store={store} updateStore={updateStore} />);
+      const { container } = render(<BenchmarkComponent store={store} />);
 
       // The benchmark measurement: select row and re-render entire DOM
       act(() => {
@@ -266,20 +267,20 @@ describe("React Adapter: Row Operations", () => {
     "full DOM - swap rows: component render + DOM update",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createGrain<AppState>({
+      const store = createGrain<AppState>({
         data,
         selected: null,
       });
 
       // Initial render (not measured)
-      const { container } = render(<BenchmarkComponent store={store} updateStore={updateStore} />);
+      const { container } = render(<BenchmarkComponent store={store} />);
 
       // The benchmark measurement: direct state update instead of button click
       act(() => {
         if (data.length > 998) {
           const row1 = data[1];
           const row998 = data[998];
-          updateStore({ $set: { "data.1": row998, "data.998": row1 } });
+          update(store, { $set: { "data.1": row998, "data.998": row1 } });
         }
       });
 
@@ -305,7 +306,7 @@ describe("React Adapter: Row Operations", () => {
     "large dataset - tracked: 10K rows select",
     () => {
       const data = buildData(10000);
-      const [store, updateStore] = createGrain<AppState>({
+      const store = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -319,7 +320,7 @@ describe("React Adapter: Row Operations", () => {
       render(<MinimalComponent />);
 
       act(() => {
-        updateStore({ $set: { selected: data[5000].id } });
+        update(store, { $set: { selected: data[5000].id } });
       });
 
       if (lastSelected !== data[5000].id) {
@@ -336,7 +337,7 @@ describe("React Adapter: Row Operations", () => {
     "large dataset - tracked: 10K rows swap",
     () => {
       const data = buildData(10000);
-      const [store, updateStore] = createGrain<AppState>({
+      const store = createGrain<AppState>({
         data,
         selected: null,
       });
@@ -353,7 +354,7 @@ describe("React Adapter: Row Operations", () => {
       const originalRow9998 = data[9998];
 
       act(() => {
-        updateStore({
+        update(store, {
           $set: {
             "data.1": originalRow9998,
             "data.9998": originalRow1,
