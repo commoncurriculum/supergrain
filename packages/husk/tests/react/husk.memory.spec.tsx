@@ -53,10 +53,10 @@ const HuskHarness = tracked(function HuskHarness({ seed }: { seed: number }) {
 
 describe("husk react memory", () => {
   it("keeps Chromium heap flat when component unmounts while async is still pending", async () => {
-    // Mounts the harness, triggers a click (which starts a reactivePromise rerun),
-    // then immediately unmounts before the promise resolves.
-    const samples = await collectBrowserSamples(5, async (round) => {
-      for (let index = 0; index < 8; index++) {
+    // 6 rounds × 25 = 150 mount→click→unmount-mid-flight cycles. The racy
+    // case where in-flight reactivePromise must abort cleanly on unmount.
+    const samples = await collectBrowserSamples(6, async (round) => {
+      for (let index = 0; index < 25; index++) {
         const view = render(<HuskHarness seed={round * 100 + index} />);
         // Click without waiting — unmount races the in-flight promise
         view.getByTestId("husk-memory").click();
@@ -70,14 +70,14 @@ describe("husk react memory", () => {
     });
 
     expectBrowserTrend(samples, {
-      maxGrowthBytes: 3_500_000,
-      maxLastDeltaBytes: 850_000,
+      maxGrowthBytes: 4_500_000,
+      maxLastDeltaBytes: 1_000_000,
     });
   });
 
   it("keeps Chromium heap flat across repeated remounts with changing seed props", async () => {
-    const samples = await collectBrowserSamples(5, async (round) => {
-      for (let index = 0; index < 8; index++) {
+    const samples = await collectBrowserSamples(6, async (round) => {
+      for (let index = 0; index < 20; index++) {
         // Render with one seed then rerender with a different seed to exercise
         // prop-change teardown/setup within the same DOM container.
         const view = render(<HuskHarness seed={round * 200 + index * 2} />);
@@ -91,15 +91,15 @@ describe("husk react memory", () => {
     });
 
     expectBrowserTrend(samples, {
-      maxGrowthBytes: 4_000_000,
-      maxLastDeltaBytes: 900_000,
+      maxGrowthBytes: 5_000_000,
+      maxLastDeltaBytes: 1_100_000,
       maxTailHeadRatio: 1.8,
     });
   });
 
   it("keeps Chromium heap flat across StrictMode double-mount churn", async () => {
-    const samples = await collectBrowserSamples(5, async (round) => {
-      for (let index = 0; index < 6; index++) {
+    const samples = await collectBrowserSamples(6, async (round) => {
+      for (let index = 0; index < 15; index++) {
         const view = render(
           <React.StrictMode>
             <HuskHarness seed={round * 300 + index} />
@@ -115,8 +115,8 @@ describe("husk react memory", () => {
     });
 
     expectBrowserTrend(samples, {
-      maxGrowthBytes: 4_000_000,
-      maxLastDeltaBytes: 950_000,
+      maxGrowthBytes: 5_000_000,
+      maxLastDeltaBytes: 1_100_000,
     });
   });
 });

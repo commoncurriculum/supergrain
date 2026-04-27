@@ -20,6 +20,7 @@ export default defineConfig({
       "packages/kernel/tests/memory/**/*.memory.spec.ts",
       "packages/husk/tests/memory/**/*.memory.spec.ts",
       "packages/silo/tests/memory/**/*.memory.spec.ts",
+      "packages/queries/tests/memory/**/*.memory.spec.ts",
     ],
     // Soak tests live in *.memory.soak.spec.ts and have their own config.
     exclude: ["**/*.memory.soak.spec.ts"],

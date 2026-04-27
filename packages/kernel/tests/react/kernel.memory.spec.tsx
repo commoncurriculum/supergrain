@@ -41,8 +41,10 @@ const KernelHarness = tracked(function KernelHarness({ seed }: { seed: number })
 
 describe("kernel react memory", () => {
   it("keeps Chromium heap flat across repeated mount and unmount churn", async () => {
-    const samples = await collectBrowserSamples(5, async (round) => {
-      for (let index = 0; index < 10; index++) {
+    // 6 rounds x 30 mounts = 180 mount/unmount cycles. Larger N catches slow
+    // leaks that 5x10 would miss while staying under the 30s test timeout.
+    const samples = await collectBrowserSamples(6, async (round) => {
+      for (let index = 0; index < 30; index++) {
         const view = render(<KernelHarness seed={round * 100 + index} />);
         await act(async () => {
           view.getByTestId("kernel-memory").click();
@@ -54,14 +56,16 @@ describe("kernel react memory", () => {
     });
 
     expectBrowserTrend(samples, {
-      maxGrowthBytes: 3_000_000,
-      maxLastDeltaBytes: 700_000,
+      maxGrowthBytes: 4_500_000,
+      maxLastDeltaBytes: 900_000,
     });
   });
 
   it("keeps Chromium heap flat across StrictMode double-mount churn", async () => {
-    const samples = await collectBrowserSamples(5, async (round) => {
-      for (let index = 0; index < 8; index++) {
+    // StrictMode is 2x effective mounts, so smaller per-round count.
+    // 6 rounds x 20 = 240 effective mount cycles.
+    const samples = await collectBrowserSamples(6, async (round) => {
+      for (let index = 0; index < 20; index++) {
         const view = render(
           <React.StrictMode>
             <KernelHarness seed={round * 200 + index} />
@@ -76,8 +80,8 @@ describe("kernel react memory", () => {
     });
 
     expectBrowserTrend(samples, {
-      maxGrowthBytes: 3_500_000,
-      maxLastDeltaBytes: 850_000,
+      maxGrowthBytes: 4_500_000,
+      maxLastDeltaBytes: 1_000_000,
     });
   });
 

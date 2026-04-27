@@ -43,6 +43,34 @@ describe.runIf(HAS_GC)("kernel memory", () => {
     });
   });
 
+  // Cross-proxy leak surface: an effect over proxy A reads from proxy B.
+  // The effect closes over both proxies' signals, so disposing only one of
+  // them must still release both once the effect itself is stopped.
+  it("collects both proxies when a cross-proxy effect is stopped", async () => {
+    await expectCollectible(() => {
+      const rawA = { value: 1, label: "a" };
+      const rawB = { value: 10, items: [1, 2, 3] };
+      const stateA = createReactive(rawA);
+      const stateB = createReactive(rawB);
+      // Effect over A reads from BOTH A and B — a real-world pattern when one
+      // store derives state from another.
+      const stop = effect(() => {
+        void stateA.value;
+        void stateB.value;
+        void stateB.items.length;
+      });
+
+      stateA.value = 2;
+      stateB.value = 11;
+      stateB.items.push(4);
+
+      return {
+        targets: [rawA, rawB, stateA as object, stateB as object],
+        teardown: () => stop(),
+      };
+    });
+  });
+
   it("collects proxy when multiple effects subscribe and all are stopped", async () => {
     await expectCollectible(() => {
       const raw = { value: 1, label: "a", items: [1, 2, 3] };

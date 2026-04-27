@@ -108,8 +108,9 @@ const SiloHarness = tracked(function SiloHarness({
 
 describe("silo react memory", () => {
   it("keeps Chromium heap flat across StrictMode Provider churn", async () => {
-    const samples = await collectBrowserSamples(5, async (round) => {
-      for (let index = 0; index < 6; index++) {
+    // 6 rounds × 15 mounts (StrictMode = 2x effective) = 180 effective Provider mounts.
+    const samples = await collectBrowserSamples(6, async (round) => {
+      for (let index = 0; index < 15; index++) {
         const workspaceId = round * 200 + index + 1;
         const seed = round * 200 + index;
         const view = render(
@@ -143,18 +144,18 @@ describe("silo react memory", () => {
     });
 
     expectBrowserTrend(samples, {
-      maxGrowthBytes: 4_500_000,
-      maxLastDeltaBytes: 1_000_000,
+      maxGrowthBytes: 5_500_000,
+      maxLastDeltaBytes: 1_200_000,
     });
   });
 
   // Intentionally creates a fresh config for each rerender to exercise
   // Provider teardown/remount when config object identity changes.
   it("keeps Chromium heap flat across changing workspaceId props", async () => {
-    // Rerenders with a different workspaceId to exercise clearMemory + new
-    // query subscription within the same Provider lifetime.
-    const samples = await collectBrowserSamples(5, async (round) => {
-      for (let index = 0; index < 6; index++) {
+    // 6 rounds × 15 prop-change rerenders = 90 cycles, exercising clearMemory
+    // + new query subscription within the same Provider lifetime.
+    const samples = await collectBrowserSamples(6, async (round) => {
+      for (let index = 0; index < 15; index++) {
         const workspaceId = round * 300 + index + 1;
         const seed = round * 300 + index;
         const view = render(
@@ -208,8 +209,8 @@ describe("silo react memory", () => {
     });
 
     expectBrowserTrend(samples, {
-      maxGrowthBytes: 4_500_000,
-      maxLastDeltaBytes: 1_000_000,
+      maxGrowthBytes: 5_500_000,
+      maxLastDeltaBytes: 1_200_000,
       maxTailHeadRatio: 1.8,
     });
   });
