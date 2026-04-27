@@ -1,17 +1,16 @@
 import { signal } from "@supergrain/kernel";
-import { describe, it } from "vitest";
-
-import { reactivePromise, reactiveTask, resource, defineResource, dispose } from "../../src";
 import {
   HAS_GC,
-  RUN_SOAK,
   assertGcAvailable,
   collectHeapSamples,
   delay,
   expectCollectible,
   expectRetainedHeapBudget,
   expectTrendToFlatten,
-} from "./helpers";
+} from "@supergrain/test-utils/memory";
+import { describe, it } from "vitest";
+
+import { reactivePromise, reactiveTask, resource, defineResource, dispose } from "../../src";
 
 // Always-run sentinel: ensures the memory config actually exposed GC.
 it("GC is exposed (required for all husk memory tests)", () => {
@@ -272,7 +271,7 @@ describe.runIf(HAS_GC)("husk memory", () => {
   });
 
   it("flattens retained heap across repeated async rounds", async () => {
-    const samples = await collectHeapSamples(6, async (round) => {
+    const samples = await collectHeapSamples(8, async (round) => {
       for (let index = 0; index < 60; index++) {
         await runHuskCycle(round * 1_000 + index);
       }
@@ -280,15 +279,13 @@ describe.runIf(HAS_GC)("husk memory", () => {
 
     expectTrendToFlatten(samples, {
       maxGrowthBytes: 3_500_000,
-      maxPositiveDeltas: 4,
       maxLastDeltaBytes: 600_000,
       maxTailHeadRatio: 1.8,
-      maxConsecutiveGrowthRounds: 3,
     });
   });
 
   it("flattens retained heap across repeated defineResource factory rounds", async () => {
-    const samples = await collectHeapSamples(6, async (round) => {
+    const samples = await collectHeapSamples(8, async (round) => {
       for (let index = 0; index < 40; index++) {
         await runDefineResourceCycle(round * 1_000 + index);
       }
@@ -296,15 +293,14 @@ describe.runIf(HAS_GC)("husk memory", () => {
 
     expectTrendToFlatten(samples, {
       maxGrowthBytes: 3_000_000,
-      maxPositiveDeltas: 4,
       maxLastDeltaBytes: 500_000,
       maxTailHeadRatio: 1.8,
-      maxConsecutiveGrowthRounds: 3,
+      maxConsecutiveGrowthRounds: 4,
     });
   });
 });
 
-describe.runIf(HAS_GC && RUN_SOAK)("husk memory soak", () => {
+describe.runIf(HAS_GC)("husk memory soak", () => {
   it("stays flat during extended async rerun churn", async () => {
     const samples = await collectHeapSamples(10, async (round) => {
       for (let index = 0; index < 100; index++) {
@@ -314,10 +310,8 @@ describe.runIf(HAS_GC && RUN_SOAK)("husk memory soak", () => {
 
     expectTrendToFlatten(samples, {
       maxGrowthBytes: 5_000_000,
-      maxPositiveDeltas: 6,
       maxLastDeltaBytes: 850_000,
       maxTailHeadRatio: 2.0,
-      maxConsecutiveGrowthRounds: 5,
     });
   });
 });

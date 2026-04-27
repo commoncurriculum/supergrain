@@ -1,0 +1,27 @@
+{
+  "name": "@supergrain/test-utils",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal test helpers for Supergrain (memory, browser).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./memory": {
+      "@supergrain/source": "./src/memory.ts",
+      "types": "./src/memory.ts"
+    },
+    "./browser-memory": {
+      "@supergrain/source": "./src/browser-memory.ts",
+      "types": "./src/browser-memory.ts"
+    }
+  },
+  "scripts": {
+    "lint": "oxlint -c ../../.oxlintrc.json src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.3",
+    "typescript": "^5.9.2",
+    "vitest": "4.1.5"
+  }
+}

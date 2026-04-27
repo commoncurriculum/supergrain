@@ -51,3 +51,9 @@ jobs:
 
       - name: Validate README documentation
         run: pnpm run test:validate
+
+      - name: Run memory tests (Node, --expose-gc)
+        run: pnpm run test:memory:node
+
+      - name: Run memory tests (browser, Chromium gc())
+        run: pnpm run test:memory:browser

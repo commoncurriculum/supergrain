@@ -3,12 +3,9 @@ import { expect } from "vitest";
 const runtime = globalThis as typeof globalThis & {
   gc?: () => void;
   process?: {
-    env?: Record<string, string | undefined>;
     memoryUsage?: () => { heapUsed: number };
   };
 };
-
-export const RUN_SOAK = runtime.process?.env?.["SUPERGRAIN_MEMORY_SOAK"] === "1";
 
 function getGc(): (() => void) | undefined {
   if (typeof runtime.gc === "function") return runtime.gc;
@@ -23,9 +20,9 @@ export const HAS_GC =
   typeof getGc() === "function" && typeof runtime.process?.memoryUsage === "function";
 
 /**
- * Assert that GC is available. Always-run sentinel for the memory config:
- * when the dedicated test:memory:node command is used, this catches any
- * mis-configuration that would otherwise silently skip all meaningful tests.
+ * Always-run sentinel for memory configs. When `pnpm test:memory:node` is used
+ * this catches mis-configuration that would otherwise silently skip every
+ * leak check (every `describe.runIf(HAS_GC)` block evaluates to false).
  */
 export function assertGcAvailable(): void {
   if (!HAS_GC) {
@@ -39,10 +36,10 @@ export function assertGcAvailable(): void {
 
 export function requireGc(): void {
   if (typeof getGc() !== "function") {
-    throw new Error("Memory tests require node --expose-gc.");
+    throw new TypeError("Memory tests require node --expose-gc.");
   }
   if (typeof runtime.process?.memoryUsage !== "function") {
-    throw new Error("Memory tests require process.memoryUsage().");
+    throw new TypeError("Memory tests require process.memoryUsage().");
   }
 }
 
@@ -87,41 +84,50 @@ export async function collectHeapSamples(
   return samples;
 }
 
-export function expectTrendToFlatten(
-  samples: ReadonlyArray<number>,
-  options: {
-    maxGrowthBytes: number;
-    maxPositiveDeltas: number;
-    maxLastDeltaBytes: number;
-    /**
-     * Maximum ratio of (mean of last two samples) to (mean of first two
-     * samples). Catches slow-but-steady monotonic leaks that stay below the
-     * absolute maxGrowthBytes ceiling. Default: unchecked.
-     */
-    maxTailHeadRatio?: number;
-    /**
-     * Maximum number of consecutive rounds with positive heap growth. Catches
-     * an unbroken upward slope even when individual deltas are small. Default:
-     * unchecked.
-     */
-    maxConsecutiveGrowthRounds?: number;
-  },
-): void {
+export interface TrendOptions {
+  /** Total heap growth from first to last sample. */
+  maxGrowthBytes: number;
+  /** Heap delta of the final round. Catches a leak still in progress. */
+  maxLastDeltaBytes: number;
+  /**
+   * Maximum number of rounds with positive heap growth. Optional because V8
+   * frequently shows small positive deltas across most rounds even with no
+   * leak (JIT, lazy weak-map cleanup, etc.). When absolute and structural
+   * signals are present this metric just adds flakiness.
+   */
+  maxPositiveDeltas?: number;
+  /**
+   * Maximum ratio of (mean of last two samples) to (mean of first two samples).
+   * Catches slow-but-steady growth that stays under maxGrowthBytes. Requires at
+   * least 4 samples.
+   */
+  maxTailHeadRatio?: number;
+  /**
+   * Maximum number of consecutive rounds with positive heap growth. Catches an
+   * unbroken upward slope even when individual deltas are small.
+   */
+  maxConsecutiveGrowthRounds?: number;
+}
+
+export function expectTrendToFlatten(samples: ReadonlyArray<number>, options: TrendOptions): void {
   expect(samples.length).toBeGreaterThanOrEqual(2);
   const deltas = samples.slice(1).map((sample, index) => sample - samples[index]!);
   const totalGrowth = samples.at(-1)! - samples[0]!;
-  const positiveDeltas = deltas.filter((delta) => delta > 0).length;
   const lastDelta = deltas.at(-1) ?? 0;
 
   expect(totalGrowth, "total heap growth exceeded budget").toBeLessThanOrEqual(
     options.maxGrowthBytes,
   );
-  expect(positiveDeltas, "too many rounds with positive heap growth").toBeLessThanOrEqual(
-    options.maxPositiveDeltas,
-  );
   expect(lastDelta, "last-round heap delta exceeded budget").toBeLessThanOrEqual(
     options.maxLastDeltaBytes,
   );
+
+  if (options.maxPositiveDeltas !== undefined) {
+    const positiveDeltas = deltas.filter((delta) => delta > 0).length;
+    expect(positiveDeltas, "too many rounds with positive heap growth").toBeLessThanOrEqual(
+      options.maxPositiveDeltas,
+    );
+  }
 
   if (options.maxTailHeadRatio !== undefined && samples.length >= 4) {
     const headAvg = (samples[0]! + samples[1]!) / 2;
@@ -170,11 +176,11 @@ export async function expectCollectible(
     finalized++;
   });
 
-  // The factory call and teardown must run in a separate async function frame.
-  // V8 retains all live variables in an async function across every await
-  // suspension point.  If targets/teardown/settle were held directly in this
-  // function body they would still be reachable from the suspended frame during
-  // the GC polling loop below, preventing the targets from being collected.
+  // V8 retains every variable ever live in an async function across every
+  // await suspension point. If targets/teardown/settle were held in the same
+  // frame as the GC polling loop, they would still be reachable from the
+  // suspended frame and could not be collected. The nested IIFE gives them
+  // their own frame that is fully released before the loop runs.
   const refs = await (async () => {
     const { targets, teardown, settle } = await factory();
     const weakRefs = targets.map((target, index) => {

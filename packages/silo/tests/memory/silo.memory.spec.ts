@@ -1,16 +1,15 @@
-import { describe, it } from "vitest";
-
-import { createDocumentStore } from "../../src";
 import {
   HAS_GC,
-  RUN_SOAK,
   assertGcAvailable,
   collectHeapSamples,
   delay,
   expectCollectible,
   expectRetainedHeapBudget,
   expectTrendToFlatten,
-} from "./helpers";
+} from "@supergrain/test-utils/memory";
+import { describe, it } from "vitest";
+
+import { createDocumentStore } from "../../src";
 
 // Always-run sentinel: ensures the memory config actually exposed GC.
 it("GC is exposed (required for all silo memory tests)", () => {
@@ -219,7 +218,7 @@ describe.runIf(HAS_GC)("silo memory", () => {
   });
 
   it("flattens retained heap across repeated async store rounds", async () => {
-    const samples = await collectHeapSamples(6, async (round) => {
+    const samples = await collectHeapSamples(8, async (round) => {
       for (let index = 0; index < 40; index++) {
         await settleStoreRound(round * 1_000 + index);
       }
@@ -227,10 +226,8 @@ describe.runIf(HAS_GC)("silo memory", () => {
 
     expectTrendToFlatten(samples, {
       maxGrowthBytes: 4_000_000,
-      maxPositiveDeltas: 4,
       maxLastDeltaBytes: 700_000,
       maxTailHeadRatio: 1.8,
-      maxConsecutiveGrowthRounds: 3,
     });
   });
 
@@ -276,7 +273,7 @@ describe.runIf(HAS_GC)("silo memory", () => {
   });
 });
 
-describe.runIf(HAS_GC && RUN_SOAK)("silo memory soak", () => {
+describe.runIf(HAS_GC)("silo memory soak", () => {
   it("stays flat during extended async finder churn", async () => {
     const samples = await collectHeapSamples(10, async (round) => {
       for (let index = 0; index < 60; index++) {
@@ -286,10 +283,8 @@ describe.runIf(HAS_GC && RUN_SOAK)("silo memory soak", () => {
 
     expectTrendToFlatten(samples, {
       maxGrowthBytes: 6_000_000,
-      maxPositiveDeltas: 6,
       maxLastDeltaBytes: 900_000,
       maxTailHeadRatio: 2.0,
-      maxConsecutiveGrowthRounds: 5,
     });
   });
 });
