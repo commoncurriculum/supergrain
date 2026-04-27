@@ -62,7 +62,7 @@ Source refs: [`packages/kernel/src/read.ts`](https://github.com/commoncurriculum
 
 ### Footguns / Downsides
 
-- **You have to remember `tracked()`.** Fine-grained React updates depend on wrapping components in `tracked()`; if you forget, you lose the per-component subscription behavior the library is built around. See the [README quick start](https://github.com/commoncurriculum/supergrain/blob/main/README.md#local-state--usereactive).
+- **You have to remember `tracked()`.** Fine-grained React updates depend on wrapping components in `tracked()`; if you forget, you lose the per-component subscription behavior the library is built around. See the [kernel quick start](https://github.com/commoncurriculum/supergrain/blob/main/packages/kernel/README.md#local-state--usegrain).
 - **Only plain objects and arrays are reactive.** `Map`, `Set`, class instances, `Date`, and other built-ins pass through unchanged, so mutating them will not trigger re-renders. See the [FAQ](https://github.com/commoncurriculum/supergrain/blob/main/README.md#faq).
 - **`batch()` is sync-only.** You can't `await` inside a batch; the library explicitly throws because batching is implemented with a global depth counter. See the [FAQ](https://github.com/commoncurriculum/supergrain/blob/main/README.md#faq).
 - **Fresh props can still defeat memoization.** `tracked()` wraps components in `React.memo`, but passing fresh inline objects, arrays, or closures as props still causes prop-driven re-renders. See the [FAQ](https://github.com/commoncurriculum/supergrain/blob/main/README.md#faq).

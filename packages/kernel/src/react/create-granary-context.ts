@@ -1,6 +1,6 @@
 import { createContext, createElement, useContext, type ReactNode } from "react";
 
-import { useGrain } from "./use-reactive";
+import { useGrain } from "./use-grain";
 
 /**
  * Create a typed store binding — Context + Provider + hook, all tied to a

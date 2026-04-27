@@ -10,11 +10,11 @@ export { tracked } from "./tracked";
 export { useComputed } from "./use-computed";
 
 // Export useGrain for per-component reactive state
-export { useGrain } from "./use-reactive";
+export { useGrain } from "./use-grain";
 
 // Export createGranaryContext for typed store bindings. Call once at module
 // scope, destructure, re-export; components import from your module.
-export { createGranaryContext } from "./create-store";
+export { createGranaryContext } from "./create-granary-context";
 
 // Export useSignalEffect for signal-tracked side effects tied to component lifecycle
 export { useSignalEffect } from "./use-signal-effect";
