@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vitepress dev docs",
     "test": "vitest",
+    "coverage": "vitest run --coverage",
     "test:validate": "pnpm --filter @supergrain/doc-tests run test:validate",
     "build": "pnpm --filter=\"@supergrain/kernel\" --filter=\"@supergrain/mill\" --filter=\"@supergrain/silo\" --workspace-concurrency=1 run build",
     "bench:core": "vitest bench --root packages/kernel",
@@ -36,6 +37,7 @@
     "@types/react-dom": "^19.1.9",
     "@vitest/browser": "^4.1.0",
     "@vitest/browser-playwright": "^4.1.0",
+    "@vitest/coverage-v8": "4.1.0",
     "fast-check": "4.7.0",
     "jsdom": "^26.1.0",
     "oxfmt": "^0.41.0",
