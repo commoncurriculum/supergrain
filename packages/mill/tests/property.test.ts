@@ -220,3 +220,160 @@ describe("property-based update operators", () => {
     );
   });
 });
+
+// ─── $pull on object collections ─────────────────────────────────────────────
+//
+// The main property test exercises $pull with primitive values. $pull also
+// supports query objects against an array of objects, removing every element
+// where every queried key matches by deep equality. This lives in its own
+// property test because the model state shape (objects vs ints) doesn't
+// compose with the main operation generator.
+
+interface ObjectItem {
+  id: number;
+  category: "a" | "b" | "c";
+}
+
+interface ObjectPullState {
+  items: Array<ObjectItem>;
+}
+
+const objectItemArbitrary: fc.Arbitrary<ObjectItem> = fc.record({
+  id: fc.integer({ min: 0, max: 5 }),
+  category: fc.constantFrom<ObjectItem["category"]>("a", "b", "c"),
+});
+
+type ObjectPullQuery = Partial<ObjectItem>;
+
+const objectPullQueryArbitrary: fc.Arbitrary<ObjectPullQuery> = fc.oneof(
+  fc.record({ id: fc.integer({ min: 0, max: 5 }) }),
+  fc.record({ category: fc.constantFrom<ObjectItem["category"]>("a", "b", "c") }),
+  fc.record({
+    id: fc.integer({ min: 0, max: 5 }),
+    category: fc.constantFrom<ObjectItem["category"]>("a", "b", "c"),
+  }),
+);
+
+function modelMatches(item: ObjectItem, query: ObjectPullQuery): boolean {
+  for (const key of Object.keys(query) as Array<keyof ObjectPullQuery>) {
+    if (item[key] !== query[key]) return false;
+  }
+  return true;
+}
+
+describe("property-based $pull with object queries", () => {
+  it("removes every element matching the query (deep partial match)", () => {
+    fc.assert(
+      fc.property(
+        fc.array(objectItemArbitrary, { maxLength: 10 }),
+        fc.array(objectPullQueryArbitrary, { maxLength: 5 }),
+        (initial, queries) => {
+          const expected: ObjectPullState = { items: structuredClone(initial) };
+          const store = createReactive<ObjectPullState>({ items: structuredClone(initial) });
+
+          for (const query of queries) {
+            expected.items = expected.items.filter((item) => !modelMatches(item, query));
+            update(store, { $pull: { items: query } });
+            expect(unwrap(store).items).toEqual(expected.items);
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+});
+
+// ─── $rename ────────────────────────────────────────────────────────────────
+//
+// $rename moves a value from a source path to a destination path. The mill
+// implementation throws when the destination already exists, so the property
+// test models that — both the reference implementation and the reactive call
+// must throw together (or succeed together). A property over arbitrary
+// (set | rename) sequences exercises the operator across populated and empty
+// source/destination configurations.
+
+type RenameField = "alpha" | "beta";
+
+interface RenameState {
+  alpha?: number;
+  beta?: number;
+}
+
+type RenameOp =
+  | { type: "set"; field: RenameField; value: number }
+  | { type: "unset"; field: RenameField }
+  | { type: "rename"; from: RenameField; to: RenameField };
+
+const renameOpArbitrary: fc.Arbitrary<RenameOp> = fc.oneof(
+  fc.record({
+    type: fc.constant<"set">("set"),
+    field: fc.constantFrom<RenameField>("alpha", "beta"),
+    value: fc.integer({ min: -50, max: 50 }),
+  }),
+  fc.record({
+    type: fc.constant<"unset">("unset"),
+    field: fc.constantFrom<RenameField>("alpha", "beta"),
+  }),
+  fc.record({
+    type: fc.constant<"rename">("rename"),
+    from: fc.constantFrom<RenameField>("alpha", "beta"),
+    to: fc.constantFrom<RenameField>("alpha", "beta"),
+  }),
+);
+
+function applyRenameModel(state: RenameState, op: RenameOp): { threw: boolean } {
+  switch (op.type) {
+    case "set":
+      state[op.field] = op.value;
+      return { threw: false };
+    case "unset":
+      delete state[op.field];
+      return { threw: false };
+    case "rename": {
+      if (op.from === op.to) return { threw: false };
+      if (!(op.from in state)) return { threw: false };
+      if (op.to in state) return { threw: true };
+      state[op.to] = state[op.from];
+      delete state[op.from];
+      return { threw: false };
+    }
+  }
+}
+
+function applyRenameReactive(state: RenameState, op: RenameOp): { threw: boolean } {
+  try {
+    switch (op.type) {
+      case "set":
+        update(state, { $set: { [op.field]: op.value } } as never);
+        return { threw: false };
+      case "unset":
+        update(state, { $unset: { [op.field]: 1 } } as never);
+        return { threw: false };
+      case "rename":
+        update(state, { $rename: { [op.from]: op.to } } as never);
+        return { threw: false };
+    }
+  } catch {
+    return { threw: true };
+  }
+}
+
+describe("property-based $rename with set/unset/rename mix", () => {
+  it("matches reference semantics including conflict-throws", () => {
+    fc.assert(
+      fc.property(fc.array(renameOpArbitrary, { maxLength: 25 }), (operations) => {
+        const expected: RenameState = {};
+        const store = createReactive<RenameState>({});
+
+        for (const op of operations) {
+          const modelOutcome = applyRenameModel(expected, op);
+          const reactiveOutcome = applyRenameReactive(store, op);
+
+          expect(reactiveOutcome.threw).toBe(modelOutcome.threw);
+          expect(unwrap(store)).toEqual(expected);
+        }
+      }),
+      { numRuns: 100 },
+    );
+  });
+});
