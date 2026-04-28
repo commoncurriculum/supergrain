@@ -489,7 +489,7 @@ describe("Finder empty queues and orphaned handles", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("ignores queued work when the waiting handle was removed before drain", async () => {
+  it("drains queued work even when state holds no matching waiting handles", async () => {
     type Queries = { search: { params: { q: string }; result: { total: number } } };
     const documentCalls: string[][] = [];
     const queryCalls: Array<Array<{ q: string }>> = [];

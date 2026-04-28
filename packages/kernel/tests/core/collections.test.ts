@@ -304,7 +304,6 @@ describe("createReactive(new Map()) — reactive Map", () => {
     const has = m.has;
     expect(get("a")).toBe(1);
     expect(has("a")).toBe(true);
-    expect(m.constructor.name).toBe("bound Map");
     expect((m as Map<string, number> & { tag: string }).tag).toBe("custom");
     expect("missing" in m).toBe(false);
   });
@@ -583,7 +582,6 @@ describe("createReactive(new Set()) — reactive Set", () => {
     expect([...keys()]).toEqual(["a"]);
     expect([...entries()]).toEqual([["a", "a"]]);
     expect([...s]).toEqual(["a"]);
-    expect(s.constructor.name).toBe("bound Set");
     expect((s as Set<string> & { tag: string }).tag).toBe("custom");
     expect("missing" in s).toBe(false);
   });

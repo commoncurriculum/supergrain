@@ -44,6 +44,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   server.resetHandlers();
   clearRequests();
+  vi.useRealTimers();
 });
 afterAll(() => server.close());
 

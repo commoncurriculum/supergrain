@@ -11,12 +11,8 @@ permissions:
 
 jobs:
   formatting:
-    name: ${{ matrix.package }} / formatting
+    name: Formatting
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        package: [kernel, husk, silo, mill]
 
     steps:
       - name: Checkout code
@@ -37,13 +33,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check formatting
-        run: >
-          pnpm exec oxfmt --check
-          packages/${{ matrix.package }}/src
-          packages/${{ matrix.package }}/tests
-          packages/${{ matrix.package }}/package.json
-          packages/${{ matrix.package }}/tsconfig.json
-          packages/${{ matrix.package }}/vite.config.ts
+        run: pnpm run format:check
 
   lint:
     name: ${{ matrix.package }} / lint
