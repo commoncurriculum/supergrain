@@ -76,11 +76,9 @@ export function tracked<P extends object>(Component: FC<P>) {
     // mount→cleanup→remount cycle in dev doesn't kill the effect we still
     // need post-cycle.
     useDisposeOnUnmount(() => {
-      const fuState = (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
-      if (fuState) {
-        fuState.cleanup();
-        delete (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
-      }
+      const fu = forceUpdate as unknown as { __sg?: TrackedState };
+      fu.__sg!.cleanup();
+      delete fu.__sg;
     });
 
     const prev = getCurrentSub();

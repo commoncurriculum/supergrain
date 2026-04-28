@@ -96,8 +96,6 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
   // becomes nested and doesn't propagate its own deps independently.
   const stopEffect = withUntracked(() =>
     effect(() => {
-      if (disposed) return;
-
       const gen = ++generation;
       runCleanups();
       controller = new AbortController();
@@ -147,7 +145,6 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
   );
 
   registerDisposer(state, () => {
-    if (disposed) return;
     disposed = true;
     stopEffect();
     runCleanups();

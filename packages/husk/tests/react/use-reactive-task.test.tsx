@@ -2,7 +2,7 @@ import type { ReactiveTask } from "@supergrain/husk";
 
 import { useReactiveTask } from "@supergrain/husk/react";
 import { tracked } from "@supergrain/kernel/react";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -19,6 +19,31 @@ function deferred<T>() {
 }
 
 describe("useReactiveTask()", () => {
+  it("creates a stable task and runs it successfully", async () => {
+    const Component = tracked(() => {
+      const task = useReactiveTask(async (n: number) => n * 2);
+      return (
+        <div>
+          <span data-testid="pending">{String(task.isPending)}</span>
+          <span data-testid="data">{task.isReady ? String(task.data) : "none"}</span>
+          <button data-testid="run" onClick={() => task.run(5)} />
+        </div>
+      );
+    });
+
+    render(<Component />);
+    expect(screen.getByTestId("pending").textContent).toBe("false");
+    expect(screen.getByTestId("data").textContent).toBe("none");
+
+    await act(async () => {
+      screen.getByTestId("run").click();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("data").textContent).toBe("10");
+    expect(screen.getByTestId("pending").textContent).toBe("false");
+  });
+
   it("keeps a stable task identity while refreshing the async closure", async () => {
     let task: ReactiveTask<[number], number> | null = null;
 
@@ -42,6 +67,24 @@ describe("useReactiveTask()", () => {
       await firstTask.run(3);
     });
     expect(getByTestId("value").textContent).toBe("12");
+  });
+
+  it("keeps the same task identity across re-renders", () => {
+    let taskRef: object | undefined;
+
+    const Component = tracked(({ tick }: { tick: number }) => {
+      void tick;
+      const task = useReactiveTask(async () => 1);
+      if (!taskRef) {
+        taskRef = task;
+      } else {
+        expect(task).toBe(taskRef);
+      }
+      return <div />;
+    });
+
+    const { rerender } = render(<Component tick={0} />);
+    rerender(<Component tick={1} />);
   });
 
   it("disposes on unmount and ignores late task resolutions", async () => {
@@ -105,5 +148,7 @@ describe("useReactiveTask()", () => {
       await liveTask.run(5);
     });
     expect(getByTestId("value").textContent).toBe("10");
+    expect(liveTask.data).toBe(10);
+    expect(liveTask.isReady).toBe(true);
   });
 });

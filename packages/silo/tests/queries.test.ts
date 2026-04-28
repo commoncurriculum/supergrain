@@ -23,7 +23,7 @@
 
 import { effect } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { createDocumentStore } from "../src/store";
 import {
@@ -39,6 +39,7 @@ import {
   type TypeToModel,
   type TypeToQuery,
 } from "./example-app";
+import { setupFakeTimers } from "./setup/timers";
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
@@ -47,9 +48,7 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-beforeEach(() => {
-  vi.useFakeTimers();
-});
+setupFakeTimers();
 
 // =============================================================================
 // findQuery — reactive handle, stable identity, network on miss
@@ -389,5 +388,220 @@ describe("Queries share memory with documents", () => {
 
     expect(store.findInMemory("user", "1")).toBeUndefined();
     expect(store.findQueryInMemory("dashboard", params)).toBeUndefined();
+  });
+
+  it("insertQueryResult recovers an ERROR query handle with a fresh promise", async () => {
+    server.use(
+      http.get(`${API_BASE}/dashboards`, () =>
+        HttpResponse.json({ message: "boom" }, { status: 500 }),
+      ),
+    );
+
+    const store = initStore();
+    const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
+    const handle = store.findQuery("dashboard", params);
+    await flushCoalescer();
+
+    const rejectedPromise = handle.promise;
+    expect(handle.status).toBe("ERROR");
+
+    const result = makeDashboard({ totalActiveUsers: 101 });
+    store.insertQueryResult("dashboard", params, result);
+
+    expect(handle.status).toBe("SUCCESS");
+    expect(handle.data).toBe(result);
+    expect(handle.error).toBeUndefined();
+    expect(handle.promise).not.toBe(rejectedPromise);
+    await expect(handle.promise).resolves.toBe(result);
+  });
+
+  it("stores primitive query results without freezing", () => {
+    type Types = { user: { id: string; name: string } };
+    type Queries = { count: { params: { id: string }; result: number } };
+
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: async () => [] } } },
+      queries: {
+        count: {
+          adapter: {
+            async find() {
+              return [];
+            },
+          },
+        },
+      },
+    });
+
+    store.insertQueryResult("count", { id: "a" }, 42);
+
+    expect(store.findQueryInMemory("count", { id: "a" })).toBe(42);
+  });
+});
+
+describe("Query finder errors", () => {
+  it("sets query handle to ERROR when processor does not insert the result", async () => {
+    type Types = { user: { id: string; name: string } };
+    type Queries = { search: { params: { q: string }; result: { ids: string[] } } };
+
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: async () => [] } } },
+      queries: {
+        search: {
+          adapter: {
+            async find() {
+              return [];
+            },
+          },
+          processor: () => {},
+        },
+      },
+    });
+
+    const handle = store.findQuery("search", { q: "hello" });
+    await flushCoalescer();
+    await handle.promise!.catch(() => {});
+
+    expect(handle.status).toBe("ERROR");
+    expect(handle.error?.message).toMatch(/query result not found after fetch/i);
+  });
+
+  it("sets query handle to ERROR when query processor throws", async () => {
+    type Types = { user: { id: string; name: string } };
+    type Queries = { boom: { params: { n: number }; result: { value: number } } };
+
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: async () => [] } } },
+      queries: {
+        boom: {
+          adapter: {
+            async find() {
+              return [];
+            },
+          },
+          processor: () => {
+            throw new Error("processor-exploded");
+          },
+        },
+      },
+    });
+
+    const handle = store.findQuery("boom", { n: 1 });
+    await flushCoalescer();
+    await handle.promise!.catch(() => {});
+
+    expect(handle.status).toBe("ERROR");
+    expect(handle.error?.message).toBe("processor-exploded");
+  });
+});
+
+describe("insertQueryResult transitions existing handles", () => {
+  it("updates an idle query handle without fetching", async () => {
+    const store = createDocumentStore<TypeToModel, TypeToQuery>({
+      models: {
+        user: { adapter: { find: async () => [] } },
+        post: { adapter: { find: async () => [] } },
+        "card-stack": { adapter: { find: async () => ({ data: [], included: [] }) } },
+      },
+      queries: {
+        dashboard: { adapter: { find: () => new Promise(() => {}) } },
+      },
+    });
+
+    const params: DashboardParams = { workspaceId: 99, filters: { active: false } };
+    const d1 = makeDashboard({ totalActiveUsers: 990 });
+    const d2 = makeDashboard({ totalActiveUsers: 991 });
+
+    store.insertQueryResult("dashboard", params, d1);
+    store.clearMemory();
+    store.insertQueryResult("dashboard", params, d2);
+
+    const inMemory = store.findQueryInMemory("dashboard", params);
+    expect(inMemory?.totalActiveUsers).toBe(991);
+  });
+
+  it("transitions an ERROR query handle to SUCCESS via insertQueryResult", async () => {
+    const store = initStore();
+    const params: DashboardParams = { workspaceId: 77, filters: { active: true } };
+
+    server.use(http.get(`${API_BASE}/dashboards`, () => HttpResponse.json({}, { status: 500 })));
+
+    const handle = store.findQuery("dashboard", params);
+    await flushCoalescer();
+    await handle.promise?.catch(() => {});
+    expect(handle.status).toBe("ERROR");
+
+    server.resetHandlers();
+
+    const dashboard = makeDashboard({ totalActiveUsers: 770 });
+    store.insertQueryResult("dashboard", params, dashboard);
+
+    expect(handle.status).toBe("SUCCESS");
+    expect(handle.data?.totalActiveUsers).toBe(770);
+    expect(handle.isPending).toBe(false);
+  });
+});
+
+// =============================================================================
+// Query handle reactivity — effects subscribed to handle fields fire on
+// transitions. The handle returned from findQuery is the binding surface
+// for UI code; verifying it's actually reactive (not just lazy-correct on
+// re-read) is the contract that matters for render loops.
+// =============================================================================
+
+describe("Query handle is reactive", () => {
+  it("an effect tracking handle.status fires on PENDING -> SUCCESS via fetch", async () => {
+    const store = initStore();
+    const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
+    const handle = store.findQuery("dashboard", params);
+
+    const statusHistory: Array<string> = [];
+    effect(() => {
+      statusHistory.push(handle.status);
+    });
+    expect(statusHistory).toEqual(["PENDING"]);
+
+    await flushCoalescer();
+    await handle.promise;
+    expect(statusHistory.at(-1)).toBe("SUCCESS");
+  });
+
+  it("an effect tracking handle.data fires when an external insertQueryResult lands", () => {
+    const store = initStore();
+    const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
+    const handle = store.findQuery("dashboard", params);
+
+    const totals: Array<number | undefined> = [];
+    effect(() => {
+      totals.push(handle.data?.totalActiveUsers);
+    });
+    expect(totals).toEqual([undefined]);
+
+    store.insertQueryResult("dashboard", params, makeDashboard({ totalActiveUsers: 99 }));
+    expect(totals.at(-1)).toBe(99);
+  });
+
+  it("an effect tracking handle.error fires on PENDING -> ERROR and clears on recovery", async () => {
+    server.use(
+      http.get(`${API_BASE}/dashboards`, () =>
+        HttpResponse.json({ message: "boom" }, { status: 500 }),
+      ),
+    );
+
+    const store = initStore();
+    const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
+    const handle = store.findQuery("dashboard", params);
+
+    const errorHistory: Array<string | undefined> = [];
+    effect(() => {
+      errorHistory.push(handle.error?.message);
+    });
+    expect(errorHistory).toEqual([undefined]);
+
+    await flushCoalescer();
+    await handle.promise?.catch(() => {});
+    expect(errorHistory.at(-1)).toMatch(/boom|500/i);
+
+    store.insertQueryResult("dashboard", params, makeDashboard({ totalActiveUsers: 99 }));
+    expect(errorHistory.at(-1)).toBeUndefined();
   });
 });

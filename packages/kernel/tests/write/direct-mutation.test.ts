@@ -1,7 +1,8 @@
 import { update } from "@supergrain/mill";
 import { describe, it, expect } from "vitest";
 
-import { createReactive } from "../../src";
+import { createReactive, effect } from "../../src";
+import { deleteProperty } from "../../src/write";
 
 describe("Direct Mutation Support", () => {
   it("should allow direct property assignment", () => {
@@ -39,42 +40,42 @@ describe("Direct Mutation Support", () => {
     const store = createReactive({ count: 0, user: { name: "John" } });
 
     let reactionCount = 0;
-    let lastValue: any = null;
+    let lastValue = -1;
 
-    // Create a simple reaction to test reactivity
-    const checkReactivity = () => {
-      const value = store.count;
+    effect(() => {
+      lastValue = store.count;
       reactionCount++;
-      lastValue = value;
-      return value;
-    };
+    });
 
-    // Initial access creates dependency
-    checkReactivity();
     expect(reactionCount).toBe(1);
     expect(lastValue).toBe(0);
 
-    // Direct mutation should trigger reactivity
+    // Direct mutation propagates to the subscribing effect.
     store.count = 10;
-    expect(store.count).toBe(10);
+    expect(lastValue).toBe(10);
+    expect(reactionCount).toBe(2);
 
-    // Test nested property reactivity
+    // Same value -> no re-run.
+    store.count = 10;
+    expect(reactionCount).toBe(2);
+
     let nestedReactionCount = 0;
-    let lastNestedValue: any = null;
-
-    const checkNestedReactivity = () => {
-      const value = store.user.name;
+    let lastNestedValue = "";
+    effect(() => {
+      lastNestedValue = store.user.name;
       nestedReactionCount++;
-      lastNestedValue = value;
-      return value;
-    };
+    });
 
-    checkNestedReactivity();
     expect(nestedReactionCount).toBe(1);
     expect(lastNestedValue).toBe("John");
 
+    // Mutating a nested property triggers the nested-tracking effect.
     store.user.name = "Jane";
-    expect(store.user.name).toBe("Jane");
+    expect(lastNestedValue).toBe("Jane");
+    expect(nestedReactionCount).toBe(2);
+
+    // The unrelated `count` effect is not re-run by a nested-property write.
+    expect(reactionCount).toBe(2);
   });
 
   it("should work alongside traditional updateStore calls", () => {
@@ -158,5 +159,58 @@ describe("Direct Mutation Support", () => {
     expect(store.user.name).toBe("Jane");
     expect(store.user.age).toBe(25);
     expect(store.items[0]!.label).toBe("Updated");
+  });
+});
+
+describe("Direct Mutation Support — untracked writes", () => {
+  it("updates an object that has not been read by an effect", () => {
+    const store = createReactive({ x: 1 });
+    expect(() => {
+      store.x = 2;
+    }).not.toThrow();
+    expect(store.x).toBe(2);
+  });
+
+  it("deleting a missing object key is a no-op", () => {
+    const store = createReactive({ a: 1 } as Record<string, number>);
+    effect(() => void store["b"]);
+    expect(() => {
+      delete store["b"];
+    }).not.toThrow();
+    expect(store["b"]).toBeUndefined();
+  });
+
+  it("deleteProperty removes an array element without compacting the array", () => {
+    const arr = [10, 20, 30];
+    deleteProperty(arr, 1);
+    expect(arr[1]).toBeUndefined();
+    expect(arr[0]).toBe(10);
+  });
+
+  it("deleting an existing array index notifies key subscribers", () => {
+    const store = createReactive({ arr: [1, 2, 3] });
+    let ownKeysBumped = 0;
+    effect(() => {
+      void (store.arr as unknown[]).push;
+      ownKeysBumped++;
+    });
+    ownKeysBumped = 0;
+
+    Reflect.deleteProperty(store.arr, "0");
+    expect(ownKeysBumped).toBe(1);
+    expect(store.arr[0]).toBeUndefined();
+  });
+
+  it("deleting a missing array index is silent", () => {
+    const store = createReactive({ arr: [1, 2, 3] });
+    let ownKeysBumped = 0;
+    effect(() => {
+      void (store.arr as unknown[]).push;
+      ownKeysBumped++;
+    });
+    ownKeysBumped = 0;
+
+    Reflect.deleteProperty(store.arr, "99");
+    expect(ownKeysBumped).toBe(0);
   });
 });

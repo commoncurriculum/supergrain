@@ -14,14 +14,26 @@ interface Insert<K extends keyof TypeToModel = keyof TypeToModel> {
   doc: TypeToModel[K];
 }
 
-function makeFakeStore() {
+// Processors only call `insertDocument` / `insertQueryResult` — the rest of
+// the DocumentStore surface isn't reachable from inside a processor. Build a
+// Proxy that exposes just those methods and throws if a processor reaches
+// for anything else; the throw doubles as a sentinel that the contract has
+// shifted under us.
+function makeFakeStore(): { store: DocumentStore<TypeToModel>; inserts: Array<Insert> } {
   const inserts: Array<Insert> = [];
-  const fake = {
-    insertDocument<K extends keyof TypeToModel & string>(type: K, doc: TypeToModel[K]) {
-      inserts.push({ type, doc } as Insert);
+  const insertDocument = <K extends keyof TypeToModel & string>(
+    type: K,
+    doc: TypeToModel[K],
+  ): void => {
+    inserts.push({ type, doc } as Insert);
+  };
+  const store = new Proxy({} as DocumentStore<TypeToModel>, {
+    get(_target, prop) {
+      if (prop === "insertDocument") return insertDocument;
+      throw new Error(`Fake store: processor reached for '${String(prop)}', which is not stubbed`);
     },
-  } as unknown as DocumentStore<TypeToModel>;
-  return { store: fake, inserts };
+  });
+  return { store, inserts };
 }
 
 // =============================================================================
@@ -111,5 +123,43 @@ describe("jsonApiProcessor", () => {
     jsonApiProcessor({ data: [], included: [postWithType] }, store, "user");
 
     expect(inserts[0]?.type).toBe("post");
+  });
+
+  it("defaults to empty array when `data` is absent from the envelope", () => {
+    // Branch: envelope.data ?? [] — the `??` fallback path
+    const { store, inserts } = makeFakeStore();
+    const postWithType = { ...makePost("10"), type: "post" as const };
+
+    // No `data` key at all — only `included`
+    jsonApiProcessor({ included: [postWithType] } as any, store, "user");
+
+    // Only the included doc was inserted (data defaulted to [])
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]?.type).toBe("post");
+  });
+
+  it("iterates every item in a multi-element `data` array", () => {
+    // Pins that the processor doesn't accidentally insert only the head of
+    // `data` (an off-by-one would still pass every test that uses a single
+    // data item).
+    const { store, inserts } = makeFakeStore();
+    const u1 = { ...makeUser("1"), type: "user" as const };
+    const u2 = { ...makeUser("2"), type: "user" as const };
+    const u3 = { ...makeUser("3"), type: "user" as const };
+
+    jsonApiProcessor({ data: [u1, u2, u3] }, store, "user");
+
+    expect(inserts).toEqual([
+      { type: "user", doc: u1 },
+      { type: "user", doc: u2 },
+      { type: "user", doc: u3 },
+    ]);
+  });
+
+  it("handles an empty envelope ({}) without throwing or inserting anything", () => {
+    const { store, inserts } = makeFakeStore();
+
+    expect(() => jsonApiProcessor({} as any, store, "user")).not.toThrow();
+    expect(inserts).toEqual([]);
   });
 });

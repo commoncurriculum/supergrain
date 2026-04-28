@@ -2,6 +2,7 @@ import fc from "fast-check";
 import { describe, it, expect, vi } from "vitest";
 
 import { createReactive, effect, unwrap, batch } from "../../src";
+import { $PROXY, $RAW } from "../../src/internal";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -288,6 +289,43 @@ describe("createReactive(new Map()) — reactive Map", () => {
     });
   });
 
+  it("exposes internal symbols and preserves bound native methods", () => {
+    const raw = new Map<string, number>([["a", 1]]);
+    Object.defineProperty(raw, "tag", { value: "custom", configurable: true });
+    const m = createReactive(raw);
+
+    expect($RAW in m).toBe(true);
+    expect($PROXY in m).toBe(true);
+    expect((m as Map<string, number> & { [$RAW]: Map<string, number> })[$RAW]).toBe(raw);
+    expect((m as Map<string, number> & { [$PROXY]: Map<string, number> })[$PROXY]).toBe(m);
+    expect(Object.prototype.toString.call(m)).toBe("[object Map]");
+
+    const get = m.get;
+    const has = m.has;
+    expect(get("a")).toBe(1);
+    expect(has("a")).toBe(true);
+    // Detached prototype-fallthrough method still binds back to the raw target.
+    const toString = m.toString;
+    expect(toString()).toBe("[object Map]");
+    expect((m as Map<string, number> & { tag: string }).tag).toBe("custom");
+    expect("missing" in m).toBe(false);
+  });
+
+  it("tracks Map.forEach values inside effects", () => {
+    const m = createReactive(new Map<string, number>([["a", 1]]));
+    const values: Array<Array<number>> = [];
+
+    const stop = effect(() => {
+      const next: Array<number> = [];
+      m.forEach((value) => next.push(value));
+      values.push(next);
+    });
+
+    m.set("a", 2);
+    expect(values).toEqual([[1], [2]]);
+    stop();
+  });
+
   // ── Wrap convention — inputs ────────────────────────────────────────────
 
   it("m.get(rawKey) and m.get(wrappedKey) find the same entry", () => {
@@ -345,6 +383,17 @@ describe("createReactive(new Map()) — reactive Map", () => {
 
     expect(effectFn).toHaveBeenCalledTimes(2);
     expect(m.get("a")).toBe(3);
+  });
+
+  it("setting an existing key to the same value is a no-op for subscribers", () => {
+    const m = createReactive(new Map<string, number>([["a", 1]]));
+    const effectFn = vi.fn(() => m.get("a"));
+
+    effect(effectFn);
+    expect(effectFn).toHaveBeenCalledTimes(1);
+
+    m.set("a", 1);
+    expect(effectFn).toHaveBeenCalledTimes(1);
   });
 
   // ── unwrap ──────────────────────────────────────────────────────────────
@@ -518,6 +567,31 @@ describe("createReactive(new Set()) — reactive Set", () => {
     expect(count()).toBe(1);
   });
 
+  it("exposes internal symbols and preserves bound native Set methods", () => {
+    const raw = new Set<string>(["a"]);
+    Object.defineProperty(raw, "tag", { value: "custom", configurable: true });
+    const s = createReactive(raw);
+
+    expect($RAW in s).toBe(true);
+    expect($PROXY in s).toBe(true);
+    expect((s as Set<string> & { [$RAW]: Set<string> })[$RAW]).toBe(raw);
+    expect((s as Set<string> & { [$PROXY]: Set<string> })[$PROXY]).toBe(s);
+    expect(Object.prototype.toString.call(s)).toBe("[object Set]");
+
+    const has = s.has;
+    const keys = s.keys;
+    const entries = s.entries;
+    expect(has("a")).toBe(true);
+    expect([...keys()]).toEqual(["a"]);
+    expect([...entries()]).toEqual([["a", "a"]]);
+    expect([...s]).toEqual(["a"]);
+    // Detached prototype-fallthrough method still binds back to the raw target.
+    const toString = s.toString;
+    expect(toString()).toBe("[object Set]");
+    expect((s as Set<string> & { tag: string }).tag).toBe("custom");
+    expect("missing" in s).toBe(false);
+  });
+
   // ── Wrap convention ─────────────────────────────────────────────────────
 
   it("add(v).add(v2) chains return the reactive proxy", () => {
@@ -539,12 +613,16 @@ describe("createReactive(new Set()) — reactive Set", () => {
     });
 
     expect(latest()).toEqual([1]);
-    // Mutate the wrapped object returned from iteration
+    expect(count()).toBe(1);
+
+    // Mutate the wrapped object returned from iteration. The Set has one
+    // member, so this fires exactly one property-signal write, which makes
+    // the tracked effect re-run exactly once.
     for (const v of s.values()) {
       v.n = 42;
     }
-    expect(latest()[0]).toBe(42);
-    expect(count()).toBeGreaterThanOrEqual(2);
+    expect(latest()).toEqual([42]);
+    expect(count()).toBe(2);
   });
 
   it("forEach third callback arg is the reactive proxy", () => {
@@ -651,7 +729,7 @@ describe("Map nested inside createReactive object", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tracking precision — regression coverage for review fixes
+// Tracking precision
 // ---------------------------------------------------------------------------
 
 describe("Map tracking precision", () => {
@@ -676,9 +754,6 @@ describe("Map tracking precision", () => {
   });
 
   it("set() on an unobserved key does not leak signals into iteration tracking", () => {
-    // Indirect coverage for the "don't eagerly create per-key signals on write"
-    // fix: a value-only effect that never reads `k` shouldn't re-run when `k`
-    // changes after the effect is established.
     const m = createReactive(new Map<string, number>([["read", 1]]));
     const { count } = tracked(() => m.get("read"));
 

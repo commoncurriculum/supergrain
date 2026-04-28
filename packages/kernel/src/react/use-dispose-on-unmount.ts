@@ -43,11 +43,13 @@ export function useDisposeOnUnmount(cleanup: () => void): void {
   const cleanupRef = useRef(cleanup);
   cleanupRef.current = cleanup;
 
+  /* c8 ignore start -- production-only branch is selected by consumer build-time env replacement */
   if (process.env.NODE_ENV === "production") {
     // eslint-disable-next-line react-hooks/rules-of-hooks -- branch is constant per build; bundler DCEs the dev path. See JSDoc.
     useEffect(() => () => cleanupRef.current(), []);
     return;
   }
+  /* c8 ignore stop */
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

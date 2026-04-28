@@ -370,6 +370,29 @@ describe("useHasMany", () => {
 
     expect(screen.getByTestId("cards").textContent).toBe("no cards");
   });
+
+  it("returns an empty array when the relationship is absent", () => {
+    const MissingRelationship = tracked(function MissingRelationship() {
+      const handles = useHasMany(
+        {
+          id: "s1",
+          type: "card-stack",
+          attributes: { title: "Stack" },
+          relationships: {},
+        } as any,
+        "cards",
+      );
+      return <span data-testid="cards">{handles.length}</span>;
+    });
+
+    render(
+      <Wrap>
+        <MissingRelationship />
+      </Wrap>,
+    );
+
+    expect(screen.getByTestId("cards").textContent).toBe("0");
+  });
 });
 
 // =============================================================================
@@ -449,5 +472,40 @@ describe("useHasManyIndividually", () => {
     );
 
     expect(screen.getByTestId("cards").textContent).toBe("no cards");
+  });
+});
+
+// =============================================================================
+// Error: hooks used outside their Provider
+// =============================================================================
+
+describe("hooks used outside Provider", () => {
+  it("useBelongsTo throws when used outside the Provider", () => {
+    const Component = tracked(() => {
+      useBelongsTo({} as any, "planbook" as any);
+      return null;
+    });
+
+    expect(() => render(<Component />)).toThrow(/useBelongsTo must be used within the Provider/);
+  });
+
+  it("useHasMany throws when used outside the Provider", () => {
+    const Component = tracked(() => {
+      useHasMany({} as any, "cards" as any);
+      return null;
+    });
+
+    expect(() => render(<Component />)).toThrow(/useHasMany must be used within the Provider/);
+  });
+
+  it("useHasManyIndividually throws when used outside the Provider", () => {
+    const Component = tracked(() => {
+      useHasManyIndividually({} as any, "cards" as any);
+      return null;
+    });
+
+    expect(() => render(<Component />)).toThrow(
+      /useHasManyIndividually must be used within the Provider/,
+    );
   });
 });

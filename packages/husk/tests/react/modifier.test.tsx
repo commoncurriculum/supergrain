@@ -90,6 +90,41 @@ describe("modifier() / useModifier()", () => {
     expect(cleanupSpy).not.toHaveBeenCalled();
   });
 
+  it("ignores a callback ref invocation for the already-attached element", async () => {
+    const setupSpy = vi.fn();
+    const cleanupSpy = vi.fn();
+    let refCallback!: (el: HTMLDivElement | null) => void;
+    let currentElement!: HTMLDivElement;
+
+    const testMod = modifier<HTMLDivElement, []>(() => {
+      setupSpy();
+      return cleanupSpy;
+    });
+
+    function Component() {
+      const ref = useModifier(testMod);
+      refCallback = ref;
+      return (
+        <div
+          ref={(el) => {
+            if (el) currentElement = el;
+            ref(el);
+          }}
+        />
+      );
+    }
+
+    render(<Component />);
+    expect(setupSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      refCallback(currentElement);
+    });
+
+    expect(setupSpy).toHaveBeenCalledTimes(1);
+    expect(cleanupSpy).not.toHaveBeenCalled();
+  });
+
   it("reruns setup when a signal read directly in setup changes", async () => {
     const store = createReactive({ label: "a" });
     const labels: Array<string> = [];
@@ -311,5 +346,27 @@ describe("onClickOutside popover scenario", () => {
     // A fires, B is gone (its listener was removed on unmount)
     expect(closeA).toHaveBeenCalledTimes(1);
     expect(closeB).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("error handling", () => {
+  it("logs and swallows an error thrown by a modifier cleanup function", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const throwingMod = modifier<HTMLDivElement, []>(() => {
+      return () => {
+        throw new Error("cleanup-throw");
+      };
+    });
+
+    function Component() {
+      return <div ref={useModifier(throwingMod)} data-testid="el" />;
+    }
+
+    const { unmount } = render(<Component />);
+    unmount();
+
+    expect(errSpy).toHaveBeenCalledWith("[supergrain/modifier] cleanup threw:", expect.any(Error));
+    errSpy.mockRestore();
   });
 });

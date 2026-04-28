@@ -103,7 +103,13 @@ describe("dist validation (isKeyed mirror)", () => {
 
     expect(await text(page, "tbody>tr:nth-of-type(2)>td:nth-of-type(1)")).toBe("1002");
     await click(page, "tbody>tr:nth-of-type(2)>td:nth-of-type(3)>a>span");
-    await page.waitForTimeout(500);
+    // Wait for the row at index 2 to advance from "1002" to "1003" rather
+    // than guessing a fixed delay — removing one row from above shifts the
+    // row at this position to the next id.
+    await page.waitForFunction(
+      () =>
+        document.querySelector("tbody>tr:nth-of-type(2)>td:nth-of-type(1)")?.textContent === "1003",
+    );
     expect(await text(page, "tbody>tr:nth-of-type(2)>td:nth-of-type(1)")).toBe("1003");
   });
 

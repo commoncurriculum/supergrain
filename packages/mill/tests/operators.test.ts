@@ -233,3 +233,340 @@ describe("MongoDB Style Operators", () => {
     expect(state.user.fullName).toBe("John Doe");
   });
 });
+
+describe("MongoDB Style Operators — validation and path creation", () => {
+  it("$push/$pull on a null-valued path produces a descriptive error", () => {
+    const store = createReactive<any>({ value: null });
+    expect(() => update(store, { $push: { value: "x" } })).toThrow(/null/i);
+    expect(() => update(store, { $pull: { value: "x" } })).toThrow(/null/i);
+  });
+
+  it("$inc on an array-valued path produces a descriptive error", () => {
+    const store = createReactive<any>({ items: [1, 2] });
+    expect(() => update(store, { $inc: { items: 1 } as any })).toThrow(/array/i);
+  });
+
+  it("$push on a deep path with non-container intermediate throws 'must resolve to existing array'", () => {
+    const store = createReactive<any>({ a: 42 });
+    expect(() => update(store, { $push: { "a.items": "x" } })).toThrow(
+      /must resolve to an existing array/i,
+    );
+  });
+
+  it("$addToSet deduplicates object elements using deep isEqual", () => {
+    const store = createReactive<any>({ items: [{ id: 1, name: "Alice" }] });
+    update(store, { $addToSet: { items: { id: 1, name: "Alice" } } });
+    expect(store.items).toHaveLength(1);
+
+    update(store, { $addToSet: { items: { id: 2, name: "Bob" } } });
+    expect(store.items).toHaveLength(2);
+
+    update(store, { $addToSet: { items: { id: 1 } } });
+    expect(store.items).toHaveLength(3);
+  });
+
+  it("$addToSet handles large object values", () => {
+    const keys = Array.from({ length: 50 }, (_, i) => `key${i}`);
+    const obj1 = Object.fromEntries(keys.map((k) => [k, k]));
+    const obj2 = Object.fromEntries(keys.map((k) => [k, k]));
+    const store = createReactive<any>({ items: [obj1] });
+
+    update(store, { $addToSet: { items: obj2 } });
+    expect(store.items).toHaveLength(1);
+
+    const obj3 = { ...obj2, key0: "different" };
+    update(store, { $addToSet: { items: obj3 } });
+    expect(store.items).toHaveLength(2);
+  });
+
+  it("$inc creates a new path when it does not exist", () => {
+    const store = createReactive<any>({});
+    update(store, { $inc: { newCounter: 5 } });
+    expect(store.newCounter).toBe(5);
+  });
+
+  it("$inc initializes existing null and undefined values", () => {
+    const store = createReactive<any>({ fromNull: null, fromUndefined: undefined });
+    update(store, { $inc: { fromNull: 3, fromUndefined: 4 } });
+    expect(store.fromNull).toBe(3);
+    expect(store.fromUndefined).toBe(4);
+  });
+
+  it("$min creates a new path when it does not exist", () => {
+    const store = createReactive<any>({});
+    update(store, { $min: { score: 10 } });
+    expect(store.score).toBe(10);
+  });
+
+  it("$min initializes existing undefined values", () => {
+    const store = createReactive<any>({ score: undefined });
+    update(store, { $min: { score: 10 } });
+    expect(store.score).toBe(10);
+  });
+
+  it("$max creates a new path when it does not exist", () => {
+    const store = createReactive<any>({});
+    update(store, { $max: { score: 10 } });
+    expect(store.score).toBe(10);
+  });
+
+  it("$max initializes existing undefined values", () => {
+    const store = createReactive<any>({ score: undefined });
+    update(store, { $max: { score: 10 } });
+    expect(store.score).toBe(10);
+  });
+
+  it("$min and $max leave null values unchanged", () => {
+    const minStore = createReactive<any>({ score: null });
+    const maxStore = createReactive<any>({ score: null });
+
+    update(minStore, { $min: { score: 10 } });
+    update(maxStore, { $max: { score: 10 } });
+
+    expect(minStore.score).toBe(null);
+    expect(maxStore.score).toBe(null);
+  });
+
+  it("$set creates missing nested paths", () => {
+    const store = createReactive<any>({});
+    update(store, { $set: { "brand.new.path": "value" } });
+    expect(store.brand.new.path).toBe("value");
+  });
+
+  it("rejects array operators when a deep parent path cannot be resolved", () => {
+    const store = createReactive<any>({ a: 42 });
+    expect(() => update(store, { $push: { "a.b.c": "x" } })).toThrow(/must resolve/i);
+  });
+
+  it("numeric operators create missing nested paths when the parent resolver returns null", () => {
+    const incStore = createReactive<any>({ a: 42 });
+    const minStore = createReactive<any>({ a: 42 });
+    const maxStore = createReactive<any>({ a: 42 });
+
+    update(incStore, { $inc: { "a.b": 1 } });
+    update(minStore, { $min: { "a.c": 2 } });
+    update(maxStore, { $max: { "a.d": 3 } });
+
+    expect(incStore.a).toEqual({ b: 1 });
+    expect(minStore.a).toEqual({ c: 2 });
+    expect(maxStore.a).toEqual({ d: 3 });
+  });
+
+  it("$pull mutates an untracked array without indexed subscribers", () => {
+    const store = createReactive<any>({ items: [1, 2, 3] });
+    update(store, { $pull: { items: 2 } });
+    expect(store.items).toEqual([1, 3]);
+  });
+
+  it("$pull can update a raw object without reactive array nodes", () => {
+    const store = { items: [1, 2, 3] };
+    update(store, { $pull: { items: 2 } });
+    expect(store.items).toEqual([1, 3]);
+  });
+
+  it("$pull leaves unchanged indexed signals alone", () => {
+    const store = createReactive<any>({ items: [1, 2, 3] });
+    let first: number | undefined;
+    let third: number | undefined;
+    const firstFn = vi.fn(() => {
+      first = store.items[0];
+    });
+    const thirdFn = vi.fn(() => {
+      third = store.items[2];
+    });
+
+    effect(firstFn);
+    effect(thirdFn);
+    expect(first).toBe(1);
+    expect(third).toBe(3);
+    expect(firstFn).toHaveBeenCalledTimes(1);
+    expect(thirdFn).toHaveBeenCalledTimes(1);
+
+    // After $pull(2), the array is [1, 3]: index 0 still holds 1, index 2 is
+    // empty. Only the index-2 effect should be invalidated.
+    update(store, { $pull: { items: 2 } });
+
+    expect(first).toBe(1);
+    expect(third).toBeUndefined();
+    expect(firstFn).toHaveBeenCalledTimes(1);
+    expect(thirdFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("$rename ignores missing source paths", () => {
+    const store = createReactive<any>({ user: { name: "Jane" } });
+    update(store, { $rename: { "user.missing": "user.other" } });
+    expect(store.user).toEqual({ name: "Jane" });
+  });
+});
+
+// =============================================================================
+// Per-operator reactivity
+//
+// Each operator must produce the right reactive notifications. The shared
+// kernel test suite covers the proxy contract for direct mutations; these
+// tests pin that the *operator dispatcher* in mill exercises that contract
+// correctly for every kind of operator. Sparse pre-existing coverage (just
+// $inc and $pull) was leaving the rest unverified.
+// =============================================================================
+
+describe("MongoDB Style Operators — reactivity per operator", () => {
+  it("$set fires effects subscribed to the written path and not to siblings", () => {
+    const store = createReactive({ a: 1, b: 2 });
+    const aFn = vi.fn(() => store.a);
+    const bFn = vi.fn(() => store.b);
+    effect(aFn);
+    effect(bFn);
+
+    update(store, { $set: { a: 10 } });
+
+    expect(store.a).toBe(10);
+    expect(aFn).toHaveBeenCalledTimes(2);
+    expect(bFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("$unset fires effects observing the removed property and ownKeys watchers", () => {
+    const store = createReactive<{ a: number; b?: number }>({ a: 1, b: 2 });
+    let observedB: number | undefined = -1;
+    const bFn = vi.fn(() => {
+      observedB = store.b;
+    });
+    let keys: string[] = [];
+    const keysFn = vi.fn(() => {
+      keys = Object.keys(store);
+    });
+    effect(bFn);
+    effect(keysFn);
+    expect(observedB).toBe(2);
+    expect(keys.sort()).toEqual(["a", "b"]);
+
+    update(store, { $unset: { b: 1 } });
+
+    expect(observedB).toBeUndefined();
+    expect(bFn).toHaveBeenCalledTimes(2);
+    expect(keys).toEqual(["a"]);
+    expect(keysFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("$push fires effects subscribed to length and to iteration", () => {
+    const store = createReactive<{ items: Array<{ id: number }> }>({
+      items: [{ id: 1 }],
+    });
+    let length = -1;
+    const lengthFn = vi.fn(() => {
+      length = store.items.length;
+    });
+    let ids: Array<number> = [];
+    const iterFn = vi.fn(() => {
+      ids = store.items.map((i) => i.id);
+    });
+    effect(lengthFn);
+    effect(iterFn);
+
+    update(store, { $push: { items: { id: 2 } } });
+
+    expect(length).toBe(2);
+    expect(ids).toEqual([1, 2]);
+    expect(lengthFn).toHaveBeenCalledTimes(2);
+    expect(iterFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("$addToSet fires effects when adding a new element and stays silent on a duplicate", () => {
+    const store = createReactive({ tags: ["a", "b"] as Array<string> });
+    let length = -1;
+    const lengthFn = vi.fn(() => {
+      length = store.tags.length;
+    });
+    effect(lengthFn);
+    expect(length).toBe(2);
+    expect(lengthFn).toHaveBeenCalledTimes(1);
+
+    update(store, { $addToSet: { tags: "c" } });
+    expect(length).toBe(3);
+    expect(lengthFn).toHaveBeenCalledTimes(2);
+
+    update(store, { $addToSet: { tags: "a" } });
+    expect(length).toBe(3);
+    // Duplicate didn't structurally change the array — no re-run.
+    expect(lengthFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("$rename fires effects on both the source and destination paths", () => {
+    const store = createReactive<{ user: { name?: string; fullName?: string } }>({
+      user: { name: "John" },
+    });
+    let name: string | undefined;
+    let fullName: string | undefined;
+    const nameFn = vi.fn(() => {
+      name = store.user.name;
+    });
+    const fullNameFn = vi.fn(() => {
+      fullName = store.user.fullName;
+    });
+    effect(nameFn);
+    effect(fullNameFn);
+    expect(name).toBe("John");
+    expect(fullName).toBeUndefined();
+
+    update(store, { $rename: { "user.name": "user.fullName" } });
+
+    expect(store.user.name).toBeUndefined();
+    expect(store.user.fullName).toBe("John");
+    expect(name).toBeUndefined();
+    expect(fullName).toBe("John");
+    expect(nameFn).toHaveBeenCalledTimes(2);
+    expect(fullNameFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("$min fires only when the value actually changes", () => {
+    const store = createReactive({ score: 100 });
+    const fn = vi.fn(() => store.score);
+    effect(fn);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    update(store, { $min: { score: 150 } }); // 150 > 100, no-op
+    expect(store.score).toBe(100);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    update(store, { $min: { score: 50 } }); // 50 < 100, writes
+    expect(store.score).toBe(50);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("$max fires only when the value actually changes", () => {
+    const store = createReactive({ score: 100 });
+    const fn = vi.fn(() => store.score);
+    effect(fn);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    update(store, { $max: { score: 50 } }); // 50 < 100, no-op
+    expect(store.score).toBe(100);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    update(store, { $max: { score: 150 } }); // 150 > 100, writes
+    expect(store.score).toBe(150);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("multi-operator update fires each affected effect at most once (batched)", () => {
+    const store = createReactive({ count: 0, score: 10, items: [1, 2] });
+    const countFn = vi.fn(() => store.count);
+    const scoreFn = vi.fn(() => store.score);
+    const lengthFn = vi.fn(() => store.items.length);
+    effect(countFn);
+    effect(scoreFn);
+    effect(lengthFn);
+
+    update(store, {
+      $inc: { count: 5 },
+      $max: { score: 99 },
+      $push: { items: 3 },
+    });
+
+    expect(countFn).toHaveBeenCalledTimes(2);
+    expect(scoreFn).toHaveBeenCalledTimes(2);
+    expect(lengthFn).toHaveBeenCalledTimes(2);
+    expect(store.count).toBe(5);
+    expect(store.score).toBe(99);
+    expect(store.items).toEqual([1, 2, 3]);
+  });
+});

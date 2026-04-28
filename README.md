@@ -1,5 +1,7 @@
 # Supergrain
 
+[![codecov](https://codecov.io/gh/commoncurriculum/supergrain/graph/badge.svg)](https://codecov.io/gh/commoncurriculum/supergrain)
+
 Reactive state management for React — with an API query layer built on top.
 
 - **[@supergrain/kernel](./packages/kernel)** is the state library. Read and mutate plain objects; only the components that actually touched the changed property re-render.

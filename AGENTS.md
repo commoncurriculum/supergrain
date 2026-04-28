@@ -12,6 +12,19 @@ This project uses `pnpm` for package management. Do not use `npm` or `yarn`. All
 - `pnpm add <package-name>`
 - `pnpm run <script-name>`
 
+## Pre-Push Verification
+
+Before committing or pushing changes, run the same checks as CI when feasible:
+
+- `pnpm run format:check`
+- `pnpm run lint`
+- `pnpm run build`
+- `pnpm run typecheck`
+- `pnpm run coverage` or `pnpm test`
+- `pnpm run test:validate` when README/docs examples changed
+
+If you intentionally skip any check, mention it in the final response with the reason.
+
 ## Documentation Test Requirements
 
 ### DOC_TEST Identifiers

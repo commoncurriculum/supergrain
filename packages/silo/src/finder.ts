@@ -79,7 +79,13 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     }, this.batchWindowMs);
   }
 
-  private async drain(): Promise<void> {
+  /**
+   * Flush the queued document/query work in one pass. Called by the
+   * `setTimeout(...)` scheduled in `scheduleDrain` and exposed (non-private)
+   * so tests can invoke it deterministically without driving the timer.
+   * Not exported from the package root.
+   */
+  async drain(): Promise<void> {
     const entries = this.queue.splice(0);
     if (entries.length === 0) return;
 

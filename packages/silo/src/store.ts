@@ -10,17 +10,13 @@ interface Resolvers<T> {
   reject: (e: unknown) => void;
 }
 
-const NOOP_RESOLVE: (v: unknown) => void = () => {};
-const NOOP_REJECT: (e: unknown) => void = () => {};
-
 function withResolvers<T>(): Resolvers<T> {
-  let resolve: (v: T) => void = NOOP_RESOLVE as (v: T) => void;
-  let reject: (e: unknown) => void = NOOP_REJECT;
+  const resolvers = {} as Omit<Resolvers<T>, "promise">;
   const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
+    resolvers.resolve = res;
+    resolvers.reject = rej;
   });
-  return { promise, resolve, reject };
+  return { promise, ...resolvers };
 }
 
 function ensureBucket<T>(buckets: Map<string, Map<string, T>>, type: string): Map<string, T> {

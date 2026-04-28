@@ -23,14 +23,24 @@ interface Insert<K extends keyof TypeToModel = keyof TypeToModel> {
   doc: TypeToModel[K];
 }
 
-function makeFakeStore() {
+// Processors only call `insertDocument` / `insertQueryResult`. Build Proxy-
+// backed stubs that throw if a processor reaches for anything else; the
+// throw is a sentinel that the contract has shifted under us.
+function makeFakeStore(): { store: DocumentStore<TypeToModel>; inserts: Array<Insert> } {
   const inserts: Array<Insert> = [];
-  const fake = {
-    insertDocument<K extends keyof TypeToModel & string>(type: K, doc: TypeToModel[K]) {
-      inserts.push({ type, doc } as Insert);
+  const insertDocument = <K extends keyof TypeToModel & string>(
+    type: K,
+    doc: TypeToModel[K],
+  ): void => {
+    inserts.push({ type, doc } as Insert);
+  };
+  const store = new Proxy({} as DocumentStore<TypeToModel>, {
+    get(_target, prop) {
+      if (prop === "insertDocument") return insertDocument;
+      throw new Error(`Fake store: processor reached for '${String(prop)}', which is not stubbed`);
     },
-  } as unknown as DocumentStore<TypeToModel>;
-  return { store: fake, inserts };
+  });
+  return { store, inserts };
 }
 
 interface QueryInsert {
@@ -39,14 +49,21 @@ interface QueryInsert {
   result: unknown;
 }
 
-function makeFakeQueryStore() {
+function makeFakeQueryStore(): {
+  store: DocumentStore<TypeToModel, TypeToQuery>;
+  inserts: Array<QueryInsert>;
+} {
   const inserts: Array<QueryInsert> = [];
-  const fake = {
-    insertQueryResult(type: string, params: unknown, result: unknown) {
-      inserts.push({ type, params, result });
+  const insertQueryResult = (type: string, params: unknown, result: unknown): void => {
+    inserts.push({ type, params, result });
+  };
+  const store = new Proxy({} as DocumentStore<TypeToModel, TypeToQuery>, {
+    get(_target, prop) {
+      if (prop === "insertQueryResult") return insertQueryResult;
+      throw new Error(`Fake store: processor reached for '${String(prop)}', which is not stubbed`);
     },
-  } as unknown as DocumentStore<TypeToModel, TypeToQuery>;
-  return { store: fake, inserts };
+  });
+  return { store, inserts };
 }
 
 // =============================================================================
@@ -112,6 +129,12 @@ describe("defaultProcessor", () => {
     expect(inserts[0].type).toBe("user");
     expect(inserts[1].type).toBe("user");
   });
+
+  it("handles an empty array response without inserting anything", () => {
+    const { store, inserts } = makeFakeStore();
+    expect(() => defaultProcessor([], store, "user")).not.toThrow();
+    expect(inserts).toEqual([]);
+  });
 });
 
 // =============================================================================
@@ -176,5 +199,11 @@ describe("defaultQueryProcessor", () => {
       { workspaceId: 7, filters: { active: true } },
     ]);
     expect(result).toBeUndefined();
+  });
+
+  it("handles an empty paramsList without inserting anything", () => {
+    const { store, inserts } = makeFakeQueryStore();
+    expect(() => defaultQueryProcessor([], store, "dashboard", [])).not.toThrow();
+    expect(inserts).toEqual([]);
   });
 });

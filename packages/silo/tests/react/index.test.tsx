@@ -391,3 +391,179 @@ describe("createDocumentStoreContext isolation", () => {
     expect(screen.getByTestId("tenant-b").textContent).toBe("BobB");
   });
 });
+
+// =============================================================================
+// Provider `initial` prop — seeds documents and queries before first render
+// =============================================================================
+
+describe("Provider initial data seeding", () => {
+  it("seeds model documents into the store before the first render", () => {
+    const user1 = makeUser("seed1");
+    const user2 = makeUser("seed2");
+
+    const UserDisplay = tracked(function UserDisplay() {
+      const h1 = useDocument("user", "seed1");
+      const h2 = useDocument("user", "seed2");
+      return (
+        <div>
+          <span data-testid="u1">{h1.data?.attributes.firstName ?? "—"}</span>
+          <span data-testid="u2">{h2.data?.attributes.firstName ?? "—"}</span>
+        </div>
+      );
+    });
+
+    render(
+      <Provider
+        config={makeStoreConfig()}
+        initial={{ model: { user: { seed1: user1, seed2: user2 } } }}
+      >
+        <UserDisplay />
+      </Provider>,
+    );
+
+    expect(screen.getByTestId("u1").textContent).toBe(`User${user1.id}`);
+    expect(screen.getByTestId("u2").textContent).toBe(`User${user2.id}`);
+  });
+
+  it("seeds query results into the store before the first render", () => {
+    const params: DashboardParams = { workspaceId: 99, filters: { active: true } };
+    const result = makeDashboard(99);
+
+    const QueryDisplay = tracked(function QueryDisplay() {
+      const handle = useQuery("dashboard", params);
+      return <span data-testid="q">{handle.data?.totalActiveUsers ?? "—"}</span>;
+    });
+
+    render(
+      <Provider config={makeStoreConfig()} initial={{ query: { dashboard: [{ params, result }] } }}>
+        <QueryDisplay />
+      </Provider>,
+    );
+
+    expect(screen.getByTestId("q").textContent).toBe(String(result.totalActiveUsers));
+  });
+});
+
+// =============================================================================
+// Component unmount during in-flight fetch — no leaks, no errors after the
+// fetch eventually resolves. UI code routinely mounts a component, kicks
+// off a fetch, and unmounts it before the response lands (e.g. user
+// navigates away). The contract is: the late resolution must not crash,
+// must not throw, and must not log a React state-update warning.
+// =============================================================================
+
+describe("unmount during in-flight fetch", () => {
+  it("does not throw or warn when a fetch resolves after the component unmounts", async () => {
+    const errors: Array<unknown> = [];
+    const originalError = console.error;
+    console.error = (...args: Array<unknown>) => {
+      errors.push(args);
+    };
+
+    try {
+      const { unmount } = render(
+        <Wrap>
+          <UserBadge userId="1" />
+        </Wrap>,
+      );
+
+      // The fetch is in flight. Unmount before MSW responds.
+      expect(screen.getByText("loading")).toBeDefined();
+      unmount();
+
+      // Let the in-flight fetch resolve into the (now-unmounted) tree.
+      await tick();
+
+      // No console.error from React (or anywhere) for this scenario.
+      expect(errors).toEqual([]);
+    } finally {
+      console.error = originalError;
+    }
+  });
+});
+
+describe("Provider initial data — null/undefined guards", () => {
+  // Force-types `undefined` as `T` for negative-path tests that intentionally
+  // drive out-of-contract values into the Provider to verify it survives.
+  function asInvalid<T>(): T {
+    return undefined as T;
+  }
+
+  it("skips an undefined model bucket", () => {
+    const nullBucketInitial = {
+      model: {
+        user: asInvalid<Record<string, User>>(),
+      },
+    };
+
+    expect(() =>
+      render(
+        <Provider config={makeStoreConfig()} initial={nullBucketInitial}>
+          <span data-testid="ok">ok</span>
+        </Provider>,
+      ),
+    ).not.toThrow();
+
+    expect(screen.getByTestId("ok").textContent).toBe("ok");
+  });
+
+  it("skips undefined model entries", () => {
+    const sparseInitial = {
+      model: {
+        user: {
+          ghost: asInvalid<User>(),
+        },
+      },
+    };
+
+    expect(() =>
+      render(
+        <Provider config={makeStoreConfig()} initial={sparseInitial}>
+          <span data-testid="ok">ok</span>
+        </Provider>,
+      ),
+    ).not.toThrow();
+
+    expect(screen.getByTestId("ok").textContent).toBe("ok");
+  });
+
+  it("skips an undefined query result list", () => {
+    const nullListInitial = {
+      query: {
+        dashboard: asInvalid<Array<{ params: DashboardParams; result: Dashboard }>>(),
+      },
+    };
+
+    expect(() =>
+      render(
+        <Provider config={makeStoreConfig()} initial={nullListInitial}>
+          <span data-testid="ok">rendered</span>
+        </Provider>,
+      ),
+    ).not.toThrow();
+
+    expect(screen.getByTestId("ok").textContent).toBe("rendered");
+  });
+
+  it("ignores undefined model entries in an initial bucket", () => {
+    const user = makeUser("seeded");
+
+    const UserDisplay = tracked(function UserDisplay() {
+      const handle = useDocument("user", "seeded");
+      return <span data-testid="seeded">{handle.data?.attributes.firstName ?? "-"}</span>;
+    });
+
+    render(
+      <Provider
+        config={makeStoreConfig()}
+        initial={{
+          model: { user: { seeded: user, missing: asInvalid<User>() } },
+        }}
+      >
+        <UserDisplay />
+      </Provider>,
+    );
+
+    expect(screen.getByTestId("seeded").textContent).toBe(`User${user.id}`);
+  });
+});

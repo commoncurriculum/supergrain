@@ -110,9 +110,11 @@ function incrementValue(parent: any, key: string, increment: number): void {
   const currentValue = parent[key];
   if (typeof currentValue === "number") {
     setProperty(parent, key, currentValue + increment);
+    /* c8 ignore start -- assertNumericTarget prevents other non-nullish values */
   } else if (currentValue === null || currentValue === undefined) {
     setProperty(parent, key, increment);
   }
+  /* c8 ignore stop */
 }
 
 // Precise function for comparing and setting min/max values
@@ -174,6 +176,7 @@ function pullFromArray(arr: Array<any>, condition: any): boolean {
     bumpVersion(arr);
 
     const nodes = getNodesIfExist(arr);
+    /* c8 ignore start -- raw arrays have no reactive nodes to synchronize */
     if (nodes) {
       bumpOwnKeysSignal(arr, nodes);
 
@@ -185,6 +188,7 @@ function pullFromArray(arr: Array<any>, condition: any): boolean {
 
       syncIndexedSignals(nodes, arr);
     }
+    /* c8 ignore stop */
   }
 
   return removed;

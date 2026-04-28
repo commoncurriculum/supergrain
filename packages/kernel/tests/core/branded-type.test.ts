@@ -53,13 +53,21 @@ export type _3c = Assert<ArrayType extends Array<any> ? true : false>;
 
 // ---------------------------------------------------------------------------
 // 4. Primitives pass through unchanged
+//
+// Both directions matter — `Branded<string> extends string` would still hold
+// if `Branded<string>` were `string & { [$BRAND]: true }`, since intersection
+// types extend their components. Pinning the reverse direction proves
+// `Branded<P>` for primitives is genuinely identical to `P`, not branded.
 // ---------------------------------------------------------------------------
 
-export type _4a = Assert<Branded<string> extends string ? true : false>;
-export type _4b = Assert<Branded<number> extends number ? true : false>;
-export type _4c = Assert<Branded<boolean> extends boolean ? true : false>;
-export type _4d = Assert<Branded<null> extends null ? true : false>;
-export type _4e = Assert<Branded<undefined> extends undefined ? true : false>;
+type Equals<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+
+export type _4a = Assert<Equals<Branded<string>, string>>;
+export type _4b = Assert<Equals<Branded<number>, number>>;
+export type _4c = Assert<Equals<Branded<boolean>, boolean>>;
+export type _4d = Assert<Equals<Branded<null>, null>>;
+export type _4e = Assert<Equals<Branded<undefined>, undefined>>;
 
 // ---------------------------------------------------------------------------
 // 5. Optional properties are preserved

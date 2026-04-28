@@ -5,16 +5,18 @@ on:
     branches: [main]
   pull_request:
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.55.0-noble
-      options: --user 1001
+permissions:
+  contents: read
+  id-token: write
 
+jobs:
+  formatting:
+    name: ${{ matrix.package }} / formatting
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [24]
+        package: [kernel, husk, silo, mill]
 
     steps:
       - name: Checkout code
@@ -25,29 +27,192 @@ jobs:
         with:
           version: 10.6.3
 
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Use Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 24
           cache: "pnpm"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Check formatting
+        run: >
+          pnpm exec oxfmt --check
+          packages/${{ matrix.package }}/src
+          packages/${{ matrix.package }}/tests
+          packages/${{ matrix.package }}/package.json
+          packages/${{ matrix.package }}/tsconfig.json
+          packages/${{ matrix.package }}/vite.config.ts
+
+  formatting-root:
+    name: Root / formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting (repo-wide)
         run: pnpm run format:check
 
-      - name: Lint
-        run: pnpm run lint
+  lint:
+    name: ${{ matrix.package }} / lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [kernel, husk, silo, mill]
 
-      - name: Build packages
-        run: pnpm -r --filter="@supergrain/kernel" --filter="@supergrain/mill" --filter="@supergrain/silo" build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: TypeCheck all packages
-        run: pnpm run typecheck
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
 
-      - name: Run tests
-        run: pnpm test
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint package
+        run: pnpm --filter="@supergrain/${{ matrix.package }}" run lint
+
+  typecheck:
+    name: ${{ matrix.package }} / typecheck
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [kernel, husk, silo, mill]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck package
+        run: pnpm --filter="@supergrain/${{ matrix.package }}" run typecheck
+
+  types:
+    name: ${{ matrix.package }} / types
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [kernel, husk, silo, mill]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build package types
+        run: pnpm --filter="@supergrain/${{ matrix.package }}" run build
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.55.0-noble
+      options: --user 1001
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests with coverage
+        run: pnpm run coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: true
+          use_oidc: true
+
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Validate README documentation
         run: pnpm run test:validate

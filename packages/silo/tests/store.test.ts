@@ -1,15 +1,20 @@
+import { effect } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
+import { createDocumentStore } from "../src/store";
 import {
   API_BASE,
   clearRequests,
   flushCoalescer,
   initStore,
+  makeDashboard,
   makeUser,
   requests,
   server,
+  type DashboardParams,
 } from "./example-app";
+import { setupFakeTimers } from "./setup/timers";
 
 // =============================================================================
 // MSW lifecycle — intercept network for the whole test file.
@@ -24,15 +29,15 @@ afterAll(() => server.close());
 // consumer code.
 // =============================================================================
 
+setupFakeTimers();
+
 let store: ReturnType<typeof initStore>;
 
 beforeEach(() => {
-  vi.useFakeTimers();
   store = initStore();
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   server.resetHandlers();
   clearRequests();
 });
@@ -326,5 +331,169 @@ describe("Store.clearMemory — handle transitions", () => {
 
     expect(handle.status).toBe("SUCCESS");
     expect(handle.data?.id).toBe("1");
+  });
+});
+
+describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", () => {
+  it("updates an IDLE handle to SUCCESS when insertDocument is called directly", () => {
+    // Seed a doc so find() returns SUCCESS immediately (no fetch triggered)
+    store.insertDocument("user", makeUser("42"));
+    const handle = store.find("user", "42");
+    expect(handle.status).toBe("SUCCESS");
+
+    // Clear memory so the handle becomes IDLE (no in-flight fetch)
+    store.clearMemory();
+    expect(handle.status).toBe("IDLE");
+
+    // Now insert the document directly (no fetch involved)
+    const user = makeUser("42");
+    store.insertDocument("user", user);
+
+    expect(handle.status).toBe("SUCCESS");
+    expect(handle.hasData).toBe(true);
+    expect(handle.data).toBe(user);
+    expect(handle.isPending).toBe(false);
+    expect(handle.isFetching).toBe(false);
+    expect(handle.error).toBeUndefined();
+  });
+
+  it("updates an ERROR handle to SUCCESS when insertDocument is called directly", async () => {
+    server.use(
+      http.get(`${API_BASE}/users`, () =>
+        HttpResponse.json({ error: "not found" }, { status: 404 }),
+      ),
+    );
+
+    const handle = store.find("user", "err1");
+    await flushCoalescer();
+    expect(handle.status).toBe("ERROR");
+
+    // Recover by inserting directly
+    const user = makeUser("err1");
+    store.insertDocument("user", user);
+
+    expect(handle.status).toBe("SUCCESS");
+    expect(handle.data).toBe(user);
+    expect(handle.error).toBeUndefined();
+  });
+});
+
+// =============================================================================
+// Handle reactivity — effects subscribed to handle fields fire on transitions.
+//
+// React UI code binds to `handle.status`, `handle.data`, and `handle.error`
+// via tracked() / signal effects. Verifying that those reads actually
+// re-fire on transitions is the contract that makes the API usable from a
+// render loop. The previous tests verified values *after* transitions but
+// never wrapped reads in effect() — a regression that broke the reactivity
+// while keeping post-hoc reads correct would slip through.
+// =============================================================================
+
+describe("Store.find — handle is reactive", () => {
+  it("an effect tracking handle.status fires on PENDING -> SUCCESS via fetch", async () => {
+    const handle = store.find("user", "1");
+
+    const statusHistory: Array<string> = [];
+    effect(() => {
+      statusHistory.push(handle.status);
+    });
+    expect(statusHistory).toEqual(["PENDING"]);
+
+    await flushCoalescer();
+    expect(statusHistory.at(-1)).toBe("SUCCESS");
+  });
+
+  it("an effect tracking handle.data fires when an external insert lands", () => {
+    const handle = store.find("user", "1");
+
+    const firstNameHistory: Array<string | undefined> = [];
+    effect(() => {
+      firstNameHistory.push(handle.data?.attributes.firstName);
+    });
+    expect(firstNameHistory).toEqual([undefined]);
+
+    store.insertDocument("user", makeUser("1", { firstName: "Pushed" }));
+    expect(firstNameHistory.at(-1)).toBe("Pushed");
+  });
+
+  it("an effect tracking handle.error fires on PENDING -> ERROR and clears on recovery", async () => {
+    server.use(
+      http.get(`${API_BASE}/users`, () => HttpResponse.json({ message: "boom" }, { status: 500 })),
+    );
+    const handle = store.find("user", "1");
+
+    const errorHistory: Array<string | undefined> = [];
+    effect(() => {
+      errorHistory.push(handle.error?.message);
+    });
+    expect(errorHistory).toEqual([undefined]);
+
+    await flushCoalescer();
+    expect(errorHistory.at(-1)).toMatch(/500|boom/i);
+
+    // External insert recovers — error must clear, observed by the effect.
+    store.insertDocument("user", makeUser("1", { firstName: "Recovered" }));
+    expect(errorHistory.at(-1)).toBeUndefined();
+  });
+
+  it("isPending and isFetching toggle independently of data subscribers", async () => {
+    const handle = store.find("user", "1");
+
+    const pendingHistory: Array<boolean> = [];
+    effect(() => {
+      pendingHistory.push(handle.isPending);
+    });
+    expect(pendingHistory).toEqual([true]);
+
+    await flushCoalescer();
+    expect(pendingHistory.at(-1)).toBe(false);
+  });
+});
+
+describe("Store query memory operations", () => {
+  it("accepts an already-frozen query result", () => {
+    const frozenDashboard = Object.freeze(makeDashboard({ totalActiveUsers: 999 }));
+    const params: DashboardParams = { workspaceId: 999, filters: { active: true } };
+
+    store.insertQueryResult("dashboard", params, frozenDashboard);
+    const inMemory = store.findQueryInMemory("dashboard", params);
+    expect(inMemory?.totalActiveUsers).toBe(999);
+    expect(Object.isFrozen(frozenDashboard)).toBe(true);
+  });
+
+  it("clearMemory resets query handles", () => {
+    const params: DashboardParams = { workspaceId: 10, filters: { active: true } };
+    store.insertQueryResult("dashboard", params, makeDashboard({ totalActiveUsers: 100 }));
+
+    const inMemory = store.findQueryInMemory("dashboard", params);
+    expect(inMemory?.totalActiveUsers).toBe(100);
+
+    store.clearMemory();
+
+    const afterClear = store.findQueryInMemory("dashboard", params);
+    expect(afterClear).toBeUndefined();
+  });
+
+  it("supports array-valued query params", async () => {
+    type ArrayTypes = { item: { id: string } };
+    type ArrayQueries = { tagged: { params: { tags: string[] }; result: { count: number } } };
+
+    const arrayStore = createDocumentStore<ArrayTypes, ArrayQueries>({
+      models: { item: { adapter: { find: async () => [] } } },
+      queries: {
+        tagged: {
+          adapter: {
+            async find(paramsList) {
+              return paramsList.map((p) => ({ count: p.tags.length }));
+            },
+          },
+        },
+      },
+    });
+
+    const h = arrayStore.findQuery("tagged", { tags: ["a", "b", "c"] });
+    await vi.advanceTimersByTimeAsync(20);
+    await h.promise;
+    expect(h.data?.count).toBe(3);
   });
 });

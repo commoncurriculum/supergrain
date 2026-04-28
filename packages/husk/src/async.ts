@@ -71,21 +71,17 @@ interface Deferred<T> {
   reject: (e: unknown) => void;
 }
 
-const noopResolve: (v: unknown) => void = () => {};
-const noopReject: (e: unknown) => void = () => {};
-
 function deferred<T>(): Deferred<T> {
-  let resolve: (v: T) => void = noopResolve as (v: T) => void;
-  let reject: (e: unknown) => void = noopReject;
+  const out = {} as Omit<Deferred<T>, "promise">;
   const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
+    out.resolve = res;
+    out.reject = rej;
   });
   // Suppress unhandled-rejection warnings. Users observe rejections via
   // `await rp.promise` / `rp.promise.catch(...)` — attaching a catch
   // here creates a new branch, it doesn't swallow the rejection.
   promise.catch(() => {});
-  return { promise, resolve, reject };
+  return { promise, ...out };
 }
 
 /**
@@ -239,7 +235,6 @@ export function reactiveTask<Args extends unknown[], T>(
   }) as TaskEnvelope<Args, T>;
 
   registerDisposer(state, () => {
-    if (disposed) return;
     disposed = true;
     state.isPending = false;
   });

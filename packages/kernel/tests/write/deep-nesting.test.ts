@@ -1,19 +1,9 @@
 import { update } from "@supergrain/mill";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 import { createReactive, effect, computed } from "../../src";
 
 describe("Deep Nesting Operations (Type Safe)", () => {
-  // Helper to safely access deeply nested properties (not used but kept for future reference)
-  // const safeAccess = <T>(getter: () => T): T => {
-  //   try {
-  //     return getter()
-  //   } catch {
-  //     throw new Error('Unexpected undefined value in test')
-  //   }
-  // }
-
-  // Complex nested data structure for comprehensive testing
   const createComplexStore = () => {
     const state = createReactive({
       organization: {
@@ -615,6 +605,40 @@ describe("Deep Nesting Operations (Type Safe)", () => {
 
       expect(statusTracker()).toBe("running");
       expect(reactionCount).toBe(2);
+    });
+
+    it("should fire effects that observed an undefined deep property before it was added", () => {
+      // This is the "track-then-add" scenario — the user is rendering against
+      // optional state that doesn't exist yet. The effect's initial run reads
+      // `undefined`, subscribes to the (currently-empty) key, and must re-run
+      // when the property is later created.
+      const { state } = createComplexStore();
+
+      let observedStatus: string | undefined;
+      const statusEffect = vi.fn(() => {
+        observedStatus = (state.organization as { newSystem?: { status?: string } }).newSystem
+          ?.status;
+      });
+      effect(statusEffect);
+
+      expect(observedStatus).toBeUndefined();
+      expect(statusEffect).toHaveBeenCalledTimes(1);
+
+      // Add the previously-missing property — observer should see it.
+      update(state, {
+        $set: {
+          "organization.newSystem": { status: "initializing" },
+        },
+      } as any);
+      expect(observedStatus).toBe("initializing");
+      expect(statusEffect).toHaveBeenCalledTimes(2);
+
+      // Mutating the now-existing inner field — observer should fire again.
+      update(state, {
+        $set: { "organization.newSystem.status": "running" },
+      } as any);
+      expect(observedStatus).toBe("running");
+      expect(statusEffect).toHaveBeenCalledTimes(3);
     });
   });
 });

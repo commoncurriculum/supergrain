@@ -227,3 +227,24 @@ describe("Array Support", () => {
     expect(p.signalWrites).toBe(1); // items property replaced
   });
 });
+
+describe("Array Support — tracked reads survive subsequent mutations", () => {
+  it("a length-tracking effect created before any mutation re-fires when the array grows", () => {
+    const store = createReactive({ items: [1, 2, 3] as number[] });
+    const seen: number[] = [];
+
+    const stop = effect(() => {
+      seen.push(store.items.length);
+    });
+
+    expect(seen).toEqual([3]);
+
+    store.items.push(4);
+    expect(seen).toEqual([3, 4]);
+
+    store.items.pop();
+    expect(seen).toEqual([3, 4, 3]);
+
+    stop();
+  });
+});

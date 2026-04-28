@@ -1,4 +1,4 @@
-import { createReactive, signal } from "@supergrain/kernel";
+import { createReactive, effect, signal } from "@supergrain/kernel";
 import { describe, it, expect, vi } from "vitest";
 
 import { resource, defineResource, dispose } from "../../src";
@@ -172,6 +172,10 @@ describe("resource()", () => {
   });
 
   it("exposes a reactive proxy — mutations are tracked per-field", () => {
+    // Setup writes `data` and `isLoading` once on creation. After that,
+    // direct mutations on the resource state must propagate per-field:
+    // an effect tracking only `data` must fire on `data` writes and stay
+    // silent on `error` writes, and vice versa.
     const r = resource(
       { data: null as string | null, error: null as Error | null, isLoading: true },
       (state) => {
@@ -180,9 +184,32 @@ describe("resource()", () => {
       },
     );
 
-    expect(r.data).toBe("hello");
-    expect(r.isLoading).toBe(false);
-    expect(r.error).toBe(null);
+    let observedData: string | null = null;
+    let observedError: Error | null = null;
+    const dataFn = vi.fn(() => {
+      observedData = r.data;
+    });
+    const errorFn = vi.fn(() => {
+      observedError = r.error;
+    });
+    effect(dataFn);
+    effect(errorFn);
+
+    expect(observedData).toBe("hello");
+    expect(observedError).toBe(null);
+    expect(dataFn).toHaveBeenCalledTimes(1);
+    expect(errorFn).toHaveBeenCalledTimes(1);
+
+    r.data = "world";
+    expect(observedData).toBe("world");
+    expect(dataFn).toHaveBeenCalledTimes(2);
+    expect(errorFn).toHaveBeenCalledTimes(1);
+
+    r.error = new Error("oops");
+    expect(observedError).toBeInstanceOf(Error);
+    expect((observedError as Error | null)?.message).toBe("oops");
+    expect(errorFn).toHaveBeenCalledTimes(2);
+    expect(dataFn).toHaveBeenCalledTimes(2);
 
     dispose(r);
   });
@@ -335,6 +362,118 @@ describe("defineResource()", () => {
 
     dispose(b);
     expect(cleanups).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("resource() error handling", () => {
+  it("logs and swallows an error thrown from a cleanup function", () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const trigger = signal(0);
+
+    const r = resource({ value: 0 }, (state) => {
+      state.value = trigger();
+      return () => {
+        throw new Error("cleanup-boom");
+      };
+    });
+
+    trigger(1); // triggers rerun → cleanup throws
+    expect(errSpy).toHaveBeenCalledWith("[supergrain/resource] cleanup threw:", expect.any(Error));
+
+    errSpy.mockRestore();
+    dispose(r);
+  });
+
+  it("runs onCleanup immediately when the resource is disposed before it fires", async () => {
+    const immediateCleanup = vi.fn();
+    const r = resource<{ status: string }>({ status: "loading" }, async (_state, { onCleanup }) => {
+      // Yield so dispose() can run before onCleanup is called
+      await new Promise((res) => setTimeout(res, 5));
+      onCleanup(immediateCleanup); // resource already disposed → runs immediately
+    });
+
+    dispose(r); // dispose before the async setup registers onCleanup
+    await new Promise((res) => setTimeout(res, 20));
+    expect(immediateCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs and swallows a late-cleanup throw when called after dispose", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const r = resource<{ status: string }>({ status: "loading" }, async (_state, { onCleanup }) => {
+      await new Promise((res) => setTimeout(res, 5));
+      onCleanup(() => {
+        throw new Error("late-cleanup-boom");
+      });
+    });
+
+    dispose(r);
+    await new Promise((res) => setTimeout(res, 20));
+    expect(errSpy).toHaveBeenCalledWith(
+      "[supergrain/resource] late cleanup threw:",
+      expect.any(Error),
+    );
+
+    errSpy.mockRestore();
+  });
+
+  it("logs and swallows a non-AbortError rejection from async setup", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const r = resource<{ status: string }>({ status: "loading" }, async () => {
+      await Promise.reject(new Error("async-setup-boom"));
+    });
+
+    await new Promise((res) => setTimeout(res, 10));
+    expect(errSpy).toHaveBeenCalledWith(
+      "[supergrain/resource] async setup rejected:",
+      expect.any(Error),
+    );
+
+    errSpy.mockRestore();
+    dispose(r);
+  });
+
+  it("ignores AbortError rejections from async setup", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const r = resource<{ status: string }>({ status: "loading" }, async () => {
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      throw error;
+    });
+
+    await new Promise((res) => setTimeout(res, 10));
+    expect(errSpy).not.toHaveBeenCalled();
+
+    errSpy.mockRestore();
+    dispose(r);
+  });
+
+  it("does not log a stale async setup rejection after a rerun", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const trigger = signal(0);
+    let rejectFirst!: (error: Error) => void;
+
+    const r = resource<{ value: number }>({ value: 0 }, async (state) => {
+      const value = trigger();
+      if (value === 0) {
+        await new Promise<never>((_resolve, reject) => {
+          rejectFirst = reject;
+        });
+      }
+      state.value = value;
+    });
+
+    trigger(1);
+    rejectFirst(new Error("stale-setup"));
+    await new Promise((res) => setTimeout(res, 10));
+
+    expect(r.value).toBe(1);
+    expect(errSpy).not.toHaveBeenCalled();
+
+    errSpy.mockRestore();
+    dispose(r);
   });
 });
 

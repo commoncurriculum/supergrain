@@ -61,12 +61,14 @@ let BUMP = 0;
 const keySignalsStore = new WeakMap<Map<unknown, unknown>, Map<unknown, Signal<unknown>>>();
 
 function getKeySignals<K, V>(target: Map<K, V>): Map<K, Signal<V | undefined>> {
-  let ks = keySignalsStore.get(target as Map<unknown, unknown>);
-  if (!ks) {
-    ks = new Map<unknown, Signal<unknown>>();
-    keySignalsStore.set(target as Map<unknown, unknown>, ks);
-  }
-  return ks as Map<K, Signal<V | undefined>>;
+  // Caller (`createReactiveMap`) gates on `collectionProxyCache`, so this runs
+  // exactly once per raw target — always allocate a fresh per-key signal map.
+  const ks = new Map<K, Signal<V | undefined>>();
+  keySignalsStore.set(
+    target as Map<unknown, unknown>,
+    ks as unknown as Map<unknown, Signal<unknown>>,
+  );
+  return ks;
 }
 
 // ---------------------------------------------------------------------------
@@ -86,23 +88,21 @@ function trackOwnKeys(target: object): void {
   }
 }
 
+// Whenever this module creates `nodes` for a Map/Set, it also creates
+// $OWN_KEYS and $VERSION (see `reactiveSet`/`reactiveAdd`). So once `nodes`
+// exists for one of these targets, both signals are present — the `!`
+// asserts that invariant.
 function bumpOwnKeys(target: object): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) return;
-  const s = nodes[$OWN_KEYS];
-  if (s) {
-    profileSignalWrite();
-    s(++BUMP);
-  }
+  profileSignalWrite();
+  nodes[$OWN_KEYS]!(++BUMP);
 }
 
 function bumpVersionSignal(target: object): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) return;
-  const s = nodes[$VERSION];
-  if (s) {
-    s(++BUMP);
-  }
+  nodes[$VERSION]!(++BUMP);
 }
 
 // ---------------------------------------------------------------------------

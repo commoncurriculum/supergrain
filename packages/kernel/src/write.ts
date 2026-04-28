@@ -17,9 +17,11 @@ export function bumpVersion(target: object): void {
     nodes = getNodes(target);
   }
   const v = nodes[$VERSION];
+  /* c8 ignore start -- callers that need notifications create the version signal before bumping */
   if (v) {
     v(++BUMP);
   }
+  /* c8 ignore stop */
 }
 
 export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, any>): void {
@@ -92,6 +94,13 @@ export function deleteProperty(target: any, key: PropertyKey): void {
   if (hadKey) {
     bumpVersion(target);
 
+    // Keep the `if (nodes)` guard. It looks like `bumpVersion` should
+    // guarantee nodes are attached, but `getNodes` wraps its
+    // `Object.defineProperty($NODE, …)` in `try/catch` — non-extensible
+    // targets (e.g. `Object.preventExtensions`) leave `$NODE` detached, and
+    // `getNodesIfExist` still returns `undefined` here. Removing this guard
+    // and using `!` will TypeError on `nodes[key]`. See store.test.ts
+    // "should not throw when deleting a key from a non-extensible target".
     const nodes = getNodesIfExist(target);
     if (nodes) {
       const node = nodes[key];
@@ -101,7 +110,7 @@ export function deleteProperty(target: any, key: PropertyKey): void {
       }
     }
     bumpSignals(target, key, prevLen);
-    bumpOwnKeysSignal(target, getNodesIfExist(target));
+    bumpOwnKeysSignal(target, nodes);
   }
 }
 

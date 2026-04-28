@@ -125,6 +125,19 @@ describe("For Component Magic Tests", () => {
     expect(container.querySelectorAll("li")[0]!.textContent).toBe("first");
   });
 
+  it("renders fallback for an empty array", () => {
+    const store = createReactive<{ data: { id: number }[] }>({ data: [] });
+
+    const App = tracked(() => (
+      <For each={store.data} fallback={<span data-testid="empty">empty</span>}>
+        {(item: { id: number }) => <span key={item.id}>{item.id}</span>}
+      </For>
+    ));
+
+    const { getByTestId } = render(<App />);
+    expect(getByTestId("empty").textContent).toBe("empty");
+  });
+
   it("splice on array triggers For re-render (fresh store, no prior assignment)", async () => {
     const store = createReactive<{ items: string[] }>({ items: ["a", "b", "c"] });
 
@@ -875,6 +888,37 @@ describe("For Component Magic Tests", () => {
       expect(getIds(container)).toEqual(["5", "2", "3", "4", "1", "6", "7"]);
     });
 
+    it("adjacent swap takes the nextSibling-is-nodeB fast path", async () => {
+      const store = createTestStore(5);
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+
+      // Swap indices 1 and 2 — nodeA.nextSibling === nodeB triggers the
+      // adjacent branch in the For swap effect.
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[1]!;
+        store.data[1] = store.data[2]!;
+        store.data[2] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["1", "3", "2", "4", "5"]);
+    });
+
     it("multiple swaps in a row", async () => {
       const store = createTestStore(5);
 
@@ -978,6 +1022,78 @@ describe("For Component Magic Tests", () => {
       expect(rows[2]!.className).toBe("");
       expect(rows[3]!.className).toBe("");
       expect(rows[4]!.className).toBe("");
+    });
+
+    it("removes rendered rows when a parent-backed list becomes empty", async () => {
+      const store = createReactive<{ data: RowData[] }>({
+        data: [
+          { id: 1, label: "A" },
+          { id: 2, label: "B" },
+        ],
+      });
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+      expect(container.querySelectorAll("tr").length).toBe(2);
+
+      await act(async () => {
+        store.data.splice(0, store.data.length);
+      });
+
+      expect(container.querySelectorAll("tr").length).toBe(0);
+    });
+
+    it("keeps the DOM stable when several rows reorder in one batch", async () => {
+      const store = createReactive<{ data: RowData[] }>({
+        data: [
+          { id: 1, label: "A" },
+          { id: 2, label: "B" },
+          { id: 3, label: "C" },
+          { id: 4, label: "D" },
+          { id: 5, label: "E" },
+        ],
+      });
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container: c } = render(<App />);
+      expect(c.querySelectorAll("tr")).toHaveLength(5);
+
+      await act(async () => {
+        startBatch();
+        const tmp0 = store.data[0]!;
+        const tmp1 = store.data[1]!;
+        const tmp2 = store.data[2]!;
+        store.data[0] = tmp2;
+        store.data[1] = tmp0;
+        store.data[2] = tmp1;
+        endBatch();
+      });
+
+      expect(c.querySelectorAll("tr")).toHaveLength(5);
     });
   });
 });
