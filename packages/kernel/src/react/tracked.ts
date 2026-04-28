@@ -77,10 +77,7 @@ export function tracked<P extends object>(Component: FC<P>) {
     // need post-cycle.
     useDisposeOnUnmount(() => {
       const fu = forceUpdate as unknown as { __sg?: TrackedState };
-      const fuState = fu.__sg;
-      /* c8 ignore next -- __sg is always set by the time this cleanup runs */
-      if (!fuState) return;
-      fuState.cleanup();
+      fu.__sg!.cleanup();
       delete fu.__sg;
     });
 

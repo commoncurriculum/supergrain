@@ -94,18 +94,15 @@ export function deleteProperty(target: any, key: PropertyKey): void {
   if (hadKey) {
     bumpVersion(target);
 
-    const nodes = getNodesIfExist(target);
-    /* c8 ignore start -- bumpVersion creates nodes for existing-key deletes */
-    if (nodes) {
-      const node = nodes[key];
-      if (node) {
-        profileSignalWrite();
-        node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
-      }
+    // bumpVersion just called getNodes(target), so nodes is guaranteed defined.
+    const nodes = getNodesIfExist(target)!;
+    const node = nodes[key];
+    if (node) {
+      profileSignalWrite();
+      node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
     }
-    /* c8 ignore stop */
     bumpSignals(target, key, prevLen);
-    bumpOwnKeysSignal(target, getNodesIfExist(target));
+    bumpOwnKeysSignal(target, nodes);
   }
 }
 

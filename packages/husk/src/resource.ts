@@ -96,10 +96,6 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
   // becomes nested and doesn't propagate its own deps independently.
   const stopEffect = withUntracked(() =>
     effect(() => {
-      /* c8 ignore start -- stopEffect prevents disposed resources from being re-entered */
-      if (disposed) return;
-      /* c8 ignore stop */
-
       const gen = ++generation;
       runCleanups();
       controller = new AbortController();
@@ -149,9 +145,6 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
   );
 
   registerDisposer(state, () => {
-    /* c8 ignore start -- public dispose() deletes the registered disposer before a second call */
-    if (disposed) return;
-    /* c8 ignore stop */
     disposed = true;
     stopEffect();
     runCleanups();

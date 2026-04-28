@@ -235,9 +235,6 @@ export function reactiveTask<Args extends unknown[], T>(
   }) as TaskEnvelope<Args, T>;
 
   registerDisposer(state, () => {
-    /* c8 ignore start -- public dispose() removes the disposer before it can run twice */
-    if (disposed) return;
-    /* c8 ignore stop */
     disposed = true;
     state.isPending = false;
   });

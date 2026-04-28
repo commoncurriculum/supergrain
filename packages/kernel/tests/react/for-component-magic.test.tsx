@@ -888,6 +888,37 @@ describe("For Component Magic Tests", () => {
       expect(getIds(container)).toEqual(["5", "2", "3", "4", "1", "6", "7"]);
     });
 
+    it("adjacent swap takes the nextSibling-is-nodeB fast path", async () => {
+      const store = createTestStore(5);
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+
+      // Swap indices 1 and 2 — nodeA.nextSibling === nodeB triggers the
+      // adjacent branch in the For swap effect.
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[1]!;
+        store.data[1] = store.data[2]!;
+        store.data[2] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["1", "3", "2", "4", "5"]);
+    });
+
     it("multiple swaps in a row", async () => {
       const store = createTestStore(5);
 

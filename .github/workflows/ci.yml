@@ -11,8 +11,12 @@ permissions:
 
 jobs:
   formatting:
-    name: Formatting
+    name: ${{ matrix.package }} / formatting
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [kernel, husk, silo, mill]
 
     steps:
       - name: Checkout code
@@ -33,6 +37,37 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Check formatting
+        run: >
+          pnpm exec oxfmt --check
+          packages/${{ matrix.package }}/src
+          packages/${{ matrix.package }}/tests
+          packages/${{ matrix.package }}/package.json
+          packages/${{ matrix.package }}/tsconfig.json
+          packages/${{ matrix.package }}/vite.config.ts
+
+  formatting-root:
+    name: Root / formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting (repo-wide)
         run: pnpm run format:check
 
   lint:
