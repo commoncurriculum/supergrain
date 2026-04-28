@@ -94,12 +94,16 @@ export function deleteProperty(target: any, key: PropertyKey): void {
   if (hadKey) {
     bumpVersion(target);
 
-    // bumpVersion just called getNodes(target), so nodes is guaranteed defined.
-    const nodes = getNodesIfExist(target)!;
-    const node = nodes[key];
-    if (node) {
-      profileSignalWrite();
-      node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
+    // bumpVersion calls getNodes(target), but the underlying defineProperty
+    // is wrapped in try/catch — non-extensible targets keep their nodes
+    // detached, so getNodesIfExist can still be undefined here.
+    const nodes = getNodesIfExist(target);
+    if (nodes) {
+      const node = nodes[key];
+      if (node) {
+        profileSignalWrite();
+        node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
+      }
     }
     bumpSignals(target, key, prevLen);
     bumpOwnKeysSignal(target, nodes);

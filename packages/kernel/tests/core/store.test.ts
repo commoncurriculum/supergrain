@@ -305,6 +305,19 @@ describe("Store", () => {
       expect(keys).toEqual(["0", "1", "2"]);
       expect(effectFn).toHaveBeenCalledTimes(1);
     });
+
+    it("should not throw when deleting a key from a non-extensible target", () => {
+      // Object.preventExtensions allows deleting existing (configurable) keys
+      // but blocks attaching the internal $NODE bag. The deleteProperty trap
+      // must tolerate the detached-nodes case rather than asserting non-null.
+      const inner = Object.preventExtensions({ a: 1 });
+      const state = createReactive<any>({ inner });
+
+      expect(() => {
+        delete state.inner.a;
+      }).not.toThrow();
+      expect(state.inner.a).toBeUndefined();
+    });
   });
 
   describe("batch()", () => {
