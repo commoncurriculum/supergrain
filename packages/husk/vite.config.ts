@@ -27,6 +27,7 @@ export default defineConfig({
         "react/jsx-runtime",
         "@supergrain/kernel",
         "@supergrain/kernel/internal",
+        "@supergrain/kernel/react",
         "alien-signals",
       ],
       output: [
