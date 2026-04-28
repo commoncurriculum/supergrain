@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createDocumentStore, type DocumentStore, type DocumentAdapter } from "../src";
 import { Finder, type InternalHandle, type InternalState } from "../src/finder";
+import { setupFakeTimers } from "./setup/timers";
 
 // =============================================================================
 // Finder contract tests.
@@ -87,8 +88,7 @@ async function flushBatch(ms = 20): Promise<void> {
   await vi.advanceTimersByTimeAsync(ms);
 }
 
-beforeEach(() => vi.useFakeTimers());
-afterEach(() => vi.useRealTimers());
+setupFakeTimers();
 
 // =============================================================================
 // Batching within the tick window
@@ -452,7 +452,7 @@ describe("Finder empty queues and orphaned handles", () => {
     finder.queueQuery("search", "same-query", { q: "hello" });
     finder.queueQuery("search", "same-query", { q: "hello" });
 
-    await (finder as unknown as { drain(): Promise<void> }).drain();
+    await finder.drain();
 
     expect(documentCalls).toEqual([["1"]]);
     expect(queryCalls).toEqual([[{ q: "hello" }]]);
@@ -468,9 +468,7 @@ describe("Finder empty queues and orphaned handles", () => {
 
     finder.attach({ documents: new Map(), queries: new Map() }, {} as DocumentStore<TestTypes>);
 
-    await expect(
-      (finder as unknown as { drain(): Promise<void> }).drain(),
-    ).resolves.toBeUndefined();
+    await expect(finder.drain()).resolves.toBeUndefined();
   });
 
   it("ignores a queued query when no query adapter is configured", async () => {
@@ -484,9 +482,7 @@ describe("Finder empty queues and orphaned handles", () => {
     finder.attach({ documents: new Map(), queries: new Map() }, {} as DocumentStore<TestTypes>);
     finder.queueQuery("missing" as never, "params", { q: "missing" } as never);
 
-    await expect(
-      (finder as unknown as { drain(): Promise<void> }).drain(),
-    ).resolves.toBeUndefined();
+    await expect(finder.drain()).resolves.toBeUndefined();
   });
 
   // Helpers shared by the "handle removed mid-flight" scenarios below.
@@ -564,7 +560,7 @@ describe("Finder empty queues and orphaned handles", () => {
     state.documents.get("user")!.delete("1");
     state.queries.get("search")!.delete("search-key");
 
-    await (finder as unknown as { drain(): Promise<void> }).drain();
+    await finder.drain();
 
     // The fetch still ran — drain doesn't know the handle is gone.
     expect(documentCalls).toEqual([["1"]]);
@@ -621,7 +617,7 @@ describe("Finder empty queues and orphaned handles", () => {
     state.documents.get("user")!.delete("1");
     state.queries.get("search")!.delete("search-key");
 
-    await (finder as unknown as { drain(): Promise<void> }).drain();
+    await finder.drain();
 
     // The rejection path must not touch orphaned handles.
     expectUntouched(documentHandle);

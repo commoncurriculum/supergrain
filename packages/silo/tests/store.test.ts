@@ -13,6 +13,7 @@ import {
   server,
   type DashboardParams,
 } from "./example-app";
+import { setupFakeTimers } from "./setup/timers";
 
 // =============================================================================
 // MSW lifecycle — intercept network for the whole test file.
@@ -27,15 +28,15 @@ afterAll(() => server.close());
 // consumer code.
 // =============================================================================
 
+setupFakeTimers();
+
 let store: ReturnType<typeof initStore>;
 
 beforeEach(() => {
-  vi.useFakeTimers();
   store = initStore();
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   server.resetHandlers();
   clearRequests();
 });

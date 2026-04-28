@@ -23,7 +23,7 @@
 
 import { effect } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { createDocumentStore } from "../src/store";
 import {
@@ -39,18 +39,16 @@ import {
   type TypeToModel,
   type TypeToQuery,
 } from "./example-app";
+import { setupFakeTimers } from "./setup/timers";
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   server.resetHandlers();
   clearRequests();
-  vi.useRealTimers();
 });
 afterAll(() => server.close());
 
-beforeEach(() => {
-  vi.useFakeTimers();
-});
+setupFakeTimers();
 
 // =============================================================================
 // findQuery — reactive handle, stable identity, network on miss

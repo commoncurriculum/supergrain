@@ -14,14 +14,26 @@ interface Insert<K extends keyof TypeToModel = keyof TypeToModel> {
   doc: TypeToModel[K];
 }
 
-function makeFakeStore() {
+// Processors only call `insertDocument` / `insertQueryResult` — the rest of
+// the DocumentStore surface isn't reachable from inside a processor. Build a
+// Proxy that exposes just those methods and throws if a processor reaches
+// for anything else; the throw doubles as a sentinel that the contract has
+// shifted under us.
+function makeFakeStore(): { store: DocumentStore<TypeToModel>; inserts: Array<Insert> } {
   const inserts: Array<Insert> = [];
-  const fake = {
-    insertDocument<K extends keyof TypeToModel & string>(type: K, doc: TypeToModel[K]) {
-      inserts.push({ type, doc } as Insert);
+  const insertDocument = <K extends keyof TypeToModel & string>(
+    type: K,
+    doc: TypeToModel[K],
+  ): void => {
+    inserts.push({ type, doc } as Insert);
+  };
+  const store = new Proxy({} as DocumentStore<TypeToModel>, {
+    get(_target, prop) {
+      if (prop === "insertDocument") return insertDocument;
+      throw new Error(`Fake store: processor reached for '${String(prop)}', which is not stubbed`);
     },
-  } as unknown as DocumentStore<TypeToModel>;
-  return { store: fake, inserts };
+  });
+  return { store, inserts };
 }
 
 // =============================================================================

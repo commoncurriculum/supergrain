@@ -1,6 +1,7 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { clearRequests, flushCoalescer, initStore, requests, server } from "./example-app";
+import { setupFakeTimers } from "./setup/timers";
 
 // =============================================================================
 // Adapter tests.
@@ -19,15 +20,15 @@ import { clearRequests, flushCoalescer, initStore, requests, server } from "./ex
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterAll(() => server.close());
 
+setupFakeTimers();
+
 let store: ReturnType<typeof initStore>;
 
 beforeEach(() => {
-  vi.useFakeTimers();
   store = initStore();
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   server.resetHandlers();
   clearRequests();
 });

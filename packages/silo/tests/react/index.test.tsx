@@ -445,10 +445,16 @@ describe("Provider initial data seeding", () => {
 });
 
 describe("Provider initial data — null/undefined guards", () => {
+  // Force-types `undefined` as `T` for negative-path tests that intentionally
+  // drive out-of-contract values into the Provider to verify it survives.
+  function asInvalid<T>(): T {
+    return undefined as T;
+  }
+
   it("skips an undefined model bucket", () => {
     const nullBucketInitial = {
       model: {
-        user: undefined as unknown as Record<string, User>,
+        user: asInvalid<Record<string, User>>(),
       },
     };
 
@@ -467,7 +473,7 @@ describe("Provider initial data — null/undefined guards", () => {
     const sparseInitial = {
       model: {
         user: {
-          ghost: undefined as unknown as User,
+          ghost: asInvalid<User>(),
         },
       },
     };
@@ -486,10 +492,7 @@ describe("Provider initial data — null/undefined guards", () => {
   it("skips an undefined query result list", () => {
     const nullListInitial = {
       query: {
-        dashboard: undefined as unknown as Array<{
-          params: DashboardParams;
-          result: Dashboard;
-        }>,
+        dashboard: asInvalid<Array<{ params: DashboardParams; result: Dashboard }>>(),
       },
     };
 
@@ -516,7 +519,7 @@ describe("Provider initial data — null/undefined guards", () => {
       <Provider
         config={makeStoreConfig()}
         initial={{
-          model: { user: { seeded: user, missing: undefined as unknown as User } },
+          model: { user: { seeded: user, missing: asInvalid<User>() } },
         }}
       >
         <UserDisplay />
