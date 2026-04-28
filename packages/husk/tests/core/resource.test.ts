@@ -207,7 +207,7 @@ describe("resource()", () => {
 
     r.error = new Error("oops");
     expect(observedError).toBeInstanceOf(Error);
-    expect((observedError as Error).message).toBe("oops");
+    expect((observedError as Error | null)?.message).toBe("oops");
     expect(errorFn).toHaveBeenCalledTimes(2);
     expect(dataFn).toHaveBeenCalledTimes(2);
 
