@@ -130,7 +130,9 @@ export const writeHandler: Pick<ProxyHandler<object>, "set" | "deleteProperty"> 
       // moves via set(). Bump ownKeys so structural subscribers detect
       // the change.
       const hadKey = Object.hasOwn(target, prop);
-      delete target[prop as any];
+      // target is narrowed to Array<any> after isArray check; PropertyKey
+      // includes symbol which can't index an array — cast through unknown.
+      delete (target as unknown as Record<PropertyKey, unknown>)[prop];
       if (hadKey) {
         bumpOwnKeysSignal(target);
       }

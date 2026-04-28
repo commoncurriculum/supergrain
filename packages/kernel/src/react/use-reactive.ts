@@ -17,5 +17,8 @@ import { useState } from "react";
  */
 export function useReactive<T extends object>(initialState: T): T {
   const [state] = useState(() => createReactive(initialState));
+  // createReactive returns Branded<T>, which is structurally identical to T
+  // (adds only the optional phantom [$BRAND] marker). Cast back to T so
+  // consumers can type their state as T without carrying the brand throughout.
   return state as T;
 }

@@ -133,16 +133,16 @@ export function createDocumentStoreContext<
       const s = createDocumentStore<M, Q>(config);
       if (initial?.model) seedModels(s, initial.model);
       if (initial?.query) seedQueries(s, initial.query);
-      const sAsS = s as unknown as S;
-      onMount?.(sAsS);
-      return sAsS;
+      onMount?.(s as unknown as S);
+      return s as unknown as S;
     });
     return createElement(
       Context.Provider,
       { value: store },
       createElement(
         DocumentStoreContext.Provider,
-        { value: store as unknown as DocumentStore<DocumentTypes, QueryTypes> },
+        // S extends DocumentStore<DocumentTypes, QueryTypes>, so this upcast is safe.
+        { value: store as DocumentStore<DocumentTypes, QueryTypes> },
         children,
       ),
     );
@@ -162,6 +162,8 @@ export function createDocumentStoreContext<
     type: K,
     id: string | null | undefined,
   ): DocumentHandle<M[K]> {
+    // useDocumentStore() returns S which extends DocumentStore<M, Q>; the cast
+    // narrows back to the concrete DocumentStore<M, Q> so .find() is callable.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
     // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
     return store.find(type, id);
@@ -171,6 +173,7 @@ export function createDocumentStoreContext<
     type: K,
     params: Q[K]["params"] | null | undefined,
   ): QueryHandle<Q[K]["result"]> {
+    // Same narrowing cast as useDocument above.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
     return store.findQuery(type, params);
   }

@@ -72,16 +72,19 @@ interface Deferred<T> {
 }
 
 function deferred<T>(): Deferred<T> {
-  const out = {} as Omit<Deferred<T>, "promise">;
+  // eslint-disable-next-line unicorn/no-null -- Promise ctor synchronously overwrites these
+  let resolve = null as unknown as (v: T) => void;
+  // eslint-disable-next-line unicorn/no-null -- Promise ctor synchronously overwrites these
+  let reject = null as unknown as (e: unknown) => void;
   const promise = new Promise<T>((res, rej) => {
-    out.resolve = res;
-    out.reject = rej;
+    resolve = res;
+    reject = rej;
   });
   // Suppress unhandled-rejection warnings. Users observe rejections via
   // `await rp.promise` / `rp.promise.catch(...)` — attaching a catch
   // here creates a new branch, it doesn't swallow the rejection.
   promise.catch(() => {});
-  return { promise, ...out };
+  return { promise, resolve, reject };
 }
 
 /**
@@ -121,12 +124,13 @@ export function reactivePromise<T>(
       state.isResolved = false;
       state.isRejected = false;
 
-      let p: Promise<T> = Promise.resolve(null as T);
-      try {
-        p = Promise.resolve(asyncFn(abortSignal));
-      } catch (error) {
-        p = Promise.reject(error);
-      }
+      const p: Promise<T> = (() => {
+        try {
+          return Promise.resolve(asyncFn(abortSignal));
+        } catch (error) {
+          return Promise.reject<T>(error);
+        }
+      })();
 
       p.then(
         (v) => {
@@ -200,12 +204,13 @@ export function reactiveTask<Args extends unknown[], T>(
       state.isResolved = false;
       state.isRejected = false;
 
-      let p: Promise<T> = Promise.resolve(null as T);
-      try {
-        p = Promise.resolve(asyncFn(...args));
-      } catch (error) {
-        p = Promise.reject(error);
-      }
+      const p: Promise<T> = (() => {
+        try {
+          return Promise.resolve(asyncFn(...args));
+        } catch (error) {
+          return Promise.reject<T>(error);
+        }
+      })();
 
       return p.then(
         (v) => {

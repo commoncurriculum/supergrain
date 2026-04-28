@@ -77,6 +77,15 @@ export interface JsonApiDocument<
 // =============================================================================
 
 /**
+ * The shape of a JSON-API response envelope processed by `jsonApiProcessor`.
+ * Each resource object carries its own `type` and `id` per the JSON-API spec.
+ */
+interface JsonApiEnvelope {
+  data?: ReadonlyArray<{ id: string; type: string }>;
+  included?: ReadonlyArray<{ id: string; type: string }>;
+}
+
+/**
  * Processor for JSON-API–style responses shaped as
  * `{ data: Array<Doc>, included?: Array<Doc> }`.
  *
@@ -106,10 +115,7 @@ export function jsonApiProcessor<M extends DocumentTypes>(
   store: DocumentStore<M>,
   _type: keyof M & string,
 ): void {
-  const envelope = raw as {
-    data?: ReadonlyArray<{ id: string; type: string }>;
-    included?: ReadonlyArray<{ id: string; type: string }>;
-  };
+  const envelope = raw as JsonApiEnvelope;
   const data = envelope.data ?? [];
   const included = envelope.included ?? [];
   for (const doc of data) {

@@ -11,12 +11,15 @@ interface Resolvers<T> {
 }
 
 function withResolvers<T>(): Resolvers<T> {
-  const resolvers = {} as Omit<Resolvers<T>, "promise">;
+  // eslint-disable-next-line unicorn/no-null -- Promise ctor synchronously overwrites these
+  let resolve = null as unknown as (v: T) => void;
+  // eslint-disable-next-line unicorn/no-null -- Promise ctor synchronously overwrites these
+  let reject = null as unknown as (e: unknown) => void;
   const promise = new Promise<T>((res, rej) => {
-    resolvers.resolve = res;
-    resolvers.reject = rej;
+    resolve = res;
+    reject = rej;
   });
-  return { promise, ...resolvers };
+  return { promise, resolve, reject };
 }
 
 function ensureBucket<T>(buckets: Map<string, Map<string, T>>, type: string): Map<string, T> {

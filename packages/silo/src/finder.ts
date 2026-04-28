@@ -1,5 +1,11 @@
-import type { QueryProcessor, QueryTypes } from "./queries";
-import type { DocumentStore, DocumentStoreConfig, DocumentTypes, ResponseProcessor } from "./store";
+import type { QueryConfig, QueryProcessor, QueryTypes } from "./queries";
+import type {
+  DocumentStore,
+  DocumentStoreConfig,
+  DocumentTypes,
+  ModelConfig,
+  ResponseProcessor,
+} from "./store";
 
 import { batch } from "@supergrain/kernel";
 
@@ -123,15 +129,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   }
 
   private async drainDocumentChunk(type: string, ids: Array<string>): Promise<void> {
-    const modelConfig = (
-      this.config.models as Record<
-        string,
-        {
-          adapter: { find: (ids: Array<string>) => Promise<unknown> };
-          processor?: ResponseProcessor<M>;
-        }
-      >
-    )[type];
+    const modelConfig = (this.config.models as Record<string, ModelConfig<M>>)[type];
     const processor: ResponseProcessor<M> =
       modelConfig.processor ?? (defaultProcessor as ResponseProcessor<M>);
 
@@ -198,15 +196,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
 
   private async drainQueryChunk(type: string, chunk: Array<QueryChunkEntry>): Promise<void> {
     const queryConfig = (
-      this.config.queries as
-        | Record<
-            string,
-            {
-              adapter: { find: (p: Array<unknown>) => Promise<unknown> };
-              processor?: QueryProcessor<M, Q, keyof Q & string>;
-            }
-          >
-        | undefined
+      this.config.queries as Record<string, QueryConfig<M, Q, keyof Q & string>> | undefined
     )?.[type];
     if (!queryConfig) return;
 

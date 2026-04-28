@@ -140,22 +140,22 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
       // ── get ──────────────────────────────────────────────────────────────
       if (prop === "get") {
         return function reactiveGet(key: K): V | undefined {
-          const rawKey = unwrap(key) as K;
+          const rawKey = unwrap(key);
           if (getCurrentSub()) {
             profileSignalRead();
             const s = getOrCreateKeySignal(rawKey);
-            const v = s();
-            return wrap(v) as V | undefined;
+            const v = s() as V | undefined;
+            return wrap(v);
           }
           profileSignalSkip();
-          return wrap(rawTarget.get(rawKey)) as V | undefined;
+          return wrap(rawTarget.get(rawKey));
         };
       }
 
       // ── has ──────────────────────────────────────────────────────────────
       if (prop === "has") {
         return function reactiveHas(key: K): boolean {
-          const rawKey = unwrap(key) as K;
+          const rawKey = unwrap(key);
           if (getCurrentSub()) {
             profileSignalRead();
             getOrCreateKeySignal(rawKey)();
@@ -169,8 +169,8 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
       // ── set ──────────────────────────────────────────────────────────────
       if (prop === "set") {
         return function reactiveSet(key: K, value: V): Map<K, V> {
-          const rawKey = unwrap(key) as K;
-          const rawValue = unwrap(value) as V;
+          const rawKey = unwrap(key);
+          const rawValue = unwrap(value);
           const isNew = !rawTarget.has(rawKey);
           const oldRawValue = rawTarget.get(rawKey);
 
@@ -208,14 +208,14 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
             }
           }
 
-          return receiver as Map<K, V>;
+          return receiver;
         };
       }
 
       // ── delete ───────────────────────────────────────────────────────────
       if (prop === "delete") {
         return function reactiveDelete(key: K): boolean {
-          const rawKey = unwrap(key) as K;
+          const rawKey = unwrap(key);
           if (!rawTarget.has(rawKey)) return false;
 
           rawTarget.delete(rawKey);
@@ -278,7 +278,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
               profileSignalRead();
               getOrCreateKeySignal(k)();
             }
-            callbackFn(wrap(v) as V, wrap(k) as K, receiver as Map<K, V>);
+            callbackFn(wrap(v), wrap(k), receiver);
           }
         };
       }
@@ -292,7 +292,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
               profileSignalRead();
               getOrCreateKeySignal(k)();
             }
-            yield [wrap(k) as K, wrap(v) as V];
+            yield [wrap(k), wrap(v)];
           }
         };
       }
@@ -305,7 +305,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
         return function* reactiveKeys(): IterableIterator<K> {
           trackOwnKeys(target);
           for (const k of rawTarget.keys()) {
-            yield wrap(k) as K;
+            yield wrap(k);
           }
         };
       }
@@ -319,7 +319,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
               profileSignalRead();
               getOrCreateKeySignal(k)();
             }
-            yield wrap(v) as V;
+            yield wrap(v);
           }
         };
       }
@@ -368,15 +368,15 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
       if (prop === "has") {
         return function reactiveHas(value: T): boolean {
           trackOwnKeys(target);
-          return rawTarget.has(unwrap(value) as T);
+          return rawTarget.has(unwrap(value));
         };
       }
 
       // ── add ──────────────────────────────────────────────────────────────
       if (prop === "add") {
         return function reactiveAdd(value: T): Set<T> {
-          const rawValue = unwrap(value) as T;
-          if (rawTarget.has(rawValue)) return receiver as Set<T>;
+          const rawValue = unwrap(value);
+          if (rawTarget.has(rawValue)) return receiver;
 
           rawTarget.add(rawValue);
 
@@ -391,14 +391,14 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
             endBatch();
           }
 
-          return receiver as Set<T>;
+          return receiver;
         };
       }
 
       // ── delete ───────────────────────────────────────────────────────────
       if (prop === "delete") {
         return function reactiveDelete(value: T): boolean {
-          const rawValue = unwrap(value) as T;
+          const rawValue = unwrap(value);
           if (!rawTarget.has(rawValue)) return false;
 
           rawTarget.delete(rawValue);
@@ -435,7 +435,7 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
         ): void {
           trackOwnKeys(target);
           for (const v of rawTarget.values()) {
-            callbackFn(wrap(v) as T, wrap(v) as T, receiver as Set<T>);
+            callbackFn(wrap(v), wrap(v), receiver);
           }
         };
       }
@@ -445,7 +445,7 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
         return function* reactiveValues(): IterableIterator<T> {
           trackOwnKeys(target);
           for (const v of rawTarget.values()) {
-            yield wrap(v) as T;
+            yield wrap(v);
           }
         };
       }
@@ -456,7 +456,7 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
         return function* reactiveKeys(): IterableIterator<T> {
           trackOwnKeys(target);
           for (const v of rawTarget.values()) {
-            yield wrap(v) as T;
+            yield wrap(v);
           }
         };
       }
@@ -466,7 +466,7 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
         return function* reactiveEntries(): IterableIterator<[T, T]> {
           trackOwnKeys(target);
           for (const v of rawTarget.values()) {
-            yield [wrap(v) as T, wrap(v) as T];
+            yield [wrap(v), wrap(v)];
           }
         };
       }
