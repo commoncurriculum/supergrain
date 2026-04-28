@@ -101,6 +101,28 @@ describe("DocumentStore.find / findInMemory — `type` narrows doc shape", () =>
     // @ts-expect-error -- "ghost" is not a key of Models
     store.find("ghost", "1");
   });
+
+  it("accepts null and undefined as the id argument (lazy gate)", () => {
+    // The runtime returns an IDLE handle for null/undefined ids; the type
+    // signature must permit them so consumer code like
+    // `useDocument("user", maybeId)` typechecks.
+    store.find("user", null);
+    store.find("user", undefined);
+  });
+
+  it("DocumentHandle exposes correctly-typed observable fields", () => {
+    // The fields below are the binding surface for UI components; pin their
+    // types so a refactor that relaxes any of them to `unknown` (or removes
+    // a field outright) breaks compilation here.
+    const h = store.find("user", "1");
+    expectTypeOf(h.status).toEqualTypeOf<"IDLE" | "PENDING" | "SUCCESS" | "ERROR">();
+    expectTypeOf(h.error).toEqualTypeOf<Error | undefined>();
+    expectTypeOf(h.isPending).toEqualTypeOf<boolean>();
+    expectTypeOf(h.isFetching).toEqualTypeOf<boolean>();
+    expectTypeOf(h.hasData).toEqualTypeOf<boolean>();
+    expectTypeOf(h.fetchedAt).toEqualTypeOf<Date | undefined>();
+    expectTypeOf(h.promise).toEqualTypeOf<Promise<User> | undefined>();
+  });
 });
 
 describe("DocumentStore.insertDocument — `doc` narrowed by `type`", () => {
@@ -157,5 +179,26 @@ describe("DocumentStore.insertQueryResult — params + result both narrowed", ()
   it("rejects mismatched result shape", () => {
     // @ts-expect-error -- result requires `total` + `ids`
     store.insertQueryResult("search", { q: "x" }, { wrong: 1 });
+  });
+
+  it("rejects mismatched params shape", () => {
+    // @ts-expect-error -- params requires `q` (not `notQ`)
+    store.insertQueryResult("search", { notQ: "x" }, { total: 1, ids: ["a"] });
+  });
+});
+
+describe("QueryHandle exposes correctly-typed observable fields", () => {
+  const store = {} as DocumentStore<Models, Queries>;
+
+  it("status / error / pending / data / promise all carry the result generic", () => {
+    const h = store.findQuery("search", { q: "x" });
+    expectTypeOf(h.status).toEqualTypeOf<"IDLE" | "PENDING" | "SUCCESS" | "ERROR">();
+    expectTypeOf(h.data).toEqualTypeOf<SearchResult | undefined>();
+    expectTypeOf(h.error).toEqualTypeOf<Error | undefined>();
+    expectTypeOf(h.isPending).toEqualTypeOf<boolean>();
+    expectTypeOf(h.isFetching).toEqualTypeOf<boolean>();
+    expectTypeOf(h.hasData).toEqualTypeOf<boolean>();
+    expectTypeOf(h.fetchedAt).toEqualTypeOf<Date | undefined>();
+    expectTypeOf(h.promise).toEqualTypeOf<Promise<SearchResult> | undefined>();
   });
 });

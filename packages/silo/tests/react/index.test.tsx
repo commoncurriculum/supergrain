@@ -444,6 +444,44 @@ describe("Provider initial data seeding", () => {
   });
 });
 
+// =============================================================================
+// Component unmount during in-flight fetch — no leaks, no errors after the
+// fetch eventually resolves. UI code routinely mounts a component, kicks
+// off a fetch, and unmounts it before the response lands (e.g. user
+// navigates away). The contract is: the late resolution must not crash,
+// must not throw, and must not log a React state-update warning.
+// =============================================================================
+
+describe("unmount during in-flight fetch", () => {
+  it("does not throw or warn when a fetch resolves after the component unmounts", async () => {
+    const errors: Array<unknown> = [];
+    const originalError = console.error;
+    console.error = (...args: Array<unknown>) => {
+      errors.push(args);
+    };
+
+    try {
+      const { unmount } = render(
+        <Wrap>
+          <UserBadge userId="1" />
+        </Wrap>,
+      );
+
+      // The fetch is in flight. Unmount before MSW responds.
+      expect(screen.getByText("loading")).toBeDefined();
+      unmount();
+
+      // Let the in-flight fetch resolve into the (now-unmounted) tree.
+      await tick();
+
+      // No console.error from React (or anywhere) for this scenario.
+      expect(errors).toEqual([]);
+    } finally {
+      console.error = originalError;
+    }
+  });
+});
+
 describe("Provider initial data — null/undefined guards", () => {
   // Force-types `undefined` as `T` for negative-path tests that intentionally
   // drive out-of-contract values into the Provider to verify it survives.
