@@ -1,15 +1,24 @@
 import { useEffect, useRef } from "react";
 
+// Minimal local declaration so this file doesn't require @types/node in
+// downstream packages. Consumer bundlers (and Vite library mode) replace
+// `process.env.NODE_ENV` based on their build, which is what we want.
+declare const process: { env: { NODE_ENV?: string } };
+
 /**
- * Run `cleanup` when the component truly unmounts, but survive React 18
- * StrictMode's dev-only mount→cleanup→remount cycle.
+ * Run `cleanup` when the component truly unmounts.
  *
- * Schedules `cleanup` on a `setTimeout(0)` macrotask in the effect's
- * cleanup phase, and cancels the timer if the effect runs again
- * (StrictMode remount). On a real unmount the timer survives and fires.
+ * In production this is a plain useEffect cleanup — no overhead. In
+ * development it defers via `setTimeout(0)` to survive React 18
+ * StrictMode's mount→cleanup→remount cycle: the remount fires the
+ * effect again and clears the pending timer; on a real unmount the
+ * timer survives and runs the cleanup.
  *
- * Microtasks aren't safe here — they can drain between StrictMode
- * cleanup and remount, prematurely running the cleanup.
+ * The `process.env.NODE_ENV` check is preserved as a literal in this
+ * library's compiled dist (Vite library mode behavior); the consumer's
+ * bundler replaces it at their build time, so dev-mode StrictMode
+ * safety is preserved for downstream consumers running their own dev
+ * server.
  *
  * @example
  * ```ts
@@ -19,7 +28,16 @@ import { useEffect, useRef } from "react";
 export function useDisposeOnUnmount(cleanup: () => void): void {
   const cleanupRef = useRef(cleanup);
   cleanupRef.current = cleanup;
+
+  if (process.env.NODE_ENV === "production") {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- branch is constant per build; bundler DCEs the dev path.
+    useEffect(() => () => cleanupRef.current(), []);
+    return;
+  }
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
