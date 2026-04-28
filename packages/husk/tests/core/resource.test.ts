@@ -1,4 +1,4 @@
-import { createReactive, signal } from "@supergrain/kernel";
+import { createReactive, effect, signal } from "@supergrain/kernel";
 import { describe, it, expect, vi } from "vitest";
 
 import { resource, defineResource, dispose } from "../../src";
@@ -172,6 +172,10 @@ describe("resource()", () => {
   });
 
   it("exposes a reactive proxy — mutations are tracked per-field", () => {
+    // Setup writes `data` and `isLoading` once on creation. After that,
+    // direct mutations on the resource state must propagate per-field:
+    // an effect tracking only `data` must fire on `data` writes and stay
+    // silent on `error` writes, and vice versa.
     const r = resource(
       { data: null as string | null, error: null as Error | null, isLoading: true },
       (state) => {
@@ -180,9 +184,32 @@ describe("resource()", () => {
       },
     );
 
-    expect(r.data).toBe("hello");
-    expect(r.isLoading).toBe(false);
-    expect(r.error).toBe(null);
+    let observedData: string | null = null;
+    let observedError: Error | null = null;
+    const dataFn = vi.fn(() => {
+      observedData = r.data;
+    });
+    const errorFn = vi.fn(() => {
+      observedError = r.error;
+    });
+    effect(dataFn);
+    effect(errorFn);
+
+    expect(observedData).toBe("hello");
+    expect(observedError).toBe(null);
+    expect(dataFn).toHaveBeenCalledTimes(1);
+    expect(errorFn).toHaveBeenCalledTimes(1);
+
+    r.data = "world";
+    expect(observedData).toBe("world");
+    expect(dataFn).toHaveBeenCalledTimes(2);
+    expect(errorFn).toHaveBeenCalledTimes(1);
+
+    r.error = new Error("oops");
+    expect(observedError).toBeInstanceOf(Error);
+    expect((observedError as Error).message).toBe("oops");
+    expect(errorFn).toHaveBeenCalledTimes(2);
+    expect(dataFn).toHaveBeenCalledTimes(2);
 
     dispose(r);
   });
