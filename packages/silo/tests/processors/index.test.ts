@@ -129,6 +129,12 @@ describe("defaultProcessor", () => {
     expect(inserts[0].type).toBe("user");
     expect(inserts[1].type).toBe("user");
   });
+
+  it("handles an empty array response without inserting anything", () => {
+    const { store, inserts } = makeFakeStore();
+    expect(() => defaultProcessor([], store, "user")).not.toThrow();
+    expect(inserts).toEqual([]);
+  });
 });
 
 // =============================================================================
@@ -193,5 +199,11 @@ describe("defaultQueryProcessor", () => {
       { workspaceId: 7, filters: { active: true } },
     ]);
     expect(result).toBeUndefined();
+  });
+
+  it("handles an empty paramsList without inserting anything", () => {
+    const { store, inserts } = makeFakeQueryStore();
+    expect(() => defaultQueryProcessor([], store, "dashboard", [])).not.toThrow();
+    expect(inserts).toEqual([]);
   });
 });

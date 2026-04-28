@@ -137,4 +137,29 @@ describe("jsonApiProcessor", () => {
     expect(inserts).toHaveLength(1);
     expect(inserts[0]?.type).toBe("post");
   });
+
+  it("iterates every item in a multi-element `data` array", () => {
+    // Pins that the processor doesn't accidentally insert only the head of
+    // `data` (an off-by-one would still pass every test that uses a single
+    // data item).
+    const { store, inserts } = makeFakeStore();
+    const u1 = { ...makeUser("1"), type: "user" as const };
+    const u2 = { ...makeUser("2"), type: "user" as const };
+    const u3 = { ...makeUser("3"), type: "user" as const };
+
+    jsonApiProcessor({ data: [u1, u2, u3] }, store, "user");
+
+    expect(inserts).toEqual([
+      { type: "user", doc: u1 },
+      { type: "user", doc: u2 },
+      { type: "user", doc: u3 },
+    ]);
+  });
+
+  it("handles an empty envelope ({}) without throwing or inserting anything", () => {
+    const { store, inserts } = makeFakeStore();
+
+    expect(() => jsonApiProcessor({} as any, store, "user")).not.toThrow();
+    expect(inserts).toEqual([]);
+  });
 });
