@@ -38,6 +38,18 @@ export type ResourceFactory<Args, T extends object> = [Args] extends [void]
 
 const disposers = new WeakMap<object, () => void>();
 
+/**
+ * Internal plumbing: register a teardown function for `target` that
+ * `dispose(target)` will invoke. Used by `husk` async primitives to
+ * opt into the same dispose machinery as `resource()`. Not part of
+ * husk's public API; deep-import only and may change without notice.
+ *
+ * @internal
+ */
+export function registerDisposer(target: object, fn: () => void): void {
+  disposers.set(target, fn);
+}
+
 type SetupResult = void | (() => void) | Promise<void>;
 
 function withUntracked<R>(run: () => R): R {
@@ -134,7 +146,7 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
     }),
   );
 
-  disposers.set(state, () => {
+  registerDisposer(state, () => {
     if (disposed) return;
     disposed = true;
     stopEffect();

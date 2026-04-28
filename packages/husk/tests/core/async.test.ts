@@ -1,7 +1,7 @@
 import { signal } from "@supergrain/kernel";
 import { describe, it, expect, vi } from "vitest";
 
-import { reactivePromise, reactiveTask } from "../../src";
+import { dispose, reactivePromise, reactiveTask } from "../../src";
 
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -227,5 +227,38 @@ describe("reactiveTask", () => {
     await task.run("ok");
     expect(task.error).toBe(null);
     expect(task.isResolved).toBe(true);
+  });
+
+  it("dispose prevents late completions from mutating task state", async () => {
+    const d = deferred<string>();
+    const task = reactiveTask(async () => d.promise);
+
+    const pending = task.run();
+    expect(task.isPending).toBe(true);
+
+    dispose(task);
+    expect(task.isPending).toBe(false);
+
+    d.resolve("done");
+    await pending;
+
+    expect(task.data).toBe(null);
+    expect(task.error).toBe(null);
+    expect(task.isReady).toBe(false);
+    expect(task.isResolved).toBe(false);
+    expect(task.isRejected).toBe(false);
+    expect(task.isSettled).toBe(false);
+  });
+
+  it("run() after dispose rejects without mutating state", async () => {
+    const task = reactiveTask(async () => "value");
+    dispose(task);
+
+    await expect(task.run()).rejects.toThrow("reactiveTask has been disposed");
+    expect(task.data).toBe(null);
+    expect(task.error).toBe(null);
+    expect(task.isPending).toBe(false);
+    expect(task.isRejected).toBe(false);
+    expect(task.isSettled).toBe(false);
   });
 });

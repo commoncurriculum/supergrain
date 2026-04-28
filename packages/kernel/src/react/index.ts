@@ -18,3 +18,6 @@ export { createStoreContext } from "./create-store";
 
 // Export useSignalEffect for signal-tracked side effects tied to component lifecycle
 export { useSignalEffect } from "./use-signal-effect";
+
+// Export useDisposeOnUnmount for StrictMode-safe deferred cleanup on unmount
+export { useDisposeOnUnmount } from "./use-dispose-on-unmount";

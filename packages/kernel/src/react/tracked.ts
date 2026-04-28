@@ -2,7 +2,9 @@ import type { ReactiveNode } from "alien-signals";
 
 import { effect as alienEffect } from "@supergrain/kernel";
 import { getCurrentSub, setCurrentSub } from "@supergrain/kernel/internal";
-import { type FC, memo, useReducer, useEffect } from "react";
+import { type FC, memo, useReducer } from "react";
+
+import { useDisposeOnUnmount } from "./use-dispose-on-unmount";
 
 interface TrackedState {
   cleanup: () => void;
@@ -70,13 +72,16 @@ export function tracked<P extends object>(Component: FC<P>) {
       fu.__sg = { cleanup, effectNode: capturedNode };
     }
 
-    useEffect(
-      () => () => {
-        const state = (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
-        state?.cleanup?.();
-      },
-      [],
-    );
+    // Defer the alien-effect teardown so React 18 StrictMode's
+    // mount→cleanup→remount cycle in dev doesn't kill the effect we still
+    // need post-cycle.
+    useDisposeOnUnmount(() => {
+      const fuState = (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
+      if (fuState) {
+        fuState.cleanup();
+        delete (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
+      }
+    });
 
     const prev = getCurrentSub();
     setCurrentSub(fu.__sg.effectNode);

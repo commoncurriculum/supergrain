@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { useDisposeOnUnmount } from "@supergrain/kernel/react";
+import { useMemo } from "react";
 
 import { reactivePromise, type ReactivePromise } from "../async";
 import { dispose } from "../resource";
@@ -30,6 +31,6 @@ export function useReactivePromise<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
-  useEffect(() => () => dispose(rp), [rp]);
+  useDisposeOnUnmount(() => dispose(rp));
   return rp;
 }

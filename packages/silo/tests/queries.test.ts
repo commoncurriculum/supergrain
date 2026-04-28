@@ -145,6 +145,42 @@ describe("DocumentStore.findQuery errors", () => {
     expect(handle.error).toBeInstanceOf(Error);
     expect(handle.data).toBeUndefined();
   });
+
+  it("clearMemory removes settled query errors so the next fetch starts cleanly", async () => {
+    server.use(
+      http.get(`${API_BASE}/dashboards`, () =>
+        HttpResponse.json({ message: "boom" }, { status: 500 }),
+      ),
+    );
+
+    const store = initStore();
+    const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
+    const handle = store.findQuery("dashboard", params);
+
+    await flushCoalescer();
+
+    const rejectedPromise = handle.promise;
+    expect(handle.status).toBe("ERROR");
+    expect(handle.error).toBeInstanceOf(Error);
+
+    store.clearMemory();
+    expect(handle.status).toBe("IDLE");
+    expect(handle.error).toBeUndefined();
+    expect(handle.promise).toBeUndefined();
+
+    server.resetHandlers();
+
+    const retried = store.findQuery("dashboard", params);
+    expect(retried).toBe(handle);
+    expect(handle.promise).toBeInstanceOf(Promise);
+    expect(handle.promise).not.toBe(rejectedPromise);
+
+    await flushCoalescer();
+    await handle.promise;
+
+    expect(handle.status).toBe("SUCCESS");
+    expect(handle.data?.totalActiveUsers).toBe(70);
+  });
 });
 
 // =============================================================================

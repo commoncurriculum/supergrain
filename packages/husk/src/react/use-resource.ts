@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from "react";
+import { useDisposeOnUnmount } from "@supergrain/kernel/react";
+import { useMemo } from "react";
 
 import { dispose, resource, type ResourceContext, type ResourceFactory } from "../resource";
 
@@ -63,6 +64,6 @@ export function useResource(first: unknown, second?: unknown): object {
     // and the argsFn/setup closures provide the reactive surface.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => () => dispose(instance), [instance]);
+  useDisposeOnUnmount(() => dispose(instance));
   return instance;
 }
