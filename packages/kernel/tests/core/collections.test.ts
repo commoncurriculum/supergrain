@@ -613,12 +613,16 @@ describe("createReactive(new Set()) — reactive Set", () => {
     });
 
     expect(latest()).toEqual([1]);
-    // Mutate the wrapped object returned from iteration
+    expect(count()).toBe(1);
+
+    // Mutate the wrapped object returned from iteration. The Set has one
+    // member, so this fires exactly one property-signal write, which makes
+    // the tracked effect re-run exactly once.
     for (const v of s.values()) {
       v.n = 42;
     }
-    expect(latest()[0]).toBe(42);
-    expect(count()).toBeGreaterThanOrEqual(2);
+    expect(latest()).toEqual([42]);
+    expect(count()).toBe(2);
   });
 
   it("forEach third callback arg is the reactive proxy", () => {

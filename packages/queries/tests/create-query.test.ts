@@ -1,7 +1,9 @@
+import { effect } from "@supergrain/kernel";
 import { createDocumentStore, type DocumentStore } from "@supergrain/silo";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createQuery, type QueryAdapter } from "../src";
+import { setupFakeTimers } from "./setup/timers";
 
 // =============================================================================
 // Shared types / fixtures
@@ -318,16 +320,119 @@ describe("isFetching", () => {
 });
 
 // =============================================================================
+// Reactive subscriptions on the query handle
+//
+// `q.results`, `q.isFetching`, and `q.error` back the typical UI bindings
+// (list display, spinner, error banner). A consumer subscribes to them via
+// `effect()` (or any equivalent), and re-rendering depends on those signals
+// firing when the underlying state changes. These tests pin that contract.
+// =============================================================================
+
+describe("reactive bindings on the query handle", () => {
+  setupFakeTimers();
+
+  it("an effect tracking q.results re-runs when refetch produces new data", async () => {
+    const store = makeStore();
+    const { adapter, fetch } = makeAdapter();
+    fetch.mockResolvedValueOnce({
+      data: { results: [ref("p1", 0)] },
+      meta: { nextOffset: 1 },
+    });
+
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+
+    let observedIds: Array<string> = [];
+    const resultsEffect = vi.fn(() => {
+      observedIds = q.results.map((r) => r.id);
+    });
+    effect(resultsEffect);
+
+    expect(observedIds).toEqual([]);
+    expect(resultsEffect).toHaveBeenCalledTimes(1);
+
+    await q.refetch();
+
+    expect(observedIds).toEqual(["p1"]);
+    expect(resultsEffect.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    q.destroy();
+  });
+
+  it("an effect tracking q.isFetching toggles on fetch start and resolve", async () => {
+    const store = makeStore();
+    const { adapter, fetch } = makeAdapter();
+
+    let resolveFetch: (v: {
+      data: { results: Array<PlanbookRef> };
+      meta: { nextOffset: number | null };
+    }) => void = () => {};
+    fetch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+
+    const fetchingHistory: Array<boolean> = [];
+    effect(() => {
+      fetchingHistory.push(q.isFetching);
+    });
+
+    expect(fetchingHistory).toEqual([false]);
+
+    const pending = q.refetch();
+    expect(fetchingHistory.at(-1)).toBe(true);
+
+    resolveFetch({ data: { results: [] }, meta: { nextOffset: null } });
+    await pending;
+    expect(fetchingHistory.at(-1)).toBe(false);
+
+    q.destroy();
+  });
+
+  it("an effect tracking q.error fires when a fetch fails and clears on retry success", async () => {
+    const store = makeStore();
+    const { adapter, fetch } = makeAdapter();
+
+    fetch.mockRejectedValueOnce(new Error("network"));
+    fetch.mockResolvedValueOnce({
+      data: { results: [ref("p1", 0)] },
+      meta: { nextOffset: null },
+    });
+
+    const q = createQuery({
+      store,
+      adapter,
+      type: "planbooks_for_user",
+      id: "u1",
+      backoff: () => 50,
+    });
+
+    const errorMessages: Array<string | undefined> = [];
+    effect(() => {
+      errorMessages.push(q.error?.message);
+    });
+
+    expect(errorMessages).toEqual([undefined]);
+
+    await q.refetch();
+    expect(errorMessages.at(-1)).toBe("network");
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(errorMessages.at(-1)).toBeUndefined();
+
+    q.destroy();
+  });
+});
+
+// =============================================================================
 // Error + backoff retry
 // =============================================================================
 
 describe("error + backoff retry", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
+  setupFakeTimers();
 
   it("sets error signal on failure and retries after backoff delay", async () => {
     const store = makeStore();

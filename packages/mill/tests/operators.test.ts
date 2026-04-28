@@ -368,16 +368,28 @@ describe("MongoDB Style Operators — validation and path creation", () => {
     const store = createReactive<any>({ items: [1, 2, 3] });
     let first: number | undefined;
     let third: number | undefined;
-
-    effect(() => {
+    const firstFn = vi.fn(() => {
       first = store.items[0];
+    });
+    const thirdFn = vi.fn(() => {
       third = store.items[2];
     });
 
+    effect(firstFn);
+    effect(thirdFn);
+    expect(first).toBe(1);
+    expect(third).toBe(3);
+    expect(firstFn).toHaveBeenCalledTimes(1);
+    expect(thirdFn).toHaveBeenCalledTimes(1);
+
+    // After $pull(2), the array is [1, 3]: index 0 still holds 1, index 2 is
+    // empty. Only the index-2 effect should be invalidated.
     update(store, { $pull: { items: 2 } });
 
     expect(first).toBe(1);
     expect(third).toBeUndefined();
+    expect(firstFn).toHaveBeenCalledTimes(1);
+    expect(thirdFn).toHaveBeenCalledTimes(2);
   });
 
   it("$rename ignores missing source paths", () => {

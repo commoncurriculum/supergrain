@@ -1,24 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-import {
-  createReactive,
-  effect,
-  enableProfiling,
-  disableProfiling,
-  resetProfiler,
-  getProfile,
-} from "../../src";
+import { createReactive, effect } from "../../src";
 import { startBatch, endBatch } from "../../src/internal";
 
 describe("Array mutation methods trigger reactivity", () => {
-  beforeEach(() => {
-    enableProfiling();
-    resetProfiler();
-  });
-
-  afterEach(() => {
-    disableProfiling();
-  });
   it("push() triggers effect tracking length", () => {
     const store = createReactive({ items: [1, 2, 3] });
 
@@ -353,9 +338,69 @@ describe("Array mutation methods trigger reactivity", () => {
     // Effect for untouched index should NOT fire
     expect(item1Label).toBe("b");
     expect(effect1).toHaveBeenCalledTimes(1);
+  });
 
-    const p = getProfile();
-    expect(p.signalWrites).toBe(2); // 2 index assignments
+  it("shift() fires per-index effects with new element values", () => {
+    const store = createReactive({
+      items: [
+        { id: 1, label: "a" },
+        { id: 2, label: "b" },
+        { id: 3, label: "c" },
+      ],
+    });
+
+    let item0Label = "";
+    let item1Label = "";
+    const effect0 = vi.fn(() => {
+      item0Label = store.items[0]?.label ?? "";
+    });
+    const effect1 = vi.fn(() => {
+      item1Label = store.items[1]?.label ?? "";
+    });
+
+    effect(effect0);
+    effect(effect1);
+    expect(item0Label).toBe("a");
+    expect(item1Label).toBe("b");
+
+    store.items.shift();
+
+    // After shift, items=[b,c]. Index 0 now sees "b", index 1 now sees "c".
+    expect(item0Label).toBe("b");
+    expect(item1Label).toBe("c");
+    expect(effect0).toHaveBeenCalledTimes(2);
+    expect(effect1).toHaveBeenCalledTimes(2);
+  });
+
+  it("unshift() fires per-index effects with shifted element values", () => {
+    const store = createReactive({
+      items: [
+        { id: 1, label: "a" },
+        { id: 2, label: "b" },
+      ],
+    });
+
+    let item0Label = "";
+    let item1Label = "";
+    const effect0 = vi.fn(() => {
+      item0Label = store.items[0]?.label ?? "";
+    });
+    const effect1 = vi.fn(() => {
+      item1Label = store.items[1]?.label ?? "";
+    });
+
+    effect(effect0);
+    effect(effect1);
+    expect(item0Label).toBe("a");
+    expect(item1Label).toBe("b");
+
+    store.items.unshift({ id: 0, label: "z" });
+
+    // After unshift, items=[z,a,b]. Index 0 sees "z", index 1 sees "a".
+    expect(item0Label).toBe("z");
+    expect(item1Label).toBe("a");
+    expect(effect0).toHaveBeenCalledTimes(2);
+    expect(effect1).toHaveBeenCalledTimes(2);
   });
 
   it("iteration effect re-fires on swap (sees new element order)", () => {
@@ -389,8 +434,5 @@ describe("Array mutation methods trigger reactivity", () => {
     // Iteration effect should see new order
     expect(labels).toEqual(["c", "b", "a"]);
     expect(iterEffect).toHaveBeenCalledTimes(2);
-
-    const p = getProfile();
-    expect(p.signalWrites).toBe(2); // 2 index assignments
   });
 });

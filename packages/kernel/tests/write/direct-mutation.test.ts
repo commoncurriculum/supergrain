@@ -40,42 +40,42 @@ describe("Direct Mutation Support", () => {
     const store = createReactive({ count: 0, user: { name: "John" } });
 
     let reactionCount = 0;
-    let lastValue: any = null;
+    let lastValue = -1;
 
-    // Create a simple reaction to test reactivity
-    const checkReactivity = () => {
-      const value = store.count;
+    effect(() => {
+      lastValue = store.count;
       reactionCount++;
-      lastValue = value;
-      return value;
-    };
+    });
 
-    // Initial access creates dependency
-    checkReactivity();
     expect(reactionCount).toBe(1);
     expect(lastValue).toBe(0);
 
-    // Direct mutation should trigger reactivity
+    // Direct mutation propagates to the subscribing effect.
     store.count = 10;
-    expect(store.count).toBe(10);
+    expect(lastValue).toBe(10);
+    expect(reactionCount).toBe(2);
 
-    // Test nested property reactivity
+    // Same value -> no re-run.
+    store.count = 10;
+    expect(reactionCount).toBe(2);
+
     let nestedReactionCount = 0;
-    let lastNestedValue: any = null;
-
-    const checkNestedReactivity = () => {
-      const value = store.user.name;
+    let lastNestedValue = "";
+    effect(() => {
+      lastNestedValue = store.user.name;
       nestedReactionCount++;
-      lastNestedValue = value;
-      return value;
-    };
+    });
 
-    checkNestedReactivity();
     expect(nestedReactionCount).toBe(1);
     expect(lastNestedValue).toBe("John");
 
+    // Mutating a nested property triggers the nested-tracking effect.
     store.user.name = "Jane";
-    expect(store.user.name).toBe("Jane");
+    expect(lastNestedValue).toBe("Jane");
+    expect(nestedReactionCount).toBe(2);
+
+    // The unrelated `count` effect is not re-run by a nested-property write.
+    expect(reactionCount).toBe(2);
   });
 
   it("should work alongside traditional updateStore calls", () => {
@@ -196,9 +196,9 @@ describe("Direct Mutation Support — untracked writes", () => {
     });
     ownKeysBumped = 0;
 
-    delete (store.arr as unknown as Record<string, unknown>)["0"];
+    Reflect.deleteProperty(store.arr, "0");
     expect(ownKeysBumped).toBe(1);
-    expect((store.arr as unknown as Record<string, unknown>)["0"]).toBeUndefined();
+    expect(store.arr[0]).toBeUndefined();
   });
 
   it("deleting a missing array index is silent", () => {
@@ -210,7 +210,7 @@ describe("Direct Mutation Support — untracked writes", () => {
     });
     ownKeysBumped = 0;
 
-    delete (store.arr as unknown as Record<string, unknown>)["99"];
+    Reflect.deleteProperty(store.arr, "99");
     expect(ownKeysBumped).toBe(0);
   });
 });

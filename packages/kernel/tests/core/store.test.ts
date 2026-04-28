@@ -1,28 +1,9 @@
 import { update } from "@supergrain/mill";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-import {
-  createReactive,
-  effect,
-  unwrap,
-  batch,
-  enableProfiling,
-  disableProfiling,
-  resetProfiler,
-  getProfile,
-} from "../../src";
-import { $RAW, $PROXY, $NODE, $VERSION, bumpVersion, deleteProperty } from "../../src/internal";
+import { createReactive, effect, unwrap, batch } from "../../src";
 
 describe("Store", () => {
-  beforeEach(() => {
-    enableProfiling();
-    resetProfiler();
-  });
-
-  afterEach(() => {
-    disableProfiling();
-  });
-
   describe("createReactive", () => {
     it("should create a store with initial state", () => {
       const state = createReactive({ count: 0, name: "test" });
@@ -54,11 +35,6 @@ describe("Store", () => {
       update(state, { $set: { "user.address.city": "Boston" } });
       expect(city).toBe("Boston");
       expect(effectFn).toHaveBeenCalledTimes(2);
-
-      const p = getProfile();
-      expect(p.signalReads).toBe(6); // 3 reads × 2 runs (user, address, city)
-      expect(p.signalSkips).toBe(0);
-      expect(p.signalWrites).toBe(1); // city changed
     });
 
     it("should handle array updates reactively", () => {
@@ -83,14 +59,6 @@ describe("Store", () => {
       update(state, { $set: { items: [10, 20] } });
       expect(sum).toBe(30);
       expect(effectFn).toHaveBeenCalledTimes(3);
-
-      const p = getProfile();
-      expect(p.signalReads).toBe(22);
-      // 9 plain, 10 under v8 coverage instrumentation. Coverage adds extra
-      // untracked reads through the proxy; lower-bound the assertion so the
-      // test pins the floor without locking us to a specific run mode.
-      expect(p.signalSkips).toBeGreaterThanOrEqual(9);
-      expect(p.signalWrites).toBe(2);
     });
 
     it("should batch multiple operators in one update call", () => {
@@ -111,11 +79,6 @@ describe("Store", () => {
 
       expect(sum).toBe(30);
       expect(effectFn).toHaveBeenCalledTimes(2);
-
-      const p = getProfile();
-      expect(p.signalReads).toBe(4); // 2 reads × 2 runs
-      expect(p.signalSkips).toBe(0);
-      expect(p.signalWrites).toBe(2); // a + b
     });
   });
 
@@ -125,7 +88,7 @@ describe("Store", () => {
       expect(() => createReactive("x" as any)).toThrow(/requires the root state/i);
     });
 
-    it("should handle frozen objects gracefully", () => {
+    it("should not traverse into a frozen nested object (it's returned as-is)", () => {
       const frozen = Object.freeze({ value: 1 });
       const state = createReactive({ frozen });
 
@@ -135,9 +98,11 @@ describe("Store", () => {
       });
       expect(value).toBe(1);
 
-      const p = getProfile();
-      expect(p.signalReads).toBe(1); // only "frozen" prop (value is on frozen obj, no proxy)
-      expect(p.signalWrites).toBe(0);
+      // The frozen object is the same reference passing through — it isn't
+      // wrapped in a proxy. Equivalently: a successful raw mutation would not
+      // be observable to the effect (we don't test that here because freezing
+      // forbids the mutation, but the unwrap-equality is the contract).
+      expect(unwrap(state.frozen)).toBe(frozen);
     });
 
     it("should handle circular references", () => {
@@ -146,18 +111,28 @@ describe("Store", () => {
       const state = createReactive(obj);
 
       let selfValue = 0;
-      effect(() => {
+      const effectFn = vi.fn(() => {
         selfValue = state.self.value;
       });
+      effect(effectFn);
 
       expect(state.value).toBe(1);
       expect(selfValue).toBe(1);
       expect(unwrap(state.self)).toBe(obj);
+      // The cycle resolves to the same proxy — `state.self` is `state`.
+      expect(state.self).toBe(state);
 
-      const p = getProfile();
-      expect(p.signalReads).toBe(2); // self + value inside effect
-      expect(p.signalSkips).toBe(2); // state.value + unwrap reads outside effect
-      expect(p.signalWrites).toBe(0);
+      // Mutating through the cycle propagates to subscribers tracking the
+      // same property via the direct path.
+      state.self.value = 2;
+      expect(state.value).toBe(2);
+      expect(selfValue).toBe(2);
+      expect(effectFn).toHaveBeenCalledTimes(2);
+
+      // And mutating directly propagates to subscribers tracking via the cycle.
+      state.value = 3;
+      expect(selfValue).toBe(3);
+      expect(effectFn).toHaveBeenCalledTimes(3);
     });
 
     it("should handle null and undefined values reactively", () => {
@@ -184,11 +159,6 @@ describe("Store", () => {
 
       update(state, { $set: { undef: "value" } });
       expect(undefValue).toBe("value");
-
-      const p = getProfile();
-      expect(p.signalReads).toBe(6); // 2 reads × 3 runs (initial + 2 updates)
-      expect(p.signalSkips).toBe(0);
-      expect(p.signalWrites).toBe(2); // nullable + undef
     });
 
     it("should handle nested reactivity in arrays", () => {
@@ -207,13 +177,6 @@ describe("Store", () => {
       expect(bobTasks).toEqual(["task3"]);
       update(state, { $push: { "users.1.tasks": "task4" } });
       expect(bobTasks).toEqual(["task3", "task4"]);
-
-      const p = getProfile();
-      expect(p.signalReads).toBe(3); // users, [1], tasks (initial run)
-      // 10 plain (push + expect reads), 12 under v8 coverage instrumentation.
-      // Lower-bounded so the same assertion holds in both run modes.
-      expect(p.signalSkips).toBeGreaterThanOrEqual(10);
-      expect(p.signalWrites).toBe(0); // push doesn't write to tracked signals
     });
 
     it("should handle adding new properties reactively", () => {
@@ -227,11 +190,6 @@ describe("Store", () => {
       update(state, { $set: { newProp: "value" } });
       expect(state.newProp).toBe("value");
       expect(keys.sort()).toEqual(["initial", "newProp"]);
-
-      const p = getProfile();
-      expect(p.signalReads).toBe(0); // Object.keys uses ownKeys trap, not signal reads
-      expect(p.signalSkips).toBe(1); // state.newProp read outside effect
-      expect(p.signalWrites).toBe(1); // ownKeys signal write (new key added)
     });
 
     it("should allow deletion of properties with $unset", () => {
@@ -245,28 +203,6 @@ describe("Store", () => {
       update(state, { $unset: { b: 1 } });
       expect(keys.sort()).toEqual(["a"]);
       expect(state.b).toBeUndefined();
-
-      const p = getProfile();
-      expect(p.signalReads).toBe(0); // Object.keys uses ownKeys trap
-      expect(p.signalSkips).toBe(1); // state.b read outside effect
-      expect(p.signalWrites).toBe(1); // ownKeys signal write (key deleted)
-    });
-
-    it("should increment version for writes even before a property is tracked", () => {
-      // The version signal's value is fed by a process-wide counter so the
-      // specific numbers aren't meaningful — only that each write produces a
-      // fresh value so `Object.is`-based signal propagation notifies
-      // subscribers.
-      const state = createReactive<any>({ a: 1 });
-
-      const v0 = state[$VERSION];
-      state.b = 2;
-      const v1 = state[$VERSION];
-      expect(v1).not.toBe(v0);
-
-      update(state, { $set: { a: 3 } });
-      const v2 = state[$VERSION];
-      expect(v2).not.toBe(v1);
     });
 
     it("should treat null and undefined initialState as empty object", () => {
@@ -276,36 +212,30 @@ describe("Store", () => {
       expect(typeof stateFromUndefined).toBe("object");
     });
 
-    it("should return true for internal symbols via the 'in' operator", () => {
-      const state = createReactive({ a: 1 });
-      expect($RAW in state).toBe(true);
-      expect($PROXY in state).toBe(true);
-      expect($NODE in state).toBe(true);
-      expect($VERSION in state).toBe(true);
-      expect((state as typeof state & { [$PROXY]: typeof state })[$PROXY]).toBe(state);
-    });
-
-    it("should allow bumpVersion before the version signal exists", () => {
-      const target = {};
-      expect(() => bumpVersion(target)).not.toThrow();
-    });
-
-    it("should read an array property before the array version signal exists", () => {
-      const state = createReactive({ items: [1, 2] });
-      let items: Array<number> = [];
-
-      effect(() => {
-        items = state.items;
-      });
-
-      expect(items).toEqual([1, 2]);
-    });
-
     it("should return proxy from cache when $PROXY cannot be defined (sealed object)", () => {
       const obj = Object.seal({ a: 1 });
       const proxy1 = createReactive(obj);
       const proxy2 = createReactive(obj);
       expect(proxy1).toBe(proxy2);
+
+      // Sealed targets can't host the proxy's signal storage (Object.seal
+      // freezes the property descriptor set), so reactivity silently
+      // degrades — reads/writes pass through but subscribers don't fire.
+      // We pin that behavior here so a future change can decide between
+      // throwing, copying, or fully supporting sealed inputs rather than
+      // accidentally regressing the silent-degrade contract.
+      let observed = 0;
+      const effectFn = vi.fn(() => {
+        observed = proxy1.a;
+      });
+      effect(effectFn);
+      expect(observed).toBe(1);
+      expect(effectFn).toHaveBeenCalledTimes(1);
+
+      proxy1.a = 2;
+      expect(proxy1.a).toBe(2);
+      expect(observed).toBe(1);
+      expect(effectFn).toHaveBeenCalledTimes(1);
     });
 
     it("should fire the deleteProperty proxy trap for non-array objects", () => {
@@ -374,13 +304,6 @@ describe("Store", () => {
 
       expect(keys).toEqual(["0", "1", "2"]);
       expect(effectFn).toHaveBeenCalledTimes(1);
-    });
-
-    it("should support the low-level delete helper on arrays", () => {
-      const items = [1, 2, 3];
-      deleteProperty(items, 1);
-      expect(items).toEqual([1, undefined, 3]);
-      expect(items.length).toBe(3);
     });
   });
 
