@@ -8,17 +8,19 @@ declare const process: { env: { NODE_ENV?: string } };
 /**
  * Run `cleanup` when the component truly unmounts.
  *
- * In production this is a plain useEffect cleanup — no overhead. In
+ * In production the cleanup runs synchronously on unmount. In
  * development it defers via `setTimeout(0)` to survive React 18
  * StrictMode's mount→cleanup→remount cycle: the remount fires the
  * effect again and clears the pending timer; on a real unmount the
  * timer survives and runs the cleanup.
  *
- * The `process.env.NODE_ENV` check is preserved as a literal in this
- * library's compiled dist (Vite library mode behavior); the consumer's
- * bundler replaces it at their build time, so dev-mode StrictMode
- * safety is preserved for downstream consumers running their own dev
- * server.
+ * Hooks are always called unconditionally — the dev/prod branch is
+ * inside the effect cleanup, so Rules of Hooks holds even if the
+ * `process.env.NODE_ENV` literal is somehow not replaced by a
+ * downstream bundler. Vite library mode preserves the literal in this
+ * package's compiled dist; consumer bundlers (Vite, webpack, esbuild,
+ * Rollup with terser) replace it at their build time, allowing the
+ * minifier to DCE the dev path in production.
  *
  * @example
  * ```ts
@@ -28,22 +30,18 @@ declare const process: { env: { NODE_ENV?: string } };
 export function useDisposeOnUnmount(cleanup: () => void): void {
   const cleanupRef = useRef(cleanup);
   cleanupRef.current = cleanup;
-
-  if (process.env.NODE_ENV === "production") {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- branch is constant per build; bundler DCEs the dev path.
-    useEffect(() => () => cleanupRef.current(), []);
-    return;
-  }
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+
   useEffect(() => {
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
     return () => {
+      if (process.env.NODE_ENV === "production") {
+        cleanupRef.current();
+        return;
+      }
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
         cleanupRef.current();
