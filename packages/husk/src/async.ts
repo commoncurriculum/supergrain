@@ -72,16 +72,16 @@ interface Deferred<T> {
 }
 
 function deferred<T>(): Deferred<T> {
-  const deferred = {} as Omit<Deferred<T>, "promise">;
+  const out = {} as Omit<Deferred<T>, "promise">;
   const promise = new Promise<T>((res, rej) => {
-    deferred.resolve = res;
-    deferred.reject = rej;
+    out.resolve = res;
+    out.reject = rej;
   });
   // Suppress unhandled-rejection warnings. Users observe rejections via
   // `await rp.promise` / `rp.promise.catch(...)` — attaching a catch
   // here creates a new branch, it doesn't swallow the rejection.
   promise.catch(() => {});
-  return { promise, ...deferred };
+  return { promise, ...out };
 }
 
 /**

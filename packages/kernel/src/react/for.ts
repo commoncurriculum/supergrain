@@ -131,17 +131,17 @@ export const For = tracked((props: ForProps<unknown>) => {
         const domChildren = container.children;
         const nodeA = domChildren[a];
         const nodeB = domChildren[b];
-        /* c8 ignore start -- DOM children can only be missing if external code mutates the parent ref */
+        /* c8 ignore next -- DOM children can only be missing if external code mutates the parent ref */
         if (nodeA && nodeB) {
           const siblingA = nodeA.nextSibling === nodeB ? nodeA : nodeA.nextSibling;
           nodeB.after(nodeA);
           if (siblingA) {
             siblingA.before(nodeB);
           } else {
+            /* c8 ignore next -- siblingA is null only when nodeA was the last child, which the swap predicate excludes */
             container.append(nodeB);
           }
         }
-        /* c8 ignore stop */
         // Update prev from raw (not swapping within prev) to preserve
         // object identity — raw may contain proxy wrappers while prev
         // has raw objects, so we must copy from raw for === to work.
