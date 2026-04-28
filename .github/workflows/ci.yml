@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   formatting:
-    name: Formatting / ${{ matrix.package }}
+    name: ${{ matrix.package }} / formatting
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -46,7 +46,7 @@ jobs:
           packages/${{ matrix.package }}/vite.config.ts
 
   lint:
-    name: Lint / ${{ matrix.package }}
+    name: ${{ matrix.package }} / lint
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -75,7 +75,7 @@ jobs:
         run: pnpm --filter="@supergrain/${{ matrix.package }}" run lint
 
   typecheck:
-    name: Typecheck / ${{ matrix.package }}
+    name: ${{ matrix.package }} / typecheck
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -104,7 +104,7 @@ jobs:
         run: pnpm --filter="@supergrain/${{ matrix.package }}" run typecheck
 
   types:
-    name: Types / ${{ matrix.package }}
+    name: ${{ matrix.package }} / types
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
