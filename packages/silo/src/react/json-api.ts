@@ -173,5 +173,19 @@ export function useHasManyIndividually<
   model: Model | null | undefined,
   relationName: RelName,
 ): ReadonlyArray<DocumentHandle<HasManyTarget<Model, RelName>>> {
-  return useHasMany(model, relationName);
+  const store = useContext(DocumentStoreContext);
+  if (store === null) {
+    throw new Error(
+      "@supergrain/silo/react/json-api: useHasManyIndividually must be used within the Provider returned by createDocumentStoreContext()",
+    );
+  }
+  const refs = (model?.relationships[relationName as string]?.data ?? []) as ReadonlyArray<{
+    type: string;
+    id: string;
+  }>;
+  return refs.map(
+    (ref) =>
+      // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
+      store.find(ref.type, ref.id) as DocumentHandle<HasManyTarget<Model, RelName>>,
+  );
 }

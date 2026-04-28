@@ -497,4 +497,15 @@ describe("hooks used outside Provider", () => {
 
     expect(() => render(<Component />)).toThrow(/useHasMany must be used within the Provider/);
   });
+
+  it("useHasManyIndividually throws when used outside the Provider", () => {
+    const Component = tracked(() => {
+      useHasManyIndividually({} as any, "cards" as any);
+      return null;
+    });
+
+    expect(() => render(<Component />)).toThrow(
+      /useHasManyIndividually must be used within the Provider/,
+    );
+  });
 });
