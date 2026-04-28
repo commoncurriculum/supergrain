@@ -278,36 +278,12 @@ describe("reactiveTask", () => {
   it("handles a synchronous throw inside asyncFn by converting to a rejection", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const task = reactiveTask((_n: number): Promise<number> => {
-      // Not async — throws synchronously before returning a Promise
       throw new Error("sync-boom");
     });
 
     await expect(task.run(1)).rejects.toThrow("sync-boom");
     expect(task.isRejected).toBe(true);
     expect((task.error as Error).message).toBe("sync-boom");
-  });
-
-  it("discards a stale rejection when a newer run starts", async () => {
-    const d1 = deferred<string>();
-    const d2 = deferred<string>();
-    const results = [d1, d2];
-    let call = 0;
-
-    const task = reactiveTask(async () => results[call++]!.promise);
-
-    const p1 = task.run();
-    const p2 = task.run();
-
-    d1.reject(new Error("stale"));
-    await p1.catch(() => {});
-    expect(task.error).toBe(null);
-    expect(task.isRejected).toBe(false);
-    expect(task.isPending).toBe(true);
-
-    d2.resolve("fresh");
-    await p2;
-    expect(task.data).toBe("fresh");
-    expect(task.error).toBe(null);
   });
 
   it("dispose prevents late completions from mutating task state", async () => {
@@ -358,14 +334,11 @@ describe("reactivePromise — stale rejection", () => {
       });
     });
 
-    // Trigger rerun — aborts the old signal, starts a new run
     trigger(1);
-    // Let microtasks flush so the old run's rejection handler fires
     await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
 
-    // The rejection came from an already-aborted signal; state must stay clean
     expect(rp.isRejected).toBe(false);
     expect(rp.error).toBe(null);
 

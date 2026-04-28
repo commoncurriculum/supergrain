@@ -25,7 +25,6 @@ import { effect } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Finder, type InternalState } from "../src/finder";
 import { createDocumentStore } from "../src/store";
 import {
   API_BASE,
@@ -440,81 +439,6 @@ describe("Queries share memory with documents", () => {
   });
 });
 
-// =============================================================================
-// Finder internals — branches public store calls normally hide
-// =============================================================================
-
-describe("Finder queue internals", () => {
-  it("dedupes duplicate document and query queue entries during a drain", async () => {
-    const documentFind = vi.fn(async () => []);
-    const queryFind = vi.fn(async () => []);
-    const state: InternalState = { documents: new Map(), queries: new Map() };
-    const store = { insertDocument: vi.fn(), insertQueryResult: vi.fn() };
-
-    const finder = new Finder({
-      batchWindowMs: 1_000_000,
-      models: {
-        user: { adapter: { find: documentFind } },
-      },
-      queries: {
-        dashboard: { adapter: { find: queryFind } },
-      },
-    } as any);
-
-    finder.attach(state, store as any);
-    finder.queueDocument("user" as any, "1");
-    finder.queueDocument("user" as any, "1");
-    finder.queueQuery("dashboard" as any, "same-key", { workspaceId: 1 } as never);
-    finder.queueQuery("dashboard" as any, "same-key", { workspaceId: 1 } as never);
-
-    await (finder as any).drain();
-
-    expect(documentFind).toHaveBeenCalledWith(["1"]);
-    expect(queryFind).toHaveBeenCalledWith([{ workspaceId: 1 }]);
-  });
-
-  it("returns early for empty drains and missing query configs", async () => {
-    const finder = new Finder({
-      batchWindowMs: 1_000_000,
-      models: {
-        user: { adapter: { find: async () => [] } },
-      },
-    } as any);
-
-    finder.attach({ documents: new Map(), queries: new Map() }, {} as any);
-    await expect((finder as any).drain()).resolves.toBeUndefined();
-
-    finder.queueQuery("unknown" as any, "params-key", { q: "missing" } as never);
-    await expect((finder as any).drain()).resolves.toBeUndefined();
-  });
-
-  it("ignores rejected chunks when no waiting handles remain", () => {
-    const finder = new Finder({
-      models: {
-        user: { adapter: { find: async () => [] } },
-      },
-      queries: {
-        dashboard: { adapter: { find: async () => [] } },
-      },
-    } as any);
-
-    finder.attach({ documents: new Map(), queries: new Map() }, {} as any);
-
-    expect(() =>
-      (finder as any).rejectDocumentChunk("user", ["missing"], "document failure"),
-    ).not.toThrow();
-    expect(() =>
-      (finder as any).rejectQueryChunk("dashboard", [{ paramsKey: "missing", params: {} }], {
-        message: "query failure",
-      }),
-    ).not.toThrow();
-  });
-});
-
-// =============================================================================
-// Query finder error paths — processor omits result or throws
-// =============================================================================
-
 describe("Query finder errors", () => {
   it("sets query handle to ERROR when processor does not insert the result", async () => {
     type Types = { user: { id: string; name: string } };
@@ -529,7 +453,6 @@ describe("Query finder errors", () => {
               return [];
             },
           },
-          // Processor intentionally does NOT call insertQueryResult
           processor: () => {},
         },
       },
@@ -572,16 +495,8 @@ describe("Query finder errors", () => {
   });
 });
 
-// =============================================================================
-// insertQueryResult — IDLE and ERROR status transitions
-// =============================================================================
-
-describe("insertQueryResult — IDLE and ERROR transitions", () => {
-  it("transitions a handle from IDLE → SUCCESS via insertQueryResult", async () => {
-    // Strategy: insertQueryResult creates a SUCCESS handle on first call.
-    // clearMemory() resets it to IDLE (isFetching was false, so resetHandle
-    // sets status=IDLE). A second insertQueryResult call finds the IDLE handle
-    // and takes the `else if (status === "IDLE")` branch (lines 566-572).
+describe("insertQueryResult transitions existing handles", () => {
+  it("updates an idle query handle without fetching", async () => {
     const store = createDocumentStore<TypeToModel, TypeToQuery>({
       models: {
         user: { adapter: { find: async () => [] } },
@@ -597,11 +512,8 @@ describe("insertQueryResult — IDLE and ERROR transitions", () => {
     const d1 = makeDashboard({ totalActiveUsers: 990 });
     const d2 = makeDashboard({ totalActiveUsers: 991 });
 
-    // First call: no existing slot → creates a new SUCCESS handle (not the IDLE branch)
     store.insertQueryResult("dashboard", params, d1);
-    // clearMemory resets the (non-fetching) SUCCESS handle to IDLE
     store.clearMemory();
-    // Second call: existing IDLE handle → exercises the IDLE → SUCCESS branch
     store.insertQueryResult("dashboard", params, d2);
 
     const inMemory = store.findQueryInMemory("dashboard", params);
@@ -612,7 +524,6 @@ describe("insertQueryResult — IDLE and ERROR transitions", () => {
     const store = initStore();
     const params: DashboardParams = { workspaceId: 77, filters: { active: true } };
 
-    // Simulate a failed fetch so the handle enters ERROR state.
     server.use(http.get(`${API_BASE}/dashboards`, () => HttpResponse.json({}, { status: 500 })));
 
     const handle = store.findQuery("dashboard", params);
@@ -620,10 +531,8 @@ describe("insertQueryResult — IDLE and ERROR transitions", () => {
     await handle.promise?.catch(() => {});
     expect(handle.status).toBe("ERROR");
 
-    // Reset MSW to avoid interfering with other tests
     server.resetHandlers();
 
-    // Now insert a result directly into the ERROR handle (lines 566-572)
     const dashboard = makeDashboard({ totalActiveUsers: 770 });
     store.insertQueryResult("dashboard", params, dashboard);
 

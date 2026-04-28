@@ -721,7 +721,7 @@ describe("Map nested inside createReactive object", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tracking precision — regression coverage for review fixes
+// Tracking precision
 // ---------------------------------------------------------------------------
 
 describe("Map tracking precision", () => {
@@ -746,9 +746,6 @@ describe("Map tracking precision", () => {
   });
 
   it("set() on an unobserved key does not leak signals into iteration tracking", () => {
-    // Indirect coverage for the "don't eagerly create per-key signals on write"
-    // fix: a value-only effect that never reads `k` shouldn't re-run when `k`
-    // changes after the effect is established.
     const m = createReactive(new Map<string, number>([["read", 1]]));
     const { count } = tracked(() => m.get("read"));
 

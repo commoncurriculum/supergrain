@@ -86,7 +86,7 @@ describe("Store", () => {
 
       const p = getProfile();
       expect(p.signalReads).toBe(22);
-      expect(p.signalSkips).toBeGreaterThanOrEqual(9); // 9 without coverage instrumentation, 10 with
+      expect(p.signalSkips).toBeGreaterThanOrEqual(9);
       expect(p.signalWrites).toBe(2);
     });
 
@@ -207,7 +207,7 @@ describe("Store", () => {
 
       const p = getProfile();
       expect(p.signalReads).toBe(3); // users, [1], tasks (initial run)
-      expect(p.signalSkips).toBeGreaterThanOrEqual(10); // reads during push + expect (10 without coverage, 12 with)
+      expect(p.signalSkips).toBeGreaterThanOrEqual(10);
       expect(p.signalWrites).toBe(0); // push doesn't write to tracked signals
     });
 
@@ -350,10 +350,8 @@ describe("Store", () => {
       expect(value).toBeUndefined();
     });
 
-    it("should call bumpOwnKeysSignal early-return for delete on untracked array", () => {
+    it("should delete from an untracked array", () => {
       const state = createReactive<any>({ items: [1, 2, 3] });
-      // Delete from array without any subscriber — bumpOwnKeysSignal gets
-      // called with no nodes (never been tracked), takes the early-return path.
       delete state.items[0];
       expect(state.items[0]).toBeUndefined();
       expect(state.items.length).toBe(3);

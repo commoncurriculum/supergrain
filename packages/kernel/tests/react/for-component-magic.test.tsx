@@ -993,7 +993,7 @@ describe("For Component Magic Tests", () => {
       expect(rows[4]!.className).toBe("");
     });
 
-    it("empty array with parent ref cleans up and exits early (lines 90-93)", async () => {
+    it("removes rendered rows when a parent-backed list becomes empty", async () => {
       const store = createReactive<{ data: RowData[] }>({
         data: [
           { id: 1, label: "A" },
@@ -1017,7 +1017,6 @@ describe("For Component Magic Tests", () => {
       const { container } = render(<App />);
       expect(container.querySelectorAll("tr").length).toBe(2);
 
-      // Clear the array — triggers the !raw || raw.length === 0 branch in the layout effect
       await act(async () => {
         store.data.splice(0, store.data.length);
       });
@@ -1025,7 +1024,7 @@ describe("For Component Magic Tests", () => {
       expect(container.querySelectorAll("tr").length).toBe(0);
     });
 
-    it("more than 2 elements change simultaneously — alien effect breaks early (line 122)", async () => {
+    it("keeps the DOM stable when several rows reorder in one batch", async () => {
       const store = createReactive<{ data: RowData[] }>({
         data: [
           { id: 1, label: "A" },
@@ -1052,9 +1051,6 @@ describe("For Component Magic Tests", () => {
       const { container: c } = render(<App />);
       expect(c.querySelectorAll("tr")).toHaveLength(5);
 
-      // Swap 3 elements simultaneously in one batch — changed.length will be > 2
-      // The alien effect sees all changes at once, hits changed.length > 2, breaks (line 122)
-      // and falls back to updating prevRawRef without doing a DOM swap.
       await act(async () => {
         startBatch();
         const tmp0 = store.data[0]!;
@@ -1066,8 +1062,6 @@ describe("For Component Magic Tests", () => {
         endBatch();
       });
 
-      // For re-renders due to structural reorder (ownKeys subscription),
-      // so the DOM will be correct after React reconciles.
       expect(c.querySelectorAll("tr")).toHaveLength(5);
     });
   });

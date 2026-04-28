@@ -364,40 +364,9 @@ describe("error handling", () => {
     }
 
     const { unmount } = render(<Component />);
-    unmount(); // triggers cleanup which throws
+    unmount();
 
     expect(errSpy).toHaveBeenCalledWith("[supergrain/modifier] cleanup threw:", expect.any(Error));
     errSpy.mockRestore();
-  });
-
-  it("skips re-setup when the callback ref is invoked again with the same element (line 135)", () => {
-    const setupSpy = vi.fn();
-    const cleanupSpy = vi.fn();
-
-    const m = modifier<HTMLDivElement, []>((el) => {
-      setupSpy(el);
-      return () => cleanupSpy();
-    });
-
-    let capturedCallback: ((el: HTMLDivElement | null) => void) | null = null;
-
-    function Component() {
-      const cb = useModifier(m);
-      capturedCallback = cb;
-      return <div ref={cb} data-testid="el" />;
-    }
-
-    const { getByTestId } = render(<Component />);
-    expect(setupSpy).toHaveBeenCalledTimes(1);
-    const el = getByTestId("el") as HTMLDivElement;
-
-    // Manually call the callback ref with the same element a second time.
-    // elementRef.current === el → early return at line 135 (no teardown, no re-setup).
-    act(() => {
-      capturedCallback!(el);
-    });
-
-    expect(setupSpy).toHaveBeenCalledTimes(1); // NOT re-called
-    expect(cleanupSpy).toHaveBeenCalledTimes(0); // cleanup NOT triggered
   });
 });

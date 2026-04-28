@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDocumentStore, type DocumentStore, type DocumentAdapter } from "../src";
+import { Finder, type InternalState } from "../src/finder";
 
 // =============================================================================
 // Finder contract tests.
@@ -318,14 +319,8 @@ describe("Finder is adapter-agnostic", () => {
   });
 });
 
-// =============================================================================
-// Coverage gaps — query-only drain and non-Error rejection in queries
-// =============================================================================
-
-describe("Finder — query-only drain (line 105 empty documentGroups)", () => {
-  it("drains only queries when no documents are queued (documentGroups is empty)", async () => {
-    // This exercises the for-of loop on documentGroups when it has zero entries.
-    // Only queries are in the queue so the documentGroups loop body never fires.
+describe("Finder handles query-only batches", () => {
+  it("drains queued queries without requiring any document requests", async () => {
     type Types = { user: { id: string; name: string } };
     type Queries = { search: { params: { q: string }; result: { total: number } } };
 
@@ -347,13 +342,12 @@ describe("Finder — query-only drain (line 105 empty documentGroups)", () => {
 
     expect(h.status).toBe("SUCCESS");
     expect(h.data?.total).toBe(42);
-    // Document adapter should NOT have been called (no documents queued)
     expect(queryAdapter.calls).toHaveLength(1);
   });
 });
 
-describe("Finder — non-Error query rejection (line 261 non-Error branch)", () => {
-  it("wraps a non-Error query adapter rejection in a new Error", async () => {
+describe("Finder normalizes adapter failures", () => {
+  it("wraps a non-Error query adapter rejection in an Error", async () => {
     type Types = { user: { id: string; name: string } };
     type Queries = { search: { params: { q: string }; result: { total: number } } };
 
@@ -362,7 +356,6 @@ describe("Finder — non-Error query rejection (line 261 non-Error branch)", () 
       queries: {
         search: {
           adapter: {
-            // Reject with a plain string, not an Error instance
             async find() {
               throw "plain-string-error";
             },
@@ -376,16 +369,11 @@ describe("Finder — non-Error query rejection (line 261 non-Error branch)", () 
     await h.promise?.catch(() => {});
 
     expect(h.status).toBe("ERROR");
-    // The non-Error string was coerced to an Error instance (line 261)
     expect(h.error).toBeInstanceOf(Error);
     expect(h.error?.message).toBe("plain-string-error");
   });
-});
 
-describe("Finder — non-Error document rejection (line 175 non-Error branch)", () => {
-  it("wraps a non-Error document adapter rejection in a new Error", async () => {
-    // The rejectDocumentChunk method checks `error instanceof Error` at line 175.
-    // Throwing a plain string exercises the false branch (non-Error → coerce).
+  it("wraps a non-Error document adapter rejection in an Error", async () => {
     const store = createDocumentStore<TestTypes>({
       models: {
         user: {
@@ -405,5 +393,194 @@ describe("Finder — non-Error document rejection (line 175 non-Error branch)", 
     expect(h.status).toBe("ERROR");
     expect(h.error).toBeInstanceOf(Error);
     expect(h.error?.message).toBe("document-string-error");
+  });
+});
+
+describe("Finder empty queues and orphaned handles", () => {
+  it("deduplicates repeated document ids and query params within one drain", async () => {
+    type Queries = { search: { params: { q: string }; result: { total: number } } };
+    const documentCalls: string[][] = [];
+    const queryCalls: Array<Array<unknown>> = [];
+    const store = createDocumentStore<TestTypes, Queries>({
+      models: {
+        user: {
+          adapter: {
+            async find(ids) {
+              return ids.map((id) => ({ id, name: `User${id}` }));
+            },
+          },
+        },
+        post: { adapter: makePostAdapter() },
+      },
+      queries: {
+        search: {
+          adapter: {
+            async find(paramsList) {
+              return paramsList.map(() => ({ total: 1 }));
+            },
+          },
+        },
+      },
+    });
+    const finder = new Finder<TestTypes, Queries>({
+      models: {
+        user: {
+          adapter: {
+            async find(ids) {
+              documentCalls.push([...ids]);
+              return ids.map((id) => ({ id, name: `User${id}` }));
+            },
+          },
+        },
+        post: { adapter: makePostAdapter() },
+      },
+      queries: {
+        search: {
+          adapter: {
+            async find(paramsList) {
+              queryCalls.push([...paramsList]);
+              return paramsList.map(() => ({ total: 1 }));
+            },
+          },
+        },
+      },
+    });
+
+    finder.attach({ documents: new Map(), queries: new Map() }, store);
+    finder.queueDocument("user", "1");
+    finder.queueDocument("user", "1");
+    finder.queueQuery("search", "same-query", { q: "hello" });
+    finder.queueQuery("search", "same-query", { q: "hello" });
+
+    await (finder as unknown as { drain(): Promise<void> }).drain();
+
+    expect(documentCalls).toEqual([["1"]]);
+    expect(queryCalls).toEqual([[{ q: "hello" }]]);
+  });
+
+  it("allows an empty drain", async () => {
+    const finder = new Finder<TestTypes>({
+      models: {
+        user: { adapter: makeUserAdapter() },
+        post: { adapter: makePostAdapter() },
+      },
+    });
+
+    finder.attach({ documents: new Map(), queries: new Map() }, {} as DocumentStore<TestTypes>);
+
+    await expect(
+      (finder as unknown as { drain(): Promise<void> }).drain(),
+    ).resolves.toBeUndefined();
+  });
+
+  it("ignores a queued query when no query adapter is configured", async () => {
+    const finder = new Finder<TestTypes>({
+      models: {
+        user: { adapter: makeUserAdapter() },
+        post: { adapter: makePostAdapter() },
+      },
+    });
+
+    finder.attach({ documents: new Map(), queries: new Map() }, {} as DocumentStore<TestTypes>);
+    finder.queueQuery("missing" as never, "params", { q: "missing" } as never);
+
+    await expect(
+      (finder as unknown as { drain(): Promise<void> }).drain(),
+    ).resolves.toBeUndefined();
+  });
+
+  it("ignores queued work when the waiting handle was removed before drain", async () => {
+    type Queries = { search: { params: { q: string }; result: { total: number } } };
+    const documentCalls: string[][] = [];
+    const queryCalls: Array<Array<{ q: string }>> = [];
+    const state: InternalState = { documents: new Map(), queries: new Map() };
+    const store = createDocumentStore<TestTypes, Queries>({
+      models: {
+        user: {
+          adapter: {
+            async find(ids) {
+              documentCalls.push([...ids]);
+              return ids.map((id) => ({ id, name: `User${id}` }));
+            },
+          },
+        },
+        post: { adapter: makePostAdapter() },
+      },
+      queries: {
+        search: {
+          adapter: {
+            async find(paramsList) {
+              queryCalls.push([...paramsList]);
+              return paramsList.map(() => ({ total: 1 }));
+            },
+          },
+        },
+      },
+    });
+    const finder = new Finder<TestTypes, Queries>({
+      models: {
+        user: {
+          adapter: {
+            async find(ids) {
+              documentCalls.push([...ids]);
+              return ids.map((id) => ({ id, name: `User${id}` }));
+            },
+          },
+        },
+        post: { adapter: makePostAdapter() },
+      },
+      queries: {
+        search: {
+          adapter: {
+            async find(paramsList) {
+              queryCalls.push([...paramsList]);
+              return paramsList.map(() => ({ total: 1 }));
+            },
+          },
+        },
+      },
+    });
+
+    finder.attach(state, store);
+    finder.queueDocument("user", "1");
+    finder.queueQuery("search", "search-key", { q: "hello" });
+
+    await (finder as unknown as { drain(): Promise<void> }).drain();
+
+    expect(documentCalls).toEqual([["1"]]);
+    expect(queryCalls).toEqual([[{ q: "hello" }]]);
+  });
+
+  it("ignores rejected chunks when the waiting handle was removed before rejection", () => {
+    const finder = new Finder<TestTypes>({
+      models: {
+        user: { adapter: makeUserAdapter() },
+        post: { adapter: makePostAdapter() },
+      },
+      queries: {
+        search: { adapter: { find: async () => [] } },
+      },
+    } as never);
+
+    finder.attach({ documents: new Map(), queries: new Map() }, {} as DocumentStore<TestTypes>);
+
+    expect(() =>
+      (
+        finder as unknown as {
+          rejectDocumentChunk(type: string, ids: Array<string>, error: unknown): void;
+        }
+      ).rejectDocumentChunk("user", ["missing"], "document failure"),
+    ).not.toThrow();
+    expect(() =>
+      (
+        finder as unknown as {
+          rejectQueryChunk(
+            type: string,
+            chunk: Array<{ paramsKey: string; params: unknown }>,
+            error: unknown,
+          ): void;
+        }
+      ).rejectQueryChunk("search", [{ paramsKey: "missing", params: {} }], "query failure"),
+    ).not.toThrow();
   });
 });

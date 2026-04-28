@@ -228,17 +228,11 @@ describe("Array Support", () => {
   });
 });
 
-describe("trackArrayVersion branch coverage", () => {
-  it("does not crash when an array has no $VERSION signal (never mutated in tracked context)", () => {
-    // Create a reactive array that is read in an effect but never mutated.
-    // trackArrayVersion will call getNodes(value) but nodes[$VERSION] is
-    // undefined (falsy) because no mutation has happened yet, exercising
-    // the `if (arrayNodes[$VERSION])` false branch in read.ts.
+describe("Array Support — tracked reads before mutation", () => {
+  it("reads array length before any array mutation", () => {
     const store = createReactive({ items: [1, 2, 3] as number[] });
     const seen: number[] = [];
 
-    // Read the array inside an effect — this calls trackArrayVersion.
-    // No prior mutation has bumped $VERSION, so it doesn't exist yet.
     const stop = effect(() => {
       seen.push(store.items.length);
     });

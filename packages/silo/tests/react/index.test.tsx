@@ -421,7 +421,6 @@ describe("Provider initial data seeding", () => {
       </Provider>,
     );
 
-    // No network request — data was seeded directly into the store
     expect(screen.getByTestId("u1").textContent).toBe(`User${user1.id}`);
     expect(screen.getByTestId("u2").textContent).toBe(`User${user2.id}`);
   });
@@ -445,14 +444,8 @@ describe("Provider initial data seeding", () => {
   });
 });
 
-// =============================================================================
-// seedModels / seedQueries — null / undefined bucket guard (lines 43, 57)
-// =============================================================================
-
 describe("Provider initial data — null/undefined guards", () => {
-  it("seedModels gracefully skips a null/undefined bucket (line 43 false branch)", () => {
-    // Pass `initial.model` where one type's bucket is undefined — exercises the
-    // `if (bucket)` false branch at line 43 of silo/src/react/index.ts.
+  it("skips an undefined model bucket", () => {
     const nullBucketInitial = {
       model: {
         user: undefined as unknown as Record<string, User>,
@@ -470,9 +463,7 @@ describe("Provider initial data — null/undefined guards", () => {
     expect(screen.getByTestId("ok").textContent).toBe("ok");
   });
 
-  it("seedModels skips a null doc entry within a bucket (line 46 false branch)", () => {
-    // Pass a bucket with one key whose value is undefined — exercises the
-    // `if (doc)` false branch at line 46.
+  it("skips undefined model entries", () => {
     const sparseInitial = {
       model: {
         user: {
@@ -492,9 +483,7 @@ describe("Provider initial data — null/undefined guards", () => {
     expect(screen.getByTestId("ok").textContent).toBe("ok");
   });
 
-  it("seedQueries gracefully skips a null/undefined list (line 57 false branch)", () => {
-    // Pass `initial.query` where one type's list is undefined — exercises the
-    // `if (list)` false branch at line 57.
+  it("skips an undefined query result list", () => {
     const nullListInitial = {
       query: {
         dashboard: undefined as unknown as Array<{

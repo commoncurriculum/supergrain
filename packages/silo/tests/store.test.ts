@@ -376,14 +376,8 @@ describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", (
   });
 });
 
-// =============================================================================
-// Coverage gaps
-// =============================================================================
-
-describe("Store — coverage gaps", () => {
-  it("insertQueryResult does not double-freeze an already-frozen result (line 527 false branch)", () => {
-    // The false branch of `!Object.isFrozen(result)` is taken when the result
-    // is already frozen — the Object.freeze call is skipped.
+describe("Store query memory operations", () => {
+  it("accepts an already-frozen query result", () => {
     const frozenDashboard = Object.freeze(makeDashboard({ totalActiveUsers: 999 }));
     const params: DashboardParams = { workspaceId: 999, filters: { active: true } };
 
@@ -393,9 +387,7 @@ describe("Store — coverage gaps", () => {
     expect(Object.isFrozen(frozenDashboard)).toBe(true);
   });
 
-  it("clearMemory resets query handles too (queries loop in clearMemory)", () => {
-    // Insert a query result so state.queries["dashboard"] is populated,
-    // then call clearMemory — exercises the queries for-loop (lines 585-590)
+  it("clearMemory resets query handles", () => {
     const params: DashboardParams = { workspaceId: 10, filters: { active: true } };
     store.insertQueryResult("dashboard", params, makeDashboard({ totalActiveUsers: 100 }));
 
@@ -404,14 +396,11 @@ describe("Store — coverage gaps", () => {
 
     store.clearMemory();
 
-    // After clearMemory the query slot is reset to IDLE
     const afterClear = store.findQueryInMemory("dashboard", params);
     expect(afterClear).toBeUndefined();
   });
 
-  it("stableStringify handles array-valued params (covers array branch arrow fn)", async () => {
-    // stableStringify has an `Array.isArray` branch with an inner arrow fn.
-    // Params containing arrays exercise this branch.
+  it("supports array-valued query params", async () => {
     type ArrayTypes = { item: { id: string } };
     type ArrayQueries = { tagged: { params: { tags: string[] }; result: { count: number } } };
 
