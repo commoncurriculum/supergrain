@@ -86,6 +86,9 @@ describe("Store", () => {
 
       const p = getProfile();
       expect(p.signalReads).toBe(22);
+      // 9 plain, 10 under v8 coverage instrumentation. Coverage adds extra
+      // untracked reads through the proxy; lower-bound the assertion so the
+      // test pins the floor without locking us to a specific run mode.
       expect(p.signalSkips).toBeGreaterThanOrEqual(9);
       expect(p.signalWrites).toBe(2);
     });
@@ -207,6 +210,8 @@ describe("Store", () => {
 
       const p = getProfile();
       expect(p.signalReads).toBe(3); // users, [1], tasks (initial run)
+      // 10 plain (push + expect reads), 12 under v8 coverage instrumentation.
+      // Lower-bounded so the same assertion holds in both run modes.
       expect(p.signalSkips).toBeGreaterThanOrEqual(10);
       expect(p.signalWrites).toBe(0); // push doesn't write to tracked signals
     });
