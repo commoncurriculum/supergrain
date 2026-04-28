@@ -94,9 +94,13 @@ export function deleteProperty(target: any, key: PropertyKey): void {
   if (hadKey) {
     bumpVersion(target);
 
-    // bumpVersion calls getNodes(target), but the underlying defineProperty
-    // is wrapped in try/catch — non-extensible targets keep their nodes
-    // detached, so getNodesIfExist can still be undefined here.
+    // Keep the `if (nodes)` guard. It looks like `bumpVersion` should
+    // guarantee nodes are attached, but `getNodes` wraps its
+    // `Object.defineProperty($NODE, …)` in `try/catch` — non-extensible
+    // targets (e.g. `Object.preventExtensions`) leave `$NODE` detached, and
+    // `getNodesIfExist` still returns `undefined` here. Removing this guard
+    // and using `!` will TypeError on `nodes[key]`. See store.test.ts
+    // "should not throw when deleting a key from a non-extensible target".
     const nodes = getNodesIfExist(target);
     if (nodes) {
       const node = nodes[key];
