@@ -228,8 +228,8 @@ describe("Array Support", () => {
   });
 });
 
-describe("Array Support — tracked reads before mutation", () => {
-  it("reads array length before any array mutation", () => {
+describe("Array Support — tracked reads survive subsequent mutations", () => {
+  it("a length-tracking effect created before any mutation re-fires when the array grows", () => {
     const store = createReactive({ items: [1, 2, 3] as number[] });
     const seen: number[] = [];
 
@@ -238,6 +238,13 @@ describe("Array Support — tracked reads before mutation", () => {
     });
 
     expect(seen).toEqual([3]);
+
+    store.items.push(4);
+    expect(seen).toEqual([3, 4]);
+
+    store.items.pop();
+    expect(seen).toEqual([3, 4, 3]);
+
     stop();
   });
 });
