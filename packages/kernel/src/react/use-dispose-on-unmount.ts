@@ -8,19 +8,31 @@ declare const process: { env: { NODE_ENV?: string } };
 /**
  * Run `cleanup` when the component truly unmounts.
  *
- * In production the cleanup runs synchronously on unmount. In
- * development it defers via `setTimeout(0)` to survive React 18
+ * In production this is a plain useEffect cleanup — no extra hooks,
+ * no extra refs, no `setTimeout`, no `clearTimeout`. After the
+ * consumer's bundler replaces `process.env.NODE_ENV` and DCEs the
+ * dev branch, the runtime cost is identical to a single
+ * `useEffect(() => () => cleanup(), [])`. In development the dev
+ * branch defers cleanup via `setTimeout(0)` so it survives React 18
  * StrictMode's mount→cleanup→remount cycle: the remount fires the
- * effect again and clears the pending timer; on a real unmount the
- * timer survives and runs the cleanup.
+ * effect again, which clears the pending timer; on a real unmount
+ * the timer survives and runs the cleanup.
  *
- * Hooks are always called unconditionally — the dev/prod branch is
- * inside the effect cleanup, so Rules of Hooks holds even if the
- * `process.env.NODE_ENV` literal is somehow not replaced by a
- * downstream bundler. Vite library mode preserves the literal in this
- * package's compiled dist; consumer bundlers (Vite, webpack, esbuild,
- * Rollup with terser) replace it at their build time, allowing the
- * minifier to DCE the dev path in production.
+ * **Why the early return + ESLint suppressions:** branching the hook
+ * list on `process.env.NODE_ENV` is intentional — that constant is
+ * folded at the consumer's build time, so within a single build the
+ * branch taken is fixed and Rules of Hooks holds. Moving the branch
+ * inside the effect cleanup (or guarding with `typeof process` /
+ * try-catch) would force the dev-only `timerRef` to be allocated in
+ * production too — terser keeps `useRef(null)` because it's a hook
+ * call with potential side effects, defeating the dev/prod split.
+ *
+ * This pattern matches React's own dev/prod conventions (`if
+ * (process.env.NODE_ENV !== "production") ...`). Bundlers all
+ * replace the literal: Vite, webpack, esbuild, Rollup with terser,
+ * Parcel, Next.js, Bun. Node has `process` as a real global.
+ * Unbundled browser ESM is not a supported scenario for this hook
+ * (or for React itself).
  *
  * @example
  * ```ts
@@ -30,18 +42,22 @@ declare const process: { env: { NODE_ENV?: string } };
 export function useDisposeOnUnmount(cleanup: () => void): void {
   const cleanupRef = useRef(cleanup);
   cleanupRef.current = cleanup;
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  if (process.env.NODE_ENV === "production") {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- branch is constant per build; bundler DCEs the dev path. See JSDoc.
+    useEffect(() => () => cleanupRef.current(), []);
+    return;
+  }
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
     return () => {
-      if (process.env.NODE_ENV === "production") {
-        cleanupRef.current();
-        return;
-      }
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
         cleanupRef.current();
