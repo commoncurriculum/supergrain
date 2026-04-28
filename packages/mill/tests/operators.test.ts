@@ -288,8 +288,21 @@ describe("Coverage gaps", () => {
     expect(store.newCounter).toBe(5);
   });
 
+  it("$inc initializes existing null and undefined values", () => {
+    const store = createReactive<any>({ fromNull: null, fromUndefined: undefined });
+    update(store, { $inc: { fromNull: 3, fromUndefined: 4 } });
+    expect(store.fromNull).toBe(3);
+    expect(store.fromUndefined).toBe(4);
+  });
+
   it("$min creates a new path when it does not exist", () => {
     const store = createReactive<any>({});
+    update(store, { $min: { score: 10 } });
+    expect(store.score).toBe(10);
+  });
+
+  it("$min initializes existing undefined values", () => {
+    const store = createReactive<any>({ score: undefined });
     update(store, { $min: { score: 10 } });
     expect(store.score).toBe(10);
   });
@@ -298,6 +311,23 @@ describe("Coverage gaps", () => {
     const store = createReactive<any>({});
     update(store, { $max: { score: 10 } });
     expect(store.score).toBe(10);
+  });
+
+  it("$max initializes existing undefined values", () => {
+    const store = createReactive<any>({ score: undefined });
+    update(store, { $max: { score: 10 } });
+    expect(store.score).toBe(10);
+  });
+
+  it("$min and $max leave null values unchanged", () => {
+    const minStore = createReactive<any>({ score: null });
+    const maxStore = createReactive<any>({ score: null });
+
+    update(minStore, { $min: { score: 10 } });
+    update(maxStore, { $max: { score: 10 } });
+
+    expect(minStore.score).toBe(null);
+    expect(maxStore.score).toBe(null);
   });
 
   it("$set creates nested paths that do not exist yet (ensureParentPath creates missing segments)", () => {
@@ -312,24 +342,51 @@ describe("Coverage gaps", () => {
     expect(() => update(store, { $push: { "a.b.c": "x" } })).toThrow(/must resolve/i);
   });
 
-  it("$inc falls back to setValueAtPath when resolveParentPath returns null (non-container intermediate)", () => {
-    // "a.b" where a=42 (not a container) → resolveParentPath returns null → else branch (line 237)
-    const store = createReactive<any>({ a: 42 });
-    update(store, { $inc: { "a.b": 5 } });
-    expect((store.a as any).b).toBe(5);
+  it("numeric operators create missing nested paths when the parent resolver returns null", () => {
+    const incStore = createReactive<any>({ a: 42 });
+    const minStore = createReactive<any>({ a: 42 });
+    const maxStore = createReactive<any>({ a: 42 });
+
+    update(incStore, { $inc: { "a.b": 1 } });
+    update(minStore, { $min: { "a.c": 2 } });
+    update(maxStore, { $max: { "a.d": 3 } });
+
+    expect(incStore.a).toEqual({ b: 1 });
+    expect(minStore.a).toEqual({ c: 2 });
+    expect(maxStore.a).toEqual({ d: 3 });
   });
 
-  it("$min falls back to setValueAtPath when resolveParentPath returns null (non-container intermediate)", () => {
-    // "a.b" where a=42 → resolveParentPath returns null → else branch (line 325)
-    const store = createReactive<any>({ a: 42 });
-    update(store, { $min: { "a.b": 3 } });
-    expect((store.a as any).b).toBe(3);
+  it("$pull mutates an untracked array without indexed subscribers", () => {
+    const store = createReactive<any>({ items: [1, 2, 3] });
+    update(store, { $pull: { items: 2 } });
+    expect(store.items).toEqual([1, 3]);
   });
 
-  it("$max falls back to setValueAtPath when resolveParentPath returns null (non-container intermediate)", () => {
-    // "a.b" where a=42 → resolveParentPath returns null → else branch (line 339)
-    const store = createReactive<any>({ a: 42 });
-    update(store, { $max: { "a.b": 7 } });
-    expect((store.a as any).b).toBe(7);
+  it("$pull can update a raw object without reactive array nodes", () => {
+    const store = { items: [1, 2, 3] };
+    update(store, { $pull: { items: 2 } });
+    expect(store.items).toEqual([1, 3]);
+  });
+
+  it("$pull leaves unchanged indexed signals alone", () => {
+    const store = createReactive<any>({ items: [1, 2, 3] });
+    let first: number | undefined;
+    let third: number | undefined;
+
+    effect(() => {
+      first = store.items[0];
+      third = store.items[2];
+    });
+
+    update(store, { $pull: { items: 2 } });
+
+    expect(first).toBe(1);
+    expect(third).toBeUndefined();
+  });
+
+  it("$rename ignores missing source paths", () => {
+    const store = createReactive<any>({ user: { name: "Jane" } });
+    update(store, { $rename: { "user.missing": "user.other" } });
+    expect(store.user).toEqual({ name: "Jane" });
   });
 });

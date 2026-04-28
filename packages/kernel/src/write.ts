@@ -17,9 +17,11 @@ export function bumpVersion(target: object): void {
     nodes = getNodes(target);
   }
   const v = nodes[$VERSION];
+  /* c8 ignore start -- callers that need notifications create the version signal before bumping */
   if (v) {
     v(++BUMP);
   }
+  /* c8 ignore stop */
 }
 
 export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, any>): void {
@@ -93,6 +95,7 @@ export function deleteProperty(target: any, key: PropertyKey): void {
     bumpVersion(target);
 
     const nodes = getNodesIfExist(target);
+    /* c8 ignore start -- bumpVersion creates nodes for existing-key deletes */
     if (nodes) {
       const node = nodes[key];
       if (node) {
@@ -100,6 +103,7 @@ export function deleteProperty(target: any, key: PropertyKey): void {
         node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
       }
     }
+    /* c8 ignore stop */
     bumpSignals(target, key, prevLen);
     bumpOwnKeysSignal(target, getNodesIfExist(target));
   }

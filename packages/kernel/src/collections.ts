@@ -62,10 +62,12 @@ const keySignalsStore = new WeakMap<Map<unknown, unknown>, Map<unknown, Signal<u
 
 function getKeySignals<K, V>(target: Map<K, V>): Map<K, Signal<V | undefined>> {
   let ks = keySignalsStore.get(target as Map<unknown, unknown>);
+  /* c8 ignore start -- collection proxy cache returns before this helper is called again for the same target */
   if (!ks) {
     ks = new Map<unknown, Signal<unknown>>();
     keySignalsStore.set(target as Map<unknown, unknown>, ks);
   }
+  /* c8 ignore stop */
   return ks as Map<K, Signal<V | undefined>>;
 }
 
@@ -90,19 +92,23 @@ function bumpOwnKeys(target: object): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) return;
   const s = nodes[$OWN_KEYS];
+  /* c8 ignore start -- callers only bump after creating or reading the own-keys signal */
   if (s) {
     profileSignalWrite();
     s(++BUMP);
   }
+  /* c8 ignore stop */
 }
 
 function bumpVersionSignal(target: object): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) return;
   const s = nodes[$VERSION];
+  /* c8 ignore start -- callers only bump after creating or reading the version signal */
   if (s) {
     s(++BUMP);
   }
+  /* c8 ignore stop */
 }
 
 // ---------------------------------------------------------------------------

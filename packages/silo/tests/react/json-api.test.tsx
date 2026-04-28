@@ -370,6 +370,29 @@ describe("useHasMany", () => {
 
     expect(screen.getByTestId("cards").textContent).toBe("no cards");
   });
+
+  it("returns an empty array when the relationship is absent", () => {
+    const MissingRelationship = tracked(function MissingRelationship() {
+      const handles = useHasMany(
+        {
+          id: "s1",
+          type: "card-stack",
+          attributes: { title: "Stack" },
+          relationships: {},
+        } as any,
+        "cards",
+      );
+      return <span data-testid="cards">{handles.length}</span>;
+    });
+
+    render(
+      <Wrap>
+        <MissingRelationship />
+      </Wrap>,
+    );
+
+    expect(screen.getByTestId("cards").textContent).toBe("0");
+  });
 });
 
 // =============================================================================

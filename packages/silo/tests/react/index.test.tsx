@@ -521,4 +521,26 @@ describe("Provider initial data — null/undefined guards", () => {
 
     expect(screen.getByTestId("ok").textContent).toBe("rendered");
   });
+
+  it("ignores undefined model entries in an initial bucket", () => {
+    const user = makeUser("seeded");
+
+    const UserDisplay = tracked(function UserDisplay() {
+      const handle = useDocument("user", "seeded");
+      return <span data-testid="seeded">{handle.data?.attributes.firstName ?? "-"}</span>;
+    });
+
+    render(
+      <Provider
+        config={makeStoreConfig()}
+        initial={{
+          model: { user: { seeded: user, missing: undefined as unknown as User } },
+        }}
+      >
+        <UserDisplay />
+      </Provider>,
+    );
+
+    expect(screen.getByTestId("seeded").textContent).toBe(`User${user.id}`);
+  });
 });

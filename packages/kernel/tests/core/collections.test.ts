@@ -2,6 +2,7 @@ import fc from "fast-check";
 import { describe, it, expect, vi } from "vitest";
 
 import { createReactive, effect, unwrap, batch } from "../../src";
+import { $PROXY, $RAW } from "../../src/internal";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -288,6 +289,41 @@ describe("createReactive(new Map()) — reactive Map", () => {
     });
   });
 
+  it("exposes internal symbols and preserves bound native methods", () => {
+    const raw = new Map<string, number>([["a", 1]]);
+    Object.defineProperty(raw, "tag", { value: "custom", configurable: true });
+    const m = createReactive(raw);
+
+    expect($RAW in m).toBe(true);
+    expect($PROXY in m).toBe(true);
+    expect((m as Map<string, number> & { [$RAW]: Map<string, number> })[$RAW]).toBe(raw);
+    expect((m as Map<string, number> & { [$PROXY]: Map<string, number> })[$PROXY]).toBe(m);
+    expect(Object.prototype.toString.call(m)).toBe("[object Map]");
+
+    const get = m.get;
+    const has = m.has;
+    expect(get("a")).toBe(1);
+    expect(has("a")).toBe(true);
+    expect(m.constructor.name).toBe("bound Map");
+    expect((m as Map<string, number> & { tag: string }).tag).toBe("custom");
+    expect("missing" in m).toBe(false);
+  });
+
+  it("tracks Map.forEach values inside effects", () => {
+    const m = createReactive(new Map<string, number>([["a", 1]]));
+    const values: Array<Array<number>> = [];
+
+    const stop = effect(() => {
+      const next: Array<number> = [];
+      m.forEach((value) => next.push(value));
+      values.push(next);
+    });
+
+    m.set("a", 2);
+    expect(values).toEqual([[1], [2]]);
+    stop();
+  });
+
   // ── Wrap convention — inputs ────────────────────────────────────────────
 
   it("m.get(rawKey) and m.get(wrappedKey) find the same entry", () => {
@@ -516,6 +552,29 @@ describe("createReactive(new Set()) — reactive Set", () => {
     expect(count()).toBe(1);
     s.clear();
     expect(count()).toBe(1);
+  });
+
+  it("exposes internal symbols and preserves bound native Set methods", () => {
+    const raw = new Set<string>(["a"]);
+    Object.defineProperty(raw, "tag", { value: "custom", configurable: true });
+    const s = createReactive(raw);
+
+    expect($RAW in s).toBe(true);
+    expect($PROXY in s).toBe(true);
+    expect((s as Set<string> & { [$RAW]: Set<string> })[$RAW]).toBe(raw);
+    expect((s as Set<string> & { [$PROXY]: Set<string> })[$PROXY]).toBe(s);
+    expect(Object.prototype.toString.call(s)).toBe("[object Set]");
+
+    const has = s.has;
+    const keys = s.keys;
+    const entries = s.entries;
+    expect(has("a")).toBe(true);
+    expect([...keys()]).toEqual(["a"]);
+    expect([...entries()]).toEqual([["a", "a"]]);
+    expect([...s]).toEqual(["a"]);
+    expect(s.constructor.name).toBe("bound Set");
+    expect((s as Set<string> & { tag: string }).tag).toBe("custom");
+    expect("missing" in s).toBe(false);
   });
 
   // ── Wrap convention ─────────────────────────────────────────────────────

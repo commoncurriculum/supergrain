@@ -10,12 +10,9 @@ interface Resolvers<T> {
   reject: (e: unknown) => void;
 }
 
-const NOOP_RESOLVE: (v: unknown) => void = () => {};
-const NOOP_REJECT: (e: unknown) => void = () => {};
-
 function withResolvers<T>(): Resolvers<T> {
-  let resolve: (v: T) => void = NOOP_RESOLVE as (v: T) => void;
-  let reject: (e: unknown) => void = NOOP_REJECT;
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
   const promise = new Promise<T>((res, rej) => {
     resolve = res;
     reject = rej;

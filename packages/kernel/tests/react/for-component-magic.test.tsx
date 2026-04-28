@@ -125,6 +125,19 @@ describe("For Component Magic Tests", () => {
     expect(container.querySelectorAll("li")[0]!.textContent).toBe("first");
   });
 
+  it("renders fallback for an empty array", () => {
+    const store = createReactive<{ data: { id: number }[] }>({ data: [] });
+
+    const App = tracked(() => (
+      <For each={store.data} fallback={<span data-testid="empty">empty</span>}>
+        {(item: { id: number }) => <span key={item.id}>{item.id}</span>}
+      </For>
+    ));
+
+    const { getByTestId } = render(<App />);
+    expect(getByTestId("empty").textContent).toBe("empty");
+  });
+
   it("splice on array triggers For re-render (fresh store, no prior assignment)", async () => {
     const store = createReactive<{ items: string[] }>({ items: ["a", "b", "c"] });
 

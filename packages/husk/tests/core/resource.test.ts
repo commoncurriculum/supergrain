@@ -419,66 +419,44 @@ describe("resource() error handling", () => {
     dispose(r);
   });
 
-  it("silently swallows an AbortError rejection from async setup", async () => {
+  it("ignores AbortError rejections from async setup", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const trigger = signal(0);
 
-    const r = resource<{ status: string }>(
-      { status: "init" },
-      async (_state, ctx) => {
-        trigger(); // track signal so rerun is triggered by signal change
-        await new Promise<void>((_resolve, reject) => {
-          ctx.abortSignal.addEventListener("abort", () => {
-            const err = new Error("aborted");
-            (err as Error & { name: string }).name = "AbortError";
-            reject(err);
-          });
-        });
-      },
-    );
+    const r = resource<{ status: string }>({ status: "loading" }, async () => {
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      throw error;
+    });
 
-    trigger(1); // triggers rerun → aborts old run → old promise rejects with AbortError
-    await new Promise((res) => setTimeout(res, 20));
-
-    // console.error must NOT have been called — AbortError is silently swallowed
+    await new Promise((res) => setTimeout(res, 10));
     expect(errSpy).not.toHaveBeenCalled();
 
     errSpy.mockRestore();
     dispose(r);
   });
 
-  it("does not log a stale non-AbortError rejection when generation has moved on", async () => {
+  it("does not log a stale async setup rejection after a rerun", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const trigger = signal(0);
-    const rejects: Array<(e: Error) => void> = [];
+    let rejectFirst!: (error: Error) => void;
 
-    const r = resource<{ status: string }>(
-      { status: "init" },
-      async (_state, ctx) => {
-        trigger(); // tracked — rerun on signal change
-        // Capture the reject for each run so we can reject the OLD run manually
-        await new Promise<void>((_resolve, reject) => {
-          rejects.push(reject as (e: Error) => void);
-          // Don't auto-reject on abort — we want to control the timing
-          ctx.abortSignal.addEventListener("abort", () => {
-            // Intentionally do nothing: we'll reject manually below
-          });
+    const r = resource<{ value: number }>({ value: 0 }, async (state) => {
+      const value = trigger();
+      if (value === 0) {
+        await new Promise<never>((_resolve, reject) => {
+          rejectFirst = reject;
         });
-      },
-    );
+      }
+      state.value = value;
+    });
 
-    // Wait for first run to register its reject
-    await new Promise((res) => setTimeout(res, 5));
-
-    trigger(1); // bump signal → generation=2, first run aborted
-    await new Promise((res) => setTimeout(res, 5));
-
-    // Reject the OLD run (rejects[0]) with a non-AbortError AFTER generation has moved on
-    // gen=1 !== generation=2 → console.error should NOT be called (line 129 false branch)
-    rejects[0]!(new Error("stale-but-not-abort-error"));
+    trigger(1);
+    rejectFirst(new Error("stale-setup"));
     await new Promise((res) => setTimeout(res, 10));
 
+    expect(r.value).toBe(1);
     expect(errSpy).not.toHaveBeenCalled();
+
     errSpy.mockRestore();
     dispose(r);
   });

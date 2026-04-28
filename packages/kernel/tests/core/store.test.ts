@@ -11,7 +11,7 @@ import {
   resetProfiler,
   getProfile,
 } from "../../src";
-import { $RAW, $PROXY, $NODE, $VERSION } from "../../src/internal";
+import { $RAW, $PROXY, $NODE, $VERSION, bumpVersion, deleteProperty } from "../../src/internal";
 
 describe("Store", () => {
   beforeEach(() => {
@@ -277,6 +277,23 @@ describe("Store", () => {
       expect($PROXY in state).toBe(true);
       expect($NODE in state).toBe(true);
       expect($VERSION in state).toBe(true);
+      expect((state as typeof state & { [$PROXY]: typeof state })[$PROXY]).toBe(state);
+    });
+
+    it("should allow bumpVersion before the version signal exists", () => {
+      const target = {};
+      expect(() => bumpVersion(target)).not.toThrow();
+    });
+
+    it("should read an array property before the array version signal exists", () => {
+      const state = createReactive({ items: [1, 2] });
+      let items: Array<number> = [];
+
+      effect(() => {
+        items = state.items;
+      });
+
+      expect(items).toEqual([1, 2]);
     });
 
     it("should return proxy from cache when $PROXY cannot be defined (sealed object)", () => {
@@ -295,6 +312,30 @@ describe("Store", () => {
       expect(keys.sort()).toEqual(["a", "b"]);
       delete state.a;
       expect(keys.sort()).toEqual(["b"]);
+    });
+
+    it("should allow deleting missing object properties without notifying subscribers", () => {
+      const state = createReactive<any>({ a: 1 });
+      let keys: string[] = [];
+      const effectFn = vi.fn(() => {
+        keys = Object.keys(state);
+      });
+
+      effect(effectFn);
+      expect(keys).toEqual(["a"]);
+
+      delete state.missing;
+      expect(keys).toEqual(["a"]);
+      expect(effectFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should allow deleting existing untracked properties", () => {
+      const state = createReactive<any>({ a: 1 });
+
+      delete state.a;
+
+      expect(state.a).toBeUndefined();
+      expect(Object.keys(state)).toEqual([]);
     });
 
     it("should signal-write on deleteProperty when the property has been read in an effect", () => {
@@ -316,6 +357,27 @@ describe("Store", () => {
       delete state.items[0];
       expect(state.items[0]).toBeUndefined();
       expect(state.items.length).toBe(3);
+    });
+
+    it("should ignore deleteProperty for a missing array index", () => {
+      const state = createReactive<any>({ items: [1, 2, 3] });
+      let keys: string[] = [];
+      const effectFn = vi.fn(() => {
+        keys = Object.keys(state.items);
+      });
+
+      effect(effectFn);
+      delete state.items[99];
+
+      expect(keys).toEqual(["0", "1", "2"]);
+      expect(effectFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should support the low-level delete helper on arrays", () => {
+      const items = [1, 2, 3];
+      deleteProperty(items, 1);
+      expect(items).toEqual([1, undefined, 3]);
+      expect(items.length).toBe(3);
     });
   });
 

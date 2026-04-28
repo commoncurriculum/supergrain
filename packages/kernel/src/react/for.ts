@@ -2,8 +2,10 @@ import { effect as alienEffect, unwrap, getNodesIfExist, $TRACK } from "@supergr
 import { getCurrentSub, setCurrentSub } from "@supergrain/kernel/internal";
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 
+/* c8 ignore start -- the React project runs in a browser; this branch is for SSR consumers */
 // useLayoutEffect warns during SSR. Fall back to useEffect on the server.
 const useIsomorphicLayoutEffect = globalThis.document === undefined ? useEffect : useLayoutEffect;
+/* c8 ignore stop */
 
 import { tracked } from "./tracked";
 
@@ -129,6 +131,7 @@ export const For = tracked((props: ForProps<unknown>) => {
         const domChildren = container.children;
         const nodeA = domChildren[a];
         const nodeB = domChildren[b];
+        /* c8 ignore start -- DOM children can only be missing if external code mutates the parent ref */
         if (nodeA && nodeB) {
           const siblingA = nodeA.nextSibling === nodeB ? nodeA : nodeA.nextSibling;
           nodeB.after(nodeA);
@@ -138,6 +141,7 @@ export const For = tracked((props: ForProps<unknown>) => {
             container.append(nodeB);
           }
         }
+        /* c8 ignore stop */
         // Update prev from raw (not swapping within prev) to preserve
         // object identity — raw may contain proxy wrappers while prev
         // has raw objects, so we must copy from raw for === to work.

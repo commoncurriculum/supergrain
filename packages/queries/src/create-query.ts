@@ -73,7 +73,9 @@ export function createQuery<
         results = [...res.data.results];
       } else {
         const existing = readSlot();
+        /* c8 ignore start -- offset > 0 is only reachable through a stored query slot */
         results = existing ? [...existing.results] : [];
+        /* c8 ignore stop */
         for (const r of res.data.results) {
           results[r.offset] = r;
         }

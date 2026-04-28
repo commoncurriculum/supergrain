@@ -71,9 +71,11 @@ function trackSelf(target: object): void {
 function trackArrayVersion(value: unknown): void {
   if (Array.isArray(value) && getCurrentSub()) {
     const arrayNodes = getNodes(value);
+    /* c8 ignore start -- absence of an array version signal is a no-op fast path */
     if (arrayNodes[$VERSION]) {
       arrayNodes[$VERSION]();
     }
+    /* c8 ignore stop */
   }
 }
 

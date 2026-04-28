@@ -128,6 +128,29 @@ describe("reactivePromise", () => {
     expect(rp.data).toBe("second");
   });
 
+  it("discards stale rejections after a dependency rerun aborts the old run", async () => {
+    const trigger = signal(0);
+    const d1 = deferred<string>();
+    const d2 = deferred<string>();
+    const deferreds = [d1, d2];
+    let call = 0;
+
+    const rp = reactivePromise(async () => {
+      trigger();
+      return deferreds[call++]!.promise;
+    });
+
+    trigger(1);
+    d1.reject(new Error("stale"));
+    await d1.promise.catch(() => {});
+    expect(rp.error).toBe(null);
+    expect(rp.isRejected).toBe(false);
+
+    d2.resolve("fresh");
+    await rp.promise;
+    expect(rp.data).toBe("fresh");
+  });
+
   it("promise resolves to the current run's result", async () => {
     const rp = reactivePromise(async () => "hello");
     const v = await rp.promise;
@@ -196,6 +219,29 @@ describe("reactiveTask", () => {
     d2.resolve("fresh");
     await p2;
     expect(task.data).toBe("fresh");
+  });
+
+  it("discards a stale rejection when a newer run starts", async () => {
+    const d1 = deferred<string>();
+    const d2 = deferred<string>();
+    const results = [d1, d2];
+    let call = 0;
+
+    const task = reactiveTask(async () => results[call++]!.promise);
+
+    const p1 = task.run();
+    const p2 = task.run();
+
+    d1.reject(new Error("stale"));
+    await p1.catch(() => {});
+    expect(task.error).toBe(null);
+    expect(task.isRejected).toBe(false);
+    expect(task.isPending).toBe(true);
+
+    d2.resolve("fresh");
+    await p2;
+    expect(task.data).toBe("fresh");
+    expect(task.error).toBe(null);
   });
 
   it("records errors without clobbering a prior success", async () => {

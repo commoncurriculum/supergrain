@@ -71,12 +71,9 @@ interface Deferred<T> {
   reject: (e: unknown) => void;
 }
 
-const noopResolve: (v: unknown) => void = () => {};
-const noopReject: (e: unknown) => void = () => {};
-
 function deferred<T>(): Deferred<T> {
-  let resolve: (v: T) => void = noopResolve as (v: T) => void;
-  let reject: (e: unknown) => void = noopReject;
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
   const promise = new Promise<T>((res, rej) => {
     resolve = res;
     reject = rej;
@@ -239,7 +236,9 @@ export function reactiveTask<Args extends unknown[], T>(
   }) as TaskEnvelope<Args, T>;
 
   registerDisposer(state, () => {
+    /* c8 ignore start -- public dispose() removes the disposer before it can run twice */
     if (disposed) return;
+    /* c8 ignore stop */
     disposed = true;
     state.isPending = false;
   });

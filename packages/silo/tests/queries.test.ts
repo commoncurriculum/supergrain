@@ -25,6 +25,7 @@ import { effect } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { Finder, type InternalState } from "../src/finder";
 import { createDocumentStore } from "../src/store";
 import {
   API_BASE,
@@ -389,6 +390,124 @@ describe("Queries share memory with documents", () => {
 
     expect(store.findInMemory("user", "1")).toBeUndefined();
     expect(store.findQueryInMemory("dashboard", params)).toBeUndefined();
+  });
+
+  it("insertQueryResult recovers an ERROR query handle with a fresh promise", async () => {
+    server.use(
+      http.get(`${API_BASE}/dashboards`, () =>
+        HttpResponse.json({ message: "boom" }, { status: 500 }),
+      ),
+    );
+
+    const store = initStore();
+    const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
+    const handle = store.findQuery("dashboard", params);
+    await flushCoalescer();
+
+    const rejectedPromise = handle.promise;
+    expect(handle.status).toBe("ERROR");
+
+    const result = makeDashboard({ totalActiveUsers: 101 });
+    store.insertQueryResult("dashboard", params, result);
+
+    expect(handle.status).toBe("SUCCESS");
+    expect(handle.data).toBe(result);
+    expect(handle.error).toBeUndefined();
+    expect(handle.promise).not.toBe(rejectedPromise);
+    await expect(handle.promise).resolves.toBe(result);
+  });
+
+  it("stores primitive query results without freezing", () => {
+    type Types = { user: { id: string; name: string } };
+    type Queries = { count: { params: { id: string }; result: number } };
+
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: async () => [] } } },
+      queries: {
+        count: {
+          adapter: {
+            async find() {
+              return [];
+            },
+          },
+        },
+      },
+    });
+
+    store.insertQueryResult("count", { id: "a" }, 42);
+
+    expect(store.findQueryInMemory("count", { id: "a" })).toBe(42);
+  });
+});
+
+// =============================================================================
+// Finder internals — branches public store calls normally hide
+// =============================================================================
+
+describe("Finder queue internals", () => {
+  it("dedupes duplicate document and query queue entries during a drain", async () => {
+    const documentFind = vi.fn(async () => []);
+    const queryFind = vi.fn(async () => []);
+    const state: InternalState = { documents: new Map(), queries: new Map() };
+    const store = { insertDocument: vi.fn(), insertQueryResult: vi.fn() };
+
+    const finder = new Finder({
+      batchWindowMs: 1_000_000,
+      models: {
+        user: { adapter: { find: documentFind } },
+      },
+      queries: {
+        dashboard: { adapter: { find: queryFind } },
+      },
+    } as any);
+
+    finder.attach(state, store as any);
+    finder.queueDocument("user" as any, "1");
+    finder.queueDocument("user" as any, "1");
+    finder.queueQuery("dashboard" as any, "same-key", { workspaceId: 1 } as never);
+    finder.queueQuery("dashboard" as any, "same-key", { workspaceId: 1 } as never);
+
+    await (finder as any).drain();
+
+    expect(documentFind).toHaveBeenCalledWith(["1"]);
+    expect(queryFind).toHaveBeenCalledWith([{ workspaceId: 1 }]);
+  });
+
+  it("returns early for empty drains and missing query configs", async () => {
+    const finder = new Finder({
+      batchWindowMs: 1_000_000,
+      models: {
+        user: { adapter: { find: async () => [] } },
+      },
+    } as any);
+
+    finder.attach({ documents: new Map(), queries: new Map() }, {} as any);
+    await expect((finder as any).drain()).resolves.toBeUndefined();
+
+    finder.queueQuery("unknown" as any, "params-key", { q: "missing" } as never);
+    await expect((finder as any).drain()).resolves.toBeUndefined();
+  });
+
+  it("ignores rejected chunks when no waiting handles remain", () => {
+    const finder = new Finder({
+      models: {
+        user: { adapter: { find: async () => [] } },
+      },
+      queries: {
+        dashboard: { adapter: { find: async () => [] } },
+      },
+    } as any);
+
+    finder.attach({ documents: new Map(), queries: new Map() }, {} as any);
+
+    expect(() =>
+      (finder as any).rejectDocumentChunk("user", ["missing"], "document failure"),
+    ).not.toThrow();
+    expect(() =>
+      (finder as any).rejectQueryChunk("dashboard", [{ paramsKey: "missing", params: {} }], {
+        message: "query failure",
+      }),
+    ).not.toThrow();
   });
 });
 

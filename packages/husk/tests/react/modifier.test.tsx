@@ -90,6 +90,41 @@ describe("modifier() / useModifier()", () => {
     expect(cleanupSpy).not.toHaveBeenCalled();
   });
 
+  it("ignores a callback ref invocation for the already-attached element", async () => {
+    const setupSpy = vi.fn();
+    const cleanupSpy = vi.fn();
+    let refCallback!: (el: HTMLDivElement | null) => void;
+    let currentElement!: HTMLDivElement;
+
+    const testMod = modifier<HTMLDivElement, []>(() => {
+      setupSpy();
+      return cleanupSpy;
+    });
+
+    function Component() {
+      const ref = useModifier(testMod);
+      refCallback = ref;
+      return (
+        <div
+          ref={(el) => {
+            if (el) currentElement = el;
+            ref(el);
+          }}
+        />
+      );
+    }
+
+    render(<Component />);
+    expect(setupSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      refCallback(currentElement);
+    });
+
+    expect(setupSpy).toHaveBeenCalledTimes(1);
+    expect(cleanupSpy).not.toHaveBeenCalled();
+  });
+
   it("reruns setup when a signal read directly in setup changes", async () => {
     const store = createReactive({ label: "a" });
     const labels: Array<string> = [];
