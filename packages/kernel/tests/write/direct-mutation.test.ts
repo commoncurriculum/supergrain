@@ -210,4 +210,18 @@ describe("write.ts branch coverage", () => {
     expect(ownKeysBumped).toBe(1);
     expect((store.arr as unknown as Record<string, unknown>)["0"]).toBeUndefined();
   });
+
+  it("writeHandler.deleteProperty: deleting a non-existing array index is silent (hadKey=false branch)", () => {
+    const store = createReactive({ arr: [1, 2, 3] });
+    let ownKeysBumped = 0;
+    effect(() => {
+      void (store.arr as unknown[]).push; // subscribe to $OWN_KEYS
+      ownKeysBumped++;
+    });
+    ownKeysBumped = 0;
+
+    // Delete a non-existing array index — hadKey=false → bumpOwnKeysSignal NOT called
+    delete (store.arr as unknown as Record<string, unknown>)["99"];
+    expect(ownKeysBumped).toBe(0); // effect should NOT have fired
+  });
 });

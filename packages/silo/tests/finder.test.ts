@@ -381,3 +381,29 @@ describe("Finder — non-Error query rejection (line 261 non-Error branch)", () 
     expect(h.error?.message).toBe("plain-string-error");
   });
 });
+
+describe("Finder — non-Error document rejection (line 175 non-Error branch)", () => {
+  it("wraps a non-Error document adapter rejection in a new Error", async () => {
+    // The rejectDocumentChunk method checks `error instanceof Error` at line 175.
+    // Throwing a plain string exercises the false branch (non-Error → coerce).
+    const store = createDocumentStore<TestTypes>({
+      models: {
+        user: {
+          adapter: {
+            async find() {
+              throw "document-string-error";
+            },
+          },
+        },
+        post: { adapter: makePostAdapter() },
+      },
+    });
+
+    const h = store.find("user", "1");
+    await flushBatch();
+
+    expect(h.status).toBe("ERROR");
+    expect(h.error).toBeInstanceOf(Error);
+    expect(h.error?.message).toBe("document-string-error");
+  });
+});

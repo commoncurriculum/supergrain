@@ -311,4 +311,25 @@ describe("Coverage gaps", () => {
     const store = createReactive<any>({ a: 42 });
     expect(() => update(store, { $push: { "a.b.c": "x" } })).toThrow(/must resolve/i);
   });
+
+  it("$inc falls back to setValueAtPath when resolveParentPath returns null (non-container intermediate)", () => {
+    // "a.b" where a=42 (not a container) → resolveParentPath returns null → else branch (line 237)
+    const store = createReactive<any>({ a: 42 });
+    update(store, { $inc: { "a.b": 5 } });
+    expect((store.a as any).b).toBe(5);
+  });
+
+  it("$min falls back to setValueAtPath when resolveParentPath returns null (non-container intermediate)", () => {
+    // "a.b" where a=42 → resolveParentPath returns null → else branch (line 325)
+    const store = createReactive<any>({ a: 42 });
+    update(store, { $min: { "a.b": 3 } });
+    expect((store.a as any).b).toBe(3);
+  });
+
+  it("$max falls back to setValueAtPath when resolveParentPath returns null (non-container intermediate)", () => {
+    // "a.b" where a=42 → resolveParentPath returns null → else branch (line 339)
+    const store = createReactive<any>({ a: 42 });
+    update(store, { $max: { "a.b": 7 } });
+    expect((store.a as any).b).toBe(7);
+  });
 });

@@ -446,6 +446,42 @@ describe("resource() error handling", () => {
     errSpy.mockRestore();
     dispose(r);
   });
+
+  it("does not log a stale non-AbortError rejection when generation has moved on", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const trigger = signal(0);
+    const rejects: Array<(e: Error) => void> = [];
+
+    const r = resource<{ status: string }>(
+      { status: "init" },
+      async (_state, ctx) => {
+        trigger(); // tracked — rerun on signal change
+        // Capture the reject for each run so we can reject the OLD run manually
+        await new Promise<void>((_resolve, reject) => {
+          rejects.push(reject as (e: Error) => void);
+          // Don't auto-reject on abort — we want to control the timing
+          ctx.abortSignal.addEventListener("abort", () => {
+            // Intentionally do nothing: we'll reject manually below
+          });
+        });
+      },
+    );
+
+    // Wait for first run to register its reject
+    await new Promise((res) => setTimeout(res, 5));
+
+    trigger(1); // bump signal → generation=2, first run aborted
+    await new Promise((res) => setTimeout(res, 5));
+
+    // Reject the OLD run (rejects[0]) with a non-AbortError AFTER generation has moved on
+    // gen=1 !== generation=2 → console.error should NOT be called (line 129 false branch)
+    rejects[0]!(new Error("stale-but-not-abort-error"));
+    await new Promise((res) => setTimeout(res, 10));
+
+    expect(errSpy).not.toHaveBeenCalled();
+    errSpy.mockRestore();
+    dispose(r);
+  });
 });
 
 describe("dispose()", () => {

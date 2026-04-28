@@ -1,14 +1,17 @@
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
+import { createDocumentStore } from "../src/store";
 import {
   API_BASE,
   clearRequests,
   flushCoalescer,
   initStore,
+  makeDashboard,
   makeUser,
   requests,
   server,
+  type DashboardParams,
 } from "./example-app";
 
 // =============================================================================
@@ -339,5 +342,64 @@ describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", (
     expect(handle.status).toBe("SUCCESS");
     expect(handle.data).toBe(user);
     expect(handle.error).toBeUndefined();
+  });
+});
+
+// =============================================================================
+// Coverage gaps
+// =============================================================================
+
+describe("Store — coverage gaps", () => {
+  it("insertQueryResult does not double-freeze an already-frozen result (line 527 false branch)", () => {
+    // The false branch of `!Object.isFrozen(result)` is taken when the result
+    // is already frozen — the Object.freeze call is skipped.
+    const frozenDashboard = Object.freeze(makeDashboard({ totalActiveUsers: 999 }));
+    const params: DashboardParams = { workspaceId: 999, filters: { active: true } };
+
+    store.insertQueryResult("dashboard", params, frozenDashboard);
+    const inMemory = store.findQueryInMemory("dashboard", params);
+    expect(inMemory?.totalActiveUsers).toBe(999);
+    expect(Object.isFrozen(frozenDashboard)).toBe(true);
+  });
+
+  it("clearMemory resets query handles too (queries loop in clearMemory)", () => {
+    // Insert a query result so state.queries["dashboard"] is populated,
+    // then call clearMemory — exercises the queries for-loop (lines 585-590)
+    const params: DashboardParams = { workspaceId: 10, filters: { active: true } };
+    store.insertQueryResult("dashboard", params, makeDashboard({ totalActiveUsers: 100 }));
+
+    const inMemory = store.findQueryInMemory("dashboard", params);
+    expect(inMemory?.totalActiveUsers).toBe(100);
+
+    store.clearMemory();
+
+    // After clearMemory the query slot is reset to IDLE
+    const afterClear = store.findQueryInMemory("dashboard", params);
+    expect(afterClear).toBeUndefined();
+  });
+
+  it("stableStringify handles array-valued params (covers array branch arrow fn)", async () => {
+    // stableStringify has an `Array.isArray` branch with an inner arrow fn.
+    // Params containing arrays exercise this branch.
+    type ArrayTypes = { item: { id: string } };
+    type ArrayQueries = { tagged: { params: { tags: string[] }; result: { count: number } } };
+
+    const arrayStore = createDocumentStore<ArrayTypes, ArrayQueries>({
+      models: { item: { adapter: { find: async () => [] } } },
+      queries: {
+        tagged: {
+          adapter: {
+            async find(paramsList) {
+              return paramsList.map((p) => ({ count: p.tags.length }));
+            },
+          },
+        },
+      },
+    });
+
+    const h = arrayStore.findQuery("tagged", { tags: ["a", "b", "c"] });
+    await vi.advanceTimersByTimeAsync(20);
+    await h.promise;
+    expect(h.data?.count).toBe(3);
   });
 });
