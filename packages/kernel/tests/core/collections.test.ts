@@ -383,6 +383,17 @@ describe("createReactive(new Map()) — reactive Map", () => {
     expect(m.get("a")).toBe(3);
   });
 
+  it("setting an existing key to the same value is a no-op for subscribers", () => {
+    const m = createReactive(new Map<string, number>([["a", 1]]));
+    const effectFn = vi.fn(() => m.get("a"));
+
+    effect(effectFn);
+    expect(effectFn).toHaveBeenCalledTimes(1);
+
+    m.set("a", 1);
+    expect(effectFn).toHaveBeenCalledTimes(1);
+  });
+
   // ── unwrap ──────────────────────────────────────────────────────────────
 
   it("unwrap(m) returns the original raw Map", () => {

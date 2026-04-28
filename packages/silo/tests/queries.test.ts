@@ -524,7 +524,11 @@ describe("Query finder errors", () => {
       models: { user: { adapter: { find: async () => [] } } },
       queries: {
         search: {
-          adapter: { async find() { return []; } },
+          adapter: {
+            async find() {
+              return [];
+            },
+          },
           // Processor intentionally does NOT call insertQueryResult
           processor: () => {},
         },
@@ -547,8 +551,14 @@ describe("Query finder errors", () => {
       models: { user: { adapter: { find: async () => [] } } },
       queries: {
         boom: {
-          adapter: { async find() { return []; } },
-          processor: () => { throw new Error("processor-exploded"); },
+          adapter: {
+            async find() {
+              return [];
+            },
+          },
+          processor: () => {
+            throw new Error("processor-exploded");
+          },
         },
       },
     });
@@ -603,11 +613,7 @@ describe("insertQueryResult — IDLE and ERROR transitions", () => {
     const params: DashboardParams = { workspaceId: 77, filters: { active: true } };
 
     // Simulate a failed fetch so the handle enters ERROR state.
-    server.use(
-      http.get(`${API_BASE}/dashboards`, () =>
-        HttpResponse.json({}, { status: 500 }),
-      ),
-    );
+    server.use(http.get(`${API_BASE}/dashboards`, () => HttpResponse.json({}, { status: 500 })));
 
     const handle = store.findQuery("dashboard", params);
     await flushCoalescer();

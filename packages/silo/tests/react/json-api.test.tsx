@@ -486,9 +486,7 @@ describe("hooks used outside Provider", () => {
       return null;
     });
 
-    expect(() => render(<Component />)).toThrow(
-      /useBelongsTo must be used within the Provider/,
-    );
+    expect(() => render(<Component />)).toThrow(/useBelongsTo must be used within the Provider/);
   });
 
   it("useHasMany throws when used outside the Provider", () => {
@@ -497,8 +495,6 @@ describe("hooks used outside Provider", () => {
       return null;
     });
 
-    expect(() => render(<Component />)).toThrow(
-      /useHasMany must be used within the Provider/,
-    );
+    expect(() => render(<Component />)).toThrow(/useHasMany must be used within the Provider/);
   });
 });

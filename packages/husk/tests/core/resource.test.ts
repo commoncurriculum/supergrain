@@ -351,10 +351,7 @@ describe("resource() error handling", () => {
     });
 
     trigger(1); // triggers rerun → cleanup throws
-    expect(errSpy).toHaveBeenCalledWith(
-      "[supergrain/resource] cleanup threw:",
-      expect.any(Error),
-    );
+    expect(errSpy).toHaveBeenCalledWith("[supergrain/resource] cleanup threw:", expect.any(Error));
 
     errSpy.mockRestore();
     dispose(r);
@@ -362,14 +359,11 @@ describe("resource() error handling", () => {
 
   it("runs onCleanup immediately when the resource is disposed before it fires", async () => {
     const immediateCleanup = vi.fn();
-    const r = resource<{ status: string }>(
-      { status: "loading" },
-      async (_state, { onCleanup }) => {
-        // Yield so dispose() can run before onCleanup is called
-        await new Promise((res) => setTimeout(res, 5));
-        onCleanup(immediateCleanup); // resource already disposed → runs immediately
-      },
-    );
+    const r = resource<{ status: string }>({ status: "loading" }, async (_state, { onCleanup }) => {
+      // Yield so dispose() can run before onCleanup is called
+      await new Promise((res) => setTimeout(res, 5));
+      onCleanup(immediateCleanup); // resource already disposed → runs immediately
+    });
 
     dispose(r); // dispose before the async setup registers onCleanup
     await new Promise((res) => setTimeout(res, 20));
@@ -379,15 +373,12 @@ describe("resource() error handling", () => {
   it("logs and swallows a late-cleanup throw when called after dispose", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const r = resource<{ status: string }>(
-      { status: "loading" },
-      async (_state, { onCleanup }) => {
-        await new Promise((res) => setTimeout(res, 5));
-        onCleanup(() => {
-          throw new Error("late-cleanup-boom");
-        });
-      },
-    );
+    const r = resource<{ status: string }>({ status: "loading" }, async (_state, { onCleanup }) => {
+      await new Promise((res) => setTimeout(res, 5));
+      onCleanup(() => {
+        throw new Error("late-cleanup-boom");
+      });
+    });
 
     dispose(r);
     await new Promise((res) => setTimeout(res, 20));
@@ -402,12 +393,9 @@ describe("resource() error handling", () => {
   it("logs and swallows a non-AbortError rejection from async setup", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const r = resource<{ status: string }>(
-      { status: "loading" },
-      async () => {
-        await Promise.reject(new Error("async-setup-boom"));
-      },
-    );
+    const r = resource<{ status: string }>({ status: "loading" }, async () => {
+      await Promise.reject(new Error("async-setup-boom"));
+    });
 
     await new Promise((res) => setTimeout(res, 10));
     expect(errSpy).toHaveBeenCalledWith(

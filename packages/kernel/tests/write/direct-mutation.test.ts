@@ -1,8 +1,8 @@
 import { update } from "@supergrain/mill";
 import { describe, it, expect } from "vitest";
 
-import { deleteProperty } from "../../src/write";
 import { createReactive, effect } from "../../src";
+import { deleteProperty } from "../../src/write";
 
 describe("Direct Mutation Support", () => {
   it("should allow direct property assignment", () => {
@@ -177,11 +177,11 @@ describe("write.ts branch coverage", () => {
   it("deleteProperty: deleting a non-existent key is a no-op (hadKey=false branch)", () => {
     const store = createReactive({ a: 1 } as Record<string, number>);
     // Track 'b' so we get signal nodes, but it doesn't exist yet
-    effect(() => void store.b);
+    effect(() => void store["b"]);
     expect(() => {
-      delete store.b; // key doesn't exist → hadKey=false, skips bumpVersion block
+      delete store["b"]; // key doesn't exist → hadKey=false, skips bumpVersion block
     }).not.toThrow();
-    expect(store.b).toBeUndefined();
+    expect(store["b"]).toBeUndefined();
   });
 
   it("deleteProperty (standalone): handles array target (Array.isArray branch)", () => {

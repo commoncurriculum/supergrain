@@ -228,7 +228,6 @@ describe("Array Support", () => {
   });
 });
 
-
 describe("trackArrayVersion branch coverage", () => {
   it("does not crash when an array has no $VERSION signal (never mutated in tracked context)", () => {
     // Create a reactive array that is read in an effect but never mutated.

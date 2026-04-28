@@ -432,18 +432,11 @@ describe("Provider initial data seeding", () => {
 
     const QueryDisplay = tracked(function QueryDisplay() {
       const handle = useQuery("dashboard", params);
-      return (
-        <span data-testid="q">
-          {handle.data?.totalActiveUsers ?? "—"}
-        </span>
-      );
+      return <span data-testid="q">{handle.data?.totalActiveUsers ?? "—"}</span>;
     });
 
     render(
-      <Provider
-        config={makeStoreConfig()}
-        initial={{ query: { dashboard: [{ params, result }] } }}
-      >
+      <Provider config={makeStoreConfig()} initial={{ query: { dashboard: [{ params, result }] } }}>
         <QueryDisplay />
       </Provider>,
     );

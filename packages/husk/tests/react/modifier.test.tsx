@@ -366,10 +366,7 @@ describe("error handling", () => {
     const { unmount } = render(<Component />);
     unmount(); // triggers cleanup which throws
 
-    expect(errSpy).toHaveBeenCalledWith(
-      "[supergrain/modifier] cleanup threw:",
-      expect.any(Error),
-    );
+    expect(errSpy).toHaveBeenCalledWith("[supergrain/modifier] cleanup threw:", expect.any(Error));
     errSpy.mockRestore();
   });
 
