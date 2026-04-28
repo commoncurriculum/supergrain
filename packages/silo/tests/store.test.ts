@@ -1,3 +1,4 @@
+import { effect } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -374,6 +375,78 @@ describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", (
     expect(handle.status).toBe("SUCCESS");
     expect(handle.data).toBe(user);
     expect(handle.error).toBeUndefined();
+  });
+});
+
+// =============================================================================
+// Handle reactivity — effects subscribed to handle fields fire on transitions.
+//
+// React UI code binds to `handle.status`, `handle.data`, and `handle.error`
+// via tracked() / signal effects. Verifying that those reads actually
+// re-fire on transitions is the contract that makes the API usable from a
+// render loop. The previous tests verified values *after* transitions but
+// never wrapped reads in effect() — a regression that broke the reactivity
+// while keeping post-hoc reads correct would slip through.
+// =============================================================================
+
+describe("Store.find — handle is reactive", () => {
+  it("an effect tracking handle.status fires on PENDING -> SUCCESS via fetch", async () => {
+    const handle = store.find("user", "1");
+
+    const statusHistory: Array<string> = [];
+    effect(() => {
+      statusHistory.push(handle.status);
+    });
+    expect(statusHistory).toEqual(["PENDING"]);
+
+    await flushCoalescer();
+    expect(statusHistory.at(-1)).toBe("SUCCESS");
+  });
+
+  it("an effect tracking handle.data fires when an external insert lands", () => {
+    const handle = store.find("user", "1");
+
+    const firstNameHistory: Array<string | undefined> = [];
+    effect(() => {
+      firstNameHistory.push(handle.data?.attributes.firstName);
+    });
+    expect(firstNameHistory).toEqual([undefined]);
+
+    store.insertDocument("user", makeUser("1", { firstName: "Pushed" }));
+    expect(firstNameHistory.at(-1)).toBe("Pushed");
+  });
+
+  it("an effect tracking handle.error fires on PENDING -> ERROR and clears on recovery", async () => {
+    server.use(
+      http.get(`${API_BASE}/users`, () => HttpResponse.json({ message: "boom" }, { status: 500 })),
+    );
+    const handle = store.find("user", "1");
+
+    const errorHistory: Array<string | undefined> = [];
+    effect(() => {
+      errorHistory.push(handle.error?.message);
+    });
+    expect(errorHistory).toEqual([undefined]);
+
+    await flushCoalescer();
+    expect(errorHistory.at(-1)).toMatch(/500|boom/i);
+
+    // External insert recovers — error must clear, observed by the effect.
+    store.insertDocument("user", makeUser("1", { firstName: "Recovered" }));
+    expect(errorHistory.at(-1)).toBeUndefined();
+  });
+
+  it("isPending and isFetching toggle independently of data subscribers", async () => {
+    const handle = store.find("user", "1");
+
+    const pendingHistory: Array<boolean> = [];
+    effect(() => {
+      pendingHistory.push(handle.isPending);
+    });
+    expect(pendingHistory).toEqual([true]);
+
+    await flushCoalescer();
+    expect(pendingHistory.at(-1)).toBe(false);
   });
 });
 

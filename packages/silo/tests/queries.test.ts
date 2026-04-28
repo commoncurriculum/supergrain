@@ -540,3 +540,68 @@ describe("insertQueryResult transitions existing handles", () => {
     expect(handle.isPending).toBe(false);
   });
 });
+
+// =============================================================================
+// Query handle reactivity — effects subscribed to handle fields fire on
+// transitions. The handle returned from findQuery is the binding surface
+// for UI code; verifying it's actually reactive (not just lazy-correct on
+// re-read) is the contract that matters for render loops.
+// =============================================================================
+
+describe("Query handle is reactive", () => {
+  it("an effect tracking handle.status fires on PENDING -> SUCCESS via fetch", async () => {
+    const store = initStore();
+    const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
+    const handle = store.findQuery("dashboard", params);
+
+    const statusHistory: Array<string> = [];
+    effect(() => {
+      statusHistory.push(handle.status);
+    });
+    expect(statusHistory).toEqual(["PENDING"]);
+
+    await flushCoalescer();
+    await handle.promise;
+    expect(statusHistory.at(-1)).toBe("SUCCESS");
+  });
+
+  it("an effect tracking handle.data fires when an external insertQueryResult lands", () => {
+    const store = initStore();
+    const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
+    const handle = store.findQuery("dashboard", params);
+
+    const totals: Array<number | undefined> = [];
+    effect(() => {
+      totals.push(handle.data?.totalActiveUsers);
+    });
+    expect(totals).toEqual([undefined]);
+
+    store.insertQueryResult("dashboard", params, makeDashboard({ totalActiveUsers: 99 }));
+    expect(totals.at(-1)).toBe(99);
+  });
+
+  it("an effect tracking handle.error fires on PENDING -> ERROR and clears on recovery", async () => {
+    server.use(
+      http.get(`${API_BASE}/dashboards`, () =>
+        HttpResponse.json({ message: "boom" }, { status: 500 }),
+      ),
+    );
+
+    const store = initStore();
+    const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
+    const handle = store.findQuery("dashboard", params);
+
+    const errorHistory: Array<string | undefined> = [];
+    effect(() => {
+      errorHistory.push(handle.error?.message);
+    });
+    expect(errorHistory).toEqual([undefined]);
+
+    await flushCoalescer();
+    await handle.promise?.catch(() => {});
+    expect(errorHistory.at(-1)).toMatch(/boom|500/i);
+
+    store.insertQueryResult("dashboard", params, makeDashboard({ totalActiveUsers: 99 }));
+    expect(errorHistory.at(-1)).toBeUndefined();
+  });
+});
