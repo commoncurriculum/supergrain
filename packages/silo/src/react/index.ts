@@ -133,9 +133,9 @@ export function createDocumentStoreContext<
       const s = createDocumentStore<M, Q>(config);
       if (initial?.model) seedModels(s, initial.model);
       if (initial?.query) seedQueries(s, initial.query);
-      const sAsS = s as unknown as S;
-      onMount?.(sAsS);
-      return sAsS;
+      const typedStore = s as unknown as S;
+      onMount?.(typedStore);
+      return typedStore;
     });
     return createElement(
       Context.Provider,
