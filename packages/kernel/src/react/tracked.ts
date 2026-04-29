@@ -11,11 +11,6 @@ interface TrackedState {
   effectNode: ReactiveNode | undefined;
 }
 
-// Per-component effect state keyed by the stable dispatch function object.
-// React guarantees each component instance gets a unique dispatch reference
-// from useReducer, so it doubles as a stable identity without an extra ref.
-const sgStateMap = new WeakMap<(...args: Array<unknown>) => unknown, TrackedState>();
-
 /**
  * Wraps a React component with per-component signal scoping.
  *
@@ -60,10 +55,10 @@ export function tracked<P extends object>(Component: FC<P>) {
   const Tracked: FC<P> = (props: P) => {
     const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
 
-    // Store effect state in a WeakMap keyed by the stable dispatch function.
-    // React guarantees dispatch is stable per component instance, so it
-    // serves as a per-instance identity without an extra ref.
-    if (!sgStateMap.has(forceUpdate)) {
+    // Store effect state on the dispatch function (stable per component instance).
+    // Eliminates useRef (1 fewer hook vs the original implementation).
+    const fu = forceUpdate as unknown as { __sg?: TrackedState };
+    if (!fu.__sg) {
       let firstRun = true;
       let capturedNode: ReactiveNode | undefined = null!; // eslint-disable-line unicorn/no-null -- set synchronously by alienEffect
       const cleanup = alienEffect(() => {
@@ -74,20 +69,20 @@ export function tracked<P extends object>(Component: FC<P>) {
         }
         forceUpdate();
       });
-      sgStateMap.set(forceUpdate, { cleanup, effectNode: capturedNode });
+      fu.__sg = { cleanup, effectNode: capturedNode };
     }
 
     // Defer the alien-effect teardown so React 18 StrictMode's
     // mount→cleanup→remount cycle in dev doesn't kill the effect we still
     // need post-cycle.
     useDisposeOnUnmount(() => {
-      sgStateMap.get(forceUpdate)!.cleanup();
-      sgStateMap.delete(forceUpdate);
+      const fu = forceUpdate as unknown as { __sg?: TrackedState };
+      fu.__sg!.cleanup();
+      delete fu.__sg;
     });
 
-    const state = sgStateMap.get(forceUpdate)!;
     const prev = getCurrentSub();
-    setCurrentSub(state.effectNode);
+    setCurrentSub(fu.__sg.effectNode);
     try {
       return Component(props); // eslint-disable-line new-cap -- React function component call
     } finally {
