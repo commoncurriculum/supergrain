@@ -92,7 +92,7 @@ const readHandler: Pick<
         if (tracked) {
           if (!getCurrentSub()) {
             profileSignalSkip();
-            return wrap(Reflect.get(target, prop));
+            return wrap((target as Record<string, unknown>)[prop]);
           }
           profileSignalRead();
           const value = tracked();
@@ -121,7 +121,10 @@ const readHandler: Pick<
       return nodes?.[$VERSION] ? nodes[$VERSION]() : 0;
     }
 
-    const value = Reflect.get(target, prop);
+    // Direct bracket access — Reflect.get is ~22x slower in this hot handler
+    // and we don't need its receiver-binding behavior. See
+    // notes/architecture/proxy-optimization-trade-offs.md.
+    const value = (target as Record<PropertyKey, unknown>)[prop];
 
     if (typeof value === "function") {
       if (Array.isArray(target)) {
@@ -197,9 +200,8 @@ export function createReactiveProxy<T extends object>(target: T): T {
     return createReactiveSet(target as Set<unknown>) as unknown as T;
   }
 
-  if ((target as ReactiveTagged)[$PROXY]) {
-    return (target as ReactiveTagged)[$PROXY] as T;
-  }
+  const cached = (target as ReactiveTagged)[$PROXY];
+  if (cached) return cached as T;
 
   if (proxyCache.has(target)) {
     return proxyCache.get(target) as T;
