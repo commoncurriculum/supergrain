@@ -25,6 +25,7 @@ import {
   getNodesIfExist,
   isWrappable,
   unwrap,
+  type ReactiveTagged,
   type Signal,
 } from "./core";
 import { profileSignalRead, profileSignalSkip, profileSignalWrite } from "./profiler";
@@ -108,7 +109,7 @@ function bumpVersionSignal(target: object): void {
 
 export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
   // Primary proxy cache: $PROXY stored directly on the raw target.
-  const existing = (rawTarget as any)[$PROXY] as Map<K, V> | undefined;
+  const existing = (rawTarget as ReactiveTagged)[$PROXY] as Map<K, V> | undefined;
   if (existing) return existing;
   // Fallback for sealed Maps where defineProperty($PROXY) fails.
   const existingSealed = sealedCollectionCache.get(rawTarget) as Map<K, V> | undefined;
@@ -352,7 +353,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
 
 export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
   // Primary proxy cache: $PROXY stored directly on the raw target.
-  const existing = (rawTarget as any)[$PROXY] as Set<T> | undefined;
+  const existing = (rawTarget as ReactiveTagged)[$PROXY] as Set<T> | undefined;
   if (existing) return existing;
   // Fallback for sealed Sets where defineProperty($PROXY) fails.
   const existingSealed = sealedCollectionCache.get(rawTarget) as Set<T> | undefined;

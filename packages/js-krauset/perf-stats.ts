@@ -91,7 +91,10 @@ for (const benchName of benchmarkNames) {
   const samples = runs.map((run: any) => run.results.find((r: any) => r.name === benchName));
   const benchmark: any = {};
   for (const key of numericKeys) {
-    benchmark[key] = stats(samples.map((s: any) => s[key]), trimCount);
+    benchmark[key] = stats(
+      samples.map((s: any) => s[key]),
+      trimCount,
+    );
   }
   output.benchmarks[benchName] = benchmark;
 }
@@ -99,7 +102,10 @@ for (const benchName of benchmarkNames) {
 const totalSamples = runs.map((run: any) => run.totals);
 output.totals = {} as any;
 for (const key of numericKeys.filter((k) => k in runs[0].totals)) {
-  output.totals[key] = stats(totalSamples.map((t: any) => t[key]), trimCount);
+  output.totals[key] = stats(
+    totalSamples.map((t: any) => t[key]),
+    trimCount,
+  );
 }
 
 const outPath = resolve(dir, `perf-stats-${name}.json`);
