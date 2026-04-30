@@ -125,11 +125,181 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
     return s;
   }
 
+  // Pre-create method functions once per Map instance so the `get` trap can
+  // return a stable reference instead of allocating a new closure each time.
+  // Methods that return the proxy use `proxyRef`, which is assigned below after
+  // `new Proxy(…)`. JavaScript closures capture variables by reference, so by
+  // the time any method is actually *called*, `proxyRef` will hold the proxy.
+  let proxyRef = undefined as unknown as Map<K, V>;
+
+  const methods = {
+    get: function reactiveGet(key: K): V | undefined {
+      const rawKey = unwrap(key);
+      if (getCurrentSub()) {
+        profileSignalRead();
+        const s = getOrCreateKeySignal(rawKey);
+        const v = s() as V | undefined;
+        return wrap(v);
+      }
+      profileSignalSkip();
+      return wrap(rawTarget.get(rawKey));
+    },
+
+    has: function reactiveHas(key: K): boolean {
+      const rawKey = unwrap(key);
+      if (getCurrentSub()) {
+        profileSignalRead();
+        getOrCreateKeySignal(rawKey)();
+      } else {
+        profileSignalSkip();
+      }
+      return rawTarget.has(rawKey);
+    },
+
+    set: function reactiveSet(key: K, value: V): Map<K, V> {
+      const rawKey = unwrap(key);
+      const rawValue = unwrap(value);
+      const isNew = !rawTarget.has(rawKey);
+      const oldRawValue = rawTarget.get(rawKey);
+
+      rawTarget.set(rawKey, rawValue);
+
+      const didChange = unwrap(oldRawValue) !== unwrap(rawValue);
+
+      if (isNew) {
+        // New key: batch per-key bump + structural bumps into one notification.
+        // Don't create a per-key signal eagerly here — only update one if a
+        // prior tracked read already created it. Subsequent reads will
+        // create the signal lazily with the current value.
+        startBatch();
+        try {
+          const s = keySignals.get(rawKey);
+          if (s) {
+            profileSignalWrite();
+            s(rawValue);
+          }
+          // Ensure $VERSION and $OWN_KEYS signals exist before bumping.
+          const nodes = getNodes(rawTarget);
+          getNode(nodes, $VERSION, 0);
+          getNode(nodes, $OWN_KEYS, 0);
+          bumpOwnKeys(rawTarget);
+          bumpVersionSignal(rawTarget);
+        } finally {
+          endBatch();
+        }
+      } else if (didChange) {
+        // Existing key, value changed: only per-key bump — no structural change.
+        const s = keySignals.get(rawKey);
+        if (s) {
+          profileSignalWrite();
+          s(rawValue);
+        }
+      }
+
+      return proxyRef;
+    },
+
+    delete: function reactiveDelete(key: K): boolean {
+      const rawKey = unwrap(key);
+      if (!rawTarget.has(rawKey)) return false;
+
+      rawTarget.delete(rawKey);
+
+      // Batch per-key bump + structural bumps so subscribers fire once.
+      startBatch();
+      try {
+        // Bump per-key signal to undefined (signal persists for re-set).
+        const s = keySignals.get(rawKey);
+        if (s) {
+          profileSignalWrite();
+          s(void 0 as V | undefined);
+        }
+        bumpOwnKeys(rawTarget);
+        bumpVersionSignal(rawTarget);
+      } finally {
+        endBatch();
+      }
+      return true;
+    },
+
+    clear: function reactiveClear(): void {
+      if (rawTarget.size === 0) return;
+
+      // Iterate keySignals (lazily-created per-key signals) rather than
+      // spreading rawTarget.keys() into a temporary array. keySignals only
+      // contains entries for keys that were ever tracked, which is typically
+      // much smaller than rawTarget. We clear the raw map inside the batch
+      // so structural subscribers fire only once.
+      startBatch();
+      try {
+        // Bump every tracked per-key signal to undefined; keep the signal
+        // objects so subscribers remain attached for subsequent re-sets.
+        for (const [k, s] of keySignals) {
+          if (rawTarget.has(k)) {
+            profileSignalWrite();
+            s(void 0 as V | undefined);
+          }
+        }
+
+        rawTarget.clear();
+        bumpOwnKeys(rawTarget);
+        bumpVersionSignal(rawTarget);
+      } finally {
+        endBatch();
+      }
+    },
+
+    forEach: function reactiveForEach(
+      callbackFn: (value: V, key: K, map: Map<K, V>) => void,
+    ): void {
+      trackOwnKeys(rawTarget);
+      for (const [k, v] of rawTarget.entries()) {
+        if (getCurrentSub()) {
+          profileSignalRead();
+          getOrCreateKeySignal(k)();
+        }
+        callbackFn(wrap(v), wrap(k), proxyRef);
+      }
+    },
+
+    entries: function* reactiveEntries(): IterableIterator<[K, V]> {
+      trackOwnKeys(rawTarget);
+      for (const [k, v] of rawTarget.entries()) {
+        if (getCurrentSub()) {
+          profileSignalRead();
+          getOrCreateKeySignal(k)();
+        }
+        yield [wrap(k), wrap(v)];
+      }
+    },
+
+    keys: function* reactiveKeys(): IterableIterator<K> {
+      // keys() is structurally dependent only on the key set — it must not
+      // subscribe to per-key value signals, or effects iterating only keys
+      // would re-run on every value change.
+      trackOwnKeys(rawTarget);
+      for (const k of rawTarget.keys()) {
+        yield wrap(k);
+      }
+    },
+
+    values: function* reactiveValues(): IterableIterator<V> {
+      trackOwnKeys(rawTarget);
+      for (const [k, v] of rawTarget.entries()) {
+        if (getCurrentSub()) {
+          profileSignalRead();
+          getOrCreateKeySignal(k)();
+        }
+        yield wrap(v);
+      }
+    },
+  } as const;
+
   const handler: ProxyHandler<Map<K, V>> = {
-    get(target, prop, receiver) {
+    get(target, prop) {
       // ── Internal symbols ─────────────────────────────────────────────────
       if (prop === $RAW) return target;
-      if (prop === $PROXY) return receiver;
+      if (prop === $PROXY) return proxyRef;
 
       // ── size ─────────────────────────────────────────────────────────────
       if (prop === "size") {
@@ -137,192 +307,18 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
         return target.size;
       }
 
-      // ── get ──────────────────────────────────────────────────────────────
-      if (prop === "get") {
-        return function reactiveGet(key: K): V | undefined {
-          const rawKey = unwrap(key);
-          if (getCurrentSub()) {
-            profileSignalRead();
-            const s = getOrCreateKeySignal(rawKey);
-            const v = s() as V | undefined;
-            return wrap(v);
-          }
-          profileSignalSkip();
-          return wrap(rawTarget.get(rawKey));
-        };
-      }
-
-      // ── has ──────────────────────────────────────────────────────────────
-      if (prop === "has") {
-        return function reactiveHas(key: K): boolean {
-          const rawKey = unwrap(key);
-          if (getCurrentSub()) {
-            profileSignalRead();
-            getOrCreateKeySignal(rawKey)();
-          } else {
-            profileSignalSkip();
-          }
-          return rawTarget.has(rawKey);
-        };
-      }
-
-      // ── set ──────────────────────────────────────────────────────────────
-      if (prop === "set") {
-        return function reactiveSet(key: K, value: V): Map<K, V> {
-          const rawKey = unwrap(key);
-          const rawValue = unwrap(value);
-          const isNew = !rawTarget.has(rawKey);
-          const oldRawValue = rawTarget.get(rawKey);
-
-          rawTarget.set(rawKey, rawValue);
-
-          const didChange = unwrap(oldRawValue) !== unwrap(rawValue);
-
-          if (isNew) {
-            // New key: batch per-key bump + structural bumps into one notification.
-            // Don't create a per-key signal eagerly here — only update one if a
-            // prior tracked read already created it. Subsequent reads will
-            // create the signal lazily with the current value.
-            startBatch();
-            try {
-              const s = keySignals.get(rawKey);
-              if (s) {
-                profileSignalWrite();
-                s(rawValue);
-              }
-              // Ensure $VERSION and $OWN_KEYS signals exist before bumping.
-              const nodes = getNodes(target);
-              getNode(nodes, $VERSION, 0);
-              getNode(nodes, $OWN_KEYS, 0);
-              bumpOwnKeys(target);
-              bumpVersionSignal(target);
-            } finally {
-              endBatch();
-            }
-          } else if (didChange) {
-            // Existing key, value changed: only per-key bump — no structural change.
-            const s = keySignals.get(rawKey);
-            if (s) {
-              profileSignalWrite();
-              s(rawValue);
-            }
-          }
-
-          return receiver;
-        };
-      }
-
-      // ── delete ───────────────────────────────────────────────────────────
-      if (prop === "delete") {
-        return function reactiveDelete(key: K): boolean {
-          const rawKey = unwrap(key);
-          if (!rawTarget.has(rawKey)) return false;
-
-          rawTarget.delete(rawKey);
-
-          // Batch per-key bump + structural bumps so subscribers fire once.
-          startBatch();
-          try {
-            // Bump per-key signal to undefined (signal persists for re-set).
-            const s = keySignals.get(rawKey);
-            if (s) {
-              profileSignalWrite();
-              s(void 0 as V | undefined);
-            }
-            bumpOwnKeys(target);
-            bumpVersionSignal(target);
-          } finally {
-            endBatch();
-          }
-          return true;
-        };
-      }
-
-      // ── clear ────────────────────────────────────────────────────────────
-      if (prop === "clear") {
-        return function reactiveClear(): void {
-          if (rawTarget.size === 0) return;
-
-          const existingKeys = [...rawTarget.keys()];
-          rawTarget.clear();
-
-          // Batch all per-key bumps + structural bumps.
-          startBatch();
-          try {
-            // Bump every per-key signal to undefined; keep the signal objects
-            // so subscribers remain attached for subsequent re-sets.
-            for (const k of existingKeys) {
-              const s = keySignals.get(k);
-              if (s) {
-                profileSignalWrite();
-                s(void 0 as V | undefined);
-              }
-            }
-
-            bumpOwnKeys(target);
-            bumpVersionSignal(target);
-          } finally {
-            endBatch();
-          }
-        };
-      }
-
-      // ── forEach ──────────────────────────────────────────────────────────
-      if (prop === "forEach") {
-        return function reactiveForEach(
-          callbackFn: (value: V, key: K, map: Map<K, V>) => void,
-        ): void {
-          trackOwnKeys(target);
-          for (const [k, v] of rawTarget.entries()) {
-            if (getCurrentSub()) {
-              profileSignalRead();
-              getOrCreateKeySignal(k)();
-            }
-            callbackFn(wrap(v), wrap(k), receiver);
-          }
-        };
-      }
+      // ── named methods — return stable pre-created functions ───────────────
+      if (prop === "get") return methods.get;
+      if (prop === "has") return methods.has;
+      if (prop === "set") return methods.set;
+      if (prop === "delete") return methods.delete;
+      if (prop === "clear") return methods.clear;
+      if (prop === "forEach") return methods.forEach;
+      if (prop === "keys") return methods.keys;
+      if (prop === "values") return methods.values;
 
       // ── entries / Symbol.iterator ─────────────────────────────────────────
-      if (prop === "entries" || prop === Symbol.iterator) {
-        return function* reactiveEntries(): IterableIterator<[K, V]> {
-          trackOwnKeys(target);
-          for (const [k, v] of rawTarget.entries()) {
-            if (getCurrentSub()) {
-              profileSignalRead();
-              getOrCreateKeySignal(k)();
-            }
-            yield [wrap(k), wrap(v)];
-          }
-        };
-      }
-
-      // ── keys ─────────────────────────────────────────────────────────────
-      // keys() is structurally dependent only on the key set — it must not
-      // subscribe to per-key value signals, or effects iterating only keys
-      // would re-run on every value change.
-      if (prop === "keys") {
-        return function* reactiveKeys(): IterableIterator<K> {
-          trackOwnKeys(target);
-          for (const k of rawTarget.keys()) {
-            yield wrap(k);
-          }
-        };
-      }
-
-      // ── values ───────────────────────────────────────────────────────────
-      if (prop === "values") {
-        return function* reactiveValues(): IterableIterator<V> {
-          trackOwnKeys(target);
-          for (const [k, v] of rawTarget.entries()) {
-            if (getCurrentSub()) {
-              profileSignalRead();
-              getOrCreateKeySignal(k)();
-            }
-            yield wrap(v);
-          }
-        };
-      }
+      if (prop === "entries" || prop === Symbol.iterator) return methods.entries;
 
       // ── Symbol.toStringTag ───────────────────────────────────────────────
       if (prop === Symbol.toStringTag) return "Map";
@@ -342,6 +338,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
   };
 
   const proxy = new Proxy(rawTarget, handler);
+  proxyRef = proxy;
   collectionProxyCache.set(rawTarget, proxy);
   return proxy;
 }
@@ -352,11 +349,99 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
     return collectionProxyCache.get(rawTarget) as Set<T>;
   }
 
+  // Pre-create method functions once per Set instance (same rationale as Map).
+  let proxyRef = undefined as unknown as Set<T>;
+
+  const methods = {
+    has: function reactiveHas(value: T): boolean {
+      trackOwnKeys(rawTarget);
+      return rawTarget.has(unwrap(value));
+    },
+
+    add: function reactiveAdd(value: T): Set<T> {
+      const rawValue = unwrap(value);
+      if (rawTarget.has(rawValue)) return proxyRef;
+
+      rawTarget.add(rawValue);
+
+      startBatch();
+      try {
+        const nodes = getNodes(rawTarget);
+        getNode(nodes, $VERSION, 0);
+        getNode(nodes, $OWN_KEYS, 0);
+        bumpOwnKeys(rawTarget);
+        bumpVersionSignal(rawTarget);
+      } finally {
+        endBatch();
+      }
+
+      return proxyRef;
+    },
+
+    delete: function reactiveDelete(value: T): boolean {
+      const rawValue = unwrap(value);
+      if (!rawTarget.has(rawValue)) return false;
+
+      rawTarget.delete(rawValue);
+      startBatch();
+      try {
+        bumpOwnKeys(rawTarget);
+        bumpVersionSignal(rawTarget);
+      } finally {
+        endBatch();
+      }
+      return true;
+    },
+
+    clear: function reactiveClear(): void {
+      if (rawTarget.size === 0) return;
+      rawTarget.clear();
+      startBatch();
+      try {
+        bumpOwnKeys(rawTarget);
+        bumpVersionSignal(rawTarget);
+      } finally {
+        endBatch();
+      }
+    },
+
+    forEach: function reactiveForEach(
+      callbackFn: (value: T, value2: T, set: Set<T>) => void,
+    ): void {
+      trackOwnKeys(rawTarget);
+      for (const v of rawTarget.values()) {
+        callbackFn(wrap(v), wrap(v), proxyRef);
+      }
+    },
+
+    values: function* reactiveValues(): IterableIterator<T> {
+      trackOwnKeys(rawTarget);
+      for (const v of rawTarget.values()) {
+        yield wrap(v);
+      }
+    },
+
+    // Set.prototype.keys() is identical to values() per spec.
+    keys: function* reactiveKeys(): IterableIterator<T> {
+      trackOwnKeys(rawTarget);
+      for (const v of rawTarget.values()) {
+        yield wrap(v);
+      }
+    },
+
+    entries: function* reactiveEntries(): IterableIterator<[T, T]> {
+      trackOwnKeys(rawTarget);
+      for (const v of rawTarget.values()) {
+        yield [wrap(v), wrap(v)];
+      }
+    },
+  } as const;
+
   const handler: ProxyHandler<Set<T>> = {
-    get(target, prop, receiver) {
+    get(target, prop) {
       // ── Internal symbols ─────────────────────────────────────────────────
       if (prop === $RAW) return target;
-      if (prop === $PROXY) return receiver;
+      if (prop === $PROXY) return proxyRef;
 
       // ── size ─────────────────────────────────────────────────────────────
       if (prop === "size") {
@@ -364,112 +449,17 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
         return target.size;
       }
 
-      // ── has ──────────────────────────────────────────────────────────────
-      if (prop === "has") {
-        return function reactiveHas(value: T): boolean {
-          trackOwnKeys(target);
-          return rawTarget.has(unwrap(value));
-        };
-      }
-
-      // ── add ──────────────────────────────────────────────────────────────
-      if (prop === "add") {
-        return function reactiveAdd(value: T): Set<T> {
-          const rawValue = unwrap(value);
-          if (rawTarget.has(rawValue)) return receiver;
-
-          rawTarget.add(rawValue);
-
-          startBatch();
-          try {
-            const nodes = getNodes(target);
-            getNode(nodes, $VERSION, 0);
-            getNode(nodes, $OWN_KEYS, 0);
-            bumpOwnKeys(target);
-            bumpVersionSignal(target);
-          } finally {
-            endBatch();
-          }
-
-          return receiver;
-        };
-      }
-
-      // ── delete ───────────────────────────────────────────────────────────
-      if (prop === "delete") {
-        return function reactiveDelete(value: T): boolean {
-          const rawValue = unwrap(value);
-          if (!rawTarget.has(rawValue)) return false;
-
-          rawTarget.delete(rawValue);
-          startBatch();
-          try {
-            bumpOwnKeys(target);
-            bumpVersionSignal(target);
-          } finally {
-            endBatch();
-          }
-          return true;
-        };
-      }
-
-      // ── clear ────────────────────────────────────────────────────────────
-      if (prop === "clear") {
-        return function reactiveClear(): void {
-          if (rawTarget.size === 0) return;
-          rawTarget.clear();
-          startBatch();
-          try {
-            bumpOwnKeys(target);
-            bumpVersionSignal(target);
-          } finally {
-            endBatch();
-          }
-        };
-      }
-
-      // ── forEach ──────────────────────────────────────────────────────────
-      if (prop === "forEach") {
-        return function reactiveForEach(
-          callbackFn: (value: T, value2: T, set: Set<T>) => void,
-        ): void {
-          trackOwnKeys(target);
-          for (const v of rawTarget.values()) {
-            callbackFn(wrap(v), wrap(v), receiver);
-          }
-        };
-      }
+      // ── named methods — return stable pre-created functions ───────────────
+      if (prop === "has") return methods.has;
+      if (prop === "add") return methods.add;
+      if (prop === "delete") return methods.delete;
+      if (prop === "clear") return methods.clear;
+      if (prop === "forEach") return methods.forEach;
+      if (prop === "keys") return methods.keys;
+      if (prop === "entries") return methods.entries;
 
       // ── values / Symbol.iterator ──────────────────────────────────────────
-      if (prop === "values" || prop === Symbol.iterator) {
-        return function* reactiveValues(): IterableIterator<T> {
-          trackOwnKeys(target);
-          for (const v of rawTarget.values()) {
-            yield wrap(v);
-          }
-        };
-      }
-
-      // ── keys ─────────────────────────────────────────────────────────────
-      // Set.prototype.keys() is identical to values() per spec.
-      if (prop === "keys") {
-        return function* reactiveKeys(): IterableIterator<T> {
-          trackOwnKeys(target);
-          for (const v of rawTarget.values()) {
-            yield wrap(v);
-          }
-        };
-      }
-
-      // ── entries ───────────────────────────────────────────────────────────
-      if (prop === "entries") {
-        return function* reactiveEntries(): IterableIterator<[T, T]> {
-          trackOwnKeys(target);
-          for (const v of rawTarget.values()) {
-            yield [wrap(v), wrap(v)];
-          }
-        };
-      }
+      if (prop === "values" || prop === Symbol.iterator) return methods.values;
 
       // ── Symbol.toStringTag ───────────────────────────────────────────────
       if (prop === Symbol.toStringTag) return "Set";
@@ -488,6 +478,7 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
   };
 
   const proxy = new Proxy(rawTarget, handler);
+  proxyRef = proxy;
   collectionProxyCache.set(rawTarget, proxy);
   return proxy;
 }

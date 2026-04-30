@@ -50,6 +50,16 @@ const ARRAY_MUTATORS = new Set([
 
 const proxyCache = new WeakMap<object, object>();
 
+// Cache batched wrappers for array mutator methods on a per-array-instance basis.
+// Without this, every `arr.push` / `arr.splice` access through the proxy creates
+// and immediately discards a fresh closure — one allocation per call.
+// `receiver` (the proxy) is stable: proxyCache guarantees exactly one proxy per
+// raw target, so we can safely capture it once and reuse the wrapper forever.
+const arrayMutatorWrapperCache = new WeakMap<
+  object,
+  Record<string, (...args: Array<unknown>) => unknown>
+>();
+
 function wrap<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
     return value;
@@ -132,14 +142,27 @@ const readHandler: Pick<
           trackSelf(target);
         }
         if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
-          return (...args: Array<unknown>) => {
-            startBatch();
-            try {
-              return (value as (...a: Array<unknown>) => unknown).apply(receiver, args);
-            } finally {
-              endBatch();
-            }
-          };
+          let cache = arrayMutatorWrapperCache.get(target);
+          if (!cache) {
+            cache = Object.create(null) as Record<string, (...args: Array<unknown>) => unknown>;
+            arrayMutatorWrapperCache.set(target, cache);
+          }
+          let wrapper = cache[prop];
+          if (!wrapper) {
+            const method = value as (...a: Array<unknown>) => unknown;
+            // `receiver` is stable — one proxy per raw target (see proxyCache).
+            const proxy = receiver;
+            wrapper = (...args: Array<unknown>) => {
+              startBatch();
+              try {
+                return method.apply(proxy, args);
+              } finally {
+                endBatch();
+              }
+            };
+            cache[prop] = wrapper;
+          }
+          return wrapper;
         }
       }
       return value;
