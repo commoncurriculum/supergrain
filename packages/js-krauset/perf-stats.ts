@@ -1,17 +1,29 @@
 import { execSync } from "child_process";
 import { readFileSync, readdirSync, writeFileSync } from "fs";
-import { resolve } from "path";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const name = process.argv[2];
 const runCount = parseInt(process.argv[3] || "15", 10);
+// --trim N: drop N lowest and N highest values per metric before computing
+// stats. Requires runCount > 2*N. Default 0 (no trimming).
+const trimArg = process.argv.indexOf("--trim");
+const trimCount = trimArg !== -1 ? parseInt(process.argv[trimArg + 1] || "0", 10) : 0;
 
 if (!name) {
-  console.error("Usage: pnpm perf:stats <name> [runs]");
-  console.error("  e.g. pnpm perf:stats baseline 15");
+  console.error("Usage: pnpm perf:stats <name> [runs] [--trim N]");
+  console.error("  e.g. pnpm perf:stats baseline 20 --trim 3");
   process.exit(1);
 }
 
-const dir = resolve(import.meta.dirname);
+if (trimCount > 0 && runCount <= 2 * trimCount) {
+  console.error(`Error: runCount (${runCount}) must be greater than 2*trim (${2 * trimCount})`);
+  process.exit(1);
+}
+
+const dir = __dirname;
 
 // Note existing files so we only use the ones we create
 const existingFiles = new Set(
@@ -49,12 +61,17 @@ const numericKeys = [
   "domNodesDelta",
 ];
 
-function stats(values: number[]) {
-  const sorted = [...values].sort((a, b) => a - b);
+function stats(values: number[], trim = 0) {
+  let trimmed = values;
+  if (trim > 0) {
+    const sorted = [...values].sort((a, b) => a - b);
+    trimmed = sorted.slice(trim, sorted.length - trim);
+  }
+  const sorted = [...trimmed].sort((a, b) => a - b);
   const n = sorted.length;
-  const mean = values.reduce((s, v) => s + v, 0) / n;
+  const mean = trimmed.reduce((s, v) => s + v, 0) / n;
   const median = n % 2 === 1 ? sorted[Math.floor(n / 2)] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
-  const stddev = Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / n);
+  const stddev = Math.sqrt(trimmed.reduce((s, v) => s + (v - mean) ** 2, 0) / n);
   return { mean, median, stddev, min: sorted[0], max: sorted[n - 1] };
 }
 
@@ -63,6 +80,8 @@ const benchmarkNames = runs[0].results.map((r: any) => r.name);
 const output: any = {
   name,
   runCount: newFiles.length,
+  trimCount,
+  effectiveN: newFiles.length - 2 * trimCount,
   files: newFiles,
   git: runs[0].git,
   benchmarks: {} as any,
@@ -72,7 +91,7 @@ for (const benchName of benchmarkNames) {
   const samples = runs.map((run: any) => run.results.find((r: any) => r.name === benchName));
   const benchmark: any = {};
   for (const key of numericKeys) {
-    benchmark[key] = stats(samples.map((s: any) => s[key]));
+    benchmark[key] = stats(samples.map((s: any) => s[key]), trimCount);
   }
   output.benchmarks[benchName] = benchmark;
 }
@@ -80,7 +99,7 @@ for (const benchName of benchmarkNames) {
 const totalSamples = runs.map((run: any) => run.totals);
 output.totals = {} as any;
 for (const key of numericKeys.filter((k) => k in runs[0].totals)) {
-  output.totals[key] = stats(totalSamples.map((t: any) => t[key]));
+  output.totals[key] = stats(totalSamples.map((t: any) => t[key]), trimCount);
 }
 
 const outPath = resolve(dir, `perf-stats-${name}.json`);
