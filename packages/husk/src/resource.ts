@@ -140,7 +140,11 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
         // (runs immediately if the resource was torn down mid-await). Check
         // `error.name` rather than `instanceof DOMException` so this works
         // in runtimes where DOMException isn't a global.
-        result.catch((error: unknown) => {
+        //
+        // Wrap with `Promise.resolve` because `isPromiseLike` only guarantees
+        // `.then`; non-Promise thenables (Bluebird-style, hand-rolled) would
+        // crash on `.catch`.
+        Promise.resolve(result).catch((error: unknown) => {
           if (error instanceof Error && error.name === "AbortError") return;
           if (gen === generation) {
             console.error("[supergrain/resource] async setup rejected:", error);
