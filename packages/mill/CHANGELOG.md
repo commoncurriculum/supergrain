@@ -1,5 +1,13 @@
 # @supergrain/mill
 
+## 5.0.0
+
+### Patch Changes
+
+- Updated dependencies [b61db1b]
+- Updated dependencies [d4a918b]
+  - @supergrain/kernel@5.0.0
+
 ## 4.0.0
 
 ### Major Changes
