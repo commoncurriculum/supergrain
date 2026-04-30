@@ -1,7 +1,9 @@
 import { readFileSync } from "fs";
-import { resolve } from "path";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 
-const dir = import.meta.dirname;
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const dir = __dirname;
 const args = process.argv.slice(2);
 
 if (args.length !== 2) {
@@ -49,7 +51,7 @@ function fmtPct(base: number, comp: number): string {
 }
 
 console.log(
-  `\n${baselineName} (${baseline.runCount} runs) vs ${compareName} (${compare.runCount} runs)\n`,
+  `\n${baselineName} (${baseline.runCount} runs, n=${baseline.effectiveN ?? baseline.runCount}) vs ${compareName} (${compare.runCount} runs, n=${compare.effectiveN ?? compare.runCount})\n`,
 );
 
 const header =

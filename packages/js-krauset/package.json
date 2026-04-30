@@ -1,40 +1,40 @@
 {
-  "name": "js-framework-benchmark-react-supergrain",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "vite",
-    "build-prod": "vite build",
-    "typecheck": "tsc --noEmit",
-    "test": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/dist.test.ts",
-    "test:perf": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/perf.test.ts --reporter=verbose 2>&1 | tee perf-results.txt",
-    "perf:stats": "node perf-stats.ts",
-    "perf:compare": "node perf-compare.ts",
-    "perf:profile": "pnpm build-prod && PROFILE=1 vitest run --config vitest.dist.config.ts src/perf.test.ts",
-    "perf:analyze": "node perf-profile.ts"
-  },
-  "dependencies": {
-    "@supergrain/kernel": "workspace:*",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
-  },
-  "devDependencies": {
-    "@rollup/plugin-strip": "^3.0.4",
-    "@types/node": "^22.18.3",
-    "@types/ramda": "^0.31.1",
-    "@types/react": "^19.1.13",
-    "@types/react-dom": "^19.1.9",
-    "@vitejs/plugin-react": "^4.7.0",
-    "@vitest/browser": "4.1.0",
-    "playwright": "^1.55.0",
-    "ramda": "^0.32.0",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.5",
-    "vite-plugin-dts": "^4.5.4",
-    "vitest": "4.1.0"
-  },
-  "js-framework-benchmark": {
-    "frameworkVersionFromPackage": "react",
-    "frameworkHomeURL": "https://reactjs.org/"
-  }
+    "name": "js-framework-benchmark-react-supergrain",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "dev": "vite",
+        "build-prod": "vite build",
+        "typecheck": "tsc --noEmit",
+        "test": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/dist.test.ts",
+        "test:perf": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/perf.test.ts --reporter=verbose 2>&1 | tee perf-results.txt",
+        "perf:stats": "npx tsx perf-stats.ts",
+        "perf:compare": "npx tsx perf-compare.ts",
+        "perf:profile": "pnpm build-prod && PROFILE=1 vitest run --config vitest.dist.config.ts src/perf.test.ts",
+        "perf:analyze": "node perf-profile.ts"
+    },
+    "dependencies": {
+        "@supergrain/kernel": "workspace:*",
+        "react": "19.2.4",
+        "react-dom": "19.2.4"
+    },
+    "devDependencies": {
+        "@rollup/plugin-strip": "^3.0.4",
+        "@types/node": "^22.18.3",
+        "@types/ramda": "^0.31.1",
+        "@types/react": "^19.1.13",
+        "@types/react-dom": "^19.1.9",
+        "@vitejs/plugin-react": "^4.7.0",
+        "@vitest/browser": "4.1.0",
+        "playwright": "^1.55.0",
+        "ramda": "^0.32.0",
+        "typescript": "^5.9.2",
+        "vite": "^7.1.5",
+        "vite-plugin-dts": "^4.5.4",
+        "vitest": "4.1.0"
+    },
+    "js-framework-benchmark": {
+        "frameworkVersionFromPackage": "react",
+        "frameworkHomeURL": "https://reactjs.org/"
+    }
 }
