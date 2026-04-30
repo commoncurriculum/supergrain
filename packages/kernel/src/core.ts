@@ -29,10 +29,20 @@ export const $RAW = Symbol.for("supergrain:raw");
 export const $VERSION = Symbol.for("supergrain:version");
 export const $OWN_KEYS = Symbol.for("ownKeys");
 
-export type DataNodes = Record<PropertyKey, Signal<any>>;
+// Well-known symbol properties attached to reactive proxy targets and proxies.
+// Typed as optional so structural subtype checks pass for plain objects.
+export interface ReactiveTagged {
+  [$RAW]?: object;
+  [$PROXY]?: object;
+  [$NODE]?: DataNodes;
+  [$TRACK]?: object;
+}
+
+export type DataNodes = Record<PropertyKey, Signal<unknown>>;
 
 export function unwrap<T>(value: T): T {
-  return (value && (value as any)[$RAW]) || value;
+  if (!value || typeof value !== "object") return value;
+  return ((value as ReactiveTagged)[$RAW] as T | undefined) ?? value;
 }
 
 // Single source of truth for what `createReactive` will proxy. Plain objects
@@ -51,11 +61,11 @@ export function isWrappable(value: unknown): value is object {
 
 /** Get nodes if they already exist (no creation). Fast path for hot loops. */
 export function getNodesIfExist(target: object): DataNodes | undefined {
-  return (target as any)[$NODE];
+  return (target as ReactiveTagged)[$NODE];
 }
 
 export function getNodes(target: object): DataNodes {
-  let nodes = (target as any)[$NODE];
+  let nodes = (target as ReactiveTagged)[$NODE];
   if (!nodes) {
     // Null-prototype: avoid inherited methods (toString, valueOf, hasOwnProperty,
     // …) being mistaken for per-key signal nodes during writes. With a plain
@@ -75,16 +85,16 @@ export function getNodes(target: object): DataNodes {
   }
   // Ensure version signal exists (lazy creation)
   if (!nodes[$VERSION]) {
-    nodes[$VERSION] = signal(0) as Signal<any>;
+    nodes[$VERSION] = signal(0) as Signal<unknown>;
   }
   return nodes;
 }
 
-export function getNode(nodes: DataNodes, property: PropertyKey, value?: any): Signal<any> {
+export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown): Signal<unknown> {
   if (nodes[property]) {
     return nodes[property]!;
   }
-  const newSignal = signal(value) as Signal<any>;
+  const newSignal = signal(value) as Signal<unknown>;
   nodes[property] = newSignal;
   return newSignal;
 }

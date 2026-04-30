@@ -62,6 +62,12 @@ function withUntracked<R>(run: () => R): R {
   }
 }
 
+function isPromiseLike(value: unknown): value is PromiseLike<void> {
+  return (
+    !!value && typeof value === "object" && typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
 interface RunSpec<Args, T extends object> {
   state: T;
   getArgs: () => Args;
@@ -128,14 +134,18 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
 
       if (typeof result === "function") {
         cleanups.push(result);
-      } else if (result && typeof (result as Promise<unknown>).then === "function") {
+      } else if (isPromiseLike(result)) {
         // Promise-resolved values are intentionally ignored — async setups
         // register cleanup via `ctx.onCleanup(...)`, which is `disposed`-safe
         // (runs immediately if the resource was torn down mid-await). Check
         // `error.name` rather than `instanceof DOMException` so this works
         // in runtimes where DOMException isn't a global.
-        (result as Promise<void>).catch((error: unknown) => {
-          if ((error as { name?: string } | null)?.name === "AbortError") return;
+        //
+        // Wrap with `Promise.resolve` because `isPromiseLike` only guarantees
+        // `.then`; non-Promise thenables (Bluebird-style, hand-rolled) would
+        // crash on `.catch`.
+        Promise.resolve(result).catch((error: unknown) => {
+          if (error instanceof Error && error.name === "AbortError") return;
           if (gen === generation) {
             console.error("[supergrain/resource] async setup rejected:", error);
           }
@@ -174,8 +184,10 @@ export function resource<T extends object>(
   setup: (state: T, ctx: ResourceContext) => SetupResult,
 ): T {
   return runResource<void, T>({
+    // createReactive returns Branded<T>, which is structurally assignable to T.
+    // The cast is needed because TypeScript can't reduce the Branded<T> conditional type.
     state: createReactive(initial) as T,
-    getArgs: () => undefined as void,
+    getArgs: (): void => {},
     invokeSetup: (s, _args, ctx) => setup(s, ctx),
     trackSetup: true,
   });
@@ -209,8 +221,12 @@ export function defineResource<Args, T extends object>(
 ): ResourceFactory<Args, T> {
   function instantiate(argsFn?: () => Args): T {
     return runResource<Args, T>({
+      // createReactive returns Branded<T>, which is structurally assignable to T.
+      // The cast is needed because TypeScript can't reduce the Branded<T> conditional type.
       state: createReactive(initial()) as T,
-      getArgs: () => (argsFn ? argsFn() : (undefined as Args)),
+      // When argsFn is absent the factory is called as ResourceFactory<void, T>
+      // (Args = void), so returning undefined satisfies the void constraint.
+      getArgs: () => (argsFn ? argsFn() : (undefined as unknown as Args)),
       invokeSetup: setup,
       trackSetup: false,
     });

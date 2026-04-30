@@ -1,5 +1,5 @@
 import { effect as alienEffect, unwrap, getNodesIfExist, $TRACK } from "@supergrain/kernel";
-import { getCurrentSub, setCurrentSub } from "@supergrain/kernel/internal";
+import { getCurrentSub, setCurrentSub, type ReactiveTagged } from "@supergrain/kernel/internal";
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 /* c8 ignore start -- the React project runs in a browser; this branch is for SSR consumers */
@@ -77,7 +77,7 @@ export const For = tracked((props: ForProps<unknown>) => {
   const swapCleanupRef = useRef<(() => void) | null>(null);
 
   // Subscribe to structural changes (ownKeys: add, remove, splice).
-  void (each as any)?.[$TRACK];
+  void (each as ReactiveTagged)?.[$TRACK];
 
   const raw = unwrap(each);
 
@@ -127,7 +127,8 @@ export const For = tracked((props: ForProps<unknown>) => {
       }
 
       if (changed.length === 2) {
-        const [a, b] = changed as [number, number];
+        const a = changed[0]!;
+        const b = changed[1]!;
         const domChildren = container.children;
         // `changed` is built by ascending iteration, so `a < b` and nodeA is
         // never the last child — its `nextSibling` (and therefore siblingA)
@@ -202,7 +203,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       const rawItem = raw[i];
       const key =
         rawItem && typeof rawItem === "object" && "id" in rawItem
-          ? ((rawItem as Record<string, unknown>)["id"] as React.Key)
+          ? (rawItem as { id: React.Key }).id
           : i;
 
       slots[i] = React.createElement(ForItem, {
