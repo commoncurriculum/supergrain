@@ -28,6 +28,9 @@ export const $TRACK = Symbol.for("supergrain:track");
 export const $RAW = Symbol.for("supergrain:raw");
 export const $VERSION = Symbol.for("supergrain:version");
 export const $OWN_KEYS = Symbol.for("ownKeys");
+// Per-array cache for batched mutator wrappers — stored as a hidden property
+// directly on the raw array target instead of a module-level WeakMap.
+export const $MUTATORS = Symbol.for("supergrain:mutators");
 
 // Well-known symbol properties attached to reactive proxy targets and proxies.
 // Typed as optional so structural subtype checks pass for plain objects.

@@ -53,29 +53,26 @@ let BUMP = 0;
 // ---------------------------------------------------------------------------
 // Per-Map key-signal storage.
 //
-// We cannot store per-key signals in $NODE (which is Record<PropertyKey, …>
-// and cannot hold arbitrary Map keys). Instead we keep a WeakMap from the
-// raw Map to a Map<K, Signal<V|undefined>> of per-key signals.
+// `keySignals` is kept alive by the method closures below — no external
+// WeakMap is needed. A module-level `keySignalsStore` WeakMap was previously
+// maintained here but was never read from outside this function (dead code);
+// removing it eliminates an unnecessary allocation and WeakMap entry per Map.
 // ---------------------------------------------------------------------------
 
-const keySignalsStore = new WeakMap<Map<unknown, unknown>, Map<unknown, Signal<unknown>>>();
-
-function getKeySignals<K, V>(target: Map<K, V>): Map<K, Signal<V | undefined>> {
-  // Caller (`createReactiveMap`) gates on `collectionProxyCache`, so this runs
-  // exactly once per raw target — always allocate a fresh per-key signal map.
-  const ks = new Map<K, Signal<V | undefined>>();
-  keySignalsStore.set(
-    target as Map<unknown, unknown>,
-    ks as unknown as Map<unknown, Signal<unknown>>,
-  );
-  return ks;
-}
-
 // ---------------------------------------------------------------------------
-// Proxy cache — one proxy per raw Map/Set (mirrors proxyCache in read.ts).
+// Proxy cache — one proxy per raw Map/Set.
+//
+// Primary cache: $PROXY stored directly on the raw target as a non-enumerable
+// property (intrusive pattern, same as how plain objects are handled in
+// read.ts). This is faster than a module-level WeakMap lookup and keeps the
+// tracking metadata co-located with the object being tracked.
+//
+// Fallback: sealedCollectionCache WeakMap for sealed / non-extensible
+// collections where Object.defineProperty($PROXY) fails. These are
+// extraordinarily rare in practice.
 // ---------------------------------------------------------------------------
 
-const collectionProxyCache = new WeakMap<object, object>();
+const sealedCollectionCache = new WeakMap<object, object>();
 
 // ---------------------------------------------------------------------------
 // Signal helpers — read/bump $OWN_KEYS and per-key signals.
@@ -110,11 +107,16 @@ function bumpVersionSignal(target: object): void {
 // ---------------------------------------------------------------------------
 
 export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
-  if (collectionProxyCache.has(rawTarget)) {
-    return collectionProxyCache.get(rawTarget) as Map<K, V>;
-  }
+  // Primary proxy cache: $PROXY stored directly on the raw target.
+  const existing = (rawTarget as any)[$PROXY] as Map<K, V> | undefined;
+  if (existing) return existing;
+  // Fallback for sealed Maps where defineProperty($PROXY) fails.
+  const existingSealed = sealedCollectionCache.get(rawTarget) as Map<K, V> | undefined;
+  if (existingSealed) return existingSealed;
 
-  const keySignals = getKeySignals(rawTarget);
+  // keySignals is kept alive by the closures in `methods` below.
+  // No external WeakMap is needed to maintain its lifetime.
+  const keySignals = new Map<K, Signal<V | undefined>>();
 
   function getOrCreateKeySignal(rawKey: K): Signal<V | undefined> {
     let s = keySignals.get(rawKey);
@@ -339,15 +341,22 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
 
   const proxy = new Proxy(rawTarget, handler);
   proxyRef = proxy;
-  collectionProxyCache.set(rawTarget, proxy);
+  try {
+    Object.defineProperty(rawTarget, $PROXY, { value: proxy, enumerable: false });
+  } catch {
+    sealedCollectionCache.set(rawTarget, proxy);
+  }
   return proxy;
 }
 // ---------------------------------------------------------------------------
 
 export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
-  if (collectionProxyCache.has(rawTarget)) {
-    return collectionProxyCache.get(rawTarget) as Set<T>;
-  }
+  // Primary proxy cache: $PROXY stored directly on the raw target.
+  const existing = (rawTarget as any)[$PROXY] as Set<T> | undefined;
+  if (existing) return existing;
+  // Fallback for sealed Sets where defineProperty($PROXY) fails.
+  const existingSealed = sealedCollectionCache.get(rawTarget) as Set<T> | undefined;
+  if (existingSealed) return existingSealed;
 
   // Pre-create method functions once per Set instance (same rationale as Map).
   let proxyRef = undefined as unknown as Set<T>;
@@ -479,6 +488,10 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
 
   const proxy = new Proxy(rawTarget, handler);
   proxyRef = proxy;
-  collectionProxyCache.set(rawTarget, proxy);
+  try {
+    Object.defineProperty(rawTarget, $PROXY, { value: proxy, enumerable: false });
+  } catch {
+    sealedCollectionCache.set(rawTarget, proxy);
+  }
   return proxy;
 }

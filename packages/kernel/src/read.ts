@@ -2,6 +2,7 @@ import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 
 import { createReactiveMap, createReactiveSet } from "./collections";
 import {
+  $MUTATORS,
   $NODE,
   $OWN_KEYS,
   $PROXY,
@@ -16,49 +17,28 @@ import {
 import { profileSignalRead, profileSignalSkip } from "./profiler";
 import { writeHandler } from "./write";
 
-// Array methods that mutate the array internally do multiple proxy `set`
-// operations (e.g., `push` does `arr[len] = x; arr.length += 1`). Without
-// batching, each internal write fires its own propagate/drain cycle, and
-// synchronous effects (`useSignalEffect`, raw `effect()`) observe partial
-// states between sub-operations — for example, length updated before the
-// new element, or vice versa. Wrapping these methods in `startBatch` /
-// `endBatch` coalesces all internal writes into a single notification.
-//
-// The list is enumerated rather than "wrap all array method calls" because
-// the proxy `get` handler is the hottest function in the library (every
-// property read goes through it), and V8 deoptimizes the entire handler when
-// its shape changes. See `notes/failed-approaches/fast-push-bypass-proxy.md`
-// for an attempt that regressed unrelated benchmarks 13-27% by adding a
-// single conditional branch here.
-//
-// Trade-off: any future ES mutator (e.g., a hypothetical
-// `Array.prototype.frobnicate`) won't be batched until added to this list.
-// Synchronous effects observing arrays mutated via the new method would see
-// partial states. React renderers via `tracked()` are unaffected (React
-// batches `forceUpdate` calls).
-const ARRAY_MUTATORS = new Set([
-  "push",
-  "pop",
-  "shift",
-  "unshift",
-  "splice",
-  "sort",
-  "reverse",
-  "fill",
-  "copyWithin",
-]);
+// Null-prototype object: O(1) property lookup with the same semantics as
+// Set.has() but without the method-call overhead and with a simpler,
+// more predictable shape for V8.
+const ARRAY_MUTATORS: Record<string, true> = Object.assign(
+  Object.create(null) as Record<string, true>,
+  {
+    push: true,
+    pop: true,
+    shift: true,
+    unshift: true,
+    splice: true,
+    sort: true,
+    reverse: true,
+    fill: true,
+    copyWithin: true,
+  },
+);
 
+// Fallback proxy cache for sealed / non-extensible objects where
+// Object.defineProperty($PROXY) cannot be stored on the target.
+// Populated only for that rare case — stays nearly empty in practice.
 const proxyCache = new WeakMap<object, object>();
-
-// Cache batched wrappers for array mutator methods on a per-array-instance basis.
-// Without this, every `arr.push` / `arr.splice` access through the proxy creates
-// and immediately discards a fresh closure — one allocation per call.
-// `receiver` (the proxy) is stable: proxyCache guarantees exactly one proxy per
-// raw target, so we can safely capture it once and reuse the wrapper forever.
-const arrayMutatorWrapperCache = new WeakMap<
-  object,
-  Record<string, (...args: Array<unknown>) => unknown>
->();
 
 function wrap<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
@@ -88,6 +68,27 @@ function trackArrayVersion(value: unknown): void {
     }
     /* c8 ignore stop */
   }
+}
+
+// Create (or retrieve) the per-array mutator wrapper cache stored as a hidden
+// $MUTATORS property on the raw array. Extracted to keep the proxy get handler
+// shallow enough to satisfy the max-depth lint rule.
+function getMutatorCache(
+  target: object,
+): Record<string, (...args: Array<unknown>) => unknown> {
+  let cache = (target as any)[$MUTATORS] as
+    | Record<string, (...args: Array<unknown>) => unknown>
+    | undefined;
+  if (!cache) {
+    cache = Object.create(null) as Record<string, (...args: Array<unknown>) => unknown>;
+    try {
+      Object.defineProperty(target, $MUTATORS, { value: cache, enumerable: false });
+    } catch {
+      // Non-extensible array: wrapper recreated on each access (correct if
+      // uncached). Proxied arrays are extensible by default; this is rare.
+    }
+  }
+  return cache;
 }
 
 const readHandler: Pick<
@@ -141,16 +142,17 @@ const readHandler: Pick<
         if (getCurrentSub()) {
           trackSelf(target);
         }
-        if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
-          let cache = arrayMutatorWrapperCache.get(target);
-          if (!cache) {
-            cache = Object.create(null) as Record<string, (...args: Array<unknown>) => unknown>;
-            arrayMutatorWrapperCache.set(target, cache);
-          }
+        if (typeof prop === "string" && ARRAY_MUTATORS[prop]) {
+          // Per-array mutator wrapper cache stored as a hidden $MUTATORS property
+          // on the raw array target — avoids a module-level WeakMap lookup and
+          // keeps the data co-located with the object that owns it (intrusive
+          // pattern). Falls back to recreating the wrapper for non-extensible
+          // arrays (see getMutatorCache).
+          const cache = getMutatorCache(target);
           let wrapper = cache[prop];
           if (!wrapper) {
             const method = value as (...a: Array<unknown>) => unknown;
-            // `receiver` is stable — one proxy per raw target (see proxyCache).
+            // `receiver` is the stable proxy (one per raw target via $PROXY).
             const proxy = receiver;
             wrapper = (...args: Array<unknown>) => {
               startBatch();
@@ -216,6 +218,15 @@ export function createReactiveProxy<T extends object>(target: T): T {
     return target;
   }
 
+  // Primary proxy cache: $PROXY is stored directly on the raw target as a
+  // hidden property (intrusive pattern — same as alien-signals' approach of
+  // embedding tracking metadata on the tracked object). This is faster than a
+  // module-level WeakMap lookup and covers plain objects, arrays, Maps, and
+  // Sets once they have been proxied. Checking here, before the instanceof
+  // tests, also lets already-proxied Maps/Sets skip those checks entirely.
+  const cached = (target as ReactiveTagged)[$PROXY];
+  if (cached) return cached as T;
+
   if (target instanceof Map) {
     return createReactiveMap(target as Map<unknown, unknown>) as unknown as T;
   }
@@ -223,9 +234,8 @@ export function createReactiveProxy<T extends object>(target: T): T {
     return createReactiveSet(target as Set<unknown>) as unknown as T;
   }
 
-  const cached = (target as ReactiveTagged)[$PROXY];
-  if (cached) return cached as T;
-
+  // Fallback cache for sealed / non-extensible objects where
+  // Object.defineProperty($PROXY) cannot be stored on the target.
   if (proxyCache.has(target)) {
     return proxyCache.get(target) as T;
   }
@@ -235,12 +245,13 @@ export function createReactiveProxy<T extends object>(target: T): T {
   }
 
   const proxy = new Proxy(target, handler);
-  proxyCache.set(target, proxy);
 
+  // Store the proxy on the target itself (fast path for all future lookups).
+  // Only fall back to the module-level WeakMap when that fails (sealed objects).
   try {
     Object.defineProperty(target, $PROXY, { value: proxy, enumerable: false });
   } catch {
-    // Fails for sealed or non-configurable objects.
+    proxyCache.set(target, proxy);
   }
 
   return proxy as T;
