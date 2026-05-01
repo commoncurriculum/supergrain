@@ -76,17 +76,19 @@ export function tracked<P extends object>(Component: FC<P>) {
         }
         forceUpdate();
       });
-      // Hoist the unmount + effect-setup closures so we don't allocate fresh
-      // ones on every render. `forceUpdate` is a stable ref per React's
-      // useReducer contract, so these closures stay valid for the component's
-      // lifetime.
+      // Hoist the unmount closure so we don't allocate a fresh arrow on
+      // every render to pass into the effect. `fu` (== forceUpdate) is
+      // stable per React's useReducer contract, so capturing it here is
+      // safe for the component's lifetime. The non-null assertion mirrors
+      // the original implementation: onUnmount only runs after this
+      // first-render block has assigned `fu.__sg`.
       const onUnmount = (): void => {
-        const sg = (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
-        if (sg) {
-          sg.cleanup();
-          delete (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
-        }
+        fu.__sg!.cleanup();
+        delete fu.__sg;
       };
+      // Stable effect-setup function: passing the same reference to
+      // useEffect on every render lets React's deps comparison
+      // short-circuit and skips per-render closure allocation.
       const effectSetup = (): (() => void) => onUnmount;
       fu.__sg = { cleanup, effectNode: capturedNode, onUnmount, effectSetup };
     }
