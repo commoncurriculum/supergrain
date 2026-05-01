@@ -29,8 +29,9 @@ export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, an
 }
 
 export function setProperty(target: any, key: PropertyKey, value: any): void {
+  const arr: Array<unknown> | null = Array.isArray(target) ? target : null;
+  const prevLen = arr ? arr.length : -1;
   const hadKey = Object.hasOwn(target, key);
-  const prevLen = Array.isArray(target) ? target.length : -1;
   const oldValue = target[key];
 
   target[key] = value;
@@ -43,12 +44,12 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
     // Per-index signals already notify element-specific subscribers.
     // Version bump would unnecessarily notify parent components that
     // only care about structural changes (length, add, remove).
-    const isArrayElementReplace = Array.isArray(target) && hadKey && target.length === prevLen;
+    const isArrayElementReplace = arr !== null && hadKey && arr.length === prevLen;
     if (!isArrayElementReplace) {
       // Lazily ensure nodes (and the $VERSION signal getNodes creates).
       // For non-extensible targets, getNodes returns a transient nodes bag —
       // signal lookups below all miss, so the writes are observable no-ops,
-      // matching the previous behavior of bumpVersion + guarded re-reads.
+      // matching the previous bumpVersion + guarded re-read pattern.
       if (!nodes) nodes = getNodes(target);
       const versionSignal = nodes[$VERSION];
       /* c8 ignore start -- callers that need notifications create the version signal before bumping */
@@ -63,11 +64,11 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
       profileSignalWrite();
       node(value);
     }
-    if (Array.isArray(target) && key !== "length") {
+    if (arr !== null && key !== "length") {
       const lengthNode = nodes["length"];
-      if (lengthNode && (target as Array<unknown>).length !== prevLen) {
+      if (lengthNode && arr.length !== prevLen) {
         profileSignalWrite();
-        lengthNode((target as Array<unknown>).length);
+        lengthNode(arr.length);
       }
     }
     if (!hadKey) {
@@ -81,10 +82,10 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
 }
 
 export function deleteProperty(target: any, key: PropertyKey): void {
-  const hadKey = Object.hasOwn(target, key);
-  if (!hadKey) return;
+  if (!Object.hasOwn(target, key)) return;
 
-  const prevLen = Array.isArray(target) ? target.length : -1;
+  const arr: Array<unknown> | null = Array.isArray(target) ? target : null;
+  const prevLen = arr ? arr.length : -1;
 
   delete target[key];
 
@@ -107,11 +108,11 @@ export function deleteProperty(target: any, key: PropertyKey): void {
     profileSignalWrite();
     node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
   }
-  if (Array.isArray(target) && key !== "length") {
+  if (arr !== null && key !== "length") {
     const lengthNode = nodes["length"];
-    if (lengthNode && (target as Array<unknown>).length !== prevLen) {
+    if (lengthNode && arr.length !== prevLen) {
       profileSignalWrite();
-      lengthNode((target as Array<unknown>).length);
+      lengthNode(arr.length);
     }
   }
   const ownKeysSignal = nodes[$OWN_KEYS];

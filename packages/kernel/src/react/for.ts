@@ -9,6 +9,14 @@ const useIsomorphicLayoutEffect = globalThis.document === undefined ? useEffect 
 
 import { tracked } from "./tracked";
 
+// Mutate `dest` to mirror `src` without allocating a new array. Used by the
+// swap effect's `prevRawRef` bookkeeping where the previous list snapshot
+// would otherwise be reallocated as `[...src]` on every tick.
+function copyArrayInto(dest: Array<unknown>, src: ReadonlyArray<unknown>): void {
+  dest.length = src.length;
+  for (let i = 0; i < src.length; i++) dest[i] = src[i];
+}
+
 interface ForProps<T> {
   each: Array<T>;
   children: (item: T, index: number) => React.ReactNode;
@@ -96,11 +104,7 @@ export const For = tracked((props: ForProps<unknown>) => {
     }
 
     swapCleanupRef.current?.();
-    // Mutate prevRawRef in place so we don't allocate a fresh N-element array
-    // on every effect run that reaches the spread paths below.
-    const initialPrev = prevRawRef.current;
-    initialPrev.length = raw.length;
-    for (let i = 0; i < raw.length; i++) initialPrev[i] = raw[i];
+    copyArrayInto(prevRawRef.current, raw);
 
     const cleanup = alienEffect(() => {
       const nodes = getNodesIfExist(raw);
@@ -116,8 +120,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       const prev = prevRawRef.current;
       const container = parent.current;
       if (!container || prev.length !== raw.length) {
-        prev.length = raw.length;
-        for (let i = 0; i < raw.length; i++) prev[i] = raw[i];
+        copyArrayInto(prev, raw);
         return;
       }
 
@@ -152,8 +155,7 @@ export const For = tracked((props: ForProps<unknown>) => {
         prev[aIdx] = raw[aIdx];
         prev[bIdx] = raw[bIdx];
       } else {
-        prev.length = raw.length;
-        for (let i = 0; i < raw.length; i++) prev[i] = raw[i];
+        copyArrayInto(prev, raw);
       }
     });
 
