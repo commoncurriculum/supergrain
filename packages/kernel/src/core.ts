@@ -28,9 +28,17 @@ export const $TRACK = Symbol.for("supergrain:track");
 export const $RAW = Symbol.for("supergrain:raw");
 export const $VERSION = Symbol.for("supergrain:version");
 export const $OWN_KEYS = Symbol.for("ownKeys");
-// Per-array cache for batched mutator wrappers — stored as a hidden property
-// directly on the raw array target instead of a module-level WeakMap.
-export const $MUTATORS = Symbol.for("supergrain:mutators");
+
+// Monotonic counter feeding every counter-style signal write. The value only
+// needs to differ from the previous one so `Object.is` detects a change and
+// subscribers re-run; its specific number is not observed by anyone. Shared
+// across write.ts and collections.ts so there's a single source of truth
+// instead of two parallel module-level counters. V8 inlines this trivial
+// function, so callers pay the same cost as a local `++BUMP`.
+let bumpCounter = 0;
+export function nextBump(): number {
+  return ++bumpCounter;
+}
 
 // Well-known symbol properties attached to reactive proxy targets and proxies.
 // Typed as optional so structural subtype checks pass for plain objects.

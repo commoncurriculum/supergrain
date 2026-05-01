@@ -9,6 +9,14 @@ const useIsomorphicLayoutEffect = globalThis.document === undefined ? useEffect 
 
 import { tracked } from "./tracked";
 
+// Mutate `dest` to mirror `src` without allocating a new array. Used by the
+// swap effect's `prevRawRef` bookkeeping where the previous list snapshot
+// would otherwise be reallocated as `[...src]` on every tick.
+function copyArrayInto(dest: Array<unknown>, src: ReadonlyArray<unknown>): void {
+  dest.length = src.length;
+  for (let i = 0; i < src.length; i++) dest[i] = src[i];
+}
+
 interface ForProps<T> {
   each: Array<T>;
   children: (item: T, index: number) => React.ReactNode;
@@ -96,10 +104,21 @@ export const For = tracked((props: ForProps<unknown>) => {
     }
 
     swapCleanupRef.current?.();
-    prevRawRef.current = [...raw];
+    copyArrayInto(prevRawRef.current, raw);
 
     const cleanup = alienEffect(() => {
       const nodes = getNodesIfExist(raw);
+      const prev = prevRawRef.current;
+      const container = parent.current;
+      const canSwap = container !== null && prev.length === raw.length;
+
+      // Single pass: subscribe to every per-index signal (so the effect
+      // re-runs on any element change) AND, when shapes match, count up to
+      // two changed indices into scalars. The combined loop replaces what
+      // used to be two full passes over `raw`.
+      let aIdx = -1;
+      let bIdx = -1;
+      let changedCount = 0;
       for (let i = 0; i < raw.length; i++) {
         const node = nodes?.[i];
         if (node) {
@@ -107,45 +126,36 @@ export const For = tracked((props: ForProps<unknown>) => {
         } else {
           void each[i];
         }
-      }
-
-      const prev = prevRawRef.current;
-      const container = parent.current;
-      if (!container || prev.length !== raw.length) {
-        prevRawRef.current = [...raw];
-        return;
-      }
-
-      const changed: Array<number> = [];
-      for (let i = 0; i < raw.length; i++) {
-        if (raw[i] !== prev[i]) {
-          changed.push(i);
-          if (changed.length > 2) {
-            break;
-          }
+        if (canSwap && raw[i] !== prev[i]) {
+          if (changedCount === 0) aIdx = i;
+          else if (changedCount === 1) bIdx = i;
+          changedCount++;
         }
       }
 
-      if (changed.length === 2) {
-        const a = changed[0]!;
-        const b = changed[1]!;
+      if (!canSwap) {
+        copyArrayInto(prev, raw);
+        return;
+      }
+
+      if (changedCount === 2) {
         const domChildren = container.children;
-        // `changed` is built by ascending iteration, so `a < b` and nodeA is
-        // never the last child — its `nextSibling` (and therefore siblingA)
-        // is always defined. The non-null assertions on `nodeA`/`nodeB`
-        // assume `parent.ref` hasn't been externally mutated.
-        const nodeA = domChildren[a]!;
-        const nodeB = domChildren[b]!;
+        // Ascending iteration ensures aIdx < bIdx, so nodeA is never the last
+        // child — its `nextSibling` (and therefore siblingA) is always
+        // defined. The non-null assertions assume `parent.ref` hasn't been
+        // externally mutated.
+        const nodeA = domChildren[aIdx]!;
+        const nodeB = domChildren[bIdx]!;
         const siblingA = nodeA.nextSibling === nodeB ? nodeA : nodeA.nextSibling!;
         nodeB.after(nodeA);
         siblingA.before(nodeB);
         // Update prev from raw (not swapping within prev) to preserve
         // object identity — raw may contain proxy wrappers while prev
         // has raw objects, so we must copy from raw for === to work.
-        prev[a] = raw[a];
-        prev[b] = raw[b];
+        prev[aIdx] = raw[aIdx];
+        prev[bIdx] = raw[bIdx];
       } else {
-        prevRawRef.current = [...raw];
+        copyArrayInto(prev, raw);
       }
     });
 
@@ -188,7 +198,8 @@ export const For = tracked((props: ForProps<unknown>) => {
     setCurrentSub(prevSub);
   } else {
     // Non-parent path: use ForItem wrapper for per-index signal subscription
-    // so React keyed reconciliation handles swaps.
+    // so React keyed reconciliation handles swaps. Single pass: subscribe to
+    // each per-index signal and emit its slot in the same iteration.
     const nodes = getNodesIfExist(raw);
     for (let i = 0; i < raw.length; i++) {
       const existingNode = nodes?.[i];
@@ -197,9 +208,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       } else {
         void each[i];
       }
-    }
 
-    for (let i = 0; i < raw.length; i++) {
       const rawItem = raw[i];
       const key =
         rawItem && typeof rawItem === "object" && "id" in rawItem

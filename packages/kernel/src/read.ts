@@ -2,7 +2,6 @@ import { getCurrentSub, startBatch, endBatch } from "alien-signals";
 
 import { createReactiveMap, createReactiveSet } from "./collections";
 import {
-  $MUTATORS,
   $NODE,
   $OWN_KEYS,
   $PROXY,
@@ -17,23 +16,40 @@ import {
 import { profileSignalRead, profileSignalSkip } from "./profiler";
 import { writeHandler } from "./write";
 
-// Null-prototype object: O(1) property lookup with the same semantics as
-// Set.has() but without the method-call overhead and with a simpler,
-// more predictable shape for V8.
-const ARRAY_MUTATORS: Record<string, true> = Object.assign(
-  Object.create(null) as Record<string, true>,
-  {
-    push: true,
-    pop: true,
-    shift: true,
-    unshift: true,
-    splice: true,
-    sort: true,
-    reverse: true,
-    fill: true,
-    copyWithin: true,
-  },
-);
+// Module-level table of batched wrappers — one wrapper per mutator name,
+// shared across every reactive array. The wrapper forwards via `this`, so it
+// doesn't need a per-array closure capture; this eliminates the per-array
+// `$MUTATORS` cache (and its `defineProperty` cost) entirely. A null-prototype
+// object also doubles as the membership check: `arrayMutatorWrappers[prop]`
+// is truthy iff `prop` names a mutator.
+type ArrayMutator = (this: unknown, ...args: Array<unknown>) => unknown;
+
+const arrayMutatorWrappers: Record<string, ArrayMutator> = ((): Record<string, ArrayMutator> => {
+  const table: Record<string, ArrayMutator> = Object.create(null);
+  const names = [
+    "push",
+    "pop",
+    "shift",
+    "unshift",
+    "splice",
+    "sort",
+    "reverse",
+    "fill",
+    "copyWithin",
+  ] as const;
+  for (const name of names) {
+    const original = Array.prototype[name] as ArrayMutator;
+    table[name] = function batchedArrayMutator(this: unknown, ...args: Array<unknown>) {
+      startBatch();
+      try {
+        return original.apply(this, args);
+      } finally {
+        endBatch();
+      }
+    };
+  }
+  return table;
+})();
 
 // Fallback proxy cache for sealed / non-extensible objects where
 // Object.defineProperty($PROXY) cannot be stored on the target.
@@ -68,27 +84,6 @@ function trackArrayVersion(value: unknown): void {
     }
     /* c8 ignore stop */
   }
-}
-
-// Create (or retrieve) the per-array mutator wrapper cache stored as a hidden
-// $MUTATORS property on the raw array. Extracted to keep the proxy get handler
-// shallow enough to satisfy the max-depth lint rule.
-function getMutatorCache(
-  target: object,
-): Record<string, (...args: Array<unknown>) => unknown> {
-  let cache = (target as any)[$MUTATORS] as
-    | Record<string, (...args: Array<unknown>) => unknown>
-    | undefined;
-  if (!cache) {
-    cache = Object.create(null) as Record<string, (...args: Array<unknown>) => unknown>;
-    try {
-      Object.defineProperty(target, $MUTATORS, { value: cache, enumerable: false });
-    } catch {
-      // Non-extensible array: wrapper recreated on each access (correct if
-      // uncached). Proxied arrays are extensible by default; this is rare.
-    }
-  }
-  return cache;
 }
 
 const readHandler: Pick<
@@ -142,29 +137,16 @@ const readHandler: Pick<
         if (getCurrentSub()) {
           trackSelf(target);
         }
-        if (typeof prop === "string" && ARRAY_MUTATORS[prop]) {
-          // Per-array mutator wrapper cache stored as a hidden $MUTATORS property
-          // on the raw array target — avoids a module-level WeakMap lookup and
-          // keeps the data co-located with the object that owns it (intrusive
-          // pattern). Falls back to recreating the wrapper for non-extensible
-          // arrays (see getMutatorCache).
-          const cache = getMutatorCache(target);
-          let wrapper = cache[prop];
-          if (!wrapper) {
-            const method = value as (...a: Array<unknown>) => unknown;
-            // `receiver` is the stable proxy (one per raw target via $PROXY).
-            const proxy = receiver;
-            wrapper = (...args: Array<unknown>) => {
-              startBatch();
-              try {
-                return method.apply(proxy, args);
-              } finally {
-                endBatch();
-              }
-            };
-            cache[prop] = wrapper;
-          }
-          return wrapper;
+        // Only swap in the batched wrapper when the resolved value is the
+        // intrinsic Array.prototype method. If the caller has overridden
+        // `arr.push = customFn` (or subclassed Array), respect their
+        // implementation and return it unwrapped.
+        if (
+          typeof prop === "string" &&
+          value === (Array.prototype as unknown as Record<string, unknown>)[prop]
+        ) {
+          const wrapper = arrayMutatorWrappers[prop];
+          if (wrapper) return wrapper;
         }
       }
       return value;

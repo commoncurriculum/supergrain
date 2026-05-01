@@ -24,7 +24,9 @@ import {
   getNodes,
   getNodesIfExist,
   isWrappable,
+  nextBump,
   unwrap,
+  type ReactiveTagged,
   type Signal,
 } from "./core";
 import { profileSignalRead, profileSignalSkip, profileSignalWrite } from "./profiler";
@@ -42,13 +44,6 @@ function wrap<T>(value: T): T {
   }
   return createReactiveProxy(value) as T;
 }
-
-// ---------------------------------------------------------------------------
-// Monotonic bump counter — mirrors the one in write.ts (each only needs to
-// differ from the *previous* value on the same signal).
-// ---------------------------------------------------------------------------
-
-let BUMP = 0;
 
 // ---------------------------------------------------------------------------
 // Per-Map key-signal storage.
@@ -93,13 +88,13 @@ function bumpOwnKeys(target: object): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) return;
   profileSignalWrite();
-  nodes[$OWN_KEYS]!(++BUMP);
+  nodes[$OWN_KEYS]!(nextBump());
 }
 
 function bumpVersionSignal(target: object): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) return;
-  nodes[$VERSION]!(++BUMP);
+  nodes[$VERSION]!(nextBump());
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +103,7 @@ function bumpVersionSignal(target: object): void {
 
 export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
   // Primary proxy cache: $PROXY stored directly on the raw target.
-  const existing = (rawTarget as any)[$PROXY] as Map<K, V> | undefined;
+  const existing = (rawTarget as ReactiveTagged)[$PROXY] as Map<K, V> | undefined;
   if (existing) return existing;
   // Fallback for sealed Maps where defineProperty($PROXY) fails.
   const existingSealed = sealedCollectionCache.get(rawTarget) as Map<K, V> | undefined;
@@ -129,10 +124,12 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
 
   // Pre-create method functions once per Map instance so the `get` trap can
   // return a stable reference instead of allocating a new closure each time.
-  // Methods that return the proxy use `proxyRef`, which is assigned below after
-  // `new Proxy(…)`. JavaScript closures capture variables by reference, so by
-  // the time any method is actually *called*, `proxyRef` will hold the proxy.
-  let proxyRef = undefined as unknown as Map<K, V>;
+  // `proxyRef` is assigned after `new Proxy(...)` below; closures capture
+  // variables by reference, so by the time any method is *called* it holds
+  // the proxy. Returning `proxyRef` (rather than `this`) keeps the original
+  // behavior when callers extract methods, e.g.
+  // `const set = mapProxy.set; set(k, v)` still returns the proxy.
+  let proxyRef: Map<K, V> = undefined as unknown as Map<K, V>;
 
   const methods = {
     get: function reactiveGet(key: K): V | undefined {
@@ -352,14 +349,17 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
 
 export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
   // Primary proxy cache: $PROXY stored directly on the raw target.
-  const existing = (rawTarget as any)[$PROXY] as Set<T> | undefined;
+  const existing = (rawTarget as ReactiveTagged)[$PROXY] as Set<T> | undefined;
   if (existing) return existing;
   // Fallback for sealed Sets where defineProperty($PROXY) fails.
   const existingSealed = sealedCollectionCache.get(rawTarget) as Set<T> | undefined;
   if (existingSealed) return existingSealed;
 
   // Pre-create method functions once per Set instance (same rationale as Map).
-  let proxyRef = undefined as unknown as Set<T>;
+  // Methods that return the proxy use `proxyRef` (assigned after `new Proxy`)
+  // so that extracting a method, e.g. `const add = setProxy.add; add(v)`,
+  // still returns the proxy and preserves chaining.
+  let proxyRef: Set<T> = undefined as unknown as Set<T>;
 
   const methods = {
     has: function reactiveHas(value: T): boolean {

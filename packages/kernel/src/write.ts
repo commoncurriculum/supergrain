@@ -1,14 +1,5 @@
-import { $OWN_KEYS, $VERSION, unwrap, getNodes, getNodesIfExist } from "./core";
+import { $OWN_KEYS, $VERSION, nextBump, unwrap, getNodes, getNodesIfExist } from "./core";
 import { profileSignalWrite } from "./profiler";
-
-// Monotonic counter feeding every counter-style signal write. The value only
-// needs to differ from the previous one so `Object.is` detects a change and
-// subscribers re-run; its specific number is not observed by anyone. Using a
-// module-local `++` avoids `signal(signal() + 1)` — the signal read there
-// would subscribe the active `currentSub` to the very signal we're about to
-// write, turning every proxy mutation inside a tracked render into a
-// self-triggering loop.
-let BUMP = 0;
 
 export function bumpVersion(target: object): void {
   let nodes = getNodesIfExist(target);
@@ -19,7 +10,7 @@ export function bumpVersion(target: object): void {
   const v = nodes[$VERSION];
   /* c8 ignore start -- callers that need notifications create the version signal before bumping */
   if (v) {
-    v(++BUMP);
+    v(nextBump());
   }
   /* c8 ignore stop */
 }
@@ -33,84 +24,101 @@ export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, an
   const ownKeysSignal = resolvedNodes[$OWN_KEYS];
   if (ownKeysSignal) {
     profileSignalWrite();
-    ownKeysSignal(++BUMP);
-  }
-}
-
-function bumpSignals(target: any, key: PropertyKey, prevLen: number): void {
-  const nodes = getNodesIfExist(target);
-  if (!nodes) {
-    return;
-  }
-  if (Array.isArray(target) && key !== "length") {
-    const lengthNode = nodes["length"];
-    if (lengthNode && target.length !== prevLen) {
-      profileSignalWrite();
-      lengthNode(target.length);
-    }
+    ownKeysSignal(nextBump());
   }
 }
 
 export function setProperty(target: any, key: PropertyKey, value: any): void {
+  const arr: Array<unknown> | null = Array.isArray(target) ? target : null;
+  const prevLen = arr ? arr.length : -1;
   const hadKey = Object.hasOwn(target, key);
-  const prevLen = Array.isArray(target) ? target.length : -1;
   const oldValue = target[key];
 
   target[key] = value;
 
   const didChange = unwrap(oldValue) !== unwrap(value);
+  let nodes = getNodesIfExist(target);
+
   if (didChange) {
     // Skip version bump for array element replacement (same length).
     // Per-index signals already notify element-specific subscribers.
     // Version bump would unnecessarily notify parent components that
     // only care about structural changes (length, add, remove).
-    const isArrayElementReplace = Array.isArray(target) && hadKey && target.length === prevLen;
+    const isArrayElementReplace = arr !== null && hadKey && arr.length === prevLen;
     if (!isArrayElementReplace) {
-      bumpVersion(target);
+      // Lazily ensure nodes (and the $VERSION signal getNodes creates).
+      // For non-extensible targets, getNodes returns a transient nodes bag —
+      // signal lookups below all miss, so the writes are observable no-ops,
+      // matching the previous bumpVersion + guarded re-read pattern.
+      if (!nodes) nodes = getNodes(target);
+      const versionSignal = nodes[$VERSION];
+      /* c8 ignore start -- callers that need notifications create the version signal before bumping */
+      if (versionSignal) versionSignal(nextBump());
+      /* c8 ignore stop */
     }
   }
 
-  const nodes = getNodesIfExist(target);
   if (nodes) {
     const node = nodes[key];
     if (node && didChange) {
       profileSignalWrite();
       node(value);
     }
-  }
-  bumpSignals(target, key, prevLen);
-
-  if (!hadKey) {
-    bumpOwnKeysSignal(target, getNodesIfExist(target));
+    if (arr !== null && key !== "length") {
+      const lengthNode = nodes["length"];
+      if (lengthNode && arr.length !== prevLen) {
+        profileSignalWrite();
+        lengthNode(arr.length);
+      }
+    }
+    if (!hadKey) {
+      const ownKeysSignal = nodes[$OWN_KEYS];
+      if (ownKeysSignal) {
+        profileSignalWrite();
+        ownKeysSignal(nextBump());
+      }
+    }
   }
 }
 
 export function deleteProperty(target: any, key: PropertyKey): void {
-  const hadKey = Object.hasOwn(target, key);
-  const prevLen = Array.isArray(target) ? target.length : -1;
+  if (!Object.hasOwn(target, key)) return;
+
+  const arr: Array<unknown> | null = Array.isArray(target) ? target : null;
+  const prevLen = arr ? arr.length : -1;
 
   delete target[key];
 
-  if (hadKey) {
-    bumpVersion(target);
+  // Lazily ensure nodes for the version bump. For non-extensible targets,
+  // getNodes returns a transient nodes bag whose per-key/length/ownKeys slots
+  // are all empty, so the signal lookups below no-op — matching the original
+  // bumpVersion + guarded re-read pattern that the
+  // "should not throw when deleting a key from a non-extensible target" test
+  // covers.
+  let nodes = getNodesIfExist(target);
+  if (!nodes) nodes = getNodes(target);
 
-    // Keep the `if (nodes)` guard. It looks like `bumpVersion` should
-    // guarantee nodes are attached, but `getNodes` wraps its
-    // `Object.defineProperty($NODE, …)` in `try/catch` — non-extensible
-    // targets (e.g. `Object.preventExtensions`) leave `$NODE` detached, and
-    // `getNodesIfExist` still returns `undefined` here. Removing this guard
-    // and using `!` will TypeError on `nodes[key]`. See store.test.ts
-    // "should not throw when deleting a key from a non-extensible target".
-    const nodes = getNodesIfExist(target);
-    if (nodes) {
-      const node = nodes[key];
-      if (node) {
-        profileSignalWrite();
-        node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
-      }
+  const versionSignal = nodes[$VERSION];
+  /* c8 ignore start -- callers that need notifications create the version signal before bumping */
+  if (versionSignal) versionSignal(nextBump());
+  /* c8 ignore stop */
+
+  const node = nodes[key];
+  if (node) {
+    profileSignalWrite();
+    node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
+  }
+  if (arr !== null && key !== "length") {
+    const lengthNode = nodes["length"];
+    if (lengthNode && arr.length !== prevLen) {
+      profileSignalWrite();
+      lengthNode(arr.length);
     }
-    bumpSignals(target, key, prevLen);
-    bumpOwnKeysSignal(target, nodes);
+  }
+  const ownKeysSignal = nodes[$OWN_KEYS];
+  if (ownKeysSignal) {
+    profileSignalWrite();
+    ownKeysSignal(nextBump());
   }
 }
 
