@@ -73,12 +73,8 @@ function trackArrayVersion(value: unknown): void {
 // Create (or retrieve) the per-array mutator wrapper cache stored as a hidden
 // $MUTATORS property on the raw array. Extracted to keep the proxy get handler
 // shallow enough to satisfy the max-depth lint rule.
-function getMutatorCache(
-  target: object,
-): Record<string, (...args: Array<unknown>) => unknown> {
-  let cache = (target as any)[$MUTATORS] as
-    | Record<string, (...args: Array<unknown>) => unknown>
-    | undefined;
+function getMutatorCache(target: object): Record<string, (...args: Array<unknown>) => unknown> {
+  let cache = (target as ReactiveTagged)[$MUTATORS];
   if (!cache) {
     cache = Object.create(null) as Record<string, (...args: Array<unknown>) => unknown>;
     try {

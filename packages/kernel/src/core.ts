@@ -39,6 +39,7 @@ export interface ReactiveTagged {
   [$PROXY]?: object;
   [$NODE]?: DataNodes;
   [$TRACK]?: object;
+  [$MUTATORS]?: Record<string, (...args: Array<unknown>) => unknown>;
 }
 
 export type DataNodes = Record<PropertyKey, Signal<unknown>>;
