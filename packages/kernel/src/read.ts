@@ -137,7 +137,14 @@ const readHandler: Pick<
         if (getCurrentSub()) {
           trackSelf(target);
         }
-        if (typeof prop === "string") {
+        // Only swap in the batched wrapper when the resolved value is the
+        // intrinsic Array.prototype method. If the caller has overridden
+        // `arr.push = customFn` (or subclassed Array), respect their
+        // implementation and return it unwrapped.
+        if (
+          typeof prop === "string" &&
+          value === (Array.prototype as unknown as Record<string, unknown>)[prop]
+        ) {
           const wrapper = arrayMutatorWrappers[prop];
           if (wrapper) return wrapper;
         }
