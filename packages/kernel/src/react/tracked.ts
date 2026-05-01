@@ -2,13 +2,20 @@ import type { ReactiveNode } from "alien-signals";
 
 import { effect as alienEffect } from "@supergrain/kernel";
 import { getCurrentSub, setCurrentSub } from "@supergrain/kernel/internal";
-import { type FC, memo, useReducer } from "react";
+import { type FC, memo, useEffect, useReducer } from "react";
 
 import { useDisposeOnUnmount } from "./use-dispose-on-unmount";
+
+declare const process: { env: { NODE_ENV?: string } };
 
 interface TrackedState {
   cleanup: () => void;
   effectNode: ReactiveNode | undefined;
+  // Stable closures hoisted into first-render setup so subsequent renders
+  // pass the same function references to React (no per-render closure
+  // allocation, no useRef indirection inside useDisposeOnUnmount).
+  onUnmount: () => void;
+  effectSetup: () => () => void;
 }
 
 /**
@@ -69,17 +76,36 @@ export function tracked<P extends object>(Component: FC<P>) {
         }
         forceUpdate();
       });
-      fu.__sg = { cleanup, effectNode: capturedNode };
+      // Hoist the unmount + effect-setup closures so we don't allocate fresh
+      // ones on every render. `forceUpdate` is a stable ref per React's
+      // useReducer contract, so these closures stay valid for the component's
+      // lifetime.
+      const onUnmount = (): void => {
+        const sg = (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
+        if (sg) {
+          sg.cleanup();
+          delete (forceUpdate as unknown as { __sg?: TrackedState }).__sg;
+        }
+      };
+      const effectSetup = (): (() => void) => onUnmount;
+      fu.__sg = { cleanup, effectNode: capturedNode, onUnmount, effectSetup };
     }
 
-    // Defer the alien-effect teardown so React 18 StrictMode's
-    // mount→cleanup→remount cycle in dev doesn't kill the effect we still
-    // need post-cycle.
-    useDisposeOnUnmount(() => {
-      const fu = forceUpdate as unknown as { __sg?: TrackedState };
-      fu.__sg!.cleanup();
-      delete fu.__sg;
-    });
+    /* c8 ignore start -- dev-only branch is selected by consumer build-time env replacement */
+    if (process.env.NODE_ENV === "production") {
+      // Production: a single useEffect with empty deps. The stable
+      // `effectSetup` reference means React's deps comparison short-circuits
+      // and we skip the useRef + per-render closure that
+      // `useDisposeOnUnmount` carries (1 hook + 1 closure saved per render).
+      // eslint-disable-next-line react-hooks/rules-of-hooks -- branch is build-time constant
+      useEffect(fu.__sg.effectSetup, []);
+    } else {
+      // Dev StrictMode: defer cleanup via setTimeout so the
+      // mount→cleanup→remount cycle doesn't kill the alien-effect.
+      // eslint-disable-next-line react-hooks/rules-of-hooks -- branch is build-time constant
+      useDisposeOnUnmount(fu.__sg.onUnmount);
+    }
+    /* c8 ignore stop */
 
     const prev = getCurrentSub();
     setCurrentSub(fu.__sg.effectNode);
