@@ -124,11 +124,9 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
 
   // Pre-create method functions once per Map instance so the `get` trap can
   // return a stable reference instead of allocating a new closure each time.
-  // Methods that return the proxy use `proxyRef`, which is assigned below after
-  // `new Proxy(…)`. JavaScript closures capture variables by reference, so by
-  // the time any method is actually *called*, `proxyRef` will hold the proxy.
-  let proxyRef = undefined as unknown as Map<K, V>;
-
+  // Methods that return the proxy use `this`, which is bound to the proxy
+  // when invoked as `mapProxy.set(...)`. Matches native Map.prototype.set
+  // (which also returns `this`).
   const methods = {
     get: function reactiveGet(key: K): V | undefined {
       const rawKey = unwrap(key);
@@ -153,7 +151,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
       return rawTarget.has(rawKey);
     },
 
-    set: function reactiveSet(key: K, value: V): Map<K, V> {
+    set: function reactiveSet(this: Map<K, V>, key: K, value: V): Map<K, V> {
       const rawKey = unwrap(key);
       const rawValue = unwrap(value);
       const isNew = !rawTarget.has(rawKey);
@@ -193,7 +191,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
         }
       }
 
-      return proxyRef;
+      return this;
     },
 
     delete: function reactiveDelete(key: K): boolean {
@@ -247,6 +245,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
     },
 
     forEach: function reactiveForEach(
+      this: Map<K, V>,
       callbackFn: (value: V, key: K, map: Map<K, V>) => void,
     ): void {
       trackOwnKeys(rawTarget);
@@ -255,7 +254,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
           profileSignalRead();
           getOrCreateKeySignal(k)();
         }
-        callbackFn(wrap(v), wrap(k), proxyRef);
+        callbackFn(wrap(v), wrap(k), this);
       }
     },
 
@@ -296,7 +295,13 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
     get(target, prop) {
       // ── Internal symbols ─────────────────────────────────────────────────
       if (prop === $RAW) return target;
-      if (prop === $PROXY) return proxyRef;
+      // $PROXY is stored intrusively on the raw target (see end of factory),
+      // so reading it from there gives us back the proxy without keeping a
+      // separate `proxyRef` variable. Sealed targets fall back to the
+      // module-level WeakMap.
+      if (prop === $PROXY) {
+        return (target as ReactiveTagged)[$PROXY] ?? sealedCollectionCache.get(target);
+      }
 
       // ── size ─────────────────────────────────────────────────────────────
       if (prop === "size") {
@@ -335,7 +340,6 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
   };
 
   const proxy = new Proxy(rawTarget, handler);
-  proxyRef = proxy;
   try {
     Object.defineProperty(rawTarget, $PROXY, { value: proxy, enumerable: false });
   } catch {
@@ -354,17 +358,17 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
   if (existingSealed) return existingSealed;
 
   // Pre-create method functions once per Set instance (same rationale as Map).
-  let proxyRef = undefined as unknown as Set<T>;
-
+  // Methods that return the proxy use `this`, which is bound to the proxy
+  // when invoked as `setProxy.add(...)`.
   const methods = {
     has: function reactiveHas(value: T): boolean {
       trackOwnKeys(rawTarget);
       return rawTarget.has(unwrap(value));
     },
 
-    add: function reactiveAdd(value: T): Set<T> {
+    add: function reactiveAdd(this: Set<T>, value: T): Set<T> {
       const rawValue = unwrap(value);
-      if (rawTarget.has(rawValue)) return proxyRef;
+      if (rawTarget.has(rawValue)) return this;
 
       rawTarget.add(rawValue);
 
@@ -379,7 +383,7 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
         endBatch();
       }
 
-      return proxyRef;
+      return this;
     },
 
     delete: function reactiveDelete(value: T): boolean {
@@ -410,11 +414,12 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
     },
 
     forEach: function reactiveForEach(
+      this: Set<T>,
       callbackFn: (value: T, value2: T, set: Set<T>) => void,
     ): void {
       trackOwnKeys(rawTarget);
       for (const v of rawTarget.values()) {
-        callbackFn(wrap(v), wrap(v), proxyRef);
+        callbackFn(wrap(v), wrap(v), this);
       }
     },
 
@@ -445,7 +450,13 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
     get(target, prop) {
       // ── Internal symbols ─────────────────────────────────────────────────
       if (prop === $RAW) return target;
-      if (prop === $PROXY) return proxyRef;
+      // $PROXY is stored intrusively on the raw target (see end of factory),
+      // so reading it from there gives us back the proxy without keeping a
+      // separate `proxyRef` variable. Sealed targets fall back to the
+      // module-level WeakMap.
+      if (prop === $PROXY) {
+        return (target as ReactiveTagged)[$PROXY] ?? sealedCollectionCache.get(target);
+      }
 
       // ── size ─────────────────────────────────────────────────────────────
       if (prop === "size") {
@@ -482,7 +493,6 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
   };
 
   const proxy = new Proxy(rawTarget, handler);
-  proxyRef = proxy;
   try {
     Object.defineProperty(rawTarget, $PROXY, { value: proxy, enumerable: false });
   } catch {

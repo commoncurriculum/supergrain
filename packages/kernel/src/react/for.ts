@@ -17,6 +17,14 @@ function copyArrayInto(dest: Array<unknown>, src: ReadonlyArray<unknown>): void 
   for (let i = 0; i < src.length; i++) dest[i] = src[i];
 }
 
+// Per-item entry in the parent-path element cache. The `gen` stamp lets us
+// reuse one Map across renders: each render bumps a counter, hits restamp the
+// entry, and a final sweep deletes anything with a stale `gen`.
+interface ElementCacheEntry {
+  node: React.ReactNode;
+  gen: number;
+}
+
 interface ForProps<T> {
   each: Array<T>;
   children: (item: T, index: number) => React.ReactNode;
@@ -108,6 +116,17 @@ export const For = tracked((props: ForProps<unknown>) => {
 
     const cleanup = alienEffect(() => {
       const nodes = getNodesIfExist(raw);
+      const prev = prevRawRef.current;
+      const container = parent.current;
+      const canSwap = container !== null && prev.length === raw.length;
+
+      // Single pass: subscribe to every per-index signal (so the effect
+      // re-runs on any element change) AND, when shapes match, count up to
+      // two changed indices into scalars. The combined loop replaces what
+      // used to be two full passes over `raw`.
+      let aIdx = -1;
+      let bIdx = -1;
+      let changedCount = 0;
       for (let i = 0; i < raw.length; i++) {
         const node = nodes?.[i];
         if (node) {
@@ -115,27 +134,16 @@ export const For = tracked((props: ForProps<unknown>) => {
         } else {
           void each[i];
         }
-      }
-
-      const prev = prevRawRef.current;
-      const container = parent.current;
-      if (!container || prev.length !== raw.length) {
-        copyArrayInto(prev, raw);
-        return;
-      }
-
-      // Track up to two changed indices in scalars rather than allocating an
-      // Array<number> per effect run. `>2` short-circuits identically.
-      let aIdx = -1;
-      let bIdx = -1;
-      let changedCount = 0;
-      for (let i = 0; i < raw.length; i++) {
-        if (raw[i] !== prev[i]) {
+        if (canSwap && raw[i] !== prev[i]) {
           if (changedCount === 0) aIdx = i;
           else if (changedCount === 1) bIdx = i;
           changedCount++;
-          if (changedCount > 2) break;
         }
+      }
+
+      if (!canSwap) {
+        copyArrayInto(prev, raw);
+        return;
       }
 
       if (changedCount === 2) {
@@ -166,7 +174,14 @@ export const For = tracked((props: ForProps<unknown>) => {
     };
   });
 
-  const elementCacheRef = useRef(new Map<unknown, React.ReactNode>());
+  // Element cache for the parent path. Each entry carries a `gen` stamp so we
+  // can reuse the same Map across renders rather than allocating a fresh
+  // `nextCache` every time. After populating slots we sweep entries whose
+  // `gen` lags behind the current render's. Steady-state renders (swap,
+  // partial-update, select) allocate zero per cache hit; only previously
+  // unseen items pay one wrapper allocation.
+  const elementCacheRef = useRef(new Map<unknown, ElementCacheEntry>());
+  const renderGenRef = useRef(0);
 
   if (!raw || raw.length === 0) {
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
@@ -180,25 +195,28 @@ export const For = tracked((props: ForProps<unknown>) => {
     // original item props. The swap effect moves DOM nodes to match.
     const prevSub = getCurrentSub();
     setCurrentSub(undefined); // untrack array reads to avoid subscribing For to per-index signals
-    const prevCache = elementCacheRef.current;
-    const nextCache = new Map<unknown, React.ReactNode>();
+    const cache = elementCacheRef.current;
+    const gen = ++renderGenRef.current;
     for (let i = 0; i < raw.length; i++) {
       const rawItem = raw[i];
-      const cached = prevCache.get(rawItem);
-      // Intentionally using === undefined (not .has()) — children() returns JSX elements,
-      // never undefined. Avoiding the extra Map lookup keeps this hot loop fast.
-      if (cached === undefined) {
-        slots[i] = children(each[i], i);
+      let entry = cache.get(rawItem);
+      if (entry === undefined) {
+        entry = { node: children(each[i], i), gen };
+        cache.set(rawItem, entry);
       } else {
-        slots[i] = cached;
+        entry.gen = gen;
       }
-      nextCache.set(rawItem, slots[i]);
+      slots[i] = entry.node;
     }
-    elementCacheRef.current = nextCache;
+    // Sweep entries we didn't touch this render.
+    for (const [k, entry] of cache) {
+      if (entry.gen !== gen) cache.delete(k);
+    }
     setCurrentSub(prevSub);
   } else {
     // Non-parent path: use ForItem wrapper for per-index signal subscription
-    // so React keyed reconciliation handles swaps.
+    // so React keyed reconciliation handles swaps. Single pass: subscribe to
+    // each per-index signal and emit its slot in the same iteration.
     const nodes = getNodesIfExist(raw);
     for (let i = 0; i < raw.length; i++) {
       const existingNode = nodes?.[i];
@@ -207,9 +225,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       } else {
         void each[i];
       }
-    }
 
-    for (let i = 0; i < raw.length; i++) {
       const rawItem = raw[i];
       const key =
         rawItem && typeof rawItem === "object" && "id" in rawItem
