@@ -96,7 +96,11 @@ export const For = tracked((props: ForProps<unknown>) => {
     }
 
     swapCleanupRef.current?.();
-    prevRawRef.current = [...raw];
+    // Mutate prevRawRef in place so we don't allocate a fresh N-element array
+    // on every effect run that reaches the spread paths below.
+    const initialPrev = prevRawRef.current;
+    initialPrev.length = raw.length;
+    for (let i = 0; i < raw.length; i++) initialPrev[i] = raw[i];
 
     const cleanup = alienEffect(() => {
       const nodes = getNodesIfExist(raw);
@@ -112,40 +116,44 @@ export const For = tracked((props: ForProps<unknown>) => {
       const prev = prevRawRef.current;
       const container = parent.current;
       if (!container || prev.length !== raw.length) {
-        prevRawRef.current = [...raw];
+        prev.length = raw.length;
+        for (let i = 0; i < raw.length; i++) prev[i] = raw[i];
         return;
       }
 
-      const changed: Array<number> = [];
+      // Track up to two changed indices in scalars rather than allocating an
+      // Array<number> per effect run. `>2` short-circuits identically.
+      let aIdx = -1;
+      let bIdx = -1;
+      let changedCount = 0;
       for (let i = 0; i < raw.length; i++) {
         if (raw[i] !== prev[i]) {
-          changed.push(i);
-          if (changed.length > 2) {
-            break;
-          }
+          if (changedCount === 0) aIdx = i;
+          else if (changedCount === 1) bIdx = i;
+          changedCount++;
+          if (changedCount > 2) break;
         }
       }
 
-      if (changed.length === 2) {
-        const a = changed[0]!;
-        const b = changed[1]!;
+      if (changedCount === 2) {
         const domChildren = container.children;
-        // `changed` is built by ascending iteration, so `a < b` and nodeA is
-        // never the last child — its `nextSibling` (and therefore siblingA)
-        // is always defined. The non-null assertions on `nodeA`/`nodeB`
-        // assume `parent.ref` hasn't been externally mutated.
-        const nodeA = domChildren[a]!;
-        const nodeB = domChildren[b]!;
+        // Ascending iteration ensures aIdx < bIdx, so nodeA is never the last
+        // child — its `nextSibling` (and therefore siblingA) is always
+        // defined. The non-null assertions assume `parent.ref` hasn't been
+        // externally mutated.
+        const nodeA = domChildren[aIdx]!;
+        const nodeB = domChildren[bIdx]!;
         const siblingA = nodeA.nextSibling === nodeB ? nodeA : nodeA.nextSibling!;
         nodeB.after(nodeA);
         siblingA.before(nodeB);
         // Update prev from raw (not swapping within prev) to preserve
         // object identity — raw may contain proxy wrappers while prev
         // has raw objects, so we must copy from raw for === to work.
-        prev[a] = raw[a];
-        prev[b] = raw[b];
+        prev[aIdx] = raw[aIdx];
+        prev[bIdx] = raw[bIdx];
       } else {
-        prevRawRef.current = [...raw];
+        prev.length = raw.length;
+        for (let i = 0; i < raw.length; i++) prev[i] = raw[i];
       }
     });
 

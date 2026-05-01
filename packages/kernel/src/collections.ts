@@ -24,6 +24,7 @@ import {
   getNodes,
   getNodesIfExist,
   isWrappable,
+  nextBump,
   unwrap,
   type ReactiveTagged,
   type Signal,
@@ -43,13 +44,6 @@ function wrap<T>(value: T): T {
   }
   return createReactiveProxy(value) as T;
 }
-
-// ---------------------------------------------------------------------------
-// Monotonic bump counter — mirrors the one in write.ts (each only needs to
-// differ from the *previous* value on the same signal).
-// ---------------------------------------------------------------------------
-
-let BUMP = 0;
 
 // ---------------------------------------------------------------------------
 // Per-Map key-signal storage.
@@ -94,13 +88,13 @@ function bumpOwnKeys(target: object): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) return;
   profileSignalWrite();
-  nodes[$OWN_KEYS]!(++BUMP);
+  nodes[$OWN_KEYS]!(nextBump());
 }
 
 function bumpVersionSignal(target: object): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) return;
-  nodes[$VERSION]!(++BUMP);
+  nodes[$VERSION]!(nextBump());
 }
 
 // ---------------------------------------------------------------------------
