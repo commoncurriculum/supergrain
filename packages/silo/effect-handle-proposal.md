@@ -26,113 +26,121 @@ discriminated union** keyed on `status`.
 
 ---
 
-## 1. The public handle — discriminated union over a stable proxy
+## 1. The public handle — two orthogonal regions, not one enum
+
+A single flat enum (`IDLE|PENDING|SUCCESS|ERROR`) models async state as **one
+axis**, which is a leaky abstraction: it can't represent "I have stale data
+*and* a background refetch is in flight," or "I have stale data *and* the latest
+refetch errored." Forcing this-or-that throws information away, and it tempts
+you to call a refetch "pending" (it isn't — pending means *no data yet*).
+
+The lifecycle is actually **two orthogonal regions** (Harel parallel states):
+
+- **Region A — data availability:** `Absent | Present(value, fetchedAt)`
+- **Region B — fetch activity:** `Idle | Fetching | Failed(error)`
+
+All six combinations are meaningful:
+
+| | Idle | Fetching | Failed |
+|---|---|---|---|
+| **Absent**  | never fetched | first load | first load failed |
+| **Present** | settled | background refetch | **stale data + refetch error** |
 
 ```ts
 import type { AdapterError } from "./errors";
 
-export interface IdleHandle {
-  readonly status: "IDLE";
-}
-export interface PendingHandle<T> {
-  readonly status: "PENDING";
-  readonly promise: Promise<T>;
-}
-export interface SuccessHandle<T> {
-  readonly status: "SUCCESS";
-  readonly data: T;
-  readonly fetchedAt: Date;
-  /** stale-while-revalidate: a refetch is in flight but we still have data */
-  readonly refreshing: boolean;
-  readonly promise: Promise<T>;
-}
-export interface FailureHandle<T, E = AdapterError> {
-  readonly status: "ERROR";
-  readonly error: E;
-  readonly promise: Promise<T>;
-}
+export type DataState<T> =
+  | { readonly _tag: "Absent" }
+  | { readonly _tag: "Present"; readonly value: T; readonly fetchedAt: Date };
 
-export type DocumentHandle<T, E = AdapterError> =
-  | IdleHandle
-  | PendingHandle<T>
-  | SuccessHandle<T>
-  | FailureHandle<T, E>;
+export type FetchState<E = AdapterError> =
+  | { readonly _tag: "Idle" }
+  | { readonly _tag: "Fetching" }
+  | { readonly _tag: "Failed"; readonly error: E };
+
+export interface DocumentHandle<T, E = AdapterError> {
+  readonly data: DataState<T>;
+  readonly fetch: FetchState<E>;
+  /** stable promise for React `use()`; present once a fetch has started */
+  readonly promise: Promise<T> | undefined;
+}
 ```
 
 `QueryHandle<T, E>` is the same shape.
 
-The runtime object still physically carries every field (`data`, `error`,
-`resolve`, `reject`, …) — the **type** just hides the ones that don't belong to
-the current state. `store.find` / `useDocument` return the *same stable proxy*
-they do today; only the cast at the boundary changes from a flat interface to
-this union.
+`value` exists only when `data._tag === "Present"`; `error` only when
+`fetch._tag === "Failed"` — illegal states unrepresentable, both regions
+exhaustively narrowable — but the two axes vary **independently**, so stale
+`value` and a refetch `error` coexist instead of clobbering each other.
+
+The runtime is two stable reactive cells (`data`, `fetch`) on the existing
+proxy, mutated in place. `store.find` / `useDocument` return the same proxy;
+only its type changes.
 
 ---
 
-## 2. Type safety — illegal states unrepresentable
+## 2. Type safety + the ergonomic matcher
+
+Reading a region narrows it; the two regions are independent:
 
 ```tsx
-const user = useDocument("user", id);
+const u = useDocument("user", id);
 
-switch (user.status) {
-  case "IDLE":    return null;
-  case "PENDING": return <Spinner />;
-  case "ERROR":   return <ErrorBanner message={user.error.message} />;
-  //                                          ^ user.data here → compile error
-  case "SUCCESS": return <h3>{user.data.attributes.firstName}</h3>;
-  //                          ^ data: T (never `T | undefined`)
+// show stale data AND the refetch error together — the flat enum couldn't:
+if (u.data._tag === "Present") {
+  return <Card user={u.data.value}                         // value: T
+               busy={u.fetch._tag === "Fetching"}
+               warn={u.fetch._tag === "Failed" ? u.fetch.error : undefined} />;
 }
-// no `default` → TypeScript exhaustiveness: add a 5th state and this won't compile
 ```
 
-Optional ergonomic matcher (reactivity-preserving — see §3):
+Most call sites don't care about background state. `matchHandle` collapses the
+product into the four cases people branch on, folding the background info into
+`Ready`:
 
 ```ts
 export function matchHandle<T, E, R>(
   h: DocumentHandle<T, E>,
   arms: {
-    IDLE: () => R;
-    PENDING: (h: PendingHandle<T>) => R;
-    SUCCESS: (h: SuccessHandle<T>) => R;
-    ERROR: (h: FailureHandle<T, E>) => R;
+    Idle:       () => R;                                              // Absent × Idle
+    Loading:    () => R;                                              // Absent × Fetching
+    LoadFailed: (a: { error: E }) => R;                               // Absent × Failed
+    Ready:      (a: { value: T; fetchedAt: Date;
+                      refetching: boolean; refetchError: E | undefined }) => R; // Present × *
   },
-): R {
-  switch (h.status) {            // reads `status` only
-    case "IDLE":    return arms.IDLE();
-    case "PENDING": return arms.PENDING(h);
-    case "SUCCESS": return arms.SUCCESS(h); // branch reads h.data lazily
-    case "ERROR":   return arms.ERROR(h);
-  }
-}
+): R;
 ```
 
 ```tsx
-matchHandle(user, {
-  IDLE:    () => null,
-  PENDING: () => <Spinner />,
-  SUCCESS: ({ data, refreshing }) => <Card busy={refreshing} name={data.attributes.firstName} />,
-  ERROR:   ({ error }) => <ErrorBanner message={error.message} />,
+matchHandle(u, {
+  Idle:       () => null,
+  Loading:    () => <Spinner />,                       // never fires on a refetch
+  LoadFailed: ({ error }) => <ErrorPage e={error} />,
+  Ready:      ({ value, refetching, refetchError }) =>
+                <Card user={value} busy={refetching} warn={refetchError} />,
 });
 ```
+
+`Loading` / `LoadFailed` only fire with no data; a refetch surfaces as
+`Ready.refetching`, a refetch error as `Ready.refetchError` **alongside**
+`value`. The raw `data` / `fetch` regions stay available for full control.
 
 ---
 
 ## 3. Per-field reactivity — identical to today
 
-The runtime is the same stable proxy with in-place field mutation, so the
-kernel's per-field tracking is unchanged:
+Two independent reactive cells, mutated in place, so the kernel's per-field
+tracking is unchanged:
 
-- The `SUCCESS` arm above reads `status` and `data`. When `fetchedAt` or
-  `refreshing` mutates, neither is read → **no re-render**.
-- `refetch` of a loaded doc keeps `status: "SUCCESS"` and only flips
-  `refreshing` / swaps `data` in place. A list of components reading `data`
-  re-renders only when *their* `data` actually changes — same fine-grained
-  behavior as today.
-- Reading `status` to narrow subscribes you to genuine state transitions
-  (IDLE→PENDING→SUCCESS/ERROR) — which is the correct dependency for code that
-  branches on state, and is exactly what you'd want to re-render on.
+- A component reading `u.data` does **not** re-render when `u.fetch` toggles
+  Idle↔Fetching — so a background refetch over a loaded doc re-renders nothing
+  until the new `value` actually lands.
+- A component watching a spinner reads `u.fetch` and re-renders on activity
+  changes — the correct dependency.
+- No whole-object replacement, so no "re-render on every field change" storm.
 
-No whole-object replacement, so no "re-render on every field change" storm.
+This is the parallel-statechart model: two regions, each its own cell, each
+tracked independently.
 
 ---
 
@@ -168,21 +176,23 @@ transition reducer — exhaustive over every event × state — and we *project*
 result onto the proxy by mutating fields:
 
 ```ts
-import { Data, Match } from "effect";
+import { Data } from "effect";
 
 type HandleEvent<T> = Data.TaggedEnum<{
-  Fetch:   {};
-  Resolve: { data: T };
-  Reject:  { error: AdapterError };
-  Insert:  { data: T };            // out-of-band insertDocument
+  Fetch:   {};                     // a (re)fetch started
+  Resolve: { value: T };           // fetch settled with data
+  Reject:  { error: AdapterError };// fetch settled with an error
+  Insert:  { value: T };           // out-of-band insertDocument
 }>;
 
-// pure, exhaustive: decide the field patch for (currentStatus, event)
-// then apply inside the existing `batch(() => { ...mutate proxy... })`.
+// pure, exhaustive reducer over (DataState, FetchState, event) → next regions,
+// e.g. Reject while data is Present → keep data Present, set fetch Failed
+// (stale data + refetch error). Applied inside the existing
+// `batch(() => { ...mutate the two cells... })`.
 ```
 
 So the transition logic is statechart-rigorous and Effect-flavored, the public
-handle narrows fully, and reactivity is untouched.
+handle narrows fully per region, and reactivity is untouched.
 
 ---
 
@@ -205,11 +215,13 @@ handle narrows fully, and reactivity is untouched.
 
 ## 7. Outcome
 
-| | Old flat handle | Immutable `TaggedEnum` value | **This design** |
+| | Old flat handle | Single discriminated enum | **Two orthogonal regions** |
 |---|---|---|---|
-| Read `data` while pending | `undefined` at runtime | compile error | **compile error** |
-| Exhaustive states | manual | `$match` | **`switch`/`matchHandle`, TS-checked** |
-| Reactivity granularity | per-field | per-handle | **per-field** |
-| Runtime change | — | replace value each transition | **none (same proxy, in-place mutation)** |
+| Read `value` before load | `undefined` at runtime | compile error | **compile error** |
+| Stale data + background refetch | — | can't express (or mislabels "pending") | **`data: Present` + `fetch: Fetching`** |
+| Stale data + refetch error | — | must drop one | **`data: Present` + `fetch: Failed` (both)** |
+| Exhaustive states | manual | TS-checked | **TS-checked per region + `matchHandle`** |
+| Reactivity granularity | per-field | per-handle (if immutable value) | **per-region cell, in-place mutation** |
 
-Type safety + exhaustiveness + per-field reactivity — no compromise.
+Type safety + exhaustiveness + per-field reactivity + honest refetch
+semantics — no compromise.
