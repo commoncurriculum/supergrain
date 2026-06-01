@@ -2,10 +2,11 @@ import type { Relationship, RelationshipArray } from "../../src/processors/json-
 
 import { tracked } from "@supergrain/kernel/react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Effect } from "effect";
 import { type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { type DocumentAdapter, type DocumentStore } from "../../src";
+import { AdapterError, type DocumentAdapter, type DocumentStore } from "../../src";
 import { createDocumentStoreContext } from "../../src/react";
 import { useBelongsTo, useHasMany, useHasManyIndividually } from "../../src/react/json-api";
 
@@ -50,29 +51,35 @@ type TypeToModel = {
 // =============================================================================
 
 const planbookAdapter: DocumentAdapter = {
-  async find(ids) {
-    return ids.map((id) => ({
-      id,
-      type: "planbook" as const,
-      attributes: { title: `Planbook ${id}` },
-    }));
-  },
+  find: (ids) =>
+    Effect.tryPromise({
+      try: async () =>
+        ids.map((id) => ({
+          id,
+          type: "planbook" as const,
+          attributes: { title: `Planbook ${id}` },
+        })),
+      catch: (cause) => new AdapterError({ type: "planbook", keys: ids, cause }),
+    }),
 };
 
 const cardAdapter: DocumentAdapter = {
-  async find(ids) {
-    return ids.map((id) => ({
-      id,
-      type: "card" as const,
-      attributes: { title: `Card ${id}` },
-    }));
-  },
+  find: (ids) =>
+    Effect.tryPromise({
+      try: async () =>
+        ids.map((id) => ({
+          id,
+          type: "card" as const,
+          attributes: { title: `Card ${id}` },
+        })),
+      catch: (cause) => new AdapterError({ type: "card", keys: ids, cause }),
+    }),
 };
 
 // card-stack is only fetched if the consumer directly asks for one; tests
 // pre-seed stacks themselves so this adapter doesn't need real data.
 const cardStackAdapter: DocumentAdapter = {
-  find: () => new Promise(() => {}),
+  find: () => Effect.never,
 };
 
 const { Provider, useDocument, useDocumentStore } =
@@ -106,28 +113,43 @@ afterEach(() => cleanup());
 
 const RelatedPlanbook = tracked(function RelatedPlanbook({ stackId }: { stackId: string }) {
   const stackHandle = useDocument("card-stack", stackId);
-  const planbookHandle = useBelongsTo(stackHandle.data ?? null, "planbook");
+  const stack = stackHandle.data._tag === "Present" ? stackHandle.data.value : null;
+  const planbookHandle = useBelongsTo(stack, "planbook");
 
-  if (stackHandle.isPending) return <span data-testid="planbook">loading stack</span>;
-  if (planbookHandle.status === "IDLE") return <span data-testid="planbook">no planbook</span>;
-  if (planbookHandle.isPending) return <span data-testid="planbook">loading planbook</span>;
-  if (planbookHandle.error) return <span data-testid="planbook">error</span>;
-  return <span data-testid="planbook">{planbookHandle.data?.attributes.title}</span>;
+  if (stackHandle.data._tag === "Absent" && stackHandle.fetch._tag === "Fetching")
+    return <span data-testid="planbook">loading stack</span>;
+  if (planbookHandle.data._tag === "Absent" && planbookHandle.fetch._tag === "Idle")
+    return <span data-testid="planbook">no planbook</span>;
+  if (planbookHandle.data._tag === "Absent" && planbookHandle.fetch._tag === "Fetching")
+    return <span data-testid="planbook">loading planbook</span>;
+  if (planbookHandle.fetch._tag === "Failed") return <span data-testid="planbook">error</span>;
+  return (
+    <span data-testid="planbook">
+      {planbookHandle.data._tag === "Present" ? planbookHandle.data.value.attributes.title : null}
+    </span>
+  );
 });
 
 const RelatedCards = tracked(function RelatedCards({ stackId }: { stackId: string }) {
   const stackHandle = useDocument("card-stack", stackId);
-  const cardHandles = useHasMany(stackHandle.data ?? null, "cards");
+  const stack = stackHandle.data._tag === "Present" ? stackHandle.data.value : null;
+  const cardHandles = useHasMany(stack, "cards");
 
-  if (stackHandle.isPending) return <span data-testid="cards">loading stack</span>;
+  if (stackHandle.data._tag === "Absent" && stackHandle.fetch._tag === "Fetching")
+    return <span data-testid="cards">loading stack</span>;
   if (cardHandles.length === 0) return <span data-testid="cards">no cards</span>;
-  if (cardHandles.some((handle) => handle.error)) return <span data-testid="cards">error</span>;
-  if (cardHandles.some((handle) => handle.isPending))
+  if (cardHandles.some((handle) => handle.fetch._tag === "Failed"))
+    return <span data-testid="cards">error</span>;
+  if (
+    cardHandles.some((handle) => handle.data._tag === "Absent" && handle.fetch._tag === "Fetching")
+  )
     return <span data-testid="cards">loading cards</span>;
   return (
     <ul data-testid="cards">
       {cardHandles.map((handle, i) => (
-        <li key={handle.data?.id ?? i}>{handle.data?.attributes.title}</li>
+        <li key={handle.data._tag === "Present" ? handle.data.value.id : i}>
+          {handle.data._tag === "Present" ? handle.data.value.attributes.title : null}
+        </li>
       ))}
     </ul>
   );
@@ -139,15 +161,23 @@ const CardListIndividually = tracked(function CardListIndividually({
   stackId: string;
 }) {
   const stackHandle = useDocument("card-stack", stackId);
-  const cardHandles = useHasManyIndividually(stackHandle.data ?? null, "cards");
+  const stack = stackHandle.data._tag === "Present" ? stackHandle.data.value : null;
+  const cardHandles = useHasManyIndividually(stack, "cards");
 
-  if (stackHandle.isPending) return <span data-testid="cards">loading stack</span>;
+  if (stackHandle.data._tag === "Absent" && stackHandle.fetch._tag === "Fetching")
+    return <span data-testid="cards">loading stack</span>;
   if (cardHandles.length === 0) return <span data-testid="cards">no cards</span>;
   return (
     <ul data-testid="cards">
       {cardHandles.map((c, i) => (
         <li key={i} data-testid={`card-${i}`}>
-          {c.isPending ? "loading…" : c.error ? "error" : c.data?.attributes.title}
+          {c.data._tag === "Absent" && c.fetch._tag === "Fetching"
+            ? "loading…"
+            : c.fetch._tag === "Failed"
+              ? "error"
+              : c.data._tag === "Present"
+                ? c.data.value.attributes.title
+                : null}
         </li>
       ))}
     </ul>
@@ -204,23 +234,28 @@ const UpdateCardButton = tracked(function UpdateCardButton({
   );
 });
 
-const SeedStack = tracked(function SeedStack({ stack }: { stack: CardStack }) {
+// Seed helpers only WRITE to the store and render `null` — no reactive reads.
+// They are plain components, NOT `tracked`: wrapping an insert-during-render,
+// write-only component in `tracked` subscribes its render effect to the same
+// reactive handle fields the insert mutates (applyEvent reads data/fetch before
+// writing them), which self-triggers an infinite re-render loop.
+function SeedStack({ stack }: { stack: CardStack }) {
   const store = useDocumentStore();
   store.insertDocument("card-stack", stack);
   return null;
-});
+}
 
-const SeedPlanbook = tracked(function SeedPlanbook({ planbook }: { planbook: Planbook }) {
+function SeedPlanbook({ planbook }: { planbook: Planbook }) {
   const store = useDocumentStore();
   store.insertDocument("planbook", planbook);
   return null;
-});
+}
 
-const SeedCard = tracked(function SeedCard({ card }: { card: Card }) {
+function SeedCard({ card }: { card: Card }) {
   const store = useDocumentStore();
   store.insertDocument("card", card);
   return null;
-});
+}
 
 // =============================================================================
 // Helpers to build test stacks with controlled relationship shapes.

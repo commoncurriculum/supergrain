@@ -1,3 +1,5 @@
+// oxlint-disable max-classes-per-file -- three small related tagged-error classes
+// oxlint-disable new-cap -- `Data.TaggedError("Tag")` is Effect's tagged-error idiom
 import { Data } from "effect";
 
 // =============================================================================

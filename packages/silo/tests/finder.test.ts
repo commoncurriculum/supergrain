@@ -1,8 +1,37 @@
+import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { createDocumentStore, type DocumentStore, type DocumentAdapter } from "../src";
+import {
+  AdapterError,
+  createDocumentStore,
+  type DocumentStore,
+  type DocumentAdapter,
+  type QueryAdapter,
+} from "../src";
 import { Finder, type InternalHandle, type InternalState } from "../src/finder";
+import { makeIdleHandle } from "../src/transitions";
 import { setupFakeTimers } from "./setup/timers";
+
+/**
+ * Wrap a Promise-returning function as an adapter `find` that returns an
+ * `Effect`, failing with `AdapterError` (mirrors the example-app adapters).
+ */
+function effectFind<A extends ReadonlyArray<unknown>>(
+  type: string,
+  fn: (...args: A) => Promise<unknown>,
+): (...args: A) => Effect.Effect<unknown, AdapterError> {
+  return (...args: A) =>
+    Effect.tryPromise({
+      try: () => fn(...args),
+      catch: (cause) => new AdapterError({ type, keys: [], cause }),
+    });
+}
+
+/** Narrow a handle's `data` region to Present and return its value. */
+function present<T>(h: { data: { _tag: "Absent" } | { _tag: "Present"; value: T } }): T {
+  if (h.data._tag !== "Present") throw new Error(`expected Present, got ${h.data._tag}`);
+  return h.data.value;
+}
 
 // =============================================================================
 // Finder contract tests.
@@ -40,13 +69,13 @@ function makeUserAdapter(): IntrospectableAdapter {
   const calls: string[][] = [];
   const adapter: IntrospectableAdapter = {
     calls,
-    async find(ids) {
+    find: effectFind("user", async (ids: Array<string>) => {
       calls.push([...ids]);
       if (adapter.failIds && ids.some((id) => adapter.failIds!.has(id))) {
         throw new Error("adapter rejected");
       }
       return ids.filter((id) => !adapter.omitIds?.has(id)).map((id) => ({ id, name: `User${id}` }));
-    },
+    }),
   };
   return adapter;
 }
@@ -55,10 +84,10 @@ function makePostAdapter(): IntrospectableAdapter {
   const calls: string[][] = [];
   const adapter: IntrospectableAdapter = {
     calls,
-    async find(ids) {
+    find: effectFind("post", async (ids: Array<string>) => {
       calls.push([...ids]);
       return ids.map((id) => ({ id, title: `Post${id}` }));
-    },
+    }),
   };
   return adapter;
 }
@@ -227,10 +256,12 @@ describe("Finder errors", () => {
 
     await flushBatch();
 
-    expect(h1.status).toBe("ERROR");
-    expect(h2.status).toBe("ERROR");
-    expect(h3.status).toBe("ERROR");
-    expect(h1.error?.message).toMatch(/adapter rejected/);
+    expect(h1.fetch._tag).toBe("Failed");
+    expect(h2.fetch._tag).toBe("Failed");
+    expect(h3.fetch._tag).toBe("Failed");
+    expect(h1.fetch._tag === "Failed" && h1.fetch.error).toBeInstanceOf(AdapterError);
+    const cause = h1.fetch._tag === "Failed" ? (h1.fetch.error as AdapterError).cause : undefined;
+    expect((cause as Error).message).toMatch(/adapter rejected/);
   });
 
   it("rejects a handle when the adapter returns without the requested id", async () => {
@@ -244,10 +275,10 @@ describe("Finder errors", () => {
 
     await flushBatch();
 
-    expect(h1.status).toBe("SUCCESS");
-    expect(h2.status).toBe("ERROR");
-    expect(h2.error?.message).toMatch(/not found/i);
-    expect(h3.status).toBe("SUCCESS");
+    expect(h1.data._tag).toBe("Present");
+    expect(h2.data._tag === "Absent" && h2.fetch._tag === "Failed").toBe(true);
+    expect(h2.fetch._tag === "Failed" && h2.fetch.error.message).toMatch(/not found/i);
+    expect(h3.data._tag).toBe("Present");
   });
 
   it("rejects all pending handles when a processor throws", async () => {
@@ -257,10 +288,10 @@ describe("Finder errors", () => {
       models: {
         user: {
           adapter: {
-            async find(ids) {
+            find: effectFind("user", async (ids: Array<string>) => {
               calls.push([...ids]);
               return ids.map((id) => ({ id, name: `User${id}` }));
-            },
+            }),
           },
           processor: () => {
             throw new Error("processor exploded");
@@ -275,9 +306,11 @@ describe("Finder errors", () => {
 
     await flushBatch();
 
-    expect(h1.status).toBe("ERROR");
-    expect(h2.status).toBe("ERROR");
-    expect(h1.error?.message).toMatch(/processor exploded/);
+    expect(h1.fetch._tag).toBe("Failed");
+    expect(h2.fetch._tag).toBe("Failed");
+    const cause =
+      h1.fetch._tag === "Failed" ? (h1.fetch.error as { cause?: unknown }).cause : undefined;
+    expect((cause as Error).message).toMatch(/processor exploded/);
   });
 });
 
@@ -295,10 +328,10 @@ describe("Finder is adapter-agnostic", () => {
       models: {
         user: {
           adapter: {
-            async find(ids) {
+            find: effectFind("user", async (ids: Array<string>) => {
               calls.push([...ids]);
               return Promise.all(ids.map(async (id) => ({ id, name: `User${id}` })));
-            },
+            }),
           },
         },
         post: { adapter: makePostAdapter() },
@@ -313,9 +346,9 @@ describe("Finder is adapter-agnostic", () => {
 
     expect(calls).toHaveLength(1);
     expect([...calls[0]].sort()).toEqual(["1", "2", "3"]);
-    expect(h1.data?.name).toBe("User1");
-    expect(h2.data?.name).toBe("User2");
-    expect(h3.data?.name).toBe("User3");
+    expect(present(h1).name).toBe("User1");
+    expect(present(h2).name).toBe("User2");
+    expect(present(h3).name).toBe("User3");
   });
 });
 
@@ -324,12 +357,12 @@ describe("Finder handles query-only batches", () => {
     type Types = { user: { id: string; name: string } };
     type Queries = { search: { params: { q: string }; result: { total: number } } };
 
-    const queryAdapter: { find: (p: unknown[]) => Promise<unknown>; calls: unknown[][] } = {
-      calls: [],
-      async find(paramsList) {
-        this.calls.push(paramsList);
+    const queryCalls: Array<ReadonlyArray<{ q: string }>> = [];
+    const queryAdapter: QueryAdapter<{ q: string }> = {
+      find: effectFind("search", async (paramsList: Array<{ q: string }>) => {
+        queryCalls.push(paramsList);
         return paramsList.map(() => ({ total: 42 }));
-      },
+      }),
     };
 
     const store = createDocumentStore<Types, Queries>({
@@ -340,9 +373,9 @@ describe("Finder handles query-only batches", () => {
     const h = store.findQuery("search", { q: "hello" });
     await flushBatch();
 
-    expect(h.status).toBe("SUCCESS");
-    expect(h.data?.total).toBe(42);
-    expect(queryAdapter.calls).toHaveLength(1);
+    expect(h.data._tag).toBe("Present");
+    expect(present(h).total).toBe(42);
+    expect(queryCalls).toHaveLength(1);
   });
 });
 
@@ -356,9 +389,9 @@ describe("Finder normalizes adapter failures", () => {
       queries: {
         search: {
           adapter: {
-            async find() {
+            find: effectFind("search", async () => {
               throw "plain-string-error";
-            },
+            }),
           },
         },
       },
@@ -368,9 +401,11 @@ describe("Finder normalizes adapter failures", () => {
     await flushBatch();
     await h.promise?.catch(() => {});
 
-    expect(h.status).toBe("ERROR");
-    expect(h.error).toBeInstanceOf(Error);
-    expect(h.error?.message).toBe("plain-string-error");
+    expect(h.fetch._tag).toBe("Failed");
+    expect(h.fetch._tag === "Failed" && h.fetch.error).toBeInstanceOf(AdapterError);
+    expect(h.fetch._tag === "Failed" && (h.fetch.error as AdapterError).cause).toBe(
+      "plain-string-error",
+    );
   });
 
   it("wraps a non-Error document adapter rejection in an Error", async () => {
@@ -378,9 +413,9 @@ describe("Finder normalizes adapter failures", () => {
       models: {
         user: {
           adapter: {
-            async find() {
+            find: effectFind("user", async () => {
               throw "document-string-error";
-            },
+            }),
           },
         },
         post: { adapter: makePostAdapter() },
@@ -390,9 +425,11 @@ describe("Finder normalizes adapter failures", () => {
     const h = store.find("user", "1");
     await flushBatch();
 
-    expect(h.status).toBe("ERROR");
-    expect(h.error).toBeInstanceOf(Error);
-    expect(h.error?.message).toBe("document-string-error");
+    expect(h.fetch._tag).toBe("Failed");
+    expect(h.fetch._tag === "Failed" && h.fetch.error).toBeInstanceOf(AdapterError);
+    expect(h.fetch._tag === "Failed" && (h.fetch.error as AdapterError).cause).toBe(
+      "document-string-error",
+    );
   });
 });
 
@@ -405,9 +442,9 @@ describe("Finder empty queues and orphaned handles", () => {
       models: {
         user: {
           adapter: {
-            async find(ids) {
-              return ids.map((id) => ({ id, name: `User${id}` }));
-            },
+            find: effectFind("user", async (ids: Array<string>) =>
+              ids.map((id) => ({ id, name: `User${id}` })),
+            ),
           },
         },
         post: { adapter: makePostAdapter() },
@@ -415,9 +452,9 @@ describe("Finder empty queues and orphaned handles", () => {
       queries: {
         search: {
           adapter: {
-            async find(paramsList) {
-              return paramsList.map(() => ({ total: 1 }));
-            },
+            find: effectFind("search", async (paramsList: Array<{ q: string }>) =>
+              paramsList.map(() => ({ total: 1 })),
+            ),
           },
         },
       },
@@ -426,10 +463,10 @@ describe("Finder empty queues and orphaned handles", () => {
       models: {
         user: {
           adapter: {
-            async find(ids) {
+            find: effectFind("user", async (ids: Array<string>) => {
               documentCalls.push([...ids]);
               return ids.map((id) => ({ id, name: `User${id}` }));
-            },
+            }),
           },
         },
         post: { adapter: makePostAdapter() },
@@ -437,10 +474,10 @@ describe("Finder empty queues and orphaned handles", () => {
       queries: {
         search: {
           adapter: {
-            async find(paramsList) {
+            find: effectFind("search", async (paramsList: Array<{ q: string }>) => {
               queryCalls.push([...paramsList]);
               return paramsList.map(() => ({ total: 1 }));
-            },
+            }),
           },
         },
       },
@@ -487,24 +524,18 @@ describe("Finder empty queues and orphaned handles", () => {
 
   // Helpers shared by the "handle removed mid-flight" scenarios below.
   function pendingHandle(): InternalHandle {
-    return {
-      status: "PENDING",
-      data: undefined,
-      hasData: false,
-      isPending: true,
-      isFetching: true,
-      fetchedAt: undefined,
-      error: undefined,
-      promise: undefined,
-      resolve: vi.fn<(v: unknown) => void>(),
-      reject: vi.fn<(e: unknown) => void>(),
-    };
+    const handle = makeIdleHandle();
+    // A fetch is in flight: data still Absent, fetch Fetching, with resolver
+    // spies so we can assert they're never invoked once the handle is orphaned.
+    handle.fetch = { _tag: "Fetching" };
+    handle.resolve = vi.fn<(v: unknown) => void>();
+    handle.reject = vi.fn<(e: unknown) => void>();
+    return handle;
   }
 
   function expectUntouched(handle: InternalHandle): void {
-    expect(handle.status).toBe("PENDING");
-    expect(handle.error).toBeUndefined();
-    expect(handle.fetchedAt).toBeUndefined();
+    expect(handle.data._tag).toBe("Absent");
+    expect(handle.fetch._tag).toBe("Fetching");
     expect(handle.resolve).not.toHaveBeenCalled();
     expect(handle.reject).not.toHaveBeenCalled();
   }
@@ -524,17 +555,17 @@ describe("Finder empty queues and orphaned handles", () => {
 
     const store = createDocumentStore<TestTypes, Queries>({
       models: { user: { adapter: makeUserAdapter() }, post: { adapter: makePostAdapter() } },
-      queries: { search: { adapter: { find: async () => [] } } },
+      queries: { search: { adapter: { find: effectFind("search", async () => []) } } },
     });
 
     const finder = new Finder<TestTypes, Queries>({
       models: {
         user: {
           adapter: {
-            async find(ids) {
+            find: effectFind("user", async (ids: Array<string>) => {
               documentCalls.push([...ids]);
               return ids.map((id) => ({ id, name: `User${id}` }));
-            },
+            }),
           },
         },
         post: { adapter: makePostAdapter() },
@@ -542,10 +573,10 @@ describe("Finder empty queues and orphaned handles", () => {
       queries: {
         search: {
           adapter: {
-            async find(paramsList) {
-              queryCalls.push([...paramsList] as Array<{ q: string }>);
+            find: effectFind("search", async (paramsList: Array<{ q: string }>) => {
+              queryCalls.push([...paramsList]);
               return paramsList.map(() => ({ total: 1 }));
-            },
+            }),
           },
         },
       },
@@ -584,16 +615,16 @@ describe("Finder empty queues and orphaned handles", () => {
 
     const store = createDocumentStore<TestTypes, Queries>({
       models: { user: { adapter: makeUserAdapter() }, post: { adapter: makePostAdapter() } },
-      queries: { search: { adapter: { find: async () => [] } } },
+      queries: { search: { adapter: { find: effectFind("search", async () => []) } } },
     });
 
     const finder = new Finder<TestTypes, Queries>({
       models: {
         user: {
           adapter: {
-            async find() {
+            find: effectFind("user", async () => {
               throw new Error("document fetch failed");
-            },
+            }),
           },
         },
         post: { adapter: makePostAdapter() },
@@ -601,9 +632,9 @@ describe("Finder empty queues and orphaned handles", () => {
       queries: {
         search: {
           adapter: {
-            async find() {
+            find: effectFind("search", async () => {
               throw new Error("query fetch failed");
-            },
+            }),
           },
         },
       },

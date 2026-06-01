@@ -1,9 +1,8 @@
 import type { AdapterError, SiloError } from "./errors";
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
-import type { Duration, Schedule } from "effect";
+import type { Duration, Effect, Schedule } from "effect";
 
 import { batch, createReactive } from "@supergrain/kernel";
-import { Effect } from "effect";
 
 import { Finder } from "./finder";
 import { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./transitions";
@@ -309,7 +308,7 @@ export function createDocumentStore<
         handle = bucket.get(id)!;
       }
       if (handle.data._tag === "Absent" && handle.fetch._tag === "Idle") {
-        batch(() => applyEvent(handle!, HandleEvent.Fetch()));
+        batch(() => applyEvent(handle!, HandleEvent.fetch()));
         finder.queueDocument(type, id);
       }
       return handle as unknown as DocumentHandle<M[K]>;
@@ -331,7 +330,7 @@ export function createDocumentStore<
           bucket.set(doc.id, makeIdleHandle());
           handle = bucket.get(doc.id)!;
         }
-        applyEvent(handle, HandleEvent.Insert({ value: doc }));
+        applyEvent(handle, HandleEvent.insert(doc));
       });
     },
 
@@ -352,7 +351,7 @@ export function createDocumentStore<
         handle = bucket.get(paramsKey)!;
       }
       if (handle.data._tag === "Absent" && handle.fetch._tag === "Idle") {
-        batch(() => applyEvent(handle!, HandleEvent.Fetch()));
+        batch(() => applyEvent(handle!, HandleEvent.fetch()));
         finder.queueQuery(type, paramsKey, params);
       }
       return handle as unknown as QueryHandle<Q[K]["result"]>;
@@ -385,17 +384,17 @@ export function createDocumentStore<
           bucket.set(paramsKey, makeIdleHandle());
           handle = bucket.get(paramsKey)!;
         }
-        applyEvent(handle, HandleEvent.Insert({ value: result }));
+        applyEvent(handle, HandleEvent.insert(result));
       });
     },
 
     clearMemory(): void {
       batch(() => {
         for (const bucket of state.documents.values()) {
-          for (const handle of bucket.values()) applyEvent(handle, HandleEvent.Reset());
+          for (const handle of bucket.values()) applyEvent(handle, HandleEvent.reset());
         }
         for (const bucket of state.queries.values()) {
-          for (const handle of bucket.values()) applyEvent(handle, HandleEvent.Reset());
+          for (const handle of bucket.values()) applyEvent(handle, HandleEvent.reset());
         }
       });
     },

@@ -124,6 +124,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     });
   }
 
+  // oxlint-disable-next-line max-params
   private adapterEffect(
     config: { retry?: ModelConfig<M>["retry"]; timeout?: ModelConfig<M>["timeout"] },
     type: string,
@@ -158,6 +159,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     );
   }
 
+  // oxlint-disable-next-line max-params
   private commitDocuments(
     type: string,
     ids: Array<string>,
@@ -165,18 +167,18 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     processor: ResponseProcessor<M>,
   ): void {
     batch(() => {
+      // oxlint-disable-next-line init-declarations
       let processorError: ProcessorError | undefined;
       try {
         processor(raw, this.store! as DocumentStore<M>, type as keyof M & string);
-      } catch (cause) {
-        processorError = new ProcessorError({ type, cause });
+      } catch (error) {
+        processorError = new ProcessorError({ type, cause: error });
       }
 
       const bucket = this.state!.documents.get(type);
       for (const id of ids) {
         const handle = bucket?.get(id);
-        if (!handle) continue;
-        this.settleHandle(handle, id, type, processorError);
+        if (handle) this.settleHandle(handle, id, type, processorError);
       }
     });
   }
@@ -215,6 +217,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     );
   }
 
+  // oxlint-disable-next-line max-params
   private commitQueries(
     type: string,
     chunk: Array<QueryChunkEntry>,
@@ -223,6 +226,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     processor: QueryProcessor<M, Q, keyof Q & string>,
   ): void {
     batch(() => {
+      // oxlint-disable-next-line init-declarations
       let processorError: ProcessorError | undefined;
       try {
         processor(
@@ -231,15 +235,14 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
           type as keyof Q & string,
           paramsList as ReadonlyArray<Q[keyof Q & string]["params"]>,
         );
-      } catch (cause) {
-        processorError = new ProcessorError({ type, cause });
+      } catch (error) {
+        processorError = new ProcessorError({ type, cause: error });
       }
 
       const bucket = this.state!.queries.get(type);
       for (const { paramsKey } of chunk) {
         const handle = bucket?.get(paramsKey);
-        if (!handle) continue;
-        this.settleHandle(handle, paramsKey, type, processorError);
+        if (handle) this.settleHandle(handle, paramsKey, type, processorError);
       }
     });
   }
@@ -248,6 +251,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
    * Settle one handle after its chunk's adapter+processor ran: a processor
    * error fails it; data present → settled; still absent → not found.
    */
+  // oxlint-disable-next-line max-params
   private settleHandle(
     handle: InternalHandle,
     key: string,
@@ -255,14 +259,15 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     processorError: ProcessorError | undefined,
   ): void {
     if (processorError) {
-      applyEvent(handle, HandleEvent.Failed({ error: processorError }));
+      applyEvent(handle, HandleEvent.failed(processorError));
     } else if (handle.data._tag === "Present") {
-      applyEvent(handle, HandleEvent.Settled());
+      applyEvent(handle, HandleEvent.settled());
     } else {
-      applyEvent(handle, HandleEvent.Failed({ error: new NotFoundError({ type, key }) }));
+      applyEvent(handle, HandleEvent.failed(new NotFoundError({ type, key })));
     }
   }
 
+  // oxlint-disable-next-line max-params
   private failChunk(
     buckets: Map<string, Map<string, InternalHandle>>,
     type: string,
@@ -273,7 +278,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
       const bucket = buckets.get(type);
       for (const key of keys) {
         const handle = bucket?.get(key);
-        if (handle) applyEvent(handle, HandleEvent.Failed({ error }));
+        if (handle) applyEvent(handle, HandleEvent.failed(error));
       }
     });
   }

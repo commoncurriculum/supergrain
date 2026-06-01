@@ -451,7 +451,9 @@ const usersByRoleAdapter: QueryAdapter<{ role: string }> = {
   find: (paramsList) =>
     Effect.tryPromise({
       try: () =>
-        Promise.all(paramsList.map((p) => fetch(`/api/users?role=${p.role}`).then((r) => r.json()))),
+        Promise.all(
+          paramsList.map((p) => fetch(`/api/users?role=${p.role}`).then((r) => r.json())),
+        ),
       catch: (cause) => new AdapterError({ type: "usersByRole", keys: [], cause }),
     }),
 };
@@ -576,27 +578,27 @@ These aren't "same library, different maturity" — they're genuinely different 
 
 ### Capability comparison
 
-| Capability                                             | TQ (today) | document-store (today) | document-store (ceiling)                       |
-| ------------------------------------------------------ | :--------: | :--------------------: | ---------------------------------------------- |
-| Fetch by id                                            |     ✓      |           ✓            | —                                              |
-| Fetch by arbitrary query                               |     ✓      |           ✗            | generalize adapter keys                        |
-| Request dedup                                          |     ✓      |           ✓            | —                                              |
-| **Multi-key batching into one request**                |     ✗      |           ✓            | —                                              |
-| **Stable-id normalization**                            |     ✗      |           ✓            | —                                              |
-| **Cross-query sync (edit user → every view updates)**  | ✗ (manual) |           ✓            | —                                              |
-| **Stable reactive handles (fine-grained field reads)** |     ✗      |           ✓            | —                                              |
-| Suspense via `use()`                                   | ✓ (opt-in) |       ✓ (opt-in)       | —                                              |
-| Invalidation                                           |     ✓      |           ✗            | add `invalidate` / `invalidateType`            |
+| Capability                                             | TQ (today) | document-store (today) | document-store (ceiling)                        |
+| ------------------------------------------------------ | :--------: | :--------------------: | ----------------------------------------------- |
+| Fetch by id                                            |     ✓      |           ✓            | —                                               |
+| Fetch by arbitrary query                               |     ✓      |           ✗            | generalize adapter keys                         |
+| Request dedup                                          |     ✓      |           ✓            | —                                               |
+| **Multi-key batching into one request**                |     ✗      |           ✓            | —                                               |
+| **Stable-id normalization**                            |     ✗      |           ✓            | —                                               |
+| **Cross-query sync (edit user → every view updates)**  | ✗ (manual) |           ✓            | —                                               |
+| **Stable reactive handles (fine-grained field reads)** |     ✗      |           ✓            | —                                               |
+| Suspense via `use()`                                   | ✓ (opt-in) |       ✓ (opt-in)       | —                                               |
+| Invalidation                                           |     ✓      |           ✗            | add `invalidate` / `invalidateType`             |
 | Stale-time / gc-time                                   |     ✓      |           ✗            | add `staleMs`; compare against `data.fetchedAt` |
-| Refetch on focus / reconnect / interval                |     ✓      |           ✗            | add opt-in hooks                               |
-| Retry with backoff                                     |     ✓      |           ✗            | add to Finder                                  |
-| Cancellation                                           |     ✓      |           ✗            | thread `AbortSignal` through adapter           |
-| Pagination / infinite queries                          |     ✓      |           ✗            | wrapper hook that extends an id-list           |
-| Mutations + optimistic + rollback                      |     ✓      |           ✗            | next-PR write layer built on `insertDocument`  |
-| SSR / hydration                                        |     ✓      |           ✗            | serialize the store's reactive tree, rehydrate |
-| Persistence (localStorage / IDB)                       |     ✓      |           ✗            | serialize map on write, restore on init        |
-| Devtools                                               |     ✓      |           ✗            | expose cache map + event stream                |
-| Ecosystem / community / docs                           |   Large    |         Small          | —                                              |
+| Refetch on focus / reconnect / interval                |     ✓      |           ✗            | add opt-in hooks                                |
+| Retry with backoff                                     |     ✓      |           ✗            | add to Finder                                   |
+| Cancellation                                           |     ✓      |           ✗            | thread `AbortSignal` through adapter            |
+| Pagination / infinite queries                          |     ✓      |           ✗            | wrapper hook that extends an id-list            |
+| Mutations + optimistic + rollback                      |     ✓      |           ✗            | next-PR write layer built on `insertDocument`   |
+| SSR / hydration                                        |     ✓      |           ✗            | serialize the store's reactive tree, rehydrate  |
+| Persistence (localStorage / IDB)                       |     ✓      |           ✗            | serialize map on write, restore on init         |
+| Devtools                                               |     ✓      |           ✗            | expose cache map + event stream                 |
+| Ecosystem / community / docs                           |   Large    |         Small          | —                                               |
 
 **Bold rows are architectural** — they live in the primitive and can't be retrofitted without a rewrite. Everything else is **additive**: bolt-on features that land without touching core design. The "ceiling" column is the planned-additive path; none of it requires architectural change to get to.
 

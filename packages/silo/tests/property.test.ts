@@ -1,7 +1,20 @@
+import { Effect } from "effect";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { createDocumentStore, type DocumentStore } from "../src";
+import { AdapterError, createDocumentStore, type DocumentStore } from "../src";
+
+/** Wrap a Promise-returning function as an Effect-returning adapter `find`. */
+function effectFind<A extends ReadonlyArray<unknown>>(
+  type: string,
+  fn: (...args: A) => Promise<unknown>,
+): (...args: A) => Effect.Effect<unknown, AdapterError> {
+  return (...args: A) =>
+    Effect.tryPromise({
+      try: () => fn(...args),
+      catch: (cause) => new AdapterError({ type, keys: [], cause }),
+    });
+}
 
 type TestModels = {
   user: { id: string; name: string };
@@ -72,14 +85,14 @@ function canonicalParamsKey(value: JsonValue): string {
 function createTestStore(): DocumentStore<TestModels, TestQueries> {
   return createDocumentStore<TestModels, TestQueries>({
     models: {
-      user: { adapter: { find: async () => [] } },
+      user: { adapter: { find: effectFind("user", async () => []) } },
     },
     queries: {
       search: {
         adapter: {
-          async find(paramsList) {
-            return paramsList.map((_, index) => ({ token: index }));
-          },
+          find: effectFind("search", async (paramsList: Array<JsonValue>) =>
+            paramsList.map((_, index) => ({ token: index })),
+          ),
         },
       },
     },

@@ -1,5 +1,6 @@
 import { effect } from "@supergrain/kernel";
 import { createDocumentStore, type DocumentStore } from "@supergrain/silo";
+import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { createQuery, type QueryAdapter } from "../src";
@@ -28,8 +29,8 @@ type TypeToModel = {
 function makeStore(): DocumentStore<TypeToModel> {
   return createDocumentStore<TypeToModel>({
     models: {
-      planbooks_for_user: { adapter: { find: () => Promise.resolve({ data: [] }) } },
-      planbook: { adapter: { find: () => Promise.resolve({ data: [] }) } },
+      planbooks_for_user: { adapter: { find: () => Effect.succeed({ data: [] }) } },
+      planbook: { adapter: { find: () => Effect.succeed({ data: [] }) } },
     },
   });
 }

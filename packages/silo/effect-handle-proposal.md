@@ -1,7 +1,7 @@
 # silo + Effect — handle design
 
 How we get **type safety (illegal states unrepresentable + exhaustive
-matching)** *and* **per-field reactivity** at the same time, while moving silo's
+matching)** _and_ **per-field reactivity** at the same time, while moving silo's
 network/async layer onto Effect. Breaking is acceptable (library isn't widely
 adopted), so this assumes we go all the way.
 
@@ -11,10 +11,10 @@ adopted), so this assumes we go all the way.
 
 Two independent things were conflated in the first draft of this doc:
 
-- **Per-field reactivity** comes from the *runtime representation*: a single
+- **Per-field reactivity** comes from the _runtime representation_: a single
   **stable reactive proxy** whose individual fields are mutated **in place**.
   Reading `handle.data` subscribes to the `data` cell only.
-- **Type safety** comes from the *type*, not the runtime shape.
+- **Type safety** comes from the _type_, not the runtime shape.
 
 An earlier option made the public handle an **immutable `Data.TaggedEnum`
 value**. That's what forced whole-object replacement on every transition and
@@ -30,9 +30,9 @@ discriminated union** keyed on `status`.
 
 A single flat enum (`IDLE|PENDING|SUCCESS|ERROR`) models async state as **one
 axis**, which is a leaky abstraction: it can't represent "I have stale data
-*and* a background refetch is in flight," or "I have stale data *and* the latest
+_and_ a background refetch is in flight," or "I have stale data _and_ the latest
 refetch errored." Forcing this-or-that throws information away, and it tempts
-you to call a refetch "pending" (it isn't — pending means *no data yet*).
+you to call a refetch "pending" (it isn't — pending means _no data yet_).
 
 The lifecycle is actually **two orthogonal regions** (Harel parallel states):
 
@@ -41,10 +41,10 @@ The lifecycle is actually **two orthogonal regions** (Harel parallel states):
 
 All six combinations are meaningful:
 
-| | Idle | Fetching | Failed |
-|---|---|---|---|
-| **Absent**  | never fetched | first load | first load failed |
-| **Present** | settled | background refetch | **stale data + refetch error** |
+|             | Idle          | Fetching           | Failed                         |
+| ----------- | ------------- | ------------------ | ------------------------------ |
+| **Absent**  | never fetched | first load         | first load failed              |
+| **Present** | settled       | background refetch | **stale data + refetch error** |
 
 ```ts
 import type { AdapterError } from "./errors";
@@ -89,16 +89,19 @@ const u = useDocument("user", id);
 
 if (u.data._tag === "Absent") {
   switch (u.fetch._tag) {
-    case "Idle":     return null;                            // 1. never fetched
-    case "Fetching": return <Spinner />;                     // 2. first load
-    case "Failed":   return <ErrorPage e={u.fetch.error} />; // 3. first load failed
+    case "Idle":
+      return null; // 1. never fetched
+    case "Fetching":
+      return <Spinner />; // 2. first load
+    case "Failed":
+      return <ErrorPage e={u.fetch.error} />; // 3. first load failed
   }
 }
 // u.data._tag === "Present"  →  value: T
 return (
   <Card
     user={u.data.value}
-    busy={u.fetch._tag === "Fetching"}                            // 4 vs 5: settled / refetching
+    busy={u.fetch._tag === "Fetching"} // 4 vs 5: settled / refetching
     error={u.fetch._tag === "Failed" ? u.fetch.error : undefined} // 6: stale value + refetch error
   />
 );
@@ -144,10 +147,14 @@ import { use } from "react";
 
 export function useSuspend<T>(h: DocumentHandle<T>): T {
   switch (h.status) {
-    case "IDLE":    throw new Promise<never>(() => {}); // idle = no id; suspend
-    case "PENDING": return use(h.promise);
-    case "ERROR":   throw h.error;
-    case "SUCCESS": return h.data;
+    case "IDLE":
+      throw new Promise<never>(() => {}); // idle = no id; suspend
+    case "PENDING":
+      return use(h.promise);
+    case "ERROR":
+      throw h.error;
+    case "SUCCESS":
+      return h.data;
   }
 }
 ```
@@ -165,17 +172,17 @@ today.
 ## 5. Where Effect's statecharts live (internal)
 
 The `Data.TaggedEnum` / `$match` style goes **inside the finder**, as the pure
-transition reducer — exhaustive over every event × state — and we *project* the
+transition reducer — exhaustive over every event × state — and we _project_ the
 result onto the proxy by mutating fields:
 
 ```ts
 import { Data } from "effect";
 
 type HandleEvent<T> = Data.TaggedEnum<{
-  Fetch:   {};                     // a (re)fetch started
-  Resolve: { value: T };           // fetch settled with data
-  Reject:  { error: AdapterError };// fetch settled with an error
-  Insert:  { value: T };           // out-of-band insertDocument
+  Fetch: {}; // a (re)fetch started
+  Resolve: { value: T }; // fetch settled with data
+  Reject: { error: AdapterError }; // fetch settled with an error
+  Insert: { value: T }; // out-of-band insertDocument
 }>;
 
 // pure, exhaustive reducer over (DataState, FetchState, event) → next regions,
@@ -208,13 +215,13 @@ handle narrows fully per region, and reactivity is untouched.
 
 ## 7. Outcome
 
-| | Old flat handle | Single discriminated enum | **Two orthogonal regions** |
-|---|---|---|---|
-| Read `value` before load | `undefined` at runtime | compile error | **compile error** |
-| Stale data + background refetch | — | can't express (or mislabels "pending") | **`data: Present` + `fetch: Fetching`** |
-| Stale data + refetch error | — | must drop one | **`data: Present` + `fetch: Failed` (both)** |
-| Exhaustive states | manual | TS-checked | **TS-checked per region, all six exposed** |
-| Reactivity granularity | per-field | per-handle (if immutable value) | **per-region cell, in-place mutation** |
+|                                 | Old flat handle        | Single discriminated enum              | **Two orthogonal regions**                   |
+| ------------------------------- | ---------------------- | -------------------------------------- | -------------------------------------------- |
+| Read `value` before load        | `undefined` at runtime | compile error                          | **compile error**                            |
+| Stale data + background refetch | —                      | can't express (or mislabels "pending") | **`data: Present` + `fetch: Fetching`**      |
+| Stale data + refetch error      | —                      | must drop one                          | **`data: Present` + `fetch: Failed` (both)** |
+| Exhaustive states               | manual                 | TS-checked                             | **TS-checked per region, all six exposed**   |
+| Reactivity granularity          | per-field              | per-handle (if immutable value)        | **per-region cell, in-place mutation**       |
 
 Type safety + exhaustiveness + per-field reactivity + honest refetch
 semantics — no compromise.

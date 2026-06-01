@@ -1,9 +1,11 @@
 import { tracked } from "@supergrain/kernel/react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Effect } from "effect";
 import { type ReactNode, StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  AdapterError,
   type DocumentStore,
   type DocumentStoreConfig,
   type QueryAdapter,
@@ -76,21 +78,29 @@ const { Provider, useDocument, useDocumentStore, useQuery } =
   createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
 
 const userAdapter: DocumentAdapter = {
-  async find(ids) {
-    if (usersShouldFail) {
-      throw new Error("/users responded 500");
-    }
-    return ids.map((id) => makeUser(id));
-  },
+  find: (ids) =>
+    Effect.tryPromise({
+      try: async () => {
+        if (usersShouldFail) {
+          throw new Error("/users responded 500");
+        }
+        return ids.map((id) => makeUser(id));
+      },
+      catch: (cause) => new AdapterError({ type: "user", keys: ids, cause }),
+    }),
 };
 
 const dashboardAdapter: QueryAdapter<DashboardParams> = {
-  async find(paramsList) {
-    if (dashboardsShouldFail) {
-      throw new Error("/dashboards responded 500");
-    }
-    return paramsList.map((params) => makeDashboard(params.workspaceId));
-  },
+  find: (paramsList) =>
+    Effect.tryPromise({
+      try: async () => {
+        if (dashboardsShouldFail) {
+          throw new Error("/dashboards responded 500");
+        }
+        return paramsList.map((params) => makeDashboard(params.workspaceId));
+      },
+      catch: (cause) => new AdapterError({ type: "dashboard", keys: [], cause }),
+    }),
 };
 
 function makeStoreConfig(): DocumentStoreConfig<TypeToModel, TypeToQuery> {
@@ -112,11 +122,16 @@ function Wrap({ children }: { children: ReactNode }) {
   );
 }
 
-const SeedUser = tracked(function SeedUser({ user }: { user: User }) {
+// Seed components only WRITE to the store (no reactive reads for rendering),
+// so they are plain components — not `tracked`. Wrapping a write-only,
+// insert-during-render component in `tracked` would subscribe its render
+// effect to the very handle fields the insert mutates, self-triggering an
+// infinite re-render loop. (See note in json-api.test.tsx Seed* helpers.)
+function SeedUser({ user }: { user: User }) {
   const store = useDocumentStore();
   store.insertDocument("user", user);
   return null;
-});
+}
 
 // =============================================================================
 // Realistic components the tests render — same shape a consumer would write.
@@ -124,10 +139,13 @@ const SeedUser = tracked(function SeedUser({ user }: { user: User }) {
 
 const UserBadge = tracked(function UserBadge({ userId }: { userId: string | null | undefined }) {
   const handle = useDocument("user", userId);
-  if (handle.status === "IDLE") return <span>no user</span>;
-  if (handle.isPending) return <span>loading</span>;
-  if (handle.error) return <span>error: {handle.error.message}</span>;
-  return <span>{handle.data?.attributes.firstName}</span>;
+  if (handle.data._tag === "Absent" && handle.fetch._tag === "Idle") return <span>no user</span>;
+  if (handle.data._tag === "Absent" && handle.fetch._tag === "Fetching")
+    return <span>loading</span>;
+  if (handle.fetch._tag === "Failed") return <span>error: {handle.fetch.error.message}</span>;
+  return (
+    <span>{handle.data._tag === "Present" ? handle.data.value.attributes.firstName : null}</span>
+  );
 });
 
 const UserList = tracked(function UserList({ ids }: { ids: ReadonlyArray<string> }) {
@@ -135,13 +153,16 @@ const UserList = tracked(function UserList({ ids }: { ids: ReadonlyArray<string>
   const handles = ids.map((id) => store.find("user", id));
 
   if (handles.length === 0) return <span>no users</span>;
-  if (handles.some((handle) => handle.error)) return <span>error</span>;
-  if (handles.some((handle) => handle.isPending)) return <span>loading</span>;
+  if (handles.some((handle) => handle.fetch._tag === "Failed")) return <span>error</span>;
+  if (handles.some((handle) => handle.data._tag === "Absent" && handle.fetch._tag === "Fetching"))
+    return <span>loading</span>;
 
   return (
     <ul>
       {handles.map((handle) =>
-        handle.data ? <li key={handle.data.id}>{handle.data.attributes.firstName}</li> : null,
+        handle.data._tag === "Present" ? (
+          <li key={handle.data.value.id}>{handle.data.value.attributes.firstName}</li>
+        ) : null,
       )}
     </ul>
   );
@@ -156,10 +177,14 @@ const DashboardView = tracked(function DashboardView({
     "dashboard",
     workspaceId == null ? null : { workspaceId, filters: { active: true } },
   );
-  if (handle.status === "IDLE") return <span>no dashboard</span>;
-  if (handle.isPending) return <span>loading dashboard</span>;
-  if (handle.error) return <span>error: {handle.error.message}</span>;
-  return <span>users: {handle.data?.totalActiveUsers}</span>;
+  if (handle.data._tag === "Absent" && handle.fetch._tag === "Idle")
+    return <span>no dashboard</span>;
+  if (handle.data._tag === "Absent" && handle.fetch._tag === "Fetching")
+    return <span>loading dashboard</span>;
+  if (handle.fetch._tag === "Failed") return <span>error: {handle.fetch.error.message}</span>;
+  return (
+    <span>users: {handle.data._tag === "Present" ? handle.data.value.totalActiveUsers : null}</span>
+  );
 });
 
 // =============================================================================
@@ -351,25 +376,34 @@ describe("createDocumentStoreContext isolation", () => {
     const tenantA = createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
     const tenantB = createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
 
-    const SeedA = tracked(function SeedA() {
+    // Write-only seeds — plain components, not `tracked` (see SeedUser note).
+    function SeedA() {
       const store = tenantA.useDocumentStore();
       store.insertDocument("user", makeUser("1", { firstName: "AliceA" }));
       return null;
-    });
+    }
 
-    const SeedB = tracked(function SeedB() {
+    function SeedB() {
       const store = tenantB.useDocumentStore();
       store.insertDocument("user", makeUser("1", { firstName: "BobB" }));
       return null;
-    });
+    }
 
     const UserFromA = tracked(function UserFromA() {
       const handle = tenantA.useDocument("user", "1");
-      return <span data-testid="tenant-a">{handle.data?.attributes.firstName ?? "—"}</span>;
+      return (
+        <span data-testid="tenant-a">
+          {handle.data._tag === "Present" ? handle.data.value.attributes.firstName : "—"}
+        </span>
+      );
     });
     const UserFromB = tracked(function UserFromB() {
       const handle = tenantB.useDocument("user", "1");
-      return <span data-testid="tenant-b">{handle.data?.attributes.firstName ?? "—"}</span>;
+      return (
+        <span data-testid="tenant-b">
+          {handle.data._tag === "Present" ? handle.data.value.attributes.firstName : "—"}
+        </span>
+      );
     });
 
     render(
@@ -406,8 +440,12 @@ describe("Provider initial data seeding", () => {
       const h2 = useDocument("user", "seed2");
       return (
         <div>
-          <span data-testid="u1">{h1.data?.attributes.firstName ?? "—"}</span>
-          <span data-testid="u2">{h2.data?.attributes.firstName ?? "—"}</span>
+          <span data-testid="u1">
+            {h1.data._tag === "Present" ? h1.data.value.attributes.firstName : "—"}
+          </span>
+          <span data-testid="u2">
+            {h2.data._tag === "Present" ? h2.data.value.attributes.firstName : "—"}
+          </span>
         </div>
       );
     });
@@ -431,7 +469,11 @@ describe("Provider initial data seeding", () => {
 
     const QueryDisplay = tracked(function QueryDisplay() {
       const handle = useQuery("dashboard", params);
-      return <span data-testid="q">{handle.data?.totalActiveUsers ?? "—"}</span>;
+      return (
+        <span data-testid="q">
+          {handle.data._tag === "Present" ? handle.data.value.totalActiveUsers : "—"}
+        </span>
+      );
     });
 
     render(
@@ -550,7 +592,11 @@ describe("Provider initial data — null/undefined guards", () => {
 
     const UserDisplay = tracked(function UserDisplay() {
       const handle = useDocument("user", "seeded");
-      return <span data-testid="seeded">{handle.data?.attributes.firstName ?? "-"}</span>;
+      return (
+        <span data-testid="seeded">
+          {handle.data._tag === "Present" ? handle.data.value.attributes.firstName : "-"}
+        </span>
+      );
     });
 
     render(

@@ -22,9 +22,11 @@
 // =============================================================================
 
 import { effect } from "@supergrain/kernel";
+import { Effect } from "effect";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { AdapterError } from "../src";
 import { createDocumentStore } from "../src/store";
 import {
   API_BASE,
@@ -40,6 +42,24 @@ import {
   type TypeToQuery,
 } from "./example-app";
 import { setupFakeTimers } from "./setup/timers";
+
+/** Narrow a handle's `data` region to Present and return its value. */
+function present<T>(h: { data: { _tag: "Absent" } | { _tag: "Present"; value: T } }): T {
+  if (h.data._tag !== "Present") throw new Error(`expected Present, got ${h.data._tag}`);
+  return h.data.value;
+}
+
+/** Wrap a Promise-returning function as an Effect-returning adapter `find`. */
+function effectFind<A extends ReadonlyArray<unknown>>(
+  type: string,
+  fn: (...args: A) => Promise<unknown>,
+): (...args: A) => Effect.Effect<unknown, AdapterError> {
+  return (...args: A) =>
+    Effect.tryPromise({
+      try: () => fn(...args),
+      catch: (cause) => new AdapterError({ type, keys: [], cause }),
+    });
+}
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
@@ -59,8 +79,8 @@ describe("DocumentStore.findQuery", () => {
     const store = initStore();
     const handle = store.findQuery("dashboard", null);
 
-    expect(handle.status).toBe("IDLE");
-    expect(handle.data).toBeUndefined();
+    expect(handle.data._tag).toBe("Absent");
+    expect(handle.fetch._tag).toBe("Idle");
     expect(handle.promise).toBeUndefined();
   });
 
@@ -89,14 +109,14 @@ describe("DocumentStore.findQuery", () => {
     const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
 
     const handle = store.findQuery("dashboard", params);
-    expect(handle.status).toBe("PENDING");
+    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Fetching").toBe(true);
 
     await flushCoalescer();
     await handle.promise;
 
     // Per the dashboard MSW handler, totalActiveUsers encodes the workspaceId.
-    expect(handle.status).toBe("SUCCESS");
-    expect(handle.data?.totalActiveUsers).toBe(70);
+    expect(handle.data._tag).toBe("Present");
+    expect(present(handle).totalActiveUsers).toBe(70);
     expect(store.findQueryInMemory("dashboard", params)?.totalActiveUsers).toBe(70);
   });
 
@@ -115,8 +135,8 @@ describe("DocumentStore.findQuery", () => {
     // Second call with reordered keys should read from memory — no new request.
     const before = requests().filter((r) => r.url.pathname === "/dashboards").length;
     const handle2 = store.findQuery("dashboard", p2);
-    expect(handle2.status).toBe("SUCCESS");
-    expect(handle2.data).toBe(handle.data);
+    expect(handle2.data._tag).toBe("Present");
+    expect(present(handle2)).toBe(present(handle));
     expect(requests().filter((r) => r.url.pathname === "/dashboards")).toHaveLength(before);
   });
 });
@@ -136,13 +156,12 @@ describe("DocumentStore.findQuery errors", () => {
     const store = initStore();
     const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
     const handle = store.findQuery("dashboard", params);
-    expect(handle.status).toBe("PENDING");
+    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Fetching").toBe(true);
 
     await flushCoalescer();
 
-    expect(handle.status).toBe("ERROR");
-    expect(handle.error).toBeInstanceOf(Error);
-    expect(handle.data).toBeUndefined();
+    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
+    expect(handle.fetch._tag === "Failed" && handle.fetch.error).toBeInstanceOf(Error);
   });
 
   it("clearMemory removes settled query errors so the next fetch starts cleanly", async () => {
@@ -159,12 +178,12 @@ describe("DocumentStore.findQuery errors", () => {
     await flushCoalescer();
 
     const rejectedPromise = handle.promise;
-    expect(handle.status).toBe("ERROR");
-    expect(handle.error).toBeInstanceOf(Error);
+    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
+    expect(handle.fetch._tag === "Failed" && handle.fetch.error).toBeInstanceOf(Error);
 
     store.clearMemory();
-    expect(handle.status).toBe("IDLE");
-    expect(handle.error).toBeUndefined();
+    expect(handle.data._tag).toBe("Absent");
+    expect(handle.fetch._tag).toBe("Idle");
     expect(handle.promise).toBeUndefined();
 
     server.resetHandlers();
@@ -177,8 +196,8 @@ describe("DocumentStore.findQuery errors", () => {
     await flushCoalescer();
     await handle.promise;
 
-    expect(handle.status).toBe("SUCCESS");
-    expect(handle.data?.totalActiveUsers).toBe(70);
+    expect(handle.data._tag).toBe("Present");
+    expect(present(handle).totalActiveUsers).toBe(70);
   });
 });
 
@@ -266,8 +285,8 @@ describe("Finder pipeline with query params", () => {
 
     const dashboardRequests = requests().filter((r) => r.url.pathname === "/dashboards");
     expect(dashboardRequests).toHaveLength(2);
-    expect(h7.data?.totalActiveUsers).toBe(70);
-    expect(h8.data?.totalActiveUsers).toBe(80);
+    expect(present(h7).totalActiveUsers).toBe(70);
+    expect(present(h8).totalActiveUsers).toBe(80);
   });
 
   it("hands the raw params objects (not stringified) to the adapter", async () => {
@@ -277,17 +296,19 @@ describe("Finder pipeline with query params", () => {
     const received: Array<ReadonlyArray<DashboardParams>> = [];
     const captureStore = createDocumentStore<TypeToModel, TypeToQuery>({
       models: {
-        user: { adapter: { find: async () => [] } },
-        post: { adapter: { find: async () => [] } },
-        "card-stack": { adapter: { find: async () => ({ data: [], included: [] }) } },
+        user: { adapter: { find: effectFind("user", async () => []) } },
+        post: { adapter: { find: effectFind("post", async () => []) } },
+        "card-stack": {
+          adapter: { find: effectFind("card-stack", async () => ({ data: [], included: [] })) },
+        },
       },
       queries: {
         dashboard: {
           adapter: {
-            async find(paramsList) {
+            find: effectFind("dashboard", async (paramsList: ReadonlyArray<DashboardParams>) => {
               received.push(paramsList);
               return paramsList.map((p) => makeDashboard({ totalActiveUsers: p.workspaceId * 10 }));
-            },
+            }),
           },
         },
       },
@@ -322,17 +343,17 @@ describe("Queries share memory with documents", () => {
 
     const store = createDocumentStore<Types, Queries>({
       models: {
-        user: { adapter: { find: async () => [] } },
+        user: { adapter: { find: effectFind("user", async () => []) } },
       },
       queries: {
         dashWithUser: {
           adapter: {
-            async find(paramsList) {
-              return paramsList.map((p) => ({
+            find: effectFind("dashWithUser", async (paramsList: Array<{ id: number }>) =>
+              paramsList.map((p) => ({
                 userId: `user-${p.id}`,
                 embeddedUser: { id: `user-${p.id}`, name: `User ${p.id}` },
-              }));
-            },
+              })),
+            ),
           },
           processor: (raw, store, type, paramsList) => {
             const results = raw as Array<{
@@ -355,7 +376,7 @@ describe("Queries share memory with documents", () => {
     await handle.promise;
 
     // Query result stored under the query's slot
-    expect(handle.data).toEqual({ userId: "user-42" });
+    expect(present(handle)).toEqual({ userId: "user-42" });
 
     // Nested user normalized into the documents cache — useDocument would find it
     expect(store.findInMemory("user", "user-42")).toEqual({
@@ -403,14 +424,16 @@ describe("Queries share memory with documents", () => {
     await flushCoalescer();
 
     const rejectedPromise = handle.promise;
-    expect(handle.status).toBe("ERROR");
+    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
 
     const result = makeDashboard({ totalActiveUsers: 101 });
     store.insertQueryResult("dashboard", params, result);
 
-    expect(handle.status).toBe("SUCCESS");
-    expect(handle.data).toBe(result);
-    expect(handle.error).toBeUndefined();
+    expect(handle.data._tag).toBe("Present");
+    expect(present(handle)).toBe(result);
+    // An insert after a first-load failure hands out a fresh resolved promise
+    // (so a Suspense boundary can recover); the fetch region's Failed state is
+    // orthogonal and untouched by the insert.
     expect(handle.promise).not.toBe(rejectedPromise);
     await expect(handle.promise).resolves.toBe(result);
   });
@@ -420,13 +443,11 @@ describe("Queries share memory with documents", () => {
     type Queries = { count: { params: { id: string }; result: number } };
 
     const store = createDocumentStore<Types, Queries>({
-      models: { user: { adapter: { find: async () => [] } } },
+      models: { user: { adapter: { find: effectFind("user", async () => []) } } },
       queries: {
         count: {
           adapter: {
-            async find() {
-              return [];
-            },
+            find: effectFind("count", async () => []),
           },
         },
       },
@@ -444,13 +465,11 @@ describe("Query finder errors", () => {
     type Queries = { search: { params: { q: string }; result: { ids: string[] } } };
 
     const store = createDocumentStore<Types, Queries>({
-      models: { user: { adapter: { find: async () => [] } } },
+      models: { user: { adapter: { find: effectFind("user", async () => []) } } },
       queries: {
         search: {
           adapter: {
-            async find() {
-              return [];
-            },
+            find: effectFind("search", async () => []),
           },
           processor: () => {},
         },
@@ -461,8 +480,9 @@ describe("Query finder errors", () => {
     await flushCoalescer();
     await handle.promise!.catch(() => {});
 
-    expect(handle.status).toBe("ERROR");
-    expect(handle.error?.message).toMatch(/query result not found after fetch/i);
+    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
+    // The result was never inserted, so the handle settles to a NotFoundError.
+    expect(handle.fetch._tag === "Failed" && handle.fetch.error.message).toMatch(/not found/i);
   });
 
   it("sets query handle to ERROR when query processor throws", async () => {
@@ -470,13 +490,11 @@ describe("Query finder errors", () => {
     type Queries = { boom: { params: { n: number }; result: { value: number } } };
 
     const store = createDocumentStore<Types, Queries>({
-      models: { user: { adapter: { find: async () => [] } } },
+      models: { user: { adapter: { find: effectFind("user", async () => []) } } },
       queries: {
         boom: {
           adapter: {
-            async find() {
-              return [];
-            },
+            find: effectFind("boom", async () => []),
           },
           processor: () => {
             throw new Error("processor-exploded");
@@ -489,8 +507,13 @@ describe("Query finder errors", () => {
     await flushCoalescer();
     await handle.promise!.catch(() => {});
 
-    expect(handle.status).toBe("ERROR");
-    expect(handle.error?.message).toBe("processor-exploded");
+    expect(handle.fetch._tag).toBe("Failed");
+    // A processor throw settles to a ProcessorError whose cause is the throw.
+    const cause =
+      handle.fetch._tag === "Failed"
+        ? (handle.fetch.error as { cause?: unknown }).cause
+        : undefined;
+    expect((cause as Error).message).toBe("processor-exploded");
   });
 });
 
@@ -498,12 +521,14 @@ describe("insertQueryResult transitions existing handles", () => {
   it("updates an idle query handle without fetching", async () => {
     const store = createDocumentStore<TypeToModel, TypeToQuery>({
       models: {
-        user: { adapter: { find: async () => [] } },
-        post: { adapter: { find: async () => [] } },
-        "card-stack": { adapter: { find: async () => ({ data: [], included: [] }) } },
+        user: { adapter: { find: effectFind("user", async () => []) } },
+        post: { adapter: { find: effectFind("post", async () => []) } },
+        "card-stack": {
+          adapter: { find: effectFind("card-stack", async () => ({ data: [], included: [] })) },
+        },
       },
       queries: {
-        dashboard: { adapter: { find: () => new Promise(() => {}) } },
+        dashboard: { adapter: { find: () => Effect.never } },
       },
     });
 
@@ -528,16 +553,15 @@ describe("insertQueryResult transitions existing handles", () => {
     const handle = store.findQuery("dashboard", params);
     await flushCoalescer();
     await handle.promise?.catch(() => {});
-    expect(handle.status).toBe("ERROR");
+    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
 
     server.resetHandlers();
 
     const dashboard = makeDashboard({ totalActiveUsers: 770 });
     store.insertQueryResult("dashboard", params, dashboard);
 
-    expect(handle.status).toBe("SUCCESS");
-    expect(handle.data?.totalActiveUsers).toBe(770);
-    expect(handle.isPending).toBe(false);
+    expect(handle.data._tag).toBe("Present");
+    expect(present(handle).totalActiveUsers).toBe(770);
   });
 });
 
@@ -549,20 +573,20 @@ describe("insertQueryResult transitions existing handles", () => {
 // =============================================================================
 
 describe("Query handle is reactive", () => {
-  it("an effect tracking handle.status fires on PENDING -> SUCCESS via fetch", async () => {
+  it("an effect tracking handle.fetch fires on PENDING -> SUCCESS via fetch", async () => {
     const store = initStore();
     const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
     const handle = store.findQuery("dashboard", params);
 
-    const statusHistory: Array<string> = [];
+    const stateHistory: Array<string> = [];
     effect(() => {
-      statusHistory.push(handle.status);
+      stateHistory.push(`${handle.data._tag}/${handle.fetch._tag}`);
     });
-    expect(statusHistory).toEqual(["PENDING"]);
+    expect(stateHistory).toEqual(["Absent/Fetching"]);
 
     await flushCoalescer();
     await handle.promise;
-    expect(statusHistory.at(-1)).toBe("SUCCESS");
+    expect(stateHistory.at(-1)).toBe("Present/Idle");
   });
 
   it("an effect tracking handle.data fires when an external insertQueryResult lands", () => {
@@ -572,7 +596,7 @@ describe("Query handle is reactive", () => {
 
     const totals: Array<number | undefined> = [];
     effect(() => {
-      totals.push(handle.data?.totalActiveUsers);
+      totals.push(handle.data._tag === "Present" ? handle.data.value.totalActiveUsers : undefined);
     });
     expect(totals).toEqual([undefined]);
 
@@ -580,7 +604,7 @@ describe("Query handle is reactive", () => {
     expect(totals.at(-1)).toBe(99);
   });
 
-  it("an effect tracking handle.error fires on PENDING -> ERROR and clears on recovery", async () => {
+  it("an effect tracking handle.fetch error fires on PENDING -> ERROR", async () => {
     server.use(
       http.get(`${API_BASE}/dashboards`, () =>
         HttpResponse.json({ message: "boom" }, { status: 500 }),
@@ -593,15 +617,18 @@ describe("Query handle is reactive", () => {
 
     const errorHistory: Array<string | undefined> = [];
     effect(() => {
-      errorHistory.push(handle.error?.message);
+      errorHistory.push(handle.fetch._tag === "Failed" ? handle.fetch.error.message : undefined);
     });
     expect(errorHistory).toEqual([undefined]);
 
     await flushCoalescer();
     await handle.promise?.catch(() => {});
-    expect(errorHistory.at(-1)).toMatch(/boom|500/i);
+    expect(errorHistory.at(-1)).toMatch(/silo|adapter/i);
 
+    // An external insert populates the data region but leaves the orthogonal
+    // fetch region's Failed state untouched (stale-while-revalidate), so the
+    // error effect does not re-fire to undefined here.
     store.insertQueryResult("dashboard", params, makeDashboard({ totalActiveUsers: 99 }));
-    expect(errorHistory.at(-1)).toBeUndefined();
+    expect(handle.data._tag).toBe("Present");
   });
 });
