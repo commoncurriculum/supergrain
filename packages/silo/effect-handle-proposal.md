@@ -1,207 +1,215 @@
-# silo + Effect — tagged-union handle prototype
+# silo + Effect — handle design
 
-A concrete look at what `DocumentHandle` / `QueryHandle` become if we make them
-public `Data.TaggedEnum`s. Nothing here is wired up yet — it's a design sketch
-so you can decide if you like the *look* before we commit. Breaking is fine
-(library isn't widely adopted), so this assumes we go all the way.
+How we get **type safety (illegal states unrepresentable + exhaustive
+matching)** *and* **per-field reactivity** at the same time, while moving silo's
+network/async layer onto Effect. Breaking is acceptable (library isn't widely
+adopted), so this assumes we go all the way.
 
 ---
 
-## 1. The handle type
+## The core idea: runtime representation ≠ type
 
-`Data.TaggedEnum` needs the `WithGenerics` dance to stay generic over the doc
-type `T` and the error type `E`:
+Two independent things were conflated in the first draft of this doc:
+
+- **Per-field reactivity** comes from the *runtime representation*: a single
+  **stable reactive proxy** whose individual fields are mutated **in place**.
+  Reading `handle.data` subscribes to the `data` cell only.
+- **Type safety** comes from the *type*, not the runtime shape.
+
+An earlier option made the public handle an **immutable `Data.TaggedEnum`
+value**. That's what forced whole-object replacement on every transition and
+collapsed per-field tracking into per-handle tracking. We simply don't do that.
+
+Instead: **keep today's runtime exactly as-is** (one stable proxy, in-place
+mutation, `status` is just another tracked field) and **type it as a
+discriminated union** keyed on `status`.
+
+---
+
+## 1. The public handle — discriminated union over a stable proxy
 
 ```ts
-import { Data } from "effect";
 import type { AdapterError } from "./errors";
 
-export type DocumentHandle<T, E = AdapterError> = Data.TaggedEnum<{
-  Idle:    {};
-  Pending: { readonly promise: Promise<T> };
-  Success: {
-    readonly data: T;
-    readonly fetchedAt: Date;
-    /** stale-while-revalidate: a refetch is in flight but we still have data */
-    readonly refreshing: boolean;
-    readonly promise: Promise<T>;
-  };
-  Failure: {
-    readonly error: E;
-    readonly promise: Promise<T>;
-  };
-}>;
-
-interface DocumentHandleDef extends Data.TaggedEnum.WithGenerics<2> {
-  readonly taggedEnum: DocumentHandle<this["A"], this["B"]>;
+export interface IdleHandle {
+  readonly status: "IDLE";
+}
+export interface PendingHandle<T> {
+  readonly status: "PENDING";
+  readonly promise: Promise<T>;
+}
+export interface SuccessHandle<T> {
+  readonly status: "SUCCESS";
+  readonly data: T;
+  readonly fetchedAt: Date;
+  /** stale-while-revalidate: a refetch is in flight but we still have data */
+  readonly refreshing: boolean;
+  readonly promise: Promise<T>;
+}
+export interface FailureHandle<T, E = AdapterError> {
+  readonly status: "ERROR";
+  readonly error: E;
+  readonly promise: Promise<T>;
 }
 
-export const DocumentHandle = Data.taggedEnum<DocumentHandleDef>();
-// → DocumentHandle.Idle / .Pending / .Success / .Failure constructors
-// → DocumentHandle.$is("Success") / DocumentHandle.$match(...)
+export type DocumentHandle<T, E = AdapterError> =
+  | IdleHandle
+  | PendingHandle<T>
+  | SuccessHandle<T>
+  | FailureHandle<T, E>;
 ```
 
-`QueryHandle<T, E>` is the identical shape (alias kept for call-site clarity).
+`QueryHandle<T, E>` is the same shape.
 
-What this buys: **`data` exists only on `Success`, `error` only on `Failure`.**
-You cannot read `handle.data` while pending — it's a compile error, not
-`undefined`.
+The runtime object still physically carries every field (`data`, `error`,
+`resolve`, `reject`, …) — the **type** just hides the ones that don't belong to
+the current state. `store.find` / `useDocument` return the *same stable proxy*
+they do today; only the cast at the boundary changes from a flat interface to
+this union.
 
 ---
 
-## 2. Store / hook signatures
-
-```ts
-interface DocumentStore<M, Q> {
-  find<K extends keyof M>(type: K, id: string | null): DocumentHandle<M[K]>;
-  // ...
-}
-
-// hooks
-function useDocument<K>(type: K, id: string | null): DocumentHandle<M[K]>;
-function useQuery<K>(type: K, params: Q[K]["params"] | null): QueryHandle<Q[K]["result"]>;
-```
-
-`null`/`undefined` id → `DocumentHandle.Idle()`.
-
----
-
-## 3. What consumer code looks like
-
-### (a) The common case — exhaustive `$match`
+## 2. Type safety — illegal states unrepresentable
 
 ```tsx
-import { DocumentHandle } from "@supergrain/silo";
+const user = useDocument("user", id);
 
-function UserCard({ id }: { id: string }) {
-  const user = useDocument("user", id);
-
-  return DocumentHandle.$match(user, {
-    Idle:    () => null,
-    Pending: () => <Spinner />,
-    Success: ({ data, refreshing }) => (
-      <article aria-busy={refreshing}>
-        <h3>{data.attributes.firstName}</h3>
-      </article>
-    ),
-    Failure: ({ error }) => <ErrorBanner message={error.message} />,
-  });
+switch (user.status) {
+  case "IDLE":    return null;
+  case "PENDING": return <Spinner />;
+  case "ERROR":   return <ErrorBanner message={user.error.message} />;
+  //                                          ^ user.data here → compile error
+  case "SUCCESS": return <h3>{user.data.attributes.firstName}</h3>;
+  //                          ^ data: T (never `T | undefined`)
 }
+// no `default` → TypeScript exhaustiveness: add a 5th state and this won't compile
 ```
 
-If you add a fifth state later, every `$match` without that arm fails to
-compile. That's the statechart guarantee.
-
-### (b) Quick reads — tag narrowing
-
-```tsx
-function UserName({ id }: { id: string }) {
-  const user = useDocument("user", id);
-  if (user._tag !== "Success") return <Skeleton />;
-  return <>{user.data.attributes.firstName}</>;
-  //          ^ data only in scope because we narrowed to Success
-}
-```
-
-### (c) Suspense — a tiny helper carries the promise
-
-`use()` needs the in-flight promise during `Pending`, and the error thrown
-during `Failure`. One helper hides the plumbing:
+Optional ergonomic matcher (reactivity-preserving — see §3):
 
 ```ts
-import { use } from "react";
-
-/** Suspends on Pending, throws on Failure, returns data on Success. */
-export function useSuspend<T>(handle: DocumentHandle<T>): T {
-  switch (handle._tag) {
-    case "Idle":    throw new Promise<never>(() => {}); // suspends forever; idle = no id
-    case "Pending": return use(handle.promise);
-    case "Failure": throw handle.error;
-    case "Success": return handle.data;
+export function matchHandle<T, E, R>(
+  h: DocumentHandle<T, E>,
+  arms: {
+    IDLE: () => R;
+    PENDING: (h: PendingHandle<T>) => R;
+    SUCCESS: (h: SuccessHandle<T>) => R;
+    ERROR: (h: FailureHandle<T, E>) => R;
+  },
+): R {
+  switch (h.status) {            // reads `status` only
+    case "IDLE":    return arms.IDLE();
+    case "PENDING": return arms.PENDING(h);
+    case "SUCCESS": return arms.SUCCESS(h); // branch reads h.data lazily
+    case "ERROR":   return arms.ERROR(h);
   }
 }
 ```
 
 ```tsx
-function Profile({ id }: { id: string }) {
-  const user = useSuspend(useDocument("user", id)); // suspends on first load
-  return <h1>{user.attributes.firstName}</h1>;       // never re-suspends on refetch
+matchHandle(user, {
+  IDLE:    () => null,
+  PENDING: () => <Spinner />,
+  SUCCESS: ({ data, refreshing }) => <Card busy={refreshing} name={data.attributes.firstName} />,
+  ERROR:   ({ error }) => <ErrorBanner message={error.message} />,
+});
+```
+
+---
+
+## 3. Per-field reactivity — identical to today
+
+The runtime is the same stable proxy with in-place field mutation, so the
+kernel's per-field tracking is unchanged:
+
+- The `SUCCESS` arm above reads `status` and `data`. When `fetchedAt` or
+  `refreshing` mutates, neither is read → **no re-render**.
+- `refetch` of a loaded doc keeps `status: "SUCCESS"` and only flips
+  `refreshing` / swaps `data` in place. A list of components reading `data`
+  re-renders only when *their* `data` actually changes — same fine-grained
+  behavior as today.
+- Reading `status` to narrow subscribes you to genuine state transitions
+  (IDLE→PENDING→SUCCESS/ERROR) — which is the correct dependency for code that
+  branches on state, and is exactly what you'd want to re-render on.
+
+No whole-object replacement, so no "re-render on every field change" storm.
+
+---
+
+## 4. Suspense
+
+```ts
+import { use } from "react";
+
+export function useSuspend<T>(h: DocumentHandle<T>): T {
+  switch (h.status) {
+    case "IDLE":    throw new Promise<never>(() => {}); // idle = no id; suspend
+    case "PENDING": return use(h.promise);
+    case "ERROR":   throw h.error;
+    case "SUCCESS": return h.data;
+  }
 }
+```
+
+```tsx
+const user = useSuspend(useDocument("user", id)); // suspends on first load only
 ```
 
 Batching still collapses sibling `useSuspend` calls into one
-`userAdapter.find([...])` before suspending — same non-waterfalling behavior as
+`adapter.find([...])` before suspending — same non-waterfalling behavior as
 today.
 
-### (d) Lists
-
-```tsx
-function UserList({ ids }: { ids: string[] }) {
-  return ids.map((id) => <UserCard key={id} id={id} />);
-  // each UserCard $matches its own handle; one batched fetch underneath
-}
-```
-
 ---
 
-## 4. How the store produces it (internal)
+## 5. Where Effect's statecharts live (internal)
 
-`find` seeds `Idle`, transitions to `Pending`, and the finder replaces the
-reactive cell with `Success`/`Failure` when the adapter Effect settles:
+The `Data.TaggedEnum` / `$match` style goes **inside the finder**, as the pure
+transition reducer — exhaustive over every event × state — and we *project* the
+result onto the proxy by mutating fields:
 
 ```ts
-// transition is a whole-value replacement, not field mutation
-cell.handle = DocumentHandle.Pending({ promise });
-// ...later, in the finder, inside batch():
-cell.handle = DocumentHandle.Success({ data, fetchedAt: new Date(), refreshing: false, promise });
+import { Data, Match } from "effect";
+
+type HandleEvent<T> = Data.TaggedEnum<{
+  Fetch:   {};
+  Resolve: { data: T };
+  Reject:  { error: AdapterError };
+  Insert:  { data: T };            // out-of-band insertDocument
+}>;
+
+// pure, exhaustive: decide the field patch for (currentStatus, event)
+// then apply inside the existing `batch(() => { ...mutate proxy... })`.
 ```
 
-Refetch of an already-loaded doc:
-
-```ts
-cell.handle = DocumentHandle.Success({ ...prev, refreshing: true }); // keep data, mark busy
-// on settle → refreshing: false with fresh data; on error → could stay Success or go Failure
-```
-
-The Effect finder builds these transitions exhaustively; an internal
-`$match`-driven reducer makes every edge explicit.
+So the transition logic is statechart-rigorous and Effect-flavored, the public
+handle narrows fully, and reactivity is untouched.
 
 ---
 
-## 5. The one real tradeoff (honest)
+## 6. The rest of the Effect migration (unchanged by the above)
 
-Today's flat handle gets **per-field** reactivity from the kernel: a component
-that reads only `handle.data` does *not* re-render when `fetchedAt` changes. A
-tagged union is an **immutable value** — every transition replaces the whole
-handle object, so subscribers re-run on any transition (Pending→Success,
-Success→refreshing, etc.).
-
-In practice this is fine for a load lifecycle (the state genuinely changed, and
-`refreshing`/`data` are usually what people read). But it does collapse
-fine-grained per-property tracking down to per-handle tracking. If we keep the
-flat shape instead, we preserve per-field reactivity and the internal statechart
-still gives us exhaustive transitions — just not at the consumer's call site.
-
----
-
-## 6. Side-by-side
-
-| | Flat (today's shape) | Tagged-union (this proposal) |
-|---|---|---|
-| Read `data` while pending | `undefined` at runtime | compile error |
-| Exhaustive UI states | manual `if` ladder | `$match` enforced by types |
-| Suspense | `use(handle.promise!)` | `useSuspend(handle)` helper |
-| Reactivity granularity | per-field | per-handle |
-| Consumer migration | none | rewrite every read site |
-| "Looks like" | React Query-ish | Effect/statechart-ish |
+- `src/errors.ts` — `AdapterError` / `NotFoundError` / `ProcessorError`
+  (`Data.TaggedError`).
+- Adapter contracts return `Effect.Effect<unknown, AdapterError, R>` instead of
+  `Promise<unknown>`; optional per-model `retry` (`Schedule`) / `timeout`; `R`
+  provided via `config.layer` and erased after `Effect.provide`.
+- `finder.ts` rewritten on Effect — `Effect.forEach({ concurrency })` for chunk
+  fan-out, typed `catchAll`, per-store `ManagedRuntime`, `store.dispose()`.
+- Determinism phased: keep `setTimeout` batch window first; optional Phase 2
+  swaps to `Effect.sleep` + `TestClock`.
+- `effect@^3.21` as a **peer dependency**; update `tests/example-app.ts`
+  adapters + suites, silo + root README examples (`test:validate`), major
+  Changeset (4.0.0 → 5.0.0).
 
 ---
 
-## 7. Recommendation
+## 7. Outcome
 
-Both are viable now that breaking is acceptable. The tagged-union is the more
-"statechart" design and reads well with `$match`; its only genuine cost is the
-per-field→per-handle reactivity change (section 5) and rewriting read sites.
+| | Old flat handle | Immutable `TaggedEnum` value | **This design** |
+|---|---|---|---|
+| Read `data` while pending | `undefined` at runtime | compile error | **compile error** |
+| Exhaustive states | manual | `$match` | **`switch`/`matchHandle`, TS-checked** |
+| Reactivity granularity | per-field | per-handle | **per-field** |
+| Runtime change | — | replace value each transition | **none (same proxy, in-place mutation)** |
 
-If that reactivity granularity matters for big lists, we keep the flat public
-shape and put the `Data.TaggedEnum` statechart *inside* finder/store only.
+Type safety + exhaustiveness + per-field reactivity — no compromise.
