@@ -52,8 +52,14 @@ An entity cache with request batching. Think TanStack Query, except the fetched 
 Declare your models and adapters, build the store, then read documents anywhere in the tree:
 
 ```tsx
-import { type DocumentAdapter, type DocumentStore, type QueryAdapter } from "@supergrain/silo";
+import {
+  AdapterError,
+  type DocumentAdapter,
+  type DocumentStore,
+  type QueryAdapter,
+} from "@supergrain/silo";
 import { createDocumentStoreContext } from "@supergrain/silo/react";
+import { Effect } from "effect";
 
 // 1. Models are keyed by id. Queries are keyed by a params object — for
 //    endpoints whose response only makes sense with its params (dashboards,
@@ -68,22 +74,27 @@ type Queries = {
   };
 };
 
-// 2. Adapters. Both take N keys and return raw responses — bulk endpoint,
-//    fan-out, websocket, whatever. Silo doesn't care how you hit the wire.
+// 2. Adapters. Both take N keys and return an Effect producing the raw response
+//    (failing with AdapterError) — bulk endpoint, fan-out, websocket, whatever.
+//    Silo doesn't care how you hit the wire.
 const userAdapter: DocumentAdapter = {
-  async find(ids) {
-    return Promise.all(ids.map((id) => fetch(`/api/users/${id}`).then((r) => r.json())));
-  },
+  find: (ids) =>
+    Effect.tryPromise({
+      try: () => Promise.all(ids.map((id) => fetch(`/api/users/${id}`).then((r) => r.json()))),
+      catch: (cause) => new AdapterError({ type: "user", keys: ids, cause }),
+    }),
 };
 const postsAdapter: QueryAdapter<Queries["posts"]["params"]> = {
-  async find(paramsList) {
-    const res = await fetch("/api/posts/search", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ queries: paramsList }),
-    });
-    return res.json(); // one array of results, aligned 1:1 with paramsList
-  },
+  find: (paramsList) =>
+    Effect.tryPromise({
+      try: () =>
+        fetch("/api/posts/search", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ queries: paramsList }),
+        }).then((r) => r.json()), // one array of results, aligned 1:1 with paramsList
+      catch: (cause) => new AdapterError({ type: "posts", keys: [], cause }),
+    }),
 };
 
 // 3. Context factory — one Provider, typed hooks.
@@ -106,19 +117,20 @@ function App() {
 }
 
 // 5. Read by (type, id) or (type, params). Both return reactive handles with
-//    the same lifecycle fields (isPending, error, data, promise, ...).
+//    two orthogonal regions: data (Absent | Present) and fetch (Idle |
+//    Fetching | Failed), plus a stable `promise`.
 function UserCard({ id }: { id: string }) {
   const user = useDocument("user", id);
-  if (user.isPending) return <Skeleton />;
-  return <div>{user.data?.attributes.firstName}</div>;
+  if (user.data._tag !== "Present") return <Skeleton />;
+  return <div>{user.data.value.attributes.firstName}</div>;
 }
 
 function AuthorPosts({ authorId }: { authorId: string }) {
   const posts = useQuery("posts", { authorId, status: "published", limit: 20 });
-  if (posts.isPending) return <Skeleton />;
+  if (posts.data._tag !== "Present") return <Skeleton />;
   return (
     <ul>
-      {posts.data?.posts.map((p) => (
+      {posts.data.value.posts.map((p) => (
         <li key={p.id}>{p.title}</li>
       ))}
     </ul>
@@ -196,9 +208,9 @@ import { useDocument } from "@supergrain/silo/react";
 
 function UserCard({ id }: { id: string }) {
   const user = useDocument("user", id);
-  use(user.promise); // suspends on first load; never re-suspends on refetch
+  const value = use(user.promise!); // suspends on first load; never re-suspends on refetch
 
-  return <div>{user.data!.attributes.firstName}</div>;
+  return <div>{value.attributes.firstName}</div>;
 }
 
 function UserList() {
@@ -212,11 +224,11 @@ function UserList() {
 }
 ```
 
-The promise resolves exactly once on first success — later `insertDocument` calls update `data` in place but the promise reference stays stable, so `use()` doesn't re-suspend. After an error, a recovery `insertDocument` produces a **new** resolved promise so a Suspense boundary nested in an error boundary can recover.
+The promise resolves exactly once on first success — later `insertDocument` calls update the `data` region in place but the promise reference stays stable, so `use()` doesn't re-suspend. After a first-load error, a recovery `insertDocument` produces a **new** resolved promise so a Suspense boundary nested in an error boundary can recover.
 
 Because fetches are batched, naive `use(user.promise)` calls sprinkled through a list **don't waterfall** — the three `<UserCard>`s above collapse into one `userAdapter.find(["1", "2", "3"])` call before suspending. This is the piece that usually makes Suspense unusable at scale; here it's the default.
 
-Want inline loading UI instead? Drop the `use(user.promise)` line and read `user.isPending` / `user.error` directly. Same hook, same handle, no config switch.
+Want inline loading UI instead? Drop the `use(user.promise!)` line and branch on `user.data` / `user.fetch` directly. Same hook, same handle, no config switch.
 
 ## Install
 

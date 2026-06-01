@@ -1,25 +1,16 @@
+import type { AdapterError, SiloError } from "./errors";
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
+import type { Duration, Schedule } from "effect";
 
 import { batch, createReactive } from "@supergrain/kernel";
+import { Effect } from "effect";
 
-import { Finder, type InternalHandle, type InternalState } from "./finder";
+import { Finder } from "./finder";
+import { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./transitions";
 
-interface Resolvers<T> {
-  promise: Promise<T>;
-  resolve: (v: T) => void;
-  reject: (e: unknown) => void;
-}
-
-function withResolvers<T>(): Resolvers<T> {
-  // eslint-disable-next-line unicorn/no-null -- Promise ctor synchronously overwrites these
-  let resolve = null as unknown as (v: T) => void;
-  // eslint-disable-next-line unicorn/no-null -- Promise ctor synchronously overwrites these
-  let reject = null as unknown as (e: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
+interface InternalState {
+  documents: Map<string, Map<string, InternalHandle>>;
+  queries: Map<string, Map<string, InternalHandle>>;
 }
 
 function ensureBucket<T>(buckets: Map<string, Map<string, T>>, type: string): Map<string, T> {
@@ -28,6 +19,8 @@ function ensureBucket<T>(buckets: Map<string, Map<string, T>>, type: string): Ma
   }
   return buckets.get(type)!;
 }
+
+export type { InternalState };
 
 // =============================================================================
 // Model types
@@ -38,11 +31,7 @@ function ensureBucket<T>(buckets: Map<string, Map<string, T>>, type: string): Ma
  *
  * Each key is a type string (e.g. "user", "card-stack"), each value is the
  * full model type as defined by the consumer. The library doesn't impose
- * structure on the model beyond requiring an `id: string`. The type is
- * supplied externally at every API boundary (`find(type, id)`,
- * `insertDocument(type, doc)`), so nothing in the library reads the doc's
- * own `type` field — consumers whose API omits type from documents can
- * still use this library without modification.
+ * structure on the model beyond requiring an `id: string`.
  *
  * @example
  * ```ts
@@ -60,13 +49,12 @@ export type DocumentTypes = Record<string, { id: string }>;
 
 /**
  * Module-augmentation registry. Consumers augment this once to tell the
- * library which `DocumentTypes` map (and, optionally, `QueryTypes` map) to
- * use, and every hook picks them up automatically without explicit generics
- * at call sites.
+ * library which `DocumentTypes` map (and, optionally, `QueryTypes` map) to use,
+ * and every hook picks them up automatically without explicit generics at call
+ * sites.
  *
  * @example
  * ```ts
- * // in app bootstrap, once:
  * declare module "@supergrain/silo" {
  *   interface TypeRegistry {
  *     types: TypeToModel;
@@ -87,98 +75,104 @@ export type RegisteredTypes = TypeRegistry extends { types: infer T extends Docu
   : DocumentTypes;
 
 // =============================================================================
-// Status
+// Handle regions — two orthogonal statechart regions
 // =============================================================================
 
 /**
- * - `IDLE`    – no fetch attempted (id was null/undefined)
- * - `PENDING` – first fetch in flight, no data yet
- * - `SUCCESS` – data present
- * - `ERROR`   – fetch failed, no fallback data available
+ * Data region — what value, if any, the handle currently holds.
+ *
+ * - `Absent`  — nothing loaded yet.
+ * - `Present` — a last-known-good `value` (kept across refetches, even failing
+ *   ones, for stale-while-revalidate).
  */
-export type Status = "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
-
-// =============================================================================
-// DocumentHandle — reactive handle returned by DocumentStore.find
-// =============================================================================
+export type DataState<T> =
+  | { readonly _tag: "Absent" }
+  | { readonly _tag: "Present"; readonly value: T; readonly fetchedAt: Date };
 
 /**
- * Reactive handle for a single document.
+ * Fetch region — what the most recent fetch is doing / how it settled.
  *
- * A reactive view, not a class. A reactive state machine:
- *
- * ```
- * IDLE ──(id becomes non-null, not cached)──► PENDING
- * IDLE ──(id becomes non-null, cached)─────► SUCCESS
- * PENDING ──(finder resolves)──► SUCCESS
- * PENDING ──(finder rejects) ──► ERROR
- * ERROR   ──(later insertDocument)──► SUCCESS (new promise object)
- * ```
- *
- * Idle invariant — when `status === "IDLE"`, all of:
- * - `data === undefined`
- * - `error === undefined`
- * - `isPending === false`
- * - `isFetching === false`
- * - `hasData === false`
- * - `fetchedAt === undefined`
- * - `promise === undefined`
- *
- * `find`, the internal finder, and `insertDocument` update the handle's
- * fields directly as the lifecycle progresses. Reads inside a `tracked()`
- * scope subscribe per-property.
- *
- * Handle identity is stable — `store.find("user", "1")` returns the
- * same handle on every call.
+ * - `Idle`     — no fetch in flight.
+ * - `Fetching` — a (re)fetch is in flight.
+ * - `Failed`   — the most recent fetch failed, carrying the typed `error`.
  */
-export interface DocumentHandle<T> {
-  readonly status: Status;
-  readonly data: T | undefined;
-  readonly error: Error | undefined;
-  /** True only before the first successful load. */
-  readonly isPending: boolean;
-  /** True whenever a fetch is in flight for this handle. */
-  readonly isFetching: boolean;
-  readonly hasData: boolean;
-  /** Client wall-clock Date of the last successful fetch. */
-  readonly fetchedAt: Date | undefined;
+export type FetchState<E = SiloError> =
+  | { readonly _tag: "Idle" }
+  | { readonly _tag: "Fetching" }
+  | { readonly _tag: "Failed"; readonly error: E };
+
+/**
+ * Reactive handle for a single document — the product of two orthogonal
+ * regions. `value` is in scope only once `data` is narrowed to `Present`;
+ * `error` only once `fetch` is narrowed to `Failed`. The two regions vary
+ * independently, so a stale `value` and a refetch `error` coexist rather than
+ * clobbering each other.
+ *
+ * Backed by a single stable reactive object: `store.find("user", "1")` returns
+ * the same handle every call, and reads of `data` / `fetch` subscribe per
+ * region, so a component reading only `data` does not re-render when a
+ * background refetch toggles `fetch`.
+ *
+ * @example
+ * ```tsx
+ * const u = useDocument("user", id);
+ * if (u.data._tag === "Absent") {
+ *   switch (u.fetch._tag) {
+ *     case "Idle":     return null;
+ *     case "Fetching": return <Spinner />;
+ *     case "Failed":   return <ErrorPage e={u.fetch.error} />;
+ *   }
+ * }
+ * return <Card user={u.data.value} busy={u.fetch._tag === "Fetching"} />;
+ * ```
+ */
+export interface DocumentHandle<T, E = SiloError> {
+  readonly data: DataState<T>;
+  readonly fetch: FetchState<E>;
   /**
-   * Stable Promise for use with React 19's `use()`.
+   * Stable Promise for use with React 19's `use()`. Present once a fetch has
+   * started.
    *
-   * - Resolves exactly once on first successful load.
-   * - If the first fetch errors, the promise rejects once.
-   * - A later `insertDocument` after an error creates a NEW resolved promise
-   *   object so a Suspense boundary inside an error boundary can recover.
+   * - Resolves on first successful load (and is reused across refetches).
+   * - If the first fetch errors, it rejects once.
+   * - An `insertDocument` after a first-load error hands out a NEW resolved
+   *   promise so a Suspense boundary inside an error boundary can recover.
    */
   readonly promise: Promise<T> | undefined;
 }
 
 // =============================================================================
-// DocumentAdapter — consumer-owned transport
+// DocumentAdapter — consumer-owned transport (Effect-based)
 // =============================================================================
 
 /**
- * Talks to the API. Takes N ids and returns a raw response of whatever
- * shape the API produces. The adapter owns *how* the data is fetched:
+ * Talks to the API. Takes N ids and returns an `Effect` that produces a raw
+ * response of whatever shape the API emits, failing with `AdapterError`. The
+ * adapter owns *how* the data is fetched — bulk GET, N parallel GETs, a
+ * websocket cycle, anything — typically by wrapping its transport in
+ * `Effect.tryPromise`.
  *
- * - one bulk GET (`/users?ids=1&ids=2`)
- * - N parallel single-doc GETs (`Promise.all(ids.map(id => fetch(...)))`)
- * - a websocket request/response cycle
- * - anything else
- *
- * The library doesn't inspect the raw response — only the paired
- * `ResponseProcessor` does. The adapter's only contract is: given ids,
- * eventually return some raw value (or reject).
+ * The library doesn't inspect the raw value — only the paired
+ * `ResponseProcessor` does.
  *
  * Contract:
- * - `find` is called with a chunk of at most `DocumentStoreConfig.batchSize`
- *   ids, grouped by type (the library dedupes concurrent same-id requests
- *   before calling the adapter, so the adapter never sees duplicate ids in
- *   one call).
- * - A rejection rejects every deferred waiting on that chunk.
+ * - `find` receives a chunk of at most `DocumentStoreConfig.batchSize` ids,
+ *   grouped by type and deduped (no duplicate ids in one call).
+ * - A failed Effect fails every deferred waiting on that chunk.
+ *
+ * @example
+ * ```ts
+ * const userAdapter: DocumentAdapter = {
+ *   find: (ids) =>
+ *     Effect.tryPromise({
+ *       try: () => fetch(`/users?ids=${ids.join(",")}`).then((r) => r.json()),
+ *       catch: (cause) => new AdapterError({ type: "user", keys: ids, cause }),
+ *     }),
+ * };
+ * ```
  */
 export interface DocumentAdapter {
-  find(ids: Array<string>): Promise<unknown>;
+  find(ids: Array<string>): Effect.Effect<unknown, AdapterError>;
 }
 
 // =============================================================================
@@ -186,31 +180,14 @@ export interface DocumentAdapter {
 // =============================================================================
 
 /**
- * Transforms a raw adapter response into store inserts.
- *
- * A processor parses the raw response and calls `store.insertDocument(type,
- * doc)` for every document it wants cached — both the primary docs for the
- * type that was fetched, and any sideloaded docs of other types. It returns
- * nothing; the library looks up each requested `(type, id)` via
- * `store.findInMemory` after the processor completes to resolve deferreds.
- * Docs not found in memory after processing → the corresponding deferred
- * rejects with a "not found" error.
- *
- * The `type` argument is the type the caller originally passed to
- * `find(type, id)` (the same type every doc in this batch was requested
- * under). Processors whose raw response doesn't carry type info — e.g.
- * the `defaultProcessor` for APIs that return `{ id, ... }` with no type
- * field — use this argument as the primary type. Processors for envelope
- * formats that include type inline (like JSON-API's `data.type` /
- * `included[i].type`) can read type from the envelope and ignore the
- * argument.
+ * Transforms a raw adapter response into store inserts. Calls
+ * `store.insertDocument(type, doc)` for every document it wants cached (primary
+ * + sideloaded). Returns nothing; the library looks up each requested
+ * `(type, id)` via `store.findInMemory` afterward to settle the handle.
  *
  * Contract:
- * - Synchronous. For async normalization, do it in the adapter before it returns.
- * - Must call `store.insertDocument(type, doc)` for every doc it wants
- *   cached — the library does NOT auto-insert anything from a processor.
- * - If the processor throws, all deferreds waiting on this chunk reject
- *   with the thrown error.
+ * - Synchronous. For async normalization, do it in the adapter Effect.
+ * - If it throws, every deferred on the chunk fails with a `ProcessorError`.
  */
 export type ResponseProcessor<M extends DocumentTypes> = (
   raw: unknown,
@@ -223,19 +200,20 @@ export type ResponseProcessor<M extends DocumentTypes> = (
 // =============================================================================
 
 /**
- * Per-model wiring: the adapter that talks to the API and the optional
- * processor that normalizes its response.
+ * Per-model wiring: the adapter that talks to the API, an optional processor
+ * that normalizes its response, and optional Effect-native resilience.
  *
- * If `processor` is omitted, the library uses `defaultProcessor` — assumes
- * the adapter returns a doc or an array of docs, each inserted under the
- * model's type using the doc's own `id`. For envelopes (JSON-API, GraphQL,
- * bespoke), pass `jsonApiProcessor` from
- * `@supergrain/silo/processors/json-api` or a custom
- * `ResponseProcessor`.
+ * If `processor` is omitted, the library uses `defaultProcessor`. `retry` and
+ * `timeout` wrap the adapter Effect — a declarative win over hand-rolled
+ * Promise retry loops.
  */
 export interface ModelConfig<M extends DocumentTypes> {
   adapter: DocumentAdapter;
   processor?: ResponseProcessor<M>;
+  /** Optional retry schedule applied to the adapter Effect on `AdapterError`. */
+  retry?: Schedule.Schedule<unknown, AdapterError>;
+  /** Optional timeout for the adapter Effect; a timeout becomes an `AdapterError`. */
+  timeout?: Duration.DurationInput;
 }
 
 // =============================================================================
@@ -246,46 +224,29 @@ export interface DocumentStoreConfig<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
 > {
-  /**
-   * Per-type adapter + optional processor wiring for documents (entities
-   * keyed by `id: string`). The map's keys are the types the store can
-   * serve; values supply the transport + parser.
-   */
+  /** Per-type adapter + optional processor wiring for documents. */
   models: { [K in keyof M]: ModelConfig<M> };
-  /**
-   * Per-type adapter + optional processor wiring for queries (results
-   * keyed by structured params objects). Optional — omit if your app
-   * only needs document lookups. Queries share the store's memory and
-   * finder with documents: a query processor can call
-   * `store.insertDocument(...)` to normalize nested entities into the
-   * documents cache.
-   */
+  /** Per-type adapter + optional processor wiring for queries. Optional. */
   queries?: { [K in keyof Q & string]: QueryConfig<M, Q, K> };
   /**
-   * Batch-window duration in ms. `find(type, id)` and `findQuery(type, params)`
-   * calls within this window collapse into their respective
-   * `adapter.find(...)` invocations. Default: 15.
+   * Batch-window duration in ms. `find` / `findQuery` calls within this window
+   * collapse into their respective `adapter.find(...)` invocations. Default: 15.
    */
   batchWindowMs?: number;
   /**
-   * Max keys per `adapter.find` call. Applies to both document adapters
-   * (ids) and query adapters (params). Larger batches are chunked.
-   * Default: 60.
+   * Max keys per `adapter.find` call (documents and queries). Larger batches
+   * are chunked. Default: 60.
    */
   batchSize?: number;
 }
 
 // =============================================================================
-// DocumentStore — public store surface returned by createDocumentStore
+// DocumentStore — public store surface
 // =============================================================================
 
 /**
- * The public store surface. A plain object, not a class: built by
- * `createDocumentStore(config)` and mounted by the React Provider.
- *
- * Consumers interact with the store exclusively through these methods.
- * Internal state (the reactive tree of nested document/query handles,
- * the Finder instance held in closure) is not part of this type.
+ * The public store surface. A plain object built by `createDocumentStore` and
+ * mounted by the React Provider.
  */
 export interface DocumentStore<
   M extends DocumentTypes,
@@ -310,37 +271,11 @@ export interface DocumentStore<
   clearMemory(): void;
 }
 
-/**
- * Create a plain document store object.
- *
- * This is the non-React primitive. React integrations wrap this via
- * `createDocumentStoreContext()`.
- */
 const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
-  status: "IDLE" as const,
-  data: undefined,
-  hasData: false,
-  isPending: false,
-  isFetching: false,
-  fetchedAt: undefined,
-  error: undefined,
+  data: Object.freeze({ _tag: "Absent" as const }),
+  fetch: Object.freeze({ _tag: "Idle" as const }),
   promise: undefined,
 });
-
-function makeIdleHandle(): InternalHandle {
-  return {
-    status: "IDLE",
-    data: undefined,
-    hasData: false,
-    isPending: false,
-    isFetching: false,
-    fetchedAt: undefined,
-    error: undefined,
-    promise: undefined,
-    resolve: undefined,
-    reject: undefined,
-  };
-}
 
 function stableStringify(value: unknown): string {
   if (value === null || value === undefined) return JSON.stringify(value);
@@ -353,24 +288,6 @@ function stableStringify(value: unknown): string {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
 }
 
-function resetHandle(handle: InternalHandle): void {
-  if (handle.isFetching) {
-    // Clear data but leave lifecycle alone — the in-flight fetch will
-    // complete and re-populate normally.
-    handle.data = undefined;
-    handle.hasData = false;
-    return;
-  }
-  handle.status = "IDLE";
-  handle.data = undefined;
-  handle.hasData = false;
-  handle.isPending = false;
-  handle.isFetching = false;
-  handle.error = undefined;
-  handle.promise = undefined;
-  handle.fetchedAt = undefined;
-}
-
 export function createDocumentStore<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
@@ -380,22 +297,6 @@ export function createDocumentStore<
     documents: new Map(),
     queries: new Map(),
   }) as InternalState;
-
-  function transitionToPending(handle: InternalHandle): void {
-    const { promise, resolve, reject } = withResolvers<unknown>();
-    // Suppress unhandled-rejection warnings without affecting user's ability
-    // to observe the rejection via `await handle.promise`.
-    promise.catch(() => {});
-    batch(() => {
-      handle.status = "PENDING";
-      handle.isPending = true;
-      handle.isFetching = true;
-      handle.error = undefined;
-      handle.promise = promise;
-      handle.resolve = resolve;
-      handle.reject = reject;
-    });
-  }
 
   const store: DocumentStore<M, Q> = {
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
@@ -407,67 +308,30 @@ export function createDocumentStore<
         bucket.set(id, makeIdleHandle());
         handle = bucket.get(id)!;
       }
-      if (handle.status === "IDLE") {
-        transitionToPending(handle);
+      if (handle.data._tag === "Absent" && handle.fetch._tag === "Idle") {
+        batch(() => applyEvent(handle!, HandleEvent.Fetch()));
         finder.queueDocument(type, id);
       }
       return handle as unknown as DocumentHandle<M[K]>;
     },
 
     findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined {
-      return state.documents.get(type)?.get(id)?.data as M[K] | undefined;
+      const data = state.documents.get(type)?.get(id)?.data;
+      return data?._tag === "Present" ? (data.value as M[K]) : undefined;
     },
 
     insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
-      // Freeze stored docs so the kernel's proxy `get` trap returns them
-      // as-is (createReactiveProxy short-circuits on frozen targets),
-      // preserving reference identity for consumers that compare handle.data
-      // to the doc they inserted.
+      // Freeze stored docs so the kernel's proxy preserves reference identity.
       if (!Object.isFrozen(doc)) Object.freeze(doc);
 
       batch(() => {
         const bucket = ensureBucket(state.documents, type);
-        const existing = bucket.get(doc.id);
-
-        if (!existing) {
-          bucket.set(doc.id, {
-            status: "SUCCESS",
-            data: doc,
-            hasData: true,
-            isPending: false,
-            isFetching: false,
-            fetchedAt: new Date(),
-            error: undefined,
-            promise: Promise.resolve(doc),
-            resolve: undefined,
-            reject: undefined,
-          });
-          return;
+        let handle = bucket.get(doc.id);
+        if (!handle) {
+          bucket.set(doc.id, makeIdleHandle());
+          handle = bucket.get(doc.id)!;
         }
-
-        existing.data = doc;
-        existing.hasData = true;
-
-        if (existing.status === "PENDING") {
-          // Resolve the in-flight promise in-place; the Finder's later
-          // settlement will find resolvers cleared and only overwrite `data`.
-          existing.status = "SUCCESS";
-          existing.isPending = false;
-          existing.isFetching = false;
-          existing.error = undefined;
-          existing.fetchedAt = new Date();
-          existing.resolve?.(doc);
-          existing.resolve = undefined;
-          existing.reject = undefined;
-        } else if (existing.status === "IDLE" || existing.status === "ERROR") {
-          existing.status = "SUCCESS";
-          existing.isPending = false;
-          existing.isFetching = false;
-          existing.error = undefined;
-          existing.promise = Promise.resolve(doc);
-          existing.fetchedAt = new Date();
-        }
-        // SUCCESS: only `data` + `hasData` update — promise reference stays stable.
+        applyEvent(handle, HandleEvent.Insert({ value: doc }));
       });
     },
 
@@ -483,12 +347,12 @@ export function createDocumentStore<
       let handle = bucket.get(paramsKey);
       if (!handle) {
         bucket.set(paramsKey, makeIdleHandle());
-        // Re-read to get the reactive proxy reference; returning the raw
-        // pre-set value would break handle identity for subsequent calls.
+        // Re-read to get the reactive proxy reference; the raw pre-set value
+        // would break handle identity for subsequent calls.
         handle = bucket.get(paramsKey)!;
       }
-      if (handle.status === "IDLE") {
-        transitionToPending(handle);
+      if (handle.data._tag === "Absent" && handle.fetch._tag === "Idle") {
+        batch(() => applyEvent(handle!, HandleEvent.Fetch()));
         finder.queueQuery(type, paramsKey, params);
       }
       return handle as unknown as QueryHandle<Q[K]["result"]>;
@@ -499,7 +363,8 @@ export function createDocumentStore<
       params: Q[K]["params"],
     ): Q[K]["result"] | undefined {
       const paramsKey = stableStringify(params);
-      return state.queries.get(type)?.get(paramsKey)?.data as Q[K]["result"] | undefined;
+      const data = state.queries.get(type)?.get(paramsKey)?.data;
+      return data?._tag === "Present" ? (data.value as Q[K]["result"]) : undefined;
     },
 
     insertQueryResult<K extends keyof Q & string>(
@@ -515,54 +380,22 @@ export function createDocumentStore<
 
       batch(() => {
         const bucket = ensureBucket(state.queries, type);
-        const existing = bucket.get(paramsKey);
-
-        if (!existing) {
-          bucket.set(paramsKey, {
-            status: "SUCCESS",
-            data: result,
-            hasData: true,
-            isPending: false,
-            isFetching: false,
-            fetchedAt: new Date(),
-            error: undefined,
-            promise: Promise.resolve(result),
-            resolve: undefined,
-            reject: undefined,
-          });
-          return;
+        let handle = bucket.get(paramsKey);
+        if (!handle) {
+          bucket.set(paramsKey, makeIdleHandle());
+          handle = bucket.get(paramsKey)!;
         }
-
-        existing.data = result;
-        existing.hasData = true;
-
-        if (existing.status === "PENDING") {
-          existing.status = "SUCCESS";
-          existing.isPending = false;
-          existing.isFetching = false;
-          existing.error = undefined;
-          existing.fetchedAt = new Date();
-          existing.resolve?.(result);
-          existing.resolve = undefined;
-          existing.reject = undefined;
-        } else if (existing.status === "IDLE" || existing.status === "ERROR") {
-          existing.status = "SUCCESS";
-          existing.isPending = false;
-          existing.isFetching = false;
-          existing.error = undefined;
-          existing.promise = Promise.resolve(result);
-          existing.fetchedAt = new Date();
-        }
+        applyEvent(handle, HandleEvent.Insert({ value: result }));
       });
     },
 
     clearMemory(): void {
       batch(() => {
         for (const bucket of state.documents.values()) {
-          for (const handle of bucket.values()) resetHandle(handle);
+          for (const handle of bucket.values()) applyEvent(handle, HandleEvent.Reset());
         }
         for (const bucket of state.queries.values()) {
-          for (const handle of bucket.values()) resetHandle(handle);
+          for (const handle of bucket.values()) applyEvent(handle, HandleEvent.Reset());
         }
       });
     },
@@ -572,7 +405,6 @@ export function createDocumentStore<
   return store;
 }
 
-// Re-export query handle types so `store.findQuery(...)` call sites don't
-// need a second import path. QueryHandle is defined in
-// ./queries; this pass-through keeps the public surface single-origin.
+// Re-export query handle types so `store.findQuery(...)` call sites don't need
+// a second import path.
 export type { QueryHandle };

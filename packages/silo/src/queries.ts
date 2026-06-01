@@ -1,4 +1,6 @@
-import type { DocumentStore, DocumentTypes, Status, TypeRegistry } from "./store";
+import type { AdapterError, SiloError } from "./errors";
+import type { DataState, DocumentStore, DocumentTypes, FetchState, TypeRegistry } from "./store";
+import type { Duration, Effect, Schedule } from "effect";
 
 // =============================================================================
 // QueryTypes — shape of a consumer's query type map
@@ -53,9 +55,10 @@ export type RegisteredQueries = TypeRegistry extends {
 
 /**
  * Talks to the API for a query model. Receives N params objects (raw —
- * the library does NOT stringify before handing off) and returns a raw
- * response. Behaves exactly like `DocumentAdapter` but `find` takes
- * `Array<Params>` instead of `Array<string>`.
+ * the library does NOT stringify before handing off) and returns an `Effect`
+ * producing a raw response, failing with `AdapterError`. Behaves exactly like
+ * `DocumentAdapter` but `find` takes `Array<Params>` instead of
+ * `Array<string>`.
  *
  * Stringification is only for the library's internal cache lookup, dedup,
  * and in-flight tracking. The adapter sees the original params.
@@ -64,10 +67,10 @@ export type RegisteredQueries = TypeRegistry extends {
  * - `find` is called with a chunk of at most `batchSize` params objects
  *   (the library dedupes concurrent deep-equal-param requests before
  *   calling the adapter).
- * - A rejection rejects every deferred waiting on that chunk.
+ * - A failed Effect fails every deferred waiting on that chunk.
  */
 export interface QueryAdapter<Params> {
-  find(paramsList: Array<Params>): Promise<unknown>;
+  find(paramsList: Array<Params>): Effect.Effect<unknown, AdapterError>;
 }
 
 // =============================================================================
@@ -128,6 +131,10 @@ export interface QueryConfig<
 > {
   adapter: QueryAdapter<Q[Type]["params"]>;
   processor?: QueryProcessor<M, Q, Type>;
+  /** Optional retry schedule applied to the adapter Effect on `AdapterError`. */
+  retry?: Schedule.Schedule<unknown, AdapterError>;
+  /** Optional timeout for the adapter Effect; a timeout becomes an `AdapterError`. */
+  timeout?: Duration.DurationInput;
 }
 
 // =============================================================================
@@ -136,19 +143,13 @@ export interface QueryConfig<
 
 /**
  * Reactive handle for a single query result. Structurally identical to
- * `DocumentHandle<T>`: same `status` / `data` / `error` / `isPending` /
- * `isFetching` / `hasData` / `fetchedAt` / `promise` fields, same state
- * machine, same Suspense semantics. The alias makes hook return types
- * read clearly at call sites (`useQuery(...) → QueryHandle<Dashboard>`
- * vs. `useDocument(...) → DocumentHandle<User>`).
+ * `DocumentHandle<T>`: the same two orthogonal regions (`data` / `fetch`),
+ * same `promise`, same statechart, same Suspense semantics. The alias makes
+ * hook return types read clearly at call sites (`useQuery(...) →
+ * QueryHandle<Dashboard>` vs. `useDocument(...) → DocumentHandle<User>`).
  */
-export interface QueryHandle<T> {
-  readonly status: Status;
-  readonly data: T | undefined;
-  readonly error: Error | undefined;
-  readonly isPending: boolean;
-  readonly isFetching: boolean;
-  readonly hasData: boolean;
-  readonly fetchedAt: Date | undefined;
+export interface QueryHandle<T, E = SiloError> {
+  readonly data: DataState<T>;
+  readonly fetch: FetchState<E>;
   readonly promise: Promise<T> | undefined;
 }

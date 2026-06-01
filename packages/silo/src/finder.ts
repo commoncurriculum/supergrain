@@ -3,40 +3,31 @@ import type {
   DocumentStore,
   DocumentStoreConfig,
   DocumentTypes,
+  InternalState,
   ModelConfig,
   ResponseProcessor,
 } from "./store";
 
 import { batch } from "@supergrain/kernel";
+import { Effect } from "effect";
 
+import { AdapterError, NotFoundError, ProcessorError } from "./errors";
 import { defaultProcessor, defaultQueryProcessor } from "./processors";
+import { applyEvent, HandleEvent, type InternalHandle } from "./transitions";
+
+// Re-exported for the package's own tests (not part of the public root export).
+export type { InternalHandle } from "./transitions";
+export type { InternalState } from "./store";
 
 // =============================================================================
-// Finder — INTERNAL batching / chunking pipeline.
+// Finder — INTERNAL batching / chunking pipeline, built on Effect.
 //
 // Not exported from the package root. Constructed in the closure of
-// `createDocumentStore(config)`, once per store instance. Consumers configure
-// it through `DocumentStoreConfig.batchWindowMs` / `batchSize` and never see it
-// directly.
+// `createDocumentStore(config)`, once per store. `find` / `findQuery` calls
+// within a `batchWindowMs` window collapse into chunked, concurrent
+// `adapter.find(...)` Effects; results settle each handle through the
+// statechart (`applyEvent`).
 // =============================================================================
-
-export interface InternalHandle<T = unknown> {
-  status: "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
-  data: T | undefined;
-  hasData: boolean;
-  isPending: boolean;
-  isFetching: boolean;
-  fetchedAt: Date | undefined;
-  error: Error | undefined;
-  promise: Promise<T> | undefined;
-  resolve?: (v: T) => void;
-  reject?: (e: unknown) => void;
-}
-
-export interface InternalState {
-  documents: Map<string, Map<string, InternalHandle>>;
-  queries: Map<string, Map<string, InternalHandle>>;
-}
 
 type QueueEntry =
   | { surface: "documents"; type: string; id: string }
@@ -81,124 +72,120 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     if (this.timer !== undefined) return;
     this.timer = setTimeout(() => {
       this.timer = undefined;
-      void this.drain();
+      Effect.runFork(this.drainEffect());
     }, this.batchWindowMs);
   }
 
   /**
-   * Flush the queued document/query work in one pass. Called by the
-   * `setTimeout(...)` scheduled in `scheduleDrain` and exposed (non-private)
-   * so tests can invoke it deterministically without driving the timer.
-   * Not exported from the package root.
+   * Flush queued work in one pass. Exposed (non-private, returns a Promise) so
+   * tests can drive it deterministically without the timer. Never rejects —
+   * all adapter/processor failures settle into handle state.
    */
-  async drain(): Promise<void> {
-    const entries = this.queue.splice(0);
-    if (entries.length === 0) return;
-
-    const documentGroups = new Map<string, Array<string>>();
-    const queryGroups = new Map<string, Array<QueryChunkEntry>>();
-
-    for (const entry of entries) {
-      if (entry.surface === "documents") {
-        const ids = documentGroups.get(entry.type) ?? [];
-        if (!ids.includes(entry.id)) ids.push(entry.id);
-        documentGroups.set(entry.type, ids);
-      } else {
-        const list = queryGroups.get(entry.type) ?? [];
-        if (!list.some((e) => e.paramsKey === entry.paramsKey)) {
-          list.push({ paramsKey: entry.paramsKey, params: entry.params });
-        }
-        queryGroups.set(entry.type, list);
-      }
-    }
-
-    const jobs: Array<Promise<void>> = [];
-
-    for (const [type, ids] of documentGroups) {
-      for (let i = 0; i < ids.length; i += this.batchSize) {
-        jobs.push(this.drainDocumentChunk(type, ids.slice(i, i + this.batchSize)));
-      }
-    }
-    for (const [type, list] of queryGroups) {
-      for (let i = 0; i < list.length; i += this.batchSize) {
-        jobs.push(this.drainQueryChunk(type, list.slice(i, i + this.batchSize)));
-      }
-    }
-
-    await Promise.all(jobs);
+  drain(): Promise<void> {
+    return Effect.runPromise(this.drainEffect());
   }
 
-  private async drainDocumentChunk(type: string, ids: Array<string>): Promise<void> {
+  /** The drain as a single Effect program: group, chunk, fan out concurrently. */
+  drainEffect(): Effect.Effect<void> {
+    return Effect.suspend(() => {
+      const entries = this.queue.splice(0);
+      if (entries.length === 0) return Effect.void;
+
+      const documentGroups = new Map<string, Array<string>>();
+      const queryGroups = new Map<string, Array<QueryChunkEntry>>();
+
+      for (const entry of entries) {
+        if (entry.surface === "documents") {
+          const ids = documentGroups.get(entry.type) ?? [];
+          if (!ids.includes(entry.id)) ids.push(entry.id);
+          documentGroups.set(entry.type, ids);
+        } else {
+          const list = queryGroups.get(entry.type) ?? [];
+          if (!list.some((e) => e.paramsKey === entry.paramsKey)) {
+            list.push({ paramsKey: entry.paramsKey, params: entry.params });
+          }
+          queryGroups.set(entry.type, list);
+        }
+      }
+
+      const jobs: Array<Effect.Effect<void>> = [];
+      for (const [type, ids] of documentGroups) {
+        for (let i = 0; i < ids.length; i += this.batchSize) {
+          jobs.push(this.drainDocumentChunk(type, ids.slice(i, i + this.batchSize)));
+        }
+      }
+      for (const [type, list] of queryGroups) {
+        for (let i = 0; i < list.length; i += this.batchSize) {
+          jobs.push(this.drainQueryChunk(type, list.slice(i, i + this.batchSize)));
+        }
+      }
+
+      return Effect.forEach(jobs, (job) => job, { concurrency: "unbounded", discard: true });
+    });
+  }
+
+  private adapterEffect(
+    config: { retry?: ModelConfig<M>["retry"]; timeout?: ModelConfig<M>["timeout"] },
+    type: string,
+    keys: ReadonlyArray<string>,
+    run: Effect.Effect<unknown, AdapterError>,
+  ): Effect.Effect<unknown, AdapterError> {
+    let effect = run;
+    if (config.timeout !== undefined) {
+      effect = effect.pipe(
+        Effect.timeoutFail({
+          duration: config.timeout,
+          onTimeout: () => new AdapterError({ type, keys, cause: new Error("adapter timed out") }),
+        }),
+      );
+    }
+    if (config.retry !== undefined) {
+      effect = effect.pipe(Effect.retry(config.retry));
+    }
+    return effect;
+  }
+
+  private drainDocumentChunk(type: string, ids: Array<string>): Effect.Effect<void> {
     const modelConfig = (this.config.models as Record<string, ModelConfig<M>>)[type];
     const processor: ResponseProcessor<M> =
       modelConfig.processor ?? (defaultProcessor as ResponseProcessor<M>);
 
-    let raw: unknown = undefined;
-    try {
-      raw = await modelConfig.adapter.find(ids);
-    } catch (error) {
-      this.rejectDocumentChunk(type, ids, error);
-      return;
-    }
-
-    try {
-      batch(() => {
-        processor(raw, this.store! as DocumentStore<M>, type as keyof M & string);
-        const bucket = this.state!.documents.get(type);
-        for (const id of ids) {
-          const handle = bucket?.get(id);
-          if (handle) {
-            if (handle.hasData) {
-              handle.status = "SUCCESS";
-              handle.isPending = false;
-              handle.isFetching = false;
-              handle.error = undefined;
-              handle.fetchedAt = new Date();
-              handle.resolve?.(handle.data);
-            } else {
-              const err = new Error(
-                `@supergrain/silo: document not found after fetch: ${type}:${id}`,
-              );
-              handle.status = "ERROR";
-              handle.isPending = false;
-              handle.isFetching = false;
-              handle.error = err;
-              handle.reject?.(err);
-            }
-            handle.resolve = undefined;
-            handle.reject = undefined;
-          }
-        }
-      });
-    } catch (error) {
-      this.rejectDocumentChunk(type, ids, error);
-    }
+    return this.adapterEffect(modelConfig, type, ids, modelConfig.adapter.find(ids)).pipe(
+      Effect.flatMap((raw) => Effect.sync(() => this.commitDocuments(type, ids, raw, processor))),
+      Effect.catchAll((error: AdapterError) =>
+        Effect.sync(() => this.failChunk(this.state!.documents, type, ids, error)),
+      ),
+    );
   }
 
-  private rejectDocumentChunk(type: string, ids: Array<string>, error: unknown): void {
-    const err = error instanceof Error ? error : new Error(String(error));
+  private commitDocuments(
+    type: string,
+    ids: Array<string>,
+    raw: unknown,
+    processor: ResponseProcessor<M>,
+  ): void {
     batch(() => {
+      let processorError: ProcessorError | undefined;
+      try {
+        processor(raw, this.store! as DocumentStore<M>, type as keyof M & string);
+      } catch (cause) {
+        processorError = new ProcessorError({ type, cause });
+      }
+
       const bucket = this.state!.documents.get(type);
       for (const id of ids) {
         const handle = bucket?.get(id);
-        if (handle) {
-          handle.status = "ERROR";
-          handle.isPending = false;
-          handle.isFetching = false;
-          handle.error = err;
-          handle.reject?.(err);
-          handle.resolve = undefined;
-          handle.reject = undefined;
-        }
+        if (!handle) continue;
+        this.settleHandle(handle, id, type, processorError);
       }
     });
   }
 
-  private async drainQueryChunk(type: string, chunk: Array<QueryChunkEntry>): Promise<void> {
+  private drainQueryChunk(type: string, chunk: Array<QueryChunkEntry>): Effect.Effect<void> {
     const queryConfig = (
       this.config.queries as Record<string, QueryConfig<M, Q, keyof Q & string>> | undefined
     )?.[type];
-    if (!queryConfig) return;
+    if (!queryConfig) return Effect.void;
 
     const processor: QueryProcessor<M, Q, keyof Q & string> =
       queryConfig.processor ??
@@ -206,68 +193,87 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
 
     const paramsList = chunk.map((e) => e.params);
 
-    let raw: unknown = undefined;
-    try {
-      raw = await queryConfig.adapter.find(paramsList);
-    } catch (error) {
-      this.rejectQueryChunk(type, chunk, error);
-      return;
-    }
+    return this.adapterEffect(
+      queryConfig,
+      type,
+      chunk.map((e) => e.paramsKey),
+      queryConfig.adapter.find(paramsList),
+    ).pipe(
+      Effect.flatMap((raw) =>
+        Effect.sync(() => this.commitQueries(type, chunk, paramsList, raw, processor)),
+      ),
+      Effect.catchAll((error: AdapterError) =>
+        Effect.sync(() =>
+          this.failChunk(
+            this.state!.queries,
+            type,
+            chunk.map((e) => e.paramsKey),
+            error,
+          ),
+        ),
+      ),
+    );
+  }
 
-    try {
-      batch(() => {
+  private commitQueries(
+    type: string,
+    chunk: Array<QueryChunkEntry>,
+    paramsList: ReadonlyArray<unknown>,
+    raw: unknown,
+    processor: QueryProcessor<M, Q, keyof Q & string>,
+  ): void {
+    batch(() => {
+      let processorError: ProcessorError | undefined;
+      try {
         processor(
           raw,
           this.store!,
           type as keyof Q & string,
           paramsList as ReadonlyArray<Q[keyof Q & string]["params"]>,
         );
-        const bucket = this.state!.queries.get(type);
-        for (const { paramsKey } of chunk) {
-          const handle = bucket?.get(paramsKey);
-          if (handle) {
-            if (handle.hasData) {
-              handle.status = "SUCCESS";
-              handle.isPending = false;
-              handle.isFetching = false;
-              handle.error = undefined;
-              handle.fetchedAt = new Date();
-              handle.resolve?.(handle.data);
-            } else {
-              const err = new Error(
-                `@supergrain/silo: query result not found after fetch: ${type}:${paramsKey}`,
-              );
-              handle.status = "ERROR";
-              handle.isPending = false;
-              handle.isFetching = false;
-              handle.error = err;
-              handle.reject?.(err);
-            }
-            handle.resolve = undefined;
-            handle.reject = undefined;
-          }
-        }
-      });
-    } catch (error) {
-      this.rejectQueryChunk(type, chunk, error);
-    }
-  }
+      } catch (cause) {
+        processorError = new ProcessorError({ type, cause });
+      }
 
-  private rejectQueryChunk(type: string, chunk: Array<QueryChunkEntry>, error: unknown): void {
-    const err = error instanceof Error ? error : new Error(String(error));
-    batch(() => {
       const bucket = this.state!.queries.get(type);
       for (const { paramsKey } of chunk) {
         const handle = bucket?.get(paramsKey);
-        if (handle) {
-          handle.status = "ERROR";
-          handle.isPending = false;
-          handle.isFetching = false;
-          handle.error = err;
-          handle.reject?.(err);
-          handle.resolve = undefined;
-          handle.reject = undefined;
-        }
+        if (!handle) continue;
+        this.settleHandle(handle, paramsKey, type, processorError);
+      }
+    });
+  }
+
+  /**
+   * Settle one handle after its chunk's adapter+processor ran: a processor
+   * error fails it; data present → settled; still absent → not found.
+   */
+  private settleHandle(
+    handle: InternalHandle,
+    key: string,
+    type: string,
+    processorError: ProcessorError | undefined,
+  ): void {
+    if (processorError) {
+      applyEvent(handle, HandleEvent.Failed({ error: processorError }));
+    } else if (handle.data._tag === "Present") {
+      applyEvent(handle, HandleEvent.Settled());
+    } else {
+      applyEvent(handle, HandleEvent.Failed({ error: new NotFoundError({ type, key }) }));
+    }
+  }
+
+  private failChunk(
+    buckets: Map<string, Map<string, InternalHandle>>,
+    type: string,
+    keys: ReadonlyArray<string>,
+    error: AdapterError,
+  ): void {
+    batch(() => {
+      const bucket = buckets.get(type);
+      for (const key of keys) {
+        const handle = bucket?.get(key);
+        if (handle) applyEvent(handle, HandleEvent.Failed({ error }));
       }
     });
   }

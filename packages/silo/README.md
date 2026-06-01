@@ -22,8 +22,9 @@ React bindings are optional — `@supergrain/silo/react` requires `react >= 18.2
 
 ```ts
 // services/store.ts
-import { type DocumentAdapter, type DocumentStore } from "@supergrain/silo";
+import { AdapterError, type DocumentAdapter, type DocumentStore } from "@supergrain/silo";
 import { createDocumentStoreContext } from "@supergrain/silo/react";
+import { Effect } from "effect";
 
 export interface User {
   id: string;
@@ -37,15 +38,19 @@ export interface Post {
 export type TypeToModel = { user: User; post: Post };
 
 const userAdapter: DocumentAdapter = {
-  async find(ids) {
-    return Promise.all(ids.map((id) => fetch(`/api/users/${id}`).then((r) => r.json())));
-  },
+  find: (ids) =>
+    Effect.tryPromise({
+      try: () => Promise.all(ids.map((id) => fetch(`/api/users/${id}`).then((r) => r.json()))),
+      catch: (cause) => new AdapterError({ type: "user", keys: ids, cause }),
+    }),
 };
 
 const postAdapter: DocumentAdapter = {
-  async find(ids) {
-    return Promise.all(ids.map((id) => fetch(`/api/posts/${id}`).then((r) => r.json())));
-  },
+  find: (ids) =>
+    Effect.tryPromise({
+      try: () => Promise.all(ids.map((id) => fetch(`/api/posts/${id}`).then((r) => r.json()))),
+      catch: (cause) => new AdapterError({ type: "post", keys: ids, cause }),
+    }),
 };
 
 export const { Provider, useDocumentStore, useDocument } =
@@ -59,15 +64,15 @@ export const config = {
 };
 ```
 
-Adapters above are **fan-out** style — N parallel `GET /:id` requests, merged. The library doesn't care how you fetch; it just hands the adapter a list of ids and takes back a raw response. If your API exposes a bulk endpoint, one `GET` with all the ids works just as well:
+Adapters above are **fan-out** style — N parallel `GET /:id` requests, merged. Each adapter returns an [Effect](https://effect.website/) that produces the raw response and fails with a typed `AdapterError`; the library doesn't care how you fetch, only that you eventually return something the processor can read. Effect also lets you declare `retry`/`timeout` per model (see config below). If your API exposes a bulk endpoint, one `GET` with all the ids works just as well:
 
 ```ts
 const userAdapter: DocumentAdapter = {
-  async find(ids) {
-    const qs = ids.map((id) => `id=${id}`).join("&");
-    const res = await fetch(`/api/users?${qs}`);
-    return res.json();
-  },
+  find: (ids) =>
+    Effect.tryPromise({
+      try: () => fetch(`/api/users?${ids.map((id) => `id=${id}`).join("&")}`).then((r) => r.json()),
+      catch: (cause) => new AdapterError({ type: "user", keys: ids, cause }),
+    }),
 };
 ```
 
@@ -110,13 +115,15 @@ import { useDocument } from "./services/store";
 export function UserCard({ id }: { id: string }) {
   const user = useDocument("user", id);
 
-  if (user.isPending) return <Skeleton />;
-  if (user.error) return <ErrorState error={user.error} />;
-  return <div>{user.data?.attributes.firstName}</div>;
+  if (user.data._tag === "Absent") {
+    if (user.fetch._tag === "Failed") return <ErrorState error={user.fetch.error} />;
+    return <Skeleton />; // Idle or Fetching, no data yet
+  }
+  return <div>{user.data.value.attributes.firstName}</div>;
 }
 ```
 
-`useDocument` returns a reactive `DocumentHandle<User>`. Same `(type, id)` always returns the same handle object across renders — fields update in place.
+`useDocument` returns a reactive `DocumentHandle<User>` — two orthogonal regions: `data` (`Absent | Present`) and `fetch` (`Idle | Fetching | Failed`). `value` is in scope only once `data` is `Present`; `error` only once `fetch` is `Failed`, so a stale value and a refetch error coexist instead of clobbering each other. Same `(type, id)` always returns the same handle object across renders, and reads subscribe per region — a component reading only `data` doesn't re-render when a background refetch toggles `fetch`.
 
 ### 4. Or suspend, if you prefer
 
@@ -127,9 +134,9 @@ import { useDocument } from "./services/store";
 
 export function UserCard({ id }: { id: string }) {
   const user = useDocument("user", id);
-  use(user.promise); // suspends on first load; never re-suspends on refetch
+  const value = use(user.promise!); // suspends on first load; never re-suspends on refetch
 
-  return <div>{user.data!.attributes.firstName}</div>;
+  return <div>{value.attributes.firstName}</div>;
 }
 ```
 
@@ -163,7 +170,11 @@ const store = createDocumentStore<TypeToModel>({
 });
 ```
 
-Each model can also take a `processor` to normalize the adapter's raw response — see [Processors](#processors) below. Omit it and the default processor assumes the adapter returns a doc or an array of docs.
+Each model (and query) can also take:
+
+- `processor` to normalize the adapter's raw response — see [Processors](#processors) below. Omit it and the default processor assumes the adapter returns a doc or an array of docs.
+- `retry` — an Effect `Schedule` applied to the adapter Effect on `AdapterError` (e.g. `Schedule.exponential("100 millis").pipe(Schedule.compose(Schedule.recurs(3)))`).
+- `timeout` — a `Duration` after which the adapter Effect fails with an `AdapterError`.
 
 Methods:
 
@@ -192,33 +203,29 @@ const { Provider, useDocumentStore, useDocument, useQuery } =
 
 For non-React use, import `createDocumentStore` directly from `@supergrain/silo`.
 
-### `DocumentHandle<T>`
+### `DocumentHandle<T, E = SiloError>`
 
-A reactive state machine for a single document. All fields are signals — reading them inside a `tracked()` scope subscribes to changes.
+A reactive statechart for a single document, modeled as **two orthogonal regions**. Reads subscribe per region inside a `tracked()` scope.
 
 ```ts
-interface DocumentHandle<T> {
-  readonly status: "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
-  readonly data: T | undefined;
-  readonly error: Error | undefined;
-  readonly isPending: boolean; // true before first successful load
-  readonly isFetching: boolean; // true while a fetch is in flight for this handle
-  readonly hasData: boolean;
-  readonly fetchedAt: Date | undefined;
+interface DocumentHandle<T, E = SiloError> {
+  readonly data: { _tag: "Absent" } | { _tag: "Present"; value: T; fetchedAt: Date };
+  readonly fetch: { _tag: "Idle" } | { _tag: "Fetching" } | { _tag: "Failed"; error: E };
   readonly promise: Promise<T> | undefined; // stable; pass to use()
 }
 ```
 
-Lifecycle:
+The two regions vary independently, so all six combinations are representable — including a `Present` value with a `Failed` refetch (stale data + refetch error), which a single status enum couldn't express. `value` is only in scope once `data` is narrowed to `Present`; `error` only once `fetch` is `Failed`.
+
+Region transitions:
 
 ```
-IDLE ──(non-null id, cache miss)──► PENDING ──► SUCCESS
-IDLE ──(non-null id, cache hit) ──► SUCCESS
-PENDING ──(fetch rejects)──► ERROR
-ERROR   ──(new data inserted)──► SUCCESS (with a fresh promise object)
+data:  Absent ──(Insert)──► Present ──(stays Present across refetches; SWR)
+fetch: Idle ──(fetch starts)──► Fetching ──(settles)──► Idle
+                                          └─(fails)───► Failed(error)
 ```
 
-`IDLE` is one-way — once a handle leaves `IDLE` for a given `(type, id)`, it never goes back. The only exception is `clearMemory()`, which drops handles to `IDLE` when no fetch is in flight.
+`clearMemory()` resets `data` to `Absent` (and `fetch` to `Idle` when no fetch is in flight). Errors are typed: `AdapterError` (adapter failed), `NotFoundError` (key absent after fetch), `ProcessorError` (processor threw) — union `SiloError`.
 
 ### React hooks
 
@@ -292,11 +299,11 @@ const post = useDocument("post", "1");
 Internally, the store's finder calls your adapter with the queued ids, expecting a shape the default processor understands:
 
 ```ts
-// finder calls adapter.find(ids); expects either a single doc or an array
-await adapter.find(["1", "2"]);
+// finder runs the Effect from adapter.find(ids); expects either a single doc or an array
+adapter.find(["1", "2"]); // Effect that produces:
 // → [{ id: "1", ... }, { id: "2", ... }]
 // or for a single id:
-await adapter.find(["1"]);
+adapter.find(["1"]); // Effect that produces:
 // → { id: "1", ... }
 ```
 
@@ -325,7 +332,7 @@ const cardStack = useDocument("card-stack", "42");
 Internally, the finder calls your adapter, expecting a JSON-API envelope:
 
 ```ts
-await adapter.find(["42"]);
+adapter.find(["42"]); // Effect that produces:
 // → {
 //     data: [
 //       { type: "card-stack", id: "42", attributes: { ... },
@@ -345,7 +352,7 @@ JSON-API relationship hooks live in a separate subpath:
 import { useBelongsTo, useHasMany } from "@supergrain/silo/react/json-api";
 
 const planbook = useBelongsTo(cardStack, "planbook");
-const cards = useHasMany(planbook.data, "cards");
+const cards = useHasMany(planbook.data._tag === "Present" ? planbook.data.value : null, "cards");
 ```
 
 - `useBelongsTo(model, relationName)` → `DocumentHandle<Related>`. Reads `model.relationships[relationName].data` (a `{ type, id }`), then delegates to `useDocument`.
@@ -363,7 +370,8 @@ Documents are one surface. The store has a second, additive surface: **queries**
 The config surface forks at the top level — `models` for documents, `queries` for params-keyed results. One store, one memory, one finder.
 
 ```ts
-import { createDocumentStore, type QueryAdapter } from "@supergrain/silo";
+import { AdapterError, createDocumentStore, type QueryAdapter } from "@supergrain/silo";
+import { Effect } from "effect";
 
 type TypeToModel = { user: User; post: Post };
 
@@ -372,11 +380,14 @@ type TypeToQuery = {
 };
 
 const dashboardAdapter: QueryAdapter<{ workspaceId: number }> = {
-  async find(paramsList) {
-    return Promise.all(
-      paramsList.map((p) => fetch(`/api/dashboard?ws=${p.workspaceId}`).then((r) => r.json())),
-    );
-  },
+  find: (paramsList) =>
+    Effect.tryPromise({
+      try: () =>
+        Promise.all(
+          paramsList.map((p) => fetch(`/api/dashboard?ws=${p.workspaceId}`).then((r) => r.json())),
+        ),
+      catch: (cause) => new AdapterError({ type: "dashboard", keys: [], cause }),
+    }),
 };
 
 const store = createDocumentStore<TypeToModel, TypeToQuery>({
@@ -402,13 +413,15 @@ import { useQuery } from "@supergrain/silo/react";
 function DashboardView({ workspaceId }: { workspaceId: number }) {
   const handle = useQuery("dashboard", { workspaceId });
 
-  if (handle.isPending) return <Skeleton />;
-  if (handle.error) return <ErrorState error={handle.error} />;
-  return <Dashboard data={handle.data!} />;
+  if (handle.data._tag === "Absent") {
+    if (handle.fetch._tag === "Failed") return <ErrorState error={handle.fetch.error} />;
+    return <Skeleton />;
+  }
+  return <Dashboard data={handle.data.value} />;
 }
 ```
 
-Same `QueryHandle<T>` shape as `DocumentHandle<T>` — status/data/error/isPending/isFetching/promise. Same Suspense opt-in via `use(handle.promise)`. Same stable handle identity, so two components requesting `{ workspaceId: 7 }` get the same reactive object.
+Same `QueryHandle<T>` shape as `DocumentHandle<T>` — the two `data` / `fetch` regions plus `promise`. Same Suspense opt-in via `use(handle.promise)`. Same stable handle identity, so two components requesting `{ workspaceId: 7 }` get the same reactive object.
 
 Object key identity is **deep-equal**: `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` hit the same slot. The library stable-stringifies for cache lookup; adapters see the raw objects.
 
@@ -435,11 +448,12 @@ type TypeToQuery = {
 };
 
 const usersByRoleAdapter: QueryAdapter<{ role: string }> = {
-  async find(paramsList) {
-    return Promise.all(
-      paramsList.map((p) => fetch(`/api/users?role=${p.role}`).then((r) => r.json())),
-    );
-  },
+  find: (paramsList) =>
+    Effect.tryPromise({
+      try: () =>
+        Promise.all(paramsList.map((p) => fetch(`/api/users?role=${p.role}`).then((r) => r.json()))),
+      catch: (cause) => new AdapterError({ type: "usersByRole", keys: [], cause }),
+    }),
 };
 
 createDocumentStore<TypeToModel, TypeToQuery>({
@@ -454,7 +468,9 @@ Usage:
 
 ```tsx
 const query = useQuery("usersByRole", { role: "admin" });
-return query.data?.map((u) => <UserRow key={u.id} user={u} />);
+return query.data._tag === "Present"
+  ? query.data.value.map((u) => <UserRow key={u.id} user={u} />)
+  : null;
 ```
 
 What this gives you: 10 lines of config, works immediately, automatic batching of concurrent queries, Suspense-compatible.
@@ -506,7 +522,9 @@ Usage:
 const query = useQuery("usersByRole", { role: "admin" });
 
 // Dereference each id — each row gets its own reactive handle
-return query.data?.userIds.map((id) => <UserRow key={id} id={id} />);
+return query.data._tag === "Present"
+  ? query.data.value.userIds.map((id) => <UserRow key={id} id={id} />)
+  : null;
 ```
 
 What this gives you:
@@ -569,7 +587,7 @@ These aren't "same library, different maturity" — they're genuinely different 
 | **Stable reactive handles (fine-grained field reads)** |     ✗      |           ✓            | —                                              |
 | Suspense via `use()`                                   | ✓ (opt-in) |       ✓ (opt-in)       | —                                              |
 | Invalidation                                           |     ✓      |           ✗            | add `invalidate` / `invalidateType`            |
-| Stale-time / gc-time                                   |     ✓      |           ✗            | add `staleMs`; compare against `fetchedAt`     |
+| Stale-time / gc-time                                   |     ✓      |           ✗            | add `staleMs`; compare against `data.fetchedAt` |
 | Refetch on focus / reconnect / interval                |     ✓      |           ✗            | add opt-in hooks                               |
 | Retry with backoff                                     |     ✓      |           ✗            | add to Finder                                  |
 | Cancellation                                           |     ✓      |           ✗            | thread `AbortSignal` through adapter           |
@@ -594,7 +612,7 @@ These aren't "same library, different maturity" — they're genuinely different 
 - **Cross-query sync without manual wiring.** Edit user #42 with `insertDocument("user", updated42)` — every list, detail view, and relationship re-renders instantly, no network call. TQ needs pattern invalidation precisely _because_ it doesn't normalize; each query has its own copy of the data that drifts.
 - **Request batching.** 50 `<UserCard id={x} />` components collapse into one network request. TQ has no equivalent built into the primitive.
 - **One cache, not two.** TQ almost always sits beside Zustand/Redux/etc. — two caches to reconcile. Our store is both.
-- **Fine-grained reactivity.** Reading `handle.data.name` re-renders only when `name` changes. TQ returns a new `{data, isLoading, error}` object every render — whole-handle subscription only, no field-level reads.
+- **Fine-grained reactivity.** Reading the `data` region re-renders only when data changes, not when a background refetch toggles the `fetch` region. TQ returns a new `{data, isLoading, error}` object every render — whole-handle subscription only, no field-level reads.
 - **Simpler invalidation model.** Normalization + reactive propagation handles most of what pattern invalidation exists to solve. You don't need an invalidation graph if mutations just write to the store.
 
 ### When to pick which

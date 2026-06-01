@@ -8,17 +8,21 @@
 
 export { createDocumentStore } from "./store";
 export type {
+  DataState,
   DocumentAdapter,
   DocumentHandle,
   DocumentStore,
   DocumentStoreConfig,
   DocumentTypes,
+  FetchState,
   ModelConfig,
   RegisteredTypes,
   ResponseProcessor,
-  Status,
   TypeRegistry,
 } from "./store";
+
+export { AdapterError, NotFoundError, ProcessorError } from "./errors";
+export type { SiloError } from "./errors";
 
 export type {
   QueryAdapter,
