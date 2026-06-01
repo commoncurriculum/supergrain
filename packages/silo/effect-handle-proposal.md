@@ -79,51 +79,44 @@ only its type changes.
 
 ---
 
-## 2. Type safety + the ergonomic matcher
+## 2. Type safety — all six states, handled directly
 
-Reading a region narrows it; the two regions are independent:
+Read a region, narrow it. The two regions are independent, so no state is hidden
+and none is bundled into a fake super-state:
 
 ```tsx
 const u = useDocument("user", id);
 
-// show stale data AND the refetch error together — the flat enum couldn't:
-if (u.data._tag === "Present") {
-  return <Card user={u.data.value}                         // value: T
-               busy={u.fetch._tag === "Fetching"}
-               warn={u.fetch._tag === "Failed" ? u.fetch.error : undefined} />;
+if (u.data._tag === "Absent") {
+  switch (u.fetch._tag) {
+    case "Idle":     return null;                            // 1. never fetched
+    case "Fetching": return <Spinner />;                     // 2. first load
+    case "Failed":   return <ErrorPage e={u.fetch.error} />; // 3. first load failed
+  }
 }
+// u.data._tag === "Present"  →  value: T
+return (
+  <Card
+    user={u.data.value}
+    busy={u.fetch._tag === "Fetching"}                            // 4 vs 5: settled / refetching
+    error={u.fetch._tag === "Failed" ? u.fetch.error : undefined} // 6: stale value + refetch error
+  />
+);
 ```
 
-Most call sites don't care about background state. `matchHandle` collapses the
-product into the four cases people branch on, folding the background info into
-`Ready`:
+`value` is only in scope once `data` is narrowed to `Present`; `error` only once
+`fetch` is narrowed to `Failed`. Each region's `_tag` switch is exhaustive.
 
-```ts
-export function matchHandle<T, E, R>(
-  h: DocumentHandle<T, E>,
-  arms: {
-    Idle:       () => R;                                              // Absent × Idle
-    Loading:    () => R;                                              // Absent × Fetching
-    LoadFailed: (a: { error: E }) => R;                               // Absent × Failed
-    Ready:      (a: { value: T; fetchedAt: Date;
-                      refetching: boolean; refetchError: E | undefined }) => R; // Present × *
-  },
-): R;
-```
+### Why two regions, not a flat six-variant enum
 
-```tsx
-matchHandle(u, {
-  Idle:       () => null,
-  Loading:    () => <Spinner />,                       // never fires on a refetch
-  LoadFailed: ({ error }) => <ErrorPage e={error} />,
-  Ready:      ({ value, refetching, refetchError }) =>
-                <Card user={value} busy={refetching} warn={refetchError} />,
-});
-```
-
-`Loading` / `LoadFailed` only fire with no data; a refetch surfaces as
-`Ready.refetching`, a refetch error as `Ready.refetchError` **alongside**
-`value`. The raw `data` / `fetch` regions stay available for full control.
+A single `Idle | Loading | LoadFailed | Ready | Refetching | RefetchFailed`
+union has **one discriminant**. Reading `value` means narrowing it, which
+subscribes you to that discriminant — and it flips on
+`Ready ↔ Refetching ↔ RefetchFailed`, i.e. on **background activity that didn't
+change `value`**. A list of cards would re-render on every refetch. Factoring
+into two regions keeps `value` in the `data` cell and activity in the `fetch`
+cell, so a `value` reader never re-renders on refetch. Same six states, but the
+factoring is what preserves per-field reactivity (§3).
 
 ---
 
@@ -220,7 +213,7 @@ handle narrows fully per region, and reactivity is untouched.
 | Read `value` before load | `undefined` at runtime | compile error | **compile error** |
 | Stale data + background refetch | — | can't express (or mislabels "pending") | **`data: Present` + `fetch: Fetching`** |
 | Stale data + refetch error | — | must drop one | **`data: Present` + `fetch: Failed` (both)** |
-| Exhaustive states | manual | TS-checked | **TS-checked per region + `matchHandle`** |
+| Exhaustive states | manual | TS-checked | **TS-checked per region, all six exposed** |
 | Reactivity granularity | per-field | per-handle (if immutable value) | **per-region cell, in-place mutation** |
 
 Type safety + exhaustiveness + per-field reactivity + honest refetch
