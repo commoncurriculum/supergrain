@@ -190,14 +190,20 @@ export function createDocumentStoreContext<
   ): QueryHandle<Q[K]["result"]> {
     // Same narrowing cast as useDocument above.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
-    // params is an object; serialize for a stable effect dependency.
-    const paramsKey = params === null || params === undefined ? null : JSON.stringify(params);
+    // findQuery returns the SAME reactive handle for deep-equal params (it owns
+    // the one canonical key). That stable identity IS the dependency — no second
+    // serialization to drift from the store's keying. Deep-equal params keep the
+    // same handle, so the subscription doesn't churn; a genuinely different
+    // params yields a different handle and re-subscribes. (A stale `params` in
+    // the closure is fine: same handle ⟺ same canonical key.)
+    const handle = store.findQuery(type, params);
     useEffect(() => {
       if (params === null || params === undefined) return;
       // eslint-disable-next-line consistent-return -- cleanup only when subscribed
       return store.subscribeQuery(type, params);
-    }, [store, type, paramsKey]);
-    return store.findQuery(type, params);
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- handle identity stands in for params
+    }, [store, handle]);
+    return handle;
   }
 
   return { Provider, useDocumentStore, useDocument, useQuery };

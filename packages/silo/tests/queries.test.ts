@@ -92,6 +92,21 @@ describe("DocumentStore.findQuery", () => {
     expect(h1).toBe(h2);
   });
 
+  it("returns the same handle regardless of param key order", () => {
+    // The cache key is order-independent (stableStringify sorts keys). This is
+    // the contract the React `useQuery` hook leans on: a stable handle identity
+    // for deep-equal params, so the subscription doesn't churn on re-renders
+    // that hand over a reordered params object.
+    const store = initStore();
+    const h1 = store.findQuery("dashboard", { workspaceId: 7, filters: { active: true } });
+    const h2 = store.findQuery("dashboard", {
+      filters: { active: true },
+      workspaceId: 7,
+    } as DashboardParams);
+
+    expect(h1).toBe(h2);
+  });
+
   it("returns different handles for different params", () => {
     const store = initStore();
     const h7 = store.findQuery("dashboard", { workspaceId: 7, filters: { active: true } });
