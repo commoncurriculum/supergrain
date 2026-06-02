@@ -148,7 +148,7 @@ Wrap the component in a `<Suspense>` boundary. That's it. One line to opt in, no
 
 `useDocument` / `useQuery` register a subscriber for the duration of the mount. Because the cache is shared, a fetch is cancelled only when the **last** subscriber for every key in its batch goes away — navigate away from the only screen using a doc mid-fetch and its request is interrupted, aborting the `AbortSignal` you threaded into `fetch`. A renewed `find` refetches from idle. The interrupt is deferred to the next tick (`gcTimeMs`, default `0`) so a StrictMode remount or a quick nav-back cancels it before any work is lost; raise `gcTimeMs` to keep abandoned fetches warm for a while. Non-React callers can ref-count manually via `store.subscribeDocument(type, id)` / `store.subscribeQuery(type, params)`, which return an unsubscribe function.
 
-The whole engine — batch window included — runs on Effect's clock, so timing is deterministic under a `TestClock`.
+The whole engine — batch window included — runs on Effect's clock (`Effect.sleep`), so timing is fully deterministic in tests.
 
 ## Why this instead of TanStack Query / SWR?
 
