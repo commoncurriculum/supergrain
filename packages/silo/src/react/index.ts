@@ -1,13 +1,6 @@
 import type { QueryHandle, QueryTypes, RegisteredQueries } from "../queries";
 
-import {
-  createContext,
-  createElement,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, createElement, useContext, useState, type ReactNode } from "react";
 
 import {
   createDocumentStore,
@@ -170,16 +163,14 @@ export function createDocumentStoreContext<
     type: K,
     id: string | null | undefined,
   ): DocumentHandle<M[K]> {
+    // A pure reactive read: `find` returns a stable, reactive handle and the
+    // tracked component re-renders on the fields it reads. No effects — the
+    // hook never imperatively subscribes. (The store exposes `subscribeDocument`
+    // for callers that want fetch cancellation; see its docs.)
+    //
     // useDocumentStore() returns S which extends DocumentStore<M, Q>; the cast
     // narrows back to the concrete DocumentStore<M, Q> so .find() is callable.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
-    // Register interest for this mount so the store keeps the fetch alive while
-    // mounted and may cancel it once the last subscriber unmounts.
-    useEffect(() => {
-      if (id === null || id === undefined) return;
-      // eslint-disable-next-line consistent-return -- cleanup only when subscribed
-      return store.subscribeDocument(type, id);
-    }, [store, type, id]);
     // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
     return store.find(type, id);
   }
@@ -188,22 +179,9 @@ export function createDocumentStoreContext<
     type: K,
     params: Q[K]["params"] | null | undefined,
   ): QueryHandle<Q[K]["result"]> {
-    // Same narrowing cast as useDocument above.
+    // Pure reactive read, like useDocument. Same narrowing cast.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
-    // findQuery returns the SAME reactive handle for deep-equal params (it owns
-    // the one canonical key). That stable identity IS the dependency — no second
-    // serialization to drift from the store's keying. Deep-equal params keep the
-    // same handle, so the subscription doesn't churn; a genuinely different
-    // params yields a different handle and re-subscribes. (A stale `params` in
-    // the closure is fine: same handle ⟺ same canonical key.)
-    const handle = store.findQuery(type, params);
-    useEffect(() => {
-      if (params === null || params === undefined) return;
-      // eslint-disable-next-line consistent-return -- cleanup only when subscribed
-      return store.subscribeQuery(type, params);
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- handle identity stands in for params
-    }, [store, handle]);
-    return handle;
+    return store.findQuery(type, params);
   }
 
   return { Provider, useDocumentStore, useDocument, useQuery };

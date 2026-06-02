@@ -144,9 +144,13 @@ export function UserCard({ id }: { id: string }) {
 
 Wrap the component in a `<Suspense>` boundary. That's it. One line to opt in, nothing to configure, no `{ suspense: true }` flag.
 
-### Cancellation
+### Cancellation (opt-in)
 
-`useDocument` / `useQuery` register a subscriber for the duration of the mount. Because the cache is shared, a fetch is cancelled only when the **last** subscriber for every key in its batch goes away — navigate away from the only screen using a doc mid-fetch and its request is interrupted, aborting the `AbortSignal` you threaded into `fetch`. A renewed `find` refetches from idle. The interrupt is deferred to the next tick (`gcTimeMs`, default `0`) so a StrictMode remount or a quick nav-back cancels it before any work is lost; raise `gcTimeMs` to keep abandoned fetches warm for a while. Non-React callers can ref-count manually via `store.subscribeDocument(type, id)` / `store.subscribeQuery(type, params)`, which return an unsubscribe function.
+`useDocument` / `useQuery` are **pure reactive reads** — no `useEffect`, no imperative subscription. They just return a reactive handle and re-render on the fields you read.
+
+Fetch cancellation is a separate, opt-in capability. `store.subscribeDocument(type, id)` / `store.subscribeQuery(type, params)` register interest and return an unsubscribe function; while the count is &gt; 0 the in-flight fetch is kept, and when it returns to 0 the request is interrupted (aborting the `AbortSignal` you threaded into `fetch`), deferred by `gcTimeMs` (default `0` = next tick) so a quick re-subscribe cancels the interrupt. Because the cache is shared, a batch is only cancelled when the **last** subscriber for every key in it goes away.
+
+The hooks deliberately don't auto-wire this: tying it to React's mount/unmount would mean an effect, and the signals-native version — cancel when a handle has no reactive observers — wants an observation-lifecycle primitive in the kernel core that doesn't exist yet. Until then, wire `subscribe*`/unsubscribe to a lifecycle yourself if you want unmount-driven cancellation.
 
 The whole engine — batch window included — runs on Effect's clock (`Effect.sleep`), so timing is fully deterministic in tests.
 

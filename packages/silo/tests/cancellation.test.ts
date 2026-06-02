@@ -2,11 +2,12 @@
 // tests/cancellation.test.ts
 // =============================================================================
 //
-// Subscriber-gated cancellation. The store ref-counts subscribers per key
-// (the React hooks call subscribeDocument/subscribeQuery on mount, the returned
-// cleanup on unmount). When the last subscriber for every key in an in-flight
-// chunk goes away, the chunk's fiber is interrupted — aborting the request's
-// AbortSignal — and its handles reset to idle so a later find refetches.
+// Subscriber-gated cancellation (opt-in). Callers ref-count interest per key
+// via store.subscribeDocument / subscribeQuery (the React hooks do NOT — they
+// are pure reactive reads). When the last subscriber for every key in an
+// in-flight chunk goes away, the chunk's fiber is interrupted — aborting the
+// request's AbortSignal — and its handles reset to idle so a later find
+// refetches.
 //
 // Driven through a real DocumentStore with fake timers (the batch window runs
 // on Effect.sleep; the gc deferral on setTimeout — both advance together).

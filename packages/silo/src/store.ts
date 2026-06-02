@@ -297,10 +297,15 @@ export interface DocumentStore<
   ): void;
   clearMemory(): void;
   /**
-   * Register interest in a document. While the count is &gt; 0 an in-flight fetch
-   * for `(type, id)` is kept; when it returns to 0 the fetch may be interrupted
-   * (see `gcTimeMs`). The React `useDocument` hook calls this on mount and the
-   * returned cleanup on unmount; call it directly only for non-React consumers.
+   * Opt-in fetch cancellation. Register interest in a document and get an
+   * unsubscribe function back; while the count is &gt; 0 an in-flight fetch for
+   * `(type, id)` is kept, and when it returns to 0 the fetch is interrupted
+   * (aborting its `AbortSignal`), deferred by `gcTimeMs`.
+   *
+   * The React hooks deliberately do NOT call this — `useDocument` is a pure
+   * reactive read. Wire it up yourself (e.g. tie subscribe/unsubscribe to a
+   * component's lifecycle) when you want unmount-driven cancellation, until a
+   * reactive-observation primitive in the kernel can drive it automatically.
    */
   subscribeDocument<K extends keyof M & string>(type: K, id: string): () => void;
   /** Query analogue of {@link DocumentStore.subscribeDocument}. */
