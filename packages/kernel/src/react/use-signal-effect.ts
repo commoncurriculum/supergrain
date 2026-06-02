@@ -14,7 +14,12 @@ import { useEffect } from "react";
  * systems. (Compare to `useEffect`, where you would normally call `setState`
  * inside the effect to surface changes back to the UI.)
  *
- * @param fn - A function that reads reactive signals and performs side effects.
+ * The callback may return a cleanup function (like `useEffect`). It runs before
+ * each re-run and once more when the component unmounts — use it to tear down
+ * subscriptions, timers, or listeners created in the effect body.
+ *
+ * @param fn - A function that reads reactive signals and performs side effects,
+ *   optionally returning a cleanup function.
  *
  * @example
  * ```tsx
@@ -35,7 +40,7 @@ import { useEffect } from "react";
  * })
  * ```
  */
-export function useSignalEffect(fn: () => void): void {
+export function useSignalEffect(fn: () => void | (() => void)): void {
   useEffect(() => {
     const cleanup = effect(fn);
     return cleanup;

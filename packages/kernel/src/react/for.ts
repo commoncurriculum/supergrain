@@ -1,5 +1,5 @@
 import { effect as alienEffect, unwrap, getNodesIfExist, $TRACK } from "@supergrain/kernel";
-import { getCurrentSub, setCurrentSub, type ReactiveTagged } from "@supergrain/kernel/internal";
+import { getActiveSub, setActiveSub, type ReactiveTagged } from "@supergrain/kernel/internal";
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 /* c8 ignore start -- the React project runs in a browser; this branch is for SSR consumers */
@@ -168,8 +168,8 @@ export const For = tracked((props: ForProps<unknown>) => {
     // No wrapper component needed — children (e.g., tracked Row) handle their own
     // subscriptions. After a swap, For doesn't re-render, so children keep their
     // original item props. The swap effect moves DOM nodes to match.
-    const prevSub = getCurrentSub();
-    setCurrentSub(undefined); // untrack array reads to avoid subscribing For to per-index signals
+    const prevSub = getActiveSub();
+    setActiveSub(undefined); // untrack array reads to avoid subscribing For to per-index signals
     const prevCache = elementCacheRef.current;
     const nextCache = new Map<unknown, React.ReactNode>();
     for (let i = 0; i < raw.length; i++) {
@@ -185,7 +185,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       nextCache.set(rawItem, slots[i]);
     }
     elementCacheRef.current = nextCache;
-    setCurrentSub(prevSub);
+    setActiveSub(prevSub);
   } else {
     // Non-parent path: use ForItem wrapper for per-index signal subscription
     // so React keyed reconciliation handles swaps.

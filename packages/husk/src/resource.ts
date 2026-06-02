@@ -1,5 +1,5 @@
 import { createReactive } from "@supergrain/kernel";
-import { getCurrentSub, setCurrentSub } from "@supergrain/kernel/internal";
+import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
 import { effect } from "alien-signals";
 
 /**
@@ -53,12 +53,12 @@ export function registerDisposer(target: object, fn: () => void): void {
 type SetupResult = void | (() => void) | Promise<void>;
 
 function withUntracked<R>(run: () => R): R {
-  const prev = getCurrentSub();
-  setCurrentSub(undefined);
+  const prev = getActiveSub();
+  setActiveSub(undefined);
   try {
     return run();
   } finally {
-    setCurrentSub(prev);
+    setActiveSub(prev);
   }
 }
 

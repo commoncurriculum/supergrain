@@ -412,8 +412,8 @@ describe("MongoDB Style Operators — validation and path creation", () => {
 describe("MongoDB Style Operators — reactivity per operator", () => {
   it("$set fires effects subscribed to the written path and not to siblings", () => {
     const store = createReactive({ a: 1, b: 2 });
-    const aFn = vi.fn(() => store.a);
-    const bFn = vi.fn(() => store.b);
+    const aFn = vi.fn(() => void store.a);
+    const bFn = vi.fn(() => void store.b);
     effect(aFn);
     effect(bFn);
 
@@ -519,7 +519,7 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
 
   it("$min fires only when the value actually changes", () => {
     const store = createReactive({ score: 100 });
-    const fn = vi.fn(() => store.score);
+    const fn = vi.fn(() => void store.score);
     effect(fn);
     expect(fn).toHaveBeenCalledTimes(1);
 
@@ -534,7 +534,7 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
 
   it("$max fires only when the value actually changes", () => {
     const store = createReactive({ score: 100 });
-    const fn = vi.fn(() => store.score);
+    const fn = vi.fn(() => void store.score);
     effect(fn);
     expect(fn).toHaveBeenCalledTimes(1);
 
@@ -549,9 +549,9 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
 
   it("multi-operator update fires each affected effect at most once (batched)", () => {
     const store = createReactive({ count: 0, score: 10, items: [1, 2] });
-    const countFn = vi.fn(() => store.count);
-    const scoreFn = vi.fn(() => store.score);
-    const lengthFn = vi.fn(() => store.items.length);
+    const countFn = vi.fn(() => void store.count);
+    const scoreFn = vi.fn(() => void store.score);
+    const lengthFn = vi.fn(() => void store.items.length);
     effect(countFn);
     effect(scoreFn);
     effect(lengthFn);

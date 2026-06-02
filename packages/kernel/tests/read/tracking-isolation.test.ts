@@ -1,5 +1,5 @@
 import { update } from "@supergrain/mill";
-import { effect, getCurrentSub, setCurrentSub } from "alien-signals";
+import { effect, getActiveSub, setActiveSub } from "alien-signals";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import {
@@ -34,7 +34,7 @@ describe("Tracking Isolation Analysis", () => {
       // Create component's effect
       const cleanup = effect(() => {
         if (isFirstRun) {
-          effectNode = getCurrentSub();
+          effectNode = getActiveSub();
           isFirstRun = false;
           if (componentName === "parent") parentEffectRuns++;
           if (componentName === "child") childEffectRuns++;
@@ -46,15 +46,15 @@ describe("Tracking Isolation Analysis", () => {
       });
 
       // Set effect as current subscriber and access property
-      const prevSub = getCurrentSub();
-      setCurrentSub(effectNode);
+      const prevSub = getActiveSub();
+      setActiveSub(effectNode);
       // Access the property (this establishes tracking)
       if (componentName === "parent") {
         void store.parent;
       } else {
         void store.child;
       }
-      setCurrentSub(prevSub);
+      setActiveSub(prevSub);
 
       return { cleanup, effectNode };
     }

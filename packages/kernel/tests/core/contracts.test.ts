@@ -37,8 +37,8 @@ describe("core package contracts", () => {
     // exception, so they must NOT appear at the package root.
     expect("startBatch" in core).toBe(false);
     expect("endBatch" in core).toBe(false);
-    expect("getCurrentSub" in core).toBe(false);
-    expect("setCurrentSub" in core).toBe(false);
+    expect("getActiveSub" in core).toBe(false);
+    expect("setActiveSub" in core).toBe(false);
   });
 
   it("does not re-export the operators package from the package root", () => {

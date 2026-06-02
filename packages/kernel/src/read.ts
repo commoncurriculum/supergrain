@@ -1,4 +1,4 @@
-import { getCurrentSub, startBatch, endBatch } from "alien-signals";
+import { getActiveSub, startBatch, endBatch } from "alien-signals";
 
 import { createReactiveMap, createReactiveSet } from "./collections";
 import {
@@ -58,7 +58,7 @@ function wrap<T>(value: T): T {
 }
 
 function trackSelf(target: object): void {
-  if (getCurrentSub()) {
+  if (getActiveSub()) {
     const nodes = getNodes(target);
     const ownKeysSignal = getNode(nodes, $OWN_KEYS, 0);
     ownKeysSignal();
@@ -70,7 +70,7 @@ function trackSelf(target: object): void {
 // swap) triggers a re-render. Version is cheaper than ownKeys
 // because alien-signals deduplicates dirty-marking.
 function trackArrayVersion(value: unknown): void {
-  if (Array.isArray(value) && getCurrentSub()) {
+  if (Array.isArray(value) && getActiveSub()) {
     const arrayNodes = getNodes(value);
     /* c8 ignore start -- absence of an array version signal is a no-op fast path */
     if (arrayNodes[$VERSION]) {
@@ -90,7 +90,7 @@ const readHandler: Pick<
       if (existingNodes) {
         const tracked = existingNodes[prop];
         if (tracked) {
-          if (!getCurrentSub()) {
+          if (!getActiveSub()) {
             profileSignalSkip();
             return wrap((target as Record<string, unknown>)[prop]);
           }
@@ -128,7 +128,7 @@ const readHandler: Pick<
 
     if (typeof value === "function") {
       if (Array.isArray(target)) {
-        if (getCurrentSub()) {
+        if (getActiveSub()) {
           trackSelf(target);
         }
         if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
@@ -145,7 +145,7 @@ const readHandler: Pick<
       return value;
     }
 
-    if (!getCurrentSub()) {
+    if (!getActiveSub()) {
       profileSignalSkip();
       return wrap(value);
     }
