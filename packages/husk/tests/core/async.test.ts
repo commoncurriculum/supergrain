@@ -1,5 +1,4 @@
 import { effect, signal } from "@supergrain/kernel";
-import { Effect } from "effect";
 import { describe, it, expect, vi } from "vitest";
 
 import { dispose, reactivePromise, reactiveTask } from "../../src";
@@ -16,7 +15,7 @@ function deferred<T>() {
 
 describe("reactivePromise", () => {
   it("transitions to resolved state", async () => {
-    const rp = reactivePromise(() => Effect.succeed(42));
+    const rp = reactivePromise(async () => 42);
 
     expect(rp.isPending).toBe(true);
     expect(rp.isReady).toBe(false);
@@ -40,12 +39,9 @@ describe("reactivePromise", () => {
     const deferreds = [d1, d2];
     let call = 0;
 
-    const rp = reactivePromise(() => {
+    const rp = reactivePromise(async () => {
       trigger();
-      return Effect.tryPromise({
-        try: () => deferreds[call++]!.promise,
-        catch: (e) => e as Error,
-      });
+      return deferreds[call++]!.promise;
     });
 
     d1.resolve(100);
@@ -67,7 +63,7 @@ describe("reactivePromise", () => {
 
   it("re-runs when a tracked signal changes", async () => {
     const id = signal(1);
-    const fn = vi.fn(() => Effect.succeed(id() * 10));
+    const fn = vi.fn(async () => id() * 10);
 
     const rp = reactivePromise(fn);
     await rp.promise;
@@ -85,29 +81,29 @@ describe("reactivePromise", () => {
     expect(fn).toHaveBeenCalledTimes(3);
   });
 
-  it("interrupts the previous run's Effect when deps change", async () => {
+  it("aborts the previous run's AbortSignal when deps change", async () => {
     const trigger = signal(0);
-    const interrupts: boolean[] = [];
+    const aborts: boolean[] = [];
 
-    reactivePromise(() => {
+    reactivePromise(async (abortSignal) => {
       trigger();
-      // A never-resolving Effect; on interruption the finalizer fires.
-      return Effect.never.pipe(
-        Effect.onInterrupt(() =>
-          Effect.sync(() => {
-            interrupts.push(true);
-          }),
-        ),
-      );
+      const d = deferred<string>();
+      abortSignal.addEventListener("abort", () => {
+        aborts.push(true);
+        d.resolve("aborted");
+      });
+      return d.promise;
     });
 
-    // First trigger after the auto-run interrupts run #1.
+    // First trigger after the auto-run aborts run #1.
     trigger(1);
-    await vi.waitFor(() => expect(interrupts).toEqual([true]));
+    await Promise.resolve();
+    expect(aborts).toEqual([true]);
 
-    // Second trigger interrupts run #2 in turn.
+    // Second trigger aborts run #2 in turn.
     trigger(2);
-    await vi.waitFor(() => expect(interrupts).toEqual([true, true]));
+    await Promise.resolve();
+    expect(aborts).toEqual([true, true]);
   });
 
   it("discards stale resolutions", async () => {
@@ -117,16 +113,14 @@ describe("reactivePromise", () => {
     const deferreds = [d1, d2];
     let call = 0;
 
-    const rp = reactivePromise(() => {
+    const rp = reactivePromise(async () => {
       trigger();
-      const d = deferreds[call++]!;
-      return Effect.promise(() => d.promise);
+      return deferreds[call++]!.promise;
     });
 
     trigger(1); // start second run
     d1.resolve("first");
     await d1.promise;
-    await Promise.resolve();
     // rp.data should NOT be "first" because the second run is newer
     expect(rp.data).toBe(null);
 
@@ -135,26 +129,21 @@ describe("reactivePromise", () => {
     expect(rp.data).toBe("second");
   });
 
-  it("discards stale rejections after a dependency rerun interrupts the old run", async () => {
+  it("discards stale rejections after a dependency rerun aborts the old run", async () => {
     const trigger = signal(0);
     const d1 = deferred<string>();
     const d2 = deferred<string>();
     const deferreds = [d1, d2];
     let call = 0;
 
-    const rp = reactivePromise(() => {
+    const rp = reactivePromise(async () => {
       trigger();
-      const d = deferreds[call++]!;
-      return Effect.tryPromise({
-        try: () => d.promise,
-        catch: (e) => e as Error,
-      });
+      return deferreds[call++]!.promise;
     });
 
     trigger(1);
     d1.reject(new Error("stale"));
     await d1.promise.catch(() => {});
-    await Promise.resolve();
     expect(rp.error).toBe(null);
     expect(rp.isRejected).toBe(false);
 
@@ -164,28 +153,32 @@ describe("reactivePromise", () => {
   });
 
   it("promise resolves to the current run's result", async () => {
-    const rp = reactivePromise(() => Effect.succeed("hello"));
+    const rp = reactivePromise(async () => "hello");
     const v = await rp.promise;
     expect(v).toBe("hello");
   });
 
   it("promise.catch handles rejection", async () => {
-    const rp = reactivePromise(() => Effect.fail(new Error("fail")));
+    const rp = reactivePromise(async () => {
+      throw new Error("fail");
+    });
     const caught = await rp.promise.catch((e) => (e as Error).message);
     expect(caught).toBe("fail");
   });
 
-  it("surfaces a failed Effect as the typed error value", async () => {
-    const rp = reactivePromise<string, { code: string }>(() => Effect.fail({ code: "sync-fail" }));
+  it("handles synchronous throws in asyncFn", async () => {
+    const rp = reactivePromise<string>(() => {
+      throw new Error("sync-fail");
+    });
     await rp.promise.catch(() => {});
     expect(rp.isRejected).toBe(true);
-    expect(rp.error).toEqual({ code: "sync-fail" });
+    expect((rp.error as Error).message).toBe("sync-fail");
   });
 });
 
 describe("reactiveTask", () => {
   it("transitions on run()", async () => {
-    const task = reactiveTask((x: number) => Effect.succeed(x * 2));
+    const task = reactiveTask(async (x: number) => x * 2);
 
     expect(task.isPending).toBe(false);
     expect(task.isReady).toBe(false);
@@ -202,7 +195,7 @@ describe("reactiveTask", () => {
   });
 
   it("does not auto-run", async () => {
-    const fn = vi.fn(() => Effect.succeed("nope"));
+    const fn = vi.fn(async () => "nope");
     reactiveTask(fn);
     await Promise.resolve();
     expect(fn).not.toHaveBeenCalled();
@@ -214,10 +207,7 @@ describe("reactiveTask", () => {
     const results = [d1, d2];
     let call = 0;
 
-    const task = reactiveTask(() => {
-      const d = results[call++]!;
-      return Effect.promise(() => d.promise);
-    });
+    const task = reactiveTask(async () => results[call++]!.promise);
 
     const p1 = task.run();
     const p2 = task.run();
@@ -238,13 +228,7 @@ describe("reactiveTask", () => {
     const results = [d1, d2];
     let call = 0;
 
-    const task = reactiveTask(() => {
-      const d = results[call++]!;
-      return Effect.tryPromise({
-        try: () => d.promise,
-        catch: (e) => e as Error,
-      });
-    });
+    const task = reactiveTask(async () => results[call++]!.promise);
 
     const p1 = task.run();
     const p2 = task.run();
@@ -262,9 +246,9 @@ describe("reactiveTask", () => {
   });
 
   it("records errors without clobbering a prior success", async () => {
-    const task = reactiveTask((mode: "ok" | "fail") => {
-      if (mode === "fail") return Effect.fail(new Error("no"));
-      return Effect.succeed("yes");
+    const task = reactiveTask(async (mode: "ok" | "fail") => {
+      if (mode === "fail") throw new Error("no");
+      return "yes";
     });
 
     await task.run("ok");
@@ -280,9 +264,9 @@ describe("reactiveTask", () => {
   });
 
   it("clears error on next successful run", async () => {
-    const task = reactiveTask((mode: "ok" | "fail") => {
-      if (mode === "fail") return Effect.fail(new Error("bad"));
-      return Effect.succeed(1);
+    const task = reactiveTask(async (mode: "ok" | "fail") => {
+      if (mode === "fail") throw new Error("bad");
+      return 1;
     });
     await task.run("fail").catch(() => {});
     expect(task.error).toBeDefined();
@@ -292,17 +276,20 @@ describe("reactiveTask", () => {
     expect(task.isResolved).toBe(true);
   });
 
-  it("rejects run() when the Effect fails, recording the typed error", async () => {
-    const task = reactiveTask((_n: number) => Effect.fail(new Error("boom")));
+  it("handles a synchronous throw inside asyncFn by converting to a rejection", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const task = reactiveTask((_n: number): Promise<number> => {
+      throw new Error("sync-boom");
+    });
 
-    await expect(task.run(1)).rejects.toThrow("boom");
+    await expect(task.run(1)).rejects.toThrow("sync-boom");
     expect(task.isRejected).toBe(true);
-    expect((task.error as Error).message).toBe("boom");
+    expect((task.error as Error).message).toBe("sync-boom");
   });
 
   it("dispose prevents late completions from mutating task state", async () => {
     const d = deferred<string>();
-    const task = reactiveTask(() => Effect.promise(() => d.promise));
+    const task = reactiveTask(async () => d.promise);
 
     const pending = task.run();
     expect(task.isPending).toBe(true);
@@ -322,7 +309,7 @@ describe("reactiveTask", () => {
   });
 
   it("run() after dispose rejects without mutating state", async () => {
-    const task = reactiveTask(() => Effect.succeed("value"));
+    const task = reactiveTask(async () => "value");
     dispose(task);
 
     await expect(task.run()).rejects.toThrow("reactiveTask has been disposed");
@@ -346,7 +333,7 @@ describe("reactiveTask", () => {
 
 describe("reactivePromise — reactive bindings", () => {
   it("an effect tracking isPending fires on resolve", async () => {
-    const rp = reactivePromise(() => Effect.succeed(42));
+    const rp = reactivePromise(async () => 42);
     const history: Array<boolean> = [];
     effect(() => {
       history.push(rp.isPending);
@@ -358,7 +345,7 @@ describe("reactivePromise — reactive bindings", () => {
   });
 
   it("an effect tracking data fires once data is available", async () => {
-    const rp = reactivePromise(() => Effect.succeed("hello"));
+    const rp = reactivePromise(async () => "hello");
     const history: Array<unknown> = [];
     effect(() => {
       history.push(rp.data);
@@ -376,13 +363,9 @@ describe("reactivePromise — reactive bindings", () => {
     const deferreds = [d1, d2];
     let call = 0;
 
-    const rp = reactivePromise(() => {
+    const rp = reactivePromise(async () => {
       trigger();
-      const d = deferreds[call++]!;
-      return Effect.tryPromise({
-        try: () => d.promise,
-        catch: (e) => e as Error,
-      });
+      return deferreds[call++]!.promise;
     });
 
     const history: Array<string | undefined> = [];
@@ -406,7 +389,7 @@ describe("reactivePromise — reactive bindings", () => {
 describe("reactiveTask — reactive bindings", () => {
   it("an effect tracking isPending fires on run() and again on settle", async () => {
     const d = deferred<number>();
-    const task = reactiveTask(() => Effect.promise(() => d.promise));
+    const task = reactiveTask(async () => d.promise);
 
     const history: Array<boolean> = [];
     effect(() => {
@@ -425,58 +408,28 @@ describe("reactiveTask — reactive bindings", () => {
   });
 });
 
-describe("reactivePromise — interruption", () => {
-  it("a slow Effect interrupted by a rerun does not update the envelope", async () => {
+describe("reactivePromise — stale rejection", () => {
+  it("ignores rejection from a run whose AbortSignal is already aborted", async () => {
     const trigger = signal(0);
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const rp = reactivePromise(() => {
-      const n = trigger();
-      if (n === 0) {
-        // Slow run that should be interrupted before it can settle.
-        return Effect.sleep("1 second").pipe(Effect.as("slow"));
-      }
-      return Effect.succeed("fast");
-    });
-
-    trigger(1);
-    await rp.promise;
-    expect(rp.data).toBe("fast");
-
-    // Give the interrupted slow run a chance to (incorrectly) settle.
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(rp.data).toBe("fast");
-    expect(rp.isRejected).toBe(false);
-    expect(rp.error).toBe(null);
-  });
-
-  it("latest run wins even when a superseded run's promise already resolved", async () => {
-    const trigger = signal(0);
-    const d1 = deferred<string>();
-    const d2 = deferred<string>();
-    const deferreds = [d1, d2];
-    let call = 0;
-
-    const rp = reactivePromise(() => {
+    const rp = reactivePromise<string>(async (abortSignal) => {
       trigger();
-      const d = deferreds[call++]!;
-      return Effect.promise(() => d.promise);
+      return new Promise<string>((_resolve, reject) => {
+        abortSignal.addEventListener("abort", () => {
+          reject(new Error("aborted-by-rerun"));
+        });
+      });
     });
 
-    // Resolve run #0's underlying promise, then immediately supersede it.
-    // The superseded run must never surface its value.
-    d1.resolve("first");
     trigger(1);
-    d2.resolve("second");
-
-    await rp.promise;
-    expect(rp.data).toBe("second");
-
-    // Flush any late microtasks from the superseded run.
     await Promise.resolve();
     await Promise.resolve();
-    expect(rp.data).toBe("second");
+    await Promise.resolve();
+
     expect(rp.isRejected).toBe(false);
     expect(rp.error).toBe(null);
+
+    errSpy.mockRestore();
   });
 });

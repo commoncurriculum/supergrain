@@ -2,7 +2,6 @@ import { useReactivePromise } from "@supergrain/husk/react";
 import { createReactive } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
-import { Effect } from "effect";
 import { describe, it, expect, afterEach, vi } from "vitest";
 
 afterEach(() => cleanup());
@@ -22,7 +21,7 @@ describe("useReactivePromise()", () => {
     const d = deferred<number>();
 
     const Component = tracked(() => {
-      const rp = useReactivePromise(() => Effect.promise(() => d.promise));
+      const rp = useReactivePromise(() => d.promise);
       if (rp.isPending && !rp.isReady) return <span data-testid="v">loading</span>;
       return <span data-testid="v">{rp.data}</span>;
     });
@@ -42,9 +41,9 @@ describe("useReactivePromise()", () => {
     const runs: number[] = [];
 
     const Component = tracked(() => {
-      const rp = useReactivePromise(() => {
+      const rp = useReactivePromise(async () => {
         runs.push(store.n);
-        return Effect.succeed(store.n * 10);
+        return store.n * 10;
       });
       return <span data-testid="v">{rp.isReady ? rp.data : "…"}</span>;
     });
@@ -60,41 +59,33 @@ describe("useReactivePromise()", () => {
     await vi.waitFor(() => expect(getByTestId("v").textContent).toBe("50"));
   });
 
-  it("interrupts the in-flight Effect on rerun (latest wins)", async () => {
+  it("aborts in-flight fetch on rerun (old signal tripped)", async () => {
     const store = createReactive({ n: 1 });
-    const interrupted: number[] = [];
+    const signals: AbortSignal[] = [];
 
     const Component = tracked(() => {
-      const rp = useReactivePromise(() => {
+      useReactivePromise(async (signal) => {
         const current = store.n; // tracked
-        if (current === 1) {
-          // Slow run that should be interrupted before it settles.
-          return Effect.sleep("1 second").pipe(
-            Effect.as(current),
-            Effect.onInterrupt(() =>
-              Effect.sync(() => {
-                interrupted.push(current);
-              }),
-            ),
-          );
-        }
-        return Effect.succeed(current);
+        signals.push(signal);
+        return current;
       });
-      return <span data-testid="v">{rp.isReady ? rp.data : "…"}</span>;
+      return <span data-testid="v">ok</span>;
     });
 
-    const { getByTestId } = render(<Component />);
+    render(<Component />);
     await act(async () => {
       await Promise.resolve();
     });
+    expect(signals).toHaveLength(1);
+    expect(signals[0]!.aborted).toBe(false);
 
     await act(async () => {
       store.n = 2;
+      await Promise.resolve();
     });
-
-    // The slow first run is interrupted; only the second run settles.
-    await vi.waitFor(() => expect(getByTestId("v").textContent).toBe("2"));
-    await vi.waitFor(() => expect(interrupted).toEqual([1]));
+    expect(signals).toHaveLength(2);
+    expect(signals[0]!.aborted).toBe(true);
+    expect(signals[1]!.aborted).toBe(false);
   });
 
   it("re-renders only the consuming component, not its sibling", async () => {
@@ -104,7 +95,7 @@ describe("useReactivePromise()", () => {
 
     const Consumer = tracked(() => {
       consumerRenders();
-      const rp = useReactivePromise(() => Effect.succeed(store.n));
+      const rp = useReactivePromise(async () => store.n);
       return <span data-testid="consumer">{rp.isReady ? rp.data : "…"}</span>;
     });
 
@@ -137,23 +128,17 @@ describe("useReactivePromise()", () => {
     expect(siblingRenders.mock.calls.length).toBe(initialSiblingRenders);
   });
 
-  it("disposes on unmount — in-flight Effect interrupts, no further reruns", async () => {
+  it("disposes on unmount — in-flight signal aborts, no further reruns", async () => {
     const store = createReactive({ n: 1 });
-    let interrupted = false;
+    let lastSignal: AbortSignal | null = null;
     const runs = vi.fn();
 
     const Component = tracked(() => {
-      useReactivePromise(() => {
+      useReactivePromise(async (signal) => {
         runs();
-        store.n; // tracked
-        // Never settles; on dispose the Effect is interrupted.
-        return Effect.never.pipe(
-          Effect.onInterrupt(() =>
-            Effect.sync(() => {
-              interrupted = true;
-            }),
-          ),
-        );
+        const current = store.n; // tracked
+        lastSignal = signal;
+        return current;
       });
       return null;
     });
@@ -163,7 +148,7 @@ describe("useReactivePromise()", () => {
       await Promise.resolve();
     });
     expect(runs).toHaveBeenCalledTimes(1);
-    expect(interrupted).toBe(false);
+    expect(lastSignal!.aborted).toBe(false);
 
     unmount();
     // Dispose is deferred to a setTimeout so a StrictMode remount can
@@ -171,7 +156,7 @@ describe("useReactivePromise()", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
-    await vi.waitFor(() => expect(interrupted).toBe(true));
+    expect(lastSignal!.aborted).toBe(true);
 
     // After unmount, signal changes must not cause reruns
     await act(async () => {

@@ -645,3 +645,69 @@ describe("Finder empty queues and orphaned handles", () => {
     expectUntouched(queryHandle);
   });
 });
+
+// =============================================================================
+// Adapter boundary: Promise-first, Effect opt-in
+//
+// The public contract accepts a Promise (the common case) OR an Effect. The
+// finder normalizes both onto its Effect engine; a Promise rejection becomes
+// an AdapterError (passed through untouched if the adapter already threw one).
+// =============================================================================
+
+describe("adapter boundary (Promise | Effect)", () => {
+  function storeWithUserFind(find: DocumentAdapter["find"]): DocumentStore<TestTypes> {
+    return createDocumentStore<TestTypes>({
+      models: {
+        user: { adapter: { find } },
+        post: { adapter: makePostAdapter() },
+      },
+    });
+  }
+
+  it("accepts a Promise-returning adapter (no Effect) and populates the handle", async () => {
+    const store = storeWithUserFind(async (ids) => ids.map((id) => ({ id, name: `User${id}` })));
+    const h = store.find("user", "1");
+
+    await flushBatch();
+
+    expect(h.value?.name).toBe("User1");
+    expect(h.status).toBe("success");
+  });
+
+  it("wraps a Promise rejection into an AdapterError (cause preserved)", async () => {
+    const boom = new Error("network down");
+    const store = storeWithUserFind(async () => {
+      throw boom;
+    });
+    const h = store.find("user", "1");
+
+    await flushBatch();
+
+    expect(h.error).toBeInstanceOf(AdapterError);
+    expect((h.error as AdapterError).cause).toBe(boom);
+    expect((h.error as AdapterError).keys).toEqual(["1"]);
+  });
+
+  it("passes an AdapterError thrown by a Promise adapter through untouched (no double-wrap)", async () => {
+    const original = new AdapterError({ type: "user", keys: ["1"], cause: "explicit" });
+    const store = storeWithUserFind(async () => {
+      throw original;
+    });
+    const h = store.find("user", "1");
+
+    await flushBatch();
+
+    expect(h.error).toBe(original);
+  });
+
+  it("still accepts an Effect-returning adapter as-is", async () => {
+    const store = storeWithUserFind((ids) =>
+      Effect.succeed(ids.map((id) => ({ id, name: `User${id}` }))),
+    );
+    const h = store.find("user", "1");
+
+    await flushBatch();
+
+    expect(h.value?.name).toBe("User1");
+  });
+});

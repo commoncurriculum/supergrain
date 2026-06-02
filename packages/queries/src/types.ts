@@ -18,21 +18,23 @@ import type { Effect } from "effect";
  *   helper can insert it under the correct type. This is a queries-specific
  *   requirement on top of the core library's minimal `{ id }` contract.
  *
- * `fetch` returns an Effect (consistent with `@supergrain/silo` adapters) that
- * succeeds with the response envelope or fails with `AdapterError`.
+ * `fetch` returns the response envelope. **Return a `Promise`** for the common
+ * case (a rejection becomes an `AdapterError`); power users can **return an
+ * `Effect`** to control the failure channel — consistent with
+ * `@supergrain/silo` adapters.
  */
 export interface QueryAdapter<T> {
   fetch(
     id: string,
     opts: { offset: number; limit: number },
-  ): Effect.Effect<
-    {
-      data: { results: Array<T> };
-      meta?: { nextOffset?: number | null };
-      included?: Array<{ type: string; id: string }>;
-    },
-    AdapterError
-  >;
+  ): Promise<QueryEnvelope<T>> | Effect.Effect<QueryEnvelope<T>, AdapterError>;
+}
+
+/** The fixed response envelope a {@link QueryAdapter} resolves with. */
+export interface QueryEnvelope<T> {
+  data: { results: Array<T> };
+  meta?: { nextOffset?: number | null };
+  included?: Array<{ type: string; id: string }>;
 }
 
 // =============================================================================

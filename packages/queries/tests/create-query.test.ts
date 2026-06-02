@@ -796,3 +796,49 @@ describe("default retry behavior", () => {
     q.destroy();
   });
 });
+
+// =============================================================================
+// Promise-first adapter boundary
+//
+// `fetch` may return a plain Promise (the common case) or an Effect. The query
+// normalizes both; a Promise rejection becomes an AdapterError.
+// =============================================================================
+
+describe("Promise-first adapter boundary", () => {
+  it("accepts a Promise-returning fetch (no Effect) and writes results", async () => {
+    const store = makeStore();
+    const adapter: QueryAdapter<PlanbookRef> = {
+      fetch: async () => ({ data: { results: [ref("p1", 0)] }, meta: { nextOffset: 1 } }),
+    };
+
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+    await q.refetch();
+
+    expect(q.results).toEqual([ref("p1", 0)]);
+    expect(q.nextOffset).toBe(1);
+    q.destroy();
+  });
+
+  it("wraps a Promise rejection into an AdapterError (cause preserved)", async () => {
+    const store = makeStore();
+    const boom = new Error("query network down");
+    const adapter: QueryAdapter<PlanbookRef> = {
+      fetch: async () => {
+        throw boom;
+      },
+    };
+
+    const q = createQuery({
+      store,
+      adapter,
+      type: "planbooks_for_user",
+      id: "u1",
+      backoff: () => 9_999_999,
+    });
+    await q.refetch();
+
+    expect(q.error).toBeInstanceOf(AdapterError);
+    expect((q.error as AdapterError).cause).toBe(boom);
+    q.destroy();
+  });
+});

@@ -149,22 +149,31 @@ export type DocumentHandle<T, E = SiloError> =
 // =============================================================================
 
 /**
- * Talks to the API. Takes N ids and returns an `Effect` that produces a raw
- * response of whatever shape the API emits, failing with `AdapterError`. The
- * adapter owns *how* the data is fetched — bulk GET, N parallel GETs, a
- * websocket cycle, anything — typically by wrapping its transport in
- * `Effect.tryPromise`.
+ * Talks to the API. Takes N ids and returns the raw response of whatever shape
+ * the API emits. The adapter owns *how* the data is fetched — bulk GET, N
+ * parallel GETs, a websocket cycle, anything.
  *
- * The library doesn't inspect the raw value — only the paired
- * `ResponseProcessor` does.
+ * **Return a `Promise`** for the common case — the store runs it on its Effect
+ * engine (batching, `retry`/`timeout`) for you, and a rejection becomes an
+ * `AdapterError` automatically. Power users can **return an `Effect`** instead
+ * to control the failure channel, compose their own retries, or manage
+ * resources; it's used as-is. The library doesn't inspect the raw value — only
+ * the paired `ResponseProcessor` does.
  *
  * Contract:
  * - `find` receives a chunk of at most `DocumentStoreConfig.batchSize` ids,
  *   grouped by type and deduped (no duplicate ids in one call).
- * - A failed Effect fails every deferred waiting on that chunk.
+ * - A rejected Promise / failed Effect fails every deferred waiting on that
+ *   chunk (as an `AdapterError`).
  *
  * @example
  * ```ts
+ * // Promise (the simple default):
+ * const userAdapter: DocumentAdapter = {
+ *   find: (ids) => fetch(`/users?ids=${ids.join(",")}`).then((r) => r.json()),
+ * };
+ *
+ * // Effect (opt-in, for typed errors / custom retries / resources):
  * const userAdapter: DocumentAdapter = {
  *   find: (ids) =>
  *     Effect.tryPromise({
@@ -175,7 +184,7 @@ export type DocumentHandle<T, E = SiloError> =
  * ```
  */
 export interface DocumentAdapter {
-  find(ids: Array<string>): Effect.Effect<unknown, AdapterError>;
+  find(ids: Array<string>): Promise<unknown> | Effect.Effect<unknown, AdapterError>;
 }
 
 // =============================================================================

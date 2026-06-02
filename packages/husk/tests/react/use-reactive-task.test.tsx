@@ -3,7 +3,6 @@ import type { ReactiveTask } from "@supergrain/husk";
 import { useReactiveTask } from "@supergrain/husk/react";
 import { tracked } from "@supergrain/kernel/react";
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { Effect } from "effect";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -22,7 +21,7 @@ function deferred<T>() {
 describe("useReactiveTask()", () => {
   it("creates a stable task and runs it successfully", async () => {
     const Component = tracked(() => {
-      const task = useReactiveTask((n: number) => Effect.succeed(n * 2));
+      const task = useReactiveTask(async (n: number) => n * 2);
       return (
         <div>
           <span data-testid="pending">{String(task.isPending)}</span>
@@ -49,7 +48,7 @@ describe("useReactiveTask()", () => {
     let task: ReactiveTask<[number], number> | null = null;
 
     const Component = tracked(({ multiplier }: { multiplier: number }) => {
-      task = useReactiveTask((value: number) => Effect.succeed(value * multiplier));
+      task = useReactiveTask(async (value: number) => value * multiplier);
       return <span data-testid="value">{task.isReady ? task.data : "idle"}</span>;
     });
 
@@ -75,7 +74,7 @@ describe("useReactiveTask()", () => {
 
     const Component = tracked(({ tick }: { tick: number }) => {
       void tick;
-      const task = useReactiveTask(() => Effect.succeed(1));
+      const task = useReactiveTask(async () => 1);
       if (!taskRef) {
         taskRef = task;
       } else {
@@ -93,9 +92,7 @@ describe("useReactiveTask()", () => {
     let task: ReactiveTask<[number], number> | null = null;
 
     const Component = tracked(() => {
-      task = useReactiveTask((value: number) =>
-        Effect.promise(() => d.promise).pipe(Effect.map((factor) => value * factor)),
-      );
+      task = useReactiveTask(async (value: number) => value * (await d.promise));
       return (
         <span data-testid="value">
           {task.isPending ? "pending" : task.isReady ? task.data : "idle"}
@@ -136,7 +133,7 @@ describe("useReactiveTask()", () => {
     let task: ReactiveTask<[number], number> | null = null;
 
     const Component = tracked(() => {
-      task = useReactiveTask((value: number) => Effect.succeed(value * 2));
+      task = useReactiveTask(async (value: number) => value * 2);
       return <span data-testid="value">{task.isReady ? task.data : "idle"}</span>;
     });
 

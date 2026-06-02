@@ -38,19 +38,11 @@ export interface Post {
 export type TypeToModel = { user: User; post: Post };
 
 const userAdapter: DocumentAdapter = {
-  find: (ids) =>
-    Effect.tryPromise({
-      try: () => Promise.all(ids.map((id) => fetch(`/api/users/${id}`).then((r) => r.json()))),
-      catch: (cause) => new AdapterError({ type: "user", keys: ids, cause }),
-    }),
+  find: (ids) => Promise.all(ids.map((id) => fetch(`/api/users/${id}`).then((r) => r.json()))),
 };
 
 const postAdapter: DocumentAdapter = {
-  find: (ids) =>
-    Effect.tryPromise({
-      try: () => Promise.all(ids.map((id) => fetch(`/api/posts/${id}`).then((r) => r.json()))),
-      catch: (cause) => new AdapterError({ type: "post", keys: ids, cause }),
-    }),
+  find: (ids) => Promise.all(ids.map((id) => fetch(`/api/posts/${id}`).then((r) => r.json()))),
 };
 
 export const { Provider, useDocumentStore, useDocument } =
@@ -64,7 +56,15 @@ export const config = {
 };
 ```
 
-Adapters above are **fan-out** style — N parallel `GET /:id` requests, merged. Each adapter returns an [Effect](https://effect.website/) that produces the raw response and fails with a typed `AdapterError`; the library doesn't care how you fetch, only that you eventually return something the processor can read. Effect also lets you declare `retry`/`timeout` per model (see config below). If your API exposes a bulk endpoint, one `GET` with all the ids works just as well:
+Adapters above are **fan-out** style — N parallel `GET /:id` requests, merged. Just **return a `Promise`** of whatever the processor can read; the store runs it on its internal [Effect](https://effect.website/) engine (batching, `retry`/`timeout`) and turns a rejection into a typed `AdapterError` for you. The library doesn't care how you fetch. If your API exposes a bulk endpoint, one `GET` with all the ids works just as well:
+
+```ts
+const userAdapter: DocumentAdapter = {
+  find: (ids) => fetch(`/api/users?${ids.map((id) => `id=${id}`).join("&")}`).then((r) => r.json()),
+};
+```
+
+Power users can **return an `Effect`** instead — to own the failure channel, compose custom retries, or manage resources. It's used as-is:
 
 ```ts
 const userAdapter: DocumentAdapter = {

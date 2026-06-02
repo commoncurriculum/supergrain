@@ -1,5 +1,4 @@
 import { createReactive } from "@supergrain/kernel";
-import { Effect, Either } from "effect";
 
 import { registerDisposer, resource } from "./resource";
 
@@ -9,17 +8,17 @@ import { registerDisposer, resource } from "./resource";
  * `tracked()` component or an `effect()` and you subscribe per-field.
  *
  * Inline sugar over `resource` for the async-envelope case. Reactive
- * reads in the body of the `effectFn` thunk (evaluated when the Effect
- * is built) are tracked — when they change, the current run is
- * interrupted and a fresh run starts.
+ * reads in the sync prefix of `asyncFn` (before the first `await`) are
+ * tracked — when they change, the current run is aborted via
+ * `abortSignal` and a fresh run starts.
  *
  * Field names match the ecosystem (SWR / TanStack Query / Apollo /
  * URQL) and `@supergrain/silo` exactly: `.data` for the resolved value,
  * `.promise` for the stable thenable handle.
  */
-export interface ReactivePromise<T, E = unknown> {
+export interface ReactivePromise<T> {
   readonly data: T | null;
-  readonly error: E | null;
+  readonly error: unknown;
   readonly isPending: boolean;
   readonly isResolved: boolean;
   readonly isRejected: boolean;
@@ -33,9 +32,9 @@ export interface ReactivePromise<T, E = unknown> {
  * trigger. Same envelope fields as `ReactivePromise`. Use for
  * user-initiated mutations (form submits, save buttons).
  */
-export interface ReactiveTask<Args extends unknown[], T, E = unknown> {
+export interface ReactiveTask<Args extends unknown[], T> {
   readonly data: T | null;
-  readonly error: E | null;
+  readonly error: unknown;
   readonly isPending: boolean;
   readonly isResolved: boolean;
   readonly isRejected: boolean;
@@ -44,9 +43,9 @@ export interface ReactiveTask<Args extends unknown[], T, E = unknown> {
   run(...args: Args): Promise<T>;
 }
 
-interface PromiseEnvelope<T, E> {
+interface PromiseEnvelope<T> {
   data: T | null;
-  error: E | null;
+  error: unknown;
   isPending: boolean;
   isResolved: boolean;
   isRejected: boolean;
@@ -55,9 +54,9 @@ interface PromiseEnvelope<T, E> {
   promise: Promise<T>;
 }
 
-interface TaskEnvelope<Args extends unknown[], T, E> {
+interface TaskEnvelope<Args extends unknown[], T> {
   data: T | null;
-  error: E | null;
+  error: unknown;
   isPending: boolean;
   isResolved: boolean;
   isRejected: boolean;
@@ -92,21 +91,22 @@ function deferred<T>(): Deferred<T> {
  * @example
  * ```ts
  * const userId = signal(1);
- * const user = reactivePromise(() =>
- *   Effect.tryPromise(() => fetch(`/users/${userId()}`).then((r) => r.json())),
- * );
+ * const user = reactivePromise(async (signal) => {
+ *   const res = await fetch(`/users/${userId()}`, { signal });
+ *   return res.json();
+ * });
  *
  * user.data;        // T | null
  * user.isPending;   // boolean
  * await user.promise;
  *
- * userId(2); // old run interrupted, new one starts
+ * userId(2); // old fetch aborted, new one starts
  * ```
  */
-export function reactivePromise<T, E = unknown>(
-  effectFn: () => Effect.Effect<T, E>,
-): ReactivePromise<T, E> {
-  return resource<PromiseEnvelope<T, E>>(
+export function reactivePromise<T>(
+  asyncFn: (abortSignal: AbortSignal) => Promise<T>,
+): ReactivePromise<T> {
+  return resource<PromiseEnvelope<T>>(
     {
       data: null,
       error: null,
@@ -124,67 +124,63 @@ export function reactivePromise<T, E = unknown>(
       state.isResolved = false;
       state.isRejected = false;
 
-      // `effectFn()` is evaluated here, inside the tracked resource setup,
-      // so reactive reads in the thunk body drive reruns. `Effect.either`
-      // turns the typed error into a value; the `{ signal }` option
-      // interrupts the Effect when the resource aborts on rerun/dispose.
-      const p = Effect.runPromise(Effect.either(effectFn()), { signal: abortSignal });
+      const p: Promise<T> = (() => {
+        try {
+          return Promise.resolve(asyncFn(abortSignal));
+        } catch (error) {
+          return Promise.reject<T>(error);
+        }
+      })();
 
       p.then(
-        (result) => {
+        (v) => {
           if (abortSignal.aborted) return;
-          if (Either.isRight(result)) {
-            const v = result.right;
-            state.data = v;
-            state.error = null;
-            state.isResolved = true;
-            state.isRejected = false;
-            state.isSettled = true;
-            state.isReady = true;
-            state.isPending = false;
-            d.resolve(v);
-          } else {
-            const err = result.left;
-            state.error = err;
-            state.isResolved = false;
-            state.isRejected = true;
-            state.isSettled = true;
-            state.isPending = false;
-            d.reject(err);
-          }
+          state.data = v;
+          state.error = null;
+          state.isResolved = true;
+          state.isRejected = false;
+          state.isSettled = true;
+          state.isReady = true;
+          state.isPending = false;
+          d.resolve(v);
         },
-        // Interruption (after abort) rejects the runPromise; that's
-        // expected — the run was superseded, so do nothing.
-        () => {},
+        (error) => {
+          if (abortSignal.aborted) return;
+          state.error = error;
+          state.isResolved = false;
+          state.isRejected = true;
+          state.isSettled = true;
+          state.isPending = false;
+          d.reject(error);
+        },
       );
     },
-  ) as ReactivePromise<T, E>;
+  ) as ReactivePromise<T>;
 }
 
 /**
  * @example
  * ```ts
- * const saveUser = reactiveTask((id: string, name: string) =>
- *   Effect.tryPromise(() =>
- *     fetch(`/users/${id}`, {
- *       method: "PATCH",
- *       body: JSON.stringify({ name }),
- *     }).then((r) => r.json()),
- *   ),
- * );
+ * const saveUser = reactiveTask(async (id: string, name: string) => {
+ *   const res = await fetch(`/users/${id}`, {
+ *     method: "PATCH",
+ *     body: JSON.stringify({ name }),
+ *   });
+ *   return res.json();
+ * });
  *
  * <button onClick={() => saveUser.run(id, name)} disabled={saveUser.isPending}>
  *   Save
  * </button>
  * ```
  */
-export function reactiveTask<Args extends unknown[], T, E = unknown>(
-  effectFn: (...args: Args) => Effect.Effect<T, E>,
-): ReactiveTask<Args, T, E> {
+export function reactiveTask<Args extends unknown[], T>(
+  asyncFn: (...args: Args) => Promise<T>,
+): ReactiveTask<Args, T> {
   let generation = 0;
   let disposed = false;
 
-  const state = createReactive<TaskEnvelope<Args, T, E>>({
+  const state = createReactive<TaskEnvelope<Args, T>>({
     data: null,
     error: null,
     isPending: false,
@@ -208,11 +204,16 @@ export function reactiveTask<Args extends unknown[], T, E = unknown>(
       state.isResolved = false;
       state.isRejected = false;
 
-      const p = Effect.runPromise(Effect.either(effectFn(...args)));
+      const p: Promise<T> = (() => {
+        try {
+          return Promise.resolve(asyncFn(...args));
+        } catch (error) {
+          return Promise.reject<T>(error);
+        }
+      })();
 
-      return p.then((result) => {
-        if (Either.isRight(result)) {
-          const v = result.right;
+      return p.then(
+        (v) => {
           if (!disposed && gen === generation) {
             state.data = v;
             state.error = null;
@@ -223,21 +224,20 @@ export function reactiveTask<Args extends unknown[], T, E = unknown>(
             state.isPending = false;
           }
           return v;
-        }
-        const err = result.left;
-        if (!disposed && gen === generation) {
-          state.error = err;
-          state.isResolved = false;
-          state.isRejected = true;
-          state.isSettled = true;
-          state.isPending = false;
-        }
-        // Reject the returned promise so `run()`'s imperative contract
-        // (awaiters observe failures) is preserved.
-        throw err;
-      });
+        },
+        (error) => {
+          if (!disposed && gen === generation) {
+            state.error = error;
+            state.isResolved = false;
+            state.isRejected = true;
+            state.isSettled = true;
+            state.isPending = false;
+          }
+          throw error;
+        },
+      );
     },
-  }) as TaskEnvelope<Args, T, E>;
+  }) as TaskEnvelope<Args, T>;
 
   registerDisposer(state, () => {
     disposed = true;

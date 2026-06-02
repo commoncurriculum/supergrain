@@ -2,9 +2,9 @@
 "@supergrain/silo": major
 ---
 
-Migrate the network/async layer to [Effect](https://effect.website/) and remodel the reactive handle as a statechart. **Breaking.**
+Rebuild the network/async layer on an internal [Effect](https://effect.website/) engine and remodel the reactive handle as a statechart. **Breaking.**
 
-**Adapters now return `Effect` instead of `Promise`.** `DocumentAdapter.find` / `QueryAdapter.find` return `Effect.Effect<unknown, AdapterError>` — typically `Effect.tryPromise({ try, catch: (cause) => new AdapterError(...) })`. `effect` is now a (required) peer dependency.
+**Adapters stay Promise-first.** `DocumentAdapter.find` returns `Promise<unknown> | Effect.Effect<unknown, AdapterError>` — **return a plain `Promise`** for the common case (the store runs it on its Effect engine and turns a rejection into an `AdapterError` for you), or **return an `Effect`** to own the failure channel / compose retries / manage resources. Effect powers the engine internally but is not required at the adapter boundary. `effect` is a peer dependency (installed, but you don't have to write Effect).
 
 **Typed errors.** New `AdapterError` / `NotFoundError` / `ProcessorError` (`Data.TaggedError`, union `SiloError`), exported from the root. They are the `E` channel of adapter Effects and the error carried by a failed handle.
 
@@ -42,4 +42,4 @@ type DocumentHandle<T, E = SiloError> =
 
 The previous `status: "IDLE" | "PENDING" | "SUCCESS" | "ERROR"`, `data: T | undefined`, `isPending`, and `hasData` are gone; `error` is now a typed `SiloError`. Narrowing on `status` refines `value` to `T`; `error` and `value` coexist in `success` (stale-while-revalidate); `isFetching` is orthogonal (stays out of `status`, so `status` doesn't flip on a background refetch); each field is tracked independently (fine-grained reactivity).
 
-Migration: replace `handle.data` with `handle.value`; `handle.isPending` with `handle.value === undefined && handle.isFetching`; `handle.hasData` with `handle.value !== undefined`; `handle.status` string literals are now lowercase; and wrap Promise-returning adapters in `Effect.tryPromise`.
+Migration: replace `handle.data` with `handle.value`; `handle.isPending` with `handle.value === undefined && handle.isFetching`; `handle.hasData` with `handle.value !== undefined`; `handle.status` string literals are now lowercase. Promise-returning adapters keep working as-is — no `Effect.tryPromise` wrapping required.

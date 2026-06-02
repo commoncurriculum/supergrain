@@ -19,6 +19,29 @@ import { applyEvent, HandleEvent, type InternalHandle } from "./transitions";
 export type { InternalHandle } from "./transitions";
 export type { InternalState } from "./store";
 
+/**
+ * Normalize an adapter result to the Effect engine. A Promise-returning adapter
+ * (the common case) is wrapped lazily so its work starts when the chunk drains;
+ * a rejection becomes an `AdapterError` (passed through untouched if the adapter
+ * already threw one). An Effect-returning adapter is used as-is.
+ */
+function toAdapterEffect(
+  invoke: () => Promise<unknown> | Effect.Effect<unknown, AdapterError>,
+  type: string,
+  keys: ReadonlyArray<string>,
+): Effect.Effect<unknown, AdapterError> {
+  return Effect.suspend(() => {
+    const out = invoke();
+    return Effect.isEffect(out)
+      ? out
+      : Effect.tryPromise({
+          try: () => out,
+          catch: (cause) =>
+            cause instanceof AdapterError ? cause : new AdapterError({ type, keys, cause }),
+        });
+  });
+}
+
 // =============================================================================
 // Finder — INTERNAL batching / chunking pipeline, built on Effect.
 //
@@ -151,7 +174,12 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     const processor: ResponseProcessor<M> =
       modelConfig.processor ?? (defaultProcessor as ResponseProcessor<M>);
 
-    return this.adapterEffect(modelConfig, type, ids, modelConfig.adapter.find(ids)).pipe(
+    return this.adapterEffect(
+      modelConfig,
+      type,
+      ids,
+      toAdapterEffect(() => modelConfig.adapter.find(ids), type, ids),
+    ).pipe(
       Effect.flatMap((raw) => Effect.sync(() => this.commitDocuments(type, ids, raw, processor))),
       Effect.catchAll((error: AdapterError) =>
         Effect.sync(() => this.failChunk(this.state!.documents, type, ids, error)),
@@ -195,11 +223,12 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
 
     const paramsList = chunk.map((e) => e.params);
 
+    const queryKeys = chunk.map((e) => e.paramsKey);
     return this.adapterEffect(
       queryConfig,
       type,
-      chunk.map((e) => e.paramsKey),
-      queryConfig.adapter.find(paramsList),
+      queryKeys,
+      toAdapterEffect(() => queryConfig.adapter.find(paramsList), type, queryKeys),
     ).pipe(
       Effect.flatMap((raw) =>
         Effect.sync(() => this.commitQueries(type, chunk, paramsList, raw, processor)),
