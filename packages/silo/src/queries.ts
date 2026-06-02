@@ -55,10 +55,10 @@ export type RegisteredQueries = TypeRegistry extends {
 
 /**
  * Talks to the API for a query model. Receives N params objects (raw —
- * the library does NOT stringify before handing off) and returns an `Effect`
- * producing a raw response, failing with `AdapterError`. Behaves exactly like
- * `DocumentAdapter` but `find` takes `Array<Params>` instead of
- * `Array<string>`.
+ * the library does NOT stringify before handing off) and returns the raw
+ * response. Behaves exactly like `DocumentAdapter` but `find` takes
+ * `Array<Params>` instead of `Array<string>`: **return a `Promise`** (rejection
+ * → `AdapterError`) or **return an `Effect`** for full control.
  *
  * Stringification is only for the library's internal cache lookup, dedup,
  * and in-flight tracking. The adapter sees the original params.
@@ -67,10 +67,15 @@ export type RegisteredQueries = TypeRegistry extends {
  * - `find` is called with a chunk of at most `batchSize` params objects
  *   (the library dedupes concurrent deep-equal-param requests before
  *   calling the adapter).
- * - A failed Effect fails every deferred waiting on that chunk.
+ * - A rejected Promise / failed Effect fails every deferred waiting on the chunk.
+ * - `ctx.signal` aborts when the chunk is abandoned; thread it into your
+ *   transport for a real network abort, or ignore it.
  */
 export interface QueryAdapter<Params> {
-  find(paramsList: Array<Params>): Effect.Effect<unknown, AdapterError>;
+  find(
+    paramsList: Array<Params>,
+    ctx?: { signal: AbortSignal },
+  ): Promise<unknown> | Effect.Effect<unknown, AdapterError>;
 }
 
 // =============================================================================

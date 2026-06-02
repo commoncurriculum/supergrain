@@ -1,6 +1,13 @@
 import type { QueryHandle, QueryTypes, RegisteredQueries } from "../queries";
 
-import { createContext, createElement, useContext, useState, type ReactNode } from "react";
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
   createDocumentStore,
@@ -166,6 +173,13 @@ export function createDocumentStoreContext<
     // useDocumentStore() returns S which extends DocumentStore<M, Q>; the cast
     // narrows back to the concrete DocumentStore<M, Q> so .find() is callable.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
+    // Register interest for this mount so the store keeps the fetch alive while
+    // mounted and may cancel it once the last subscriber unmounts.
+    useEffect(() => {
+      if (id === null || id === undefined) return;
+      // eslint-disable-next-line consistent-return -- cleanup only when subscribed
+      return store.subscribeDocument(type, id);
+    }, [store, type, id]);
     // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
     return store.find(type, id);
   }
@@ -176,6 +190,13 @@ export function createDocumentStoreContext<
   ): QueryHandle<Q[K]["result"]> {
     // Same narrowing cast as useDocument above.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
+    // params is an object; serialize for a stable effect dependency.
+    const paramsKey = params === null || params === undefined ? null : JSON.stringify(params);
+    useEffect(() => {
+      if (params === null || params === undefined) return;
+      // eslint-disable-next-line consistent-return -- cleanup only when subscribed
+      return store.subscribeQuery(type, params);
+    }, [store, type, paramsKey]);
     return store.findQuery(type, params);
   }
 

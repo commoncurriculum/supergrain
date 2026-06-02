@@ -38,11 +38,13 @@ export interface Post {
 export type TypeToModel = { user: User; post: Post };
 
 const userAdapter: DocumentAdapter = {
-  find: (ids) => Promise.all(ids.map((id) => fetch(`/api/users/${id}`).then((r) => r.json()))),
+  find: (ids, { signal } = {}) =>
+    Promise.all(ids.map((id) => fetch(`/api/users/${id}`, { signal }).then((r) => r.json()))),
 };
 
 const postAdapter: DocumentAdapter = {
-  find: (ids) => Promise.all(ids.map((id) => fetch(`/api/posts/${id}`).then((r) => r.json()))),
+  find: (ids, { signal } = {}) =>
+    Promise.all(ids.map((id) => fetch(`/api/posts/${id}`, { signal }).then((r) => r.json()))),
 };
 
 export const { Provider, useDocumentStore, useDocument } =
@@ -56,7 +58,7 @@ export const config = {
 };
 ```
 
-Adapters above are **fan-out** style — N parallel `GET /:id` requests, merged. Just **return a `Promise`** of whatever the processor can read; the store runs it on its internal [Effect](https://effect.website/) engine (batching, `retry`/`timeout`) and turns a rejection into a typed `AdapterError` for you. The library doesn't care how you fetch. If your API exposes a bulk endpoint, one `GET` with all the ids works just as well:
+Adapters above are **fan-out** style — N parallel `GET /:id` requests, merged. Just **return a `Promise`** of whatever the processor can read; the store runs it on its internal [Effect](https://effect.website/) engine (batching, `retry`/`timeout`, cancellation) and turns a rejection into a typed `AdapterError` for you. The optional `{ signal }` aborts when the fetch is no longer needed (see [Cancellation](#cancellation)); thread it into `fetch` or ignore it. The library doesn't care how you fetch. If your API exposes a bulk endpoint, one `GET` with all the ids works just as well:
 
 ```ts
 const userAdapter: DocumentAdapter = {
@@ -142,6 +144,12 @@ export function UserCard({ id }: { id: string }) {
 
 Wrap the component in a `<Suspense>` boundary. That's it. One line to opt in, nothing to configure, no `{ suspense: true }` flag.
 
+### Cancellation
+
+`useDocument` / `useQuery` register a subscriber for the duration of the mount. Because the cache is shared, a fetch is cancelled only when the **last** subscriber for every key in its batch goes away — navigate away from the only screen using a doc mid-fetch and its request is interrupted, aborting the `AbortSignal` you threaded into `fetch`. A renewed `find` refetches from idle. The interrupt is deferred to the next tick (`gcTimeMs`, default `0`) so a StrictMode remount or a quick nav-back cancels it before any work is lost; raise `gcTimeMs` to keep abandoned fetches warm for a while. Non-React callers can ref-count manually via `store.subscribeDocument(type, id)` / `store.subscribeQuery(type, params)`, which return an unsubscribe function.
+
+The whole engine — batch window included — runs on Effect's clock, so timing is deterministic under a `TestClock`.
+
 ## Why this instead of TanStack Query / SWR?
 
 Short version: the same architecture both libraries wish they had started with.
@@ -167,6 +175,7 @@ const store = createDocumentStore<TypeToModel>({
   },
   batchWindowMs: 15, // default — collapse calls within this window
   batchSize: 60, // default — chunk size per adapter.find() call
+  gcTimeMs: 0, // default — grace before an abandoned in-flight fetch is cancelled
 });
 ```
 

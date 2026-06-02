@@ -165,12 +165,16 @@ export type DocumentHandle<T, E = SiloError> =
  *   grouped by type and deduped (no duplicate ids in one call).
  * - A rejected Promise / failed Effect fails every deferred waiting on that
  *   chunk (as an `AdapterError`).
+ * - `ctx.signal` aborts when the fetch is no longer needed (every subscriber
+ *   for the chunk has gone away). Thread it into `fetch(url, { signal })` for a
+ *   real network abort; ignore it and interruption simply discards the result.
  *
  * @example
  * ```ts
  * // Promise (the simple default):
  * const userAdapter: DocumentAdapter = {
- *   find: (ids) => fetch(`/users?ids=${ids.join(",")}`).then((r) => r.json()),
+ *   find: (ids, { signal } = {}) =>
+ *     fetch(`/users?ids=${ids.join(",")}`, { signal }).then((r) => r.json()),
  * };
  *
  * // Effect (opt-in, for typed errors / custom retries / resources):
@@ -184,7 +188,10 @@ export type DocumentHandle<T, E = SiloError> =
  * ```
  */
 export interface DocumentAdapter {
-  find(ids: Array<string>): Promise<unknown> | Effect.Effect<unknown, AdapterError>;
+  find(
+    ids: Array<string>,
+    ctx?: { signal: AbortSignal },
+  ): Promise<unknown> | Effect.Effect<unknown, AdapterError>;
 }
 
 // =============================================================================
@@ -250,6 +257,14 @@ export interface DocumentStoreConfig<
    * are chunked. Default: 60.
    */
   batchSize?: number;
+  /**
+   * Grace period in ms after the last subscriber for an in-flight fetch goes
+   * away before its request is interrupted. `0` (default) defers to the next
+   * tick, so a synchronous re-subscribe (React StrictMode remount, fast
+   * nav-back) cancels the interrupt. Raise it for TanStack-style "keep the
+   * fetch warm" behavior. Only takes effect for keys with `subscribe`rs.
+   */
+  gcTimeMs?: number;
 }
 
 // =============================================================================
@@ -281,6 +296,15 @@ export interface DocumentStore<
     result: Q[K]["result"],
   ): void;
   clearMemory(): void;
+  /**
+   * Register interest in a document. While the count is &gt; 0 an in-flight fetch
+   * for `(type, id)` is kept; when it returns to 0 the fetch may be interrupted
+   * (see `gcTimeMs`). The React `useDocument` hook calls this on mount and the
+   * returned cleanup on unmount; call it directly only for non-React consumers.
+   */
+  subscribeDocument<K extends keyof M & string>(type: K, id: string): () => void;
+  /** Query analogue of {@link DocumentStore.subscribeDocument}. */
+  subscribeQuery<K extends keyof Q & string>(type: K, params: Q[K]["params"]): () => void;
 }
 
 const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
@@ -414,6 +438,17 @@ export function createDocumentStore<
           for (const handle of bucket.values()) applyEvent(handle, HandleEvent.reset());
         }
       });
+    },
+
+    subscribeDocument<K extends keyof M & string>(type: K, id: string): () => void {
+      finder.subscribe("documents", type, id);
+      return () => finder.unsubscribe("documents", type, id);
+    },
+
+    subscribeQuery<K extends keyof Q & string>(type: K, params: Q[K]["params"]): () => void {
+      const paramsKey = stableStringify(params);
+      finder.subscribe("queries", type, paramsKey);
+      return () => finder.unsubscribe("queries", type, paramsKey);
     },
   };
 
