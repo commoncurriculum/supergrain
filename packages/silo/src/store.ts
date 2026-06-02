@@ -74,71 +74,75 @@ export type RegisteredTypes = TypeRegistry extends { types: infer T extends Docu
   : DocumentTypes;
 
 // =============================================================================
-// Handle regions — two orthogonal statechart regions
+// Handle — flat, orthogonal fields
 // =============================================================================
 
 /**
- * Data region — what value, if any, the handle currently holds.
+ * Coarse lifecycle convenience, derived from the orthogonal fields:
+ * - `success` — a `value` has loaded (even if a later refetch errored).
+ * - `error`   — the first load failed and there is still no `value`.
+ * - `pending` — no `value` and no first-load error yet.
  *
- * - `Absent`  — nothing loaded yet.
- * - `Present` — a last-known-good `value` (kept across refetches, even failing
- *   ones, for stale-while-revalidate).
+ * `status` never contradicts the fields and does not narrow `value`; branch on
+ * `value` / `error` / `isFetching` directly when you need the full picture.
  */
-export type DataState<T> =
-  | { readonly _tag: "Absent" }
-  | { readonly _tag: "Present"; readonly value: T; readonly fetchedAt: Date };
+export type HandleStatus = "pending" | "success" | "error";
 
 /**
- * Fetch region — what the most recent fetch is doing / how it settled.
- *
- * - `Idle`     — no fetch in flight.
- * - `Fetching` — a (re)fetch is in flight.
- * - `Failed`   — the most recent fetch failed, carrying the typed `error`.
+ * Stable Promise for use with React 19's `use()`. Present once a fetch has
+ * started. Resolves on first successful load (reused across refetches);
+ * rejects once if the first fetch errors; an `insertDocument` after a
+ * first-load error hands out a NEW resolved promise so a Suspense boundary
+ * nested in an error boundary can recover.
  */
-export type FetchState<E = SiloError> =
-  | { readonly _tag: "Idle" }
-  | { readonly _tag: "Fetching" }
-  | { readonly _tag: "Failed"; readonly error: E };
+type HandlePromise<T> = Promise<T> | undefined;
 
 /**
- * Reactive handle for a single document — the product of two orthogonal
- * regions. `value` is in scope only once `data` is narrowed to `Present`;
- * `error` only once `fetch` is narrowed to `Failed`. The two regions vary
- * independently, so a stale `value` and a refetch `error` coexist rather than
- * clobbering each other.
+ * Reactive handle for a single document — a `status`-discriminated union over
+ * flat, orthogonal fields. Narrowing on `status` (or on `value !== undefined`)
+ * refines `value` to `T`; `error` and `value` coexist in `success` so a stale
+ * value and a fresh refetch error don't clobber each other.
  *
  * Backed by a single stable reactive object: `store.find("user", "1")` returns
- * the same handle every call, and reads of `data` / `fetch` subscribe per
- * region, so a component reading only `data` does not re-render when a
- * background refetch toggles `fetch`.
+ * the same handle every call, and each field is tracked independently — a
+ * component reading only `value` does not re-render when a background refetch
+ * toggles `isFetching`. `status` stays `"success"` across a refetch, so
+ * narrowing on it doesn't add re-renders.
  *
  * @example
  * ```tsx
  * const u = useDocument("user", id);
- * if (u.data._tag === "Absent") {
- *   switch (u.fetch._tag) {
- *     case "Idle":     return null;
- *     case "Fetching": return <Spinner />;
- *     case "Failed":   return <ErrorPage e={u.fetch.error} />;
- *   }
- * }
- * return <Card user={u.data.value} busy={u.fetch._tag === "Fetching"} />;
+ * if (u.status === "error") return <ErrorPage e={u.error} />;
+ * if (u.status === "pending") return <Spinner />;
+ * return <Card user={u.value} busy={u.isFetching} warn={u.error} />; // value: T
  * ```
  */
-export interface DocumentHandle<T, E = SiloError> {
-  readonly data: DataState<T>;
-  readonly fetch: FetchState<E>;
-  /**
-   * Stable Promise for use with React 19's `use()`. Present once a fetch has
-   * started.
-   *
-   * - Resolves on first successful load (and is reused across refetches).
-   * - If the first fetch errors, it rejects once.
-   * - An `insertDocument` after a first-load error hands out a NEW resolved
-   *   promise so a Suspense boundary inside an error boundary can recover.
-   */
-  readonly promise: Promise<T> | undefined;
-}
+export type DocumentHandle<T, E = SiloError> =
+  | {
+      readonly status: "pending";
+      readonly value: undefined;
+      readonly error: undefined;
+      readonly isFetching: boolean;
+      readonly fetchedAt: undefined;
+      readonly promise: HandlePromise<T>;
+    }
+  | {
+      readonly status: "success";
+      readonly value: T;
+      /** A later refetch may have failed; the stale `value` is still here. */
+      readonly error: E | undefined;
+      readonly isFetching: boolean;
+      readonly fetchedAt: Date;
+      readonly promise: HandlePromise<T>;
+    }
+  | {
+      readonly status: "error";
+      readonly value: undefined;
+      readonly error: E;
+      readonly isFetching: boolean;
+      readonly fetchedAt: undefined;
+      readonly promise: HandlePromise<T>;
+    };
 
 // =============================================================================
 // DocumentAdapter — consumer-owned transport (Effect-based)
@@ -271,8 +275,11 @@ export interface DocumentStore<
 }
 
 const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
-  data: Object.freeze({ _tag: "Absent" as const }),
-  fetch: Object.freeze({ _tag: "Idle" as const }),
+  value: undefined,
+  error: undefined,
+  isFetching: false,
+  fetchedAt: undefined,
+  status: "pending" as const,
   promise: undefined,
 });
 
@@ -307,7 +314,10 @@ export function createDocumentStore<
         bucket.set(id, makeIdleHandle());
         handle = bucket.get(id)!;
       }
-      if (handle.data._tag === "Absent" && handle.fetch._tag === "Idle") {
+      // Trigger a fetch only for a never-loaded, idle, non-errored handle
+      // (status "pending" with no fetch in flight). Errored handles don't
+      // auto-retry; loaded handles serve from cache.
+      if (!handle.isFetching && handle.value === undefined && handle.error === undefined) {
         batch(() => applyEvent(handle!, HandleEvent.fetch()));
         finder.queueDocument(type, id);
       }
@@ -315,8 +325,7 @@ export function createDocumentStore<
     },
 
     findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined {
-      const data = state.documents.get(type)?.get(id)?.data;
-      return data?._tag === "Present" ? (data.value as M[K]) : undefined;
+      return state.documents.get(type)?.get(id)?.value as M[K] | undefined;
     },
 
     insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
@@ -350,7 +359,7 @@ export function createDocumentStore<
         // would break handle identity for subsequent calls.
         handle = bucket.get(paramsKey)!;
       }
-      if (handle.data._tag === "Absent" && handle.fetch._tag === "Idle") {
+      if (!handle.isFetching && handle.value === undefined && handle.error === undefined) {
         batch(() => applyEvent(handle!, HandleEvent.fetch()));
         finder.queueQuery(type, paramsKey, params);
       }
@@ -362,8 +371,7 @@ export function createDocumentStore<
       params: Q[K]["params"],
     ): Q[K]["result"] | undefined {
       const paramsKey = stableStringify(params);
-      const data = state.queries.get(type)?.get(paramsKey)?.data;
-      return data?._tag === "Present" ? (data.value as Q[K]["result"]) : undefined;
+      return state.queries.get(type)?.get(paramsKey)?.value as Q[K]["result"] | undefined;
     },
 
     insertQueryResult<K extends keyof Q & string>(

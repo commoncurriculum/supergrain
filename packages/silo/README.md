@@ -115,15 +115,15 @@ import { useDocument } from "./services/store";
 export function UserCard({ id }: { id: string }) {
   const user = useDocument("user", id);
 
-  if (user.data._tag === "Absent") {
-    if (user.fetch._tag === "Failed") return <ErrorState error={user.fetch.error} />;
-    return <Skeleton />; // Idle or Fetching, no data yet
+  if (user.value === undefined) {
+    if (user.error) return <ErrorState error={user.error} />;
+    return <Skeleton />; // no value yet (pending / fetching)
   }
-  return <div>{user.data.value.attributes.firstName}</div>;
+  return <div>{user.value.attributes.firstName}</div>;
 }
 ```
 
-`useDocument` returns a reactive `DocumentHandle<User>` — two orthogonal regions: `data` (`Absent | Present`) and `fetch` (`Idle | Fetching | Failed`). `value` is in scope only once `data` is `Present`; `error` only once `fetch` is `Failed`, so a stale value and a refetch error coexist instead of clobbering each other. Same `(type, id)` always returns the same handle object across renders, and reads subscribe per region — a component reading only `data` doesn't re-render when a background refetch toggles `fetch`.
+`useDocument` returns a reactive `DocumentHandle<User>` with flat, orthogonal fields: `value`, `error`, `isFetching`, `fetchedAt` (plus a derived `status`). They vary independently, so a stale `value` and a fresh refetch `error` coexist instead of clobbering each other. Same `(type, id)` always returns the same handle object across renders, and each field is tracked independently — a component reading only `value` doesn't re-render when a background refetch toggles `isFetching`.
 
 ### 4. Or suspend, if you prefer
 
@@ -205,27 +205,39 @@ For non-React use, import `createDocumentStore` directly from `@supergrain/silo`
 
 ### `DocumentHandle<T, E = SiloError>`
 
-A reactive statechart for a single document, modeled as **two orthogonal regions**. Reads subscribe per region inside a `tracked()` scope.
+A reactive handle for a single document — a `status`-discriminated union over flat fields, each tracked independently inside a `tracked()` scope.
 
 ```ts
-interface DocumentHandle<T, E = SiloError> {
-  readonly data: { _tag: "Absent" } | { _tag: "Present"; value: T; fetchedAt: Date };
-  readonly fetch: { _tag: "Idle" } | { _tag: "Fetching" } | { _tag: "Failed"; error: E };
-  readonly promise: Promise<T> | undefined; // stable; pass to use()
-}
+type DocumentHandle<T, E = SiloError> =
+  | {
+      status: "pending";
+      value: undefined;
+      error: undefined;
+      fetchedAt: undefined;
+      isFetching: boolean;
+      promise: Promise<T> | undefined;
+    }
+  | {
+      status: "success";
+      value: T;
+      error: E | undefined;
+      fetchedAt: Date; // refetch error coexists
+      isFetching: boolean;
+      promise: Promise<T> | undefined;
+    }
+  | {
+      status: "error";
+      value: undefined;
+      error: E;
+      fetchedAt: undefined;
+      isFetching: boolean;
+      promise: Promise<T> | undefined;
+    };
 ```
 
-The two regions vary independently, so all six combinations are representable — including a `Present` value with a `Failed` refetch (stale data + refetch error), which a single status enum couldn't express. `value` is only in scope once `data` is narrowed to `Present`; `error` only once `fetch` is `Failed`.
+Narrowing on `status` (or on `value !== undefined`) refines `value` to `T`. The fields still vary independently, so all states are representable — including a `value` present alongside a refetch `error` (stale data + refetch error), which a single flat status enum couldn't express: that's the `success` arm with `error` set. `status` stays `"success"` across a refetch (the orthogonal `isFetching` flips instead), so narrowing on it never adds a re-render. `value: undefined` is the not-loaded sentinel — a loaded-but-`null` value is `status: "success"` with `value: null`, distinct from `pending`.
 
-Region transitions:
-
-```
-data:  Absent ──(Insert)──► Present ──(stays Present across refetches; SWR)
-fetch: Idle ──(fetch starts)──► Fetching ──(settles)──► Idle
-                                          └─(fails)───► Failed(error)
-```
-
-`clearMemory()` resets `data` to `Absent` (and `fetch` to `Idle` when no fetch is in flight). Errors are typed: `AdapterError` (adapter failed), `NotFoundError` (key absent after fetch), `ProcessorError` (processor threw) — union `SiloError`.
+`clearMemory()` clears `value`/`error`/`fetchedAt` (an in-flight fetch survives and repopulates). Errors are typed: `AdapterError` (adapter failed), `NotFoundError` (key absent after fetch), `ProcessorError` (processor threw) — union `SiloError`.
 
 ### React hooks
 
@@ -352,7 +364,7 @@ JSON-API relationship hooks live in a separate subpath:
 import { useBelongsTo, useHasMany } from "@supergrain/silo/react/json-api";
 
 const planbook = useBelongsTo(cardStack, "planbook");
-const cards = useHasMany(planbook.data._tag === "Present" ? planbook.data.value : null, "cards");
+const cards = useHasMany(planbook.value ?? null, "cards");
 ```
 
 - `useBelongsTo(model, relationName)` → `DocumentHandle<Related>`. Reads `model.relationships[relationName].data` (a `{ type, id }`), then delegates to `useDocument`.
@@ -413,15 +425,15 @@ import { useQuery } from "@supergrain/silo/react";
 function DashboardView({ workspaceId }: { workspaceId: number }) {
   const handle = useQuery("dashboard", { workspaceId });
 
-  if (handle.data._tag === "Absent") {
-    if (handle.fetch._tag === "Failed") return <ErrorState error={handle.fetch.error} />;
+  if (handle.value === undefined) {
+    if (handle.error) return <ErrorState error={handle.error} />;
     return <Skeleton />;
   }
-  return <Dashboard data={handle.data.value} />;
+  return <Dashboard data={handle.value} />;
 }
 ```
 
-Same `QueryHandle<T>` shape as `DocumentHandle<T>` — the two `data` / `fetch` regions plus `promise`. Same Suspense opt-in via `use(handle.promise)`. Same stable handle identity, so two components requesting `{ workspaceId: 7 }` get the same reactive object.
+Same `QueryHandle<T>` shape as `DocumentHandle<T>` — flat `value` / `error` / `isFetching` / `fetchedAt` / `status` plus `promise`. Same Suspense opt-in via `use(handle.promise)`. Same stable handle identity, so two components requesting `{ workspaceId: 7 }` get the same reactive object.
 
 Object key identity is **deep-equal**: `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` hit the same slot. The library stable-stringifies for cache lookup; adapters see the raw objects.
 
@@ -470,9 +482,7 @@ Usage:
 
 ```tsx
 const query = useQuery("usersByRole", { role: "admin" });
-return query.data._tag === "Present"
-  ? query.data.value.map((u) => <UserRow key={u.id} user={u} />)
-  : null;
+return query.value?.map((u) => <UserRow key={u.id} user={u} />) ?? null;
 ```
 
 What this gives you: 10 lines of config, works immediately, automatic batching of concurrent queries, Suspense-compatible.
@@ -524,9 +534,7 @@ Usage:
 const query = useQuery("usersByRole", { role: "admin" });
 
 // Dereference each id — each row gets its own reactive handle
-return query.data._tag === "Present"
-  ? query.data.value.userIds.map((id) => <UserRow key={id} id={id} />)
-  : null;
+return query.value?.userIds.map((id) => <UserRow key={id} id={id} />) ?? null;
 ```
 
 What this gives you:
@@ -578,27 +586,27 @@ These aren't "same library, different maturity" — they're genuinely different 
 
 ### Capability comparison
 
-| Capability                                             | TQ (today) | document-store (today) | document-store (ceiling)                        |
-| ------------------------------------------------------ | :--------: | :--------------------: | ----------------------------------------------- |
-| Fetch by id                                            |     ✓      |           ✓            | —                                               |
-| Fetch by arbitrary query                               |     ✓      |           ✗            | generalize adapter keys                         |
-| Request dedup                                          |     ✓      |           ✓            | —                                               |
-| **Multi-key batching into one request**                |     ✗      |           ✓            | —                                               |
-| **Stable-id normalization**                            |     ✗      |           ✓            | —                                               |
-| **Cross-query sync (edit user → every view updates)**  | ✗ (manual) |           ✓            | —                                               |
-| **Stable reactive handles (fine-grained field reads)** |     ✗      |           ✓            | —                                               |
-| Suspense via `use()`                                   | ✓ (opt-in) |       ✓ (opt-in)       | —                                               |
-| Invalidation                                           |     ✓      |           ✗            | add `invalidate` / `invalidateType`             |
-| Stale-time / gc-time                                   |     ✓      |           ✗            | add `staleMs`; compare against `data.fetchedAt` |
-| Refetch on focus / reconnect / interval                |     ✓      |           ✗            | add opt-in hooks                                |
-| Retry with backoff                                     |     ✓      |           ✗            | add to Finder                                   |
-| Cancellation                                           |     ✓      |           ✗            | thread `AbortSignal` through adapter            |
-| Pagination / infinite queries                          |     ✓      |           ✗            | wrapper hook that extends an id-list            |
-| Mutations + optimistic + rollback                      |     ✓      |           ✗            | next-PR write layer built on `insertDocument`   |
-| SSR / hydration                                        |     ✓      |           ✗            | serialize the store's reactive tree, rehydrate  |
-| Persistence (localStorage / IDB)                       |     ✓      |           ✗            | serialize map on write, restore on init         |
-| Devtools                                               |     ✓      |           ✗            | expose cache map + event stream                 |
-| Ecosystem / community / docs                           |   Large    |         Small          | —                                               |
+| Capability                                             | TQ (today) | document-store (today) | document-store (ceiling)                       |
+| ------------------------------------------------------ | :--------: | :--------------------: | ---------------------------------------------- |
+| Fetch by id                                            |     ✓      |           ✓            | —                                              |
+| Fetch by arbitrary query                               |     ✓      |           ✗            | generalize adapter keys                        |
+| Request dedup                                          |     ✓      |           ✓            | —                                              |
+| **Multi-key batching into one request**                |     ✗      |           ✓            | —                                              |
+| **Stable-id normalization**                            |     ✗      |           ✓            | —                                              |
+| **Cross-query sync (edit user → every view updates)**  | ✗ (manual) |           ✓            | —                                              |
+| **Stable reactive handles (fine-grained field reads)** |     ✗      |           ✓            | —                                              |
+| Suspense via `use()`                                   | ✓ (opt-in) |       ✓ (opt-in)       | —                                              |
+| Invalidation                                           |     ✓      |           ✗            | add `invalidate` / `invalidateType`            |
+| Stale-time / gc-time                                   |     ✓      |           ✗            | add `staleMs`; compare against `fetchedAt`     |
+| Refetch on focus / reconnect / interval                |     ✓      |           ✗            | add opt-in hooks                               |
+| Retry with backoff                                     |     ✓      |           ✗            | add to Finder                                  |
+| Cancellation                                           |     ✓      |           ✗            | thread `AbortSignal` through adapter           |
+| Pagination / infinite queries                          |     ✓      |           ✗            | wrapper hook that extends an id-list           |
+| Mutations + optimistic + rollback                      |     ✓      |           ✗            | next-PR write layer built on `insertDocument`  |
+| SSR / hydration                                        |     ✓      |           ✗            | serialize the store's reactive tree, rehydrate |
+| Persistence (localStorage / IDB)                       |     ✓      |           ✗            | serialize map on write, restore on init        |
+| Devtools                                               |     ✓      |           ✗            | expose cache map + event stream                |
+| Ecosystem / community / docs                           |   Large    |         Small          | —                                              |
 
 **Bold rows are architectural** — they live in the primitive and can't be retrofitted without a rewrite. Everything else is **additive**: bolt-on features that land without touching core design. The "ceiling" column is the planned-additive path; none of it requires architectural change to get to.
 

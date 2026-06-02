@@ -1,9 +1,57 @@
 # silo + Effect — handle design
 
-How we get **type safety (illegal states unrepresentable + exhaustive
-matching)** _and_ **per-field reactivity** at the same time, while moving silo's
-network/async layer onto Effect. Breaking is acceptable (library isn't widely
-adopted), so this assumes we go all the way.
+## Decision (final): status-discriminated union over flat fields
+
+After exploring tagged-union and two-region shapes (history kept below), the
+shipped design is a **`status`-discriminated union over flat fields**. A single
+status enum that folds refetch into it can't represent "stale value + refetch
+error" (you'd be `success` and `error` at once), so **`isFetching` stays
+orthogonal to `status`**: `status` is only the data lifecycle, and the `success`
+arm carries an optional `error` for a failed refetch. `value`/`error`/`fetchedAt`
+live on the root (no region hop), but narrowing on `status` (or on
+`value !== undefined`) still refines `value` to `T`. `value: undefined` is the
+not-loaded sentinel; a loaded-but-`null` value is `success` with `value: null`.
+
+```ts
+type DocumentHandle<T, E = SiloError> =
+  | {
+      status: "pending";
+      value: undefined;
+      error: undefined;
+      fetchedAt: undefined;
+      isFetching: boolean;
+      promise: Promise<T> | undefined;
+    }
+  | {
+      status: "success";
+      value: T;
+      error: E | undefined;
+      fetchedAt: Date; // refetch error coexists
+      isFetching: boolean;
+      promise: Promise<T> | undefined;
+    }
+  | {
+      status: "error";
+      value: undefined;
+      error: E;
+      fetchedAt: undefined;
+      isFetching: boolean;
+      promise: Promise<T> | undefined;
+    };
+```
+
+- **Per-field reactivity** preserved: stable reactive object, each field tracked
+  independently, only-changed fields written on each transition; `status` stays
+  `"success"` across a refetch so narrowing on it adds no re-renders.
+- **Honest refetch / stale-while-revalidate**: `value` persists across a failed
+  refetch while `error` is set and `isFetching` returns to false.
+- **Effect everywhere it matters**: adapters return `Effect<…, AdapterError>`,
+  `error` is a typed `Data.TaggedError` (`SiloError`), the finder uses
+  `Effect.forEach`/`retry`/`timeout`, and the internal `applyEvent` is an
+  exhaustive event statechart.
+
+The exploration that led here (tagged-union, two regions, the reactivity
+analysis) is preserved below for context.
 
 ---
 

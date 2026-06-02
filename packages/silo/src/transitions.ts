@@ -1,18 +1,18 @@
 import type { SiloError } from "./errors";
-import type { DataState, FetchState } from "./store";
+import type { HandleStatus } from "./store";
 import type { Data } from "effect";
 
 import { unwrap } from "@supergrain/kernel";
 
 // =============================================================================
-// Handle statechart — two orthogonal regions, one event alphabet
+// Handle statechart — flat orthogonal fields, one event alphabet
 // =============================================================================
 //
-// A handle is the product of two independent regions: `data` (Absent | Present)
-// and `fetch` (Idle | Fetching | Failed). Transitions are modeled as a pure
-// reduction over each region, driven by a single tagged event alphabet. The
-// promise lifecycle (React `use()` / Suspense) is a side-effect layered on top
-// in `applyEvent`, since it can't live in a pure reducer.
+// A handle exposes orthogonal fields — `value`, `error`, `isFetching`,
+// `fetchedAt` — that vary independently (a stale `value` coexists with a
+// refetch `error`). Transitions are modeled as an exhaustive reduction over a
+// tagged event alphabet; `status` is derived from `value`/`error`. The promise
+// lifecycle (React `use()` / Suspense) is layered on top in `applyEvent`.
 
 export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
   /** A (re)fetch started. */
@@ -30,7 +30,7 @@ export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
 /**
  * Event constructors. Lowercase (vs. `Data.taggedEnum`'s capitalized
  * constructors) since events are built from plain tagged literals — the
- * exhaustive reducers below are the statechart; `$match`/`$is` aren't needed.
+ * exhaustive reducer below is the statechart; `$match`/`$is` aren't needed.
  */
 export const HandleEvent = {
   fetch: (): HandleEvent => ({ _tag: "Fetch" }),
@@ -40,53 +40,43 @@ export const HandleEvent = {
   reset: (): HandleEvent => ({ _tag: "Reset" }),
 };
 
-// ─── Region reducers (pure) ──────────────────────────────────────────────────
-
-/** Data region: what value, if any, the handle holds. Stale data is kept. */
-export function reduceData<T, E>(data: DataState<T>, event: HandleEvent<T, E>): DataState<T> {
-  switch (event._tag) {
-    case "Insert": {
-      return Object.freeze({ _tag: "Present", value: event.value, fetchedAt: new Date() });
-    }
-    case "Reset": {
-      return ABSENT;
-    }
-    case "Fetch":
-    case "Settled":
-    case "Failed": {
-      // Fetch/Settled/Failed never drop data — that's the stale-while-revalidate
-      // guarantee (a refetch error keeps the last-known-good value).
-      return data;
-    }
-  }
+/** `status` is derived from the orthogonal fields, never stored as truth. */
+function deriveStatus(value: unknown, error: unknown): HandleStatus {
+  if (value !== undefined) return "success"; // a value exists, even if a refetch errored
+  if (error !== undefined) return "error"; // first-load failure, no value yet
+  return "pending";
 }
 
-/** Fetch region: what the most recent fetch is doing / how it settled. */
-export function reduceFetch<T, E>(fetch: FetchState<E>, event: HandleEvent<T, E>): FetchState<E> {
-  switch (event._tag) {
-    case "Fetch": {
-      return FETCHING;
-    }
-    case "Settled": {
-      return IDLE;
-    }
-    case "Failed": {
-      return Object.freeze({ _tag: "Failed", error: event.error });
-    }
-    case "Insert": {
-      // An out-of-band insert doesn't change in-flight activity.
-      return fetch;
-    }
-    case "Reset": {
-      // An in-flight fetch survives a reset and will repopulate; otherwise idle.
-      return fetch._tag === "Fetching" ? fetch : IDLE;
-    }
-  }
+// ─── The mutable handle the store/finder operate on ──────────────────────────
+
+/**
+ * Internal handle — the reactive object behind the public `DocumentHandle` /
+ * `QueryHandle`. Carries the flat fields plus the resolver functions for the
+ * in-flight promise. The public type hides `resolve` / `reject`.
+ */
+export interface InternalHandle<T = unknown, E = SiloError> {
+  value: T | undefined;
+  error: E | undefined;
+  isFetching: boolean;
+  fetchedAt: Date | undefined;
+  status: HandleStatus;
+  promise: Promise<T> | undefined;
+  resolve?: (v: T) => void;
+  reject?: (e: unknown) => void;
 }
 
-const ABSENT: DataState<never> = Object.freeze({ _tag: "Absent" });
-const IDLE: FetchState<never> = Object.freeze({ _tag: "Idle" });
-const FETCHING: FetchState<never> = Object.freeze({ _tag: "Fetching" });
+export function makeIdleHandle<T = unknown, E = SiloError>(): InternalHandle<T, E> {
+  return {
+    value: undefined,
+    error: undefined,
+    isFetching: false,
+    fetchedAt: undefined,
+    status: "pending",
+    promise: undefined,
+    resolve: undefined,
+    reject: undefined,
+  };
+}
 
 // ─── Promise plumbing ────────────────────────────────────────────────────────
 
@@ -108,45 +98,65 @@ export function withResolvers<T>(): Resolvers<T> {
   return { promise, resolve, reject };
 }
 
-// ─── The mutable handle the store/finder operate on ──────────────────────────
-
 /**
- * Internal handle — the reactive object behind the public `DocumentHandle` /
- * `QueryHandle`. Carries the two regions plus the resolver functions for the
- * in-flight promise. The public type is a structural view that hides `resolve`
- * / `reject` and narrows `data` / `fetch`.
- */
-export interface InternalHandle<T = unknown, E = SiloError> {
-  data: DataState<T>;
-  fetch: FetchState<E>;
-  promise: Promise<T> | undefined;
-  resolve?: (v: T) => void;
-  reject?: (e: unknown) => void;
-}
-
-export function makeIdleHandle<T = unknown, E = SiloError>(): InternalHandle<T, E> {
-  return { data: ABSENT, fetch: IDLE, promise: undefined, resolve: undefined, reject: undefined };
-}
-
-/**
- * Apply one event to a handle: reduce both regions, then settle the promise
- * lifecycle. Mutates the handle in place — callers wrap this in `batch(...)`
- * so the kernel coalesces the region writes into one reactive notification.
+ * Apply one event to a handle: compute the next flat field values, write only
+ * the ones that changed, then settle the promise lifecycle.
+ *
+ * State is read UNTRACKED via the raw target, but written through the reactive
+ * proxy. Reading the proxy here would subscribe any tracked scope that calls
+ * (say) `insertDocument` during render to the very fields it mutates — a
+ * self-triggering loop. Reading raw avoids that; per-field writes below still
+ * notify genuine readers. Writing only changed fields preserves the kernel's
+ * per-field reactivity (a `value` reader doesn't re-render when `isFetching`
+ * toggles on a background refetch).
  */
 export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, SiloError>): void {
-  // Read current state UNTRACKED via the raw target, but write through the
-  // reactive proxy. A reactive write subscribes any tracked scope that READS a
-  // field; if we read `handle.data`/`handle.fetch` here, an `insertDocument`
-  // called inside a tracked render would subscribe that render to the very
-  // fields it then mutates — a self-triggering loop. Reading the raw target
-  // avoids the incidental subscription; the proxy writes below still notify
-  // genuine readers (components reading `data`/`fetch`/`promise`).
   const raw = unwrap(handle);
-  const wasPresent = raw.data._tag === "Present";
-  const wasFetching = raw.fetch._tag === "Fetching";
+  const hadValue = raw.value !== undefined;
+  const wasFetching = raw.isFetching;
 
-  handle.data = reduceData(raw.data, event);
-  handle.fetch = reduceFetch(raw.fetch, event);
+  let { value, error, isFetching, fetchedAt } = raw;
+
+  switch (event._tag) {
+    case "Fetch": {
+      // Stale-while-revalidate: keep value/error; just mark activity.
+      isFetching = true;
+      break;
+    }
+    case "Insert": {
+      ({ value } = event);
+      fetchedAt = new Date();
+      error = undefined; // fresh data supersedes any prior error
+      break;
+    }
+    case "Settled": {
+      isFetching = false;
+      error = undefined;
+      break;
+    }
+    case "Failed": {
+      // Keep value (stale-while-revalidate); record the error, end activity.
+      ({ error } = event);
+      isFetching = false;
+      break;
+    }
+    case "Reset": {
+      value = undefined;
+      error = undefined;
+      fetchedAt = undefined;
+      // An in-flight fetch survives a reset (isFetching unchanged) and will
+      // repopulate; otherwise everything clears.
+      break;
+    }
+  }
+
+  const status = deriveStatus(value, error);
+
+  if (raw.value !== value) handle.value = value;
+  if (raw.error !== error) handle.error = error;
+  if (raw.isFetching !== isFetching) handle.isFetching = isFetching;
+  if (raw.fetchedAt !== fetchedAt) handle.fetchedAt = fetchedAt;
+  if (raw.status !== status) handle.status = status;
 
   switch (event._tag) {
     case "Fetch": {
@@ -165,25 +175,26 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
         raw.resolve(event.value);
         raw.resolve = undefined;
         raw.reject = undefined;
-      } else if (!wasPresent) {
-        // Insert after an error/idle handle: hand out a fresh resolved promise
+      } else if (!hadValue) {
+        // Insert into an errored/idle handle: hand out a fresh resolved promise
         // so a Suspense boundary nested in an error boundary can recover.
         handle.promise = Promise.resolve(event.value);
       }
       break;
     }
     case "Settled": {
-      if (raw.resolve && raw.data._tag === "Present") {
-        raw.resolve(raw.data.value);
+      if (raw.resolve && raw.value !== undefined) {
+        raw.resolve(raw.value);
         raw.resolve = undefined;
         raw.reject = undefined;
       }
       break;
     }
     case "Failed": {
-      // Reject only a first-load failure (no data yet) with a pending resolver.
-      // A refetch error after a prior success leaves the resolved promise alone.
-      if (raw.reject && raw.data._tag === "Absent") {
+      // Reject only a first-load failure (no value yet) with a pending
+      // resolver. A refetch error after a prior success leaves the already
+      // resolved promise alone.
+      if (raw.reject && raw.value === undefined) {
         raw.reject(event.error);
         raw.resolve = undefined;
         raw.reject = undefined;

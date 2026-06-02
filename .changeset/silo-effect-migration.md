@@ -10,16 +10,36 @@ Migrate the network/async layer to [Effect](https://effect.website/) and remodel
 
 **Per-model `retry` / `timeout`.** `ModelConfig` and `QueryConfig` accept an Effect `Schedule` (`retry`) and a `Duration` (`timeout`).
 
-**The handle is now two orthogonal regions instead of flat fields.** `DocumentHandle` / `QueryHandle` expose:
+**The handle fields changed.** `DocumentHandle` / `QueryHandle` are now a `status`-discriminated union over flat fields:
 
 ```ts
-{
-  data:  { _tag: "Absent" } | { _tag: "Present"; value: T; fetchedAt: Date };
-  fetch: { _tag: "Idle" } | { _tag: "Fetching" } | { _tag: "Failed"; error: SiloError };
-  promise: Promise<T> | undefined;
-}
+type DocumentHandle<T, E = SiloError> =
+  | {
+      status: "pending";
+      value: undefined;
+      error: undefined;
+      fetchedAt: undefined;
+      isFetching: boolean;
+      promise: Promise<T> | undefined;
+    }
+  | {
+      status: "success";
+      value: T;
+      error: E | undefined;
+      fetchedAt: Date; // refetch error coexists
+      isFetching: boolean;
+      promise: Promise<T> | undefined;
+    }
+  | {
+      status: "error";
+      value: undefined;
+      error: E;
+      fetchedAt: undefined;
+      isFetching: boolean;
+      promise: Promise<T> | undefined;
+    };
 ```
 
-The previous flat fields (`status`, `data: T | undefined`, `error`, `isPending`, `isFetching`, `hasData`, `fetchedAt`) and the `Status` type are removed. The two regions vary independently, so a stale `value` and a refetch error coexist (stale-while-revalidate); `value`/`error` are type-narrowed to the states where they exist; and reads subscribe per region, preserving fine-grained reactivity.
+The previous `status: "IDLE" | "PENDING" | "SUCCESS" | "ERROR"`, `data: T | undefined`, `isPending`, and `hasData` are gone; `error` is now a typed `SiloError`. Narrowing on `status` refines `value` to `T`; `error` and `value` coexist in `success` (stale-while-revalidate); `isFetching` is orthogonal (stays out of `status`, so `status` doesn't flip on a background refetch); each field is tracked independently (fine-grained reactivity).
 
-Migration: replace `handle.data` with `handle.data._tag === "Present" ? handle.data.value : undefined`, `handle.isPending` with `handle.data._tag === "Absent" && handle.fetch._tag === "Fetching"`, `handle.error` with `handle.fetch._tag === "Failed" ? handle.fetch.error : undefined`, and wrap Promise-returning adapters in `Effect.tryPromise`.
+Migration: replace `handle.data` with `handle.value`; `handle.isPending` with `handle.value === undefined && handle.isFetching`; `handle.hasData` with `handle.value !== undefined`; `handle.status` string literals are now lowercase; and wrap Promise-returning adapters in `Effect.tryPromise`.

@@ -1,5 +1,5 @@
 import type { AdapterError, SiloError } from "./errors";
-import type { DataState, DocumentStore, DocumentTypes, FetchState, TypeRegistry } from "./store";
+import type { DocumentStore, DocumentTypes, TypeRegistry } from "./store";
 import type { Duration, Effect, Schedule } from "effect";
 
 // =============================================================================
@@ -148,8 +148,28 @@ export interface QueryConfig<
  * hook return types read clearly at call sites (`useQuery(...) →
  * QueryHandle<Dashboard>` vs. `useDocument(...) → DocumentHandle<User>`).
  */
-export interface QueryHandle<T, E = SiloError> {
-  readonly data: DataState<T>;
-  readonly fetch: FetchState<E>;
-  readonly promise: Promise<T> | undefined;
-}
+export type QueryHandle<T, E = SiloError> =
+  | {
+      readonly status: "pending";
+      readonly value: undefined;
+      readonly error: undefined;
+      readonly isFetching: boolean;
+      readonly fetchedAt: undefined;
+      readonly promise: Promise<T> | undefined;
+    }
+  | {
+      readonly status: "success";
+      readonly value: T;
+      readonly error: E | undefined;
+      readonly isFetching: boolean;
+      readonly fetchedAt: Date;
+      readonly promise: Promise<T> | undefined;
+    }
+  | {
+      readonly status: "error";
+      readonly value: undefined;
+      readonly error: E;
+      readonly isFetching: boolean;
+      readonly fetchedAt: undefined;
+      readonly promise: Promise<T> | undefined;
+    };

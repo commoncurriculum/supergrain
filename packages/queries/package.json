@@ -58,5 +58,8 @@
     "effect": "^3.21.2",
     "playwright": "^1.55.0",
     "vitest": "4.1.0"
+  },
+  "peerDependencies": {
+    "effect": "^3.21.0"
   }
 }

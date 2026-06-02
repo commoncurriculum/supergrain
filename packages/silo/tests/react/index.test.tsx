@@ -139,13 +139,11 @@ function SeedUser({ user }: { user: User }) {
 
 const UserBadge = tracked(function UserBadge({ userId }: { userId: string | null | undefined }) {
   const handle = useDocument("user", userId);
-  if (handle.data._tag === "Absent" && handle.fetch._tag === "Idle") return <span>no user</span>;
-  if (handle.data._tag === "Absent" && handle.fetch._tag === "Fetching")
-    return <span>loading</span>;
-  if (handle.fetch._tag === "Failed") return <span>error: {handle.fetch.error.message}</span>;
-  return (
-    <span>{handle.data._tag === "Present" ? handle.data.value.attributes.firstName : null}</span>
-  );
+  if (handle.value === undefined && !handle.isFetching && handle.error === undefined)
+    return <span>no user</span>;
+  if (handle.value === undefined && handle.isFetching) return <span>loading</span>;
+  if (handle.error !== undefined) return <span>error: {handle.error.message}</span>;
+  return <span>{handle.value !== undefined ? handle.value.attributes.firstName : null}</span>;
 });
 
 const UserList = tracked(function UserList({ ids }: { ids: ReadonlyArray<string> }) {
@@ -153,15 +151,15 @@ const UserList = tracked(function UserList({ ids }: { ids: ReadonlyArray<string>
   const handles = ids.map((id) => store.find("user", id));
 
   if (handles.length === 0) return <span>no users</span>;
-  if (handles.some((handle) => handle.fetch._tag === "Failed")) return <span>error</span>;
-  if (handles.some((handle) => handle.data._tag === "Absent" && handle.fetch._tag === "Fetching"))
+  if (handles.some((handle) => handle.error !== undefined)) return <span>error</span>;
+  if (handles.some((handle) => handle.value === undefined && handle.isFetching))
     return <span>loading</span>;
 
   return (
     <ul>
       {handles.map((handle) =>
-        handle.data._tag === "Present" ? (
-          <li key={handle.data.value.id}>{handle.data.value.attributes.firstName}</li>
+        handle.value !== undefined ? (
+          <li key={handle.value.id}>{handle.value.attributes.firstName}</li>
         ) : null,
       )}
     </ul>
@@ -177,14 +175,11 @@ const DashboardView = tracked(function DashboardView({
     "dashboard",
     workspaceId == null ? null : { workspaceId, filters: { active: true } },
   );
-  if (handle.data._tag === "Absent" && handle.fetch._tag === "Idle")
+  if (handle.value === undefined && !handle.isFetching && handle.error === undefined)
     return <span>no dashboard</span>;
-  if (handle.data._tag === "Absent" && handle.fetch._tag === "Fetching")
-    return <span>loading dashboard</span>;
-  if (handle.fetch._tag === "Failed") return <span>error: {handle.fetch.error.message}</span>;
-  return (
-    <span>users: {handle.data._tag === "Present" ? handle.data.value.totalActiveUsers : null}</span>
-  );
+  if (handle.value === undefined && handle.isFetching) return <span>loading dashboard</span>;
+  if (handle.error !== undefined) return <span>error: {handle.error.message}</span>;
+  return <span>users: {handle.value !== undefined ? handle.value.totalActiveUsers : null}</span>;
 });
 
 // =============================================================================
@@ -393,7 +388,7 @@ describe("createDocumentStoreContext isolation", () => {
       const handle = tenantA.useDocument("user", "1");
       return (
         <span data-testid="tenant-a">
-          {handle.data._tag === "Present" ? handle.data.value.attributes.firstName : "—"}
+          {handle.value !== undefined ? handle.value.attributes.firstName : "—"}
         </span>
       );
     });
@@ -401,7 +396,7 @@ describe("createDocumentStoreContext isolation", () => {
       const handle = tenantB.useDocument("user", "1");
       return (
         <span data-testid="tenant-b">
-          {handle.data._tag === "Present" ? handle.data.value.attributes.firstName : "—"}
+          {handle.value !== undefined ? handle.value.attributes.firstName : "—"}
         </span>
       );
     });
@@ -441,10 +436,10 @@ describe("Provider initial data seeding", () => {
       return (
         <div>
           <span data-testid="u1">
-            {h1.data._tag === "Present" ? h1.data.value.attributes.firstName : "—"}
+            {h1.value !== undefined ? h1.value.attributes.firstName : "—"}
           </span>
           <span data-testid="u2">
-            {h2.data._tag === "Present" ? h2.data.value.attributes.firstName : "—"}
+            {h2.value !== undefined ? h2.value.attributes.firstName : "—"}
           </span>
         </div>
       );
@@ -471,7 +466,7 @@ describe("Provider initial data seeding", () => {
       const handle = useQuery("dashboard", params);
       return (
         <span data-testid="q">
-          {handle.data._tag === "Present" ? handle.data.value.totalActiveUsers : "—"}
+          {handle.value !== undefined ? handle.value.totalActiveUsers : "—"}
         </span>
       );
     });
@@ -594,7 +589,7 @@ describe("Provider initial data — null/undefined guards", () => {
       const handle = useDocument("user", "seeded");
       return (
         <span data-testid="seeded">
-          {handle.data._tag === "Present" ? handle.data.value.attributes.firstName : "-"}
+          {handle.value !== undefined ? handle.value.attributes.firstName : "-"}
         </span>
       );
     });

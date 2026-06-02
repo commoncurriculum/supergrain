@@ -113,42 +113,44 @@ afterEach(() => cleanup());
 
 const RelatedPlanbook = tracked(function RelatedPlanbook({ stackId }: { stackId: string }) {
   const stackHandle = useDocument("card-stack", stackId);
-  const stack = stackHandle.data._tag === "Present" ? stackHandle.data.value : null;
+  const stack = stackHandle.value !== undefined ? stackHandle.value : null;
   const planbookHandle = useBelongsTo(stack, "planbook");
 
-  if (stackHandle.data._tag === "Absent" && stackHandle.fetch._tag === "Fetching")
+  if (stackHandle.value === undefined && stackHandle.isFetching)
     return <span data-testid="planbook">loading stack</span>;
-  if (planbookHandle.data._tag === "Absent" && planbookHandle.fetch._tag === "Idle")
+  if (
+    planbookHandle.value === undefined &&
+    !planbookHandle.isFetching &&
+    planbookHandle.error === undefined
+  )
     return <span data-testid="planbook">no planbook</span>;
-  if (planbookHandle.data._tag === "Absent" && planbookHandle.fetch._tag === "Fetching")
+  if (planbookHandle.value === undefined && planbookHandle.isFetching)
     return <span data-testid="planbook">loading planbook</span>;
-  if (planbookHandle.fetch._tag === "Failed") return <span data-testid="planbook">error</span>;
+  if (planbookHandle.error !== undefined) return <span data-testid="planbook">error</span>;
   return (
     <span data-testid="planbook">
-      {planbookHandle.data._tag === "Present" ? planbookHandle.data.value.attributes.title : null}
+      {planbookHandle.value !== undefined ? planbookHandle.value.attributes.title : null}
     </span>
   );
 });
 
 const RelatedCards = tracked(function RelatedCards({ stackId }: { stackId: string }) {
   const stackHandle = useDocument("card-stack", stackId);
-  const stack = stackHandle.data._tag === "Present" ? stackHandle.data.value : null;
+  const stack = stackHandle.value !== undefined ? stackHandle.value : null;
   const cardHandles = useHasMany(stack, "cards");
 
-  if (stackHandle.data._tag === "Absent" && stackHandle.fetch._tag === "Fetching")
+  if (stackHandle.value === undefined && stackHandle.isFetching)
     return <span data-testid="cards">loading stack</span>;
   if (cardHandles.length === 0) return <span data-testid="cards">no cards</span>;
-  if (cardHandles.some((handle) => handle.fetch._tag === "Failed"))
+  if (cardHandles.some((handle) => handle.error !== undefined))
     return <span data-testid="cards">error</span>;
-  if (
-    cardHandles.some((handle) => handle.data._tag === "Absent" && handle.fetch._tag === "Fetching")
-  )
+  if (cardHandles.some((handle) => handle.value === undefined && handle.isFetching))
     return <span data-testid="cards">loading cards</span>;
   return (
     <ul data-testid="cards">
       {cardHandles.map((handle, i) => (
-        <li key={handle.data._tag === "Present" ? handle.data.value.id : i}>
-          {handle.data._tag === "Present" ? handle.data.value.attributes.title : null}
+        <li key={handle.value !== undefined ? handle.value.id : i}>
+          {handle.value !== undefined ? handle.value.attributes.title : null}
         </li>
       ))}
     </ul>
@@ -161,22 +163,22 @@ const CardListIndividually = tracked(function CardListIndividually({
   stackId: string;
 }) {
   const stackHandle = useDocument("card-stack", stackId);
-  const stack = stackHandle.data._tag === "Present" ? stackHandle.data.value : null;
+  const stack = stackHandle.value !== undefined ? stackHandle.value : null;
   const cardHandles = useHasManyIndividually(stack, "cards");
 
-  if (stackHandle.data._tag === "Absent" && stackHandle.fetch._tag === "Fetching")
+  if (stackHandle.value === undefined && stackHandle.isFetching)
     return <span data-testid="cards">loading stack</span>;
   if (cardHandles.length === 0) return <span data-testid="cards">no cards</span>;
   return (
     <ul data-testid="cards">
       {cardHandles.map((c, i) => (
         <li key={i} data-testid={`card-${i}`}>
-          {c.data._tag === "Absent" && c.fetch._tag === "Fetching"
+          {c.value === undefined && c.isFetching
             ? "loading…"
-            : c.fetch._tag === "Failed"
+            : c.error !== undefined
               ? "error"
-              : c.data._tag === "Present"
-                ? c.data.value.attributes.title
+              : c.value !== undefined
+                ? c.value.attributes.title
                 : null}
         </li>
       ))}

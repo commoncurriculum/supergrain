@@ -27,12 +27,6 @@ function effectFind<A extends ReadonlyArray<unknown>>(
     });
 }
 
-/** Narrow a handle's `data` region to Present and return its value. */
-function present<T>(h: { data: { _tag: "Absent" } | { _tag: "Present"; value: T } }): T {
-  if (h.data._tag !== "Present") throw new Error(`expected Present, got ${h.data._tag}`);
-  return h.data.value;
-}
-
 // =============================================================================
 // Finder contract tests.
 //
@@ -256,11 +250,11 @@ describe("Finder errors", () => {
 
     await flushBatch();
 
-    expect(h1.fetch._tag).toBe("Failed");
-    expect(h2.fetch._tag).toBe("Failed");
-    expect(h3.fetch._tag).toBe("Failed");
-    expect(h1.fetch._tag === "Failed" && h1.fetch.error).toBeInstanceOf(AdapterError);
-    const cause = h1.fetch._tag === "Failed" ? (h1.fetch.error as AdapterError).cause : undefined;
+    expect(h1.error).toBeDefined();
+    expect(h2.error).toBeDefined();
+    expect(h3.error).toBeDefined();
+    expect(h1.error).toBeInstanceOf(AdapterError);
+    const cause = (h1.error as AdapterError).cause;
     expect((cause as Error).message).toMatch(/adapter rejected/);
   });
 
@@ -275,10 +269,10 @@ describe("Finder errors", () => {
 
     await flushBatch();
 
-    expect(h1.data._tag).toBe("Present");
-    expect(h2.data._tag === "Absent" && h2.fetch._tag === "Failed").toBe(true);
-    expect(h2.fetch._tag === "Failed" && h2.fetch.error.message).toMatch(/not found/i);
-    expect(h3.data._tag).toBe("Present");
+    expect(h1.value).not.toBeUndefined();
+    expect(h2.value === undefined && h2.error !== undefined).toBe(true);
+    expect(h2.error?.message).toMatch(/not found/i);
+    expect(h3.value).not.toBeUndefined();
   });
 
   it("rejects all pending handles when a processor throws", async () => {
@@ -306,10 +300,9 @@ describe("Finder errors", () => {
 
     await flushBatch();
 
-    expect(h1.fetch._tag).toBe("Failed");
-    expect(h2.fetch._tag).toBe("Failed");
-    const cause =
-      h1.fetch._tag === "Failed" ? (h1.fetch.error as { cause?: unknown }).cause : undefined;
+    expect(h1.error).toBeDefined();
+    expect(h2.error).toBeDefined();
+    const cause = (h1.error as { cause?: unknown }).cause;
     expect((cause as Error).message).toMatch(/processor exploded/);
   });
 });
@@ -346,9 +339,9 @@ describe("Finder is adapter-agnostic", () => {
 
     expect(calls).toHaveLength(1);
     expect([...calls[0]].sort()).toEqual(["1", "2", "3"]);
-    expect(present(h1).name).toBe("User1");
-    expect(present(h2).name).toBe("User2");
-    expect(present(h3).name).toBe("User3");
+    expect(h1.value?.name).toBe("User1");
+    expect(h2.value?.name).toBe("User2");
+    expect(h3.value?.name).toBe("User3");
   });
 });
 
@@ -373,8 +366,8 @@ describe("Finder handles query-only batches", () => {
     const h = store.findQuery("search", { q: "hello" });
     await flushBatch();
 
-    expect(h.data._tag).toBe("Present");
-    expect(present(h).total).toBe(42);
+    expect(h.value).not.toBeUndefined();
+    expect(h.value?.total).toBe(42);
     expect(queryCalls).toHaveLength(1);
   });
 });
@@ -401,11 +394,9 @@ describe("Finder normalizes adapter failures", () => {
     await flushBatch();
     await h.promise?.catch(() => {});
 
-    expect(h.fetch._tag).toBe("Failed");
-    expect(h.fetch._tag === "Failed" && h.fetch.error).toBeInstanceOf(AdapterError);
-    expect(h.fetch._tag === "Failed" && (h.fetch.error as AdapterError).cause).toBe(
-      "plain-string-error",
-    );
+    expect(h.error).toBeDefined();
+    expect(h.error).toBeInstanceOf(AdapterError);
+    expect((h.error as AdapterError).cause).toBe("plain-string-error");
   });
 
   it("wraps a non-Error document adapter rejection in an Error", async () => {
@@ -425,11 +416,9 @@ describe("Finder normalizes adapter failures", () => {
     const h = store.find("user", "1");
     await flushBatch();
 
-    expect(h.fetch._tag).toBe("Failed");
-    expect(h.fetch._tag === "Failed" && h.fetch.error).toBeInstanceOf(AdapterError);
-    expect(h.fetch._tag === "Failed" && (h.fetch.error as AdapterError).cause).toBe(
-      "document-string-error",
-    );
+    expect(h.error).toBeDefined();
+    expect(h.error).toBeInstanceOf(AdapterError);
+    expect((h.error as AdapterError).cause).toBe("document-string-error");
   });
 });
 
@@ -525,17 +514,18 @@ describe("Finder empty queues and orphaned handles", () => {
   // Helpers shared by the "handle removed mid-flight" scenarios below.
   function pendingHandle(): InternalHandle {
     const handle = makeIdleHandle();
-    // A fetch is in flight: data still Absent, fetch Fetching, with resolver
+    // A fetch is in flight: no value yet, isFetching true, with resolver
     // spies so we can assert they're never invoked once the handle is orphaned.
-    handle.fetch = { _tag: "Fetching" };
+    handle.isFetching = true;
     handle.resolve = vi.fn<(v: unknown) => void>();
     handle.reject = vi.fn<(e: unknown) => void>();
     return handle;
   }
 
   function expectUntouched(handle: InternalHandle): void {
-    expect(handle.data._tag).toBe("Absent");
-    expect(handle.fetch._tag).toBe("Fetching");
+    expect(handle.value).toBeUndefined();
+    expect(handle.error).toBeUndefined();
+    expect(handle.isFetching).toBe(true);
     expect(handle.resolve).not.toHaveBeenCalled();
     expect(handle.reject).not.toHaveBeenCalled();
   }

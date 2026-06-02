@@ -17,6 +17,7 @@
 //     the envelope.
 // =============================================================================
 import { dispose, reactiveTask } from "@supergrain/husk";
+import { Effect } from "effect";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
@@ -24,10 +25,10 @@ const valueArbitrary = fc.integer({ min: -1000, max: 1000 });
 const errorMessageArbitrary = fc.string({ minLength: 1, maxLength: 20 });
 
 describe("reactiveTask — lifecycle invariants", () => {
-  it("run().then(...) resolves with exactly the asyncFn return value", async () => {
+  it("run().then(...) resolves with exactly the effectFn return value", async () => {
     await fc.assert(
       fc.asyncProperty(valueArbitrary, async (value) => {
-        const task = reactiveTask(async () => value);
+        const task = reactiveTask(() => Effect.succeed(value));
         const result = await task.run();
         expect(result).toBe(value);
         expect(task.data).toBe(value);
@@ -43,13 +44,11 @@ describe("reactiveTask — lifecycle invariants", () => {
     );
   });
 
-  it("run().catch(...) rejects with the asyncFn-thrown error", async () => {
+  it("run().catch(...) rejects with the effectFn-failed error", async () => {
     await fc.assert(
       fc.asyncProperty(errorMessageArbitrary, async (message) => {
         const err = new Error(message);
-        const task = reactiveTask(async () => {
-          throw err;
-        });
+        const task = reactiveTask(() => Effect.fail(err));
         await expect(task.run()).rejects.toBe(err);
         expect(task.error).toBe(err);
         expect(task.isRejected).toBe(true);
@@ -69,13 +68,13 @@ describe("reactiveTask — lifecycle invariants", () => {
         // Two pending values keyed to call index. The second call fires
         // BEFORE the first resolves — its outcome must win.
         const deferreds: Array<{ resolve: (v: number) => void; promise: Promise<number> }> = [];
-        const task = reactiveTask(async (): Promise<number> => {
+        const task = reactiveTask(() => {
           let resolve!: (v: number) => void;
           const promise = new Promise<number>((r) => {
             resolve = r;
           });
           deferreds.push({ resolve, promise });
-          return promise;
+          return Effect.promise(() => promise);
         });
 
         const first = task.run();
@@ -99,7 +98,7 @@ describe("reactiveTask — lifecycle invariants", () => {
   it("post-dispose run() rejects and does not mutate the envelope", async () => {
     await fc.assert(
       fc.asyncProperty(valueArbitrary, async (value) => {
-        const task = reactiveTask(async () => value);
+        const task = reactiveTask(() => Effect.succeed(value));
         dispose(task);
 
         // Read envelope BEFORE the post-dispose run; it must equal the
@@ -136,11 +135,13 @@ describe("reactiveTask — lifecycle invariants", () => {
     await fc.assert(
       fc.asyncProperty(valueArbitrary, async (value) => {
         let resolveInner!: (v: number) => void;
-        const task = reactiveTask(
-          async (): Promise<number> =>
-            new Promise<number>((r) => {
-              resolveInner = r;
-            }),
+        const task = reactiveTask(() =>
+          Effect.promise(
+            () =>
+              new Promise<number>((r) => {
+                resolveInner = r;
+              }),
+          ),
         );
 
         expect(task.isPending).toBe(false);

@@ -18,12 +18,6 @@ import {
 } from "./example-app";
 import { setupFakeTimers } from "./setup/timers";
 
-/** Narrow a handle's `data` region to Present and return its value. */
-function present<T>(h: { data: { _tag: "Absent" } | { _tag: "Present"; value: T } }): T {
-  if (h.data._tag !== "Present") throw new Error(`expected Present, got ${h.data._tag}`);
-  return h.data.value;
-}
-
 /** Wrap a Promise-returning function as an Effect-returning adapter `find`. */
 function effectFind<A extends ReadonlyArray<unknown>>(
   type: string,
@@ -108,15 +102,19 @@ describe("Store.find — idle (no fetch)", () => {
   it("returns an idle handle when id is null", () => {
     const handle = store.find("user", null);
 
-    expect(handle.data._tag).toBe("Absent");
-    expect(handle.fetch._tag).toBe("Idle");
+    expect(handle.value).toBeUndefined();
+    expect(handle.isFetching).toBe(false);
+    expect(handle.error).toBeUndefined();
+    expect(handle.status).toBe("pending");
     expect(handle.promise).toBeUndefined();
   });
 
   it("returns an idle handle when id is undefined", () => {
     const handle = store.find("user", undefined);
-    expect(handle.data._tag).toBe("Absent");
-    expect(handle.fetch._tag).toBe("Idle");
+    expect(handle.value).toBeUndefined();
+    expect(handle.isFetching).toBe(false);
+    expect(handle.error).toBeUndefined();
+    expect(handle.status).toBe("pending");
   });
 });
 
@@ -127,9 +125,10 @@ describe("Store.find — already in memory (fast path)", () => {
 
     const handle = store.find("user", "1");
 
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle)).toBe(user);
-    expect(handle.fetch._tag).toBe("Idle");
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value).toBe(user);
+    expect(handle.isFetching).toBe(false);
+    expect(handle.status).toBe("success");
 
     await flushCoalescer();
     expect(requests()).toEqual([]); // no fetch ever happened
@@ -140,21 +139,23 @@ describe("Store.find — not in memory (delegates to internal batching)", () => 
   it("returns a PENDING handle while the fetch is in flight", () => {
     const handle = store.find("user", "1");
 
-    expect(handle.data._tag).toBe("Absent");
-    expect(handle.fetch._tag).toBe("Fetching");
+    expect(handle.value).toBeUndefined();
+    expect(handle.isFetching).toBe(true);
+    expect(handle.status).toBe("pending");
   });
 
   it("transitions to SUCCESS once the network resolves", async () => {
     const handle = store.find("user", "1");
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Fetching").toBe(true);
+    expect(handle.value === undefined && handle.isFetching).toBe(true);
 
     await flushCoalescer();
 
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle).id).toBe("1");
-    expect(present(handle).attributes.firstName).toBe("User1");
-    expect(handle.fetch._tag).toBe("Idle");
-    expect(handle.data._tag === "Present" && handle.data.fetchedAt).toBeInstanceOf(Date);
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value?.id).toBe("1");
+    expect(handle.value?.attributes.firstName).toBe("User1");
+    expect(handle.isFetching).toBe(false);
+    expect(handle.status).toBe("success");
+    expect(handle.fetchedAt).toBeInstanceOf(Date);
   });
 
   it("exposes a stable Promise for React 19 use()", async () => {
@@ -172,13 +173,13 @@ describe("Store.find — not in memory (delegates to internal batching)", () => 
     // under the hood (via Promise.all). From the store's perspective the
     // handle behavior is identical to a bulk-fetching adapter.
     const handle = store.find("post", "42");
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Fetching").toBe(true);
+    expect(handle.value === undefined && handle.isFetching).toBe(true);
 
     await flushCoalescer();
 
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle).id).toBe("42");
-    expect(present(handle).attributes.title).toBe("Post42");
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value?.id).toBe("42");
+    expect(handle.value?.attributes.title).toBe("Post42");
   });
 });
 
@@ -191,8 +192,9 @@ describe("Store.find — server errors surface as ERROR", () => {
     const handle = store.find("user", "1");
     await flushCoalescer();
 
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
-    expect(handle.fetch._tag === "Failed" && handle.fetch.error).toBeInstanceOf(Error);
+    expect(handle.value === undefined && handle.error !== undefined).toBe(true);
+    expect(handle.status).toBe("error");
+    expect(handle.error).toBeInstanceOf(Error);
   });
 });
 
@@ -224,21 +226,21 @@ describe("Store.find — handle identity", () => {
 describe("Store.find — reactive updates", () => {
   it("flips the handle to SUCCESS when an external insertDocument lands", () => {
     const handle = store.find("user", "1");
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Fetching").toBe(true);
+    expect(handle.value === undefined && handle.isFetching).toBe(true);
 
     store.insertDocument("user", makeUser("1", { firstName: "Pushed" }));
 
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle).attributes.firstName).toBe("Pushed");
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value?.attributes.firstName).toBe("Pushed");
   });
 
   it("re-exposes fresher data when insertDocument overwrites a cached doc", async () => {
     const handle = store.find("user", "1");
     await flushCoalescer();
-    expect(present(handle).attributes.firstName).toBe("User1");
+    expect(handle.value?.attributes.firstName).toBe("User1");
 
     store.insertDocument("user", makeUser("1", { firstName: "Renamed" }));
-    expect(present(handle).attributes.firstName).toBe("Renamed");
+    expect(handle.value?.attributes.firstName).toBe("Renamed");
   });
 
   it("lets a later fetch overwrite a mid-flight local insert (last-write-wins)", async () => {
@@ -247,12 +249,12 @@ describe("Store.find — reactive updates", () => {
     // overwrites. No reconciliation — the fetched value wins.
     const handle = store.find("user", "1");
     store.insertDocument("user", makeUser("1", { firstName: "Local" }));
-    expect(present(handle).attributes.firstName).toBe("Local");
+    expect(handle.value?.attributes.firstName).toBe("Local");
 
     await flushCoalescer();
 
     // MSW handler returns firstName: "User1"; that wins over the local insert.
-    expect(present(handle).attributes.firstName).toBe("User1");
+    expect(handle.value?.attributes.firstName).toBe("User1");
   });
 });
 
@@ -269,14 +271,17 @@ describe("Store.find — error recovery creates a new promise", () => {
     const handle = store.find("user", "1");
     await flushCoalescer();
     const rejectedPromise = handle.promise;
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
+    expect(handle.value === undefined && handle.error !== undefined).toBe(true);
 
     // A fresh insert (e.g. from a socket push) flips the handle back to SUCCESS.
     store.insertDocument("user", makeUser("1", { firstName: "Recovered" }));
 
-    expect(handle.data._tag).toBe("Present");
+    expect(handle.value).not.toBeUndefined();
+    // A fresh value supersedes the prior error.
+    expect(handle.error).toBeUndefined();
+    expect(handle.status).toBe("success");
     expect(handle.promise).not.toBe(rejectedPromise);
-    expect(present(handle).attributes.firstName).toBe("Recovered");
+    expect(handle.value?.attributes.firstName).toBe("Recovered");
   });
 });
 
@@ -288,27 +293,29 @@ describe("Store.clearMemory — handle transitions", () => {
   it("flips SUCCESS handles to IDLE when there is no in-flight fetch", () => {
     store.insertDocument("user", makeUser("1"));
     const handle = store.find("user", "1");
-    expect(handle.data._tag).toBe("Present");
+    expect(handle.value).not.toBeUndefined();
 
     store.clearMemory();
 
-    expect(handle.data._tag).toBe("Absent");
-    expect(handle.fetch._tag).toBe("Idle");
+    expect(handle.value).toBeUndefined();
+    expect(handle.isFetching).toBe(false);
+    expect(handle.error).toBeUndefined();
+    expect(handle.status).toBe("pending");
     expect(handle.promise).toBeUndefined();
   });
 
   it("leaves PENDING handles PENDING — the in-flight fetch is not cancelled", async () => {
     const handle = store.find("user", "1");
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Fetching").toBe(true);
+    expect(handle.value === undefined && handle.isFetching).toBe(true);
 
     store.clearMemory();
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Fetching").toBe(true);
+    expect(handle.value === undefined && handle.isFetching).toBe(true);
 
     await flushCoalescer();
 
     // Fetch completed; processor re-populated the doc on the (now cleared) store.
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle).id).toBe("1");
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value?.id).toBe("1");
   });
 
   it("clears settled error handles so retries start from a fresh promise", async () => {
@@ -320,12 +327,14 @@ describe("Store.clearMemory — handle transitions", () => {
     await flushCoalescer();
 
     const rejectedPromise = handle.promise;
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
-    expect(handle.fetch._tag === "Failed" && handle.fetch.error).toBeInstanceOf(Error);
+    expect(handle.value === undefined && handle.error !== undefined).toBe(true);
+    expect(handle.error).toBeInstanceOf(Error);
 
     store.clearMemory();
-    expect(handle.data._tag).toBe("Absent");
-    expect(handle.fetch._tag).toBe("Idle");
+    expect(handle.value).toBeUndefined();
+    expect(handle.isFetching).toBe(false);
+    expect(handle.error).toBeUndefined();
+    expect(handle.status).toBe("pending");
     expect(handle.promise).toBeUndefined();
 
     server.resetHandlers();
@@ -337,8 +346,8 @@ describe("Store.clearMemory — handle transitions", () => {
 
     await flushCoalescer();
 
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle).id).toBe("1");
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value?.id).toBe("1");
   });
 });
 
@@ -347,20 +356,22 @@ describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", (
     // Seed a doc so find() returns SUCCESS immediately (no fetch triggered)
     store.insertDocument("user", makeUser("42"));
     const handle = store.find("user", "42");
-    expect(handle.data._tag).toBe("Present");
+    expect(handle.value).not.toBeUndefined();
 
     // Clear memory so the handle becomes IDLE (no in-flight fetch)
     store.clearMemory();
-    expect(handle.data._tag).toBe("Absent");
-    expect(handle.fetch._tag).toBe("Idle");
+    expect(handle.value).toBeUndefined();
+    expect(handle.isFetching).toBe(false);
+    expect(handle.status).toBe("pending");
 
     // Now insert the document directly (no fetch involved)
     const user = makeUser("42");
     store.insertDocument("user", user);
 
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle)).toBe(user);
-    expect(handle.fetch._tag).toBe("Idle");
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value).toBe(user);
+    expect(handle.isFetching).toBe(false);
+    expect(handle.status).toBe("success");
   });
 
   it("updates an ERROR handle to SUCCESS when insertDocument is called directly", async () => {
@@ -372,16 +383,18 @@ describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", (
 
     const handle = store.find("user", "err1");
     await flushCoalescer();
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
+    expect(handle.value === undefined && handle.error !== undefined).toBe(true);
 
     // Recover by inserting directly
     const user = makeUser("err1");
     store.insertDocument("user", user);
 
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle)).toBe(user);
-    // Insert doesn't touch the fetch region; the prior Failed is retained
-    // (stale-while-revalidate keeps the two regions orthogonal).
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value).toBe(user);
+    // A fresh value supersedes any prior error: error is cleared and the
+    // handle's status flips to success.
+    expect(handle.error).toBeUndefined();
+    expect(handle.status).toBe("success");
   });
 });
 
@@ -397,27 +410,27 @@ describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", (
 // =============================================================================
 
 describe("Store.find — handle is reactive", () => {
-  it("an effect tracking handle.fetch fires on PENDING -> SUCCESS via fetch", async () => {
+  it("an effect tracking handle fields fires on PENDING -> SUCCESS via fetch", async () => {
     const handle = store.find("user", "1");
 
     const stateHistory: Array<string> = [];
     effect(() => {
-      stateHistory.push(`${handle.data._tag}/${handle.fetch._tag}`);
+      stateHistory.push(
+        `${handle.value === undefined ? "Absent" : "Present"}/${handle.isFetching}`,
+      );
     });
-    expect(stateHistory).toEqual(["Absent/Fetching"]);
+    expect(stateHistory).toEqual(["Absent/true"]);
 
     await flushCoalescer();
-    expect(stateHistory.at(-1)).toBe("Present/Idle");
+    expect(stateHistory.at(-1)).toBe("Present/false");
   });
 
-  it("an effect tracking handle.data fires when an external insert lands", () => {
+  it("an effect tracking handle.value fires when an external insert lands", () => {
     const handle = store.find("user", "1");
 
     const firstNameHistory: Array<string | undefined> = [];
     effect(() => {
-      firstNameHistory.push(
-        handle.data._tag === "Present" ? handle.data.value.attributes.firstName : undefined,
-      );
+      firstNameHistory.push(handle.value?.attributes.firstName);
     });
     expect(firstNameHistory).toEqual([undefined]);
 
@@ -425,7 +438,7 @@ describe("Store.find — handle is reactive", () => {
     expect(firstNameHistory.at(-1)).toBe("Pushed");
   });
 
-  it("an effect tracking handle.fetch error fires on PENDING -> ERROR", async () => {
+  it("an effect tracking handle.error fires on PENDING -> ERROR", async () => {
     server.use(
       http.get(`${API_BASE}/users`, () => HttpResponse.json({ message: "boom" }, { status: 500 })),
     );
@@ -433,26 +446,26 @@ describe("Store.find — handle is reactive", () => {
 
     const errorHistory: Array<string | undefined> = [];
     effect(() => {
-      errorHistory.push(handle.fetch._tag === "Failed" ? handle.fetch.error.message : undefined);
+      errorHistory.push(handle.error?.message);
     });
     expect(errorHistory).toEqual([undefined]);
 
     await flushCoalescer();
     expect(errorHistory.at(-1)).toMatch(/silo|adapter/i);
 
-    // An external insert lands data (data region), but leaves the orthogonal
-    // fetch region's Failed state untouched (stale-while-revalidate). The
-    // error effect therefore does NOT re-fire from the insert.
+    // A fresh value supersedes the error: the error clears and the value lands.
     store.insertDocument("user", makeUser("1", { firstName: "Recovered" }));
-    expect(handle.data._tag).toBe("Present");
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.error).toBeUndefined();
+    expect(errorHistory.at(-1)).toBeUndefined();
   });
 
-  it("the fetch region toggles independently of data subscribers", async () => {
+  it("isFetching toggles independently of value subscribers", async () => {
     const handle = store.find("user", "1");
 
     const fetchingHistory: Array<boolean> = [];
     effect(() => {
-      fetchingHistory.push(handle.fetch._tag === "Fetching");
+      fetchingHistory.push(handle.isFetching);
     });
     expect(fetchingHistory).toEqual([true]);
 
@@ -505,6 +518,6 @@ describe("Store query memory operations", () => {
     const h = arrayStore.findQuery("tagged", { tags: ["a", "b", "c"] });
     await vi.advanceTimersByTimeAsync(20);
     await h.promise;
-    expect(present(h).count).toBe(3);
+    expect(h.value?.count).toBe(3);
   });
 });

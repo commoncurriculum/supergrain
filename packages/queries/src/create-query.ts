@@ -2,6 +2,7 @@ import type { CreateQueryParams, Query, QueryModel } from "./types";
 import type { DocumentTypes } from "@supergrain/silo";
 
 import { signal } from "@supergrain/kernel";
+import { Effect, Either } from "effect";
 
 import { fibonacciBackoff } from "./backoff";
 
@@ -49,11 +50,13 @@ export function createQuery<
     errorSignal(null);
 
     try {
-      const res = await adapter.fetch(id, { offset, limit });
+      const result = await Effect.runPromise(Effect.either(adapter.fetch(id, { offset, limit })));
       if (destroyed) {
         isFetching(false);
         return;
       }
+      if (Either.isLeft(result)) throw result.left; // funnel AdapterError into the catch
+      const res = result.right;
 
       if (res.included) {
         // Sideloaded `included` docs can be of any type — queries requires

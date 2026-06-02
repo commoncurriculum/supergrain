@@ -1,5 +1,5 @@
 import { effect } from "@supergrain/kernel";
-import { createDocumentStore, type DocumentStore } from "@supergrain/silo";
+import { AdapterError, createDocumentStore, type DocumentStore } from "@supergrain/silo";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -40,7 +40,7 @@ function makeAdapter(): {
   fetch: ReturnType<typeof vi.fn>;
 } {
   const fetch = vi.fn(() =>
-    Promise.resolve({
+    Effect.succeed({
       data: { results: [] as Array<PlanbookRef> },
       meta: { nextOffset: null as number | null },
       included: undefined as Array<{ type: string; id: string }> | undefined,
@@ -82,10 +82,12 @@ describe("refetch", () => {
   it("fetches from offset 0 and writes results into the store", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0), ref("p2", 1)] },
-      meta: { nextOffset: 2 },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0), ref("p2", 1)] },
+        meta: { nextOffset: 2 },
+      }),
+    );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.refetch();
@@ -98,10 +100,12 @@ describe("refetch", () => {
   it("writes the query slot to the store at (type, id)", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0)] },
-      meta: { nextOffset: 1 },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0)] },
+        meta: { nextOffset: 1 },
+      }),
+    );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.refetch();
@@ -135,10 +139,12 @@ describe("refetch", () => {
   it("preserves server response order on offset=0 (matches Ember semantics)", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0), ref("p2", 1), ref("p3", 2)] },
-      meta: { nextOffset: 3 },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0), ref("p2", 1), ref("p3", 2)] },
+        meta: { nextOffset: 3 },
+      }),
+    );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.refetch();
@@ -156,14 +162,16 @@ describe("included sideload", () => {
   it("inserts each included document into the store via insertDocument", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0)] },
-      meta: { nextOffset: null },
-      included: [
-        { id: "p1", type: "planbook", title: "One" },
-        { id: "p2", type: "planbook", title: "Two" },
-      ],
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0)] },
+        meta: { nextOffset: null },
+        included: [
+          { id: "p1", type: "planbook", title: "One" },
+          { id: "p2", type: "planbook", title: "Two" },
+        ],
+      }),
+    );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.refetch();
@@ -182,14 +190,18 @@ describe("fetchNextPage", () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
 
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0), ref("p2", 1)] },
-      meta: { nextOffset: 2 },
-    });
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p3", 2), ref("p4", 3)] },
-      meta: { nextOffset: null },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0), ref("p2", 1)] },
+        meta: { nextOffset: 2 },
+      }),
+    );
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p3", 2), ref("p4", 3)] },
+        meta: { nextOffset: null },
+      }),
+    );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.refetch();
@@ -204,15 +216,19 @@ describe("fetchNextPage", () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
 
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0), ref("p2", 1)] },
-      meta: { nextOffset: 2 },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0), ref("p2", 1)] },
+        meta: { nextOffset: 2 },
+      }),
+    );
     // Second page: sparse items at offsets 2 and 4 (index 3 intentionally skipped).
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p3", 2), ref("p5", 4)] },
-      meta: { nextOffset: 5 },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p3", 2), ref("p5", 4)] },
+        meta: { nextOffset: 5 },
+      }),
+    );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.refetch();
@@ -227,10 +243,12 @@ describe("fetchNextPage", () => {
   it("defaults to offset 0 when no nextOffset is stored yet", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0)] },
-      meta: { nextOffset: 1 },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0)] },
+        meta: { nextOffset: 1 },
+      }),
+    );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.fetchNextPage();
@@ -244,18 +262,24 @@ describe("refetch replaces existing results", () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
 
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0), ref("p2", 1)] },
-      meta: { nextOffset: 2 },
-    });
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p3", 2)] },
-      meta: { nextOffset: null },
-    });
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("pX", 0)] },
-      meta: { nextOffset: 1 },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0), ref("p2", 1)] },
+        meta: { nextOffset: 2 },
+      }),
+    );
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p3", 2)] },
+        meta: { nextOffset: null },
+      }),
+    );
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("pX", 0)] },
+        meta: { nextOffset: 1 },
+      }),
+    );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.refetch();
@@ -272,14 +296,18 @@ describe("empty results", () => {
   it("resets the results array to empty", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0)] },
-      meta: { nextOffset: 1 },
-    });
-    fetch.mockResolvedValueOnce({
-      data: { results: [] },
-      meta: { nextOffset: null },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0)] },
+        meta: { nextOffset: 1 },
+      }),
+    );
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [] },
+        meta: { nextOffset: null },
+      }),
+    );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.refetch();
@@ -303,11 +331,13 @@ describe("isFetching", () => {
       data: { results: Array<PlanbookRef> };
       meta: { nextOffset: number | null };
     }) => void = () => {};
-    fetch.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        }),
+    fetch.mockImplementationOnce(() =>
+      Effect.promise(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve;
+          }),
+      ),
     );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
@@ -335,10 +365,12 @@ describe("reactive bindings on the query handle", () => {
   it("an effect tracking q.results re-runs when refetch produces new data", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0)] },
-      meta: { nextOffset: 1 },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0)] },
+        meta: { nextOffset: 1 },
+      }),
+    );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
 
@@ -367,11 +399,13 @@ describe("reactive bindings on the query handle", () => {
       data: { results: Array<PlanbookRef> };
       meta: { nextOffset: number | null };
     }) => void = () => {};
-    fetch.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        }),
+    fetch.mockImplementationOnce(() =>
+      Effect.promise(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve;
+          }),
+      ),
     );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
@@ -397,11 +431,17 @@ describe("reactive bindings on the query handle", () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
 
-    fetch.mockRejectedValueOnce(new Error("network"));
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0)] },
-      meta: { nextOffset: null },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.fail(
+        new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("network") }),
+      ),
+    );
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0)] },
+        meta: { nextOffset: null },
+      }),
+    );
 
     const q = createQuery({
       store,
@@ -411,18 +451,18 @@ describe("reactive bindings on the query handle", () => {
       backoff: () => 50,
     });
 
-    const errorMessages: Array<string | undefined> = [];
+    const errorTags: Array<string | undefined> = [];
     effect(() => {
-      errorMessages.push(q.error?.message);
+      errorTags.push((q.error as AdapterError | undefined)?._tag);
     });
 
-    expect(errorMessages).toEqual([undefined]);
+    expect(errorTags).toEqual([undefined]);
 
     await q.refetch();
-    expect(errorMessages.at(-1)).toBe("network");
+    expect(errorTags.at(-1)).toBe("AdapterError");
 
     await vi.advanceTimersByTimeAsync(100);
-    expect(errorMessages.at(-1)).toBeUndefined();
+    expect(errorTags.at(-1)).toBeUndefined();
 
     q.destroy();
   });
@@ -439,11 +479,17 @@ describe("error + backoff retry", () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
 
-    fetch.mockRejectedValueOnce(new Error("network"));
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0)] },
-      meta: { nextOffset: null },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.fail(
+        new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("network") }),
+      ),
+    );
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0)] },
+        meta: { nextOffset: null },
+      }),
+    );
 
     const q = createQuery({
       store,
@@ -454,8 +500,8 @@ describe("error + backoff retry", () => {
     });
 
     await q.refetch();
-    expect(q.error).toBeInstanceOf(Error);
-    expect(q.error?.message).toBe("network");
+    expect(q.error).toBeInstanceOf(AdapterError);
+    expect((q.error as AdapterError)._tag).toBe("AdapterError");
 
     await vi.advanceTimersByTimeAsync(100);
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -469,7 +515,11 @@ describe("error + backoff retry", () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
 
-    fetch.mockRejectedValue(new Error("boom"));
+    fetch.mockReturnValue(
+      Effect.fail(
+        new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("boom") }),
+      ),
+    );
     const backoff = vi.fn((_attempt: number) => 10);
 
     const q = createQuery({
@@ -517,10 +567,12 @@ describe("subscribe hook", () => {
   it("refetches from offset 0 when the subscriber fires onInvalidate", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
-    fetch.mockResolvedValue({
-      data: { results: [ref("p1", 0)] },
-      meta: { nextOffset: 1 },
-    });
+    fetch.mockReturnValue(
+      Effect.succeed({
+        data: { results: [ref("p1", 0)] },
+        meta: { nextOffset: 1 },
+      }),
+    );
 
     let fireInvalidate: () => void = () => {};
     const subscribe = vi.fn(
@@ -566,7 +618,11 @@ describe("destroy", () => {
     try {
       const store = makeStore();
       const { adapter, fetch } = makeAdapter();
-      fetch.mockRejectedValue(new Error("boom"));
+      fetch.mockReturnValue(
+        Effect.fail(
+          new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("boom") }),
+        ),
+      );
 
       const q = createQuery({
         store,
@@ -595,11 +651,13 @@ describe("destroy", () => {
       data: { results: Array<PlanbookRef> };
       meta: { nextOffset: number | null };
     }) => void = () => {};
-    fetch.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveFetch = resolve;
-        }),
+    fetch.mockImplementationOnce(() =>
+      Effect.promise(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve;
+          }),
+      ),
     );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
@@ -619,12 +677,17 @@ describe("destroy", () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
 
+    // `Effect.promise` surfaces a rejection as a *defect*, so `Effect.either`
+    // does not absorb it — `runPromise` rejects and the failure lands in the
+    // `catch` block, exercising its `destroyed` guard.
     let rejectFetch!: (error: Error) => void;
-    fetch.mockImplementationOnce(
-      () =>
-        new Promise<never>((_resolve, reject) => {
-          rejectFetch = reject;
-        }),
+    fetch.mockImplementationOnce(() =>
+      Effect.promise(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectFetch = reject;
+          }),
+      ),
     );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
@@ -645,11 +708,17 @@ describe("default retry behavior", () => {
     try {
       const store = makeStore();
       const { adapter, fetch } = makeAdapter();
-      fetch.mockRejectedValueOnce(new Error("fail-1"));
-      fetch.mockResolvedValueOnce({
-        data: { results: [] as Array<PlanbookRef> },
-        meta: { nextOffset: null },
-      });
+      fetch.mockReturnValueOnce(
+        Effect.fail(
+          new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("fail-1") }),
+        ),
+      );
+      fetch.mockReturnValueOnce(
+        Effect.succeed({
+          data: { results: [] as Array<PlanbookRef> },
+          meta: { nextOffset: null },
+        }),
+      );
 
       const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
       await q.refetch();
@@ -680,22 +749,26 @@ describe("default retry behavior", () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
 
-    fetch.mockResolvedValueOnce({
-      data: { results: [ref("p1", 0), ref("p2", 1)] },
-      meta: { nextOffset: 2 },
-    });
+    fetch.mockReturnValueOnce(
+      Effect.succeed({
+        data: { results: [ref("p1", 0), ref("p2", 1)] },
+        meta: { nextOffset: 2 },
+      }),
+    );
 
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.refetch();
     expect(q.nextOffset).toBe(2);
 
-    fetch.mockImplementationOnce(async () => {
-      store.clearMemory();
-      return {
-        data: { results: [ref("p3", 2)] },
-        meta: { nextOffset: null },
-      };
-    });
+    fetch.mockImplementationOnce(() =>
+      Effect.sync(() => {
+        store.clearMemory();
+        return {
+          data: { results: [ref("p3", 2)] },
+          meta: { nextOffset: null },
+        };
+      }),
+    );
 
     await q.fetchNextPage();
     expect(q.results[2]).toEqual(ref("p3", 2));
@@ -705,7 +778,9 @@ describe("default retry behavior", () => {
   it("normalizes non-Error fetch failures", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
-    fetch.mockRejectedValueOnce("plain string error");
+    // A pathological adapter that fails with a non-Error value (e.g. a raw
+    // string). `createQuery` normalizes it to an `Error` before storing it.
+    fetch.mockReturnValueOnce(Effect.fail("plain string error" as unknown as AdapterError));
 
     const q = createQuery({
       store,

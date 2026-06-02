@@ -43,12 +43,6 @@ import {
 } from "./example-app";
 import { setupFakeTimers } from "./setup/timers";
 
-/** Narrow a handle's `data` region to Present and return its value. */
-function present<T>(h: { data: { _tag: "Absent" } | { _tag: "Present"; value: T } }): T {
-  if (h.data._tag !== "Present") throw new Error(`expected Present, got ${h.data._tag}`);
-  return h.data.value;
-}
-
 /** Wrap a Promise-returning function as an Effect-returning adapter `find`. */
 function effectFind<A extends ReadonlyArray<unknown>>(
   type: string,
@@ -79,8 +73,10 @@ describe("DocumentStore.findQuery", () => {
     const store = initStore();
     const handle = store.findQuery("dashboard", null);
 
-    expect(handle.data._tag).toBe("Absent");
-    expect(handle.fetch._tag).toBe("Idle");
+    expect(handle.value).toBeUndefined();
+    expect(handle.isFetching).toBe(false);
+    expect(handle.error).toBeUndefined();
+    expect(handle.status).toBe("pending");
     expect(handle.promise).toBeUndefined();
   });
 
@@ -109,14 +105,14 @@ describe("DocumentStore.findQuery", () => {
     const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
 
     const handle = store.findQuery("dashboard", params);
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Fetching").toBe(true);
+    expect(handle.value === undefined && handle.isFetching).toBe(true);
 
     await flushCoalescer();
     await handle.promise;
 
     // Per the dashboard MSW handler, totalActiveUsers encodes the workspaceId.
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle).totalActiveUsers).toBe(70);
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value?.totalActiveUsers).toBe(70);
     expect(store.findQueryInMemory("dashboard", params)?.totalActiveUsers).toBe(70);
   });
 
@@ -135,8 +131,8 @@ describe("DocumentStore.findQuery", () => {
     // Second call with reordered keys should read from memory — no new request.
     const before = requests().filter((r) => r.url.pathname === "/dashboards").length;
     const handle2 = store.findQuery("dashboard", p2);
-    expect(handle2.data._tag).toBe("Present");
-    expect(present(handle2)).toBe(present(handle));
+    expect(handle2.value).not.toBeUndefined();
+    expect(handle2.value).toBe(handle.value);
     expect(requests().filter((r) => r.url.pathname === "/dashboards")).toHaveLength(before);
   });
 });
@@ -156,12 +152,12 @@ describe("DocumentStore.findQuery errors", () => {
     const store = initStore();
     const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
     const handle = store.findQuery("dashboard", params);
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Fetching").toBe(true);
+    expect(handle.value === undefined && handle.isFetching).toBe(true);
 
     await flushCoalescer();
 
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
-    expect(handle.fetch._tag === "Failed" && handle.fetch.error).toBeInstanceOf(Error);
+    expect(handle.value === undefined && handle.error !== undefined).toBe(true);
+    expect(handle.error).toBeInstanceOf(Error);
   });
 
   it("clearMemory removes settled query errors so the next fetch starts cleanly", async () => {
@@ -178,12 +174,14 @@ describe("DocumentStore.findQuery errors", () => {
     await flushCoalescer();
 
     const rejectedPromise = handle.promise;
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
-    expect(handle.fetch._tag === "Failed" && handle.fetch.error).toBeInstanceOf(Error);
+    expect(handle.value === undefined && handle.error !== undefined).toBe(true);
+    expect(handle.error).toBeInstanceOf(Error);
 
     store.clearMemory();
-    expect(handle.data._tag).toBe("Absent");
-    expect(handle.fetch._tag).toBe("Idle");
+    expect(handle.value).toBeUndefined();
+    expect(handle.isFetching).toBe(false);
+    expect(handle.error).toBeUndefined();
+    expect(handle.status).toBe("pending");
     expect(handle.promise).toBeUndefined();
 
     server.resetHandlers();
@@ -196,8 +194,8 @@ describe("DocumentStore.findQuery errors", () => {
     await flushCoalescer();
     await handle.promise;
 
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle).totalActiveUsers).toBe(70);
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value?.totalActiveUsers).toBe(70);
   });
 });
 
@@ -285,8 +283,8 @@ describe("Finder pipeline with query params", () => {
 
     const dashboardRequests = requests().filter((r) => r.url.pathname === "/dashboards");
     expect(dashboardRequests).toHaveLength(2);
-    expect(present(h7).totalActiveUsers).toBe(70);
-    expect(present(h8).totalActiveUsers).toBe(80);
+    expect(h7.value?.totalActiveUsers).toBe(70);
+    expect(h8.value?.totalActiveUsers).toBe(80);
   });
 
   it("hands the raw params objects (not stringified) to the adapter", async () => {
@@ -376,7 +374,7 @@ describe("Queries share memory with documents", () => {
     await handle.promise;
 
     // Query result stored under the query's slot
-    expect(present(handle)).toEqual({ userId: "user-42" });
+    expect(handle.value).toEqual({ userId: "user-42" });
 
     // Nested user normalized into the documents cache — useDocument would find it
     expect(store.findInMemory("user", "user-42")).toEqual({
@@ -424,16 +422,19 @@ describe("Queries share memory with documents", () => {
     await flushCoalescer();
 
     const rejectedPromise = handle.promise;
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
+    expect(handle.value === undefined && handle.error !== undefined).toBe(true);
 
     const result = makeDashboard({ totalActiveUsers: 101 });
     store.insertQueryResult("dashboard", params, result);
 
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle)).toBe(result);
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value).toBe(result);
+    // A fresh value supersedes any prior error: the error clears and status
+    // flips to success.
+    expect(handle.error).toBeUndefined();
+    expect(handle.status).toBe("success");
     // An insert after a first-load failure hands out a fresh resolved promise
-    // (so a Suspense boundary can recover); the fetch region's Failed state is
-    // orthogonal and untouched by the insert.
+    // (so a Suspense boundary can recover).
     expect(handle.promise).not.toBe(rejectedPromise);
     await expect(handle.promise).resolves.toBe(result);
   });
@@ -480,9 +481,9 @@ describe("Query finder errors", () => {
     await flushCoalescer();
     await handle.promise!.catch(() => {});
 
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
+    expect(handle.value === undefined && handle.error !== undefined).toBe(true);
     // The result was never inserted, so the handle settles to a NotFoundError.
-    expect(handle.fetch._tag === "Failed" && handle.fetch.error.message).toMatch(/not found/i);
+    expect(handle.error?.message).toMatch(/not found/i);
   });
 
   it("sets query handle to ERROR when query processor throws", async () => {
@@ -507,12 +508,9 @@ describe("Query finder errors", () => {
     await flushCoalescer();
     await handle.promise!.catch(() => {});
 
-    expect(handle.fetch._tag).toBe("Failed");
+    expect(handle.error).toBeDefined();
     // A processor throw settles to a ProcessorError whose cause is the throw.
-    const cause =
-      handle.fetch._tag === "Failed"
-        ? (handle.fetch.error as { cause?: unknown }).cause
-        : undefined;
+    const cause = (handle.error as { cause?: unknown }).cause;
     expect((cause as Error).message).toBe("processor-exploded");
   });
 });
@@ -553,15 +551,18 @@ describe("insertQueryResult transitions existing handles", () => {
     const handle = store.findQuery("dashboard", params);
     await flushCoalescer();
     await handle.promise?.catch(() => {});
-    expect(handle.data._tag === "Absent" && handle.fetch._tag === "Failed").toBe(true);
+    expect(handle.value === undefined && handle.error !== undefined).toBe(true);
 
     server.resetHandlers();
 
     const dashboard = makeDashboard({ totalActiveUsers: 770 });
     store.insertQueryResult("dashboard", params, dashboard);
 
-    expect(handle.data._tag).toBe("Present");
-    expect(present(handle).totalActiveUsers).toBe(770);
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.value?.totalActiveUsers).toBe(770);
+    // A fresh value supersedes the prior error.
+    expect(handle.error).toBeUndefined();
+    expect(handle.status).toBe("success");
   });
 });
 
@@ -580,23 +581,25 @@ describe("Query handle is reactive", () => {
 
     const stateHistory: Array<string> = [];
     effect(() => {
-      stateHistory.push(`${handle.data._tag}/${handle.fetch._tag}`);
+      stateHistory.push(
+        `${handle.value === undefined ? "Absent" : "Present"}/${handle.isFetching}`,
+      );
     });
-    expect(stateHistory).toEqual(["Absent/Fetching"]);
+    expect(stateHistory).toEqual(["Absent/true"]);
 
     await flushCoalescer();
     await handle.promise;
-    expect(stateHistory.at(-1)).toBe("Present/Idle");
+    expect(stateHistory.at(-1)).toBe("Present/false");
   });
 
-  it("an effect tracking handle.data fires when an external insertQueryResult lands", () => {
+  it("an effect tracking handle.value fires when an external insertQueryResult lands", () => {
     const store = initStore();
     const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
     const handle = store.findQuery("dashboard", params);
 
     const totals: Array<number | undefined> = [];
     effect(() => {
-      totals.push(handle.data._tag === "Present" ? handle.data.value.totalActiveUsers : undefined);
+      totals.push(handle.value?.totalActiveUsers);
     });
     expect(totals).toEqual([undefined]);
 
@@ -604,7 +607,7 @@ describe("Query handle is reactive", () => {
     expect(totals.at(-1)).toBe(99);
   });
 
-  it("an effect tracking handle.fetch error fires on PENDING -> ERROR", async () => {
+  it("an effect tracking handle.error fires on PENDING -> ERROR", async () => {
     server.use(
       http.get(`${API_BASE}/dashboards`, () =>
         HttpResponse.json({ message: "boom" }, { status: 500 }),
@@ -617,7 +620,7 @@ describe("Query handle is reactive", () => {
 
     const errorHistory: Array<string | undefined> = [];
     effect(() => {
-      errorHistory.push(handle.fetch._tag === "Failed" ? handle.fetch.error.message : undefined);
+      errorHistory.push(handle.error?.message);
     });
     expect(errorHistory).toEqual([undefined]);
 
@@ -625,10 +628,11 @@ describe("Query handle is reactive", () => {
     await handle.promise?.catch(() => {});
     expect(errorHistory.at(-1)).toMatch(/silo|adapter/i);
 
-    // An external insert populates the data region but leaves the orthogonal
-    // fetch region's Failed state untouched (stale-while-revalidate), so the
-    // error effect does not re-fire to undefined here.
+    // A fresh value supersedes the error: the error clears, so the error
+    // effect re-fires to undefined.
     store.insertQueryResult("dashboard", params, makeDashboard({ totalActiveUsers: 99 }));
-    expect(handle.data._tag).toBe("Present");
+    expect(handle.value).not.toBeUndefined();
+    expect(handle.error).toBeUndefined();
+    expect(errorHistory.at(-1)).toBeUndefined();
   });
 });

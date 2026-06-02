@@ -17,10 +17,9 @@ import { describe, expectTypeOf, it } from "vitest";
 import {
   AdapterError,
   createDocumentStore,
-  type DataState,
   type DocumentHandle,
   type DocumentStore,
-  type FetchState,
+  type HandleStatus,
   type QueryHandle,
   type SiloError,
 } from "../src";
@@ -110,7 +109,7 @@ describe("createDocumentStore — public type surface", () => {
 
     // Without Queries declared, find still narrows by type — proves the
     // default generic doesn't bleed into the document surface.
-    expectTypeOf(store.find("user", "1").data).toEqualTypeOf<DataState<User>>();
+    expectTypeOf(store.find("user", "1").value).toEqualTypeOf<User | undefined>();
   });
 });
 
@@ -120,12 +119,12 @@ describe("DocumentStore.find / findInMemory — `type` narrows doc shape", () =>
   it("find('user', id) returns DocumentHandle<User>", () => {
     const h = store.find("user", "1");
     expectTypeOf(h).toEqualTypeOf<DocumentHandle<User>>();
-    expectTypeOf(h.data).toEqualTypeOf<DataState<User>>();
+    expectTypeOf(h.value).toEqualTypeOf<User | undefined>();
   });
 
   it("find('post', id) returns DocumentHandle<Post>", () => {
     const h = store.find("post", "1");
-    expectTypeOf(h.data).toEqualTypeOf<DataState<Post>>();
+    expectTypeOf(h.value).toEqualTypeOf<Post | undefined>();
   });
 
   it("findInMemory inferred as M[K] | undefined", () => {
@@ -146,13 +145,16 @@ describe("DocumentStore.find / findInMemory — `type` narrows doc shape", () =>
     store.find("user", undefined);
   });
 
-  it("DocumentHandle exposes correctly-typed observable regions", () => {
-    // The two orthogonal regions below are the binding surface for UI
-    // components; pin their types so a refactor that relaxes either of them to
-    // `unknown` (or drops a region) breaks compilation here.
+  it("DocumentHandle exposes correctly-typed observable fields", () => {
+    // The flat orthogonal fields below are the binding surface for UI
+    // components; pin their types so a refactor that relaxes any of them to
+    // `unknown` (or drops one) breaks compilation here.
     const h = store.find("user", "1");
-    expectTypeOf(h.data).toEqualTypeOf<DataState<User>>();
-    expectTypeOf(h.fetch).toEqualTypeOf<FetchState<SiloError>>();
+    expectTypeOf(h.value).toEqualTypeOf<User | undefined>();
+    expectTypeOf(h.error).toEqualTypeOf<SiloError | undefined>();
+    expectTypeOf(h.isFetching).toEqualTypeOf<boolean>();
+    expectTypeOf(h.fetchedAt).toEqualTypeOf<Date | undefined>();
+    expectTypeOf(h.status).toEqualTypeOf<HandleStatus>();
     expectTypeOf(h.promise).toEqualTypeOf<Promise<User> | undefined>();
   });
 });
@@ -181,7 +183,7 @@ describe("DocumentStore.findQuery — params and result narrowed by `type`", () 
   it("findQuery('search', params) returns QueryHandle<SearchResult>", () => {
     const h = store.findQuery("search", { q: "x" });
     expectTypeOf(h).toEqualTypeOf<QueryHandle<SearchResult>>();
-    expectTypeOf(h.data).toEqualTypeOf<DataState<SearchResult>>();
+    expectTypeOf(h.value).toEqualTypeOf<SearchResult | undefined>();
   });
 
   it("findQueryInMemory inferred as result | undefined", () => {
@@ -222,10 +224,13 @@ describe("DocumentStore.insertQueryResult — params + result both narrowed", ()
 describe("QueryHandle exposes correctly-typed observable fields", () => {
   const store = {} as DocumentStore<Models, Queries>;
 
-  it("data / fetch / promise all carry the result generic", () => {
+  it("value / error / promise all carry the result generic", () => {
     const h = store.findQuery("search", { q: "x" });
-    expectTypeOf(h.data).toEqualTypeOf<DataState<SearchResult>>();
-    expectTypeOf(h.fetch).toEqualTypeOf<FetchState<SiloError>>();
+    expectTypeOf(h.value).toEqualTypeOf<SearchResult | undefined>();
+    expectTypeOf(h.error).toEqualTypeOf<SiloError | undefined>();
+    expectTypeOf(h.isFetching).toEqualTypeOf<boolean>();
+    expectTypeOf(h.fetchedAt).toEqualTypeOf<Date | undefined>();
+    expectTypeOf(h.status).toEqualTypeOf<HandleStatus>();
     expectTypeOf(h.promise).toEqualTypeOf<Promise<SearchResult> | undefined>();
   });
 });

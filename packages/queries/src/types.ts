@@ -1,4 +1,5 @@
-import type { DocumentStore, DocumentTypes } from "@supergrain/silo";
+import type { AdapterError, DocumentStore, DocumentTypes } from "@supergrain/silo";
+import type { Effect } from "effect";
 
 // =============================================================================
 // Query adapter
@@ -16,16 +17,22 @@ import type { DocumentStore, DocumentTypes } from "@supergrain/silo";
  *   must carry its own `type` and `id` (JSON-API convention) so the query
  *   helper can insert it under the correct type. This is a queries-specific
  *   requirement on top of the core library's minimal `{ id }` contract.
+ *
+ * `fetch` returns an Effect (consistent with `@supergrain/silo` adapters) that
+ * succeeds with the response envelope or fails with `AdapterError`.
  */
 export interface QueryAdapter<T> {
   fetch(
     id: string,
     opts: { offset: number; limit: number },
-  ): Promise<{
-    data: { results: Array<T> };
-    meta?: { nextOffset?: number | null };
-    included?: Array<{ type: string; id: string }>;
-  }>;
+  ): Effect.Effect<
+    {
+      data: { results: Array<T> };
+      meta?: { nextOffset?: number | null };
+      included?: Array<{ type: string; id: string }>;
+    },
+    AdapterError
+  >;
 }
 
 // =============================================================================

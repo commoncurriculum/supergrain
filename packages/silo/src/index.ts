@@ -8,13 +8,12 @@
 
 export { createDocumentStore } from "./store";
 export type {
-  DataState,
   DocumentAdapter,
   DocumentHandle,
   DocumentStore,
   DocumentStoreConfig,
   DocumentTypes,
-  FetchState,
+  HandleStatus,
   ModelConfig,
   RegisteredTypes,
   ResponseProcessor,

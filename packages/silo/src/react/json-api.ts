@@ -64,8 +64,8 @@ type HasManyTarget<Model extends WithRelationships, K extends keyof Model["relat
  * @example
  * ```tsx
  * const planbook = useBelongsTo(cardStack, "planbook");
- * if (planbook.data._tag !== "Present") return <Spinner />;
- * return <span>{planbook.data.value.attributes.title}</span>;
+ * if (planbook.value === undefined) return <Spinner />;
+ * return <span>{planbook.value.attributes.title}</span>;
  * ```
  */
 export function useBelongsTo<Model extends WithRelationships, RelName extends BelongsToKeys<Model>>(
@@ -109,8 +109,8 @@ export function useBelongsTo<Model extends WithRelationships, RelName extends Be
  * ```tsx
  * const cards = useHasMany(planbook, "cardStacks");
  * return cards.map((card, i) =>
- *   card.data._tag === "Present"
- *     ? <Card key={card.data.value.id} card={card.data.value} />
+ *   card.value !== undefined
+ *     ? <Card key={card.value.id} card={card.value} />
  *     : <Skeleton key={i} />,
  * );
  * ```
@@ -147,10 +147,10 @@ export function useHasMany<Model extends WithRelationships, RelName extends HasM
  * appear for each still-loading card, or where one failed card shouldn't
  * prevent the others from rendering.
  *
- * Each handle has its own independent `data` / `fetch` regions and `promise`.
- * Fetching across the array is still batched into a single `adapter.find(ids)`
- * call by the internal finder — individual handles don't mean individual
- * network requests.
+ * Each handle has its own independent `value` / `error` / `isFetching` and
+ * `promise`. Fetching across the array is still batched into a single
+ * `adapter.find(ids)` call by the internal finder — individual handles don't
+ * mean individual network requests.
  *
  * Empty relationship data or a `null`/`undefined` model returns an empty array.
  *
@@ -161,7 +161,7 @@ export function useHasMany<Model extends WithRelationships, RelName extends HasM
  *   <ul>
  *     {cards.map((c, i) => (
  *       <li key={i}>
- *         {c.data._tag === "Present" ? c.data.value.attributes.title : <Skeleton />}
+ *         {c.value !== undefined ? c.value.attributes.title : <Skeleton />}
  *       </li>
  *     ))}
  *   </ul>

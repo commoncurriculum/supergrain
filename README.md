@@ -117,20 +117,20 @@ function App() {
 }
 
 // 5. Read by (type, id) or (type, params). Both return reactive handles with
-//    two orthogonal regions: data (Absent | Present) and fetch (Idle |
-//    Fetching | Failed), plus a stable `promise`.
+//    flat, orthogonal fields: value, error, isFetching, fetchedAt, status,
+//    plus a stable `promise`.
 function UserCard({ id }: { id: string }) {
   const user = useDocument("user", id);
-  if (user.data._tag !== "Present") return <Skeleton />;
-  return <div>{user.data.value.attributes.firstName}</div>;
+  if (user.value === undefined) return <Skeleton />;
+  return <div>{user.value.attributes.firstName}</div>;
 }
 
 function AuthorPosts({ authorId }: { authorId: string }) {
   const posts = useQuery("posts", { authorId, status: "published", limit: 20 });
-  if (posts.data._tag !== "Present") return <Skeleton />;
+  if (posts.value === undefined) return <Skeleton />;
   return (
     <ul>
-      {posts.data.value.posts.map((p) => (
+      {posts.value.posts.map((p) => (
         <li key={p.id}>{p.title}</li>
       ))}
     </ul>

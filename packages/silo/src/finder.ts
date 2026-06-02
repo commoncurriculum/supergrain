@@ -260,10 +260,10 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   ): void {
     if (processorError) {
       applyEvent(handle, HandleEvent.failed(processorError));
-    } else if (handle.data._tag === "Present") {
-      applyEvent(handle, HandleEvent.settled());
-    } else {
+    } else if (handle.value === undefined) {
       applyEvent(handle, HandleEvent.failed(new NotFoundError({ type, key })));
+    } else {
+      applyEvent(handle, HandleEvent.settled());
     }
   }
 
