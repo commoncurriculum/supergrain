@@ -12,6 +12,7 @@
 // on Effect.sleep; the gc deferral on setTimeout — both advance together).
 // =============================================================================
 
+import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDocumentStore, type DocumentAdapter } from "../src";
@@ -174,6 +175,34 @@ describe("subscriber-gated cancellation", () => {
 
     expect(handle.value).toBeUndefined(); // no stale write
     expect(handle.status).toBe("pending");
+  });
+
+  it("interrupts an Effect adapter natively, running its finalizer", async () => {
+    let finalized = false;
+    // An Effect adapter that hangs until interrupted, with a finalizer that
+    // proves native interruption reached the adapter's own fiber.
+    const adapter: DocumentAdapter = {
+      find: () =>
+        Effect.never.pipe(
+          Effect.onInterrupt(() =>
+            Effect.sync(() => {
+              finalized = true;
+            }),
+          ),
+        ),
+    };
+    const store = createDocumentStore<Types>({ models: { user: { adapter } } });
+
+    const handle = store.find("user", "1");
+    const unsub = store.subscribeDocument("user", "1");
+    await tick();
+    expect(handle.isFetching).toBe(true);
+
+    unsub();
+    await tick();
+
+    expect(finalized).toBe(true); // the adapter's own finalizer ran
+    expect(handle.isFetching).toBe(false); // reset to idle
   });
 
   it("does not interrupt a fetch that was never subscribed", async () => {
