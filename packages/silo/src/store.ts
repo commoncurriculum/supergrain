@@ -296,20 +296,6 @@ export interface DocumentStore<
     result: Q[K]["result"],
   ): void;
   clearMemory(): void;
-  /**
-   * Opt-in fetch cancellation. Register interest in a document and get an
-   * unsubscribe function back; while the count is &gt; 0 an in-flight fetch for
-   * `(type, id)` is kept, and when it returns to 0 the fetch is interrupted
-   * (aborting its `AbortSignal`), deferred by `gcTimeMs`.
-   *
-   * The React hooks deliberately do NOT call this — `useDocument` is a pure
-   * reactive read. Wire it up yourself (e.g. tie subscribe/unsubscribe to a
-   * component's lifecycle) when you want unmount-driven cancellation, until a
-   * reactive-observation primitive in the kernel can drive it automatically.
-   */
-  subscribeDocument<K extends keyof M & string>(type: K, id: string): () => void;
-  /** Query analogue of {@link DocumentStore.subscribeDocument}. */
-  subscribeQuery<K extends keyof Q & string>(type: K, params: Q[K]["params"]): () => void;
 }
 
 const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
@@ -352,6 +338,11 @@ export function createDocumentStore<
         bucket.set(id, makeIdleHandle());
         handle = bucket.get(id)!;
       }
+      // Subscribe the rendering component (the current active subscriber) to
+      // this handle's liveness node, so unmounting the last observer triggers
+      // automatic, signals-native fetch cancellation. A no-op outside a tracked
+      // render.
+      finder.observe("documents", type, id, handle);
       // Trigger a fetch only for a never-loaded, idle, non-errored handle
       // (status "pending" with no fetch in flight). Errored handles don't
       // auto-retry; loaded handles serve from cache.
@@ -397,6 +388,9 @@ export function createDocumentStore<
         // would break handle identity for subsequent calls.
         handle = bucket.get(paramsKey)!;
       }
+      // See `find`: subscribe the rendering component to the handle's liveness
+      // node for automatic cancellation.
+      finder.observe("queries", type, paramsKey, handle);
       if (!handle.isFetching && handle.value === undefined && handle.error === undefined) {
         batch(() => applyEvent(handle!, HandleEvent.fetch()));
         finder.queueQuery(type, paramsKey, params);
@@ -443,17 +437,6 @@ export function createDocumentStore<
           for (const handle of bucket.values()) applyEvent(handle, HandleEvent.reset());
         }
       });
-    },
-
-    subscribeDocument<K extends keyof M & string>(type: K, id: string): () => void {
-      finder.subscribe("documents", type, id);
-      return () => finder.unsubscribe("documents", type, id);
-    },
-
-    subscribeQuery<K extends keyof Q & string>(type: K, params: Q[K]["params"]): () => void {
-      const paramsKey = stableStringify(params);
-      finder.subscribe("queries", type, paramsKey);
-      return () => finder.unsubscribe("queries", type, paramsKey);
     },
   };
 

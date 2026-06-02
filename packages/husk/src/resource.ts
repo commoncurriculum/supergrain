@@ -1,6 +1,5 @@
-import { createReactive } from "@supergrain/kernel";
+import { createReactive, effect } from "@supergrain/kernel";
 import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
-import { effect } from "alien-signals";
 
 /**
  * A resource is a reactive function with cleanup logic — one of two

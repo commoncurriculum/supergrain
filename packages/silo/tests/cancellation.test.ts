@@ -2,17 +2,26 @@
 // tests/cancellation.test.ts
 // =============================================================================
 //
-// Subscriber-gated cancellation (opt-in). Callers ref-count interest per key
-// via store.subscribeDocument / subscribeQuery (the React hooks do NOT — they
-// are pure reactive reads). When the last subscriber for every key in an
-// in-flight chunk goes away, the chunk's fiber is interrupted — aborting the
-// request's AbortSignal — and its handles reset to idle so a later find
-// refetches.
+// Signals-native, automatic cancellation. Every handle carries a dedicated
+// reactive "liveness" node; `store.find`/`store.findQuery` subscribe the current
+// active subscriber (the rendering component) to it. When the last observer of a
+// handle goes away (its component unmounts), the kernel fires `onUnobserved`;
+// after the `gcTimeMs` debounce, if every key in the in-flight chunk is still
+// unobserved, the chunk's fiber is interrupted — aborting the request's
+// AbortSignal — and its handles reset to idle so a later find refetches.
 //
-// Driven through a real DocumentStore with fake timers (the batch window runs
-// on Effect.sleep; the gc deferral on setTimeout — both advance together).
+// These node-level tests stand in for React mount/unmount by driving observation
+// directly through the kernel: an effect node whose deps are (re-)established by
+// running a render thunk under it, exactly like `tracked()`. Disposing the
+// effect == unmounting the last component. React-level coverage lives in
+// tests/react/cancellation.test.tsx.
+//
+// Driven through a real DocumentStore with fake timers (the batch window runs on
+// Effect.sleep; the gc deferral on setTimeout — both advance together).
 // =============================================================================
 
+import { effect } from "@supergrain/kernel";
+import { getActiveSub, type ReactiveNode, setActiveSub } from "@supergrain/kernel/internal";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -33,7 +42,6 @@ interface Controllable {
   readonly signal: AbortSignal | undefined;
   /** Resolve the most recent in-flight request. */
   resolve(): void;
-  /** Whether the adapter threaded the signal into its request (default true). */
 }
 
 /**
@@ -78,20 +86,44 @@ async function tick(ms = 20): Promise<void> {
   await vi.advanceTimersByTimeAsync(ms);
 }
 
-describe("subscriber-gated cancellation", () => {
-  it("interrupts an in-flight fetch and aborts the wire when the last subscriber leaves", async () => {
+/**
+ * Observe a handle the way a `tracked()` component does: create an effect node,
+ * capture it on the first run, and (re-)run `read` under it so reactive reads —
+ * including the `store.find`/`finder.observe` liveness subscription — are linked
+ * to that node. The returned disposer is the "unmount": disposing unlinks the
+ * deps, dropping the last observer.
+ */
+function observe(read: () => void): () => void {
+  let node: ReactiveNode | undefined;
+  return effect(() => {
+    if (node === undefined) {
+      node = getActiveSub();
+    }
+    const prev = setActiveSub(node);
+    try {
+      read();
+    } finally {
+      setActiveSub(prev);
+    }
+  });
+}
+
+describe("observation-driven cancellation", () => {
+  it("interrupts an in-flight fetch and aborts the wire when the last observer leaves", async () => {
     const c = controllable();
     const store = createDocumentStore<Types>({ models: { user: { adapter: c.adapter } } });
 
-    const handle = store.find("user", "1");
-    const unsub = store.subscribeDocument("user", "1");
+    let handle = makeIdleHandle<Types["user"]>();
+    const unobserve = observe(() => {
+      handle = store.find("user", "1") as typeof handle;
+    });
     await tick(); // window elapses → chunk fiber forked → request in flight
 
     expect(c.calls).toEqual([["1"]]);
     expect(handle.isFetching).toBe(true);
     expect(c.signal?.aborted).toBe(false);
 
-    unsub(); // last subscriber gone
+    unobserve(); // last observer gone
     await tick(); // gc(0) fires next tick → interrupt → AbortController.abort()
 
     expect(c.signal?.aborted).toBe(true);
@@ -101,74 +133,74 @@ describe("subscriber-gated cancellation", () => {
     expect(handle.value).toBeUndefined();
   });
 
-  it("keeps the fetch while any key in the batch still has a subscriber", async () => {
+  it("keeps the fetch while any key in the batch still has an observer", async () => {
     const c = controllable();
     const store = createDocumentStore<Types>({ models: { user: { adapter: c.adapter } } });
 
-    store.find("user", "1");
-    store.find("user", "2"); // same window → one chunk ["1","2"]
-    const unsub1 = store.subscribeDocument("user", "1");
-    const unsub2 = store.subscribeDocument("user", "2");
+    const unobs1 = observe(() => void store.find("user", "1"));
+    const unobs2 = observe(() => void store.find("user", "2")); // same window → one chunk ["1","2"]
     await tick();
     expect(c.calls).toEqual([["1", "2"]]);
 
-    unsub2();
+    unobs2();
     await tick();
-    expect(c.signal?.aborted).toBe(false); // "1" still subscribed → chunk kept
+    expect(c.signal?.aborted).toBe(false); // "1" still observed → chunk kept
 
-    unsub1();
+    unobs1();
     await tick();
     expect(c.signal?.aborted).toBe(true); // both abandoned → interrupted
   });
 
-  it("a re-subscribe before the next tick cancels the pending interrupt", async () => {
+  it("a re-observe before the next tick cancels the pending interrupt", async () => {
     const c = controllable();
     const store = createDocumentStore<Types>({ models: { user: { adapter: c.adapter } } });
 
-    store.find("user", "1");
-    const unsub = store.subscribeDocument("user", "1");
+    const unobserve = observe(() => void store.find("user", "1"));
     await tick();
 
-    unsub();
-    const unsubAgain = store.subscribeDocument("user", "1"); // synchronous re-subscribe
+    unobserve();
+    const unobserveAgain = observe(() => void store.find("user", "1")); // synchronous re-observe
     await tick();
 
-    expect(c.signal?.aborted).toBe(false); // interrupt cancelled
+    expect(c.signal?.aborted).toBe(false); // interrupt cancelled (onObserved cleared the timer)
     expect(c.calls).toEqual([["1"]]); // no refetch
 
-    unsubAgain();
+    unobserveAgain();
   });
 
   it("refetches when interest returns after a gc interrupt", async () => {
     const c = controllable();
     const store = createDocumentStore<Types>({ models: { user: { adapter: c.adapter } } });
 
-    store.find("user", "1");
-    const unsub = store.subscribeDocument("user", "1");
+    const unobserve = observe(() => void store.find("user", "1"));
     await tick();
-    unsub();
+    unobserve();
     await tick();
     expect(c.signal?.aborted).toBe(true);
 
     // Interest returns: the handle is idle again, so find re-triggers a fetch.
-    const handle = store.find("user", "1");
-    const unsubAgain = store.subscribeDocument("user", "1");
+    let handle = makeIdleHandle<Types["user"]>();
+    const unobserveAgain = observe(() => {
+      handle = store.find("user", "1") as typeof handle;
+    });
     await tick();
 
     expect(c.calls).toEqual([["1"], ["1"]]);
     expect(handle.isFetching).toBe(true);
-    unsubAgain();
+    unobserveAgain();
   });
 
   it("discards a late result after interruption even when the adapter ignores the signal", async () => {
     const c = controllable(false); // adapter never honors the abort signal
     const store = createDocumentStore<Types>({ models: { user: { adapter: c.adapter } } });
 
-    const handle = store.find("user", "1");
-    const unsub = store.subscribeDocument("user", "1");
+    let handle = makeIdleHandle<Types["user"]>();
+    const unobserve = observe(() => {
+      handle = store.find("user", "1") as typeof handle;
+    });
     await tick();
 
-    unsub();
+    unobserve();
     await tick(); // interrupt: fiber gone, even if the request later resolves
 
     c.resolve(); // the ignored request finally settles
@@ -194,23 +226,25 @@ describe("subscriber-gated cancellation", () => {
     };
     const store = createDocumentStore<Types>({ models: { user: { adapter } } });
 
-    const handle = store.find("user", "1");
-    const unsub = store.subscribeDocument("user", "1");
+    let handle = makeIdleHandle<Types["user"]>();
+    const unobserve = observe(() => {
+      handle = store.find("user", "1") as typeof handle;
+    });
     await tick();
     expect(handle.isFetching).toBe(true);
 
-    unsub();
+    unobserve();
     await tick();
 
     expect(finalized).toBe(true); // the adapter's own finalizer ran
     expect(handle.isFetching).toBe(false); // reset to idle
   });
 
-  it("does not interrupt a fetch that was never subscribed", async () => {
+  it("does not interrupt a fetch that was never observed", async () => {
     const c = controllable();
     const store = createDocumentStore<Types>({ models: { user: { adapter: c.adapter } } });
 
-    const handle = store.find("user", "1"); // no subscribeDocument
+    const handle = store.find("user", "1"); // no observer (no active sub)
     await tick();
     await tick();
 
@@ -222,20 +256,19 @@ describe("subscriber-gated cancellation", () => {
     expect(handle.value).toEqual({ id: "1", name: "User1" });
   });
 
-  it("keeps the fetch while a second subscriber on the same key remains", async () => {
+  it("keeps the fetch while a second observer on the same key remains", async () => {
     const c = controllable();
     const store = createDocumentStore<Types>({ models: { user: { adapter: c.adapter } } });
 
-    store.find("user", "1");
-    const unsubA = store.subscribeDocument("user", "1");
-    const unsubB = store.subscribeDocument("user", "1"); // count = 2
+    const unobsA = observe(() => void store.find("user", "1"));
+    const unobsB = observe(() => void store.find("user", "1")); // two observers, one key
     await tick();
 
-    unsubA(); // count = 1, still wanted
+    unobsA(); // one observer left
     await tick();
     expect(c.signal?.aborted).toBe(false);
 
-    unsubB(); // count = 0
+    unobsB(); // last observer gone
     await tick();
     expect(c.signal?.aborted).toBe(true);
   });
@@ -247,19 +280,17 @@ describe("subscriber-gated cancellation", () => {
       models: { user: { adapter: cUser.adapter }, post: { adapter: cPost.adapter } },
     });
 
-    store.find("user", "1");
-    store.find("post", "1"); // two separate chunks in flight
-    const unsubUser = store.subscribeDocument("user", "1");
-    const unsubPost = store.subscribeDocument("post", "1");
+    const unobsUser = observe(() => void store.find("user", "1"));
+    const unobsPost = observe(() => void store.find("post", "1")); // two separate chunks in flight
     await tick();
 
-    unsubUser();
+    unobsUser();
     await tick();
 
     expect(cUser.signal?.aborted).toBe(true); // abandoned chunk interrupted
     expect(cPost.signal?.aborted).toBe(false); // unrelated chunk untouched
 
-    unsubPost();
+    unobsPost();
     await tick();
   });
 });
@@ -267,7 +298,7 @@ describe("subscriber-gated cancellation", () => {
 type QTypes = { search: { params: { q: string }; result: { id: string; type: "search" } } };
 
 describe("query cancellation", () => {
-  it("interrupts an in-flight query fetch when its last subscriber leaves", async () => {
+  it("interrupts an in-flight query fetch when its last observer leaves", async () => {
     let signal: AbortSignal | undefined;
     const adapter = {
       find: (_paramsList: Array<{ q: string }>, ctx?: { signal: AbortSignal }) => {
@@ -282,13 +313,15 @@ describe("query cancellation", () => {
       queries: { search: { adapter } },
     });
 
-    const handle = store.findQuery("search", { q: "x" });
-    const unsub = store.subscribeQuery("search", { q: "x" });
+    let handle = makeIdleHandle<QTypes["search"]["result"]>();
+    const unobserve = observe(() => {
+      handle = store.findQuery("search", { q: "x" }) as typeof handle;
+    });
     await tick();
     expect(handle.isFetching).toBe(true);
     expect(signal?.aborted).toBe(false);
 
-    unsub();
+    unobserve();
     await tick();
 
     expect(signal?.aborted).toBe(true);
@@ -297,19 +330,7 @@ describe("query cancellation", () => {
   });
 });
 
-describe("subscriber ref-counting (Finder unit)", () => {
-  it("unsubscribe is a no-op for an unknown type, and is idempotent", () => {
-    const finder = new Finder<Types>({ models: { user: { adapter: { find: async () => [] } } } });
-
-    // Unknown type bucket → early return, no throw.
-    expect(() => finder.unsubscribe("documents", "user", "nope")).not.toThrow();
-
-    finder.subscribe("documents", "user", "1");
-    finder.unsubscribe("documents", "user", "1"); // → 0, schedules gc
-    // Second unsubscribe with a pending gc timer is a no-op.
-    expect(() => finder.unsubscribe("documents", "user", "1")).not.toThrow();
-  });
-
+describe("Finder observation (unit)", () => {
   it("an interrupt safely skips a handle evicted mid-flight", async () => {
     const c = controllable();
     const handle = makeIdleHandle();
@@ -322,12 +343,12 @@ describe("subscriber ref-counting (Finder unit)", () => {
     const finder = new Finder<Types>({ models: { user: { adapter: c.adapter } } });
     finder.attach(state, host);
 
-    finder.subscribe("documents", "user", "1");
+    const unobserve = observe(() => finder.observe("documents", "user", "1", handle));
     finder.queueDocument("user", "1");
     await tick(); // window → chunk in flight
 
     state.documents.get("user")!.delete("1"); // handle evicted before interrupt
-    finder.unsubscribe("documents", "user", "1");
+    unobserve();
     await tick(); // gc → interrupt → resetKeys finds the bucket but no handle
 
     expect(c.signal?.aborted).toBe(true); // request still torn down, no throw
@@ -345,13 +366,48 @@ describe("subscriber ref-counting (Finder unit)", () => {
     const finder = new Finder<Types>({ models: { user: { adapter: c.adapter } } });
     finder.attach(state, host);
 
-    finder.subscribe("documents", "user", "1");
+    const unobserve = observe(() => finder.observe("documents", "user", "1", handle));
     finder.queueDocument("user", "1");
     await tick();
 
     state.documents.delete("user"); // whole bucket gone
-    finder.unsubscribe("documents", "user", "1");
+    unobserve();
     await tick();
+
+    expect(c.signal?.aborted).toBe(true);
+  });
+
+  it("interrupts a chunk where some keys were queued without ever being observed", async () => {
+    const c = controllable();
+    const handle1 = makeIdleHandle();
+    handle1.isFetching = true;
+    const handle2 = makeIdleHandle();
+    handle2.isFetching = true;
+    const state: InternalState = {
+      documents: new Map([
+        [
+          "user",
+          new Map([
+            ["1", handle1],
+            ["2", handle2],
+          ]),
+        ],
+      ]),
+      queries: new Map(),
+    };
+    const host = createDocumentStore<Types>({ models: { user: { adapter: c.adapter } } });
+    const finder = new Finder<Types>({ models: { user: { adapter: c.adapter } } });
+    finder.attach(state, host);
+
+    // Observe only "1"; "2" rides the same chunk but is never observed.
+    const unobserve = observe(() => finder.observe("documents", "user", "1", handle1));
+    finder.queueDocument("user", "1");
+    finder.queueDocument("user", "2");
+    await tick();
+    expect(c.calls).toEqual([["1", "2"]]);
+
+    unobserve();
+    await tick(); // gc → maybeInterrupt: "1" unobserved, "2" has no observation entry
 
     expect(c.signal?.aborted).toBe(true);
   });

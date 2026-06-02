@@ -1,4 +1,4 @@
-import { signal } from "alien-signals";
+import { createObservationNode, signal, type ReactiveNode } from "./system";
 
 // Phantom brand for compile-time store identification (no runtime property).
 // Exported as a real symbol so consumers can reference `typeof $BRAND` in type positions.
@@ -27,6 +27,7 @@ export const $PROXY = Symbol.for("supergrain:proxy");
 export const $TRACK = Symbol.for("supergrain:track");
 export const $RAW = Symbol.for("supergrain:raw");
 export const $VERSION = Symbol.for("supergrain:version");
+export const $OBSERVE = Symbol.for("supergrain:observe");
 export const $OWN_KEYS = Symbol.for("ownKeys");
 
 // Well-known symbol properties attached to reactive proxy targets and proxies.
@@ -97,4 +98,32 @@ export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown
   const newSignal = signal(value) as Signal<unknown>;
   nodes[property] = newSignal;
   return newSignal;
+}
+
+/**
+ * Retrieve the dedicated "liveness" reactive node for a reactive proxy,
+ * creating it lazily and stashing it on the raw target. Unlike the per-property
+ * signals (which fire on writes), the liveness node is never written — it exists
+ * purely so observation primitives (`onObservationChange`/`trackNode`/
+ * `isObserved`) can detect when the proxy has no remaining reactive observers.
+ *
+ * Returns `undefined` only when the value isn't an object (nothing to observe).
+ */
+export function getObservationNode(value: object): ReactiveNode {
+  const raw = unwrap(value) as ReactiveTagged & { [$OBSERVE]?: ReactiveNode };
+  let node = raw[$OBSERVE];
+  if (!node) {
+    node = createObservationNode();
+    try {
+      Object.defineProperty(raw, $OBSERVE, {
+        value: node,
+        enumerable: false,
+        configurable: true,
+      });
+    } catch {
+      // Frozen / non-extensible targets can't carry the node; fall back to the
+      // freshly created node (observation simply won't be deduped for it).
+    }
+  }
+  return node;
 }

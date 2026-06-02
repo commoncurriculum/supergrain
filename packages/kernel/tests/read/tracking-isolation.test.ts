@@ -1,14 +1,15 @@
 import { update } from "@supergrain/mill";
-import { effect, getActiveSub, setActiveSub } from "alien-signals";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import {
   createReactive,
+  effect,
   enableProfiling,
   disableProfiling,
   resetProfiler,
   getProfile,
 } from "../../src";
+import { getActiveSub, setActiveSub } from "../../src/internal";
 
 describe("Tracking Isolation Analysis", () => {
   beforeEach(() => {

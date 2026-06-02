@@ -1,4 +1,4 @@
-import { startBatch, endBatch } from "alien-signals";
+import { startBatch, endBatch } from "./system";
 
 /**
  * Run a synchronous callback with all signal writes coalesced into a single

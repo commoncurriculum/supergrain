@@ -144,13 +144,13 @@ export function UserCard({ id }: { id: string }) {
 
 Wrap the component in a `<Suspense>` boundary. That's it. One line to opt in, nothing to configure, no `{ suspense: true }` flag.
 
-### Cancellation (opt-in)
+### Cancellation (automatic)
 
 `useDocument` / `useQuery` are **pure reactive reads** — no `useEffect`, no imperative subscription. They just return a reactive handle and re-render on the fields you read.
 
-Fetch cancellation is a separate, opt-in capability. `store.subscribeDocument(type, id)` / `store.subscribeQuery(type, params)` register interest and return an unsubscribe function; while the count is &gt; 0 the in-flight fetch is kept, and when it returns to 0 the request is interrupted (aborting the `AbortSignal` you threaded into `fetch`), deferred by `gcTimeMs` (default `0` = next tick) so a quick re-subscribe cancels the interrupt. Because the cache is shared, a batch is only cancelled when the **last** subscriber for every key in it goes away.
+Fetch cancellation rides that same reactivity. Every handle carries a dedicated reactive **liveness node**; reading a handle through `find` / `findQuery` subscribes the rendering component to it. When the **last** component observing a handle unmounts, the kernel's observation primitive ([`onObservationChange`](../kernel/README.md)) fires, and after a `gcTimeMs` grace window the in-flight fetch is interrupted — aborting the `AbortSignal` you threaded into `fetch` — and the handle resets to idle so renewed interest refetches. No `subscribe*` calls, no `useEffect`: cancellation is signals-native and automatic.
 
-The hooks deliberately don't auto-wire this: tying it to React's mount/unmount would mean an effect, and the signals-native version — cancel when a handle has no reactive observers — wants an observation-lifecycle primitive in the kernel core that doesn't exist yet. Until then, wire `subscribe*`/unsubscribe to a lifecycle yourself if you want unmount-driven cancellation.
+Because the cache is shared, a batch is only cancelled when the last observer for **every** key in it goes away. `gcTimeMs` (default `0` = next tick) defers the interrupt so a StrictMode remount or a fast nav-back re-subscribes before any work is lost.
 
 The whole engine — batch window included — runs on Effect's clock (`Effect.sleep`), so timing is fully deterministic in tests.
 
