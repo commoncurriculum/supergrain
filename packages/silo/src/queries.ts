@@ -149,8 +149,9 @@ export interface QueryConfig<
 
 /**
  * Reactive handle for a single query result. Structurally identical to
- * `DocumentHandle<T>`: the same two orthogonal regions (`data` / `fetch`),
- * same `promise`, same statechart, same Suspense semantics. The alias makes
+ * `DocumentHandle<T>`: the same flat orthogonal fields (`value` / `error` /
+ * `isFetching` / `fetchedAt`), same `promise`, same statechart, same Suspense
+ * semantics. The alias makes
  * hook return types read clearly at call sites (`useQuery(...) →
  * QueryHandle<Dashboard>` vs. `useDocument(...) → DocumentHandle<User>`).
  */
