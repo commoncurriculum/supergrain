@@ -58,7 +58,7 @@ export const config = {
 };
 ```
 
-Adapters above are **fan-out** style — N parallel `GET /:id` requests, merged. Just **return a `Promise`** of whatever the processor can read; the store runs it on its internal [Effect](https://effect.website/) engine (batching, `retry`/`timeout`, cancellation) and turns a rejection into a typed `AdapterError` for you. The optional `{ signal }` aborts when the fetch is no longer needed (see [Cancellation](#cancellation)); thread it into `fetch` or ignore it. The library doesn't care how you fetch. If your API exposes a bulk endpoint, one `GET` with all the ids works just as well:
+Adapters above are **fan-out** style — N parallel `GET /:id` requests, merged. Just **return a `Promise`** of whatever the processor can read; the store runs it on its internal [Effect](https://effect.website/) engine (batching, `retry`/`timeout`) and turns a rejection into a typed `AdapterError` for you. The optional `{ signal }` aborts when the adapter Effect is interrupted (e.g. a `timeout` fires); thread it into `fetch` or ignore it. The library doesn't care how you fetch. If your API exposes a bulk endpoint, one `GET` with all the ids works just as well:
 
 ```ts
 const userAdapter: DocumentAdapter = {
@@ -144,13 +144,11 @@ export function UserCard({ id }: { id: string }) {
 
 Wrap the component in a `<Suspense>` boundary. That's it. One line to opt in, nothing to configure, no `{ suspense: true }` flag.
 
-### Cancellation (automatic)
+### Reactive reads + `AbortSignal`
 
 `useDocument` / `useQuery` are **pure reactive reads** — no `useEffect`, no imperative subscription. They just return a reactive handle and re-render on the fields you read.
 
-Fetch cancellation rides that same reactivity. Every handle carries a dedicated reactive **liveness node**; reading a handle through `find` / `findQuery` subscribes the rendering component to it. When the **last** component observing a handle unmounts, the kernel's observation primitive ([`onObservationChange`](../kernel/README.md)) fires, and after a `gcTimeMs` grace window the in-flight fetch is interrupted — aborting the `AbortSignal` you threaded into `fetch` — and the handle resets to idle so renewed interest refetches. No `subscribe*` calls, no `useEffect`: cancellation is signals-native and automatic.
-
-Because the cache is shared, a batch is only cancelled when the last observer for **every** key in it goes away. `gcTimeMs` (default `0` = next tick) defers the interrupt so a StrictMode remount or a fast nav-back re-subscribes before any work is lost.
+An in-flight fetch is **not** cancelled when a component unmounts — it completes and populates the shared cache, so the next reader gets it for free. Adapters still receive an optional `{ signal }`: it aborts when the adapter Effect is interrupted (e.g. a per-model `timeout` fires). Thread it into `fetch(url, { signal })` for a real network abort, or ignore it.
 
 The whole engine — batch window included — runs on Effect's clock (`Effect.sleep`), so timing is fully deterministic in tests.
 
@@ -179,7 +177,6 @@ const store = createDocumentStore<TypeToModel>({
   },
   batchWindowMs: 15, // default — collapse calls within this window
   batchSize: 60, // default — chunk size per adapter.find() call
-  gcTimeMs: 0, // default — grace before an abandoned in-flight fetch is cancelled
 });
 ```
 

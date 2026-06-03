@@ -9,14 +9,7 @@ import type {
 } from "./store";
 
 import { batch } from "@supergrain/kernel";
-import {
-  getObservationNode,
-  isObserved,
-  onObservationChange,
-  type ReactiveNode,
-  trackNode,
-} from "@supergrain/kernel/internal";
-import { Cause, Duration, Effect, Exit, Fiber } from "effect";
+import { Duration, Effect, type Fiber } from "effect";
 
 import { AdapterError, NotFoundError, ProcessorError } from "./errors";
 import { defaultProcessor, defaultQueryProcessor } from "./processors";
@@ -68,18 +61,10 @@ function toAdapterEffect(
 // `adapter.find(...)` Effects; results settle each handle through the
 // statechart (`applyEvent`).
 //
-// Each chunk runs on its own interruptible fiber. Fetch cancellation is
-// signals-native and automatic: every handle carries a dedicated reactive
-// "liveness" node that any rendering component subscribes to (via the kernel's
-// `trackNode`, called from `store.find`/`store.findQuery`). When a handle's
-// liveness node loses its last observer — i.e. the last component observing it
-// unmounts — the kernel fires `onUnobserved`; after the `gcTimeMs` debounce, if
-// the key is still unobserved AND every key in its in-flight chunk is also
-// unobserved, the chunk's fiber is interrupted (aborting the request) and its
-// handles reset to idle so a future `find` refetches.
+// An adapter receives `{ signal }` from an `AbortController` that aborts only
+// when the adapter Effect is interrupted (e.g. a per-model `timeout` fires);
+// thread it into `fetch` for a real network abort, or ignore it.
 // =============================================================================
-
-type Surface = "documents" | "queries";
 
 type QueueEntry =
   | { surface: "documents"; type: string; id: string }
@@ -90,46 +75,19 @@ interface QueryChunkEntry {
   params: unknown;
 }
 
-interface ChunkSpec {
-  surface: Surface;
-  type: string;
-  keys: Array<string>;
-  effect: Effect.Effect<void>;
-}
-
-interface InflightChunk {
-  surface: Surface;
-  type: string;
-  keys: Set<string>;
-  fiber: Fiber.RuntimeFiber<void, never>;
-}
-
 export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>> {
   private config: DocumentStoreConfig<M, Q>;
   private batchWindowMs: number;
   private batchSize: number;
-  private gcTimeMs: number;
   private queue: Array<QueueEntry> = [];
   private windowFiber: Fiber.RuntimeFiber<void> | undefined = undefined;
   private state: InternalState | undefined = undefined;
   private store: DocumentStore<M, Q> | undefined = undefined;
 
-  // Per-key liveness node (keyed by `keyOf(surface, type, key)`), the in-flight
-  // chunk fibers we interrupt when every key in a chunk has lost all observers,
-  // and a SINGLE coalesced gc sweep: keys whose last observer went away are
-  // collected in `pendingGc` and processed by one `sweepTimer`, rather than one
-  // timer per key (which would thrash, since `tracked()` re-renders transiently
-  // drop and re-establish observation).
-  private observation = new Map<string, ReactiveNode>();
-  private inflight = new Set<InflightChunk>();
-  private pendingGc = new Map<string, { surface: Surface; type: string; key: string }>();
-  private sweepTimer: ReturnType<typeof setTimeout> | undefined = undefined;
-
   constructor(config: DocumentStoreConfig<M, Q>) {
     this.config = config;
     this.batchWindowMs = config.batchWindowMs ?? 15;
     this.batchSize = config.batchSize ?? 60;
-    this.gcTimeMs = config.gcTimeMs ?? 0;
   }
 
   attach(state: InternalState, store: DocumentStore<M, Q>): void {
@@ -145,84 +103,6 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   queueQuery<K extends keyof Q & string>(type: K, paramsKey: string, params: Q[K]["params"]): void {
     this.queue.push({ surface: "queries", type, paramsKey, params });
     this.scheduleDrain();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Observation-driven cancellation, gated on "no one observes this anymore"
-  // (the cache is shared, so it is the last observer that matters, not a single
-  // unmount). Driven by the kernel's observation primitive, not ref-counting.
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Wire (once) and refresh (every call) the observation of a handle. The first
-   * call registers the liveness handlers; every call re-subscribes the current
-   * active subscriber so a freshly mounted/rendered component counts as an
-   * observer. The subscription part is a no-op when there is no active sub
-   * (e.g. `find` called outside a tracked render).
-   */
-  // oxlint-disable-next-line max-params
-  observe(surface: Surface, type: string, key: string, handle: object): void {
-    const k = this.keyOf(surface, type, key);
-    let node = this.observation.get(k);
-    if (node === undefined) {
-      node = getObservationNode(handle);
-      this.observation.set(k, node);
-      // The kernel coalesces + defers this to a microtask and only fires once
-      // the node is durably unobserved, so transient re-render churn never
-      // reaches us. We still defer again by `gcTimeMs` for the nav-back case.
-      onObservationChange(node, {
-        onUnobserved: () => this.onUnobserved(surface, type, key, k),
-      });
-    }
-    trackNode(node);
-  }
-
-  private keyOf(surface: Surface, type: string, key: string): string {
-    // JSON-encode the parts: unambiguous (collision-safe for arbitrary ids /
-    // param keys) and plain text (no NUL separators, so the file stays diffable).
-    return JSON.stringify([surface, type, key]);
-  }
-
-  /**
-   * A node lost its last observer (already coalesced + deferred by the kernel).
-   * Record it and arm the single shared sweep timer, coalescing many keys / many
-   * handles into one `setTimeout`. The `gcTimeMs` grace lets a fast nav-back
-   * re-observe before the sweep; `maybeInterrupt` re-confirms every key in the
-   * chunk is still unobserved before interrupting.
-   */
-  // oxlint-disable-next-line max-params
-  private onUnobserved(surface: Surface, type: string, key: string, k: string): void {
-    this.pendingGc.set(k, { surface, type, key });
-    if (this.sweepTimer !== undefined) return;
-    this.sweepTimer = setTimeout(() => this.sweep(), this.gcTimeMs);
-  }
-
-  private sweep(): void {
-    this.sweepTimer = undefined;
-    const pending = [...this.pendingGc.values()];
-    this.pendingGc.clear();
-    for (const { surface, type, key } of pending) {
-      this.maybeInterrupt(surface, type, key);
-    }
-  }
-
-  /**
-   * Interrupt every in-flight chunk that covers `key` IF all of that chunk's
-   * keys are now unobserved (a batched request can't be partially cancelled).
-   * The `allAbandoned` re-check means a key re-observed during the gc grace
-   * keeps its chunk alive.
-   */
-  private maybeInterrupt(surface: Surface, type: string, key: string): void {
-    for (const entry of this.inflight) {
-      const covers = entry.surface === surface && entry.type === type && entry.keys.has(key);
-      const allAbandoned =
-        covers &&
-        [...entry.keys].every((k) => {
-          const node = this.observation.get(this.keyOf(surface, type, k));
-          return node === undefined || !isObserved(node);
-        });
-      if (allAbandoned) Effect.runFork(Fiber.interrupt(entry.fiber));
-    }
   }
 
   private scheduleDrain(): void {
@@ -244,8 +124,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   /**
    * Flush queued work in one pass. Exposed (non-private, returns a Promise) so
    * tests can drive it deterministically without the window. Never rejects —
-   * all adapter/processor failures settle into handle state, and interruption
-   * resets the abandoned handles.
+   * all adapter/processor failures settle into handle state.
    */
   drain(): Promise<void> {
     return Effect.runPromise(this.drainEffect());
@@ -274,73 +153,24 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
         }
       }
 
-      const specs: Array<ChunkSpec> = [];
+      const chunks: Array<Effect.Effect<void>> = [];
       for (const [type, ids] of documentGroups) {
         for (let i = 0; i < ids.length; i += this.batchSize) {
-          const keys = ids.slice(i, i + this.batchSize);
-          specs.push({
-            surface: "documents",
-            type,
-            keys,
-            effect: this.drainDocumentChunk(type, keys),
-          });
+          chunks.push(this.drainDocumentChunk(type, ids.slice(i, i + this.batchSize)));
         }
       }
       for (const [type, list] of queryGroups) {
         for (let i = 0; i < list.length; i += this.batchSize) {
-          const chunk = list.slice(i, i + this.batchSize);
-          specs.push({
-            surface: "queries",
-            type,
-            keys: chunk.map((e) => e.paramsKey),
-            effect: this.drainQueryChunk(type, chunk),
-          });
+          chunks.push(this.drainQueryChunk(type, list.slice(i, i + this.batchSize)));
         }
       }
 
-      return Effect.forEach(specs, (spec) => this.runChunk(spec), {
+      // Each chunk Effect catches all of its own failures (settling handles),
+      // so the fan-out never fails or interrupts a sibling. Run them concurrently.
+      return Effect.forEach(chunks, (chunk) => chunk, {
         concurrency: "unbounded",
         discard: true,
       });
-    });
-  }
-
-  /**
-   * Run one chunk on its own fiber, registered as in-flight so it can be
-   * interrupted when its keys are abandoned. On interruption (only), reset the
-   * chunk's handles to idle so a later `find` refetches.
-   */
-  private runChunk(spec: ChunkSpec): Effect.Effect<void> {
-    return Effect.flatMap(Effect.fork(spec.effect), (fiber) => {
-      const entry: InflightChunk = {
-        surface: spec.surface,
-        type: spec.type,
-        keys: new Set(spec.keys),
-        fiber,
-      };
-      this.inflight.add(entry);
-      return Fiber.await(fiber).pipe(
-        Effect.flatMap((exit) =>
-          Effect.sync(() => {
-            this.inflight.delete(entry);
-            if (Exit.isFailure(exit) && Cause.isInterrupted(exit.cause)) {
-              this.resetKeys(spec.surface, spec.type, entry.keys);
-            }
-          }),
-        ),
-      );
-    });
-  }
-
-  private resetKeys(surface: Surface, type: string, keys: Set<string>): void {
-    const buckets = surface === "documents" ? this.state!.documents : this.state!.queries;
-    const bucket = buckets.get(type);
-    if (bucket === undefined) return;
-    batch(() => {
-      for (const key of keys) {
-        const handle = bucket.get(key);
-        if (handle) applyEvent(handle, HandleEvent.abort());
-      }
     });
   }
 

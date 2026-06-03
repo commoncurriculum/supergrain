@@ -1,4 +1,4 @@
-import { createObservationNode, signal, type ReactiveNode } from "./system";
+import { signal } from "alien-signals";
 
 // Phantom brand for compile-time store identification (no runtime property).
 // Exported as a real symbol so consumers can reference `typeof $BRAND` in type positions.
@@ -27,7 +27,6 @@ export const $PROXY = Symbol.for("supergrain:proxy");
 export const $TRACK = Symbol.for("supergrain:track");
 export const $RAW = Symbol.for("supergrain:raw");
 export const $VERSION = Symbol.for("supergrain:version");
-export const $OBSERVE = Symbol.for("supergrain:observe");
 export const $OWN_KEYS = Symbol.for("ownKeys");
 
 // Well-known symbol properties attached to reactive proxy targets and proxies.
@@ -98,39 +97,4 @@ export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown
   const newSignal = signal(value) as Signal<unknown>;
   nodes[property] = newSignal;
   return newSignal;
-}
-
-// Fallback liveness-node store for targets that can't carry the `$OBSERVE`
-// property (frozen / non-extensible). Keyed by raw target so the node is still
-// deduped (observation would silently break if each call returned a new node).
-const frozenObservationNodes = new WeakMap<object, ReactiveNode>();
-
-/**
- * Retrieve the dedicated "liveness" reactive node for a reactive proxy,
- * creating it lazily and stashing it on the raw target. Unlike the per-property
- * signals (which fire on writes), the liveness node is never written — it exists
- * purely so observation primitives (`onObservationChange`/`trackNode`/
- * `isObserved`) can detect when the proxy has no remaining reactive observers.
- *
- * The node is stable across calls for a given target (incl. frozen targets, via
- * a WeakMap fallback), so observation handlers attach to the same node a reader
- * subscribes to.
- */
-export function getObservationNode(value: object): ReactiveNode {
-  const raw = unwrap(value) as ReactiveTagged & { [$OBSERVE]?: ReactiveNode };
-  const existing = raw[$OBSERVE] ?? frozenObservationNodes.get(raw);
-  if (existing) return existing;
-
-  const node = createObservationNode();
-  try {
-    Object.defineProperty(raw, $OBSERVE, {
-      value: node,
-      enumerable: false,
-      configurable: true,
-    });
-  } catch {
-    // Frozen / non-extensible target: keep the node deduped via the WeakMap.
-    frozenObservationNodes.set(raw, node);
-  }
-  return node;
 }

@@ -13,6 +13,8 @@
  * `wrap()` dispatch here when the value is a Map or Set.
  */
 
+import { getActiveSub, startBatch, endBatch, signal } from "alien-signals";
+
 import {
   $OWN_KEYS,
   $RAW,
@@ -33,7 +35,6 @@ import { profileSignalRead, profileSignalSkip, profileSignalWrite } from "./prof
 // accesses the imported binding at top-level evaluation time (they don't).
 // ---------------------------------------------------------------------------
 import { createReactiveProxy } from "./read";
-import { getActiveSub, startBatch, endBatch, signal } from "./system";
 
 function wrap<T>(value: T): T {
   if (!isWrappable(value)) {

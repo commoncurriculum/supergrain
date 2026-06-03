@@ -257,14 +257,6 @@ export interface DocumentStoreConfig<
    * are chunked. Default: 60.
    */
   batchSize?: number;
-  /**
-   * Grace period in ms after the last subscriber for an in-flight fetch goes
-   * away before its request is interrupted. `0` (default) defers to the next
-   * tick, so a synchronous re-subscribe (React StrictMode remount, fast
-   * nav-back) cancels the interrupt. Raise it for TanStack-style "keep the
-   * fetch warm" behavior. Only takes effect for keys with `subscribe`rs.
-   */
-  gcTimeMs?: number;
 }
 
 // =============================================================================
@@ -338,11 +330,6 @@ export function createDocumentStore<
         bucket.set(id, makeIdleHandle());
         handle = bucket.get(id)!;
       }
-      // Subscribe the rendering component (the current active subscriber) to
-      // this handle's liveness node, so unmounting the last observer triggers
-      // automatic, signals-native fetch cancellation. A no-op outside a tracked
-      // render.
-      finder.observe("documents", type, id, handle);
       // Trigger a fetch only for a never-loaded, idle, non-errored handle
       // (status "pending" with no fetch in flight). Errored handles don't
       // auto-retry; loaded handles serve from cache.
@@ -388,9 +375,6 @@ export function createDocumentStore<
         // would break handle identity for subsequent calls.
         handle = bucket.get(paramsKey)!;
       }
-      // See `find`: subscribe the rendering component to the handle's liveness
-      // node for automatic cancellation.
-      finder.observe("queries", type, paramsKey, handle);
       if (!handle.isFetching && handle.value === undefined && handle.error === undefined) {
         batch(() => applyEvent(handle!, HandleEvent.fetch()));
         finder.queueQuery(type, paramsKey, params);

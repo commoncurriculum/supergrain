@@ -1,3 +1,5 @@
+import { getActiveSub, startBatch, endBatch } from "alien-signals";
+
 import { createReactiveMap, createReactiveSet } from "./collections";
 import {
   $NODE,
@@ -12,7 +14,6 @@ import {
   type ReactiveTagged,
 } from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
-import { getActiveSub, startBatch, endBatch } from "./system";
 import { writeHandler } from "./write";
 
 // Array methods that mutate the array internally do multiple proxy `set`

@@ -25,12 +25,6 @@ export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
   Failed: { readonly error: E };
   /** Memory was cleared. */
   Reset: Record<never, never>;
-  /**
-   * The in-flight fetch was cancelled because no subscriber remains. Unlike
-   * `Reset`, this also ends activity — the handle returns to full idle so a
-   * later `find` starts a fresh fetch.
-   */
-  Abort: Record<never, never>;
 }>;
 
 /**
@@ -44,7 +38,6 @@ export const HandleEvent = {
   settled: (): HandleEvent => ({ _tag: "Settled" }),
   failed: (error: SiloError): HandleEvent => ({ _tag: "Failed", error }),
   reset: (): HandleEvent => ({ _tag: "Reset" }),
-  abort: (): HandleEvent => ({ _tag: "Abort" }),
 };
 
 /** `status` is derived from the orthogonal fields, never stored as truth. */
@@ -155,14 +148,6 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       // repopulate; otherwise everything clears.
       break;
     }
-    case "Abort": {
-      // Cancellation: clear everything AND end activity — back to full idle.
-      value = undefined;
-      error = undefined;
-      fetchedAt = undefined;
-      isFetching = false;
-      break;
-    }
   }
 
   const status = deriveStatus(value, error);
@@ -222,13 +207,6 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
         raw.resolve = undefined;
         raw.reject = undefined;
       }
-      break;
-    }
-    case "Abort": {
-      // Drop the abandoned promise and resolvers; a later fetch makes a fresh one.
-      handle.promise = undefined;
-      raw.resolve = undefined;
-      raw.reject = undefined;
       break;
     }
   }
