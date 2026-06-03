@@ -165,8 +165,8 @@ export function createDocumentStoreContext<
   ): DocumentHandle<M[K]> {
     // A pure reactive read: `find` returns a stable, reactive handle and the
     // tracked component re-renders on the fields it reads. No effects — the
-    // hook never imperatively subscribes. (The store exposes `subscribeDocument`
-    // for callers that want fetch cancellation; see its docs.)
+    // hook never imperatively subscribes, and an in-flight fetch is not
+    // cancelled on unmount (it completes and caches).
     //
     // useDocumentStore() returns S which extends DocumentStore<M, Q>; the cast
     // narrows back to the concrete DocumentStore<M, Q> so .find() is callable.

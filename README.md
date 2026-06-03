@@ -224,11 +224,11 @@ function UserList() {
 }
 ```
 
-The promise resolves exactly once on first success — later `insertDocument` calls update the `data` region in place but the promise reference stays stable, so `use()` doesn't re-suspend. After a first-load error, a recovery `insertDocument` produces a **new** resolved promise so a Suspense boundary nested in an error boundary can recover.
+The promise resolves exactly once on first success — later `insertDocument` calls update `value` in place but the promise reference stays stable, so `use()` doesn't re-suspend. After a first-load error, a recovery `insertDocument` produces a **new** resolved promise so a Suspense boundary nested in an error boundary can recover.
 
-Because fetches are batched, naive `use(user.promise)` calls sprinkled through a list **don't waterfall** — the three `<UserCard>`s above collapse into one `userAdapter.find(["1", "2", "3"])` call before suspending. This is the piece that usually makes Suspense unusable at scale; here it's the default.
+Because fetches are batched, naive `use(user.promise!)` calls sprinkled through a list **don't waterfall** — the three `<UserCard>`s above collapse into one `userAdapter.find(["1", "2", "3"])` call before suspending. This is the piece that usually makes Suspense unusable at scale; here it's the default.
 
-Want inline loading UI instead? Drop the `use(user.promise!)` line and branch on `user.data` / `user.fetch` directly. Same hook, same handle, no config switch.
+Want inline loading UI instead? Drop the `use(user.promise!)` line and branch on `user.value` / `user.isFetching` / `user.error` (or `user.status`) directly. Same hook, same handle, no config switch.
 
 ## Install
 

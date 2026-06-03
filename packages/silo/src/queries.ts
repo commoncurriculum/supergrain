@@ -68,8 +68,9 @@ export type RegisteredQueries = TypeRegistry extends {
  *   (the library dedupes concurrent deep-equal-param requests before
  *   calling the adapter).
  * - A rejected Promise / failed Effect fails every deferred waiting on the chunk.
- * - `ctx.signal` aborts when the chunk is abandoned; thread it into your
- *   transport for a real network abort, or ignore it.
+ * - `ctx.signal` aborts when the adapter Effect is interrupted (e.g. a
+ *   per-query `timeout` fires); thread it into your transport for a real
+ *   network abort, or ignore it.
  */
 export interface QueryAdapter<Params> {
   find(

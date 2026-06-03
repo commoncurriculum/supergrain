@@ -165,9 +165,10 @@ export type DocumentHandle<T, E = SiloError> =
  *   grouped by type and deduped (no duplicate ids in one call).
  * - A rejected Promise / failed Effect fails every deferred waiting on that
  *   chunk (as an `AdapterError`).
- * - `ctx.signal` aborts when the fetch is no longer needed (every subscriber
- *   for the chunk has gone away). Thread it into `fetch(url, { signal })` for a
- *   real network abort; ignore it and interruption simply discards the result.
+ * - `ctx.signal` aborts when the adapter Effect is interrupted — e.g. a
+ *   per-model `timeout` fires (or a `retry` abandons the prior attempt). Thread
+ *   it into `fetch(url, { signal })` for a real network abort; ignore it and
+ *   interruption simply discards the result.
  *
  * @example
  * ```ts
