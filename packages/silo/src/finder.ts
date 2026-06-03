@@ -11,7 +11,7 @@ import type {
 import { batch } from "@supergrain/kernel";
 import { Duration, Effect, type Fiber } from "effect";
 
-import { AdapterError, NotFoundError, ProcessorError } from "./errors";
+import { AdapterError, coerceAdapter, NotFoundError, ProcessorError } from "./errors";
 import { defaultProcessor, defaultQueryProcessor } from "./processors";
 import { applyEvent, HandleEvent, type InternalHandle } from "./transitions";
 
@@ -20,18 +20,12 @@ export type { InternalHandle } from "./transitions";
 export type { InternalState } from "./store";
 
 /**
- * Normalize an adapter result to the Effect engine, wiring fiber interruption
- * to wire cancellation:
- *
- * - We always call the adapter once with `{ signal }` from an `AbortController`.
- *   A Promise adapter can thread that into `fetch(url, { signal })` for a real
- *   network abort; ignoring it just means interruption discards the result
- *   (no stale write) without aborting the request.
- * - An Effect adapter is returned inline (a true child fiber — native
- *   interruption, finalizers, typed errors), with the `signal` it ignored.
- * - On interruption we abort the controller, so the Promise adapter's request
- *   tears down. A rejection becomes an `AdapterError` (passed through untouched
- *   if the adapter already threw one).
+ * Call the adapter once per attempt with a fresh `{ signal }` and run it on the
+ * Effect engine. The Promise→`AdapterError` boundary is delegated to the shared
+ * `coerceAdapter`; here we only add the `AbortController` wiring: on
+ * interruption (a per-model `timeout`, or a retry abandoning the prior attempt)
+ * we abort the controller so a Promise adapter that threaded `signal` into
+ * `fetch` tears its request down.
  */
 function toAdapterEffect(
   invoke: (ctx: { signal: AbortSignal }) => Promise<unknown> | Effect.Effect<unknown, AdapterError>,
@@ -40,15 +34,9 @@ function toAdapterEffect(
 ): Effect.Effect<unknown, AdapterError> {
   return Effect.suspend(() => {
     const controller = new AbortController();
-    const out = invoke({ signal: controller.signal });
-    const base = Effect.isEffect(out)
-      ? out
-      : Effect.tryPromise({
-          try: () => out,
-          catch: (cause) =>
-            cause instanceof AdapterError ? cause : new AdapterError({ type, keys, cause }),
-        });
-    return base.pipe(Effect.onInterrupt(() => Effect.sync(() => controller.abort())));
+    return coerceAdapter(invoke({ signal: controller.signal }), type, keys).pipe(
+      Effect.onInterrupt(() => Effect.sync(() => controller.abort())),
+    );
   });
 }
 

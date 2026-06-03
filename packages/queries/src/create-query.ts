@@ -1,7 +1,7 @@
 import type { CreateQueryParams, Query, QueryModel } from "./types";
 
 import { signal } from "@supergrain/kernel";
-import { AdapterError, type DocumentTypes } from "@supergrain/silo";
+import { coerceAdapter, type DocumentTypes } from "@supergrain/silo";
 import { Effect, Either } from "effect";
 
 import { fibonacciBackoff } from "./backoff";
@@ -50,17 +50,10 @@ export function createQuery<
     errorSignal(null);
 
     try {
-      // Promise-first boundary: a Promise adapter is wrapped (rejection →
-      // AdapterError); an Effect adapter is run as-is. Either way we funnel
-      // failure through `Either` so the typed error lands in the catch below.
-      const out = adapter.fetch(id, { offset, limit });
-      const eff = Effect.isEffect(out)
-        ? out
-        : Effect.tryPromise({
-            try: () => out,
-            catch: (cause) =>
-              cause instanceof AdapterError ? cause : new AdapterError({ type, keys: [id], cause }),
-          });
+      // Promise-first boundary (shared with @supergrain/silo): a Promise adapter
+      // is wrapped (rejection → AdapterError), an Effect adapter runs as-is. We
+      // funnel failure through `Either` so the typed error lands in the catch below.
+      const eff = coerceAdapter(adapter.fetch(id, { offset, limit }), type, [id]);
       const result = await Effect.runPromise(Effect.either(eff));
       if (destroyed) {
         isFetching(false);

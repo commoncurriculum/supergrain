@@ -310,6 +310,41 @@ function stableStringify(value: unknown): string {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
 }
 
+/**
+ * Get the stable handle for `key`, creating an idle one on first access. The
+ * re-read after `set` is deliberate: it returns the reactive proxy reference
+ * (not the raw pre-set object), so `find`/`insert` hand out the same identity on
+ * every call.
+ */
+function getOrCreateHandle(bucket: Map<string, InternalHandle>, key: string): InternalHandle {
+  let handle = bucket.get(key);
+  if (!handle) {
+    bucket.set(key, makeIdleHandle());
+    handle = bucket.get(key)!;
+  }
+  return handle;
+}
+
+/**
+ * Resolve the handle for `key` in `bucket` and, if it's a never-loaded idle
+ * handle (status "pending", no fetch in flight, no prior error), mark it
+ * fetching and enqueue the request. Errored handles don't auto-retry; loaded
+ * handles serve from cache. Shared by `find` and `findQuery` — the only
+ * difference is which bucket and how the request is enqueued.
+ */
+function findOrFetch(
+  bucket: Map<string, InternalHandle>,
+  key: string,
+  enqueue: () => void,
+): InternalHandle {
+  const handle = getOrCreateHandle(bucket, key);
+  if (!handle.isFetching && handle.value === undefined && handle.error === undefined) {
+    batch(() => applyEvent(handle, HandleEvent.fetch()));
+    enqueue();
+  }
+  return handle;
+}
+
 export function createDocumentStore<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
@@ -323,20 +358,9 @@ export function createDocumentStore<
   const store: DocumentStore<M, Q> = {
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
       if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
-
-      const bucket = ensureBucket(state.documents, type);
-      let handle = bucket.get(id);
-      if (!handle) {
-        bucket.set(id, makeIdleHandle());
-        handle = bucket.get(id)!;
-      }
-      // Trigger a fetch only for a never-loaded, idle, non-errored handle
-      // (status "pending" with no fetch in flight). Errored handles don't
-      // auto-retry; loaded handles serve from cache.
-      if (!handle.isFetching && handle.value === undefined && handle.error === undefined) {
-        batch(() => applyEvent(handle!, HandleEvent.fetch()));
-        finder.queueDocument(type, id);
-      }
+      const handle = findOrFetch(ensureBucket(state.documents, type), id, () =>
+        finder.queueDocument(type, id),
+      );
       return handle as unknown as DocumentHandle<M[K]>;
     },
 
@@ -349,12 +373,7 @@ export function createDocumentStore<
       if (!Object.isFrozen(doc)) Object.freeze(doc);
 
       batch(() => {
-        const bucket = ensureBucket(state.documents, type);
-        let handle = bucket.get(doc.id);
-        if (!handle) {
-          bucket.set(doc.id, makeIdleHandle());
-          handle = bucket.get(doc.id)!;
-        }
+        const handle = getOrCreateHandle(ensureBucket(state.documents, type), doc.id);
         applyEvent(handle, HandleEvent.insert(doc));
       });
     },
@@ -367,18 +386,9 @@ export function createDocumentStore<
         return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
 
       const paramsKey = stableStringify(params);
-      const bucket = ensureBucket(state.queries, type);
-      let handle = bucket.get(paramsKey);
-      if (!handle) {
-        bucket.set(paramsKey, makeIdleHandle());
-        // Re-read to get the reactive proxy reference; the raw pre-set value
-        // would break handle identity for subsequent calls.
-        handle = bucket.get(paramsKey)!;
-      }
-      if (!handle.isFetching && handle.value === undefined && handle.error === undefined) {
-        batch(() => applyEvent(handle!, HandleEvent.fetch()));
-        finder.queueQuery(type, paramsKey, params);
-      }
+      const handle = findOrFetch(ensureBucket(state.queries, type), paramsKey, () =>
+        finder.queueQuery(type, paramsKey, params),
+      );
       return handle as unknown as QueryHandle<Q[K]["result"]>;
     },
 
@@ -400,14 +410,8 @@ export function createDocumentStore<
       }
 
       const paramsKey = stableStringify(params);
-
       batch(() => {
-        const bucket = ensureBucket(state.queries, type);
-        let handle = bucket.get(paramsKey);
-        if (!handle) {
-          bucket.set(paramsKey, makeIdleHandle());
-          handle = bucket.get(paramsKey)!;
-        }
+        const handle = getOrCreateHandle(ensureBucket(state.queries, type), paramsKey);
         applyEvent(handle, HandleEvent.insert(result));
       });
     },

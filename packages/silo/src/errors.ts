@@ -1,6 +1,6 @@
 // oxlint-disable max-classes-per-file -- three small related tagged-error classes
 // oxlint-disable new-cap -- `Data.TaggedError("Tag")` is Effect's tagged-error idiom
-import { Data } from "effect";
+import { Data, Effect } from "effect";
 
 // =============================================================================
 // Typed errors
@@ -53,3 +53,29 @@ export class ProcessorError extends Data.TaggedError("ProcessorError")<{
 
 /** Every error a handle's `FetchState.Failed` can carry. */
 export type SiloError = AdapterError | NotFoundError | ProcessorError;
+
+/**
+ * Normalize an adapter result — a `Promise` (the common case) or an `Effect`
+ * (opt-in) — into the engine's typed failure channel.
+ *
+ * A `Promise` is wrapped so a rejection becomes an `AdapterError` carrying
+ * `type` / `keys` / `cause`; a rejection that is *already* an `AdapterError`
+ * passes through untouched. An `Effect` is used as-is (the adapter owns its
+ * failure channel).
+ *
+ * This is the single Promise→`AdapterError` boundary shared by `@supergrain/silo`'s
+ * finder and `@supergrain/queries` so the rule lives in exactly one place.
+ */
+export function coerceAdapter<A>(
+  result: Promise<A> | Effect.Effect<A, AdapterError>,
+  type: string,
+  keys: ReadonlyArray<string>,
+): Effect.Effect<A, AdapterError> {
+  return Effect.isEffect(result)
+    ? result
+    : Effect.tryPromise({
+        try: () => result,
+        catch: (cause) =>
+          cause instanceof AdapterError ? cause : new AdapterError({ type, keys, cause }),
+      });
+}
