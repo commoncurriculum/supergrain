@@ -144,6 +144,42 @@ describe("automatic cancellation via observation", () => {
     expect(c.signal?.aborted).toBe(false); // never cancelled
   });
 
+  it("does not cancel across re-renders of a still-mounted observer", async () => {
+    // The crux of the coalescing fix: `tracked()` re-renders transiently drop
+    // and re-establish the liveness subscription. A naive design would schedule
+    // (and race) a cancel on every re-render; here repeated re-renders of a
+    // mounted component must never abort its in-flight fetch.
+    const c = controllable();
+    const Badge = tracked(function Badge({ gen }: { gen: number }) {
+      const handle = useDocument("user", "1");
+      return (
+        <span>
+          {gen}:{handle.status}
+        </span>
+      );
+    });
+
+    const { rerender } = render(
+      <Provider config={makeConfig(c)}>
+        <Badge gen={0} />
+      </Provider>,
+    );
+    await tick();
+    expect(c.calls).toBe(1);
+
+    for (let gen = 1; gen <= 5; gen++) {
+      rerender(
+        <Provider config={makeConfig(c)}>
+          <Badge gen={gen} />
+        </Provider>,
+      );
+      await tick(10);
+    }
+
+    expect(c.signal?.aborted).toBe(false); // never cancelled while mounted
+    expect(c.calls).toBe(1); // and never refetched
+  });
+
   it("useDocument contains no imperative subscription — a plain read still cancels", async () => {
     // Smoke-test that the *only* wiring is the reactive read: a component that
     // merely reads the handle (no effects) drives cancellation on unmount.

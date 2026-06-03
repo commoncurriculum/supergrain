@@ -100,6 +100,11 @@ export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown
   return newSignal;
 }
 
+// Fallback liveness-node store for targets that can't carry the `$OBSERVE`
+// property (frozen / non-extensible). Keyed by raw target so the node is still
+// deduped (observation would silently break if each call returned a new node).
+const frozenObservationNodes = new WeakMap<object, ReactiveNode>();
+
 /**
  * Retrieve the dedicated "liveness" reactive node for a reactive proxy,
  * creating it lazily and stashing it on the raw target. Unlike the per-property
@@ -107,23 +112,25 @@ export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown
  * purely so observation primitives (`onObservationChange`/`trackNode`/
  * `isObserved`) can detect when the proxy has no remaining reactive observers.
  *
- * Returns `undefined` only when the value isn't an object (nothing to observe).
+ * The node is stable across calls for a given target (incl. frozen targets, via
+ * a WeakMap fallback), so observation handlers attach to the same node a reader
+ * subscribes to.
  */
 export function getObservationNode(value: object): ReactiveNode {
   const raw = unwrap(value) as ReactiveTagged & { [$OBSERVE]?: ReactiveNode };
-  let node = raw[$OBSERVE];
-  if (!node) {
-    node = createObservationNode();
-    try {
-      Object.defineProperty(raw, $OBSERVE, {
-        value: node,
-        enumerable: false,
-        configurable: true,
-      });
-    } catch {
-      // Frozen / non-extensible targets can't carry the node; fall back to the
-      // freshly created node (observation simply won't be deduped for it).
-    }
+  const existing = raw[$OBSERVE] ?? frozenObservationNodes.get(raw);
+  if (existing) return existing;
+
+  const node = createObservationNode();
+  try {
+    Object.defineProperty(raw, $OBSERVE, {
+      value: node,
+      enumerable: false,
+      configurable: true,
+    });
+  } catch {
+    // Frozen / non-extensible target: keep the node deduped via the WeakMap.
+    frozenObservationNodes.set(raw, node);
   }
   return node;
 }

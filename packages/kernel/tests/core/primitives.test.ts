@@ -237,6 +237,44 @@ describe("nested (child) effects", () => {
   });
 });
 
+describe("flush error recovery", () => {
+  it("re-queues effects still pending when one throws mid-flush", () => {
+    const s = signal(0);
+    let armed = false;
+    const ran: Array<string> = [];
+
+    // Thrower subscribed first so it's processed before the survivors in the
+    // same flush; when it throws, the still-queued survivors must be recovered
+    // (re-flagged) rather than lost.
+    effect(() => {
+      void s();
+      ran.push("thrower");
+      if (armed) throw new Error("boom");
+    });
+    effect(() => {
+      void s();
+      ran.push("a");
+    });
+    effect(() => {
+      void s();
+      ran.push("b");
+    });
+    expect(ran).toEqual(["thrower", "a", "b"]);
+
+    armed = true;
+    ran.length = 0;
+    expect(() => s(1)).toThrow("boom");
+
+    // A later, non-throwing write still flushes everyone — the survivors were
+    // recovered, not dropped.
+    armed = false;
+    ran.length = 0;
+    expect(() => s(2)).not.toThrow();
+    expect(ran).toContain("a");
+    expect(ran).toContain("b");
+  });
+});
+
 describe("batch", () => {
   it("coalesces multiple writes into a single effect run", () => {
     const a = signal(0);

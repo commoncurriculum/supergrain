@@ -13,13 +13,12 @@
 //
 // The operator layer is a faithful port of alien-signals 3.x's default system
 // (see `node_modules/alien-signals/esm/index.mjs`). Behavior is identical; the
-// only additions are:
-//   - `unwatched` additionally invokes any registered `onUnobserved` handler.
-//   - `link` additionally invokes any registered `onObserved` handler on the
-//     unobserved→observed (first-subscriber) transition.
-// Both additions are gated behind counters that stay `0` unless a handler is
-// registered, so the hot path is unchanged when observation is unused (e.g.
-// the js-framework-benchmark, which never touches `@supergrain/silo`).
+// only addition is that `unwatched` records last-subscriber-removed nodes for a
+// coalesced, microtask-deferred `onUnobserved` dispatch (see below). The hot
+// path — `link` and the `*Oper` functions — is untouched: there is no
+// first-subscriber hook, and the `unwatched` bookkeeping is gated behind a
+// counter that stays `0` until a handler is registered, so code that never uses
+// observation (e.g. the js-framework-benchmark) pays nothing.
 
 import { createReactiveSystem, type Link, type ReactiveNode } from "alien-signals/system";
 
@@ -74,18 +73,50 @@ const queued: Array<BaseNode | undefined> = [];
 // ─── Observation registry ────────────────────────────────────────────────────
 //
 // `onUnobserved` rides the graph's natural last-subscriber-removed event
-// (`unwatched`); `onObserved` rides the first-subscriber-added event (the
-// `link` wrapper). Both are gated by counters so dispatch is free when nothing
-// is registered.
+// (`unwatched`), but is NOT fired synchronously. A reactive node routinely loses
+// and regains its last subscriber within a single turn — e.g. the `tracked()`
+// React adapter re-establishes a component's dependencies on every render, so a
+// dependency is transiently unlinked then re-linked. Firing on the synchronous
+// unlink would thrash (a cancel scheduled-then-cancelled on every re-render).
+//
+// Instead, unobserved nodes are collected and flushed on a single microtask;
+// at flush time each node is re-checked, so a node re-observed within the turn
+// fires nothing. The hot path (`signalOper`/`computedOper`/`trackNode` →
+// `link`) is unchanged — there is no first-subscriber (`onObserved`) hook, so
+// no per-`link` work. Both the queueing and the flush are gated by
+// `observerCount`, which stays `0` until a handler is registered (e.g. the
+// js-framework-benchmark, which never touches observation, pays nothing).
 
 interface ObservationHandlers {
-  onObserved?: () => void;
   onUnobserved?: () => void;
 }
 
 const observers = new WeakMap<BaseNode, ObservationHandlers>();
 let observerCount = 0;
-let onObservedCount = 0;
+const pendingUnobserved = new Set<BaseNode>();
+let unobservedFlushScheduled = false;
+
+function scheduleUnobservedFlush(): void {
+  if (unobservedFlushScheduled) return;
+  unobservedFlushScheduled = true;
+  queueMicrotask(flushUnobserved);
+}
+
+function flushUnobserved(): void {
+  unobservedFlushScheduled = false;
+  if (pendingUnobserved.size === 0) return;
+  const nodes = [...pendingUnobserved];
+  pendingUnobserved.clear();
+  for (const node of nodes) {
+    // Skip nodes re-observed within the turn (e.g. a re-render re-linked it).
+    if (node.subs === undefined) {
+      const handlers = observers.get(node);
+      if (handlers !== undefined && handlers.onUnobserved !== undefined) {
+        handlers.onUnobserved();
+      }
+    }
+  }
+}
 
 const system = createReactiveSystem({
   update(node: BaseNode): boolean {
@@ -131,11 +162,11 @@ const system = createReactiveSystem({
     } else {
       effectScopeOper.call(node);
     }
-    if (observerCount !== 0) {
-      const handlers = observers.get(node);
-      if (handlers !== undefined && handlers.onUnobserved !== undefined) {
-        handlers.onUnobserved();
-      }
+    // Defer the observation callback: coalesce + re-check on a microtask so a
+    // transient unlink/re-link (a re-render) doesn't fire spuriously.
+    if (observerCount !== 0 && observers.has(node)) {
+      pendingUnobserved.add(node);
+      scheduleUnobservedFlush();
     }
   },
 }) as unknown as {
@@ -146,25 +177,7 @@ const system = createReactiveSystem({
   shallowPropagate: (link: Link) => void;
 };
 
-const { link: baseLink, unlink, propagate, checkDirty, shallowPropagate } = system;
-
-// `link` wrapper: identical to `baseLink` when no `onObserved` handler is
-// registered (the common case). Otherwise, detect the unobserved→observed
-// (first-subscriber) transition and fire the handler.
-function link(dep: BaseNode, sub: BaseNode, version: number): void {
-  if (onObservedCount !== 0) {
-    const wasObserved = dep.subs !== undefined;
-    baseLink(dep, sub, version);
-    if (!wasObserved && dep.subs !== undefined) {
-      const handlers = observers.get(dep);
-      if (handlers !== undefined && handlers.onObserved !== undefined) {
-        handlers.onObserved();
-      }
-    }
-    return;
-  }
-  baseLink(dep, sub, version);
-}
+const { link, unlink, propagate, checkDirty, shallowPropagate } = system;
 
 // ─── Public cursor accessors ─────────────────────────────────────────────────
 
@@ -356,13 +369,13 @@ function flush(): void {
       run(effect as EffectNode);
     }
   } finally {
-    /* c8 ignore start -- error-recovery: re-flags effects still queued when a prior effect threw mid-flush (a vendored scheduler safeguard) */
+    // Recovery: an effect threw mid-flush — re-flag the still-queued effects so
+    // a later flush re-runs them instead of dropping them.
     while (notifyIndex < queuedLength) {
       const effect = queued[notifyIndex];
       queued[notifyIndex++] = undefined;
       effect!.flags |= Watching | Recursed;
     }
-    /* c8 ignore stop */
     notifyIndex = 0;
     queuedLength = 0;
   }
@@ -514,33 +527,30 @@ export function isObserved(node: ReactiveNode): boolean {
 }
 
 /**
- * Register handlers fired when `node` transitions observed→unobserved (its last
- * subscriber is removed) and, optionally, unobserved→observed (it gains its
- * first subscriber). Returns an unregister function. A later registration on
- * the same node replaces the prior handlers.
+ * Register a handler fired when `node` transitions observed→unobserved (its last
+ * subscriber is removed). Returns an unregister function; a later registration
+ * on the same node replaces the prior handler.
  *
- * `onUnobserved` fires synchronously during unlink/propagation — do NOT perform
- * irreversible work (canceling a request, etc.) inside it. Defer it (a timer /
- * microtask) so a synchronous re-subscribe (a StrictMode remount, a fast
- * nav-back) can cancel the pending work first; re-check {@link isObserved} when
- * the deferred work runs.
+ * `onUnobserved` is **not** fired on the synchronous unlink. Nodes that lose
+ * their last subscriber are coalesced and flushed on a microtask, and each is
+ * re-checked — so a node unobserved and re-observed within the same turn (a
+ * `tracked()` re-render re-establishing its dependencies) fires nothing. Even
+ * so, treat it as a hint, not a fact: a later macrotask (a StrictMode remount,
+ * a fast nav-back) can re-observe the node, so defer any irreversible work (a
+ * grace timer) and re-check {@link isObserved} when it runs.
  */
 export function onObservationChange(node: ReactiveNode, handlers: ObservationHandlers): () => void {
   const key = node as unknown as BaseNode;
-  const existing = observers.get(key);
-  if (existing === undefined) {
+  if (!observers.has(key)) {
     observerCount++;
-  } else if (existing.onObserved !== undefined) {
-    onObservedCount--;
   }
   observers.set(key, handlers);
-  if (handlers.onObserved !== undefined) onObservedCount++;
   return () => {
     const current = observers.get(key);
     if (current === handlers) {
       observers.delete(key);
+      pendingUnobserved.delete(key);
       observerCount--;
-      if (handlers.onObserved !== undefined) onObservedCount--;
     }
   };
 }

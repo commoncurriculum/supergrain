@@ -2,16 +2,21 @@
 // observation.test.ts
 // =============================================================================
 //
-// The reactive-observation lifecycle primitive: `onObservationChange` fires
-// `onUnobserved` when a node loses its last subscriber and `onObserved` when it
-// gains its first. `getObservationNode` returns a reactive proxy's dedicated
-// liveness node; `trackNode`/`isObserved` subscribe-to / inspect a node. This is
-// the kernel half of `@supergrain/silo`'s signals-native fetch cancellation.
+// The reactive-observation lifecycle primitive: `onObservationChange(node, {
+// onUnobserved })` fires when a node loses its last subscriber — coalesced and
+// re-checked on a microtask, so a node unobserved and re-observed within the
+// same turn fires nothing. `getObservationNode` returns a reactive proxy's
+// dedicated liveness node; `trackNode`/`isObserved` subscribe-to / inspect a
+// node. This is the kernel half of `@supergrain/silo`'s signals-native fetch
+// cancellation.
 // =============================================================================
 import { describe, it, expect } from "vitest";
 
 import { createReactive, effect, getObservationNode, onObservationChange } from "../../src";
 import { getActiveSub, isObserved, setActiveSub, trackNode } from "../../src/internal";
+
+// `onUnobserved` is dispatched on a microtask; await one so assertions see it.
+const flush = () => Promise.resolve();
 
 // Subscribe `node` to a fresh effect (mirrors a component observing a handle).
 // Returns a disposer that unsubscribes — exactly like a component unmounting.
@@ -22,7 +27,7 @@ function observe(node: ReturnType<typeof getObservationNode>): () => void {
 }
 
 describe("onObservationChange", () => {
-  it("fires onUnobserved when a node loses its last subscriber", () => {
+  it("fires onUnobserved after a microtask once a node loses its last subscriber", async () => {
     const proxy = createReactive({ a: 1 });
     const node = getObservationNode(proxy);
 
@@ -31,55 +36,82 @@ describe("onObservationChange", () => {
 
     const dispose = observe(node);
     expect(isObserved(node)).toBe(true);
-    expect(unobserved).toBe(0);
 
     dispose();
     expect(isObserved(node)).toBe(false);
+    expect(unobserved).toBe(0); // deferred, not synchronous
+
+    await flush();
     expect(unobserved).toBe(1);
   });
 
-  it("fires onObserved only on the first subscriber, not subsequent ones", () => {
+  it("does NOT fire when a node is unobserved then re-observed within the same turn", async () => {
     const node = getObservationNode(createReactive({ a: 1 }));
+    let unobserved = 0;
+    onObservationChange(node, { onUnobserved: () => unobserved++ });
 
-    let observed = 0;
-    onObservationChange(node, { onObserved: () => observed++ });
+    const dispose = observe(node);
+    dispose(); // unobserved...
+    const dispose2 = observe(node); // ...re-observed before the microtask flush
+
+    await flush();
+    expect(unobserved).toBe(0); // coalesced away — no thrash
+
+    dispose2();
+    await flush();
+    expect(unobserved).toBe(1);
+  });
+
+  it("only fires for the last subscriber when several observe the same node", async () => {
+    const node = getObservationNode(createReactive({ a: 1 }));
+    let unobserved = 0;
+    onObservationChange(node, { onUnobserved: () => unobserved++ });
 
     const d1 = observe(node);
-    expect(observed).toBe(1);
-
-    const d2 = observe(node); // second observer — no onObserved
-    expect(observed).toBe(1);
+    const d2 = observe(node);
 
     d1();
+    await flush();
+    expect(unobserved).toBe(0); // d2 still observes
+
     d2();
-    expect(observed).toBe(1);
+    await flush();
+    expect(unobserved).toBe(1);
   });
 
-  it("re-fires onObserved after the node returns to unobserved and is observed again", () => {
-    const node = getObservationNode(createReactive({ a: 1 }));
-    let observed = 0;
-    let unobserved = 0;
-    onObservationChange(node, {
-      onObserved: () => observed++,
-      onUnobserved: () => unobserved++,
+  it("coalesces many nodes unobserved in one turn into a single flush", async () => {
+    let fired = 0;
+    const disposers = Array.from({ length: 5 }, () => {
+      const node = getObservationNode(createReactive({ a: 1 }));
+      onObservationChange(node, { onUnobserved: () => fired++ });
+      return observe(node);
     });
 
-    observe(node)();
-    expect(observed).toBe(1);
-    expect(unobserved).toBe(1);
-
-    observe(node)();
-    expect(observed).toBe(2);
-    expect(unobserved).toBe(2);
+    for (const d of disposers) d();
+    expect(fired).toBe(0);
+    await flush();
+    expect(fired).toBe(5);
   });
 
-  it("unregister stops handlers from firing", () => {
+  it("unregister stops the handler from firing", async () => {
     const node = getObservationNode(createReactive({ a: 1 }));
     let unobserved = 0;
     const unregister = onObservationChange(node, { onUnobserved: () => unobserved++ });
 
     unregister();
     observe(node)();
+    await flush();
+    expect(unobserved).toBe(0);
+  });
+
+  it("unregister drops a node already queued for the flush", async () => {
+    const node = getObservationNode(createReactive({ a: 1 }));
+    let unobserved = 0;
+    const unregister = onObservationChange(node, { onUnobserved: () => unobserved++ });
+
+    observe(node)(); // queues the node for the microtask
+    unregister(); // ...but we unregister before it flushes
+    await flush();
     expect(unobserved).toBe(0);
   });
 
@@ -90,25 +122,7 @@ describe("onObservationChange", () => {
     expect(() => unregister()).not.toThrow();
   });
 
-  it("tracks onObserved registrations across replace and unregister", () => {
-    const node = getObservationNode(createReactive({ a: 1 }));
-    let first = 0;
-    let second = 0;
-    // Register with onObserved, then replace with another that also has
-    // onObserved (the replace path adjusts the first-observer dispatch count).
-    onObservationChange(node, { onObserved: () => first++ });
-    const unregister = onObservationChange(node, { onObserved: () => second++ });
-
-    observe(node)();
-    expect(first).toBe(0);
-    expect(second).toBe(1);
-
-    unregister(); // drops the active onObserved registration
-    observe(node)();
-    expect(second).toBe(1); // no longer fires
-  });
-
-  it("re-registering replaces the prior handlers", () => {
+  it("re-registering replaces the prior handler", async () => {
     const node = getObservationNode(createReactive({ a: 1 }));
     let first = 0;
     let second = 0;
@@ -116,6 +130,7 @@ describe("onObservationChange", () => {
     onObservationChange(node, { onUnobserved: () => second++ });
 
     observe(node)();
+    await flush();
     expect(first).toBe(0);
     expect(second).toBe(1);
   });
@@ -127,18 +142,19 @@ describe("getObservationNode", () => {
     expect(getObservationNode(proxy)).toBe(getObservationNode(proxy));
   });
 
-  it("returns a node even for a frozen target (cannot stash, falls back)", () => {
+  it("returns a stable node even for a frozen target", () => {
     const frozen = Object.freeze({ a: 1 });
     const node = getObservationNode(frozen);
     expect(node).toBeDefined();
-    // Cannot be deduped (no place to stash it), but must not throw.
-    expect(() => getObservationNode(frozen)).not.toThrow();
+    // Cannot stash on a frozen target, so it falls back to a WeakMap — but must
+    // still dedupe so observation works.
+    expect(getObservationNode(frozen)).toBe(node);
   });
 
   it("resolves the raw target behind a proxy", () => {
-    const proxy = createReactive({ a: 1 });
-    // Reading through the proxy and the raw value yields the same liveness node.
-    expect(getObservationNode(proxy)).toBe(getObservationNode(proxy));
+    const raw = { a: 1 };
+    const proxy = createReactive(raw);
+    expect(getObservationNode(proxy)).toBe(getObservationNode(raw));
   });
 });
 
