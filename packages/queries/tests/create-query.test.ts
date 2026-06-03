@@ -841,4 +841,29 @@ describe("Promise-first adapter boundary", () => {
     expect((q.error as AdapterError).cause).toBe(boom);
     q.destroy();
   });
+
+  it("passes an AdapterError rejection through untouched (not re-wrapped)", async () => {
+    const store = makeStore();
+    const adapterErr = new AdapterError({
+      type: "planbooks_for_user",
+      keys: ["u1"],
+      cause: new Error("already typed"),
+    });
+    const adapter: QueryAdapter<PlanbookRef> = {
+      fetch: () => Promise.reject(adapterErr),
+    };
+
+    const q = createQuery({
+      store,
+      adapter,
+      type: "planbooks_for_user",
+      id: "u1",
+      backoff: () => 9_999_999,
+    });
+    await q.refetch();
+
+    // The boundary preserves a pre-built AdapterError instead of wrapping it again.
+    expect(q.error).toBe(adapterErr);
+    q.destroy();
+  });
 });
