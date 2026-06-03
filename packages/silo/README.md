@@ -245,7 +245,7 @@ type DocumentHandle<T, E = SiloError> =
     };
 ```
 
-Narrowing on `status` (or on `value !== undefined`) refines `value` to `T`. The fields still vary independently, so all states are representable — including a `value` present alongside a refetch `error` (stale data + refetch error), which a single flat status enum couldn't express: that's the `success` arm with `error` set. `status` stays `"success"` across a refetch (the orthogonal `isFetching` flips instead), so narrowing on it never adds a re-render. `value: undefined` is the not-loaded sentinel — a loaded-but-`null` value is `status: "success"` with `value: null`, distinct from `pending`.
+Narrowing on `status` (or on `value !== undefined`) refines `value` to `T`. The fields still vary independently, so all states are representable — including a `value` present alongside a refetch `error` (stale data + refetch error), which a single flat status enum couldn't express: that's the `success` arm with `error` set. `status` stays `"success"` across a refetch (the orthogonal `isFetching` flips instead), so narrowing on it never adds a re-render. `value: undefined` is the not-loaded sentinel — a loaded-but-`null` value is `status: "success"` with `value: null`, distinct from `pending`. There is no separate "idle" status (earlier versions had `"IDLE"`): a not-yet-started handle is `status: "pending"` with `isFetching: false`, and a first load in flight is `status: "pending"` with `isFetching: true` — "has a fetch started" lives on the `isFetching` axis, not in `status`.
 
 `clearMemory()` clears `value`/`error`/`fetchedAt` (an in-flight fetch survives and repopulates). Errors are typed: `AdapterError` (adapter failed), `NotFoundError` (key absent after fetch), `ProcessorError` (processor threw) — union `SiloError`.
 
@@ -256,7 +256,7 @@ From `@supergrain/silo/react`:
 All returned from `createDocumentStoreContext<S>()`; destructure and re-export from your store module.
 
 - `Provider({ config, initial?, onMount?, children })` — wraps `config` in `createDocumentStore()` exactly once per mount. Optional `initial` seeds documents/query results before the first render; optional `onMount` runs synchronously after seeding for imperative setup.
-- `useDocument(type, id | null | undefined)` → `DocumentHandle<T>`. `null`/`undefined` id returns an idle handle (useful for conditional fetching — `useDocument("user", isLoggedIn ? myId : null)`).
+- `useDocument(type, id | null | undefined)` → `DocumentHandle<T>`. `null`/`undefined` id returns an idle handle (useful for conditional fetching — `useDocument("user", isLoggedIn ? myId : null)`). "Idle" isn't a separate `status`: the handle reads `status: "pending"` with `isFetching: false` (detect it as `status === "pending" && !isFetching` if you need to). There's no `"IDLE"` status — it folded onto the orthogonal `isFetching` axis.
 - `useDocumentStore()` → store API. Escape hatch for imperative ops (`insertDocument`, `clearMemory`, query methods).
 - `useQuery(type, params | null | undefined)` → `QueryHandle<Result>`. Same null-handling as `useDocument`.
 - For lists, call `useDocumentStore().find(type, id)` for each id. Batching still happens under the hood; the public primitive stays one resource → one handle.

@@ -44,4 +44,8 @@ type DocumentHandle<T, E = SiloError> =
 
 The previous `status: "IDLE" | "PENDING" | "SUCCESS" | "ERROR"`, `data: T | undefined`, `isPending`, and `hasData` are gone; `error` is now a typed `SiloError`. Narrowing on `status` refines `value` to `T`; `error` and `value` coexist in `success` (stale-while-revalidate); `isFetching` is orthogonal (stays out of `status`, so `status` doesn't flip on a background refetch); each field is tracked independently (fine-grained reactivity).
 
-Migration: replace `handle.data` with `handle.value`; `handle.isPending` with `handle.value === undefined && handle.isFetching`; `handle.hasData` with `handle.value !== undefined`; `handle.status` string literals are now lowercase. Promise-returning adapters keep working as-is — no `Effect.tryPromise` wrapping required.
+Migration: replace `handle.data` with `handle.value`; `handle.isPending` with `handle.value === undefined && handle.isFetching`; `handle.hasData` with `handle.value !== undefined`; the remaining `handle.status` string literals are now lowercase (`"SUCCESS"` → `"success"`, `"ERROR"` → `"error"`).
+
+The old `"IDLE"` status is gone — it folded into `"pending"`. No capability is lost: "not started" was never a data state, and it's now expressed on the orthogonal `isFetching` axis. An idle / not-yet-fetched handle (a `find(null)` / `useDocument(type, null)` conditional read, or a handle no one has requested yet) is `status: "pending"` with `isFetching: false` and `promise: undefined`; an in-flight first load is `status: "pending"` with `isFetching: true`. So replace `handle.status === "IDLE"` with `handle.status === "pending" && !handle.isFetching`. TypeScript flags any leftover `"IDLE"` comparison at compile time (it's no longer in the union), so this can't break silently.
+
+Promise-returning adapters keep working as-is — no `Effect.tryPromise` wrapping required.
