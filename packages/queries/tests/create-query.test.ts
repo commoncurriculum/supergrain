@@ -73,6 +73,8 @@ describe("createQuery", () => {
     expect(q.nextOffset).toBe(null);
     expect(q.isFetching).toBe(false);
     expect(q.error).toBeUndefined();
+    expect(q.failureCount).toBe(0);
+    expect(q.lastError).toBeUndefined();
     expect(typeof q.fetchNextPage).toBe("function");
     expect(typeof q.refetch).toBe("function");
     expect(typeof q.destroy).toBe("function");

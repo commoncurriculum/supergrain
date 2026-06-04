@@ -11,7 +11,7 @@
 import { Effect, Schedule } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { AdapterError, createDocumentStore, defaultRetry } from "../src";
+import { AdapterError, createDocumentStore, defaultRetry, runAdapter } from "../src";
 import { setupFakeTimers } from "./setup/timers";
 
 type Types = { user: { id: string; name: string } };
@@ -728,5 +728,88 @@ describe("query param cache keys (stableStringify)", () => {
     const cyclic: { v: number; self?: unknown } = { v: 1 };
     cyclic.self = cyclic;
     expect(() => store.findQuery("metric", cyclic as unknown as { v: number })).toThrow(/acyclic/);
+  });
+});
+
+describe("isolateFailures (query bisect)", () => {
+  it("isolates a poison query so its healthy batch-mate still loads", async () => {
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: () => Effect.succeed([]) } } },
+      queries: {
+        search: {
+          adapter: {
+            // Bulk query endpoint that fails the whole call if the poison is present.
+            find: (paramsList) =>
+              Effect.suspend(() =>
+                (paramsList as Array<{ q: string }>).some((p) => p.q === "bad")
+                  ? Effect.fail(new AdapterError({ type: "search", keys: [], cause: "poison" }))
+                  : Effect.succeed(
+                      (paramsList as Array<{ q: string }>).map((p) => ({ total: p.q.length })),
+                    ),
+              ),
+          },
+          retry: Schedule.recurs(0),
+          isolateFailures: true,
+        },
+      },
+    });
+
+    const ok = store.findQuery("search", { q: "ok" });
+    const bad = store.findQuery("search", { q: "bad" });
+    await settle(bad);
+    await bad.promise?.catch(() => {});
+
+    expect(ok.value).toEqual({ total: 2 }); // "ok".length
+    expect(ok.status).toBe("success");
+    expect(bad.error).toBeInstanceOf(AdapterError);
+    expect(bad.status).toBe("error");
+  });
+});
+
+describe("query param cache keys — exotic value types", () => {
+  type T = { doc: { id: string } };
+  type NumQ = { metric: { params: { v: number }; result: { ok: boolean } } };
+
+  const makeStore = () =>
+    createDocumentStore<T, NumQ>({
+      models: { doc: { adapter: { find: () => Effect.succeed([]) } } },
+      queries: { metric: { adapter: { find: () => Effect.succeed([]) } } },
+      retry: Schedule.recurs(0),
+    });
+
+  it("encodes bigint / nested-undefined / symbol / function params without collision or throw", () => {
+    const store = makeStore();
+    const handles = new Set([
+      store.findQuery("metric", { v: 1n as unknown as number }), // bigint
+      store.findQuery("metric", { a: undefined } as unknown as { v: number }), // nested undefined
+      store.findQuery("metric", { v: Symbol("x") as unknown as number }), // symbol → String() fallback
+      store.findQuery("metric", { v: (() => 0) as unknown as number }), // function → String() fallback
+    ]);
+    expect(handles.size).toBe(4);
+  });
+});
+
+describe("runAdapter without an onFailure sink", () => {
+  it("fails without reporting when no sink (and no retry) is supplied", async () => {
+    // No `retry` → exercises the unretried path; no `onFailure` → unreported.
+    const program = runAdapter(
+      () => Effect.fail(new AdapterError({ type: "u", keys: ["1"], cause: "x" })),
+      { type: "u", keys: ["1"] },
+    );
+    const exit = await Effect.runPromiseExit(program);
+    expect(exit._tag).toBe("Failure");
+  });
+
+  it("breaches a deadline without reporting when no sink is supplied", async () => {
+    const program = runAdapter(() => Effect.never, {
+      type: "u",
+      keys: ["1"],
+      retry: Schedule.recurs(0),
+      deadline: "10 millis",
+    });
+    const exitPromise = Effect.runPromiseExit(program);
+    await vi.advanceTimersByTimeAsync(20);
+    const exit = await exitPromise;
+    expect(exit._tag).toBe("Failure");
   });
 });
