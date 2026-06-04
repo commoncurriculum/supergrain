@@ -300,9 +300,27 @@ const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   promise: undefined,
 });
 
+/**
+ * Stable, total string key for a query params object. Object keys are sorted so
+ * declaration order doesn't matter. `Date`s are encoded by their timestamp — a
+ * bare `Date` has no own-enumerable keys and would otherwise serialize to `{}`,
+ * collapsing every date-valued param onto one cache slot. `bigint` is encoded
+ * explicitly (it isn't valid JSON and would throw). Params are expected to be
+ * JSON-ish (primitives, plain objects, arrays, `Date`s); other exotic objects
+ * (`Map`/`Set`/class instances) are only distinguished by their own-enumerable
+ * keys, so prefer plain params.
+ */
 function stableStringify(value: unknown): string {
-  if (value === null || value === undefined) return JSON.stringify(value);
-  if (typeof value !== "object") return JSON.stringify(value);
+  if (value === undefined) return "undefined";
+  if (value === null) return "null";
+  if (value instanceof Date) return `Date(${value.getTime()})`;
+  if (typeof value === "bigint") return `${value}n`;
+  if (typeof value !== "object") {
+    // string / number / boolean serialize stably; symbol / function are not
+    // valid JSON (JSON.stringify → undefined), so fall back to String() to
+    // keep this function total rather than returning a non-string.
+    return JSON.stringify(value) ?? String(value);
+  }
   if (Array.isArray(value)) {
     return `[${value.map((v) => stableStringify(v)).join(",")}]`;
   }

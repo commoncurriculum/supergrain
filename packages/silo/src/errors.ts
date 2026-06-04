@@ -1,6 +1,6 @@
 // oxlint-disable max-classes-per-file -- three small related tagged-error classes
 // oxlint-disable new-cap -- `Data.TaggedError("Tag")` is Effect's tagged-error idiom
-import { Data, Effect } from "effect";
+import { Data, type Duration, Effect, type Schedule } from "effect";
 
 // =============================================================================
 // Typed errors
@@ -78,4 +78,51 @@ export function coerceAdapter<A>(
         catch: (cause) =>
           cause instanceof AdapterError ? cause : new AdapterError({ type, keys, cause }),
       });
+}
+
+/** Per-call resilience knobs, identical to `ModelConfig` / `QueryConfig`. */
+export interface AdapterRunOptions {
+  readonly type: string;
+  readonly keys: ReadonlyArray<string>;
+  /** Re-run the attempt on `AdapterError` per this `Schedule`. */
+  readonly retry?: Schedule.Schedule<unknown, AdapterError>;
+  /** Wrap each attempt; a timeout becomes an `AdapterError`. */
+  readonly timeout?: Duration.DurationInput;
+}
+
+/**
+ * Turn one consumer adapter call into a typed, resilient, abortable Effect —
+ * the single engine entrypoint shared by `@supergrain/silo`'s finder and
+ * `@supergrain/queries`, so both apply `retry` / `timeout` / abort identically.
+ *
+ * - A fresh `AbortController` is created **per attempt** (inside
+ *   `Effect.suspend`, so a `retry` gets a new signal each time). On
+ *   interruption — a `timeout` firing, a retry abandoning the prior attempt, or
+ *   the caller cancelling — the controller aborts, so an adapter that threaded
+ *   `signal` into `fetch` tears its request down.
+ * - The Promise→`AdapterError` boundary is delegated to {@link coerceAdapter}.
+ * - `timeout` wraps each attempt; `retry` re-runs it on `AdapterError`.
+ */
+export function runAdapter<A>(
+  invoke: (ctx: { signal: AbortSignal }) => Promise<A> | Effect.Effect<A, AdapterError>,
+  options: AdapterRunOptions,
+): Effect.Effect<A, AdapterError> {
+  const { type, keys, retry, timeout } = options;
+  const attempt = Effect.suspend(() => {
+    const controller = new AbortController();
+    return coerceAdapter(invoke({ signal: controller.signal }), type, keys).pipe(
+      Effect.onInterrupt(() => Effect.sync(() => controller.abort())),
+    );
+  });
+  const timed =
+    timeout === undefined
+      ? attempt
+      : attempt.pipe(
+          Effect.timeoutFail({
+            duration: timeout,
+            onTimeout: () =>
+              new AdapterError({ type, keys, cause: new Error("adapter timed out") }),
+          }),
+        );
+  return retry === undefined ? timed : timed.pipe(Effect.retry(retry));
 }

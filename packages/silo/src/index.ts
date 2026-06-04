@@ -20,8 +20,8 @@ export type {
   TypeRegistry,
 } from "./store";
 
-export { AdapterError, coerceAdapter, NotFoundError, ProcessorError } from "./errors";
-export type { SiloError } from "./errors";
+export { AdapterError, coerceAdapter, NotFoundError, ProcessorError, runAdapter } from "./errors";
+export type { AdapterRunOptions, SiloError } from "./errors";
 
 export type {
   QueryAdapter,

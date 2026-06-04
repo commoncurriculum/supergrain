@@ -11,34 +11,13 @@ import type {
 import { batch } from "@supergrain/kernel";
 import { Duration, Effect, type Fiber } from "effect";
 
-import { AdapterError, coerceAdapter, NotFoundError, ProcessorError } from "./errors";
+import { type AdapterError, NotFoundError, ProcessorError, runAdapter } from "./errors";
 import { defaultProcessor, defaultQueryProcessor } from "./processors";
 import { applyEvent, HandleEvent, type InternalHandle } from "./transitions";
 
 // Re-exported for the package's own tests (not part of the public root export).
 export type { InternalHandle } from "./transitions";
 export type { InternalState } from "./store";
-
-/**
- * Call the adapter once per attempt with a fresh `{ signal }` and run it on the
- * Effect engine. The Promise→`AdapterError` boundary is delegated to the shared
- * `coerceAdapter`; here we only add the `AbortController` wiring: on
- * interruption (a per-model `timeout`, or a retry abandoning the prior attempt)
- * we abort the controller so a Promise adapter that threaded `signal` into
- * `fetch` tears its request down.
- */
-function toAdapterEffect(
-  invoke: (ctx: { signal: AbortSignal }) => Promise<unknown> | Effect.Effect<unknown, AdapterError>,
-  type: string,
-  keys: ReadonlyArray<string>,
-): Effect.Effect<unknown, AdapterError> {
-  return Effect.suspend(() => {
-    const controller = new AbortController();
-    return coerceAdapter(invoke({ signal: controller.signal }), type, keys).pipe(
-      Effect.onInterrupt(() => Effect.sync(() => controller.abort())),
-    );
-  });
-}
 
 // =============================================================================
 // Finder — INTERNAL batching / chunking pipeline, built on Effect.
@@ -162,39 +141,15 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     });
   }
 
-  // oxlint-disable-next-line max-params
-  private adapterEffect(
-    config: { retry?: ModelConfig<M>["retry"]; timeout?: ModelConfig<M>["timeout"] },
-    type: string,
-    keys: ReadonlyArray<string>,
-    run: Effect.Effect<unknown, AdapterError>,
-  ): Effect.Effect<unknown, AdapterError> {
-    let effect = run;
-    if (config.timeout !== undefined) {
-      effect = effect.pipe(
-        Effect.timeoutFail({
-          duration: config.timeout,
-          onTimeout: () => new AdapterError({ type, keys, cause: new Error("adapter timed out") }),
-        }),
-      );
-    }
-    if (config.retry !== undefined) {
-      effect = effect.pipe(Effect.retry(config.retry));
-    }
-    return effect;
-  }
-
   private drainDocumentChunk(type: string, ids: Array<string>): Effect.Effect<void> {
     const modelConfig = (this.config.models as Record<string, ModelConfig<M>>)[type];
     const processor: ResponseProcessor<M> =
       modelConfig.processor ?? (defaultProcessor as ResponseProcessor<M>);
 
-    return this.adapterEffect(
-      modelConfig,
-      type,
-      ids,
+    return runAdapter(
       // oxlint-disable-next-line no-array-method-this-argument -- DocumentAdapter#find, not Array#find
-      toAdapterEffect((ctx) => modelConfig.adapter.find(ids, ctx), type, ids),
+      (ctx) => modelConfig.adapter.find(ids, ctx),
+      { type, keys: ids, retry: modelConfig.retry, timeout: modelConfig.timeout },
     ).pipe(
       Effect.flatMap((raw) => Effect.sync(() => this.commitDocuments(type, ids, raw, processor))),
       Effect.catchAll((error: AdapterError) =>
@@ -240,12 +195,10 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     const paramsList = chunk.map((e) => e.params);
 
     const queryKeys = chunk.map((e) => e.paramsKey);
-    return this.adapterEffect(
-      queryConfig,
-      type,
-      queryKeys,
+    return runAdapter(
       // oxlint-disable-next-line no-array-method-this-argument -- QueryAdapter#find, not Array#find
-      toAdapterEffect((ctx) => queryConfig.adapter.find(paramsList, ctx), type, queryKeys),
+      (ctx) => queryConfig.adapter.find(paramsList, ctx),
+      { type, keys: queryKeys, retry: queryConfig.retry, timeout: queryConfig.timeout },
     ).pipe(
       Effect.flatMap((raw) =>
         Effect.sync(() => this.commitQueries(type, chunk, paramsList, raw, processor)),

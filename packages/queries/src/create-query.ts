@@ -1,17 +1,26 @@
-import type { CreateQueryParams, Query, QueryModel } from "./types";
+import type { CreateQueryParams, Query, QueryEnvelope, QueryModel } from "./types";
 
 import { signal } from "@supergrain/kernel";
-import { coerceAdapter, type DocumentTypes } from "@supergrain/silo";
-import { Effect, Either } from "effect";
-
-import { fibonacciBackoff } from "./backoff";
+import { type DocumentTypes, runAdapter, type SiloError } from "@supergrain/silo";
+import { Effect } from "effect";
 
 /**
  * Create a reactive query handle for a paginated resource.
  *
- * Results, `nextOffset`, and sideloaded documents live in the store
- * (reactive via the store's per-(type,id) reactivity). Transient state
- * — `isFetching`, `error` — lives in local signals.
+ * Results, `nextOffset`, and sideloaded documents live in the store (reactive
+ * via the store's per-(type,id) reactivity). Transient state — `isFetching`,
+ * `error` — lives in local signals.
+ *
+ * Fetching runs on the **same engine** as a silo document fetch: every attempt
+ * goes through `runAdapter`, so `retry` (a `Schedule`) / `timeout` (a
+ * `Duration`) / abort behave exactly as they do for `ModelConfig`, and a
+ * failure surfaces as a typed `SiloError`. There is no built-in auto-retry —
+ * like the store, a failure settles `error` immediately unless you pass
+ * `retry`.
+ *
+ * A fetch is **single-flight**: starting a new `refetch()` / `fetchNextPage()`
+ * (or `destroy()`) interrupts any in-flight fetch — its adapter `signal`
+ * aborts — so overlapping requests can't race to write the store.
  *
  * Pagination semantics (matches the Ember `live-query` helper):
  * - `refetch()` (offset 0, non-empty response) replaces the results array
@@ -29,85 +38,91 @@ export function createQuery<
   K extends keyof M & string,
   T extends { offset: number },
 >(params: CreateQueryParams<M, K, T>): Query<T> {
-  const { store, adapter, type, id } = params;
+  const { store, adapter, type, id, retry, timeout } = params;
   const limit = params.limit ?? 200;
-  const backoff = params.backoff ?? ((attempt: number) => fibonacciBackoff(attempt));
 
   const isFetching = signal(false);
-  const errorSignal = signal<Error | null>(null);
-  let attempts = 0;
-  let retryTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+  const errorSignal = signal<SiloError | null>(null);
   let destroyed = false;
+  // The controller for the currently-owned fetch; aborting it interrupts the
+  // run (and the adapter's `signal`). A superseded fetch is no longer the
+  // active one, so its settle/teardown is ignored.
+  let activeController: AbortController | undefined = undefined;
 
   function readSlot(): QueryModel<K, T> | undefined {
     return store.findInMemory(type, id) as QueryModel<K, T> | undefined;
   }
 
-  async function fetchPage(offset: number): Promise<void> {
-    if (destroyed) return;
+  /** Write a successful page into the store (sideloads + merged results). */
+  function commitPage(res: QueryEnvelope<T>, offset: number): void {
+    if (res.included) {
+      // Sideloaded `included` docs can be of any type — queries requires each
+      // one to carry its own `type` field in the envelope (typical JSON-API
+      // convention), since the core library's `insertDocument` takes type as
+      // an explicit arg.
+      for (const doc of res.included) {
+        const docType = doc.type as keyof M & string;
+        store.insertDocument(docType, doc as unknown as M[keyof M & string]);
+      }
+    }
 
+    let results: Array<T> = [];
+    if (res.data.results.length === 0) {
+      results = [];
+    } else if (offset === 0) {
+      results = [...res.data.results];
+    } else {
+      const existing = readSlot();
+      results = existing ? [...existing.results] : [];
+      for (const r of res.data.results) {
+        results[r.offset] = r;
+      }
+    }
+
+    const nextOffset = res.meta?.nextOffset ?? null;
+    const doc: QueryModel<K, T> = { id, type, results, nextOffset };
+    store.insertDocument(type, doc as unknown as M[K]);
+    errorSignal(null);
+  }
+
+  function fetchPage(offset: number): Promise<void> {
+    if (destroyed) return Promise.resolve();
+
+    // Single-flight: interrupt whatever was in flight before starting anew.
+    activeController?.abort();
+    const controller = new AbortController();
+    activeController = controller;
     isFetching(true);
     errorSignal(null);
 
-    try {
-      // Promise-first boundary (shared with @supergrain/silo): a Promise adapter
-      // is wrapped (rejection → AdapterError), an Effect adapter runs as-is. We
-      // funnel failure through `Either` so the typed error lands in the catch below.
-      const eff = coerceAdapter(adapter.fetch(id, { offset, limit }), type, [id]);
-      const result = await Effect.runPromise(Effect.either(eff));
-      if (destroyed) {
-        isFetching(false);
-        return;
-      }
-      if (Either.isLeft(result)) throw result.left; // funnel AdapterError into the catch
-      const res = result.right;
+    // `owned` is false once a newer fetch (or destroy) supersedes this one, so
+    // a late settle from an interrupted run never clobbers fresh state.
+    const owned = (): boolean => !destroyed && controller === activeController;
 
-      if (res.included) {
-        // Sideloaded `included` docs can be of any type — queries requires
-        // each one to carry its own `type` field in the envelope (typical
-        // JSON-API convention), since the core library's `insertDocument`
-        // takes type as an explicit arg.
-        for (const doc of res.included) {
-          const docType = doc.type as keyof M & string;
-          store.insertDocument(docType, doc as unknown as M[keyof M & string]);
-        }
-      }
+    const program = runAdapter<QueryEnvelope<T>>(
+      (ctx) => adapter.fetch(id, { offset, limit, signal: ctx.signal }),
+      { type, keys: [id], retry, timeout },
+    ).pipe(
+      Effect.flatMap((res) =>
+        Effect.sync(() => {
+          if (owned()) commitPage(res, offset);
+        }),
+      ),
+      Effect.catchAll((error: SiloError) =>
+        Effect.sync(() => {
+          if (owned()) errorSignal(error);
+        }),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (owned()) isFetching(false);
+        }),
+      ),
+    );
 
-      let results: Array<T> = [];
-      if (res.data.results.length === 0) {
-        results = [];
-      } else if (offset === 0) {
-        results = [...res.data.results];
-      } else {
-        const existing = readSlot();
-        /* c8 ignore start -- offset > 0 is only reachable through a stored query slot */
-        results = existing ? [...existing.results] : [];
-        /* c8 ignore stop */
-        for (const r of res.data.results) {
-          results[r.offset] = r;
-        }
-      }
-
-      const nextOffset = res.meta?.nextOffset ?? null;
-      const doc: QueryModel<K, T> = { id, type, results, nextOffset };
-      store.insertDocument(type, doc as unknown as M[K]);
-
-      attempts = 0;
-      isFetching(false);
-    } catch (error) {
-      if (destroyed) {
-        isFetching(false);
-        return;
-      }
-      isFetching(false);
-      errorSignal(error instanceof Error ? error : new Error(String(error)));
-      attempts++;
-      const delay = backoff(attempts);
-      retryTimer = setTimeout(() => {
-        retryTimer = undefined;
-        void fetchPage(offset);
-      }, delay);
-    }
+    // `runPromiseExit` resolves (never rejects) on interruption, so a
+    // superseded/destroyed fetch settles quietly.
+    return Effect.runPromiseExit(program, { signal: controller.signal }).then(() => {});
   }
 
   const unsub = params.subscribe?.(type, id, () => {
@@ -124,7 +139,7 @@ export function createQuery<
     get isFetching(): boolean {
       return isFetching();
     },
-    get error(): Error | undefined {
+    get error(): SiloError | undefined {
       return errorSignal() ?? undefined;
     },
     fetchNextPage(): Promise<void> {
@@ -136,11 +151,10 @@ export function createQuery<
     },
     destroy(): void {
       destroyed = true;
+      activeController?.abort();
+      activeController = undefined;
+      isFetching(false);
       unsub?.();
-      if (retryTimer) {
-        clearTimeout(retryTimer);
-        retryTimer = undefined;
-      }
     },
   };
 }

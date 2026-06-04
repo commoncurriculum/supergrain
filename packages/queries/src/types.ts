@@ -1,5 +1,5 @@
-import type { AdapterError, DocumentStore, DocumentTypes } from "@supergrain/silo";
-import type { Effect } from "effect";
+import type { AdapterError, DocumentStore, DocumentTypes, SiloError } from "@supergrain/silo";
+import type { Duration, Effect, Schedule } from "effect";
 
 // =============================================================================
 // Query adapter
@@ -22,11 +22,16 @@ import type { Effect } from "effect";
  * case (a rejection becomes an `AdapterError`); power users can **return an
  * `Effect`** to control the failure channel — consistent with
  * `@supergrain/silo` adapters.
+ *
+ * `opts.signal` aborts when the run is interrupted (a per-query `timeout`
+ * fires, a `retry` abandons the prior attempt, or the query is destroyed /
+ * superseded by a newer fetch); thread it into your transport for a real
+ * network abort, or ignore it — exactly like a silo `DocumentAdapter`.
  */
 export interface QueryAdapter<T> {
   fetch(
     id: string,
-    opts: { offset: number; limit: number },
+    opts: { offset: number; limit: number; signal?: AbortSignal },
   ): Promise<QueryEnvelope<T>> | Effect.Effect<QueryEnvelope<T>, AdapterError>;
 }
 
@@ -64,7 +69,12 @@ export interface Query<T> {
   readonly results: Array<T>;
   readonly nextOffset: number | null;
   readonly isFetching: boolean;
-  readonly error: Error | undefined;
+  /**
+   * The typed failure from the last fetch, or `undefined`. Same `SiloError`
+   * channel as a silo `DocumentHandle.error` — a rejected `Promise` adapter
+   * surfaces as an `AdapterError` (original rejection on `.cause`).
+   */
+  readonly error: SiloError | undefined;
 
   /** Fetch the next page using the currently stored `nextOffset` (or 0 if none). */
   fetchNextPage(): Promise<void>;
@@ -93,8 +103,15 @@ export interface CreateQueryParams<
   /** Page size. Default 200. */
   limit?: number;
 
-  /** Returns delay ms for a given attempt number (1-based). Default fibonacci (1s–60s). */
-  backoff?: (attempt: number) => number;
+  /**
+   * Optional retry schedule applied to the adapter Effect on `AdapterError` —
+   * the same knob as silo's `ModelConfig.retry`. Default: no retry (a failure
+   * surfaces immediately on `error`, exactly like a silo document fetch).
+   */
+  retry?: Schedule.Schedule<unknown, AdapterError>;
+
+  /** Optional timeout for the adapter Effect; a timeout becomes an `AdapterError`. */
+  timeout?: Duration.DurationInput;
 
   /**
    * Optional server-side subscription hook. If provided, called on init.

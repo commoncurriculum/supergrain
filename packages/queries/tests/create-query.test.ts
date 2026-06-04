@@ -1,6 +1,6 @@
 import { effect } from "@supergrain/kernel";
 import { AdapterError, createDocumentStore, type DocumentStore } from "@supergrain/silo";
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { createQuery, type QueryAdapter } from "../src";
@@ -92,7 +92,7 @@ describe("refetch", () => {
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.refetch();
 
-    expect(fetch).toHaveBeenCalledWith("u1", { offset: 0, limit: 200 });
+    expect(fetch).toHaveBeenCalledWith("u1", expect.objectContaining({ offset: 0, limit: 200 }));
     expect(q.results).toEqual([ref("p1", 0), ref("p2", 1)]);
     expect(q.nextOffset).toBe(2);
   });
@@ -132,7 +132,7 @@ describe("refetch", () => {
     });
     await q.refetch();
 
-    expect(fetch).toHaveBeenCalledWith("u1", { offset: 0, limit: 50 });
+    expect(fetch).toHaveBeenCalledWith("u1", expect.objectContaining({ offset: 0, limit: 50 }));
     q.destroy();
   });
 
@@ -207,7 +207,11 @@ describe("fetchNextPage", () => {
     await q.refetch();
     await q.fetchNextPage();
 
-    expect(fetch).toHaveBeenNthCalledWith(2, "u1", { offset: 2, limit: 200 });
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "u1",
+      expect.objectContaining({ offset: 2, limit: 200 }),
+    );
     expect(q.results).toEqual([ref("p1", 0), ref("p2", 1), ref("p3", 2), ref("p4", 3)]);
     expect(q.nextOffset).toBe(null);
   });
@@ -253,7 +257,7 @@ describe("fetchNextPage", () => {
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.fetchNextPage();
 
-    expect(fetch).toHaveBeenCalledWith("u1", { offset: 0, limit: 200 });
+    expect(fetch).toHaveBeenCalledWith("u1", expect.objectContaining({ offset: 0, limit: 200 }));
   });
 });
 
@@ -427,7 +431,7 @@ describe("reactive bindings on the query handle", () => {
     q.destroy();
   });
 
-  it("an effect tracking q.error fires when a fetch fails and clears on retry success", async () => {
+  it("an effect tracking q.error fires when a fetch fails and clears on a successful refetch", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
 
@@ -443,13 +447,7 @@ describe("reactive bindings on the query handle", () => {
       }),
     );
 
-    const q = createQuery({
-      store,
-      adapter,
-      type: "planbooks_for_user",
-      id: "u1",
-      backoff: () => 50,
-    });
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
 
     const errorTags: Array<string | undefined> = [];
     effect(() => {
@@ -458,10 +456,12 @@ describe("reactive bindings on the query handle", () => {
 
     expect(errorTags).toEqual([undefined]);
 
+    // No retry configured: a failure settles `error` immediately (like a silo
+    // document fetch), and a later successful refetch clears it.
     await q.refetch();
     expect(errorTags.at(-1)).toBe("AdapterError");
 
-    await vi.advanceTimersByTimeAsync(100);
+    await q.refetch();
     expect(errorTags.at(-1)).toBeUndefined();
 
     q.destroy();
@@ -469,13 +469,30 @@ describe("reactive bindings on the query handle", () => {
 });
 
 // =============================================================================
-// Error + backoff retry
+// Retry (Schedule) — the same Effect engine the store's finder uses
 // =============================================================================
 
-describe("error + backoff retry", () => {
-  setupFakeTimers();
+describe("retry (Schedule) — same engine as ModelConfig.retry", () => {
+  it("does not auto-retry without a `retry` schedule (matches a silo document fetch)", async () => {
+    const store = makeStore();
+    const { adapter, fetch } = makeAdapter();
+    fetch.mockReturnValue(
+      Effect.fail(
+        new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("boom") }),
+      ),
+    );
 
-  it("sets error signal on failure and retries after backoff delay", async () => {
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+
+    await q.refetch();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(q.error).toBeInstanceOf(AdapterError);
+    expect((q.error as AdapterError)._tag).toBe("AdapterError");
+
+    q.destroy();
+  });
+
+  it("retries a failing adapter on the configured Schedule, then succeeds", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
 
@@ -496,14 +513,12 @@ describe("error + backoff retry", () => {
       adapter,
       type: "planbooks_for_user",
       id: "u1",
-      backoff: () => 50,
+      retry: Schedule.recurs(1), // one retry => two attempts total
     });
 
+    // The retry runs inside the awaited fetch, so `error` is never surfaced for
+    // the swallowed first failure — exactly how a silo document fetch behaves.
     await q.refetch();
-    expect(q.error).toBeInstanceOf(AdapterError);
-    expect((q.error as AdapterError)._tag).toBe("AdapterError");
-
-    await vi.advanceTimersByTimeAsync(100);
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(q.error).toBeUndefined();
     expect(q.results).toEqual([ref("p1", 0)]);
@@ -511,33 +526,26 @@ describe("error + backoff retry", () => {
     q.destroy();
   });
 
-  it("increments attempts counter so backoff grows", async () => {
+  it("surfaces the failure once the Schedule is exhausted", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
-
     fetch.mockReturnValue(
       Effect.fail(
-        new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("boom") }),
+        new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("down") }),
       ),
     );
-    const backoff = vi.fn((_attempt: number) => 10);
 
     const q = createQuery({
       store,
       adapter,
       type: "planbooks_for_user",
       id: "u1",
-      backoff,
+      retry: Schedule.recurs(2), // three attempts, all fail
     });
 
     await q.refetch();
-    expect(backoff.mock.calls.map((c) => c[0])).toEqual([1]);
-
-    await vi.advanceTimersByTimeAsync(11);
-    expect(backoff.mock.calls.map((c) => c[0])).toEqual([1, 2]);
-
-    await vi.advanceTimersByTimeAsync(11);
-    expect(backoff.mock.calls.map((c) => c[0])).toEqual([1, 2, 3]);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(q.error).toBeInstanceOf(AdapterError);
 
     q.destroy();
   });
@@ -591,7 +599,10 @@ describe("subscribe hook", () => {
       expect(fetch).toHaveBeenCalledTimes(2);
     });
 
-    expect(fetch).toHaveBeenLastCalledWith("u1", { offset: 0, limit: 200 });
+    expect(fetch).toHaveBeenLastCalledWith(
+      "u1",
+      expect.objectContaining({ offset: 0, limit: 200 }),
+    );
     q.destroy();
   });
 });
@@ -613,34 +624,56 @@ describe("destroy", () => {
     expect(unsub).toHaveBeenCalledTimes(1);
   });
 
-  it("cancels a pending retry timer", async () => {
-    vi.useFakeTimers();
-    try {
-      const store = makeStore();
-      const { adapter, fetch } = makeAdapter();
-      fetch.mockReturnValue(
-        Effect.fail(
-          new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("boom") }),
+  it("interrupts a retrying fetch so it stops issuing attempts", async () => {
+    const store = makeStore();
+    const { adapter, fetch } = makeAdapter();
+    fetch.mockReturnValue(
+      Effect.fail(
+        new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("boom") }),
+      ),
+    );
+
+    const q = createQuery({
+      store,
+      adapter,
+      type: "planbooks_for_user",
+      id: "u1",
+      retry: Schedule.recurs(3),
+    });
+
+    // Don't await: destroy mid-run interrupts the retry loop.
+    const pending = q.refetch();
+    q.destroy();
+    await pending;
+
+    const callsAtDestroy = fetch.mock.calls.length;
+    await new Promise((r) => setTimeout(r, 0));
+    // No further attempts after destroy interrupted the run.
+    expect(fetch.mock.calls.length).toBe(callsAtDestroy);
+  });
+
+  it("aborts the in-flight adapter signal on destroy", async () => {
+    const store = makeStore();
+    let aborted = false;
+    const adapter: QueryAdapter<PlanbookRef> = {
+      fetch: (_id, opts) =>
+        Effect.promise(
+          () =>
+            new Promise<never>(() => {
+              opts.signal?.addEventListener("abort", () => {
+                aborted = true;
+              });
+            }),
         ),
-      );
+    };
 
-      const q = createQuery({
-        store,
-        adapter,
-        type: "planbooks_for_user",
-        id: "u1",
-        backoff: () => 100,
-      });
-      await q.refetch();
-      expect(q.error).toBeInstanceOf(Error);
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+    const pending = q.refetch();
+    q.destroy();
+    await pending;
+    await new Promise((r) => setTimeout(r, 0));
 
-      q.destroy();
-      await vi.advanceTimersByTimeAsync(500);
-
-      expect(fetch).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(aborted).toBe(true);
   });
 
   it("ignores a fetch that resolves after destroy()", async () => {
@@ -702,37 +735,7 @@ describe("destroy", () => {
   });
 });
 
-describe("default retry behavior", () => {
-  it("uses the default fibonacci backoff when no custom backoff is provided", async () => {
-    vi.useFakeTimers();
-    try {
-      const store = makeStore();
-      const { adapter, fetch } = makeAdapter();
-      fetch.mockReturnValueOnce(
-        Effect.fail(
-          new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("fail-1") }),
-        ),
-      );
-      fetch.mockReturnValueOnce(
-        Effect.succeed({
-          data: { results: [] as Array<PlanbookRef> },
-          meta: { nextOffset: null },
-        }),
-      );
-
-      const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
-      await q.refetch();
-      expect(q.error).toBeInstanceOf(Error);
-
-      await vi.advanceTimersByTimeAsync(10_000);
-      expect(fetch.mock.calls.length).toBeGreaterThanOrEqual(2);
-
-      q.destroy();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
+describe("failure handling", () => {
   it("does not fetch after destroy()", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
@@ -775,24 +778,19 @@ describe("default retry behavior", () => {
     q.destroy();
   });
 
-  it("normalizes non-Error fetch failures", async () => {
+  it("surfaces a non-AdapterError Effect failure as-is (store-consistent)", async () => {
     const store = makeStore();
     const { adapter, fetch } = makeAdapter();
-    // A pathological adapter that fails with a non-Error value (e.g. a raw
-    // string). `createQuery` normalizes it to an `Error` before storing it.
+    // A pathological Effect adapter that fails with a raw value rather than an
+    // AdapterError. `coerceAdapter` only wraps Promise rejections, so an Effect
+    // owns its failure channel — the raw value lands on `error` exactly as it
+    // would on a silo `DocumentHandle.error`. No bespoke normalization.
     fetch.mockReturnValueOnce(Effect.fail("plain string error" as unknown as AdapterError));
 
-    const q = createQuery({
-      store,
-      adapter,
-      type: "planbooks_for_user",
-      id: "u1",
-      backoff: () => 9_999_999,
-    });
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     await q.refetch();
 
-    expect(q.error).toBeInstanceOf(Error);
-    expect(q.error!.message).toBe("plain string error");
+    expect(q.error).toBe("plain string error");
     q.destroy();
   });
 });
@@ -833,7 +831,6 @@ describe("Promise-first adapter boundary", () => {
       adapter,
       type: "planbooks_for_user",
       id: "u1",
-      backoff: () => 9_999_999,
     });
     await q.refetch();
 
@@ -858,7 +855,6 @@ describe("Promise-first adapter boundary", () => {
       adapter,
       type: "planbooks_for_user",
       id: "u1",
-      backoff: () => 9_999_999,
     });
     await q.refetch();
 

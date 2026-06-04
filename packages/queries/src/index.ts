@@ -1,4 +1,3 @@
 export { createQuery } from "./create-query";
-export { fibonacciBackoff } from "./backoff";
 
-export type { QueryAdapter, QueryModel, Query, CreateQueryParams } from "./types";
+export type { CreateQueryParams, Query, QueryAdapter, QueryEnvelope, QueryModel } from "./types";

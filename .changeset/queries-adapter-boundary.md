@@ -1,21 +1,41 @@
 ---
 "@supergrain/queries": minor
+"@supergrain/silo": minor
 ---
 
-Align the query adapter with `@supergrain/silo`'s Promise-first boundary.
+Run `@supergrain/queries` on the **same Effect engine** as the store, so a query
+fetch behaves exactly like a silo document fetch instead of feeling like a
+separate package.
 
-**`QueryAdapter.fetch` is now Promise-first.** It returns
-`Promise<QueryEnvelope<T>> | Effect.Effect<QueryEnvelope<T>, AdapterError>` —
-**return a plain `Promise`** for the common case (a rejection becomes an
-`AdapterError`, shared with silo's `coerceAdapter`), or **return an `Effect`**
-to own the failure channel. Existing Promise-returning adapters keep working
-as-is.
+**Shared engine.** silo now exports `runAdapter` — the single entrypoint that
+turns one adapter call into a typed, resilient, abortable Effect (Promise→
+`AdapterError` boundary, per-attempt `AbortController`, `retry`, `timeout`).
+The store's finder and `createQuery` both go through it, so resilience and abort
+behave identically on both surfaces.
 
-**Errors go through the typed boundary.** A failed fetch is funneled through
-`coerceAdapter`, so a rejected Promise (or failed Effect) becomes an
-`AdapterError` with the original rejection on its `.cause`. `Query.error` stays
-typed as `Error | undefined` (the widest honest type — an Effect adapter can
-still die with a defect), but on the normal failure path the runtime value is
-an `AdapterError`. Retry/backoff behavior is unchanged.
+**`createQuery` is now Promise-first with a signal.** `QueryAdapter.fetch(id, {
+offset, limit, signal })` — return a `Promise` (a rejection becomes an
+`AdapterError`) or an `Effect`. `signal` aborts when the run is interrupted (a
+`timeout` fires, a `retry` abandons the prior attempt, or the query is destroyed
+/ superseded), exactly like a silo `DocumentAdapter`.
+
+**Breaking — resilience config matches `ModelConfig`.**
+
+- `backoff?: (attempt) => number` is **removed**. Pass `retry?:
+  Schedule.Schedule<unknown, AdapterError>` and `timeout?: Duration.DurationInput`
+  instead — the same knobs as `ModelConfig.retry` / `ModelConfig.timeout`.
+- **There is no built-in auto-retry anymore.** Like a silo document fetch, a
+  failure settles `error` immediately unless you opt into `retry`. (The old
+  default fibonacci backoff retried forever; `fibonacciBackoff` is removed.)
+- `Query.error` is now typed `SiloError | undefined` (was `Error | undefined`).
+
+**Single-flight.** Starting a new `refetch()` / `fetchNextPage()` (or
+`destroy()`) interrupts any in-flight fetch — its adapter `signal` aborts — so
+overlapping requests can't race to write the store.
+
+```diff
+- createQuery({ store, adapter, type, id, backoff: (n) => n * 1000 });
++ createQuery({ store, adapter, type, id, retry: Schedule.exponential("1 second") });
+```
 
 `effect` is a peer dependency (installed; you don't have to write Effect).
