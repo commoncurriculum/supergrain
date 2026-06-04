@@ -435,3 +435,101 @@ describe("overall deadline", () => {
     expect(calls).toBeGreaterThan(1); // retried a few times before the budget elapsed
   });
 });
+
+describe("retryable classifier", () => {
+  it("vetoes retries for a failure the classifier deems terminal", async () => {
+    let calls = 0;
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () =>
+              Effect.suspend(() => {
+                calls += 1;
+                // Stand-in for a coerced Promise rejection: the cause carries a
+                // 4xx status the adapter never marked non-retryable itself.
+                return Effect.fail(
+                  new AdapterError({ type: "user", keys: ["1"], cause: { status: 404 } }),
+                );
+              }),
+          },
+          retry: Schedule.recurs(5), // would retry, but the classifier vetoes
+          retryable: (error) => ((error.cause as { status?: number }).status ?? 0) >= 500,
+        },
+      },
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    expect(calls).toBe(1); // classifier deemed 404 terminal — no retries
+    expect(handle.error).toBeInstanceOf(AdapterError);
+    expect(handle.status).toBe("error");
+  });
+
+  it("keeps retrying when the classifier deems the failure transient", async () => {
+    let calls = 0;
+    const doc = { id: "1", name: "User1" };
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () =>
+              Effect.suspend(() => {
+                calls += 1;
+                return calls <= 2
+                  ? Effect.fail(
+                      new AdapterError({ type: "user", keys: ["1"], cause: { status: 503 } }),
+                    )
+                  : Effect.succeed([doc]);
+              }),
+          },
+          retry: Schedule.recurs(5),
+          retryable: (error) => ((error.cause as { status?: number }).status ?? 0) >= 500,
+        },
+      },
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    expect(calls).toBe(3); // 5xx is transient — retried to success
+    expect(handle.value).toEqual(doc);
+    expect(handle.status).toBe("success");
+  });
+});
+
+describe("a throwing onError never breaks the store across retries", () => {
+  it("isolates a sink that throws on every failed attempt", async () => {
+    let calls = 0;
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () =>
+              Effect.suspend(() => {
+                calls += 1;
+                return Effect.fail(new AdapterError({ type: "user", keys: ["1"], cause: "x" }));
+              }),
+          },
+          retry: Schedule.recurs(2), // 3 attempts, each fires the throwing sink
+        },
+      },
+      onError: () => {
+        throw new Error("telemetry boom");
+      },
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    // Every attempt ran and the handle settled despite the per-attempt throw.
+    expect(calls).toBe(3);
+    expect(handle.failureCount).toBe(3);
+    expect(handle.error).toBeInstanceOf(AdapterError);
+    expect(handle.status).toBe("error");
+  });
+});

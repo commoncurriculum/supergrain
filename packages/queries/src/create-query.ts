@@ -44,10 +44,11 @@ export function createQuery<
   // fibonacci `defaultRetry`, plus `timeout` / `deadline`) so a query fetch
   // behaves like a document `find` unless the call overrides them. Resolution
   // lives in the store, not here.
-  const { retry, timeout, deadline } = store.resolveAdapterOptions({
+  const { retry, timeout, deadline, retryable } = store.resolveAdapterOptions({
     retry: params.retry,
     timeout: params.timeout,
     deadline: params.deadline,
+    retryable: params.retryable,
   });
 
   const isFetching = signal(false);
@@ -124,6 +125,7 @@ export function createQuery<
         retry,
         timeout,
         deadline,
+        retryable,
         // Surface each failed attempt (and a deadline breach) while retrying, so
         // a still-fetching query isn't silent — mirrors a silo handle.
         onFailure: (error) => {

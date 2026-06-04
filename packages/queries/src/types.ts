@@ -137,6 +137,13 @@ export interface CreateQueryParams<
   deadline?: Duration.DurationInput;
 
   /**
+   * Optional predicate to classify a failure as retryable — for Promise-first
+   * adapters that reject and so can't set the error's own `retryable` flag.
+   * Resolved via `store.resolveAdapterOptions` (the store-wide classifier).
+   */
+  retryable?: (error: AdapterError) => boolean;
+
+  /**
    * Optional server-side subscription hook. If provided, called on init.
    * Must return an unsubscribe function that `destroy()` will invoke.
    *

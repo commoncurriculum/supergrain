@@ -252,6 +252,14 @@ export interface ModelConfig<M extends DocumentTypes> {
    * non-retryable `AdapterError`. Distinct from the per-attempt `timeout`.
    */
   deadline?: Duration.DurationInput;
+  /**
+   * Optional predicate to classify a failure as retryable — for Promise-first
+   * adapters that reject (rather than constructing an `AdapterError`) and so
+   * can't set the error's own `retryable` flag. Inspect `error.cause` to veto
+   * retries on a deterministic failure, e.g. `(e) => !(e.cause instanceof
+   * Response) || e.cause.status >= 500`.
+   */
+  retryable?: (error: AdapterError) => boolean;
 }
 
 // =============================================================================
@@ -302,6 +310,12 @@ export interface DocumentStoreConfig<
    * eventually settles its terminal `error`.
    */
   deadline?: Duration.DurationInput;
+  /**
+   * Store-wide default `retryable` classifier, applied to every fetch that
+   * doesn't set its own (per-model / per-query). Lets Promise-first adapters
+   * veto retries on deterministic failures from the coerced error's `cause`.
+   */
+  retryable?: (error: AdapterError) => boolean;
 }
 
 // =============================================================================

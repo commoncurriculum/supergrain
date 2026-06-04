@@ -19,10 +19,19 @@ on success. `@supergrain/queries`' `Query` exposes the same `failureCount` /
 (0.8–1.2× spread, clamped to 60s) so concurrent clients hitting a recovering
 endpoint don't retry in lockstep.
 
-**Retries respect a retryable flag.** `AdapterError` takes an optional
-`retryable?: boolean`. A `retry` schedule only re-runs while the error is
-retryable (the default); mark a deterministic failure (e.g. a 4xx)
-`retryable: false` and the fetch fails fast instead of looping.
+**Retries respect retryability.** `AdapterError` takes an optional
+`retryable?: boolean`; a `retry` schedule only re-runs while the error is
+retryable (the default). Effect adapters mark a deterministic failure
+`retryable: false` to fail fast. Promise-first adapters — which reject rather
+than construct the error — get a config-level `retryable?: (error) => boolean`
+classifier (model / query / store, and `createQuery`) that inspects
+`error.cause` (e.g. a `Response`'s status); the error's own `retryable: false`
+remains a hard veto over the predicate.
+
+**A throwing failure sink can't break the engine.** `onError` now fires per
+attempt, and `runAdapter` isolates it (and the `deadline` breach notification)
+in try/catch — the same contract the finder already kept for terminal
+`onError`, now honored on every per-attempt and deadline path.
 
 **Overall deadline.** A new `deadline` knob (model / query / store, and
 `createQuery`) caps **all** attempts together, including retry backoff —

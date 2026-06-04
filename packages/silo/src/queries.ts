@@ -146,6 +146,12 @@ export interface QueryConfig<
    * non-retryable `AdapterError`. Distinct from the per-attempt `timeout`.
    */
   deadline?: Duration.DurationInput;
+  /**
+   * Optional predicate to classify a failure as retryable — for Promise-first
+   * adapters that reject and so can't set the error's own `retryable` flag.
+   * Inspect `error.cause` to veto retries on a deterministic failure.
+   */
+  retryable?: (error: AdapterError) => boolean;
 }
 
 // =============================================================================

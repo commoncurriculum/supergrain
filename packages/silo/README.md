@@ -183,11 +183,12 @@ const store = createDocumentStore<TypeToModel>({
 Each model (and query) can also take:
 
 - `processor` to normalize the adapter's raw response — see [Processors](#processors) below. Omit it and the default processor assumes the adapter returns a doc or an array of docs.
-- `retry` — an Effect `Schedule` applied to the adapter Effect on a **retryable** `AdapterError` (e.g. `Schedule.exponential("100 millis").pipe(Schedule.compose(Schedule.recurs(3)))`). Mark an `AdapterError` `retryable: false` (a deterministic 4xx, say) and it fails fast instead of looping.
+- `retry` — an Effect `Schedule` applied to the adapter Effect on a **retryable** `AdapterError` (e.g. `Schedule.exponential("100 millis").pipe(Schedule.compose(Schedule.recurs(3)))`). An Effect adapter can mark an `AdapterError` `retryable: false` (a deterministic 4xx, say) to fail fast instead of looping.
+- `retryable` — a `(error: AdapterError) => boolean` classifier, for **Promise-first** adapters that reject (and so can't set the error's own `retryable` flag). Inspect `error.cause` to veto retries: `(e) => !(e.cause instanceof Response) || e.cause.status >= 500`. An error that opts out via its own `retryable: false` is a hard veto regardless.
 - `timeout` — a `Duration` bounding a **single attempt**; on expiry that attempt fails with an `AdapterError`.
 - `deadline` — a `Duration` bounding **all attempts together** (including retry backoff); on expiry the whole fetch fails with a non-retryable `AdapterError` whose cause mentions "deadline". Pair it with the infinite default retry to guarantee a fetch eventually settles.
 
-These three resolve per-call ?? store-wide ?? built-in default in one place — `store.resolveAdapterOptions(perCall?)` — which `@supergrain/queries` also calls, so a query fetch inherits the same resilience as a document `find`.
+These resolve per-call ?? store-wide ?? built-in default in one place — `store.resolveAdapterOptions(perCall?)` — which `@supergrain/queries` also calls, so a query fetch inherits the same resilience as a document `find`.
 
 The built-in default retry (`defaultRetry`) is **jittered** fibonacci (1s base, 0.8–1.2× spread, clamped to 60s) retrying until success. Because it never gives up, a down backend won't settle the terminal `error` — but it is **not** silent: every failed attempt fires `onError` and bumps the handle's `failureCount` / `lastError`, so the outage is observable while retrying. Bound it with a `deadline` (or a finite `Schedule`) to make it terminate.
 

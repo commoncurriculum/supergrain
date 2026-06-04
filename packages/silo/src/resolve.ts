@@ -22,6 +22,11 @@ export interface AdapterOptionOverrides {
   readonly timeout?: Duration.DurationInput;
   /** Overall budget across all attempts; a breach is a non-retryable `AdapterError`. */
   readonly deadline?: Duration.DurationInput;
+  /**
+   * Classify a failure as retryable — lets a Promise-first adapter veto retries
+   * for a deterministic failure (e.g. a 4xx) from the coerced error's `cause`.
+   */
+  readonly retryable?: (error: AdapterError) => boolean;
 }
 
 /** Fully-resolved resilience options, ready to hand to `runAdapter`. */
@@ -29,12 +34,13 @@ export interface ResolvedAdapterOptions {
   readonly retry: Schedule.Schedule<unknown, AdapterError>;
   readonly timeout: Duration.DurationInput | undefined;
   readonly deadline: Duration.DurationInput | undefined;
+  readonly retryable: ((error: AdapterError) => boolean) | undefined;
 }
 
 /**
  * Merge `perCall` overrides over the store-wide `defaults`, falling back to the
- * built-in {@link defaultRetry} when no `retry` is set anywhere. `timeout` and
- * `deadline` are off unless configured.
+ * built-in {@link defaultRetry} when no `retry` is set anywhere. `timeout`,
+ * `deadline`, and the `retryable` classifier are off unless configured.
  */
 export function resolveAdapterOptions(
   defaults: AdapterOptionOverrides,
@@ -44,5 +50,6 @@ export function resolveAdapterOptions(
     retry: perCall?.retry ?? defaults.retry ?? defaultRetry,
     timeout: perCall?.timeout ?? defaults.timeout,
     deadline: perCall?.deadline ?? defaults.deadline,
+    retryable: perCall?.retryable ?? defaults.retryable,
   };
 }
