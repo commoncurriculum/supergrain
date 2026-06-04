@@ -191,7 +191,7 @@ export type DocumentHandle<T, E = SiloError> =
 export interface DocumentAdapter {
   find(
     ids: Array<string>,
-    ctx?: { signal: AbortSignal },
+    ctx?: { signal?: AbortSignal },
   ): Promise<unknown> | Effect.Effect<unknown, AdapterError>;
 }
 

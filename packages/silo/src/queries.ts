@@ -75,7 +75,7 @@ export type RegisteredQueries = TypeRegistry extends {
 export interface QueryAdapter<Params> {
   find(
     paramsList: Array<Params>,
-    ctx?: { signal: AbortSignal },
+    ctx?: { signal?: AbortSignal },
   ): Promise<unknown> | Effect.Effect<unknown, AdapterError>;
 }
 

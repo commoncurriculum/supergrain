@@ -11,8 +11,11 @@ Align the query adapter with `@supergrain/silo`'s Promise-first boundary.
 to own the failure channel. Existing Promise-returning adapters keep working
 as-is.
 
-**Errors are now typed.** A failed fetch surfaces on `Query.error` as an
-`AdapterError` (the original rejection is on its `.cause`) instead of the raw
-thrown value. Retry/backoff behavior is unchanged.
+**Errors go through the typed boundary.** A failed fetch is funneled through
+`coerceAdapter`, so a rejected Promise (or failed Effect) becomes an
+`AdapterError` with the original rejection on its `.cause`. `Query.error` stays
+typed as `Error | undefined` (the widest honest type — an Effect adapter can
+still die with a defect), but on the normal failure path the runtime value is
+an `AdapterError`. Retry/backoff behavior is unchanged.
 
 `effect` is a peer dependency (installed; you don't have to write Effect).

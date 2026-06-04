@@ -74,9 +74,10 @@ type Queries = {
   };
 };
 
-// 2. Adapters. Both take N keys and return an Effect producing the raw response
-//    (failing with AdapterError) — bulk endpoint, fan-out, websocket, whatever.
-//    Silo doesn't care how you hit the wire.
+// 2. Adapters. Both take N keys and return the raw response — bulk endpoint,
+//    fan-out, websocket, whatever. Promise-first: return a Promise (a rejection
+//    becomes an AdapterError) for the common case, or an Effect (shown here) to
+//    own the failure channel. Silo doesn't care how you hit the wire.
 const userAdapter: DocumentAdapter = {
   find: (ids) =>
     Effect.tryPromise({
@@ -93,7 +94,9 @@ const postsAdapter: QueryAdapter<Queries["posts"]["params"]> = {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ queries: paramsList }),
         }).then((r) => r.json()), // one array of results, aligned 1:1 with paramsList
-      catch: (cause) => new AdapterError({ type: "posts", keys: [], cause }),
+      // keep the failing params in `keys` so the error message names what failed
+      catch: (cause) =>
+        new AdapterError({ type: "posts", keys: paramsList.map((p) => JSON.stringify(p)), cause }),
     }),
 };
 

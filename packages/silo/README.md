@@ -632,7 +632,7 @@ These aren't "same library, different maturity" — they're genuinely different 
 - **Cross-query sync without manual wiring.** Edit user #42 with `insertDocument("user", updated42)` — every list, detail view, and relationship re-renders instantly, no network call. TQ needs pattern invalidation precisely _because_ it doesn't normalize; each query has its own copy of the data that drifts.
 - **Request batching.** 50 `<UserCard id={x} />` components collapse into one network request. TQ has no equivalent built into the primitive.
 - **One cache, not two.** TQ almost always sits beside Zustand/Redux/etc. — two caches to reconcile. Our store is both.
-- **Fine-grained reactivity.** Reading the `data` region re-renders only when data changes, not when a background refetch toggles the `fetch` region. TQ returns a new `{data, isLoading, error}` object every render — whole-handle subscription only, no field-level reads.
+- **Fine-grained reactivity.** Reading `handle.value` re-renders only when the value changes, not when a background refetch toggles `handle.isFetching`. TQ returns a new `{data, isLoading, error}` object every render — whole-handle subscription only, no field-level reads.
 - **Simpler invalidation model.** Normalization + reactive propagation handles most of what pattern invalidation exists to solve. You don't need an invalidation graph if mutations just write to the store.
 
 ### When to pick which
