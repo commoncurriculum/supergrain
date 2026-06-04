@@ -22,7 +22,7 @@ offset, limit, signal })` — return a `Promise` (a rejection becomes an
 **Breaking — resilience config matches `ModelConfig`.**
 
 - `backoff?: (attempt) => number` is **removed**. Pass `retry?:
-  Schedule.Schedule<unknown, AdapterError>` and `timeout?: Duration.DurationInput`
+Schedule.Schedule<unknown, AdapterError>` and `timeout?: Duration.DurationInput`
   instead — the same knobs as `ModelConfig.retry` / `ModelConfig.timeout`.
 - **There is no built-in auto-retry anymore.** Like a silo document fetch, a
   failure settles `error` immediately unless you opt into `retry`. (The old

@@ -135,3 +135,94 @@ describe("QueryConfig.retry / timeout", () => {
     expect(handle.status).toBe("error");
   });
 });
+
+describe("runAdapter — per-attempt signal", () => {
+  it("hands each retry attempt a fresh, non-aborted AbortSignal", async () => {
+    let calls = 0;
+    const abortedAtCall: Array<boolean> = [];
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: (_ids, ctx) =>
+              Effect.suspend(() => {
+                calls += 1;
+                abortedAtCall.push(ctx?.signal?.aborted ?? true);
+                return calls <= 2
+                  ? Effect.fail(new AdapterError({ type: "user", keys: ["1"], cause: "fail" }))
+                  : Effect.succeed([{ id: "1", name: "User1" }]);
+              }),
+          },
+          retry: Schedule.recurs(2),
+        },
+      },
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    // A fresh AbortController per attempt ⇒ no attempt sees an already-aborted signal.
+    expect(abortedAtCall).toEqual([false, false, false]);
+    expect(handle.value).toEqual({ id: "1", name: "User1" });
+  });
+});
+
+describe("config.onError", () => {
+  it("fires with the AdapterError (and failing keys) when the adapter fails", async () => {
+    const seen: Array<{ tag: string; keys: ReadonlyArray<string> }> = [];
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () => Effect.fail(new AdapterError({ type: "user", keys: ["1"], cause: "x" })),
+          },
+        },
+      },
+      onError: (error, ctx) => seen.push({ tag: error._tag, keys: ctx.keys }),
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    expect(seen).toContainEqual({ tag: "AdapterError", keys: ["1"] });
+  });
+
+  it("fires a NotFoundError when the key is absent after a successful fetch", async () => {
+    const tags: Array<string> = [];
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: () => Effect.succeed([]) } } },
+      onError: (error) => tags.push(error._tag),
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    expect(tags).toContain("NotFoundError");
+  });
+
+  it("a throwing onError never breaks the store", async () => {
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () => Effect.fail(new AdapterError({ type: "user", keys: ["1"], cause: "x" })),
+          },
+        },
+      },
+      onError: () => {
+        throw new Error("telemetry boom");
+      },
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    // The store still settles the handle despite the throwing sink.
+    expect(handle.error).toBeInstanceOf(AdapterError);
+    expect(handle.status).toBe("error");
+  });
+});

@@ -258,6 +258,13 @@ export interface DocumentStoreConfig<
    * are chunked. Default: 60.
    */
   batchSize?: number;
+  /**
+   * Optional error sink — called whenever a fetch settles into a failure
+   * (`AdapterError` from the adapter, `NotFoundError`, or `ProcessorError`),
+   * with the failing `type` and `keys`. For logging / metrics; a throwing
+   * callback never affects the store.
+   */
+  onError?: (error: SiloError, ctx: { type: string; keys: ReadonlyArray<string> }) => void;
 }
 
 // =============================================================================

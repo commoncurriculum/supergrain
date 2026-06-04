@@ -651,3 +651,47 @@ describe("Query handle is reactive", () => {
     expect(errorHistory.at(-1)).toBeUndefined();
   });
 });
+
+// =============================================================================
+// Query key stability — stableStringify
+// =============================================================================
+//
+// The query slot key is a stable, total string built from the params. Two
+// params that differ only by a `Date` must NOT collide (a bare `Date` has no
+// own-enumerable keys, so naive JSON would serialize every date to `{}`), and
+// the key must be independent of object declaration order.
+// =============================================================================
+
+describe("query key stability (stableStringify)", () => {
+  type KeyModels = { doc: { id: string } };
+  type KeyQueries = { events: { params: { at: Date; tag: string }; result: { n: number } } };
+
+  function makeKeyStore(): ReturnType<typeof createDocumentStore<KeyModels, KeyQueries>> {
+    return createDocumentStore<KeyModels, KeyQueries>({
+      models: { doc: { adapter: { find: () => Effect.succeed([]) } } },
+    });
+  }
+
+  it("does not collide params that differ only by Date", () => {
+    const store = makeKeyStore();
+    const d1 = new Date("2026-01-01T00:00:00Z");
+    const d2 = new Date("2026-02-01T00:00:00Z");
+
+    store.insertQueryResult("events", { at: d1, tag: "x" }, { n: 1 });
+    store.insertQueryResult("events", { at: d2, tag: "x" }, { n: 2 });
+
+    expect(store.findQueryInMemory("events", { at: d1, tag: "x" })).toEqual({ n: 1 });
+    expect(store.findQueryInMemory("events", { at: d2, tag: "x" })).toEqual({ n: 2 });
+  });
+
+  it("is independent of object key declaration order", () => {
+    const store = makeKeyStore();
+    const at = new Date("2026-01-01T00:00:00Z");
+
+    store.insertQueryResult("events", { at, tag: "x" }, { n: 7 });
+
+    // Same params, keys declared in the opposite order → same slot.
+    const reordered = { tag: "x", at } as { at: Date; tag: string };
+    expect(store.findQueryInMemory("events", reordered)).toEqual({ n: 7 });
+  });
+});
