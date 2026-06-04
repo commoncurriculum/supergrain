@@ -1,6 +1,6 @@
 import { tracked } from "@supergrain/kernel/react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import { type ReactNode, StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -111,6 +111,9 @@ function makeStoreConfig(): DocumentStoreConfig<TypeToModel, TypeToQuery> {
     queries: {
       dashboard: { adapter: dashboardAdapter },
     },
+    // Disable the built-in fibonacci default retry so error-state tests surface
+    // immediately rather than retrying forever.
+    retry: Schedule.recurs(0),
   };
 }
 

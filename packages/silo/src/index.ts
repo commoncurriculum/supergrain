@@ -23,6 +23,8 @@ export type {
 export { AdapterError, coerceAdapter, NotFoundError, ProcessorError, runAdapter } from "./errors";
 export type { AdapterRunOptions, SiloError } from "./errors";
 
+export { defaultRetry } from "./retry";
+
 export type {
   QueryAdapter,
   QueryConfig,

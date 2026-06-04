@@ -5,6 +5,7 @@ import type { Duration, Effect, Schedule } from "effect";
 import { batch, createReactive } from "@supergrain/kernel";
 
 import { Finder } from "./finder";
+import { defaultRetry } from "./retry";
 import { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./transitions";
 
 interface InternalState {
@@ -265,6 +266,18 @@ export interface DocumentStoreConfig<
    * callback never affects the store.
    */
   onError?: (error: SiloError, ctx: { type: string; keys: ReadonlyArray<string> }) => void;
+  /**
+   * Store-wide default retry `Schedule`, applied to every document and query
+   * fetch that doesn't set its own `retry` (per-model / per-query). Defaults to
+   * {@link defaultRetry} (fibonacci 1s–60s, retrying until success). Disable
+   * with `Schedule.recurs(0)`, or bound it with e.g. `Schedule.recurs(3)`.
+   */
+  retry?: Schedule.Schedule<unknown, AdapterError>;
+  /**
+   * Store-wide default timeout, applied to every fetch that doesn't set its own
+   * (per-model / per-query) `timeout`. Off by default.
+   */
+  timeout?: Duration.DurationInput;
 }
 
 // =============================================================================
@@ -296,6 +309,16 @@ export interface DocumentStore<
     result: Q[K]["result"],
   ): void;
   clearMemory(): void;
+  /**
+   * Resolved resilience defaults: the store-wide `retry` (or the built-in
+   * {@link defaultRetry}) and `timeout`. Layered helpers such as
+   * `@supergrain/queries` read these so a query fetch inherits the same default
+   * retry/timeout as a document `find` unless it overrides them.
+   */
+  readonly defaults: {
+    readonly retry: Schedule.Schedule<unknown, AdapterError>;
+    readonly timeout: Duration.DurationInput | undefined;
+  };
 }
 
 const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
@@ -451,6 +474,11 @@ export function createDocumentStore<
           for (const handle of bucket.values()) applyEvent(handle, HandleEvent.reset());
         }
       });
+    },
+
+    defaults: {
+      retry: config.retry ?? defaultRetry,
+      timeout: config.timeout,
     },
   };
 

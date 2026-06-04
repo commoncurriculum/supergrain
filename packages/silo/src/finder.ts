@@ -19,6 +19,7 @@ import {
   type SiloError,
 } from "./errors";
 import { defaultProcessor, defaultQueryProcessor } from "./processors";
+import { defaultRetry } from "./retry";
 import { applyEvent, HandleEvent, type InternalHandle } from "./transitions";
 
 // Re-exported for the package's own tests (not part of the public root export).
@@ -177,7 +178,12 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
       runAdapter(
         // oxlint-disable-next-line no-array-method-this-argument -- DocumentAdapter#find, not Array#find
         (ctx) => modelConfig.adapter.find(ids, ctx),
-        { type, keys: ids, retry: modelConfig.retry, timeout: modelConfig.timeout },
+        {
+          type,
+          keys: ids,
+          retry: modelConfig.retry ?? this.config.retry ?? defaultRetry,
+          timeout: modelConfig.timeout ?? this.config.timeout,
+        },
       ),
       this.state!.documents,
       type,
@@ -227,7 +233,12 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
       runAdapter(
         // oxlint-disable-next-line no-array-method-this-argument -- QueryAdapter#find, not Array#find
         (ctx) => queryConfig.adapter.find(paramsList, ctx),
-        { type, keys: queryKeys, retry: queryConfig.retry, timeout: queryConfig.timeout },
+        {
+          type,
+          keys: queryKeys,
+          retry: queryConfig.retry ?? this.config.retry ?? defaultRetry,
+          timeout: queryConfig.timeout ?? this.config.timeout,
+        },
       ),
       this.state!.queries,
       type,

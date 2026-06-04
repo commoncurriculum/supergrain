@@ -13,6 +13,13 @@ turns one adapter call into a typed, resilient, abortable Effect (Promise→
 The store's finder and `createQuery` both go through it, so resilience and abort
 behave identically on both surfaces.
 
+**Shared default retry.** silo ships a built-in `defaultRetry` (fibonacci 1s–60s,
+retrying until success) and a store-wide `DocumentStoreConfig.retry` / `timeout`.
+A document `find` and a `createQuery` fetch with no explicit `retry` both inherit
+the store's `defaults.retry`, so they retry identically out of the box. Disable
+with `Schedule.recurs(0)`, or bound it with e.g. `Schedule.recurs(3)`, at the
+store, model, or query level.
+
 **`createQuery` is now Promise-first with a signal.** `QueryAdapter.fetch(id, {
 offset, limit, signal })` — return a `Promise` (a rejection becomes an
 `AdapterError`) or an `Effect`. `signal` aborts when the run is interrupted (a
@@ -23,10 +30,9 @@ offset, limit, signal })` — return a `Promise` (a rejection becomes an
 
 - `backoff?: (attempt) => number` is **removed**. Pass `retry?:
 Schedule.Schedule<unknown, AdapterError>` and `timeout?: Duration.DurationInput`
-  instead — the same knobs as `ModelConfig.retry` / `ModelConfig.timeout`.
-- **There is no built-in auto-retry anymore.** Like a silo document fetch, a
-  failure settles `error` immediately unless you opt into `retry`. (The old
-  default fibonacci backoff retried forever; `fibonacciBackoff` is removed.)
+  instead — the same knobs as `ModelConfig.retry` / `ModelConfig.timeout` — or
+  rely on the store-wide default. `fibonacciBackoff` is removed (its behavior is
+  now the built-in `defaultRetry`).
 - `Query.error` is now typed `SiloError | undefined` (was `Error | undefined`).
 
 **Single-flight.** Starting a new `refetch()` / `fetchNextPage()` (or
@@ -34,8 +40,9 @@ Schedule.Schedule<unknown, AdapterError>` and `timeout?: Duration.DurationInput`
 overlapping requests can't race to write the store.
 
 ```diff
+  // retry is now inherited from the store default; override per-query if needed:
 - createQuery({ store, adapter, type, id, backoff: (n) => n * 1000 });
-+ createQuery({ store, adapter, type, id, retry: Schedule.exponential("1 second") });
++ createQuery({ store, adapter, type, id, retry: Schedule.recurs(3) });
 ```
 
 `effect` is a peer dependency (installed; you don't have to write Effect).

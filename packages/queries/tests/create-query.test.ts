@@ -26,12 +26,17 @@ type TypeToModel = {
   planbook: { id: string; type: "planbook"; title?: string };
 };
 
-function makeStore(): DocumentStore<TypeToModel> {
+// Default the store to no retry so the suite's failure assertions are
+// deterministic; pass a schedule to exercise inheritance of the store default.
+function makeStore(
+  retry: Schedule.Schedule<unknown, AdapterError> = Schedule.recurs(0),
+): DocumentStore<TypeToModel> {
   return createDocumentStore<TypeToModel>({
     models: {
       planbooks_for_user: { adapter: { find: () => Effect.succeed({ data: [] }) } },
       planbook: { adapter: { find: () => Effect.succeed({ data: [] }) } },
     },
+    retry,
   });
 }
 
@@ -473,8 +478,8 @@ describe("reactive bindings on the query handle", () => {
 // =============================================================================
 
 describe("retry (Schedule) — same engine as ModelConfig.retry", () => {
-  it("does not auto-retry without a `retry` schedule (matches a silo document fetch)", async () => {
-    const store = makeStore();
+  it("surfaces the failure immediately when retry is disabled", async () => {
+    const store = makeStore(); // store default: Schedule.recurs(0)
     const { adapter, fetch } = makeAdapter();
     fetch.mockReturnValue(
       Effect.fail(
@@ -488,6 +493,54 @@ describe("retry (Schedule) — same engine as ModelConfig.retry", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(q.error).toBeInstanceOf(AdapterError);
     expect((q.error as AdapterError)._tag).toBe("AdapterError");
+
+    q.destroy();
+  });
+
+  it("inherits the store's default retry (no per-query `retry` set)", async () => {
+    const store = makeStore(Schedule.recurs(1)); // store-level default: one retry
+    const { adapter, fetch } = makeAdapter();
+    fetch.mockReturnValueOnce(
+      Effect.fail(
+        new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("network") }),
+      ),
+    );
+    fetch.mockReturnValueOnce(
+      Effect.succeed({ data: { results: [ref("p1", 0)] }, meta: { nextOffset: null } }),
+    );
+
+    // No `retry` on the query — it inherits the store default and retries once.
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+    await q.refetch();
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(q.error).toBeUndefined();
+    expect(q.results).toEqual([ref("p1", 0)]);
+
+    q.destroy();
+  });
+
+  it("a per-query `retry` overrides the store default", async () => {
+    const store = makeStore(Schedule.recurs(5)); // store would retry a lot…
+    const { adapter, fetch } = makeAdapter();
+    fetch.mockReturnValue(
+      Effect.fail(
+        new AdapterError({ type: "planbooks_for_user", keys: [], cause: new Error("boom") }),
+      ),
+    );
+
+    // …but the query opts out entirely.
+    const q = createQuery({
+      store,
+      adapter,
+      type: "planbooks_for_user",
+      id: "u1",
+      retry: Schedule.recurs(0),
+    });
+    await q.refetch();
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(q.error).toBeInstanceOf(AdapterError);
 
     q.destroy();
   });

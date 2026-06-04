@@ -38,8 +38,13 @@ export function createQuery<
   K extends keyof M & string,
   T extends { offset: number },
 >(params: CreateQueryParams<M, K, T>): Query<T> {
-  const { store, adapter, type, id, retry, timeout } = params;
+  const { store, adapter, type, id } = params;
   const limit = params.limit ?? 200;
+  // Inherit the store's resilience defaults (store-wide `retry` ?? the built-in
+  // fibonacci `defaultRetry`, and store-wide `timeout`) so a query fetch behaves
+  // like a document `find` unless the call overrides them.
+  const retry = params.retry ?? store.defaults.retry;
+  const timeout = params.timeout ?? store.defaults.timeout;
 
   const isFetching = signal(false);
   const errorSignal = signal<SiloError | null>(null);

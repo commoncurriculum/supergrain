@@ -105,12 +105,17 @@ export interface CreateQueryParams<
 
   /**
    * Optional retry schedule applied to the adapter Effect on `AdapterError` —
-   * the same knob as silo's `ModelConfig.retry`. Default: no retry (a failure
-   * surfaces immediately on `error`, exactly like a silo document fetch).
+   * the same knob as silo's `ModelConfig.retry`. Defaults to the store's
+   * `defaults.retry` (the store-wide `retry`, or the built-in fibonacci
+   * `defaultRetry`), so a query fetch retries like a document `find`. Disable
+   * with `Schedule.recurs(0)`.
    */
   retry?: Schedule.Schedule<unknown, AdapterError>;
 
-  /** Optional timeout for the adapter Effect; a timeout becomes an `AdapterError`. */
+  /**
+   * Optional timeout for the adapter Effect; a timeout becomes an
+   * `AdapterError`. Defaults to the store's `defaults.timeout`.
+   */
   timeout?: Duration.DurationInput;
 
   /**

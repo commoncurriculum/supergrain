@@ -11,7 +11,7 @@
 import { Effect, Schedule } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { AdapterError, createDocumentStore } from "../src";
+import { AdapterError, createDocumentStore, defaultRetry } from "../src";
 import { setupFakeTimers } from "./setup/timers";
 
 type Types = { user: { id: string; name: string } };
@@ -71,6 +71,7 @@ describe("ModelConfig.timeout", () => {
           timeout: "10 millis",
         },
       },
+      retry: Schedule.recurs(0), // a timeout should surface, not retry forever
     });
 
     const handle = store.find("user", "1");
@@ -124,6 +125,7 @@ describe("QueryConfig.retry / timeout", () => {
           timeout: "10 millis",
         },
       },
+      retry: Schedule.recurs(0), // a timeout should surface, not retry forever
     });
 
     const handle = store.findQuery("search", { q: "hi" });
@@ -179,6 +181,7 @@ describe("config.onError", () => {
           },
         },
       },
+      retry: Schedule.recurs(0),
       onError: (error, ctx) => seen.push({ tag: error._tag, keys: ctx.keys }),
     });
 
@@ -212,6 +215,7 @@ describe("config.onError", () => {
           },
         },
       },
+      retry: Schedule.recurs(0),
       onError: () => {
         throw new Error("telemetry boom");
       },
@@ -224,5 +228,56 @@ describe("config.onError", () => {
     // The store still settles the handle despite the throwing sink.
     expect(handle.error).toBeInstanceOf(AdapterError);
     expect(handle.status).toBe("error");
+  });
+});
+
+describe("default retry", () => {
+  it("exposes the built-in defaultRetry on store.defaults when unset", () => {
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: () => Effect.succeed([]) } } },
+    });
+    expect(store.defaults.retry).toBe(defaultRetry);
+    expect(store.defaults.timeout).toBeUndefined();
+  });
+
+  it("exposes a store-wide retry/timeout override on store.defaults", () => {
+    const retry = Schedule.recurs(2);
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: () => Effect.succeed([]) } } },
+      retry,
+      timeout: "5 seconds",
+    });
+    expect(store.defaults.retry).toBe(retry);
+    expect(store.defaults.timeout).toBe("5 seconds");
+  });
+
+  it("applies the built-in fibonacci default to a fetch with no retry configured", async () => {
+    let calls = 0;
+    const doc = { id: "1", name: "User1" };
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () =>
+              Effect.suspend(() => {
+                calls += 1;
+                return calls <= 1
+                  ? Effect.fail(new AdapterError({ type: "user", keys: ["1"], cause: "fail" }))
+                  : Effect.succeed([doc]);
+              }),
+          },
+        },
+      },
+      // no retry / timeout => the built-in fibonacci default applies
+    });
+
+    const handle = store.find("user", "1");
+    // First fibonacci delay is 1s; advance past it so the retry fires.
+    await vi.advanceTimersByTimeAsync(1100);
+    await handle.promise?.catch(() => {});
+
+    expect(calls).toBe(2);
+    expect(handle.value).toEqual(doc);
+    expect(handle.status).toBe("success");
   });
 });

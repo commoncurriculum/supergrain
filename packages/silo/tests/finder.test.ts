@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -100,6 +100,9 @@ function makeStore(opts: { batchWindowMs?: number; batchSize?: number } = {}): T
       user: { adapter: userAdapter },
       post: { adapter: postAdapter },
     },
+    // Disable the built-in fibonacci default retry so failure assertions
+    // surface immediately (resilience.test.ts covers retry behavior).
+    retry: Schedule.recurs(0),
     ...(opts.batchWindowMs !== undefined && { batchWindowMs: opts.batchWindowMs }),
     ...(opts.batchSize !== undefined && { batchSize: opts.batchSize }),
   };
@@ -388,6 +391,7 @@ describe("Finder normalizes adapter failures", () => {
           },
         },
       },
+      retry: Schedule.recurs(0),
     });
 
     const h = store.findQuery("search", { q: "oops" });
@@ -411,6 +415,7 @@ describe("Finder normalizes adapter failures", () => {
         },
         post: { adapter: makePostAdapter() },
       },
+      retry: Schedule.recurs(0),
     });
 
     const h = store.find("user", "1");
@@ -449,6 +454,7 @@ describe("Finder empty queues and orphaned handles", () => {
       },
     });
     const finder = new Finder<TestTypes, Queries>({
+      retry: Schedule.recurs(0),
       models: {
         user: {
           adapter: {
@@ -486,6 +492,7 @@ describe("Finder empty queues and orphaned handles", () => {
 
   it("allows an empty drain", async () => {
     const finder = new Finder<TestTypes>({
+      retry: Schedule.recurs(0),
       models: {
         user: { adapter: makeUserAdapter() },
         post: { adapter: makePostAdapter() },
@@ -499,6 +506,7 @@ describe("Finder empty queues and orphaned handles", () => {
 
   it("ignores a queued query when no query adapter is configured", async () => {
     const finder = new Finder<TestTypes>({
+      retry: Schedule.recurs(0),
       models: {
         user: { adapter: makeUserAdapter() },
         post: { adapter: makePostAdapter() },
@@ -549,6 +557,7 @@ describe("Finder empty queues and orphaned handles", () => {
     });
 
     const finder = new Finder<TestTypes, Queries>({
+      retry: Schedule.recurs(0),
       models: {
         user: {
           adapter: {
@@ -609,6 +618,7 @@ describe("Finder empty queues and orphaned handles", () => {
     });
 
     const finder = new Finder<TestTypes, Queries>({
+      retry: Schedule.recurs(0),
       models: {
         user: {
           adapter: {
@@ -661,6 +671,7 @@ describe("adapter boundary (Promise | Effect)", () => {
         user: { adapter: { find } },
         post: { adapter: makePostAdapter() },
       },
+      retry: Schedule.recurs(0),
     });
   }
 

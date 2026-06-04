@@ -33,7 +33,7 @@
 //   afterAll(() => server.close());
 // =============================================================================
 
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import { http, HttpResponse, type HttpHandler } from "msw";
 import { setupServer } from "msw/node";
 import { vi } from "vitest";
@@ -328,6 +328,10 @@ export function makeStoreConfig(
     queries: {
       dashboard: { adapter: dashboardAdapter },
     },
+    // Disable the built-in fibonacci default retry so the suite's failure
+    // assertions surface immediately instead of retrying forever. Resilience
+    // behavior is covered explicitly in resilience.test.ts.
+    retry: Schedule.recurs(0),
   };
   if (overrides.batchWindowMs !== undefined) config.batchWindowMs = overrides.batchWindowMs;
   if (overrides.batchSize !== undefined) config.batchSize = overrides.batchSize;
