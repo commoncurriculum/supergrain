@@ -277,9 +277,10 @@ describe("useDocumentStore + find composition", () => {
       </Wrap>,
     );
 
-    await tick();
-
-    expect(screen.getByText("error")).toBeDefined();
+    // Wait for the failure to settle rather than a fixed delay: the fetch fires
+    // a per-attempt `Retrying` notification before the terminal `error`, so poll
+    // for the end state instead of racing a single tick.
+    expect(await screen.findByText("error")).toBeDefined();
   });
 });
 
@@ -359,9 +360,9 @@ describe("useQuery", () => {
       </Wrap>,
     );
 
-    await tick();
-
-    expect(screen.getByText(/error:/)).toBeDefined();
+    // Poll for the settled error state (see note above on the per-attempt
+    // `Retrying` notification) rather than racing a single tick.
+    expect(await screen.findByText(/error:/)).toBeDefined();
   });
 });
 

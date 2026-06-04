@@ -5,7 +5,11 @@ import type { Duration, Effect, Schedule } from "effect";
 import { batch, createReactive } from "@supergrain/kernel";
 
 import { Finder } from "./finder";
-import { defaultRetry } from "./retry";
+import {
+  type AdapterOptionOverrides,
+  resolveAdapterOptions,
+  type ResolvedAdapterOptions,
+} from "./resolve";
 import { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./transitions";
 
 interface InternalState {
@@ -125,6 +129,10 @@ export type DocumentHandle<T, E = SiloError> =
       readonly error: undefined;
       readonly isFetching: boolean;
       readonly fetchedAt: undefined;
+      /** Failed attempts in the current fetch cycle (0 until one fails). */
+      readonly failureCount: number;
+      /** The latest attempt's error while retrying — visible before the fetch gives up. */
+      readonly lastError: E | undefined;
       readonly promise: HandlePromise<T>;
     }
   | {
@@ -134,6 +142,8 @@ export type DocumentHandle<T, E = SiloError> =
       readonly error: E | undefined;
       readonly isFetching: boolean;
       readonly fetchedAt: Date;
+      readonly failureCount: number;
+      readonly lastError: E | undefined;
       readonly promise: HandlePromise<T>;
     }
   | {
@@ -142,6 +152,8 @@ export type DocumentHandle<T, E = SiloError> =
       readonly error: E;
       readonly isFetching: boolean;
       readonly fetchedAt: undefined;
+      readonly failureCount: number;
+      readonly lastError: E | undefined;
       readonly promise: HandlePromise<T>;
     };
 
@@ -231,10 +243,15 @@ export type ResponseProcessor<M extends DocumentTypes> = (
 export interface ModelConfig<M extends DocumentTypes> {
   adapter: DocumentAdapter;
   processor?: ResponseProcessor<M>;
-  /** Optional retry schedule applied to the adapter Effect on `AdapterError`. */
+  /** Optional retry schedule applied to the adapter Effect on a retryable `AdapterError`. */
   retry?: Schedule.Schedule<unknown, AdapterError>;
-  /** Optional timeout for the adapter Effect; a timeout becomes an `AdapterError`. */
+  /** Optional per-attempt timeout for the adapter Effect; a timeout becomes an `AdapterError`. */
   timeout?: Duration.DurationInput;
+  /**
+   * Optional overall deadline across all retry attempts; a breach becomes a
+   * non-retryable `AdapterError`. Distinct from the per-attempt `timeout`.
+   */
+  deadline?: Duration.DurationInput;
 }
 
 // =============================================================================
@@ -274,10 +291,17 @@ export interface DocumentStoreConfig<
    */
   retry?: Schedule.Schedule<unknown, AdapterError>;
   /**
-   * Store-wide default timeout, applied to every fetch that doesn't set its own
-   * (per-model / per-query) `timeout`. Off by default.
+   * Store-wide default per-attempt timeout, applied to every fetch that doesn't
+   * set its own (per-model / per-query) `timeout`. Off by default.
    */
   timeout?: Duration.DurationInput;
+  /**
+   * Store-wide default overall deadline across all retry attempts, applied to
+   * every fetch that doesn't set its own (per-model / per-query) `deadline`. Off
+   * by default — combine with the infinite `defaultRetry` to guarantee a fetch
+   * eventually settles its terminal `error`.
+   */
+  deadline?: Duration.DurationInput;
 }
 
 // =============================================================================
@@ -310,15 +334,15 @@ export interface DocumentStore<
   ): void;
   clearMemory(): void;
   /**
-   * Resolved resilience defaults: the store-wide `retry` (or the built-in
-   * {@link defaultRetry}) and `timeout`. Layered helpers such as
-   * `@supergrain/queries` read these so a query fetch inherits the same default
-   * retry/timeout as a document `find` unless it overrides them.
+   * Resolve the resilience options for one adapter call: merge the given
+   * per-call overrides over the store-wide `retry` / `timeout` / `deadline`,
+   * falling back to the built-in {@link defaultRetry}. Layered helpers such as
+   * `@supergrain/queries` call this so a query fetch inherits the same resolved
+   * resilience as a document `find` unless it overrides them. Replaces the
+   * former `defaults` field — resolution lives in one place instead of leaking
+   * the store's raw defaults onto its surface.
    */
-  readonly defaults: {
-    readonly retry: Schedule.Schedule<unknown, AdapterError>;
-    readonly timeout: Duration.DurationInput | undefined;
-  };
+  resolveAdapterOptions(perCall?: AdapterOptionOverrides): ResolvedAdapterOptions;
 }
 
 const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
@@ -326,6 +350,8 @@ const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   error: undefined,
   isFetching: false,
   fetchedAt: undefined,
+  failureCount: 0,
+  lastError: undefined,
   status: "pending" as const,
   promise: undefined,
 });
@@ -476,9 +502,8 @@ export function createDocumentStore<
       });
     },
 
-    defaults: {
-      retry: config.retry ?? defaultRetry,
-      timeout: config.timeout,
+    resolveAdapterOptions(perCall?: AdapterOptionOverrides): ResolvedAdapterOptions {
+      return resolveAdapterOptions(config, perCall);
     },
   };
 

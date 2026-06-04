@@ -137,10 +137,15 @@ export interface QueryConfig<
 > {
   adapter: QueryAdapter<Q[Type]["params"]>;
   processor?: QueryProcessor<M, Q, Type>;
-  /** Optional retry schedule applied to the adapter Effect on `AdapterError`. */
+  /** Optional retry schedule applied to the adapter Effect on a retryable `AdapterError`. */
   retry?: Schedule.Schedule<unknown, AdapterError>;
-  /** Optional timeout for the adapter Effect; a timeout becomes an `AdapterError`. */
+  /** Optional per-attempt timeout for the adapter Effect; a timeout becomes an `AdapterError`. */
   timeout?: Duration.DurationInput;
+  /**
+   * Optional overall deadline across all retry attempts; a breach becomes a
+   * non-retryable `AdapterError`. Distinct from the per-attempt `timeout`.
+   */
+  deadline?: Duration.DurationInput;
 }
 
 // =============================================================================
@@ -162,6 +167,8 @@ export type QueryHandle<T, E = SiloError> =
       readonly error: undefined;
       readonly isFetching: boolean;
       readonly fetchedAt: undefined;
+      readonly failureCount: number;
+      readonly lastError: E | undefined;
       readonly promise: Promise<T> | undefined;
     }
   | {
@@ -170,6 +177,8 @@ export type QueryHandle<T, E = SiloError> =
       readonly error: E | undefined;
       readonly isFetching: boolean;
       readonly fetchedAt: Date;
+      readonly failureCount: number;
+      readonly lastError: E | undefined;
       readonly promise: Promise<T> | undefined;
     }
   | {
@@ -178,5 +187,7 @@ export type QueryHandle<T, E = SiloError> =
       readonly error: E;
       readonly isFetching: boolean;
       readonly fetchedAt: undefined;
+      readonly failureCount: number;
+      readonly lastError: E | undefined;
       readonly promise: Promise<T> | undefined;
     };

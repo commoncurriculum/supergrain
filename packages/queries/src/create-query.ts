@@ -40,14 +40,20 @@ export function createQuery<
 >(params: CreateQueryParams<M, K, T>): Query<T> {
   const { store, adapter, type, id } = params;
   const limit = params.limit ?? 200;
-  // Inherit the store's resilience defaults (store-wide `retry` ?? the built-in
-  // fibonacci `defaultRetry`, and store-wide `timeout`) so a query fetch behaves
-  // like a document `find` unless the call overrides them.
-  const retry = params.retry ?? store.defaults.retry;
-  const timeout = params.timeout ?? store.defaults.timeout;
+  // Inherit the store's resolved resilience (store-wide `retry` ?? the built-in
+  // fibonacci `defaultRetry`, plus `timeout` / `deadline`) so a query fetch
+  // behaves like a document `find` unless the call overrides them. Resolution
+  // lives in the store, not here.
+  const { retry, timeout, deadline } = store.resolveAdapterOptions({
+    retry: params.retry,
+    timeout: params.timeout,
+    deadline: params.deadline,
+  });
 
   const isFetching = signal(false);
   const errorSignal = signal<SiloError | null>(null);
+  const lastErrorSignal = signal<SiloError | null>(null);
+  const failureCountSignal = signal(0);
   let destroyed = false;
   // The controller for the currently-owned fetch; aborting it interrupts the
   // run (and the adapter's `signal`). A superseded fetch is no longer the
@@ -88,6 +94,9 @@ export function createQuery<
     const doc: QueryModel<K, T> = { id, type, results, nextOffset };
     store.insertDocument(type, doc as unknown as M[K]);
     errorSignal(null);
+    // A recovering retry succeeded — clear the in-flight failure tally.
+    lastErrorSignal(null);
+    failureCountSignal(0);
   }
 
   function fetchPage(offset: number): Promise<void> {
@@ -99,6 +108,9 @@ export function createQuery<
     activeController = controller;
     isFetching(true);
     errorSignal(null);
+    // Fresh cycle: reset the failure tally before the first attempt.
+    lastErrorSignal(null);
+    failureCountSignal(0);
 
     // `owned` is false once a newer fetch (or destroy) supersedes this one, so
     // a late settle from an interrupted run never clobbers fresh state.
@@ -106,7 +118,21 @@ export function createQuery<
 
     const program = runAdapter<QueryEnvelope<T>>(
       (ctx) => adapter.fetch(id, { offset, limit, signal: ctx.signal }),
-      { type, keys: [id], retry, timeout },
+      {
+        type,
+        keys: [id],
+        retry,
+        timeout,
+        deadline,
+        // Surface each failed attempt (and a deadline breach) while retrying, so
+        // a still-fetching query isn't silent — mirrors a silo handle.
+        onFailure: (error) => {
+          if (owned()) {
+            lastErrorSignal(error);
+            failureCountSignal(failureCountSignal() + 1);
+          }
+        },
+      },
     ).pipe(
       Effect.flatMap((res) =>
         Effect.sync(() => {
@@ -146,6 +172,12 @@ export function createQuery<
     },
     get error(): SiloError | undefined {
       return errorSignal() ?? undefined;
+    },
+    get failureCount(): number {
+      return failureCountSignal();
+    },
+    get lastError(): SiloError | undefined {
+      return lastErrorSignal() ?? undefined;
     },
     fetchNextPage(): Promise<void> {
       const next = readSlot()?.nextOffset ?? 0;

@@ -231,27 +231,48 @@ describe("config.onError", () => {
   });
 });
 
-describe("default retry", () => {
-  it("exposes the built-in defaultRetry on store.defaults when unset", () => {
+describe("store.resolveAdapterOptions", () => {
+  it("falls back to the built-in defaultRetry (timeout/deadline off) when unset", () => {
     const store = createDocumentStore<Types, Queries>({
       models: { user: { adapter: { find: () => Effect.succeed([]) } } },
     });
-    expect(store.defaults.retry).toBe(defaultRetry);
-    expect(store.defaults.timeout).toBeUndefined();
+    const resolved = store.resolveAdapterOptions();
+    expect(resolved.retry).toBe(defaultRetry);
+    expect(resolved.timeout).toBeUndefined();
+    expect(resolved.deadline).toBeUndefined();
   });
 
-  it("exposes a store-wide retry/timeout override on store.defaults", () => {
+  it("uses store-wide retry/timeout/deadline when set", () => {
     const retry = Schedule.recurs(2);
     const store = createDocumentStore<Types, Queries>({
       models: { user: { adapter: { find: () => Effect.succeed([]) } } },
       retry,
       timeout: "5 seconds",
+      deadline: "30 seconds",
     });
-    expect(store.defaults.retry).toBe(retry);
-    expect(store.defaults.timeout).toBe("5 seconds");
+    const resolved = store.resolveAdapterOptions();
+    expect(resolved.retry).toBe(retry);
+    expect(resolved.timeout).toBe("5 seconds");
+    expect(resolved.deadline).toBe("30 seconds");
   });
 
-  it("applies the built-in fibonacci default to a fetch with no retry configured", async () => {
+  it("merges per-call overrides over the store-wide defaults", () => {
+    const storeRetry = Schedule.recurs(2);
+    const callRetry = Schedule.recurs(7);
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: () => Effect.succeed([]) } } },
+      retry: storeRetry,
+      timeout: "5 seconds",
+    });
+    const resolved = store.resolveAdapterOptions({ retry: callRetry, deadline: "1 second" });
+    expect(resolved.retry).toBe(callRetry); // overridden
+    expect(resolved.timeout).toBe("5 seconds"); // inherited
+    expect(resolved.deadline).toBe("1 second"); // newly set per-call
+  });
+});
+
+describe("default retry", () => {
+  it("applies the built-in (jittered) fibonacci default to a fetch with no retry configured", async () => {
     let calls = 0;
     const doc = { id: "1", name: "User1" };
     const store = createDocumentStore<Types, Queries>({
@@ -268,16 +289,149 @@ describe("default retry", () => {
           },
         },
       },
-      // no retry / timeout => the built-in fibonacci default applies
+      // no retry / timeout => the built-in jittered fibonacci default applies
     });
 
     const handle = store.find("user", "1");
-    // First fibonacci delay is 1s; advance past it so the retry fires.
-    await vi.advanceTimersByTimeAsync(1100);
+    // First fibonacci delay is 1s, jittered up to ~1.2s; advance well past it.
+    await vi.advanceTimersByTimeAsync(2000);
     await handle.promise?.catch(() => {});
 
     expect(calls).toBe(2);
     expect(handle.value).toEqual(doc);
     expect(handle.status).toBe("success");
+  });
+});
+
+describe("failure visibility during retry", () => {
+  it("fires onError per failed attempt and tracks failureCount/lastError to terminal", async () => {
+    let calls = 0;
+    const seen: Array<string> = [];
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () =>
+              Effect.suspend(() => {
+                calls += 1;
+                return Effect.fail(
+                  new AdapterError({ type: "user", keys: ["1"], cause: `fail-${calls}` }),
+                );
+              }),
+          },
+          retry: Schedule.recurs(2), // 3 attempts, all fail
+        },
+      },
+      onError: (error) => seen.push(error._tag),
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    expect(calls).toBe(3);
+    // onError fires once per failed attempt, not only on exhaustion.
+    expect(seen).toEqual(["AdapterError", "AdapterError", "AdapterError"]);
+    expect(handle.failureCount).toBe(3);
+    expect(handle.lastError).toBeInstanceOf(AdapterError);
+    expect(handle.error).toBeInstanceOf(AdapterError);
+    expect(handle.status).toBe("error");
+  });
+
+  it("resets failureCount/lastError once a recovering retry succeeds", async () => {
+    let calls = 0;
+    const doc = { id: "1", name: "User1" };
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () =>
+              Effect.suspend(() => {
+                calls += 1;
+                return calls <= 2
+                  ? Effect.fail(new AdapterError({ type: "user", keys: ["1"], cause: "fail" }))
+                  : Effect.succeed([doc]);
+              }),
+          },
+          retry: Schedule.recurs(3),
+        },
+      },
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    expect(handle.value).toEqual(doc);
+    expect(handle.failureCount).toBe(0);
+    expect(handle.lastError).toBeUndefined();
+    expect(handle.error).toBeUndefined();
+    expect(handle.status).toBe("success");
+  });
+});
+
+describe("retryable errors", () => {
+  it("does not retry an AdapterError marked retryable: false", async () => {
+    let calls = 0;
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () =>
+              Effect.suspend(() => {
+                calls += 1;
+                return Effect.fail(
+                  new AdapterError({
+                    type: "user",
+                    keys: ["1"],
+                    cause: "hard 4xx",
+                    retryable: false,
+                  }),
+                );
+              }),
+          },
+          retry: Schedule.recurs(5), // would retry, but the error opts out
+        },
+      },
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    expect(calls).toBe(1); // failed fast, no retries
+    expect(handle.error).toBeInstanceOf(AdapterError);
+    expect(handle.status).toBe("error");
+  });
+});
+
+describe("overall deadline", () => {
+  it("fails with a 'deadline' AdapterError when retries exceed the budget", async () => {
+    let calls = 0;
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () =>
+              Effect.suspend(() => {
+                calls += 1;
+                return Effect.fail(new AdapterError({ type: "user", keys: ["1"], cause: "fail" }));
+              }),
+          },
+          retry: Schedule.spaced("20 millis"), // would retry forever
+          deadline: "70 millis", // ...but the overall budget caps it
+        },
+      },
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    expect(handle.error).toBeInstanceOf(AdapterError);
+    expect(((handle.error as AdapterError).cause as Error).message).toMatch(/deadline/i);
+    expect((handle.error as AdapterError).retryable).toBe(false);
+    expect(handle.status).toBe("error");
+    expect(calls).toBeGreaterThan(1); // retried a few times before the budget elapsed
   });
 });

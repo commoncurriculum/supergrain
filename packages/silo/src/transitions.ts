@@ -21,6 +21,13 @@ export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
   Insert: { readonly value: T };
   /** The in-flight fetch completed and the requested key is present. */
   Settled: Record<never, never>;
+  /**
+   * A retryable attempt failed but the fetch is still in flight (more retries
+   * to come). Records what's currently wrong (`lastError`) and bumps
+   * `failureCount` without ending activity or settling the terminal `error` —
+   * an outage is observable while retrying instead of a silent spinner.
+   */
+  Retrying: { readonly error: E };
   /** The fetch (or processor) failed, or the key was missing after fetch. */
   Failed: { readonly error: E };
   /** Memory was cleared. */
@@ -36,6 +43,7 @@ export const HandleEvent = {
   fetch: (): HandleEvent => ({ _tag: "Fetch" }),
   insert: <T>(value: T): HandleEvent<T> => ({ _tag: "Insert", value }),
   settled: (): HandleEvent => ({ _tag: "Settled" }),
+  retrying: (error: SiloError): HandleEvent => ({ _tag: "Retrying", error }),
   failed: (error: SiloError): HandleEvent => ({ _tag: "Failed", error }),
   reset: (): HandleEvent => ({ _tag: "Reset" }),
 };
@@ -59,6 +67,10 @@ export interface InternalHandle<T = unknown, E = SiloError> {
   error: E | undefined;
   isFetching: boolean;
   fetchedAt: Date | undefined;
+  /** Failed attempts in the current fetch cycle; reset to 0 on success. */
+  failureCount: number;
+  /** The most recent attempt's error while retrying; cleared on success. */
+  lastError: E | undefined;
   status: HandleStatus;
   promise: Promise<T> | undefined;
   resolve?: (v: T) => void;
@@ -71,6 +83,8 @@ export function makeIdleHandle<T = unknown, E = SiloError>(): InternalHandle<T, 
     error: undefined,
     isFetching: false,
     fetchedAt: undefined,
+    failureCount: 0,
+    lastError: undefined,
     status: "pending",
     promise: undefined,
     resolve: undefined,
@@ -124,28 +138,44 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
   const hadValue = raw.value !== undefined;
   const wasFetching = raw.isFetching;
 
-  let { value, error, isFetching, fetchedAt } = raw;
+  let { value, error, isFetching, fetchedAt, failureCount, lastError } = raw;
 
   switch (event._tag) {
     case "Fetch": {
-      // Stale-while-revalidate: keep value/error; just mark activity.
+      // Stale-while-revalidate: keep value/error; just mark activity. A fresh
+      // cycle starts its failure tally clean.
       isFetching = true;
+      failureCount = 0;
+      lastError = undefined;
       break;
     }
     case "Insert": {
       ({ value } = event);
       fetchedAt = new Date();
       error = undefined; // fresh data supersedes any prior error
+      failureCount = 0;
+      lastError = undefined;
       break;
     }
     case "Settled": {
       isFetching = false;
       error = undefined;
+      failureCount = 0;
+      lastError = undefined;
+      break;
+    }
+    case "Retrying": {
+      // A retryable attempt failed; the fetch is still in flight. Surface what's
+      // currently wrong without ending activity or setting the terminal `error`.
+      lastError = event.error;
+      failureCount += 1;
       break;
     }
     case "Failed": {
       // Keep value (stale-while-revalidate); record the error, end activity.
+      // `lastError` tracks the terminal error too, so it never lags `error`.
       ({ error } = event);
+      lastError = event.error;
       isFetching = false;
       break;
     }
@@ -153,6 +183,8 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       value = undefined;
       error = undefined;
       fetchedAt = undefined;
+      failureCount = 0;
+      lastError = undefined;
       // An in-flight fetch survives a reset (isFetching unchanged) and will
       // repopulate; otherwise everything clears.
       break;
@@ -165,6 +197,8 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
   if (raw.error !== error) handle.error = error;
   if (raw.isFetching !== isFetching) handle.isFetching = isFetching;
   if (raw.fetchedAt !== fetchedAt) handle.fetchedAt = fetchedAt;
+  if (raw.failureCount !== failureCount) handle.failureCount = failureCount;
+  if (raw.lastError !== lastError) handle.lastError = lastError;
   if (raw.status !== status) handle.status = status;
 
   switch (event._tag) {
@@ -193,6 +227,10 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
         raw.resolve(raw.value);
         clearResolvers(raw);
       }
+      break;
+    }
+    case "Retrying": {
+      // Still fetching — the pending promise stays pending; nothing to settle.
       break;
     }
     case "Failed": {

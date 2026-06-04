@@ -25,6 +25,9 @@ export type { AdapterRunOptions, SiloError } from "./errors";
 
 export { defaultRetry } from "./retry";
 
+export { resolveAdapterOptions } from "./resolve";
+export type { AdapterOptionOverrides, ResolvedAdapterOptions } from "./resolve";
+
 export type {
   QueryAdapter,
   QueryConfig,

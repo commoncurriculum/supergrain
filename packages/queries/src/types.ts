@@ -75,6 +75,16 @@ export interface Query<T> {
    * surfaces as an `AdapterError` (original rejection on `.cause`).
    */
   readonly error: SiloError | undefined;
+  /**
+   * Failed attempts in the current fetch cycle, reset to 0 on success. Mirrors
+   * a silo handle's `failureCount` so a retrying query is observable.
+   */
+  readonly failureCount: number;
+  /**
+   * The latest attempt's error while retrying — visible before the fetch gives
+   * up (when `error` settles). Mirrors a silo handle's `lastError`.
+   */
+  readonly lastError: SiloError | undefined;
 
   /** Fetch the next page using the currently stored `nextOffset` (or 0 if none). */
   fetchNextPage(): Promise<void>;
@@ -104,19 +114,27 @@ export interface CreateQueryParams<
   limit?: number;
 
   /**
-   * Optional retry schedule applied to the adapter Effect on `AdapterError` —
-   * the same knob as silo's `ModelConfig.retry`. Defaults to the store's
-   * `defaults.retry` (the store-wide `retry`, or the built-in fibonacci
-   * `defaultRetry`), so a query fetch retries like a document `find`. Disable
-   * with `Schedule.recurs(0)`.
+   * Optional retry schedule applied to the adapter Effect on a retryable
+   * `AdapterError` — the same knob as silo's `ModelConfig.retry`. Resolved via
+   * `store.resolveAdapterOptions` (the store-wide `retry`, or the built-in
+   * fibonacci `defaultRetry`), so a query fetch retries like a document `find`.
+   * Disable with `Schedule.recurs(0)`.
    */
   retry?: Schedule.Schedule<unknown, AdapterError>;
 
   /**
-   * Optional timeout for the adapter Effect; a timeout becomes an
-   * `AdapterError`. Defaults to the store's `defaults.timeout`.
+   * Optional per-attempt timeout for the adapter Effect; a timeout becomes an
+   * `AdapterError`. Resolved via `store.resolveAdapterOptions` (the store-wide
+   * `timeout`).
    */
   timeout?: Duration.DurationInput;
+
+  /**
+   * Optional overall deadline across all retry attempts; a breach becomes a
+   * non-retryable `AdapterError`. Distinct from the per-attempt `timeout`.
+   * Resolved via `store.resolveAdapterOptions` (the store-wide `deadline`).
+   */
+  deadline?: Duration.DurationInput;
 
   /**
    * Optional server-side subscription hook. If provided, called on init.

@@ -13,12 +13,13 @@ turns one adapter call into a typed, resilient, abortable Effect (Promise→
 The store's finder and `createQuery` both go through it, so resilience and abort
 behave identically on both surfaces.
 
-**Shared default retry.** silo ships a built-in `defaultRetry` (fibonacci 1s–60s,
-retrying until success) and a store-wide `DocumentStoreConfig.retry` / `timeout`.
-A document `find` and a `createQuery` fetch with no explicit `retry` both inherit
-the store's `defaults.retry`, so they retry identically out of the box. Disable
-with `Schedule.recurs(0)`, or bound it with e.g. `Schedule.recurs(3)`, at the
-store, model, or query level.
+**Shared default retry.** silo ships a built-in `defaultRetry` (jittered
+fibonacci 1s–60s, retrying until success) and a store-wide
+`DocumentStoreConfig.retry` / `timeout` / `deadline`. A document `find` and a
+`createQuery` fetch with no explicit `retry` both resolve the same defaults via
+`store.resolveAdapterOptions(perCall?)`, so they retry identically out of the
+box. Disable with `Schedule.recurs(0)`, or bound it with e.g. `Schedule.recurs(3)`
+or a `deadline`, at the store, model, or query level.
 
 **`createQuery` is now Promise-first with a signal.** `QueryAdapter.fetch(id, {
 offset, limit, signal })` — return a `Promise` (a rejection becomes an

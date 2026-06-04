@@ -19,7 +19,7 @@ import {
   type SiloError,
 } from "./errors";
 import { defaultProcessor, defaultQueryProcessor } from "./processors";
-import { defaultRetry } from "./retry";
+import { resolveAdapterOptions } from "./resolve";
 import { applyEvent, HandleEvent, type InternalHandle } from "./transitions";
 
 // Re-exported for the package's own tests (not part of the public root export).
@@ -181,8 +181,8 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
         {
           type,
           keys: ids,
-          retry: modelConfig.retry ?? this.config.retry ?? defaultRetry,
-          timeout: modelConfig.timeout ?? this.config.timeout,
+          ...resolveAdapterOptions(this.config, modelConfig),
+          onFailure: (error) => this.onAttemptFailed(this.state!.documents, type, ids, error),
         },
       ),
       this.state!.documents,
@@ -236,8 +236,8 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
         {
           type,
           keys: queryKeys,
-          retry: queryConfig.retry ?? this.config.retry ?? defaultRetry,
-          timeout: queryConfig.timeout ?? this.config.timeout,
+          ...resolveAdapterOptions(this.config, queryConfig),
+          onFailure: (error) => this.onAttemptFailed(this.state!.queries, type, queryKeys, error),
         },
       ),
       this.state!.queries,
@@ -300,6 +300,30 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     }
   }
 
+  /**
+   * Report one failed adapter attempt while the fetch is still retrying: notify
+   * `onError` and bump each waiting handle's `failureCount` / `lastError`
+   * (without ending activity). Called per attempt by `runAdapter`'s `onFailure`,
+   * so an outage is observable mid-retry — `failChunk` then only settles the
+   * terminal state, never re-emitting.
+   */
+  // oxlint-disable-next-line max-params
+  private onAttemptFailed(
+    buckets: Map<string, Map<string, InternalHandle>>,
+    type: string,
+    keys: ReadonlyArray<string>,
+    error: AdapterError,
+  ): void {
+    this.emitError(error, type, keys);
+    batch(() => {
+      const bucket = buckets.get(type);
+      for (const key of keys) {
+        const handle = bucket?.get(key);
+        if (handle) applyEvent(handle, HandleEvent.retrying(error));
+      }
+    });
+  }
+
   // oxlint-disable-next-line max-params
   private failChunk(
     buckets: Map<string, Map<string, InternalHandle>>,
@@ -307,7 +331,8 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     keys: ReadonlyArray<string>,
     error: AdapterError,
   ): void {
-    this.emitError(error, type, keys);
+    // `onError` already fired per attempt (and for a deadline breach) via
+    // `onAttemptFailed`; here we only settle the handles into terminal failure.
     batch(() => {
       const bucket = buckets.get(type);
       for (const key of keys) {

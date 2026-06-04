@@ -125,7 +125,7 @@ export function UserCard({ id }: { id: string }) {
 }
 ```
 
-`useDocument` returns a reactive `DocumentHandle<User>` with flat, orthogonal fields: `value`, `error`, `isFetching`, `fetchedAt` (plus a derived `status`). They vary independently, so a stale `value` and a fresh refetch `error` coexist instead of clobbering each other. Same `(type, id)` always returns the same handle object across renders, and each field is tracked independently — a component reading only `value` doesn't re-render when a background refetch toggles `isFetching`.
+`useDocument` returns a reactive `DocumentHandle<User>` with flat, orthogonal fields: `value`, `error`, `isFetching`, `fetchedAt`, `failureCount`, `lastError` (plus a derived `status`). They vary independently, so a stale `value` and a fresh refetch `error` coexist instead of clobbering each other. Same `(type, id)` always returns the same handle object across renders, and each field is tracked independently — a component reading only `value` doesn't re-render when a background refetch toggles `isFetching`.
 
 ### 4. Or suspend, if you prefer
 
@@ -183,8 +183,13 @@ const store = createDocumentStore<TypeToModel>({
 Each model (and query) can also take:
 
 - `processor` to normalize the adapter's raw response — see [Processors](#processors) below. Omit it and the default processor assumes the adapter returns a doc or an array of docs.
-- `retry` — an Effect `Schedule` applied to the adapter Effect on `AdapterError` (e.g. `Schedule.exponential("100 millis").pipe(Schedule.compose(Schedule.recurs(3)))`).
-- `timeout` — a `Duration` after which the adapter Effect fails with an `AdapterError`.
+- `retry` — an Effect `Schedule` applied to the adapter Effect on a **retryable** `AdapterError` (e.g. `Schedule.exponential("100 millis").pipe(Schedule.compose(Schedule.recurs(3)))`). Mark an `AdapterError` `retryable: false` (a deterministic 4xx, say) and it fails fast instead of looping.
+- `timeout` — a `Duration` bounding a **single attempt**; on expiry that attempt fails with an `AdapterError`.
+- `deadline` — a `Duration` bounding **all attempts together** (including retry backoff); on expiry the whole fetch fails with a non-retryable `AdapterError` whose cause mentions "deadline". Pair it with the infinite default retry to guarantee a fetch eventually settles.
+
+These three resolve per-call ?? store-wide ?? built-in default in one place — `store.resolveAdapterOptions(perCall?)` — which `@supergrain/queries` also calls, so a query fetch inherits the same resilience as a document `find`.
+
+The built-in default retry (`defaultRetry`) is **jittered** fibonacci (1s base, 0.8–1.2× spread, clamped to 60s) retrying until success. Because it never gives up, a down backend won't settle the terminal `error` — but it is **not** silent: every failed attempt fires `onError` and bumps the handle's `failureCount` / `lastError`, so the outage is observable while retrying. Bound it with a `deadline` (or a finite `Schedule`) to make it terminate.
 
 Methods:
 
@@ -195,6 +200,7 @@ Methods:
 - `findQuery(type, params)` → `QueryHandle<T>`
 - `findQueryInMemory(type, params)` → `T | undefined`
 - `insertQueryResult(type, params, result)` → `void`
+- `resolveAdapterOptions(perCall?)` → `{ retry, timeout, deadline }` — merge per-call overrides over the store-wide defaults (used by layered helpers like `@supergrain/queries`)
 
 ### `createDocumentStoreContext<S extends DocumentStore<any, any>>()`
 
@@ -225,6 +231,8 @@ type DocumentHandle<T, E = SiloError> =
       error: undefined;
       fetchedAt: undefined;
       isFetching: boolean;
+      failureCount: number; // failed attempts this cycle
+      lastError: E | undefined; // latest attempt error while retrying
       promise: Promise<T> | undefined;
     }
   | {
@@ -233,6 +241,8 @@ type DocumentHandle<T, E = SiloError> =
       error: E | undefined;
       fetchedAt: Date; // refetch error coexists
       isFetching: boolean;
+      failureCount: number;
+      lastError: E | undefined;
       promise: Promise<T> | undefined;
     }
   | {
@@ -241,11 +251,15 @@ type DocumentHandle<T, E = SiloError> =
       error: E;
       fetchedAt: undefined;
       isFetching: boolean;
+      failureCount: number;
+      lastError: E | undefined;
       promise: Promise<T> | undefined;
     };
 ```
 
 Narrowing on `status` (or on `value !== undefined`) refines `value` to `T`. The fields still vary independently, so all states are representable — including a `value` present alongside a refetch `error` (stale data + refetch error), which a single flat status enum couldn't express: that's the `success` arm with `error` set. `status` stays `"success"` across a refetch (the orthogonal `isFetching` flips instead), so narrowing on it never adds a re-render. `value: undefined` is the not-loaded sentinel — a loaded-but-`null` value is `status: "success"` with `value: null`, distinct from `pending`. There is no separate "idle" status (earlier versions had `"IDLE"`): a not-yet-started handle is `status: "pending"` with `isFetching: false`, and a first load in flight is `status: "pending"` with `isFetching: true` — "has a fetch started" lives on the `isFetching` axis, not in `status`.
+
+`failureCount` / `lastError` make a _retrying_ fetch observable separately from a _terminal_ one. While `retry` keeps re-attempting, `error` stays unset (no give-up yet) but each failed attempt bumps `failureCount` and records `lastError` — so under the infinite default retry a down backend shows climbing failures and the latest cause instead of a silent spinner. They reset to `0` / `undefined` the moment an attempt succeeds; on terminal failure `lastError` equals `error`.
 
 `clearMemory()` clears `value`/`error`/`fetchedAt` (an in-flight fetch survives and repopulates). Errors are typed: `AdapterError` (adapter failed), `NotFoundError` (key absent after fetch), `ProcessorError` (processor threw) — union `SiloError`.
 
@@ -443,7 +457,7 @@ function DashboardView({ workspaceId }: { workspaceId: number }) {
 }
 ```
 
-Same `QueryHandle<T>` shape as `DocumentHandle<T>` — flat `value` / `error` / `isFetching` / `fetchedAt` / `status` plus `promise`. Same Suspense opt-in via `use(handle.promise)`. Same stable handle identity, so two components requesting `{ workspaceId: 7 }` get the same reactive object.
+Same `QueryHandle<T>` shape as `DocumentHandle<T>` — flat `value` / `error` / `isFetching` / `fetchedAt` / `failureCount` / `lastError` / `status` plus `promise`. Same Suspense opt-in via `use(handle.promise)`. Same stable handle identity, so two components requesting `{ workspaceId: 7 }` get the same reactive object.
 
 Object key identity is **deep-equal**: `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` hit the same slot. The library stable-stringifies for cache lookup; adapters see the raw objects.
 
