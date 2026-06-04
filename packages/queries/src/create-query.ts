@@ -128,10 +128,10 @@ export function createQuery<
         retryable,
         // Surface each failed attempt (and a deadline breach) while retrying, so
         // a still-fetching query isn't silent — mirrors a silo handle.
-        onFailure: (error) => {
+        onFailure: (error, info) => {
           if (owned()) {
             lastErrorSignal(error);
-            failureCountSignal(failureCountSignal() + 1);
+            failureCountSignal(info.attempt);
           }
         },
       },

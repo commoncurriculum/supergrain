@@ -9,10 +9,11 @@ import type {
 } from "./store";
 
 import { batch } from "@supergrain/kernel";
-import { Duration, Effect, type Fiber } from "effect";
+import { Duration, Effect, type Fiber, Schedule } from "effect";
 
 import {
   type AdapterError,
+  type AdapterFailureInfo,
   NotFoundError,
   ProcessorError,
   runAdapter,
@@ -53,6 +54,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   private config: DocumentStoreConfig<M, Q>;
   private batchWindowMs: number;
   private batchSize: number;
+  private maxConcurrency: number | "unbounded";
   private queue: Array<QueueEntry> = [];
   private windowFiber: Fiber.RuntimeFiber<void> | undefined = undefined;
   private state: InternalState | undefined = undefined;
@@ -62,6 +64,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     this.config = config;
     this.batchWindowMs = config.batchWindowMs ?? 15;
     this.batchSize = config.batchSize ?? 60;
+    this.maxConcurrency = config.maxConcurrency ?? "unbounded";
   }
 
   attach(state: InternalState, store: DocumentStore<M, Q>): void {
@@ -140,18 +143,21 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
       }
 
       // Each chunk Effect catches all of its own failures (settling handles),
-      // so the fan-out never fails or interrupts a sibling. Run them concurrently.
+      // so the fan-out never fails or interrupts a sibling. Run them
+      // concurrently, capped by `maxConcurrency` (unbounded by default).
       return Effect.forEach(chunks, (chunk) => chunk, {
-        concurrency: "unbounded",
+        concurrency: this.maxConcurrency,
         discard: true,
       });
     });
   }
 
   /**
-   * Shared chunk pipeline: commit the raw response on success, fail every
-   * waiting handle on `AdapterError`. The only difference between the document
-   * and query surfaces is which bucket/keys to fail and how to commit.
+   * Shared chunk pipeline: commit the raw response on success; on terminal
+   * `AdapterError` either **isolate** (split & re-fetch the halves, when
+   * `bisect` is supplied and the chunk holds >1 key) or fail every waiting
+   * handle. The only difference between the document and query surfaces is which
+   * bucket/keys to fail and how to commit.
    */
   // oxlint-disable-next-line max-params
   private settleChunk(
@@ -160,19 +166,48 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     type: string,
     keys: ReadonlyArray<string>,
     commit: (raw: unknown) => void,
+    bisect: (() => Effect.Effect<void>) | undefined,
   ): Effect.Effect<void> {
     return run.pipe(
       Effect.flatMap((raw) => Effect.sync(() => commit(raw))),
       Effect.catchAll((error: AdapterError) =>
-        Effect.sync(() => this.failChunk(buckets, type, keys, error)),
+        bisect !== undefined && keys.length > 1
+          ? bisect()
+          : Effect.sync(() => this.failChunk(buckets, type, keys, error)),
       ),
     );
   }
 
-  private drainDocumentChunk(type: string, ids: Array<string>): Effect.Effect<void> {
+  /**
+   * Split a failed chunk's keys in half and re-run each half via `rerun`, so a
+   * single poison key is narrowed down (and ultimately fails alone) while its
+   * healthy neighbors succeed. The halves run concurrently and never throw —
+   * each settles its own handles.
+   */
+  private bisect<K>(
+    keys: ReadonlyArray<K>,
+    rerun: (half: Array<K>) => Effect.Effect<void>,
+  ): Effect.Effect<void> {
+    const mid = Math.ceil(keys.length / 2);
+    return Effect.forEach([keys.slice(0, mid), keys.slice(mid)], (half) => rerun([...half]), {
+      concurrency: this.maxConcurrency,
+      discard: true,
+    });
+  }
+
+  // `retryEnabled` is false for bisected sub-chunks: the parent chunk already
+  // exhausted the retry schedule, so the halves run once (recurs(0)) purely to
+  // partition which id is the poison.
+  private drainDocumentChunk(
+    type: string,
+    ids: Array<string>,
+    retryEnabled = true,
+  ): Effect.Effect<void> {
     const modelConfig = (this.config.models as Record<string, ModelConfig<M>>)[type];
     const processor: ResponseProcessor<M> =
       modelConfig.processor ?? (defaultProcessor as ResponseProcessor<M>);
+    const resolved = resolveAdapterOptions(this.config, modelConfig);
+    const isolate = modelConfig.isolateFailures ?? this.config.isolateFailures ?? false;
 
     return this.settleChunk(
       runAdapter(
@@ -181,14 +216,19 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
         {
           type,
           keys: ids,
-          ...resolveAdapterOptions(this.config, modelConfig),
-          onFailure: (error) => this.onAttemptFailed(this.state!.documents, type, ids, error),
+          ...resolved,
+          retry: retryEnabled ? resolved.retry : Schedule.recurs(0),
+          onFailure: (error, info) =>
+            this.onAttemptFailed(this.state!.documents, type, ids, error, info),
         },
       ),
       this.state!.documents,
       type,
       ids,
       (raw) => this.commitDocuments(type, ids, raw, processor),
+      isolate
+        ? () => this.bisect(ids, (half) => this.drainDocumentChunk(type, half, false))
+        : undefined,
     );
   }
 
@@ -216,7 +256,11 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     });
   }
 
-  private drainQueryChunk(type: string, chunk: Array<QueryChunkEntry>): Effect.Effect<void> {
+  private drainQueryChunk(
+    type: string,
+    chunk: Array<QueryChunkEntry>,
+    retryEnabled = true,
+  ): Effect.Effect<void> {
     const queryConfig = (
       this.config.queries as Record<string, QueryConfig<M, Q, keyof Q & string>> | undefined
     )?.[type];
@@ -225,6 +269,8 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     const processor: QueryProcessor<M, Q, keyof Q & string> =
       queryConfig.processor ??
       (defaultQueryProcessor as unknown as QueryProcessor<M, Q, keyof Q & string>);
+    const resolved = resolveAdapterOptions(this.config, queryConfig);
+    const isolate = queryConfig.isolateFailures ?? this.config.isolateFailures ?? false;
 
     const paramsList = chunk.map((e) => e.params);
 
@@ -236,14 +282,19 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
         {
           type,
           keys: queryKeys,
-          ...resolveAdapterOptions(this.config, queryConfig),
-          onFailure: (error) => this.onAttemptFailed(this.state!.queries, type, queryKeys, error),
+          ...resolved,
+          retry: retryEnabled ? resolved.retry : Schedule.recurs(0),
+          onFailure: (error, info) =>
+            this.onAttemptFailed(this.state!.queries, type, queryKeys, error, info),
         },
       ),
       this.state!.queries,
       type,
       queryKeys,
       (raw) => this.commitQueries(type, chunk, paramsList, raw, processor),
+      isolate
+        ? () => this.bisect(chunk, (half) => this.drainQueryChunk(type, half, false))
+        : undefined,
     );
   }
 
@@ -288,12 +339,14 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     type: string,
     processorError: ProcessorError | undefined,
   ): void {
+    // Post-success terminal failures: a single observation, never retried.
+    const terminalInfo: AdapterFailureInfo = { attempt: 1, retryable: false };
     if (processorError) {
-      this.emitError(processorError, type, [key]);
+      this.emitError(processorError, type, [key], terminalInfo);
       applyEvent(handle, HandleEvent.failed(processorError));
     } else if (handle.value === undefined) {
       const notFound = new NotFoundError({ type, key });
-      this.emitError(notFound, type, [key]);
+      this.emitError(notFound, type, [key], terminalInfo);
       applyEvent(handle, HandleEvent.failed(notFound));
     } else {
       applyEvent(handle, HandleEvent.settled());
@@ -313,8 +366,9 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     type: string,
     keys: ReadonlyArray<string>,
     error: AdapterError,
+    info: AdapterFailureInfo,
   ): void {
-    this.emitError(error, type, keys);
+    this.emitError(error, type, keys, info);
     batch(() => {
       const bucket = buckets.get(type);
       for (const key of keys) {
@@ -343,14 +397,21 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   }
 
   /**
-   * Notify the optional `config.onError` sink. A throwing telemetry callback
-   * must never break the engine, so it's isolated in a try/catch.
+   * Notify the optional `config.onError` sink with the failing `type` / `keys`
+   * and the per-failure `info` (1-based `attempt`, whether `retryable`). A
+   * throwing telemetry callback must never break the engine, so it's isolated.
    */
-  private emitError(error: SiloError, type: string, keys: ReadonlyArray<string>): void {
+  // oxlint-disable-next-line max-params
+  private emitError(
+    error: SiloError,
+    type: string,
+    keys: ReadonlyArray<string>,
+    info: AdapterFailureInfo,
+  ): void {
     const { onError } = this.config;
     if (onError === undefined) return;
     try {
-      onError(error, { type, keys });
+      onError(error, { type, keys, attempt: info.attempt, retryable: info.retryable });
     } catch {
       // A throwing telemetry callback is swallowed — observability must not
       // affect fetch state.

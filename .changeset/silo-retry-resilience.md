@@ -33,11 +33,36 @@ attempt, and `runAdapter` isolates it (and the `deadline` breach notification)
 in try/catch — the same contract the finder already kept for terminal
 `onError`, now honored on every per-attempt and deadline path.
 
+**Enriched `onError` context.** The sink now receives
+`{ type, keys, attempt, retryable }` — the 1-based attempt number and whether
+the failure passed the retryable check — so telemetry can chart retry rate or
+alert only on hard (`retryable: false`) failures. Additive; existing
+`{ type, keys }` destructuring is unaffected.
+
 **Overall deadline.** A new `deadline` knob (model / query / store, and
 `createQuery`) caps **all** attempts together, including retry backoff —
 distinct from the per-attempt `timeout`. On expiry the fetch fails with a
-non-retryable `AdapterError` whose cause mentions "deadline", so the infinite
-default retry can be made to terminate.
+non-retryable `AdapterError`, so the infinite default retry can be made to
+terminate.
+
+**Structured failure reasons.** `AdapterError` carries `reason?: "adapter" |
+"timeout" | "deadline"` so consumers branch on a stable tag instead of
+regex-matching `cause.message`.
+
+**Poison-id isolation (`isolateFailures`).** Opt-in (model / query / store):
+when a multi-id batch fails terminally, the chunk is bisected and the halves
+re-fetched once, isolating the offending id so its healthy batch-mates still
+load instead of all failing together. Off by default.
+
+**Bounded fan-out (`maxConcurrency`).** New store-wide
+`maxConcurrency?: number | "unbounded"` (default `"unbounded"`) caps how many
+`adapter.find` chunks run at once, so a large render (many chunks) doesn't
+fire every request simultaneously.
+
+**Hardened query cache keys.** `stableStringify` now encodes non-finite numbers
+(`NaN` / `±Infinity`) distinctly — they previously all collapsed to `null` via
+`JSON.stringify`, colliding on one cache slot — and throws a clear error on
+cyclic params instead of overflowing the stack.
 
 **Breaking — `store.defaults` → `store.resolveAdapterOptions(perCall?)`.** The
 read-only `defaults` field is replaced by a method that merges per-call overrides

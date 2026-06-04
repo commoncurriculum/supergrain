@@ -80,7 +80,8 @@ describe("ModelConfig.timeout", () => {
 
     expect(handle.value).toBeUndefined();
     expect(handle.error).toBeInstanceOf(AdapterError);
-    // The timeout reason is carried on the AdapterError's `cause`.
+    // The timeout is tagged structurally (and still carried on `cause`).
+    expect((handle.error as AdapterError).reason).toBe("timeout");
     expect(((handle.error as AdapterError).cause as Error).message).toMatch(/timed out/i);
     expect(handle.status).toBe("error");
   });
@@ -429,6 +430,7 @@ describe("overall deadline", () => {
     await handle.promise?.catch(() => {});
 
     expect(handle.error).toBeInstanceOf(AdapterError);
+    expect((handle.error as AdapterError).reason).toBe("deadline");
     expect(((handle.error as AdapterError).cause as Error).message).toMatch(/deadline/i);
     expect((handle.error as AdapterError).retryable).toBe(false);
     expect(handle.status).toBe("error");
@@ -531,5 +533,200 @@ describe("a throwing onError never breaks the store across retries", () => {
     expect(handle.failureCount).toBe(3);
     expect(handle.error).toBeInstanceOf(AdapterError);
     expect(handle.status).toBe("error");
+  });
+});
+
+describe("onError context (attempt / retryable)", () => {
+  it("reports the 1-based attempt and retryability of each failure", async () => {
+    const seen: Array<{ attempt: number; retryable: boolean }> = [];
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () => Effect.fail(new AdapterError({ type: "user", keys: ["1"], cause: "x" })),
+          },
+          retry: Schedule.recurs(2), // 3 attempts
+        },
+      },
+      onError: (_error, ctx) => seen.push({ attempt: ctx.attempt, retryable: ctx.retryable }),
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    // Plain AdapterError (no `retryable: false`, no classifier) is retryable on
+    // every attempt — the schedule, not the error, ends the loop.
+    expect(seen).toEqual([
+      { attempt: 1, retryable: true },
+      { attempt: 2, retryable: true },
+      { attempt: 3, retryable: true },
+    ]);
+  });
+
+  it("reports retryable: false for a hard failure", async () => {
+    const seen: Array<{ attempt: number; retryable: boolean }> = [];
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: () =>
+              Effect.fail(
+                new AdapterError({ type: "user", keys: ["1"], cause: "x", retryable: false }),
+              ),
+          },
+          retry: Schedule.recurs(5),
+        },
+      },
+      onError: (_error, ctx) => seen.push({ attempt: ctx.attempt, retryable: ctx.retryable }),
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    expect(seen).toEqual([{ attempt: 1, retryable: false }]);
+  });
+});
+
+describe("isolateFailures (bisect)", () => {
+  it("isolates a poison id so its healthy neighbors still load", async () => {
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            // A bulk endpoint that fails the whole call if the poison id is in it.
+            find: (ids) =>
+              Effect.suspend(() =>
+                ids.includes("bad")
+                  ? Effect.fail(new AdapterError({ type: "user", keys: ids, cause: "poison" }))
+                  : Effect.succeed(ids.map((id) => ({ id, name: `User${id}` }))),
+              ),
+          },
+          retry: Schedule.recurs(0), // fail the full chunk once, then bisect
+          isolateFailures: true,
+        },
+      },
+    });
+
+    const h1 = store.find("user", "1");
+    const h2 = store.find("user", "2");
+    const hBad = store.find("user", "bad");
+    const h3 = store.find("user", "3");
+    await settle(hBad);
+    await hBad.promise?.catch(() => {});
+
+    // The poison id is isolated; its batch-mates load fine.
+    expect(h1.value).toEqual({ id: "1", name: "User1" });
+    expect(h2.value).toEqual({ id: "2", name: "User2" });
+    expect(h3.value).toEqual({ id: "3", name: "User3" });
+    expect(hBad.error).toBeInstanceOf(AdapterError);
+    expect(hBad.status).toBe("error");
+    // Healthy handles recovered cleanly (the full-chunk failure reset on success).
+    expect(h1.failureCount).toBe(0);
+    expect(h1.error).toBeUndefined();
+  });
+
+  it("fails the whole chunk (no bisect) by default", async () => {
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: (ids) =>
+              Effect.suspend(() =>
+                ids.includes("bad")
+                  ? Effect.fail(new AdapterError({ type: "user", keys: ids, cause: "poison" }))
+                  : Effect.succeed(ids.map((id) => ({ id, name: `User${id}` }))),
+              ),
+          },
+          retry: Schedule.recurs(0),
+          // isolateFailures omitted → whole chunk fails together
+        },
+      },
+    });
+
+    const h1 = store.find("user", "1");
+    const hBad = store.find("user", "bad");
+    await settle(hBad);
+    await hBad.promise?.catch(() => {});
+
+    expect(h1.error).toBeInstanceOf(AdapterError); // healthy id dragged down
+    expect(hBad.error).toBeInstanceOf(AdapterError);
+  });
+});
+
+describe("maxConcurrency", () => {
+  type T = { user: { id: string; name: string } };
+
+  function makeStore(maxConcurrency: number | "unbounded", track: { active: number; max: number }) {
+    return createDocumentStore<T>({
+      models: {
+        user: {
+          adapter: {
+            find: (ids) =>
+              Effect.gen(function* () {
+                track.active += 1;
+                track.max = Math.max(track.max, track.active);
+                yield* Effect.sleep("10 millis");
+                track.active -= 1;
+                return ids.map((id) => ({ id, name: `User${id}` }));
+              }),
+          },
+        },
+      },
+      batchSize: 1, // one chunk per id
+      maxConcurrency,
+      retry: Schedule.recurs(0),
+    });
+  }
+
+  it("caps simultaneous adapter calls", async () => {
+    const track = { active: 0, max: 0 };
+    const store = makeStore(1, track);
+    store.find("user", "1");
+    store.find("user", "2");
+    const h3 = store.find("user", "3");
+    await settle(h3);
+    expect(track.max).toBe(1);
+  });
+
+  it("fans out unbounded by default", async () => {
+    const track = { active: 0, max: 0 };
+    const store = makeStore("unbounded", track);
+    store.find("user", "1");
+    store.find("user", "2");
+    const h3 = store.find("user", "3");
+    await settle(h3);
+    expect(track.max).toBe(3);
+  });
+});
+
+describe("query param cache keys (stableStringify)", () => {
+  type T = { doc: { id: string } };
+  type NumQ = { metric: { params: { v: number }; result: { ok: boolean } } };
+
+  const makeStore = () =>
+    createDocumentStore<T, NumQ>({
+      models: { doc: { adapter: { find: () => Effect.succeed([]) } } },
+      queries: { metric: { adapter: { find: () => Effect.succeed([]) } } },
+      retry: Schedule.recurs(0),
+    });
+
+  it("keeps NaN / Infinity / -Infinity / null on distinct cache slots", () => {
+    const store = makeStore();
+    const handles = new Set([
+      store.findQuery("metric", { v: NaN }),
+      store.findQuery("metric", { v: Infinity }),
+      store.findQuery("metric", { v: -Infinity }),
+      store.findQuery("metric", { v: null as unknown as number }),
+    ]);
+    expect(handles.size).toBe(4);
+  });
+
+  it("throws a clear error on cyclic params instead of overflowing the stack", () => {
+    const store = makeStore();
+    const cyclic: { v: number; self?: unknown } = { v: 1 };
+    cyclic.self = cyclic;
+    expect(() => store.findQuery("metric", cyclic as unknown as { v: number })).toThrow(/acyclic/);
   });
 });

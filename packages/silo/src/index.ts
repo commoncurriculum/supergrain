@@ -21,7 +21,12 @@ export type {
 } from "./store";
 
 export { AdapterError, coerceAdapter, NotFoundError, ProcessorError, runAdapter } from "./errors";
-export type { AdapterRunOptions, SiloError } from "./errors";
+export type {
+  AdapterErrorReason,
+  AdapterFailureInfo,
+  AdapterRunOptions,
+  SiloError,
+} from "./errors";
 
 export { defaultRetry } from "./retry";
 

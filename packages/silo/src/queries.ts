@@ -152,6 +152,11 @@ export interface QueryConfig<
    * Inspect `error.cause` to veto retries on a deterministic failure.
    */
   retryable?: (error: AdapterError) => boolean;
+  /**
+   * When a multi-params query chunk fails terminally, split it and re-fetch the
+   * halves to isolate the offending params. See {@link ModelConfig.isolateFailures}.
+   */
+  isolateFailures?: boolean;
 }
 
 // =============================================================================

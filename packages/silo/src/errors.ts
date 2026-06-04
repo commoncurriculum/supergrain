@@ -12,6 +12,17 @@ import { Data, type Duration, Effect, type Schedule } from "effect";
 // handle's `FetchState.Failed`.
 
 /**
+ * Why an {@link AdapterError} was raised, so consumers branch on a stable tag
+ * instead of regex-matching `cause.message`:
+ * - `"adapter"` — the adapter itself failed (network error, non-2xx, rejection).
+ * - `"timeout"` — a per-attempt `timeout` elapsed.
+ * - `"deadline"` — the overall `deadline` across all attempts elapsed.
+ *
+ * Omitted means `"adapter"` (the generic case).
+ */
+export type AdapterErrorReason = "adapter" | "timeout" | "deadline";
+
+/**
  * The adapter's `find` Effect failed (network error, non-2xx, thrown in
  * `Effect.tryPromise`, …). Carries the requested `type` and `keys` (document
  * ids or stringified query params) plus the underlying `cause`.
@@ -27,6 +38,11 @@ export class AdapterError extends Data.TaggedError("AdapterError")<{
    * (a 4xx, a malformed request) so the fetch fails fast instead of looping.
    */
   readonly retryable?: boolean;
+  /**
+   * Why this failed — `"adapter"` (default), `"timeout"`, or `"deadline"`.
+   * Branch on this rather than parsing {@link AdapterError.cause}'s message.
+   */
+  readonly reason?: AdapterErrorReason;
 }> {
   override get message(): string {
     return `@supergrain/silo: adapter for "${this.type}" failed for [${this.keys.join(", ")}]`;
@@ -121,11 +137,21 @@ export interface AdapterRunOptions {
   /**
    * Observe every failure the caller should see: each failed attempt — so a
    * still-retrying fetch is never silent — and a `deadline` breach. Not called
-   * on interruption (a superseded or timed-out attempt). Side-effecting sink
-   * for telemetry / handle bookkeeping; a throw is swallowed so observability
-   * can't break the engine.
+   * on interruption (a superseded or timed-out attempt). `info.attempt` is the
+   * 1-based attempt number; `info.retryable` is whether the failure passed the
+   * retryable check (the retry schedule may still be exhausted). Side-effecting
+   * sink for telemetry / handle bookkeeping; a throw is swallowed so
+   * observability can't break the engine.
    */
-  readonly onFailure?: (error: AdapterError) => void;
+  readonly onFailure?: (error: AdapterError, info: AdapterFailureInfo) => void;
+}
+
+/** Per-failure context handed to {@link AdapterRunOptions.onFailure}. */
+export interface AdapterFailureInfo {
+  /** 1-based attempt number this failure belongs to. */
+  readonly attempt: number;
+  /** Whether the failure is eligible for retry (passed the retryable check). */
+  readonly retryable: boolean;
 }
 
 /**
@@ -151,12 +177,15 @@ export function runAdapter<A>(
 ): Effect.Effect<A, AdapterError> {
   const { type, keys, retry, timeout, deadline, retryable, onFailure } = options;
 
+  // 1-based count of failed attempts observed so far, reported on `onFailure`.
+  let attemptCount = 0;
+
   // A throwing failure sink must never break the engine — same contract the
   // finder already keeps for `onError`.
-  const notifyFailure = (error: AdapterError): void => {
+  const notifyFailure = (error: AdapterError, info: AdapterFailureInfo): void => {
     if (onFailure === undefined) return;
     try {
-      onFailure(error);
+      onFailure(error, info);
     } catch {
       // Swallowed: observability can't affect fetch state.
     }
@@ -181,7 +210,12 @@ export function runAdapter<A>(
           Effect.timeoutFail({
             duration: timeout,
             onTimeout: () =>
-              new AdapterError({ type, keys, cause: new Error("adapter timed out") }),
+              new AdapterError({
+                type,
+                keys,
+                cause: new Error("adapter timed out"),
+                reason: "timeout",
+              }),
           }),
         );
 
@@ -192,7 +226,14 @@ export function runAdapter<A>(
   const observed =
     onFailure === undefined
       ? timed
-      : timed.pipe(Effect.tapError((error) => Effect.sync(() => notifyFailure(error))));
+      : timed.pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() => {
+              attemptCount += 1;
+              notifyFailure(error, { attempt: attemptCount, retryable: shouldRetry(error) });
+            }),
+          ),
+        );
 
   // Retry only retryable failures; a hard failure (a 4xx the adapter marked
   // `retryable: false`, or one the `retryable` predicate rejects) fails fast.
@@ -211,11 +252,12 @@ export function runAdapter<A>(
           keys,
           cause: new Error("adapter deadline exceeded"),
           retryable: false,
+          reason: "deadline",
         });
         // The deadline interrupts the in-flight attempt, so this error never
         // reaches the per-attempt `tapError`; report it here so the breach is
         // observed exactly once.
-        notifyFailure(error);
+        notifyFailure(error, { attempt: attemptCount + 1, retryable: false });
         return error;
       },
     }),
