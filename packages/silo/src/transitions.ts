@@ -86,6 +86,12 @@ export interface Resolvers<T> {
   reject: (e: unknown) => void;
 }
 
+/** Drop a handle's pending resolver pair (after settling, or on reset). */
+function clearResolvers<T>(handle: InternalHandle<T>): void {
+  handle.resolve = undefined;
+  handle.reject = undefined;
+}
+
 export function withResolvers<T>(): Resolvers<T> {
   // eslint-disable-next-line unicorn/no-null -- Promise ctor synchronously overwrites these
   let resolve = null as unknown as (v: T) => void;
@@ -95,6 +101,9 @@ export function withResolvers<T>(): Resolvers<T> {
     resolve = res;
     reject = rej;
   });
+  // Suppress unhandled-rejection warnings at the source; consumers still
+  // observe the rejection by awaiting the returned promise.
+  promise.catch(() => {});
   return { promise, resolve, reject };
 }
 
@@ -162,8 +171,6 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
     case "Fetch": {
       if (raw.promise === undefined) {
         const r = withResolvers<T>();
-        // Suppress unhandled-rejection warnings; users still observe via await.
-        r.promise.catch(() => {});
         handle.promise = r.promise;
         raw.resolve = r.resolve;
         raw.reject = r.reject;
@@ -173,8 +180,7 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
     case "Insert": {
       if (raw.resolve) {
         raw.resolve(event.value);
-        raw.resolve = undefined;
-        raw.reject = undefined;
+        clearResolvers(raw);
       } else if (!hadValue) {
         // Insert into an errored/idle handle: hand out a fresh resolved promise
         // so a Suspense boundary nested in an error boundary can recover.
@@ -185,8 +191,7 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
     case "Settled": {
       if (raw.resolve && raw.value !== undefined) {
         raw.resolve(raw.value);
-        raw.resolve = undefined;
-        raw.reject = undefined;
+        clearResolvers(raw);
       }
       break;
     }
@@ -196,16 +201,14 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       // resolved promise alone.
       if (raw.reject && raw.value === undefined) {
         raw.reject(event.error);
-        raw.resolve = undefined;
-        raw.reject = undefined;
+        clearResolvers(raw);
       }
       break;
     }
     case "Reset": {
       if (!wasFetching) {
         handle.promise = undefined;
-        raw.resolve = undefined;
-        raw.reject = undefined;
+        clearResolvers(raw);
       }
       break;
     }
