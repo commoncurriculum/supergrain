@@ -113,8 +113,11 @@ export function createQuery<
     lastErrorSignal(null);
     failureCountSignal(0);
 
-    // `owned` is false once a newer fetch (or destroy) supersedes this one, so
-    // a late settle from an interrupted run never clobbers fresh state.
+    // Supersession (a newer fetch, or `destroy()`) aborts this run's controller,
+    // which interrupts the fiber — so the success/error/`onFailure` channel below
+    // never runs once we've lost ownership; reaching it means we're still the
+    // active run. Only the `ensuring` finalizer runs *on* interruption, so that's
+    // the single place that must guard against clobbering a fresh fetch's state.
     const owned = (): boolean => !destroyed && controller === activeController;
 
     const program = runAdapter<QueryEnvelope<T>>(
@@ -129,23 +132,13 @@ export function createQuery<
         // Surface each failed attempt (and a deadline breach) while retrying, so
         // a still-fetching query isn't silent — mirrors a silo handle.
         onFailure: (error, info) => {
-          if (owned()) {
-            lastErrorSignal(error);
-            failureCountSignal(info.attempt);
-          }
+          lastErrorSignal(error);
+          failureCountSignal(info.attempt);
         },
       },
     ).pipe(
-      Effect.flatMap((res) =>
-        Effect.sync(() => {
-          if (owned()) commitPage(res, offset);
-        }),
-      ),
-      Effect.catchAll((error: SiloError) =>
-        Effect.sync(() => {
-          if (owned()) errorSignal(error);
-        }),
-      ),
+      Effect.flatMap((res) => Effect.sync(() => commitPage(res, offset))),
+      Effect.catchAll((error: SiloError) => Effect.sync(() => errorSignal(error))),
       Effect.ensuring(
         Effect.sync(() => {
           if (owned()) isFetching(false);
