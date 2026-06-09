@@ -11,21 +11,11 @@ import type {
 import { batch } from "@supergrain/kernel";
 import { Duration, Effect, type Fiber, Schedule } from "effect";
 
-import {
-  type AdapterError,
-  type AdapterFailureInfo,
-  NotFoundError,
-  ProcessorError,
-  runAdapter,
-  type SiloError,
-} from "./errors";
+import { type AdapterError, NotFoundError, ProcessorError, type SiloError } from "./errors";
 import { defaultProcessor, defaultQueryProcessor } from "./processors";
 import { resolveAdapterOptions } from "./resolve";
+import { type AdapterFailureInfo, runAdapter } from "./run-adapter";
 import { applyEvent, HandleEvent, type InternalHandle } from "./transitions";
-
-// Re-exported for the package's own tests (not part of the public root export).
-export type { InternalHandle } from "./transitions";
-export type { InternalState } from "./store";
 
 // =============================================================================
 // Finder — INTERNAL batching / chunking pipeline, built on Effect.
@@ -50,6 +40,26 @@ interface QueryChunkEntry {
   params: unknown;
 }
 
+/**
+ * Identifies one chunk's waiting handles: which surface's buckets, the type,
+ * and the requested keys (document ids or stringified query params).
+ */
+interface ChunkContext {
+  readonly buckets: Map<string, Map<string, InternalHandle>>;
+  readonly type: string;
+  readonly keys: ReadonlyArray<string>;
+}
+
+/** Run a processor over a raw response, converting a throw into a `ProcessorError`. */
+function runProcessor(type: string, run: () => void): ProcessorError | undefined {
+  try {
+    run();
+    return undefined;
+  } catch (error) {
+    return new ProcessorError({ type, cause: error });
+  }
+}
+
 export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>> {
   private config: DocumentStoreConfig<M, Q>;
   private batchWindowMs: number;
@@ -57,18 +67,21 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   private maxConcurrency: number | "unbounded";
   private queue: Array<QueueEntry> = [];
   private windowFiber: Fiber.RuntimeFiber<void> | undefined = undefined;
-  private state: InternalState | undefined = undefined;
-  private store: DocumentStore<M, Q> | undefined = undefined;
+  private state: InternalState;
+  // Set via `attach` right after `createDocumentStore` builds the store — the
+  // store needs the finder for its enqueue closures, so it can't exist yet
+  // when the finder is constructed.
+  private store!: DocumentStore<M, Q>;
 
-  constructor(config: DocumentStoreConfig<M, Q>) {
+  constructor(config: DocumentStoreConfig<M, Q>, state: InternalState) {
     this.config = config;
+    this.state = state;
     this.batchWindowMs = config.batchWindowMs ?? 15;
     this.batchSize = config.batchSize ?? 60;
     this.maxConcurrency = config.maxConcurrency ?? "unbounded";
   }
 
-  attach(state: InternalState, store: DocumentStore<M, Q>): void {
-    this.state = state;
+  attach(store: DocumentStore<M, Q>): void {
     this.store = store;
   }
 
@@ -154,26 +167,23 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
 
   /**
    * Shared chunk pipeline: commit the raw response on success; on terminal
-   * `AdapterError` either **isolate** (split & re-fetch the halves, when
-   * `bisect` is supplied and the chunk holds >1 key) or fail every waiting
-   * handle. The only difference between the document and query surfaces is which
-   * bucket/keys to fail and how to commit.
+   * `AdapterError` either **bisect** (split & re-fetch the halves, when the
+   * caller supplied a bisection) or fail every waiting handle. The only
+   * difference between the document and query surfaces is how to commit.
    */
-  // oxlint-disable-next-line max-params
   private settleChunk(
-    run: Effect.Effect<unknown, AdapterError>,
-    buckets: Map<string, Map<string, InternalHandle>>,
-    type: string,
-    keys: ReadonlyArray<string>,
-    commit: (raw: unknown) => void,
-    bisect: (() => Effect.Effect<void>) | undefined,
+    ctx: ChunkContext,
+    plan: {
+      run: Effect.Effect<unknown, AdapterError>;
+      commit: (raw: unknown) => void;
+      bisect?: () => Effect.Effect<void>;
+    },
   ): Effect.Effect<void> {
+    const { run, commit, bisect } = plan;
     return run.pipe(
       Effect.flatMap((raw) => Effect.sync(() => commit(raw))),
       Effect.catchAll((error: AdapterError) =>
-        bisect !== undefined && keys.length > 1
-          ? bisect()
-          : Effect.sync(() => this.failChunk(buckets, type, keys, error)),
+        bisect === undefined ? Effect.sync(() => this.failChunk(ctx, error)) : bisect(),
       ),
     );
   }
@@ -208,51 +218,31 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
       modelConfig.processor ?? (defaultProcessor as ResponseProcessor<M>);
     const resolved = resolveAdapterOptions(this.config, modelConfig);
     const isolate = modelConfig.isolateFailures ?? this.config.isolateFailures ?? false;
+    const ctx: ChunkContext = { buckets: this.state.documents, type, keys: ids };
 
-    return this.settleChunk(
-      runAdapter(
+    return this.settleChunk(ctx, {
+      run: runAdapter(
         // oxlint-disable-next-line no-array-method-this-argument -- DocumentAdapter#find, not Array#find
-        (ctx) => modelConfig.adapter.find(ids, ctx),
+        (adapterCtx) => modelConfig.adapter.find(ids, adapterCtx),
         {
           type,
           keys: ids,
           ...resolved,
           retry: retryEnabled ? resolved.retry : Schedule.recurs(0),
-          onFailure: (error, info) =>
-            this.onAttemptFailed(this.state!.documents, type, ids, error, info),
+          onFailure: (error, info) => this.onAttemptFailed(ctx, error, info),
         },
       ),
-      this.state!.documents,
-      type,
-      ids,
-      (raw) => this.commitDocuments(type, ids, raw, processor),
-      isolate
-        ? () => this.bisect(ids, (half) => this.drainDocumentChunk(type, half, false))
-        : undefined,
-    );
-  }
-
-  // oxlint-disable-next-line max-params
-  private commitDocuments(
-    type: string,
-    ids: Array<string>,
-    raw: unknown,
-    processor: ResponseProcessor<M>,
-  ): void {
-    batch(() => {
-      // oxlint-disable-next-line init-declarations
-      let processorError: ProcessorError | undefined;
-      try {
-        processor(raw, this.store! as DocumentStore<M>, type as keyof M & string);
-      } catch (error) {
-        processorError = new ProcessorError({ type, cause: error });
-      }
-
-      const bucket = this.state!.documents.get(type);
-      for (const id of ids) {
-        const handle = bucket?.get(id);
-        if (handle) this.settleHandle(handle, id, type, processorError);
-      }
+      commit: (raw) =>
+        batch(() => {
+          const processorError = runProcessor(type, () =>
+            processor(raw, this.store as DocumentStore<M>, type as keyof M & string),
+          );
+          this.settleCommitted(ctx, processorError);
+        }),
+      bisect:
+        isolate && ids.length > 1
+          ? () => this.bisect(ids, (half) => this.drainDocumentChunk(type, half, false))
+          : undefined,
     });
   }
 
@@ -264,7 +254,11 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     const queryConfig = (
       this.config.queries as Record<string, QueryConfig<M, Q, keyof Q & string>> | undefined
     )?.[type];
-    if (!queryConfig) return Effect.void;
+    // `findQuery` validates the type at enqueue time, so this is unreachable
+    // short of a silo bug — fail loudly rather than stranding the handles.
+    if (!queryConfig) {
+      throw new Error(`@supergrain/silo: no query "${type}" is configured`);
+    }
 
     const processor: QueryProcessor<M, Q, keyof Q & string> =
       queryConfig.processor ??
@@ -273,83 +267,65 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     const isolate = queryConfig.isolateFailures ?? this.config.isolateFailures ?? false;
 
     const paramsList = chunk.map((e) => e.params);
+    const ctx: ChunkContext = {
+      buckets: this.state.queries,
+      type,
+      keys: chunk.map((e) => e.paramsKey),
+    };
 
-    const queryKeys = chunk.map((e) => e.paramsKey);
-    return this.settleChunk(
-      runAdapter(
+    return this.settleChunk(ctx, {
+      run: runAdapter(
         // oxlint-disable-next-line no-array-method-this-argument -- QueryAdapter#find, not Array#find
-        (ctx) => queryConfig.adapter.find(paramsList, ctx),
+        (adapterCtx) => queryConfig.adapter.find(paramsList, adapterCtx),
         {
           type,
-          keys: queryKeys,
+          keys: ctx.keys,
           ...resolved,
           retry: retryEnabled ? resolved.retry : Schedule.recurs(0),
-          onFailure: (error, info) =>
-            this.onAttemptFailed(this.state!.queries, type, queryKeys, error, info),
+          onFailure: (error, info) => this.onAttemptFailed(ctx, error, info),
         },
       ),
-      this.state!.queries,
-      type,
-      queryKeys,
-      (raw) => this.commitQueries(type, chunk, paramsList, raw, processor),
-      isolate
-        ? () => this.bisect(chunk, (half) => this.drainQueryChunk(type, half, false))
-        : undefined,
-    );
-  }
-
-  // oxlint-disable-next-line max-params
-  private commitQueries(
-    type: string,
-    chunk: Array<QueryChunkEntry>,
-    paramsList: ReadonlyArray<unknown>,
-    raw: unknown,
-    processor: QueryProcessor<M, Q, keyof Q & string>,
-  ): void {
-    batch(() => {
-      // oxlint-disable-next-line init-declarations
-      let processorError: ProcessorError | undefined;
-      try {
-        processor(
-          raw,
-          this.store!,
-          type as keyof Q & string,
-          paramsList as ReadonlyArray<Q[keyof Q & string]["params"]>,
-        );
-      } catch (error) {
-        processorError = new ProcessorError({ type, cause: error });
-      }
-
-      const bucket = this.state!.queries.get(type);
-      for (const { paramsKey } of chunk) {
-        const handle = bucket?.get(paramsKey);
-        if (handle) this.settleHandle(handle, paramsKey, type, processorError);
-      }
+      commit: (raw) =>
+        batch(() => {
+          const processorError = runProcessor(type, () =>
+            processor(
+              raw,
+              this.store,
+              type as keyof Q & string,
+              paramsList as ReadonlyArray<Q[keyof Q & string]["params"]>,
+            ),
+          );
+          this.settleCommitted(ctx, processorError);
+        }),
+      bisect:
+        isolate && chunk.length > 1
+          ? () => this.bisect(chunk, (half) => this.drainQueryChunk(type, half, false))
+          : undefined,
     });
   }
 
   /**
-   * Settle one handle after its chunk's adapter+processor ran: a processor
-   * error fails it; data present → settled; still absent → not found.
+   * Settle every handle in a committed chunk (adapter + processor already ran):
+   * a processor error fails them all; a handle with data present is settled; a
+   * handle still without data is not found.
    */
-  // oxlint-disable-next-line max-params
-  private settleHandle(
-    handle: InternalHandle,
-    key: string,
-    type: string,
-    processorError: ProcessorError | undefined,
-  ): void {
+  private settleCommitted(ctx: ChunkContext, processorError: ProcessorError | undefined): void {
     // Post-success terminal failures: a single observation, never retried.
     const terminalInfo: AdapterFailureInfo = { attempt: 1, retryable: false };
-    if (processorError) {
-      this.emitError(processorError, type, [key], terminalInfo);
-      applyEvent(handle, HandleEvent.failed(processorError));
-    } else if (handle.value === undefined) {
-      const notFound = new NotFoundError({ type, key });
-      this.emitError(notFound, type, [key], terminalInfo);
-      applyEvent(handle, HandleEvent.failed(notFound));
-    } else {
-      applyEvent(handle, HandleEvent.settled());
+    const bucket = ctx.buckets.get(ctx.type);
+    for (const key of ctx.keys) {
+      // A missing handle was dropped while the fetch was in flight — skip it.
+      const handle = bucket?.get(key);
+      if (handle && processorError) {
+        this.emitError(processorError, { type: ctx.type, keys: [key] }, terminalInfo);
+        applyEvent(handle, HandleEvent.failed(processorError));
+      } else if (handle && handle.value === undefined) {
+        const notFound = new NotFoundError({ type: ctx.type, key });
+        this.emitError(notFound, { type: ctx.type, keys: [key] }, terminalInfo);
+        applyEvent(handle, HandleEvent.failed(notFound));
+      } else if (handle) {
+        applyEvent(handle, HandleEvent.settled());
+      }
     }
   }
 
@@ -360,36 +336,23 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
    * so an outage is observable mid-retry — `failChunk` then only settles the
    * terminal state, never re-emitting.
    */
-  // oxlint-disable-next-line max-params
-  private onAttemptFailed(
-    buckets: Map<string, Map<string, InternalHandle>>,
-    type: string,
-    keys: ReadonlyArray<string>,
-    error: AdapterError,
-    info: AdapterFailureInfo,
-  ): void {
-    this.emitError(error, type, keys, info);
+  private onAttemptFailed(ctx: ChunkContext, error: AdapterError, info: AdapterFailureInfo): void {
+    this.emitError(error, ctx, info);
     batch(() => {
-      const bucket = buckets.get(type);
-      for (const key of keys) {
+      const bucket = ctx.buckets.get(ctx.type);
+      for (const key of ctx.keys) {
         const handle = bucket?.get(key);
         if (handle) applyEvent(handle, HandleEvent.retrying(error));
       }
     });
   }
 
-  // oxlint-disable-next-line max-params
-  private failChunk(
-    buckets: Map<string, Map<string, InternalHandle>>,
-    type: string,
-    keys: ReadonlyArray<string>,
-    error: AdapterError,
-  ): void {
+  private failChunk(ctx: ChunkContext, error: AdapterError): void {
     // `onError` already fired per attempt (and for a deadline breach) via
     // `onAttemptFailed`; here we only settle the handles into terminal failure.
     batch(() => {
-      const bucket = buckets.get(type);
-      for (const key of keys) {
+      const bucket = ctx.buckets.get(ctx.type);
+      for (const key of ctx.keys) {
         const handle = bucket?.get(key);
         if (handle) applyEvent(handle, HandleEvent.failed(error));
       }
@@ -401,17 +364,20 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
    * and the per-failure `info` (1-based `attempt`, whether `retryable`). A
    * throwing telemetry callback must never break the engine, so it's isolated.
    */
-  // oxlint-disable-next-line max-params
   private emitError(
     error: SiloError,
-    type: string,
-    keys: ReadonlyArray<string>,
+    target: { type: string; keys: ReadonlyArray<string> },
     info: AdapterFailureInfo,
   ): void {
     const { onError } = this.config;
     if (onError === undefined) return;
     try {
-      onError(error, { type, keys, attempt: info.attempt, retryable: info.retryable });
+      onError(error, {
+        type: target.type,
+        keys: target.keys,
+        attempt: info.attempt,
+        retryable: info.retryable,
+      });
     } catch {
       // A throwing telemetry callback is swallowed — observability must not
       // affect fetch state.

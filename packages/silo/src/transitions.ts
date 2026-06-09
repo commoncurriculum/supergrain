@@ -30,6 +30,14 @@ export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
   Retrying: { readonly error: E };
   /** The fetch (or processor) failed, or the key was missing after fetch. */
   Failed: { readonly error: E };
+  /**
+   * The in-flight fetch was abandoned without settling (interrupted,
+   * superseded, or its owner was destroyed). Ends activity but records no
+   * error — there is no outcome to record. The finder never emits this
+   * (document fetches always settle); `@supergrain/queries` does, for
+   * `destroy()` and as the safety net when a run dies without settling.
+   */
+  Aborted: Record<never, never>;
   /** Memory was cleared. */
   Reset: Record<never, never>;
 }>;
@@ -45,6 +53,7 @@ export const HandleEvent = {
   settled: (): HandleEvent => ({ _tag: "Settled" }),
   retrying: (error: SiloError): HandleEvent => ({ _tag: "Retrying", error }),
   failed: (error: SiloError): HandleEvent => ({ _tag: "Failed", error }),
+  aborted: (): HandleEvent => ({ _tag: "Aborted" }),
   reset: (): HandleEvent => ({ _tag: "Reset" }),
 };
 
@@ -179,6 +188,11 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       isFetching = false;
       break;
     }
+    case "Aborted": {
+      // No outcome to record — just end activity.
+      isFetching = false;
+      break;
+    }
     case "Reset": {
       value = undefined;
       error = undefined;
@@ -241,6 +255,11 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
         raw.reject(event.error);
         clearResolvers(raw);
       }
+      break;
+    }
+    case "Aborted": {
+      // A pending first-load promise stays pending — there is no outcome to
+      // settle it with, and a later fetch can still resolve it.
       break;
     }
     case "Reset": {

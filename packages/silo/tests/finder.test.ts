@@ -1,3 +1,5 @@
+import type { InternalState } from "../src/store";
+
 import { Effect, Schedule } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -8,8 +10,8 @@ import {
   type DocumentAdapter,
   type QueryAdapter,
 } from "../src";
-import { Finder, type InternalHandle, type InternalState } from "../src/finder";
-import { makeIdleHandle } from "../src/transitions";
+import { Finder } from "../src/finder";
+import { type InternalHandle, makeIdleHandle } from "../src/transitions";
 import { setupFakeTimers } from "./setup/timers";
 
 /**
@@ -453,32 +455,35 @@ describe("Finder empty queues and orphaned handles", () => {
         },
       },
     });
-    const finder = new Finder<TestTypes, Queries>({
-      retry: Schedule.recurs(0),
-      models: {
-        user: {
-          adapter: {
-            find: effectFind("user", async (ids: Array<string>) => {
-              documentCalls.push([...ids]);
-              return ids.map((id) => ({ id, name: `User${id}` }));
-            }),
+    const finder = new Finder<TestTypes, Queries>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: {
+            adapter: {
+              find: effectFind("user", async (ids: Array<string>) => {
+                documentCalls.push([...ids]);
+                return ids.map((id) => ({ id, name: `User${id}` }));
+              }),
+            },
+          },
+          post: { adapter: makePostAdapter() },
+        },
+        queries: {
+          search: {
+            adapter: {
+              find: effectFind("search", async (paramsList: Array<{ q: string }>) => {
+                queryCalls.push([...paramsList]);
+                return paramsList.map(() => ({ total: 1 }));
+              }),
+            },
           },
         },
-        post: { adapter: makePostAdapter() },
       },
-      queries: {
-        search: {
-          adapter: {
-            find: effectFind("search", async (paramsList: Array<{ q: string }>) => {
-              queryCalls.push([...paramsList]);
-              return paramsList.map(() => ({ total: 1 }));
-            }),
-          },
-        },
-      },
-    });
+      { documents: new Map(), queries: new Map() },
+    );
 
-    finder.attach({ documents: new Map(), queries: new Map() }, store);
+    finder.attach(store);
     finder.queueDocument("user", "1");
     finder.queueDocument("user", "1");
     finder.queueQuery("search", "same-query", { q: "hello" });
@@ -491,32 +496,41 @@ describe("Finder empty queues and orphaned handles", () => {
   });
 
   it("allows an empty drain", async () => {
-    const finder = new Finder<TestTypes>({
-      retry: Schedule.recurs(0),
-      models: {
-        user: { adapter: makeUserAdapter() },
-        post: { adapter: makePostAdapter() },
+    const finder = new Finder<TestTypes>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: { adapter: makeUserAdapter() },
+          post: { adapter: makePostAdapter() },
+        },
       },
-    });
+      { documents: new Map(), queries: new Map() },
+    );
 
-    finder.attach({ documents: new Map(), queries: new Map() }, {} as DocumentStore<TestTypes>);
+    finder.attach({} as DocumentStore<TestTypes>);
 
     await expect(finder.drain()).resolves.toBeUndefined();
   });
 
-  it("ignores a queued query when no query adapter is configured", async () => {
-    const finder = new Finder<TestTypes>({
-      retry: Schedule.recurs(0),
-      models: {
-        user: { adapter: makeUserAdapter() },
-        post: { adapter: makePostAdapter() },
+  it("fails loudly when a queued query has no query adapter configured", async () => {
+    // `store.findQuery` validates the type before enqueueing, so a queued query
+    // without a config means a silo bug — the drain surfaces it instead of
+    // silently stranding the handles on `isFetching`.
+    const finder = new Finder<TestTypes>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: { adapter: makeUserAdapter() },
+          post: { adapter: makePostAdapter() },
+        },
       },
-    });
+      { documents: new Map(), queries: new Map() },
+    );
 
-    finder.attach({ documents: new Map(), queries: new Map() }, {} as DocumentStore<TestTypes>);
+    finder.attach({} as DocumentStore<TestTypes>);
     finder.queueQuery("missing" as never, "params", { q: "missing" } as never);
 
-    await expect(finder.drain()).resolves.toBeUndefined();
+    await expect(finder.drain()).rejects.toThrow(/no query "missing" is configured/);
   });
 
   // Helpers shared by the "handle removed mid-flight" scenarios below.
@@ -556,32 +570,35 @@ describe("Finder empty queues and orphaned handles", () => {
       queries: { search: { adapter: { find: effectFind("search", async () => []) } } },
     });
 
-    const finder = new Finder<TestTypes, Queries>({
-      retry: Schedule.recurs(0),
-      models: {
-        user: {
-          adapter: {
-            find: effectFind("user", async (ids: Array<string>) => {
-              documentCalls.push([...ids]);
-              return ids.map((id) => ({ id, name: `User${id}` }));
-            }),
+    const finder = new Finder<TestTypes, Queries>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: {
+            adapter: {
+              find: effectFind("user", async (ids: Array<string>) => {
+                documentCalls.push([...ids]);
+                return ids.map((id) => ({ id, name: `User${id}` }));
+              }),
+            },
+          },
+          post: { adapter: makePostAdapter() },
+        },
+        queries: {
+          search: {
+            adapter: {
+              find: effectFind("search", async (paramsList: Array<{ q: string }>) => {
+                queryCalls.push([...paramsList]);
+                return paramsList.map(() => ({ total: 1 }));
+              }),
+            },
           },
         },
-        post: { adapter: makePostAdapter() },
       },
-      queries: {
-        search: {
-          adapter: {
-            find: effectFind("search", async (paramsList: Array<{ q: string }>) => {
-              queryCalls.push([...paramsList]);
-              return paramsList.map(() => ({ total: 1 }));
-            }),
-          },
-        },
-      },
-    });
+      state,
+    );
 
-    finder.attach(state, store);
+    finder.attach(store);
     finder.queueDocument("user", "1");
     finder.queueQuery("search", "search-key", { q: "hello" });
 
@@ -617,30 +634,33 @@ describe("Finder empty queues and orphaned handles", () => {
       queries: { search: { adapter: { find: effectFind("search", async () => []) } } },
     });
 
-    const finder = new Finder<TestTypes, Queries>({
-      retry: Schedule.recurs(0),
-      models: {
-        user: {
-          adapter: {
-            find: effectFind("user", async () => {
-              throw new Error("document fetch failed");
-            }),
+    const finder = new Finder<TestTypes, Queries>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: {
+            adapter: {
+              find: effectFind("user", async () => {
+                throw new Error("document fetch failed");
+              }),
+            },
+          },
+          post: { adapter: makePostAdapter() },
+        },
+        queries: {
+          search: {
+            adapter: {
+              find: effectFind("search", async () => {
+                throw new Error("query fetch failed");
+              }),
+            },
           },
         },
-        post: { adapter: makePostAdapter() },
       },
-      queries: {
-        search: {
-          adapter: {
-            find: effectFind("search", async () => {
-              throw new Error("query fetch failed");
-            }),
-          },
-        },
-      },
-    });
+      state,
+    );
 
-    finder.attach(state, store);
+    finder.attach(store);
     finder.queueDocument("user", "1");
     finder.queueQuery("search", "search-key", { q: "hello" });
 

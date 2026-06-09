@@ -1,5 +1,5 @@
 import type { AdapterError, SiloError } from "./errors";
-import type { DocumentStore, DocumentTypes, TypeRegistry } from "./store";
+import type { DocumentHandle, DocumentStore, DocumentTypes, TypeRegistry } from "./store";
 import type { Duration, Effect, Schedule } from "effect";
 
 // =============================================================================
@@ -11,9 +11,10 @@ import type { Duration, Effect, Schedule } from "effect";
  * a query type (e.g. `"dashboard"`, `"usersByRole"`) and declares the shape
  * of its params (the cache key) and its result (the cacheable payload).
  *
- * Params must be JSON-serializable — the library stable-stringifies them for
- * cache identity. Dates, Maps, Sets, class instances, and functions are not
- * supported; stringify them yourself before passing.
+ * Params are stable-stringified for cache identity: primitives, plain objects,
+ * arrays, `Date`s (encoded by timestamp), and `bigint`s are all supported.
+ * Maps, Sets, and class instances are only distinguished by their
+ * own-enumerable keys, so prefer plain JSON-ish params.
  *
  * @example
  * ```ts
@@ -164,41 +165,11 @@ export interface QueryConfig<
 // =============================================================================
 
 /**
- * Reactive handle for a single query result. Structurally identical to
- * `DocumentHandle<T>`: the same flat orthogonal fields (`value` / `error` /
- * `isFetching` / `fetchedAt`), same `promise`, same statechart, same Suspense
- * semantics. The alias makes
- * hook return types read clearly at call sites (`useQuery(...) →
- * QueryHandle<Dashboard>` vs. `useDocument(...) → DocumentHandle<User>`).
+ * Reactive handle for a single query result — exactly a `DocumentHandle<T>`:
+ * the same flat orthogonal fields (`value` / `error` / `isFetching` /
+ * `fetchedAt`), same `promise`, same statechart, same Suspense semantics. The
+ * alias exists so hook return types read clearly at call sites
+ * (`useQuery(...) → QueryHandle<Dashboard>` vs. `useDocument(...) →
+ * DocumentHandle<User>`).
  */
-export type QueryHandle<T, E = SiloError> =
-  | {
-      readonly status: "pending";
-      readonly value: undefined;
-      readonly error: undefined;
-      readonly isFetching: boolean;
-      readonly fetchedAt: undefined;
-      readonly failureCount: number;
-      readonly lastError: E | undefined;
-      readonly promise: Promise<T> | undefined;
-    }
-  | {
-      readonly status: "success";
-      readonly value: T;
-      readonly error: E | undefined;
-      readonly isFetching: boolean;
-      readonly fetchedAt: Date;
-      readonly failureCount: number;
-      readonly lastError: E | undefined;
-      readonly promise: Promise<T> | undefined;
-    }
-  | {
-      readonly status: "error";
-      readonly value: undefined;
-      readonly error: E;
-      readonly isFetching: boolean;
-      readonly fetchedAt: undefined;
-      readonly failureCount: number;
-      readonly lastError: E | undefined;
-      readonly promise: Promise<T> | undefined;
-    };
+export type QueryHandle<T, E = SiloError> = DocumentHandle<T, E>;

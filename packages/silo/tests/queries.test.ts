@@ -175,6 +175,13 @@ describe("DocumentStore.findQuery errors", () => {
     expect(handle.error).toBeInstanceOf(Error);
   });
 
+  it("throws synchronously for a query type with no config (instead of stranding the handle)", () => {
+    const store = initStore();
+    expect(() => store.findQuery("not-configured" as never, { workspaceId: 1 } as never)).toThrow(
+      /no query "not-configured" is configured/,
+    );
+  });
+
   it("clearMemory removes settled query errors so the next fetch starts cleanly", async () => {
     server.use(
       http.get(`${API_BASE}/dashboards`, () =>

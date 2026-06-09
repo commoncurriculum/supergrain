@@ -1,7 +1,13 @@
 import type { CreateQueryParams, Query, QueryEnvelope, QueryModel } from "./types";
 
-import { signal } from "@supergrain/kernel";
+import { batch, createReactive } from "@supergrain/kernel";
 import { type DocumentTypes, runAdapter, type SiloError } from "@supergrain/silo";
+import {
+  applyEvent,
+  HandleEvent,
+  type InternalHandle,
+  makeIdleHandle,
+} from "@supergrain/silo/internal";
 import { Effect } from "effect";
 
 /**
@@ -9,14 +15,15 @@ import { Effect } from "effect";
  *
  * Results, `nextOffset`, and sideloaded documents live in the store (reactive
  * via the store's per-(type,id) reactivity). Transient state — `isFetching`,
- * `error` — lives in local signals.
+ * `error`, `failureCount`, `lastError` — lives in a silo handle driven by the
+ * store's own statechart, so it transitions exactly like a document handle's.
  *
  * Fetching runs on the **same engine** as a silo document fetch: every attempt
  * goes through `runAdapter`, so `retry` (a `Schedule`) / `timeout` (a
  * `Duration`) / abort behave exactly as they do for `ModelConfig`, and a
- * failure surfaces as a typed `SiloError`. There is no built-in auto-retry —
- * like the store, a failure settles `error` immediately unless you pass
- * `retry`.
+ * failure surfaces as a typed `SiloError`. With no per-query `retry`, the
+ * store's resolved default applies (the built-in fibonacci `defaultRetry`
+ * unless the store overrides it) — disable with `Schedule.recurs(0)`.
  *
  * A fetch is **single-flight**: starting a new `refetch()` / `fetchNextPage()`
  * (or `destroy()`) interrupts any in-flight fetch — its adapter `signal`
@@ -51,10 +58,11 @@ export function createQuery<
     retryable: params.retryable,
   });
 
-  const isFetching = signal(false);
-  const errorSignal = signal<SiloError | null>(null);
-  const lastErrorSignal = signal<SiloError | null>(null);
-  const failureCountSignal = signal(0);
+  // Transient fetch state, driven through silo's handle statechart so the
+  // Fetch / Retrying / Failed / Settled transitions are the store's own —
+  // not a reimplementation that can drift. The handle's `value` / `promise`
+  // are unused here: results live in the store under `(type, id)`.
+  const handle = createReactive(makeIdleHandle()) as InternalHandle;
   let destroyed = false;
   // The controller for the currently-owned fetch; aborting it interrupts the
   // run (and the adapter's `signal`). A superseded fetch is no longer the
@@ -94,10 +102,6 @@ export function createQuery<
     const nextOffset = res.meta?.nextOffset ?? null;
     const doc: QueryModel<K, T> = { id, type, results, nextOffset };
     store.insertDocument(type, doc as unknown as M[K]);
-    errorSignal(null);
-    // A recovering retry succeeded — clear the in-flight failure tally.
-    lastErrorSignal(null);
-    failureCountSignal(0);
   }
 
   function fetchPage(offset: number): Promise<void> {
@@ -107,11 +111,8 @@ export function createQuery<
     activeController?.abort();
     const controller = new AbortController();
     activeController = controller;
-    isFetching(true);
-    errorSignal(null);
-    // Fresh cycle: reset the failure tally before the first attempt.
-    lastErrorSignal(null);
-    failureCountSignal(0);
+    // Mark activity and reset the failure tally for the fresh cycle.
+    batch(() => applyEvent(handle, HandleEvent.fetch()));
 
     // Supersession (a newer fetch, or `destroy()`) aborts this run's controller,
     // which interrupts the fiber — so the success/error/`onFailure` channel below
@@ -130,18 +131,29 @@ export function createQuery<
         deadline,
         retryable,
         // Surface each failed attempt (and a deadline breach) while retrying, so
-        // a still-fetching query isn't silent — mirrors a silo handle.
-        onFailure: (error, info) => {
-          lastErrorSignal(error);
-          failureCountSignal(info.attempt);
-        },
+        // a still-fetching query isn't silent — the same transition as a silo
+        // handle mid-retry.
+        onFailure: (error) => batch(() => applyEvent(handle, HandleEvent.retrying(error))),
       },
     ).pipe(
-      Effect.flatMap((res) => Effect.sync(() => commitPage(res, offset))),
-      Effect.catchAll((error: SiloError) => Effect.sync(() => errorSignal(error))),
+      Effect.flatMap((res) =>
+        Effect.sync(() =>
+          batch(() => {
+            commitPage(res, offset);
+            applyEvent(handle, HandleEvent.settled());
+          }),
+        ),
+      ),
+      Effect.catchAll((error: SiloError) =>
+        Effect.sync(() => batch(() => applyEvent(handle, HandleEvent.failed(error)))),
+      ),
+      // Settled/Failed already ended activity on every live path; this is the
+      // safety net for a run that dies without settling (e.g. a defect thrown
+      // while committing). Guarded so an interrupted (superseded / destroyed)
+      // run can't clobber the fresh fetch's activity.
       Effect.ensuring(
         Effect.sync(() => {
-          if (owned()) isFetching(false);
+          if (owned()) batch(() => applyEvent(handle, HandleEvent.aborted()));
         }),
       ),
     );
@@ -163,16 +175,16 @@ export function createQuery<
       return readSlot()?.nextOffset ?? null;
     },
     get isFetching(): boolean {
-      return isFetching();
+      return handle.isFetching;
     },
     get error(): SiloError | undefined {
-      return errorSignal() ?? undefined;
+      return handle.error;
     },
     get failureCount(): number {
-      return failureCountSignal();
+      return handle.failureCount;
     },
     get lastError(): SiloError | undefined {
-      return lastErrorSignal() ?? undefined;
+      return handle.lastError;
     },
     fetchNextPage(): Promise<void> {
       const next = readSlot()?.nextOffset ?? 0;
@@ -185,7 +197,7 @@ export function createQuery<
       destroyed = true;
       activeController?.abort();
       activeController = undefined;
-      isFetching(false);
+      batch(() => applyEvent(handle, HandleEvent.aborted()));
       unsub?.();
     },
   };

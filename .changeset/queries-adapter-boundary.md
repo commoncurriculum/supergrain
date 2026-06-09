@@ -40,6 +40,18 @@ Schedule.Schedule<unknown, AdapterError>` and `timeout?: Duration.DurationInput`
 `destroy()`) interrupts any in-flight fetch — its adapter `signal` aborts — so
 overlapping requests can't race to write the store.
 
+**Shared statechart.** `createQuery`'s transient state (`isFetching` / `error` /
+`failureCount` / `lastError`) is now driven by the store's own handle statechart
+(exposed to layered packages via the new `@supergrain/silo/internal` subpath)
+instead of a parallel implementation, so the transitions match a document
+handle's by construction. One observable alignment: `error` is no longer cleared
+the moment a refetch starts — like a silo handle, the previous error stays
+visible until the new fetch settles (success clears it; failure replaces it).
+
+**`store.findQuery` validates the query type.** Calling it with a type that has
+no `DocumentStoreConfig.queries` entry now throws immediately instead of
+stranding the handle on `isFetching` forever.
+
 ```diff
   // retry is now inherited from the store default; override per-query if needed:
 - createQuery({ store, adapter, type, id, backoff: (n) => n * 1000 });

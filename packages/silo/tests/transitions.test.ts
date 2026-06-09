@@ -141,6 +141,49 @@ describe("applyEvent — insert after a failed first load", () => {
   });
 });
 
+describe("applyEvent — aborted()", () => {
+  it("ends activity without recording an outcome", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.aborted());
+
+    expect(h.isFetching).toBe(false);
+    expect(h.value).toBeUndefined();
+    expect(h.error).toBeUndefined();
+    expect(h.status).toBe("pending");
+  });
+
+  it("leaves a pending first-load promise pending for a later fetch to settle", async () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    const inflight = h.promise;
+
+    applyEvent(h, HandleEvent.aborted());
+    expect(h.promise).toBe(inflight);
+
+    // A later cycle can still resolve the same promise.
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.insert(11));
+    await expect(inflight).resolves.toBe(11);
+  });
+
+  it("keeps a stale value and error untouched", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.insert(5));
+    const e = err();
+    applyEvent(h, HandleEvent.failed(e));
+
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.aborted());
+
+    expect(h.value).toBe(5);
+    expect(h.error).toBe(e);
+    expect(h.status).toBe("success");
+    expect(h.isFetching).toBe(false);
+  });
+});
+
 describe("applyEvent — reset()", () => {
   it("when not fetching: clears everything and drops the promise", () => {
     const h = makeIdleHandle();

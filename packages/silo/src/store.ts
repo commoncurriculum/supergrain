@@ -496,11 +496,11 @@ export function createDocumentStore<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
 >(config: DocumentStoreConfig<M, Q>): DocumentStore<M, Q> {
-  const finder = new Finder<M, Q>(config);
   const state = createReactive<InternalState>({
     documents: new Map(),
     queries: new Map(),
   }) as InternalState;
+  const finder = new Finder<M, Q>(config, state);
 
   const store: DocumentStore<M, Q> = {
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
@@ -529,6 +529,13 @@ export function createDocumentStore<
       type: K,
       params: Q[K]["params"] | null | undefined,
     ): QueryHandle<Q[K]["result"]> {
+      // Validate eagerly — an unconfigured type would otherwise enqueue a
+      // request no drain can serve, stranding the handle on `isFetching`.
+      if (config.queries?.[type] === undefined) {
+        throw new Error(
+          `@supergrain/silo: no query "${type}" is configured — add it to DocumentStoreConfig.queries`,
+        );
+      }
       if (params === null || params === undefined)
         return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
 
@@ -579,7 +586,7 @@ export function createDocumentStore<
     },
   };
 
-  finder.attach(state, store);
+  finder.attach(store);
   return store;
 }
 

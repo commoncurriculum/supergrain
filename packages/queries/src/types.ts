@@ -70,9 +70,11 @@ export interface Query<T> {
   readonly nextOffset: number | null;
   readonly isFetching: boolean;
   /**
-   * The typed failure from the last fetch, or `undefined`. Same `SiloError`
-   * channel as a silo `DocumentHandle.error` — a rejected `Promise` adapter
-   * surfaces as an `AdapterError` (original rejection on `.cause`).
+   * The typed failure from the last settled fetch, or `undefined`. Same
+   * `SiloError` channel as a silo `DocumentHandle.error` — a rejected `Promise`
+   * adapter surfaces as an `AdapterError` (original rejection on `.cause`).
+   * Like a silo handle, a previous error stays visible while a refetch is in
+   * flight; it clears (or is replaced) when the fetch settles.
    */
   readonly error: SiloError | undefined;
   /**

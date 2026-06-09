@@ -3,9 +3,9 @@
 // =============================================================================
 //
 // Covers ModelConfig / QueryConfig `retry` and `timeout` — the Effect-native
-// resilience the finder wraps around the adapter Effect (`adapterEffect` in
-// src/finder.ts). Driven through a real `DocumentStore`, flushing the batch
-// window with fake timers exactly like finder.test.ts.
+// resilience the finder wraps around the adapter Effect (`runAdapter` in
+// src/run-adapter.ts). Driven through a real `DocumentStore`, flushing the
+// batch window with fake timers exactly like finder.test.ts.
 // =============================================================================
 
 import { Effect, Schedule } from "effect";
