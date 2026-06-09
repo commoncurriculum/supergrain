@@ -204,7 +204,7 @@ Methods:
 - `findQuery(type, params)` → `QueryHandle<T>`
 - `findQueryInMemory(type, params)` → `T | undefined`
 - `insertQueryResult(type, params, result)` → `void`
-- `resolveAdapterOptions(perCall?)` → `{ retry, timeout, deadline }` — merge per-call overrides over the store-wide defaults (used by layered helpers like `@supergrain/queries`)
+- `resolveAdapterOptions(perCall?)` → `{ retry, timeout, deadline, retryable }` — merge per-call overrides over the store-wide defaults (used by layered helpers like `@supergrain/queries`)
 
 ### `createDocumentStoreContext<S extends DocumentStore<any, any>>()`
 

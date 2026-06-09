@@ -1,20 +1,8 @@
-import { Effect } from "effect";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { AdapterError, createDocumentStore, type DocumentStore } from "../src";
-
-/** Wrap a Promise-returning function as an Effect-returning adapter `find`. */
-function effectFind<A extends ReadonlyArray<unknown>>(
-  type: string,
-  fn: (...args: A) => Promise<unknown>,
-): (...args: A) => Effect.Effect<unknown, AdapterError> {
-  return (...args: A) =>
-    Effect.tryPromise({
-      try: () => fn(...args),
-      catch: (cause) => new AdapterError({ type, keys: [], cause }),
-    });
-}
+import { createDocumentStore, type DocumentStore } from "../src";
+import { effectFind } from "./setup/effect-find";
 
 type TestModels = {
   user: { id: string; name: string };

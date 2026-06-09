@@ -1,5 +1,11 @@
-import type { AdapterError, DocumentStore, DocumentTypes, SiloError } from "@supergrain/silo";
-import type { Duration, Effect, Schedule } from "effect";
+import type {
+  AdapterError,
+  AdapterOptionOverrides,
+  DocumentStore,
+  DocumentTypes,
+  SiloError,
+} from "@supergrain/silo";
+import type { Effect } from "effect";
 
 // =============================================================================
 // Query adapter
@@ -94,7 +100,7 @@ export interface Query<T> {
   /** Refetch from offset 0, replacing the results array wholesale. */
   refetch(): Promise<void>;
 
-  /** Unsubscribe and stop any pending retry timer. */
+  /** Interrupt any in-flight fetch (aborting its adapter `signal`) and unsubscribe. */
   destroy(): void;
 }
 
@@ -102,11 +108,19 @@ export interface Query<T> {
 // Params
 // =============================================================================
 
+/**
+ * The inherited resilience knobs (`AdapterOptionOverrides`: `retry` /
+ * `timeout` / `deadline` / `retryable`) are the same per-fetch overrides as
+ * silo's `ModelConfig` / `QueryConfig`, resolved via
+ * `store.resolveAdapterOptions` — per-query → store-wide → built-in fibonacci
+ * `defaultRetry` — so a query fetch retries like a document `find`. Disable
+ * retry with `Schedule.recurs(0)`.
+ */
 export interface CreateQueryParams<
   M extends DocumentTypes,
   K extends keyof M & string,
   T extends { offset: number },
-> {
+> extends AdapterOptionOverrides {
   store: DocumentStore<M>;
   adapter: QueryAdapter<T>;
   type: K;
@@ -114,36 +128,6 @@ export interface CreateQueryParams<
 
   /** Page size. Default 200. */
   limit?: number;
-
-  /**
-   * Optional retry schedule applied to the adapter Effect on a retryable
-   * `AdapterError` — the same knob as silo's `ModelConfig.retry`. Resolved via
-   * `store.resolveAdapterOptions` (the store-wide `retry`, or the built-in
-   * fibonacci `defaultRetry`), so a query fetch retries like a document `find`.
-   * Disable with `Schedule.recurs(0)`.
-   */
-  retry?: Schedule.Schedule<unknown, AdapterError>;
-
-  /**
-   * Optional per-attempt timeout for the adapter Effect; a timeout becomes an
-   * `AdapterError`. Resolved via `store.resolveAdapterOptions` (the store-wide
-   * `timeout`).
-   */
-  timeout?: Duration.DurationInput;
-
-  /**
-   * Optional overall deadline across all retry attempts; a breach becomes a
-   * non-retryable `AdapterError`. Distinct from the per-attempt `timeout`.
-   * Resolved via `store.resolveAdapterOptions` (the store-wide `deadline`).
-   */
-  deadline?: Duration.DurationInput;
-
-  /**
-   * Optional predicate to classify a failure as retryable — for Promise-first
-   * adapters that reject and so can't set the error's own `retryable` flag.
-   * Resolved via `store.resolveAdapterOptions` (the store-wide classifier).
-   */
-  retryable?: (error: AdapterError) => boolean;
 
   /**
    * Optional server-side subscription hook. If provided, called on init.

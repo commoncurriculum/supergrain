@@ -12,22 +12,8 @@ import {
 } from "../src";
 import { Finder } from "../src/finder";
 import { type InternalHandle, makeIdleHandle } from "../src/transitions";
+import { effectFind } from "./setup/effect-find";
 import { setupFakeTimers } from "./setup/timers";
-
-/**
- * Wrap a Promise-returning function as an adapter `find` that returns an
- * `Effect`, failing with `AdapterError` (mirrors the example-app adapters).
- */
-function effectFind<A extends ReadonlyArray<unknown>>(
-  type: string,
-  fn: (...args: A) => Promise<unknown>,
-): (...args: A) => Effect.Effect<unknown, AdapterError> {
-  return (...args: A) =>
-    Effect.tryPromise({
-      try: () => fn(...args),
-      catch: (cause) => new AdapterError({ type, keys: [], cause }),
-    });
-}
 
 // =============================================================================
 // Finder contract tests.

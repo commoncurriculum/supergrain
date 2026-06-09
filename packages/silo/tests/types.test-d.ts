@@ -11,11 +11,9 @@
 // If a refactor accidentally relaxes a generic to `unknown`, every assertion
 // below stops compiling — that's the point.
 // =============================================================================
-import { Effect } from "effect";
 import { describe, expectTypeOf, it } from "vitest";
 
 import {
-  AdapterError,
   createDocumentStore,
   type DocumentHandle,
   type DocumentStore,
@@ -23,17 +21,7 @@ import {
   type QueryHandle,
   type SiloError,
 } from "../src";
-
-/** Wrap a Promise-returning function as an Effect-returning adapter `find`. */
-function effectFind<A extends ReadonlyArray<unknown>>(
-  fn: (...args: A) => Promise<unknown>,
-): (...args: A) => Effect.Effect<unknown, AdapterError> {
-  return (...args: A) =>
-    Effect.tryPromise({
-      try: () => fn(...args),
-      catch: (cause) => new AdapterError({ type: "test", keys: [], cause }),
-    });
-}
+import { effectFind } from "./setup/effect-find";
 
 interface User {
   id: string;
@@ -60,14 +48,14 @@ describe("createDocumentStore — public type surface", () => {
       models: {
         user: {
           adapter: {
-            find: effectFind((ids: Array<string>) =>
+            find: effectFind("test", (ids: Array<string>) =>
               Promise.resolve(ids.map((id) => ({ id, name: "x" }))),
             ),
           },
         },
         post: {
           adapter: {
-            find: effectFind((ids: Array<string>) =>
+            find: effectFind("test", (ids: Array<string>) =>
               Promise.resolve(ids.map((id) => ({ id, title: "t", body: "b" }))),
             ),
           },
@@ -76,7 +64,7 @@ describe("createDocumentStore — public type surface", () => {
       queries: {
         search: {
           adapter: {
-            find: effectFind((paramsList: Array<{ q: string }>) =>
+            find: effectFind("test", (paramsList: Array<{ q: string }>) =>
               Promise.resolve(paramsList.map(() => ({ total: 0, ids: [] }))),
             ),
           },
@@ -92,14 +80,14 @@ describe("createDocumentStore — public type surface", () => {
       models: {
         user: {
           adapter: {
-            find: effectFind((ids: Array<string>) =>
+            find: effectFind("test", (ids: Array<string>) =>
               Promise.resolve(ids.map((id) => ({ id, name: "x" }))),
             ),
           },
         },
         post: {
           adapter: {
-            find: effectFind((ids: Array<string>) =>
+            find: effectFind("test", (ids: Array<string>) =>
               Promise.resolve(ids.map((id) => ({ id, title: "t", body: "b" }))),
             ),
           },

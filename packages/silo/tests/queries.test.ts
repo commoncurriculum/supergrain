@@ -26,7 +26,6 @@ import { Effect } from "effect";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { AdapterError } from "../src";
 import { createDocumentStore } from "../src/store";
 import {
   API_BASE,
@@ -41,19 +40,8 @@ import {
   type TypeToModel,
   type TypeToQuery,
 } from "./example-app";
+import { effectFind } from "./setup/effect-find";
 import { setupFakeTimers } from "./setup/timers";
-
-/** Wrap a Promise-returning function as an Effect-returning adapter `find`. */
-function effectFind<A extends ReadonlyArray<unknown>>(
-  type: string,
-  fn: (...args: A) => Promise<unknown>,
-): (...args: A) => Effect.Effect<unknown, AdapterError> {
-  return (...args: A) =>
-    Effect.tryPromise({
-      try: () => fn(...args),
-      catch: (cause) => new AdapterError({ type, keys: [], cause }),
-    });
-}
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {

@@ -203,6 +203,10 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       // repopulate; otherwise everything clears.
       break;
     }
+    /* c8 ignore next 3 -- compile-time exhaustiveness guard; unreachable */
+    default: {
+      event satisfies never;
+    }
   }
 
   const status = deriveStatus(value, error);
@@ -268,6 +272,10 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
         clearResolvers(raw);
       }
       break;
+    }
+    /* c8 ignore next 3 -- compile-time exhaustiveness guard; unreachable */
+    default: {
+      event satisfies never;
     }
   }
 }

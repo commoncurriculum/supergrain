@@ -1,6 +1,6 @@
 import type { AdapterError, SiloError } from "./errors";
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
-import type { Duration, Effect, Schedule } from "effect";
+import type { Effect } from "effect";
 
 import { batch, createReactive } from "@supergrain/kernel";
 
@@ -236,30 +236,14 @@ export type ResponseProcessor<M extends DocumentTypes> = (
  * Per-model wiring: the adapter that talks to the API, an optional processor
  * that normalizes its response, and optional Effect-native resilience.
  *
- * If `processor` is omitted, the library uses `defaultProcessor`. `retry` and
- * `timeout` wrap the adapter Effect — a declarative win over hand-rolled
- * Promise retry loops.
+ * If `processor` is omitted, the library uses `defaultProcessor`. The inherited
+ * resilience knobs ({@link AdapterOptionOverrides}: `retry` / `timeout` /
+ * `deadline` / `retryable`) override the store-wide defaults for this model —
+ * resolution precedence is per-model → store-wide → built-in `defaultRetry`.
  */
-export interface ModelConfig<M extends DocumentTypes> {
+export interface ModelConfig<M extends DocumentTypes> extends AdapterOptionOverrides {
   adapter: DocumentAdapter;
   processor?: ResponseProcessor<M>;
-  /** Optional retry schedule applied to the adapter Effect on a retryable `AdapterError`. */
-  retry?: Schedule.Schedule<unknown, AdapterError>;
-  /** Optional per-attempt timeout for the adapter Effect; a timeout becomes an `AdapterError`. */
-  timeout?: Duration.DurationInput;
-  /**
-   * Optional overall deadline across all retry attempts; a breach becomes a
-   * non-retryable `AdapterError`. Distinct from the per-attempt `timeout`.
-   */
-  deadline?: Duration.DurationInput;
-  /**
-   * Optional predicate to classify a failure as retryable — for Promise-first
-   * adapters that reject (rather than constructing an `AdapterError`) and so
-   * can't set the error's own `retryable` flag. Inspect `error.cause` to veto
-   * retries on a deterministic failure, e.g. `(e) => !(e.cause instanceof
-   * Response) || e.cause.status >= 500`.
-   */
-  retryable?: (error: AdapterError) => boolean;
   /**
    * When a multi-id `adapter.find` chunk fails terminally (after retries), split
    * it and re-fetch the halves to **isolate** the offending id — so one bad
@@ -276,10 +260,19 @@ export interface ModelConfig<M extends DocumentTypes> {
 // DocumentStore config
 // =============================================================================
 
+/**
+ * Store-wide configuration. The inherited resilience knobs
+ * ({@link AdapterOptionOverrides}: `retry` / `timeout` / `deadline` /
+ * `retryable`) are **defaults for every document and query fetch** that doesn't
+ * set its own (per-model / per-query). `retry` falls back to the built-in
+ * {@link defaultRetry} (fibonacci 1s–60s, retrying until success) — disable
+ * with `Schedule.recurs(0)`, or bound it with e.g. `Schedule.recurs(3)` or a
+ * `deadline`. `timeout` / `deadline` / `retryable` are off unless configured.
+ */
 export interface DocumentStoreConfig<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
-> {
+> extends AdapterOptionOverrides {
   /** Per-type adapter + optional processor wiring for documents. */
   models: { [K in keyof M]: ModelConfig<M> };
   /** Per-type adapter + optional processor wiring for queries. Optional. */
@@ -317,31 +310,6 @@ export interface DocumentStoreConfig<
       retryable: boolean;
     },
   ) => void;
-  /**
-   * Store-wide default retry `Schedule`, applied to every document and query
-   * fetch that doesn't set its own `retry` (per-model / per-query). Defaults to
-   * {@link defaultRetry} (fibonacci 1s–60s, retrying until success). Disable
-   * with `Schedule.recurs(0)`, or bound it with e.g. `Schedule.recurs(3)`.
-   */
-  retry?: Schedule.Schedule<unknown, AdapterError>;
-  /**
-   * Store-wide default per-attempt timeout, applied to every fetch that doesn't
-   * set its own (per-model / per-query) `timeout`. Off by default.
-   */
-  timeout?: Duration.DurationInput;
-  /**
-   * Store-wide default overall deadline across all retry attempts, applied to
-   * every fetch that doesn't set its own (per-model / per-query) `deadline`. Off
-   * by default — combine with the infinite `defaultRetry` to guarantee a fetch
-   * eventually settles its terminal `error`.
-   */
-  deadline?: Duration.DurationInput;
-  /**
-   * Store-wide default `retryable` classifier, applied to every fetch that
-   * doesn't set its own (per-model / per-query). Lets Promise-first adapters
-   * veto retries on deterministic failures from the coerced error's `cause`.
-   */
-  retryable?: (error: AdapterError) => boolean;
   /**
    * Store-wide default for {@link ModelConfig.isolateFailures}, applied to every
    * document and query fetch that doesn't set its own. Off by default.

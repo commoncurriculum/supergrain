@@ -1,6 +1,7 @@
 import type { AdapterError, SiloError } from "./errors";
+import type { AdapterOptionOverrides } from "./resolve";
 import type { DocumentHandle, DocumentStore, DocumentTypes, TypeRegistry } from "./store";
-import type { Duration, Effect, Schedule } from "effect";
+import type { Effect } from "effect";
 
 // =============================================================================
 // QueryTypes — shape of a consumer's query type map
@@ -130,29 +131,19 @@ export type QueryProcessor<
  * input params, and pairs them by position. For envelope formats or
  * normalizing processors (inserting nested documents), supply a custom
  * `QueryProcessor`.
+ *
+ * The inherited resilience knobs ({@link AdapterOptionOverrides}: `retry` /
+ * `timeout` / `deadline` / `retryable`) override the store-wide defaults for
+ * this query — resolution precedence is per-query → store-wide → built-in
+ * `defaultRetry`.
  */
 export interface QueryConfig<
   M extends DocumentTypes,
   Q extends QueryTypes,
   Type extends keyof Q & string,
-> {
+> extends AdapterOptionOverrides {
   adapter: QueryAdapter<Q[Type]["params"]>;
   processor?: QueryProcessor<M, Q, Type>;
-  /** Optional retry schedule applied to the adapter Effect on a retryable `AdapterError`. */
-  retry?: Schedule.Schedule<unknown, AdapterError>;
-  /** Optional per-attempt timeout for the adapter Effect; a timeout becomes an `AdapterError`. */
-  timeout?: Duration.DurationInput;
-  /**
-   * Optional overall deadline across all retry attempts; a breach becomes a
-   * non-retryable `AdapterError`. Distinct from the per-attempt `timeout`.
-   */
-  deadline?: Duration.DurationInput;
-  /**
-   * Optional predicate to classify a failure as retryable — for Promise-first
-   * adapters that reject and so can't set the error's own `retryable` flag.
-   * Inspect `error.cause` to veto retries on a deterministic failure.
-   */
-  retryable?: (error: AdapterError) => boolean;
   /**
    * When a multi-params query chunk fails terminally, split it and re-fetch the
    * halves to isolate the offending params. See {@link ModelConfig.isolateFailures}.
