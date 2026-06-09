@@ -29,3 +29,17 @@ export const defaultRetry: Schedule.Schedule<unknown, AdapterError> = Schedule.f
   Schedule.jittered,
   Schedule.modifyDelay((_output, delay) => Duration.min(delay, Duration.seconds(60))),
 );
+
+/**
+ * {@link defaultRetry} bounded to 3 recurrences (4 attempts, ~1s + 1s + 2s of
+ * jittered backoff). Used by the finder for a multi-key chunk with
+ * `isolateFailures` when no `retry` was configured anywhere: isolation only
+ * engages on a *terminal* failure, which the never-give-up `defaultRetry`
+ * never reaches — so an isolating chunk trades "retry forever" for "fail
+ * terminally after a few attempts, then bisect". An explicitly configured
+ * `retry` (even an unbounded one) is honored as-is.
+ */
+export const boundedDefaultRetry: Schedule.Schedule<unknown, AdapterError> = Schedule.intersect(
+  defaultRetry,
+  Schedule.recurs(3),
+);

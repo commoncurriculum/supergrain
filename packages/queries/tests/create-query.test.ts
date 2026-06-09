@@ -918,3 +918,145 @@ describe("Promise-first adapter boundary", () => {
     q.destroy();
   });
 });
+
+// =============================================================================
+// Failure visibility — nothing may vanish as a silent abort
+// =============================================================================
+
+describe("commit failures surface as ProcessorError", () => {
+  it("records the error on the handle instead of silently aborting", async () => {
+    const store = makeStore();
+    // Malformed envelope: `data` missing, so commitPage throws reading
+    // `res.data.results` — previously a defect the Aborted net swallowed.
+    const adapter: QueryAdapter<PlanbookRef> = {
+      fetch: () => Effect.succeed({} as never),
+    };
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+
+    await q.refetch();
+
+    expect(q.isFetching).toBe(false);
+    expect(q.error?._tag).toBe("ProcessorError");
+    expect(q.lastError?._tag).toBe("ProcessorError");
+    expect(q.results).toEqual([]);
+  });
+});
+
+describe("adapter defects surface instead of vanishing", () => {
+  it("a synchronously-throwing adapter settles as an AdapterError", async () => {
+    const store = makeStore();
+    const adapter: QueryAdapter<PlanbookRef> = {
+      fetch: () => {
+        throw new Error("no session");
+      },
+    };
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+
+    await q.refetch();
+
+    expect(q.error).toBeInstanceOf(AdapterError);
+    expect(q.isFetching).toBe(false);
+  });
+
+  it("a dying adapter Effect settles as a non-retryable reason 'defect' error", async () => {
+    const store = makeStore();
+    const adapter: QueryAdapter<PlanbookRef> = {
+      fetch: () => Effect.die(new Error("adapter bug")),
+    };
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+
+    await q.refetch();
+
+    expect(q.error).toBeInstanceOf(AdapterError);
+    expect((q.error as AdapterError).reason).toBe("defect");
+    expect(q.isFetching).toBe(false);
+  });
+});
+
+// =============================================================================
+// Store-level telemetry — the same onError sink the finder notifies
+// =============================================================================
+
+describe("DocumentStoreConfig.onError for query fetches", () => {
+  function makeObservedStore(
+    seen: Array<{ tag: string; keys: ReadonlyArray<string>; attempt: number }>,
+  ) {
+    return createDocumentStore<TypeToModel>({
+      models: {
+        planbooks_for_user: { adapter: { find: () => Effect.succeed({ data: [] }) } },
+        planbook: { adapter: { find: () => Effect.succeed({ data: [] }) } },
+      },
+      retry: Schedule.recurs(1),
+      onError: (error, ctx) => seen.push({ tag: error._tag, keys: ctx.keys, attempt: ctx.attempt }),
+    });
+  }
+
+  it("reports every failed attempt, like a document fetch", async () => {
+    const seen: Array<{ tag: string; keys: ReadonlyArray<string>; attempt: number }> = [];
+    const store = makeObservedStore(seen);
+    const fetch = vi.fn(() =>
+      Effect.fail(new AdapterError({ type: "planbooks_for_user", keys: ["u1"], cause: "down" })),
+    );
+    const q = createQuery({ store, adapter: { fetch }, type: "planbooks_for_user", id: "u1" });
+
+    await q.refetch();
+
+    expect(fetch).toHaveBeenCalledTimes(2); // store retry: recurs(1)
+    expect(seen).toEqual([
+      { tag: "AdapterError", keys: ["u1"], attempt: 1 },
+      { tag: "AdapterError", keys: ["u1"], attempt: 2 },
+    ]);
+    expect(q.error).toBeInstanceOf(AdapterError);
+  });
+
+  it("reports a commit failure exactly once", async () => {
+    const seen: Array<{ tag: string; keys: ReadonlyArray<string>; attempt: number }> = [];
+    const store = makeObservedStore(seen);
+    const adapter: QueryAdapter<PlanbookRef> = {
+      fetch: () => Effect.succeed({} as never), // malformed envelope
+    };
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+
+    await q.refetch();
+
+    expect(seen).toEqual([{ tag: "ProcessorError", keys: ["u1"], attempt: 1 }]);
+  });
+
+  it("a throwing sink never breaks the fetch", async () => {
+    const store = createDocumentStore<TypeToModel>({
+      models: {
+        planbooks_for_user: { adapter: { find: () => Effect.succeed({ data: [] }) } },
+        planbook: { adapter: { find: () => Effect.succeed({ data: [] }) } },
+      },
+      retry: Schedule.recurs(1),
+      onError: () => {
+        throw new Error("telemetry boom");
+      },
+    });
+    let calls = 0;
+    const adapter: QueryAdapter<PlanbookRef> = {
+      fetch: () =>
+        Effect.suspend(() => {
+          calls += 1;
+          return calls === 1
+            ? Effect.fail(
+                new AdapterError({ type: "planbooks_for_user", keys: ["u1"], cause: "blip" }),
+              )
+            : Effect.succeed({
+                data: { results: [] as Array<PlanbookRef> },
+                meta: { nextOffset: null as number | null },
+                included: undefined,
+              });
+        }),
+    };
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+
+    await q.refetch();
+
+    // The sink threw on the first attempt's report; the retry still ran and
+    // the fetch settled cleanly.
+    expect(calls).toBe(2);
+    expect(q.error).toBeUndefined();
+    expect(q.isFetching).toBe(false);
+  });
+});

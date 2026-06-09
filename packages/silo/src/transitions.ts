@@ -147,6 +147,12 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
   const hadValue = raw.value !== undefined;
   const wasFetching = raw.isFetching;
 
+  // An Insert of `undefined` carries no document — recording it would resolve
+  // the pending Suspense promise with `undefined` and consume the resolvers,
+  // leaving a later `Failed` (e.g. the finder's NotFoundError) unable to
+  // reject. Treat it as a no-op so the handle settles through Failed instead.
+  if (event._tag === "Insert" && event.value === undefined) return;
+
   let { value, error, isFetching, fetchedAt, failureCount, lastError } = raw;
 
   switch (event._tag) {
@@ -160,7 +166,13 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
     }
     case "Insert": {
       ({ value } = event);
-      fetchedAt = new Date();
+      // Stamp `fetchedAt` only when this insert answers a fetch (the handle is
+      // mid-fetch) or first populates the handle. A local insert into an
+      // already-loaded idle handle (e.g. a websocket push) preserves it, so
+      // TTL-style staleness checks (`Date.now() - fetchedAt > TTL`) still see
+      // when the data was last *fetched* — and `fetchedAt` readers don't
+      // re-render on every push.
+      if (wasFetching || !hadValue) fetchedAt = new Date();
       error = undefined; // fresh data supersedes any prior error
       failureCount = 0;
       lastError = undefined;

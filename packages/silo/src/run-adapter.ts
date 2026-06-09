@@ -1,4 +1,6 @@
-import { type Duration, Effect, type Schedule } from "effect";
+import type { AdapterOptionOverrides } from "./resolve";
+
+import { Effect } from "effect";
 
 import { AdapterError } from "./errors";
 
@@ -42,32 +44,15 @@ function coerceAdapter<A>(
       });
 }
 
-/** Per-call resilience knobs, identical to `ModelConfig` / `QueryConfig`. */
-export interface AdapterRunOptions {
+/**
+ * What one engine run needs beyond the resilience knobs it inherits from
+ * {@link AdapterOptionOverrides}: the failing `type` / `keys` for error
+ * construction, an optional failure observer, and an optional concurrency
+ * gate.
+ */
+export interface AdapterRunOptions extends AdapterOptionOverrides {
   readonly type: string;
   readonly keys: ReadonlyArray<string>;
-  /** Re-run the attempt on a retryable `AdapterError` per this `Schedule`. */
-  readonly retry?: Schedule.Schedule<unknown, AdapterError>;
-  /** Wrap each attempt; a per-attempt timeout becomes a retryable `AdapterError`. */
-  readonly timeout?: Duration.DurationInput;
-  /**
-   * Overall budget across *all* attempts, including retry backoff. When it
-   * elapses the whole program fails with a non-retryable `AdapterError` whose
-   * cause mentions "deadline", however many retries remained. Distinct from
-   * `timeout`, which bounds a single attempt — pair them so neither a hung
-   * request nor an unlucky retry loop runs unbounded.
-   */
-  readonly deadline?: Duration.DurationInput;
-  /**
-   * Classify a failure as retryable. Lets a **Promise-first** adapter — which
-   * rejects rather than constructing an `AdapterError`, so it can't set the
-   * error's own `retryable` flag — decide from the coerced error (inspect
-   * `error.cause`, e.g. a `Response`'s status) whether to keep retrying. A `4xx`
-   * is typically deterministic: `(e) => !(e.cause instanceof Response) ||
-   * e.cause.status >= 500`. An error that opts out via its own
-   * `retryable: false` is a hard veto regardless of this predicate.
-   */
-  readonly retryable?: (error: AdapterError) => boolean;
   /**
    * Observe every failure the caller should see: each failed attempt — so a
    * still-retrying fetch is never silent — and a `deadline` breach. Not called
@@ -78,6 +63,14 @@ export interface AdapterRunOptions {
    * observability can't break the engine.
    */
   readonly onFailure?: (error: AdapterError, info: AdapterFailureInfo) => void;
+  /**
+   * Optional semaphore bounding concurrent adapter **attempts**. Each attempt
+   * (including its per-attempt `timeout`) holds one permit and releases it
+   * during retry backoff, so a chunk sleeping between retries never starves
+   * other work — and the bound composes across batch windows and bisection
+   * recursion, which per-call-site concurrency caps cannot.
+   */
+  readonly permits?: Effect.Semaphore;
 }
 
 /** Per-failure context handed to {@link AdapterRunOptions.onFailure}. */
@@ -99,6 +92,10 @@ export interface AdapterFailureInfo {
  *   interruption — a `timeout` firing, a retry abandoning the prior attempt, or
  *   the caller cancelling — the controller aborts, so an adapter that threaded
  *   `signal` into `fetch` tears its request down.
+ * - A **synchronous throw** from the adapter (thrown before returning a
+ *   Promise/Effect) joins the typed failure channel as an `AdapterError`,
+ *   exactly like a rejection — it must never escape as a defect that bypasses
+ *   retry and the caller's error handling.
  * - The Promise→`AdapterError` boundary is delegated to {@link coerceAdapter}.
  * - `timeout` wraps each attempt; `onFailure` observes each attempt's failure
  *   (a throw is swallowed); `retry` re-runs only failures both the error's own
@@ -109,7 +106,7 @@ export function runAdapter<A>(
   invoke: (ctx: { signal: AbortSignal }) => Promise<A> | Effect.Effect<A, AdapterError>,
   options: AdapterRunOptions,
 ): Effect.Effect<A, AdapterError> {
-  const { type, keys, retry, timeout, deadline, retryable, onFailure } = options;
+  const { type, keys, retry, timeout, deadline, retryable, onFailure, permits } = options;
 
   // 1-based count of failed attempts observed so far, reported on `onFailure`.
   let attemptCount = 0;
@@ -132,9 +129,19 @@ export function runAdapter<A>(
 
   const attempt = Effect.suspend(() => {
     const controller = new AbortController();
-    return coerceAdapter(invoke({ signal: controller.signal }), type, keys).pipe(
-      Effect.onInterrupt(() => Effect.sync(() => controller.abort())),
-    );
+    // A synchronous throw from the adapter (before it returns a Promise or
+    // Effect) is coerced here — letting it escape the suspend thunk would turn
+    // it into a defect that bypasses retry, `onFailure`, and the caller's
+    // typed error handling, stranding every waiting handle.
+    try {
+      return coerceAdapter(invoke({ signal: controller.signal }), type, keys).pipe(
+        Effect.onInterrupt(() => Effect.sync(() => controller.abort())),
+      );
+    } catch (error) {
+      return Effect.fail(
+        error instanceof AdapterError ? error : new AdapterError({ type, keys, cause: error }),
+      );
+    }
   });
 
   const timed =
@@ -153,14 +160,19 @@ export function runAdapter<A>(
           }),
         );
 
+  // One permit per attempt (held across the attempt's own `timeout`, released
+  // during retry backoff). Acquiring outside the per-attempt timeout means
+  // waiting for a permit can't spuriously time the attempt out.
+  const gated = permits === undefined ? timed : permits.withPermits(1)(timed);
+
   // Report each attempt's failure *before* the retry decision, so every failed
   // attempt is observed — including the one that becomes terminal — not just
   // the final give-up. Interruptions never hit the error channel, so a
   // superseded / timed-out attempt is correctly not reported here.
   const observed =
     onFailure === undefined
-      ? timed
-      : timed.pipe(
+      ? gated
+      : gated.pipe(
           Effect.tapError((error) =>
             Effect.sync(() => {
               attemptCount += 1;

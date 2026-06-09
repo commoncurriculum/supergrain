@@ -46,18 +46,27 @@ non-retryable `AdapterError`, so the infinite default retry can be made to
 terminate.
 
 **Structured failure reasons.** `AdapterError` carries `reason?: "adapter" |
-"timeout" | "deadline"` so consumers branch on a stable tag instead of
-regex-matching `cause.message`.
+"timeout" | "deadline" | "defect"` so consumers branch on a stable tag instead
+of regex-matching `cause.message` (`"defect"` marks an unexpected throw outside
+the typed channel — a bug, not a network failure).
 
 **Poison-id isolation (`isolateFailures`).** Opt-in (model / query / store):
 when a multi-id batch fails terminally, the chunk is bisected and the halves
 re-fetched once, isolating the offending id so its healthy batch-mates still
-load instead of all failing together. Off by default.
+load instead of all failing together. Off by default. Isolation needs a
+_terminal_ failure to engage, so under the never-give-up `defaultRetry` an
+isolating chunk automatically uses a bounded variant (`boundedDefaultRetry`,
+~4 attempts); an explicitly configured `retry` is honored as-is. A `deadline`
+breach is never bisected — the deadline stays the hard stop rather than each
+half re-resolving a fresh budget.
 
 **Bounded fan-out (`maxConcurrency`).** New store-wide
 `maxConcurrency?: number | "unbounded"` (default `"unbounded"`) caps how many
-`adapter.find` chunks run at once, so a large render (many chunks) doesn't
-fire every request simultaneously.
+`adapter.find` **attempts** run at once, so a large render (many chunks)
+doesn't fire every request simultaneously. The cap is a per-attempt semaphore:
+it composes across batch windows and `isolateFailures` bisection, and a chunk
+sleeping between retries releases its slot, so failing chunks never starve
+healthy ones.
 
 **Hardened query cache keys.** `stableStringify` now encodes non-finite numbers
 (`NaN` / `±Infinity`) distinctly — they previously all collapsed to `null` via

@@ -48,9 +48,21 @@ handle's by construction. One observable alignment: `error` is no longer cleared
 the moment a refetch starts — like a silo handle, the previous error stays
 visible until the new fetch settles (success clears it; failure replaces it).
 
-**`store.findQuery` validates the query type.** Calling it with a type that has
-no `DocumentStoreConfig.queries` entry now throws immediately instead of
-stranding the handle on `isFetching` forever.
+**`store.find` / `store.findQuery` validate the type.** Calling either with a
+type that has no `DocumentStoreConfig` entry now throws immediately instead of
+stranding handles on `isFetching` forever. The `null`-params /-id short-circuit
+comes first, so the conditional-read idiom (`findQuery(type, ready ? params :
+null)`) keeps returning the idle handle even while the type is absent from
+config.
+
+**No failure is silent.** A synchronously-throwing adapter (thrown before
+returning a Promise/Effect) joins the typed channel as an `AdapterError`, like
+a rejection. A throw while committing a `createQuery` page (malformed envelope,
+frozen-doc insert) surfaces as a `ProcessorError` on `Query.error`. Anything
+else that dies unexpectedly settles handles with a non-retryable `AdapterError`
+tagged `reason: "defect"` instead of stranding them — and never interrupts
+sibling chunks in the same batch window. `createQuery` failures (per attempt
+and terminal) report to the store's `onError` sink, same as document fetches.
 
 ```diff
   // retry is now inherited from the store default; override per-query if needed:

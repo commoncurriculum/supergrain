@@ -508,3 +508,39 @@ describe("Store query memory operations", () => {
     expect(h.value?.count).toBe(3);
   });
 });
+
+describe("Store.find — unconfigured type validation", () => {
+  it("throws eagerly for an unconfigured model type instead of stranding the drain", () => {
+    expect(() => store.find("nope" as never, "1")).toThrow(/no model "nope" is configured/);
+  });
+
+  it("does not poison sibling fetches queued in the same window", async () => {
+    expect(() => store.find("nope" as never, "1")).toThrow();
+    const handle = store.find("user", "1");
+    await flushCoalescer();
+    expect(handle.isFetching).toBe(false);
+    expect(handle.value).toBeDefined();
+  });
+
+  it("still returns the idle handle for a null id without validating", () => {
+    const handle = store.find("nope" as never, null);
+    expect(handle.status).toBe("pending");
+    expect(handle.isFetching).toBe(false);
+  });
+});
+
+describe("Store.findQuery — null params before type validation", () => {
+  it("returns the idle handle for null params even when the type is not configured", () => {
+    // The conditional-read idiom `findQuery(type, ready ? params : null)` must
+    // keep working while the type is feature-flagged out of config.
+    const handle = store.findQuery("ghost" as never, null);
+    expect(handle.status).toBe("pending");
+    expect(handle.isFetching).toBe(false);
+  });
+
+  it("still throws for non-null params on an unconfigured type", () => {
+    expect(() => store.findQuery("ghost" as never, { q: "x" } as never)).toThrow(
+      /no query "ghost" is configured/,
+    );
+  });
+});

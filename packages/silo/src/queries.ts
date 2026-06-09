@@ -1,5 +1,5 @@
 import type { AdapterError, SiloError } from "./errors";
-import type { AdapterOptionOverrides } from "./resolve";
+import type { ResilienceOptions } from "./resolve";
 import type { DocumentHandle, DocumentStore, DocumentTypes, TypeRegistry } from "./store";
 import type { Effect } from "effect";
 
@@ -132,23 +132,18 @@ export type QueryProcessor<
  * normalizing processors (inserting nested documents), supply a custom
  * `QueryProcessor`.
  *
- * The inherited resilience knobs ({@link AdapterOptionOverrides}: `retry` /
- * `timeout` / `deadline` / `retryable`) override the store-wide defaults for
- * this query — resolution precedence is per-query → store-wide → built-in
- * `defaultRetry`.
+ * The inherited resilience knobs ({@link ResilienceOptions}: `retry` /
+ * `timeout` / `deadline` / `retryable` / `isolateFailures`) override the
+ * store-wide defaults for this query — resolution precedence is per-query →
+ * store-wide → built-in `defaultRetry`.
  */
 export interface QueryConfig<
   M extends DocumentTypes,
   Q extends QueryTypes,
   Type extends keyof Q & string,
-> extends AdapterOptionOverrides {
+> extends ResilienceOptions {
   adapter: QueryAdapter<Q[Type]["params"]>;
   processor?: QueryProcessor<M, Q, Type>;
-  /**
-   * When a multi-params query chunk fails terminally, split it and re-fetch the
-   * halves to isolate the offending params. See {@link ModelConfig.isolateFailures}.
-   */
-  isolateFailures?: boolean;
 }
 
 // =============================================================================

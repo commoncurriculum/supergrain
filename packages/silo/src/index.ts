@@ -27,11 +27,17 @@ export type { AdapterErrorReason, SiloError } from "./errors";
 export { runAdapter } from "./run-adapter";
 export type { AdapterFailureInfo, AdapterRunOptions } from "./run-adapter";
 
-export { defaultRetry } from "./retry";
+export { boundedDefaultRetry, defaultRetry } from "./retry";
 
 // Resolution itself is reached through `store.resolveAdapterOptions(perCall?)`;
 // only the option shapes are public.
-export type { AdapterOptionOverrides, ResolvedAdapterOptions } from "./resolve";
+export type {
+  AdapterErrorContext,
+  AdapterErrorSink,
+  AdapterOptionOverrides,
+  ResilienceOptions,
+  ResolvedAdapterOptions,
+} from "./resolve";
 
 export type {
   QueryAdapter,

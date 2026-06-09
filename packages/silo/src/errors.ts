@@ -17,10 +17,14 @@ import { Data } from "effect";
  * - `"adapter"` — the adapter itself failed (network error, non-2xx, rejection).
  * - `"timeout"` — a per-attempt `timeout` elapsed.
  * - `"deadline"` — the overall `deadline` across all attempts elapsed.
+ * - `"defect"` — the fetch pipeline died unexpectedly (an unhandled throw
+ *   outside the typed failure channel, e.g. a subscriber effect throwing while
+ *   the commit flushed, or an adapter `Effect` dying). A bug, not a network
+ *   failure — `cause` carries the original defect. Never retried.
  *
  * Omitted means `"adapter"` (the generic case).
  */
-export type AdapterErrorReason = "adapter" | "timeout" | "deadline";
+export type AdapterErrorReason = "adapter" | "timeout" | "deadline" | "defect";
 
 /**
  * The adapter's `find` Effect failed (network error, non-2xx, thrown in

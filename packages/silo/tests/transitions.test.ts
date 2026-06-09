@@ -212,3 +212,54 @@ describe("applyEvent — reset()", () => {
     expect(h.promise).toBe(inflight);
   });
 });
+
+describe("applyEvent — insert(undefined) is a no-op", () => {
+  it("keeps the resolvers armed so a later Failed can still reject the first-load promise", async () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    const promise = h.promise!;
+
+    // A positional pairing with fewer results than params inserts `undefined`
+    // — recording it would resolve the promise with `undefined` and leave the
+    // NotFound that follows unable to reject.
+    applyEvent(h, HandleEvent.insert(undefined));
+
+    expect(h.value).toBeUndefined();
+    expect(h.fetchedAt).toBeUndefined();
+    expect(h.status).toBe("pending");
+    expect(h.isFetching).toBe(true);
+
+    const boom = err();
+    applyEvent(h, HandleEvent.failed(boom));
+    await expect(promise).rejects.toBe(boom);
+    expect(h.status).toBe("error");
+  });
+});
+
+describe("applyEvent — insert() fetchedAt semantics", () => {
+  it("stamps fetchedAt when the insert answers a fetch or first populates the handle", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.insert({ id: "1" }));
+    expect(h.fetchedAt).toBeInstanceOf(Date);
+
+    const fresh = makeIdleHandle();
+    applyEvent(fresh, HandleEvent.insert({ id: "1" })); // first value, no fetch
+    expect(fresh.fetchedAt).toBeInstanceOf(Date);
+  });
+
+  it("preserves fetchedAt on a local insert into an already-loaded idle handle", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.insert({ id: "1", v: 1 }));
+    applyEvent(h, HandleEvent.settled());
+    const fetched = h.fetchedAt;
+    expect(fetched).toBeInstanceOf(Date);
+
+    // A websocket-style push: data updates, but it isn't a fetch — TTL
+    // staleness checks must still see when the data was last *fetched*.
+    applyEvent(h, HandleEvent.insert({ id: "1", v: 2 }));
+    expect(h.value).toEqual({ id: "1", v: 2 });
+    expect(h.fetchedAt).toBe(fetched);
+  });
+});

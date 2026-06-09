@@ -2,11 +2,13 @@ import type { AdapterError, SiloError } from "./errors";
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
 import type { Effect } from "effect";
 
-import { batch, createReactive } from "@supergrain/kernel";
+import { batch, createReactive, unwrap } from "@supergrain/kernel";
 
 import { Finder } from "./finder";
 import {
+  type AdapterErrorSink,
   type AdapterOptionOverrides,
+  type ResilienceOptions,
   resolveAdapterOptions,
   type ResolvedAdapterOptions,
 } from "./resolve";
@@ -237,23 +239,14 @@ export type ResponseProcessor<M extends DocumentTypes> = (
  * that normalizes its response, and optional Effect-native resilience.
  *
  * If `processor` is omitted, the library uses `defaultProcessor`. The inherited
- * resilience knobs ({@link AdapterOptionOverrides}: `retry` / `timeout` /
- * `deadline` / `retryable`) override the store-wide defaults for this model —
- * resolution precedence is per-model → store-wide → built-in `defaultRetry`.
+ * resilience knobs ({@link ResilienceOptions}: `retry` / `timeout` /
+ * `deadline` / `retryable` / `isolateFailures`) override the store-wide
+ * defaults for this model — resolution precedence is per-model → store-wide →
+ * built-in `defaultRetry`.
  */
-export interface ModelConfig<M extends DocumentTypes> extends AdapterOptionOverrides {
+export interface ModelConfig<M extends DocumentTypes> extends ResilienceOptions {
   adapter: DocumentAdapter;
   processor?: ResponseProcessor<M>;
-  /**
-   * When a multi-id `adapter.find` chunk fails terminally (after retries), split
-   * it and re-fetch the halves to **isolate** the offending id — so one bad
-   * record (a 500 on a single id) doesn't fail the whole batch, and its healthy
-   * neighbors still load. The sub-fetches run once (no retry; the chunk already
-   * exhausted its schedule). Off by default. Best for bulk endpoints; under a
-   * full backend outage every id will still ultimately fail (bisection just adds
-   * a bounded fan-out before giving up).
-   */
-  isolateFailures?: boolean;
 }
 
 // =============================================================================
@@ -262,17 +255,18 @@ export interface ModelConfig<M extends DocumentTypes> extends AdapterOptionOverr
 
 /**
  * Store-wide configuration. The inherited resilience knobs
- * ({@link AdapterOptionOverrides}: `retry` / `timeout` / `deadline` /
- * `retryable`) are **defaults for every document and query fetch** that doesn't
- * set its own (per-model / per-query). `retry` falls back to the built-in
- * {@link defaultRetry} (fibonacci 1s–60s, retrying until success) — disable
- * with `Schedule.recurs(0)`, or bound it with e.g. `Schedule.recurs(3)` or a
- * `deadline`. `timeout` / `deadline` / `retryable` are off unless configured.
+ * ({@link ResilienceOptions}: `retry` / `timeout` / `deadline` / `retryable` /
+ * `isolateFailures`) are **defaults for every document and query fetch** that
+ * doesn't set its own (per-model / per-query). `retry` falls back to the
+ * built-in {@link defaultRetry} (fibonacci 1s–60s, retrying until success) —
+ * disable with `Schedule.recurs(0)`, or bound it with e.g. `Schedule.recurs(3)`
+ * or a `deadline`. `timeout` / `deadline` / `retryable` are off unless
+ * configured.
  */
 export interface DocumentStoreConfig<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
-> extends AdapterOptionOverrides {
+> extends ResilienceOptions {
   /** Per-type adapter + optional processor wiring for documents. */
   models: { [K in keyof M]: ModelConfig<M> };
   /** Per-type adapter + optional processor wiring for queries. Optional. */
@@ -288,33 +282,24 @@ export interface DocumentStoreConfig<
    */
   batchSize?: number;
   /**
-   * Max chunks fanned out concurrently per drain. A large render (thousands of
-   * ids → many chunks) otherwise fires every chunk at once. `"unbounded"`
-   * (default) preserves that; set a number to cap simultaneous `adapter.find`
-   * calls and avoid a self-inflicted thundering herd.
+   * Max concurrent `adapter.find` **attempts** across the store. A large
+   * render (thousands of ids → many chunks) otherwise fires every chunk at
+   * once. `"unbounded"` (default) preserves that; set a number to cap
+   * simultaneous adapter calls and avoid a self-inflicted thundering herd.
+   * The bound is a per-attempt semaphore: it composes across batch windows
+   * and `isolateFailures` bisection, and a chunk sleeping between retries
+   * releases its slot, so failing chunks never starve healthy ones.
    */
   maxConcurrency?: number | "unbounded";
   /**
    * Optional error sink — called on **every failed attempt** (so a retrying
    * fetch isn't silent) and on a terminal `NotFoundError` / `ProcessorError`,
    * with the failing `type` / `keys`, the 1-based `attempt`, and whether the
-   * failure was `retryable`. For logging / metrics; a throwing callback never
-   * affects the store.
+   * failure was `retryable`. Fires for document fetches, `findQuery` fetches,
+   * and `@supergrain/queries` fetches alike. For logging / metrics; a throwing
+   * callback never affects the store.
    */
-  onError?: (
-    error: SiloError,
-    ctx: {
-      type: string;
-      keys: ReadonlyArray<string>;
-      attempt: number;
-      retryable: boolean;
-    },
-  ) => void;
-  /**
-   * Store-wide default for {@link ModelConfig.isolateFailures}, applied to every
-   * document and query fetch that doesn't set its own. Off by default.
-   */
-  isolateFailures?: boolean;
+  onError?: AdapterErrorSink;
 }
 
 // =============================================================================
@@ -453,7 +438,14 @@ function findOrFetch(
   enqueue: () => void,
 ): InternalHandle {
   const handle = getOrCreateHandle(bucket, key);
-  if (!handle.isFetching && handle.value === undefined && handle.error === undefined) {
+  // The gate is bookkeeping, not data the caller asked to observe — read it
+  // UNTRACKED via the raw target (the same pattern `applyEvent` uses), so a
+  // tracked render calling `find`/`findQuery` doesn't get subscribed to
+  // `isFetching`/`error` it never reads. Otherwise a `value`-only reader would
+  // re-render whenever a background refetch toggles `isFetching`, breaking the
+  // per-field contract documented on `DocumentHandle`.
+  const raw = unwrap(handle);
+  if (!raw.isFetching && raw.value === undefined && raw.error === undefined) {
     batch(() => applyEvent(handle, HandleEvent.fetch()));
     enqueue();
   }
@@ -473,6 +465,14 @@ export function createDocumentStore<
   const store: DocumentStore<M, Q> = {
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
       if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
+      // Validate eagerly (after the null short-circuit, which never fetches) —
+      // an unconfigured type would otherwise enqueue a request no drain can
+      // serve, killing the whole batch window and stranding every handle in it.
+      if (config.models[type] === undefined) {
+        throw new Error(
+          `@supergrain/silo: no model "${type}" is configured — add it to DocumentStoreConfig.models`,
+        );
+      }
       const handle = findOrFetch(ensureBucket(state.documents, type), id, () =>
         finder.queueDocument(type, id),
       );
@@ -497,15 +497,18 @@ export function createDocumentStore<
       type: K,
       params: Q[K]["params"] | null | undefined,
     ): QueryHandle<Q[K]["result"]> {
-      // Validate eagerly — an unconfigured type would otherwise enqueue a
-      // request no drain can serve, stranding the handle on `isFetching`.
+      // The null short-circuit comes first — it never fetches, so the
+      // conditional-read idiom `findQuery(type, ready ? params : null)` keeps
+      // working even while the type is absent from config (e.g. feature-flagged
+      // out). Then validate eagerly: an unconfigured type would otherwise
+      // enqueue a request no drain can serve, stranding the handle.
+      if (params === null || params === undefined)
+        return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
       if (config.queries?.[type] === undefined) {
         throw new Error(
           `@supergrain/silo: no query "${type}" is configured — add it to DocumentStoreConfig.queries`,
         );
       }
-      if (params === null || params === undefined)
-        return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
 
       const paramsKey = stableStringify(params);
       const handle = findOrFetch(ensureBucket(state.queries, type), paramsKey, () =>
