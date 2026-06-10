@@ -7,11 +7,15 @@ Run `@supergrain/queries` on the **same Effect engine** as the store, so a query
 fetch behaves exactly like a silo document fetch instead of feeling like a
 separate package.
 
-**Shared engine.** silo now exports `runAdapter` — the single entrypoint that
-turns one adapter call into a typed, resilient, abortable Effect (Promise→
-`AdapterError` boundary, per-attempt `AbortController`, `retry`, `timeout`).
-The store's finder and `createQuery` both go through it, so resilience and abort
-behave identically on both surfaces.
+**Shared engine.** silo now exposes `store.runAdapter(invoke, options)` — the
+boundary that turns one adapter call into a typed, resilient, abortable Effect
+(Promise→`AdapterError` boundary, per-attempt `AbortController`, `retry` /
+`timeout` / `deadline`). It resolves per-call overrides over the store's
+defaults, reports every failure to the store's `onError` sink, and counts
+against the store's `maxConcurrency` — so a layered package's fetches behave
+exactly like the finder's by construction. `createQuery` goes through it. (The
+raw engine lives in `@supergrain/silo/internal` for tooling that needs it
+without a store.)
 
 **Shared default retry.** silo ships a built-in `defaultRetry` (jittered
 fibonacci 1s–60s, retrying until success) and a store-wide
@@ -38,7 +42,11 @@ Schedule.Schedule<unknown, AdapterError>` and `timeout?: Duration.DurationInput`
 
 **Single-flight.** Starting a new `refetch()` / `fetchNextPage()` (or
 `destroy()`) interrupts any in-flight fetch — its adapter `signal` aborts — so
-overlapping requests can't race to write the store.
+overlapping requests can't race to write the store. Supersession is also
+enforced _in the statechart_: every `Fetch` bumps the handle's internal fetch
+generation and a run's events are stamped with it, so a superseded run's late
+`Retrying` / `Failed` / `Settled` / `Aborted` is structurally dropped instead
+of relying on interruption timing.
 
 **Shared statechart.** `createQuery`'s transient state (`isFetching` / `error` /
 `failureCount` / `lastError`) is now driven by the store's own handle statechart

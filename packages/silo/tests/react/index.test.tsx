@@ -199,9 +199,9 @@ describe("createDocumentStoreContext Provider", () => {
 
     expect(screen.getByText("loading")).toBeDefined();
 
-    await tick();
-
-    expect(screen.getByText("User1")).toBeDefined();
+    // Poll for the loaded state — a fixed sleep races the real-timer fetch
+    // and flakes under parallel-suite CPU load.
+    expect(await screen.findByText("User1", undefined, { timeout: 5000 })).toBeDefined();
   });
 
   it("throws when hooks are used outside a Provider", () => {
@@ -251,9 +251,9 @@ describe("useDocumentStore + find composition", () => {
 
     expect(screen.getByText("loading")).toBeDefined();
 
-    await tick();
-
-    expect(screen.getByText("User1")).toBeDefined();
+    // One chunked fetch commits all three in one batch — poll for the first
+    // and the rest are synchronously present.
+    expect(await screen.findByText("User1", undefined, { timeout: 5000 })).toBeDefined();
     expect(screen.getByText("User2")).toBeDefined();
     expect(screen.getByText("User3")).toBeDefined();
   });
@@ -335,10 +335,8 @@ describe("useQuery", () => {
 
     expect(screen.getByText("loading dashboard")).toBeDefined();
 
-    await tick();
-
     // dashboard MSW handler encodes workspaceId * 10 into totalActiveUsers.
-    expect(screen.getByText("users: 70")).toBeDefined();
+    expect(await screen.findByText("users: 70", undefined, { timeout: 5000 })).toBeDefined();
   });
 
   it("returns an idle handle when params is null", () => {

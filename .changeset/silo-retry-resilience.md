@@ -39,11 +39,13 @@ the failure passed the retryable check — so telemetry can chart retry rate or
 alert only on hard (`retryable: false`) failures. Additive; existing
 `{ type, keys }` destructuring is unaffected.
 
-**Overall deadline.** A new `deadline` knob (model / query / store, and
-`createQuery`) caps **all** attempts together, including retry backoff —
-distinct from the per-attempt `timeout`. On expiry the fetch fails with a
-non-retryable `AdapterError`, so the infinite default retry can be made to
-terminate.
+**Overall deadline — on by default.** A new `deadline` knob (model / query /
+store, and `createQuery`) caps **all** attempts together, including retry
+backoff — distinct from the per-attempt `timeout`. On expiry the fetch fails
+with a non-retryable `AdapterError`. The built-in `defaultDeadline`
+(2 minutes) applies whenever no `deadline` is configured, so the infinite
+default retry always terminates and a handle's promise eventually rejects;
+opt out with `deadline: Duration.infinity`.
 
 **Structured failure reasons.** `AdapterError` carries `reason?: "adapter" |
 "timeout" | "deadline" | "defect"` so consumers branch on a stable tag instead

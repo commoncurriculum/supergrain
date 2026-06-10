@@ -31,13 +31,25 @@ export const defaultRetry: Schedule.Schedule<unknown, AdapterError> = Schedule.f
 );
 
 /**
+ * The built-in default `deadline`: the overall budget across all attempts of
+ * one fetch, applied whenever no `deadline` is set (per-model / per-query /
+ * store-wide). Two minutes ≈ ten attempts of the fibonacci backoff — long
+ * enough to ride out a deploy blip or a slow mobile link, short enough that a
+ * down backend eventually settles the terminal `error` (rejecting the handle's
+ * promise, so Suspense error boundaries fire) instead of spinning forever.
+ *
+ * Opt out with `deadline: Duration.infinity` to retry without bound.
+ */
+export const defaultDeadline: Duration.Duration = Duration.minutes(2);
+
+/**
  * {@link defaultRetry} bounded to 3 recurrences (4 attempts, ~1s + 1s + 2s of
  * jittered backoff). Used by the finder for a multi-key chunk with
  * `isolateFailures` when no `retry` was configured anywhere: isolation only
  * engages on a *terminal* failure, which the never-give-up `defaultRetry`
- * never reaches — so an isolating chunk trades "retry forever" for "fail
- * terminally after a few attempts, then bisect". An explicitly configured
- * `retry` (even an unbounded one) is honored as-is.
+ * never reaches — so an isolating chunk trades "retry until the deadline" for
+ * "fail terminally after a few attempts, then bisect". An explicitly
+ * configured `retry` (even an unbounded one) is honored as-is.
  */
 export const boundedDefaultRetry: Schedule.Schedule<unknown, AdapterError> = Schedule.intersect(
   defaultRetry,

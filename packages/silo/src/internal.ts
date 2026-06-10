@@ -5,3 +5,8 @@
 // Not part of the public API contract — shapes here may change in minor
 // releases; application code should consume the package root instead.
 export { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./transitions";
+// The raw adapter engine. Layered packages should prefer `store.runAdapter`,
+// which resolves options, reports to the store's `onError` sink, and counts
+// against `maxConcurrency` — this export exists for tooling/tests that need
+// the engine without a store.
+export { type AdapterRunOptions, runAdapter } from "./run-adapter";

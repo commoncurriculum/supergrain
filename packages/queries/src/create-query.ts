@@ -1,13 +1,7 @@
 import type { CreateQueryParams, Query, QueryEnvelope, QueryModel } from "./types";
 
-import { batch, createReactive } from "@supergrain/kernel";
-import {
-  AdapterError,
-  type DocumentTypes,
-  ProcessorError,
-  runAdapter,
-  type SiloError,
-} from "@supergrain/silo";
+import { batch, createReactive, unwrap } from "@supergrain/kernel";
+import { AdapterError, type DocumentTypes, ProcessorError, type SiloError } from "@supergrain/silo";
 import {
   applyEvent,
   HandleEvent,
@@ -25,11 +19,13 @@ import { Effect } from "effect";
  * store's own statechart, so it transitions exactly like a document handle's.
  *
  * Fetching runs on the **same engine** as a silo document fetch: every attempt
- * goes through `runAdapter`, so `retry` (a `Schedule`) / `timeout` (a
- * `Duration`) / abort behave exactly as they do for `ModelConfig`, and a
- * failure surfaces as a typed `SiloError`. With no per-query `retry`, the
- * store's resolved default applies (the built-in fibonacci `defaultRetry`
- * unless the store overrides it) — disable with `Schedule.recurs(0)`.
+ * goes through `store.runAdapter`, so `retry` (a `Schedule`) / `timeout` /
+ * `deadline` (`Duration`s) / abort behave exactly as they do for
+ * `ModelConfig`, every failure reports to the store's `onError` sink, and the
+ * fetch counts against the store's `maxConcurrency`. With no per-query
+ * overrides, the store's resolved defaults apply (the built-in fibonacci
+ * `defaultRetry` bounded by `defaultDeadline` unless the store overrides
+ * them) — disable retry with `Schedule.recurs(0)`.
  *
  * A fetch is **single-flight**: starting a new `refetch()` / `fetchNextPage()`
  * (or `destroy()`) interrupts any in-flight fetch — its adapter `signal`
@@ -53,20 +49,15 @@ export function createQuery<
 >(params: CreateQueryParams<M, K, T>): Query<T> {
   const { store, adapter, type, id } = params;
   const limit = params.limit ?? 200;
-  // Inherit the store's resolved resilience (store-wide `retry` ?? the built-in
-  // fibonacci `defaultRetry`, plus `timeout` / `deadline`) so a query fetch
-  // behaves like a document `find` unless the call overrides them. Resolution
-  // lives in the store, not here.
-  const { retry, timeout, deadline, retryable, onError } = store.resolveAdapterOptions({
-    retry: params.retry,
-    timeout: params.timeout,
-    deadline: params.deadline,
-    retryable: params.retryable,
-  });
+  // Fetches run through `store.runAdapter`, which resolves the per-call knobs
+  // below over the store's defaults, reports every engine failure to the
+  // store's `onError` sink, and counts against the store's `maxConcurrency`.
+  // The sink is only needed directly for post-success commit failures, which
+  // happen outside the engine.
+  const { onError } = store.resolveAdapterOptions();
 
-  // Report to the store's telemetry sink — the same `DocumentStoreConfig.onError`
-  // the finder notifies, so a query outage is as observable as a document one.
-  // A throwing sink is swallowed: observability can't affect fetch state.
+  // Report a commit failure to the store's telemetry sink. A throwing sink is
+  // swallowed: observability can't affect fetch state.
   function reportError(error: SiloError, info: { attempt: number; retryable: boolean }): void {
     if (onError === undefined) return;
     try {
@@ -129,88 +120,88 @@ export function createQuery<
     activeController?.abort();
     const controller = new AbortController();
     activeController = controller;
-    // Mark activity and reset the failure tally for the fresh cycle.
+    // Mark activity and reset the failure tally for the fresh cycle. The Fetch
+    // event bumps the handle's generation; every event this run emits below is
+    // stamped with it, so the statechart itself fences out anything a
+    // superseded run might land late — state correctness doesn't depend on
+    // interruption timing.
     batch(() => applyEvent(handle, HandleEvent.fetch()));
+    const { generation } = unwrap(handle);
 
-    // Supersession (a newer fetch, or `destroy()`) aborts this run's controller,
-    // which interrupts the fiber — so the success/error/`onFailure` channel below
-    // never runs once we've lost ownership; reaching it means we're still the
-    // active run. Only the `ensuring` finalizer runs *on* interruption, so that's
-    // the single place that must guard against clobbering a fresh fetch's state.
-    const owned = (): boolean => !destroyed && controller === activeController;
-
-    const program = runAdapter<QueryEnvelope<T>>(
-      (ctx) => adapter.fetch(id, { offset, limit, signal: ctx.signal }),
-      {
-        type,
-        keys: [id],
-        retry,
-        timeout,
-        deadline,
-        retryable,
-        // Surface each failed attempt (and a deadline breach) while retrying, so
-        // a still-fetching query isn't silent — the same transition as a silo
-        // handle mid-retry, reported to the same store-level telemetry sink.
-        onFailure: (error, info) => {
-          reportError(error, info);
-          batch(() => applyEvent(handle, HandleEvent.retrying(error)));
+    const program = store
+      .runAdapter<QueryEnvelope<T>>(
+        (ctx) => adapter.fetch(id, { offset, limit, signal: ctx.signal }),
+        {
+          type,
+          keys: [id],
+          retry: params.retry,
+          timeout: params.timeout,
+          deadline: params.deadline,
+          retryable: params.retryable,
+          // Surface each failed attempt (and a deadline breach) while retrying,
+          // so a still-fetching query isn't silent — the same transition as a
+          // silo handle mid-retry. `store.runAdapter` already reported it to the
+          // store's telemetry sink.
+          onFailure: (error) =>
+            batch(() => applyEvent(handle, HandleEvent.retrying(error, generation))),
         },
-      },
-    ).pipe(
-      Effect.flatMap((res) =>
-        // A throw while committing (malformed envelope, a frozen-doc insert
-        // failing) joins the typed channel as a ProcessorError — the queries
-        // analogue of the finder's processor coercion — instead of escaping as
-        // a defect that the Aborted safety net would silently swallow.
-        Effect.suspend(() => {
-          try {
-            batch(() => {
-              commitPage(res, offset);
-              applyEvent(handle, HandleEvent.settled());
+      )
+      .pipe(
+        Effect.flatMap((res) =>
+          // A throw while committing (malformed envelope, a frozen-doc insert
+          // failing) joins the typed channel as a ProcessorError — the queries
+          // analogue of the finder's processor coercion — instead of escaping as
+          // a defect that the Aborted safety net would silently swallow.
+          Effect.suspend(() => {
+            try {
+              batch(() => {
+                commitPage(res, offset);
+                applyEvent(handle, HandleEvent.settled(generation));
+              });
+              return Effect.void;
+            } catch (error) {
+              return Effect.fail(new ProcessorError({ type, cause: error }));
+            }
+          }),
+        ),
+        Effect.catchAll((error: SiloError) =>
+          Effect.sync(() => {
+            // Adapter failures were already reported per attempt by
+            // `store.runAdapter` (including the terminal one and a deadline
+            // breach); a commit failure is a single post-success observation,
+            // reported here.
+            if (error instanceof ProcessorError) {
+              reportError(error, { attempt: 1, retryable: false });
+            }
+            batch(() => applyEvent(handle, HandleEvent.failed(error, generation)));
+          }),
+        ),
+        // Nothing above may escape as a defect — it would bypass Failed and be
+        // discarded by runPromiseExit, making the failure invisible. Anything
+        // unexpectedly thrown (e.g. an adapter Effect dying) settles the handle
+        // as a non-retryable `reason: "defect"` AdapterError.
+        Effect.catchAllDefect((defect) =>
+          Effect.sync(() => {
+            const error = new AdapterError({
+              type,
+              keys: [id],
+              cause: defect,
+              retryable: false,
+              reason: "defect",
             });
-            return Effect.void;
-          } catch (error) {
-            return Effect.fail(new ProcessorError({ type, cause: error }));
-          }
-        }),
-      ),
-      Effect.catchAll((error: SiloError) =>
-        Effect.sync(() => {
-          // Adapter failures were already reported per attempt via onFailure
-          // (including the terminal one and a deadline breach); a commit
-          // failure is a single post-success observation, reported here.
-          if (error instanceof ProcessorError) {
             reportError(error, { attempt: 1, retryable: false });
-          }
-          batch(() => applyEvent(handle, HandleEvent.failed(error)));
-        }),
-      ),
-      // Nothing above may escape as a defect — it would bypass Failed and be
-      // discarded by runPromiseExit, making the failure invisible. Anything
-      // unexpectedly thrown (e.g. an adapter Effect dying) settles the handle
-      // as a non-retryable `reason: "defect"` AdapterError.
-      Effect.catchAllDefect((defect) =>
-        Effect.sync(() => {
-          const error = new AdapterError({
-            type,
-            keys: [id],
-            cause: defect,
-            retryable: false,
-            reason: "defect",
-          });
-          reportError(error, { attempt: 1, retryable: false });
-          batch(() => applyEvent(handle, HandleEvent.failed(error)));
-        }),
-      ),
-      // Settled/Failed already ended activity on every live path; this is the
-      // safety net for a run interrupted without settling. Guarded so a
-      // superseded / destroyed run can't clobber the fresh fetch's activity.
-      Effect.ensuring(
-        Effect.sync(() => {
-          if (owned()) batch(() => applyEvent(handle, HandleEvent.aborted()));
-        }),
-      ),
-    );
+            batch(() => applyEvent(handle, HandleEvent.failed(error, generation)));
+          }),
+        ),
+        // Settled/Failed already ended activity on every live path; this is the
+        // safety net for a run interrupted without settling. Stamped with this
+        // run's generation, so when a newer fetch has taken over (its Fetch
+        // bumped the generation) the statechart drops it instead of clobbering
+        // the fresh cycle's activity.
+        Effect.ensuring(
+          Effect.sync(() => batch(() => applyEvent(handle, HandleEvent.aborted(generation)))),
+        ),
+      );
 
     // `runPromiseExit` resolves (never rejects) on interruption, so a
     // superseded/destroyed fetch settles quietly.

@@ -12,6 +12,7 @@ import {
   resolveAdapterOptions,
   type ResolvedAdapterOptions,
 } from "./resolve";
+import { type AdapterFailureInfo, runAdapter } from "./run-adapter";
 import { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./transitions";
 
 interface InternalState {
@@ -258,10 +259,11 @@ export interface ModelConfig<M extends DocumentTypes> extends ResilienceOptions 
  * ({@link ResilienceOptions}: `retry` / `timeout` / `deadline` / `retryable` /
  * `isolateFailures`) are **defaults for every document and query fetch** that
  * doesn't set its own (per-model / per-query). `retry` falls back to the
- * built-in {@link defaultRetry} (fibonacci 1s–60s, retrying until success) —
- * disable with `Schedule.recurs(0)`, or bound it with e.g. `Schedule.recurs(3)`
- * or a `deadline`. `timeout` / `deadline` / `retryable` are off unless
- * configured.
+ * built-in {@link defaultRetry} (fibonacci 1s–60s) — disable with
+ * `Schedule.recurs(0)` or bound it with e.g. `Schedule.recurs(3)`. `deadline`
+ * falls back to the built-in `defaultDeadline` (2 minutes), so a fetch always
+ * settles eventually — opt out with `Duration.infinity`. `timeout` /
+ * `retryable` are off unless configured.
  */
 export interface DocumentStoreConfig<
   M extends DocumentTypes,
@@ -341,6 +343,35 @@ export interface DocumentStore<
    * the store's raw defaults onto its surface.
    */
   resolveAdapterOptions(perCall?: AdapterOptionOverrides): ResolvedAdapterOptions;
+  /**
+   * Run one adapter call on the store's engine — the boundary layered packages
+   * (e.g. `@supergrain/queries`) use so their fetches are correct by
+   * construction: per-call overrides resolve over the store's defaults, every
+   * failed attempt (and deadline breach) reports to the store's `onError`
+   * sink, and the call counts against the store's `maxConcurrency` cap. The
+   * optional `onFailure` observes the same failures for the caller's own
+   * handle bookkeeping; it runs even if the telemetry sink throws.
+   */
+  runAdapter<A>(
+    invoke: (ctx: { signal: AbortSignal }) => Promise<A> | Effect.Effect<A, AdapterError>,
+    options: StoreAdapterRunOptions,
+  ): Effect.Effect<A, AdapterError>;
+}
+
+/**
+ * Options for {@link DocumentStore.runAdapter}: the failing `type` / `keys`
+ * for error construction and telemetry, per-call resilience overrides
+ * ({@link AdapterOptionOverrides}), and an optional per-failure observer.
+ */
+export interface StoreAdapterRunOptions extends AdapterOptionOverrides {
+  readonly type: string;
+  readonly keys: ReadonlyArray<string>;
+  /**
+   * Observe every failure of this call (each failed attempt and a `deadline`
+   * breach), after the store's `onError` sink was notified. For the caller's
+   * handle bookkeeping; a throw is swallowed by the engine.
+   */
+  readonly onFailure?: (error: AdapterError, info: AdapterFailureInfo) => void;
 }
 
 const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
@@ -554,6 +585,42 @@ export function createDocumentStore<
 
     resolveAdapterOptions(perCall?: AdapterOptionOverrides): ResolvedAdapterOptions {
       return resolveAdapterOptions(config, perCall);
+    },
+
+    runAdapter<A>(
+      invoke: (ctx: { signal: AbortSignal }) => Promise<A> | Effect.Effect<A, AdapterError>,
+      options: StoreAdapterRunOptions,
+    ): Effect.Effect<A, AdapterError> {
+      const { type, keys, onFailure, ...overrides } = options;
+      const resolved = resolveAdapterOptions(config, overrides);
+      return runAdapter(invoke, {
+        type,
+        keys,
+        retry: resolved.retry,
+        timeout: resolved.timeout,
+        deadline: resolved.deadline,
+        retryable: resolved.retryable,
+        // Layered fetches share the finder's semaphore, so `maxConcurrency`
+        // is one store-wide cap — not a per-surface one.
+        permits: finder.permits,
+        onFailure: (error, info) => {
+          // Telemetry first, isolated — a throwing sink must not skip the
+          // caller's own bookkeeping.
+          if (config.onError !== undefined) {
+            try {
+              config.onError(error, {
+                type,
+                keys,
+                attempt: info.attempt,
+                retryable: info.retryable,
+              });
+            } catch {
+              // Observability can't affect fetch state.
+            }
+          }
+          onFailure?.(error, info);
+        },
+      });
     },
   };
 

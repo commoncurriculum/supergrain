@@ -1,7 +1,7 @@
 import type { Relationship, RelationshipArray } from "../../src/processors/json-api";
 
 import { tracked } from "@supergrain/kernel/react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Effect } from "effect";
 import { type ReactNode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -102,6 +102,18 @@ function Wrap({ children }: { children: ReactNode }) {
 }
 
 const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Poll until the element's text settles to `expected`. Loading→loaded
+ * transitions must poll — a fixed sleep races the real-timer fetch and flakes
+ * under parallel-suite CPU load. (`tick` remains for negative assertions:
+ * "still unchanged after time has passed".)
+ */
+async function expectText(testId: string, expected: string): Promise<void> {
+  await waitFor(() => expect(screen.getByTestId(testId).textContent).toBe(expected), {
+    timeout: 5000,
+  });
+}
 
 afterEach(() => cleanup());
 
@@ -298,9 +310,7 @@ describe("useBelongsTo", () => {
 
     expect(screen.getByTestId("planbook").textContent).toBe("loading planbook");
 
-    await tick();
-
-    expect(screen.getByTestId("planbook").textContent).toBe("Planbook p42");
+    await expectText("planbook", "Planbook p42");
   });
 
   it("shows the related doc immediately when it's already in memory", async () => {
@@ -332,8 +342,7 @@ describe("useBelongsTo", () => {
       </Wrap>,
     );
 
-    await tick();
-    expect(screen.getByTestId("planbook").textContent).toBe("Planbook p42");
+    await expectText("planbook", "Planbook p42");
 
     // Socket push / admin edit updates the related doc.
     fireEvent.click(screen.getByText("update planbook"));
@@ -369,10 +378,12 @@ describe("useHasMany", () => {
 
     expect(screen.getByTestId("cards").textContent).toBe("loading cards");
 
-    await tick();
+    await waitFor(
+      () => expect(screen.getByTestId("cards").querySelectorAll("li")).toHaveLength(3),
+      { timeout: 5000 },
+    );
 
     const list = screen.getByTestId("cards");
-    expect(list.querySelectorAll("li")).toHaveLength(3);
     expect(list.textContent).toContain("Card c1");
     expect(list.textContent).toContain("Card c2");
     expect(list.textContent).toContain("Card c3");
@@ -451,12 +462,10 @@ describe("useHasManyIndividually", () => {
     expect(screen.getByTestId("card-1").textContent).toBe("loading…");
     expect(screen.getByTestId("card-2").textContent).toBe("loading…");
 
-    await tick();
-
     // Each <li> renders its own doc's title once loaded.
-    expect(screen.getByTestId("card-0").textContent).toBe("Card c1");
-    expect(screen.getByTestId("card-1").textContent).toBe("Card c2");
-    expect(screen.getByTestId("card-2").textContent).toBe("Card c3");
+    await expectText("card-0", "Card c1");
+    await expectText("card-1", "Card c2");
+    await expectText("card-2", "Card c3");
   });
 
   it("shows cached items immediately and only unrelated items stay pending", async () => {
@@ -474,9 +483,7 @@ describe("useHasManyIndividually", () => {
     expect(screen.getByTestId("card-0").textContent).toBe("Cached c1");
     expect(screen.getByTestId("card-1").textContent).toBe("loading…");
 
-    await tick();
-
-    expect(screen.getByTestId("card-1").textContent).toBe("Card c2");
+    await expectText("card-1", "Card c2");
   });
 
   it("updates a single item reactively when only that doc is updated externally", async () => {
@@ -488,9 +495,8 @@ describe("useHasManyIndividually", () => {
       </Wrap>,
     );
 
-    await tick();
-    expect(screen.getByTestId("card-0").textContent).toBe("Card c1");
-    expect(screen.getByTestId("card-1").textContent).toBe("Card c2");
+    await expectText("card-0", "Card c1");
+    await expectText("card-1", "Card c2");
 
     // Socket push edits just c1. Only c1's <li> re-renders.
     fireEvent.click(screen.getByText("update c1"));

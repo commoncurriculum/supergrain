@@ -18,16 +18,19 @@ export type {
   ModelConfig,
   RegisteredTypes,
   ResponseProcessor,
+  StoreAdapterRunOptions,
   TypeRegistry,
 } from "./store";
 
 export { AdapterError, NotFoundError, ProcessorError } from "./errors";
 export type { AdapterErrorReason, SiloError } from "./errors";
 
-export { runAdapter } from "./run-adapter";
-export type { AdapterFailureInfo, AdapterRunOptions } from "./run-adapter";
+// The raw engine entrypoint lives in `@supergrain/silo/internal`; the public
+// boundary for layered packages is `store.runAdapter`, which resolves options,
+// reports to the store's `onError` sink, and shares the `maxConcurrency` cap.
+export type { AdapterFailureInfo } from "./run-adapter";
 
-export { boundedDefaultRetry, defaultRetry } from "./retry";
+export { boundedDefaultRetry, defaultDeadline, defaultRetry } from "./retry";
 
 // Resolution itself is reached through `store.resolveAdapterOptions(perCall?)`;
 // only the option shapes are public.

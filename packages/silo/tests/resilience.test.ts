@@ -8,16 +8,17 @@
 // batch window with fake timers exactly like finder.test.ts.
 // =============================================================================
 
-import { Effect, Schedule } from "effect";
+import { Duration, Effect, Schedule } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   AdapterError,
   createDocumentStore,
+  defaultDeadline,
   defaultRetry,
   ProcessorError,
-  runAdapter,
 } from "../src";
+import { runAdapter } from "../src/run-adapter";
 import { setupFakeTimers } from "./setup/timers";
 
 type Types = { user: { id: string; name: string } };
@@ -239,14 +240,16 @@ describe("config.onError", () => {
 });
 
 describe("store.resolveAdapterOptions", () => {
-  it("falls back to the built-in defaultRetry (timeout/deadline off) when unset", () => {
+  it("falls back to the built-in defaultRetry and defaultDeadline (timeout off) when unset", () => {
     const store = createDocumentStore<Types, Queries>({
       models: { user: { adapter: { find: () => Effect.succeed([]) } } },
     });
     const resolved = store.resolveAdapterOptions();
     expect(resolved.retry).toBe(defaultRetry);
     expect(resolved.timeout).toBeUndefined();
-    expect(resolved.deadline).toBeUndefined();
+    // The infinite default retry is bounded by a default overall deadline, so
+    // a down backend eventually settles the terminal error.
+    expect(resolved.deadline).toBe(defaultDeadline);
   });
 
   it("uses store-wide retry/timeout/deadline when set", () => {
@@ -1092,5 +1095,128 @@ describe("maxConcurrency during retry backoff", () => {
       await vi.advanceTimersByTimeAsync(200);
     }
     expect(slow.value).toEqual({ id: "slow", name: "slow" });
+  });
+});
+
+describe("defaultDeadline — the infinite default retry always terminates", () => {
+  it("settles a never-succeeding fetch with reason 'deadline' after the default budget", async () => {
+    // No retry/deadline/timeout configured anywhere: previously this spun
+    // forever; now the built-in 2-minute deadline ends it.
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: () => Effect.never } } },
+    });
+
+    const handle = store.find("user", "1");
+    for (let i = 0; i < 16 && (i === 0 || handle.isFetching); i++) {
+      await vi.advanceTimersByTimeAsync(10_000);
+    }
+    await handle.promise?.catch(() => {});
+
+    expect(handle.error).toBeInstanceOf(AdapterError);
+    expect((handle.error as AdapterError).reason).toBe("deadline");
+    expect(handle.isFetching).toBe(false);
+    expect(handle.status).toBe("error");
+  });
+
+  it("Duration.infinity opts out — the fetch keeps retrying past the default budget", async () => {
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: () => Effect.never } } },
+      deadline: Duration.infinity,
+    });
+
+    const handle = store.find("user", "1");
+    for (let i = 0; i < 16; i++) {
+      await vi.advanceTimersByTimeAsync(10_000);
+    }
+
+    // Well past the 2-minute default: still in flight, no terminal error.
+    expect(handle.isFetching).toBe(true);
+    expect(handle.error).toBeUndefined();
+  });
+});
+
+describe("store.runAdapter — the engine boundary for layered packages", () => {
+  it("reports every failed attempt to the store's onError sink and still calls the caller's onFailure", async () => {
+    const seen: Array<{ tag: string; keys: ReadonlyArray<string>; attempt: number }> = [];
+    const observed: Array<number> = [];
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: () => Effect.succeed([]) } } },
+      retry: Schedule.recurs(1),
+      onError: (error, ctx) => {
+        seen.push({ tag: error._tag, keys: ctx.keys, attempt: ctx.attempt });
+        throw new Error("sink boom"); // must not skip the caller's bookkeeping
+      },
+    });
+
+    let calls = 0;
+    const program = store.runAdapter(
+      () => {
+        calls += 1;
+        return Promise.reject(new Error("down"));
+      },
+      {
+        type: "external",
+        keys: ["k1"],
+        onFailure: (_error, info) => observed.push(info.attempt),
+      },
+    );
+    const error = await Effect.runPromise(Effect.flip(program));
+
+    expect(calls).toBe(2); // store-level recurs(1) resolved for the layered call
+    expect(error).toBeInstanceOf(AdapterError);
+    expect(seen).toEqual([
+      { tag: "AdapterError", keys: ["k1"], attempt: 1 },
+      { tag: "AdapterError", keys: ["k1"], attempt: 2 },
+    ]);
+    expect(observed).toEqual([1, 2]);
+  });
+
+  it("per-call overrides win over the store defaults", async () => {
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: () => Effect.succeed([]) } } },
+      retry: Schedule.recurs(5),
+    });
+
+    let calls = 0;
+    const program = store.runAdapter(
+      () => {
+        calls += 1;
+        return Promise.reject(new Error("down"));
+      },
+      { type: "external", keys: ["k1"], retry: Schedule.recurs(0) },
+    );
+    await Effect.runPromise(Effect.flip(program));
+
+    expect(calls).toBe(1);
+  });
+
+  it("counts against the store's maxConcurrency cap alongside document fetches", async () => {
+    const track = { active: 0, max: 0 };
+    const gated = <A>(result: A): Effect.Effect<A> =>
+      Effect.gen(function* () {
+        track.active += 1;
+        track.max = Math.max(track.max, track.active);
+        yield* Effect.sleep("10 millis");
+        track.active -= 1;
+        return result;
+      });
+
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: (ids) => gated(ids.map((id) => ({ id, name: id }))) } } },
+      maxConcurrency: 1,
+      retry: Schedule.recurs(0),
+    });
+
+    const handle = store.find("user", "1");
+    const layered = Effect.runPromise(
+      store.runAdapter(() => gated("ok"), { type: "external", keys: ["k1"] }),
+    );
+    await settle(handle);
+    await layered;
+
+    // One shared semaphore: the layered call and the document chunk never
+    // ran their attempts simultaneously.
+    expect(track.max).toBe(1);
+    expect(handle.value).toEqual({ id: "1", name: "1" });
   });
 });

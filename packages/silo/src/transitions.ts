@@ -15,32 +15,40 @@ import { unwrap } from "@supergrain/kernel";
 // lifecycle (React `use()` / Suspense) is layered on top in `applyEvent`.
 
 export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
-  /** A (re)fetch started. */
+  /** A (re)fetch started. Bumps the handle's fetch `generation`. */
   Fetch: Record<never, never>;
   /** A document/result was inserted (by a processor or `insertDocument`). */
   Insert: { readonly value: T };
   /** The in-flight fetch completed and the requested key is present. */
-  Settled: Record<never, never>;
+  Settled: { readonly generation?: number };
   /**
    * A retryable attempt failed but the fetch is still in flight (more retries
    * to come). Records what's currently wrong (`lastError`) and bumps
    * `failureCount` without ending activity or settling the terminal `error` —
    * an outage is observable while retrying instead of a silent spinner.
    */
-  Retrying: { readonly error: E };
+  Retrying: { readonly error: E; readonly generation?: number };
   /** The fetch (or processor) failed, or the key was missing after fetch. */
-  Failed: { readonly error: E };
+  Failed: { readonly error: E; readonly generation?: number };
   /**
    * The in-flight fetch was abandoned without settling (interrupted,
    * superseded, or its owner was destroyed). Ends activity but records no
    * error — there is no outcome to record. The finder never emits this
    * (document fetches always settle); `@supergrain/queries` does, for
-   * `destroy()` and as the safety net when a run dies without settling.
+   * `destroy()` and as the safety net when a run ends without settling.
    */
-  Aborted: Record<never, never>;
+  Aborted: { readonly generation?: number };
   /** Memory was cleared. */
   Reset: Record<never, never>;
 }>;
+
+// Settled / Retrying / Failed / Aborted may carry a fetch **generation** —
+// the value of `handle.generation` captured when their fetch cycle started
+// (`Fetch` bumps it). `applyEvent` drops a stamped event whose generation no
+// longer matches, so a superseded run's late events structurally cannot
+// clobber a fresh cycle's state — ordering is enforced by the statechart, not
+// by interruption timing. Unstamped events apply unconditionally (the finder
+// never supersedes a document fetch, so it doesn't stamp).
 
 /**
  * Event constructors. Lowercase (vs. `Data.taggedEnum`'s capitalized
@@ -50,10 +58,18 @@ export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
 export const HandleEvent = {
   fetch: (): HandleEvent => ({ _tag: "Fetch" }),
   insert: <T>(value: T): HandleEvent<T> => ({ _tag: "Insert", value }),
-  settled: (): HandleEvent => ({ _tag: "Settled" }),
-  retrying: (error: SiloError): HandleEvent => ({ _tag: "Retrying", error }),
-  failed: (error: SiloError): HandleEvent => ({ _tag: "Failed", error }),
-  aborted: (): HandleEvent => ({ _tag: "Aborted" }),
+  settled: (generation?: number): HandleEvent => ({ _tag: "Settled", generation }),
+  retrying: (error: SiloError, generation?: number): HandleEvent => ({
+    _tag: "Retrying",
+    error,
+    generation,
+  }),
+  failed: (error: SiloError, generation?: number): HandleEvent => ({
+    _tag: "Failed",
+    error,
+    generation,
+  }),
+  aborted: (generation?: number): HandleEvent => ({ _tag: "Aborted", generation }),
   reset: (): HandleEvent => ({ _tag: "Reset" }),
 };
 
@@ -82,6 +98,12 @@ export interface InternalHandle<T = unknown, E = SiloError> {
   lastError: E | undefined;
   status: HandleStatus;
   promise: Promise<T> | undefined;
+  /**
+   * Fetch-cycle epoch, bumped by each `Fetch`. Events stamped with a stale
+   * generation are dropped by `applyEvent`. Internal bookkeeping (read/written
+   * untracked); hidden from the public handle types like `resolve`/`reject`.
+   */
+  generation: number;
   resolve?: (v: T) => void;
   reject?: (e: unknown) => void;
 }
@@ -96,6 +118,7 @@ export function makeIdleHandle<T = unknown, E = SiloError>(): InternalHandle<T, 
     lastError: undefined,
     status: "pending",
     promise: undefined,
+    generation: 0,
     resolve: undefined,
     reject: undefined,
   };
@@ -153,12 +176,24 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
   // reject. Treat it as a no-op so the handle settles through Failed instead.
   if (event._tag === "Insert" && event.value === undefined) return;
 
+  // Generation fencing: drop a stamped event from a superseded fetch cycle.
+  if (
+    "generation" in event &&
+    event.generation !== undefined &&
+    event.generation !== raw.generation
+  ) {
+    return;
+  }
+
   let { value, error, isFetching, fetchedAt, failureCount, lastError } = raw;
 
   switch (event._tag) {
     case "Fetch": {
       // Stale-while-revalidate: keep value/error; just mark activity. A fresh
-      // cycle starts its failure tally clean.
+      // cycle starts its failure tally clean and gets a new generation, so a
+      // superseded cycle's stamped events are fenced out. The bump is written
+      // raw — generation is internal bookkeeping, not a reactive field.
+      raw.generation += 1;
       isFetching = true;
       failureCount = 0;
       lastError = undefined;

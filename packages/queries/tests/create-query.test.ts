@@ -355,6 +355,9 @@ describe("isFetching", () => {
     const pending = q.refetch();
 
     expect(q.isFetching).toBe(true);
+    // The engine starts the adapter on a fiber tick (the overall `deadline`
+    // races it), so wait for the invocation before driving the deferred.
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     resolveFetch({ data: { results: [] }, meta: { nextOffset: null } });
     await pending;
     expect(q.isFetching).toBe(false);
@@ -431,6 +434,9 @@ describe("reactive bindings on the query handle", () => {
     const pending = q.refetch();
     expect(fetchingHistory.at(-1)).toBe(true);
 
+    // The engine starts the adapter on a fiber tick (the overall `deadline`
+    // races it), so wait for the invocation before driving the deferred.
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     resolveFetch({ data: { results: [] }, meta: { nextOffset: null } });
     await pending;
     expect(fetchingHistory.at(-1)).toBe(false);
@@ -781,6 +787,9 @@ describe("destroy", () => {
     const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
     const pending = q.refetch();
 
+    // The engine starts the adapter on a fiber tick (the overall `deadline`
+    // races it), so wait for the invocation before destroying.
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     q.destroy();
 
     rejectFetch(new Error("post-destroy-failure"));

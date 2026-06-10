@@ -1,7 +1,7 @@
 import type { AdapterError, SiloError } from "./errors";
 import type { Duration, Schedule } from "effect";
 
-import { defaultRetry } from "./retry";
+import { defaultDeadline, defaultRetry } from "./retry";
 
 // =============================================================================
 // Adapter option resolution — the single merge point
@@ -24,8 +24,10 @@ export interface AdapterOptionOverrides {
    * Overall budget across *all* attempts, including retry backoff. When it
    * elapses the whole program fails with a non-retryable `AdapterError` tagged
    * `reason: "deadline"`, however many retries remained. Distinct from
-   * `timeout`, which bounds a single attempt — pair them so neither a hung
-   * request nor an unlucky retry loop runs unbounded.
+   * `timeout`, which bounds a single attempt. Defaults to the built-in
+   * {@link defaultDeadline} (2 minutes) so the never-give-up default retry
+   * always terminates eventually; set `Duration.infinity` to retry without
+   * bound.
    */
   readonly deadline?: Duration.DurationInput;
   /**
@@ -85,7 +87,8 @@ export type AdapterErrorSink = (error: SiloError, ctx: AdapterErrorContext) => v
 export interface ResolvedAdapterOptions {
   readonly retry: Schedule.Schedule<unknown, AdapterError>;
   readonly timeout: Duration.DurationInput | undefined;
-  readonly deadline: Duration.DurationInput | undefined;
+  /** Always set: the configured deadline, falling back to {@link defaultDeadline}. */
+  readonly deadline: Duration.DurationInput;
   readonly retryable: ((error: AdapterError) => boolean) | undefined;
   /**
    * The store's `onError` telemetry sink, passed through so layered helpers
@@ -97,10 +100,12 @@ export interface ResolvedAdapterOptions {
 
 /**
  * Merge `perCall` overrides over the store-wide `defaults`, falling back to the
- * built-in {@link defaultRetry} when no `retry` is set anywhere. `timeout`,
- * `deadline`, and the `retryable` classifier are off unless configured. The
- * store's `onError` sink is passed through (it is store-level telemetry, not a
- * per-call knob).
+ * built-in {@link defaultRetry} when no `retry` is set anywhere and the
+ * built-in {@link defaultDeadline} when no `deadline` is set anywhere (so the
+ * infinite default retry always terminates — opt out with
+ * `Duration.infinity`). `timeout` and the `retryable` classifier are off
+ * unless configured. The store's `onError` sink is passed through (it is
+ * store-level telemetry, not a per-call knob).
  */
 export function resolveAdapterOptions(
   defaults: AdapterOptionOverrides & { onError?: AdapterErrorSink },
@@ -109,7 +114,7 @@ export function resolveAdapterOptions(
   return {
     retry: perCall?.retry ?? defaults.retry ?? defaultRetry,
     timeout: perCall?.timeout ?? defaults.timeout,
-    deadline: perCall?.deadline ?? defaults.deadline,
+    deadline: perCall?.deadline ?? defaults.deadline ?? defaultDeadline,
     retryable: perCall?.retryable ?? defaults.retryable,
     onError: defaults.onError,
   };

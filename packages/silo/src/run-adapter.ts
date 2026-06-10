@@ -1,6 +1,6 @@
 import type { AdapterOptionOverrides } from "./resolve";
 
-import { Effect } from "effect";
+import { Duration, Effect } from "effect";
 
 import { AdapterError } from "./errors";
 
@@ -188,7 +188,9 @@ export function runAdapter<A>(
       ? observed
       : observed.pipe(Effect.retry({ schedule: retry, while: shouldRetry }));
 
-  if (deadline === undefined) return retried;
+  // An unset or infinite deadline (`Duration.infinity`, the opt-out from the
+  // built-in default) means no overall bound.
+  if (deadline === undefined || !Duration.isFinite(Duration.decode(deadline))) return retried;
   return retried.pipe(
     Effect.timeoutFail({
       duration: deadline,

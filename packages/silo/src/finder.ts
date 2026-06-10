@@ -68,8 +68,9 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   // Bounds concurrent adapter *attempts* (not chunks): each attempt holds one
   // permit and releases it during retry backoff, so the cap composes across
   // batch windows and bisection recursion — and a chunk sleeping between
-  // retries never starves healthy chunks of a slot.
-  private semaphore: Effect.Semaphore | undefined;
+  // retries never starves healthy chunks of a slot. Readonly-public so
+  // `store.runAdapter` shares the same cap with layered packages.
+  readonly permits: Effect.Semaphore | undefined;
   private queue: Array<QueueEntry> = [];
   private windowFiber: Fiber.RuntimeFiber<void> | undefined = undefined;
   private state: InternalState;
@@ -84,7 +85,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     this.batchWindowMs = config.batchWindowMs ?? 15;
     this.batchSize = config.batchSize ?? 60;
     const maxConcurrency = config.maxConcurrency ?? "unbounded";
-    this.semaphore =
+    this.permits =
       typeof maxConcurrency === "number" ? Effect.unsafeMakeSemaphore(maxConcurrency) : undefined;
   }
 
@@ -282,7 +283,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
         timeout: resolved.timeout,
         deadline: resolved.deadline,
         retryable: resolved.retryable,
-        permits: this.semaphore,
+        permits: this.permits,
         onFailure: (error, info) => this.onAttemptFailed(ctx, error, info),
       }),
       commit: (raw) =>

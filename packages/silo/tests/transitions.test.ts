@@ -263,3 +263,40 @@ describe("applyEvent — insert() fetchedAt semantics", () => {
     expect(h.fetchedAt).toBe(fetched);
   });
 });
+
+describe("applyEvent — generation fencing", () => {
+  it("drops stamped events from a superseded fetch cycle", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    const staleGen = h.generation;
+    applyEvent(h, HandleEvent.fetch()); // a newer fetch takes over
+    expect(h.generation).toBe(staleGen + 1);
+
+    // The superseded run's late events structurally cannot clobber the fresh
+    // cycle — ordering is enforced by the statechart, not interruption timing.
+    applyEvent(h, HandleEvent.retrying(err(), staleGen));
+    expect(h.failureCount).toBe(0);
+    applyEvent(h, HandleEvent.failed(err(), staleGen));
+    expect(h.error).toBeUndefined();
+    expect(h.isFetching).toBe(true);
+    applyEvent(h, HandleEvent.settled(staleGen));
+    expect(h.isFetching).toBe(true);
+    applyEvent(h, HandleEvent.aborted(staleGen));
+    expect(h.isFetching).toBe(true);
+
+    // The fresh cycle's stamped events apply normally.
+    applyEvent(h, HandleEvent.retrying(err(), h.generation));
+    expect(h.failureCount).toBe(1);
+    applyEvent(h, HandleEvent.aborted(h.generation));
+    expect(h.isFetching).toBe(false);
+  });
+
+  it("applies unstamped events unconditionally (the finder doesn't stamp)", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    const boom = err();
+    applyEvent(h, HandleEvent.failed(boom));
+    expect(h.error).toBe(boom);
+    expect(h.isFetching).toBe(false);
+  });
+});
