@@ -519,6 +519,27 @@ describe("Finder empty queues and orphaned handles", () => {
     await expect(finder.drain()).rejects.toThrow(/no query "missing" is configured/);
   });
 
+  it("fails loudly when a queued document has no model configured", async () => {
+    // `store.find` validates the type before enqueueing, so a queued document
+    // without a config means a silo bug — the drain surfaces it instead of
+    // silently stranding the handles on `isFetching`.
+    const finder = new Finder<TestTypes>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: { adapter: makeUserAdapter() },
+          post: { adapter: makePostAdapter() },
+        },
+      },
+      { documents: new Map(), queries: new Map() },
+    );
+
+    finder.attach({} as DocumentStore<TestTypes>);
+    finder.queueDocument("missing" as never, "1");
+
+    await expect(finder.drain()).rejects.toThrow(/no model "missing" is configured/);
+  });
+
   // Helpers shared by the "handle removed mid-flight" scenarios below.
   function pendingHandle(): InternalHandle {
     const handle = makeIdleHandle();
@@ -659,6 +680,57 @@ describe("Finder empty queues and orphaned handles", () => {
     // The rejection path must not touch orphaned handles.
     expectUntouched(documentHandle);
     expectUntouched(queryHandle);
+  });
+
+  it("does not fail a removed handle when the processor throws", async () => {
+    const droppedHandle = pendingHandle();
+    const survivingHandle = pendingHandle();
+    const state: InternalState = {
+      documents: new Map([
+        [
+          "user",
+          new Map([
+            ["1", droppedHandle],
+            ["2", survivingHandle],
+          ]),
+        ],
+      ]),
+      queries: new Map(),
+    };
+
+    const store = createDocumentStore<TestTypes>({
+      models: { user: { adapter: makeUserAdapter() }, post: { adapter: makePostAdapter() } },
+    });
+
+    const finder = new Finder<TestTypes>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: {
+            adapter: makeUserAdapter(),
+            processor: () => {
+              throw new Error("bad normalize");
+            },
+          },
+          post: { adapter: makePostAdapter() },
+        },
+      },
+      state,
+    );
+
+    finder.attach(store);
+    finder.queueDocument("user", "1");
+    finder.queueDocument("user", "2");
+
+    // Caller drops one waiting handle before the processor failure lands.
+    state.documents.get("user")!.delete("1");
+
+    await finder.drain();
+
+    // The surviving handle fails with the ProcessorError; the orphan is untouched.
+    expect(survivingHandle.error?._tag).toBe("ProcessorError");
+    expect(survivingHandle.isFetching).toBe(false);
+    expectUntouched(droppedHandle);
   });
 });
 

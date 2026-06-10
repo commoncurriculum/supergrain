@@ -873,6 +873,19 @@ describe("synchronously-throwing adapters", () => {
     expect(healthy.status).toBe("success");
   });
 
+  it("passes a synchronously-thrown AdapterError through untouched", async () => {
+    const thrown = new AdapterError({ type: "u", keys: ["1"], cause: "bad", retryable: false });
+    const program = runAdapter(
+      () => {
+        throw thrown;
+      },
+      { type: "u", keys: ["1"] },
+    );
+
+    const error = await Effect.runPromise(Effect.flip(program));
+    expect(error).toBe(thrown); // not re-wrapped — `retryable: false` survives
+  });
+
   it("retries a sync throw like any other retryable failure", async () => {
     let calls = 0;
     const doc = { id: "1", name: "User1" };
