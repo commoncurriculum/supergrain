@@ -6,6 +6,7 @@ export default defineConfig({
     lib: {
       entry: {
         index: "src/index.ts",
+        internal: "src/internal.ts",
         "processors/index": "src/processors/index.ts",
         "processors/json-api": "src/processors/json-api.ts",
         "react/index": "src/react/index.ts",
@@ -15,7 +16,8 @@ export default defineConfig({
       formats: ["es", "cjs"],
     },
     rollupOptions: {
-      external: ["@supergrain/kernel", "react", "react/jsx-runtime"],
+      // `effect` is a peer dependency — never bundle it into the dist.
+      external: ["@supergrain/kernel", "effect", "react", "react/jsx-runtime"],
       output: {
         globals: {
           "@supergrain/kernel": "SupergrainCore",

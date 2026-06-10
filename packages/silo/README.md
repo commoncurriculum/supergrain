@@ -22,8 +22,9 @@ React bindings are optional — `@supergrain/silo/react` requires `react >= 18.2
 
 ```ts
 // services/store.ts
-import { type DocumentAdapter, type DocumentStore } from "@supergrain/silo";
+import { AdapterError, type DocumentAdapter, type DocumentStore } from "@supergrain/silo";
 import { createDocumentStoreContext } from "@supergrain/silo/react";
+import { Effect } from "effect";
 
 export interface User {
   id: string;
@@ -37,15 +38,13 @@ export interface Post {
 export type TypeToModel = { user: User; post: Post };
 
 const userAdapter: DocumentAdapter = {
-  async find(ids) {
-    return Promise.all(ids.map((id) => fetch(`/api/users/${id}`).then((r) => r.json())));
-  },
+  find: (ids, { signal } = {}) =>
+    Promise.all(ids.map((id) => fetch(`/api/users/${id}`, { signal }).then((r) => r.json()))),
 };
 
 const postAdapter: DocumentAdapter = {
-  async find(ids) {
-    return Promise.all(ids.map((id) => fetch(`/api/posts/${id}`).then((r) => r.json())));
-  },
+  find: (ids, { signal } = {}) =>
+    Promise.all(ids.map((id) => fetch(`/api/posts/${id}`, { signal }).then((r) => r.json()))),
 };
 
 export const { Provider, useDocumentStore, useDocument } =
@@ -59,15 +58,23 @@ export const config = {
 };
 ```
 
-Adapters above are **fan-out** style — N parallel `GET /:id` requests, merged. The library doesn't care how you fetch; it just hands the adapter a list of ids and takes back a raw response. If your API exposes a bulk endpoint, one `GET` with all the ids works just as well:
+Adapters above are **fan-out** style — N parallel `GET /:id` requests, merged. Just **return a `Promise`** of whatever the processor can read; the store runs it on its internal [Effect](https://effect.website/) engine (batching, `retry`/`timeout`) and turns a rejection into a typed `AdapterError` for you. The optional `{ signal }` aborts when the adapter Effect is interrupted (e.g. a `timeout` fires); thread it into `fetch` or ignore it. The library doesn't care how you fetch. If your API exposes a bulk endpoint, one `GET` with all the ids works just as well:
 
 ```ts
 const userAdapter: DocumentAdapter = {
-  async find(ids) {
-    const qs = ids.map((id) => `id=${id}`).join("&");
-    const res = await fetch(`/api/users?${qs}`);
-    return res.json();
-  },
+  find: (ids) => fetch(`/api/users?${ids.map((id) => `id=${id}`).join("&")}`).then((r) => r.json()),
+};
+```
+
+Power users can **return an `Effect`** instead — to own the failure channel, compose custom retries, or manage resources. It's used as-is:
+
+```ts
+const userAdapter: DocumentAdapter = {
+  find: (ids) =>
+    Effect.tryPromise({
+      try: () => fetch(`/api/users?${ids.map((id) => `id=${id}`).join("&")}`).then((r) => r.json()),
+      catch: (cause) => new AdapterError({ type: "user", keys: ids, cause }),
+    }),
 };
 ```
 
@@ -110,13 +117,15 @@ import { useDocument } from "./services/store";
 export function UserCard({ id }: { id: string }) {
   const user = useDocument("user", id);
 
-  if (user.isPending) return <Skeleton />;
-  if (user.error) return <ErrorState error={user.error} />;
-  return <div>{user.data?.attributes.firstName}</div>;
+  if (user.value === undefined) {
+    if (user.error) return <ErrorState error={user.error} />;
+    return <Skeleton />; // no value yet (pending / fetching)
+  }
+  return <div>{user.value.attributes.firstName}</div>;
 }
 ```
 
-`useDocument` returns a reactive `DocumentHandle<User>`. Same `(type, id)` always returns the same handle object across renders — fields update in place.
+`useDocument` returns a reactive `DocumentHandle<User>` with flat, orthogonal fields: `value`, `error`, `isFetching`, `fetchedAt`, `failureCount`, `lastError` (plus a derived `status`). They vary independently, so a stale `value` and a fresh refetch `error` coexist instead of clobbering each other. Same `(type, id)` always returns the same handle object across renders, and each field is tracked independently — a component reading only `value` doesn't re-render when a background refetch toggles `isFetching`.
 
 ### 4. Or suspend, if you prefer
 
@@ -127,13 +136,21 @@ import { useDocument } from "./services/store";
 
 export function UserCard({ id }: { id: string }) {
   const user = useDocument("user", id);
-  use(user.promise); // suspends on first load; never re-suspends on refetch
+  const value = use(user.promise!); // suspends on first load; never re-suspends on refetch
 
-  return <div>{user.data!.attributes.firstName}</div>;
+  return <div>{value.attributes.firstName}</div>;
 }
 ```
 
 Wrap the component in a `<Suspense>` boundary. That's it. One line to opt in, nothing to configure, no `{ suspense: true }` flag.
+
+### Reactive reads + `AbortSignal`
+
+`useDocument` / `useQuery` are **pure reactive reads** — no `useEffect`, no imperative subscription. They just return a reactive handle and re-render on the fields you read.
+
+An in-flight fetch is **not** cancelled when a component unmounts — it completes and populates the shared cache, so the next reader gets it for free. Adapters still receive an optional `{ signal }`: it aborts when the adapter Effect is interrupted (e.g. a per-model `timeout` fires). Thread it into `fetch(url, { signal })` for a real network abort, or ignore it.
+
+The whole engine — batch window included — runs on Effect's clock (`Effect.sleep`), so timing is fully deterministic in tests.
 
 ## Why this instead of TanStack Query / SWR?
 
@@ -163,7 +180,20 @@ const store = createDocumentStore<TypeToModel>({
 });
 ```
 
-Each model can also take a `processor` to normalize the adapter's raw response — see [Processors](#processors) below. Omit it and the default processor assumes the adapter returns a doc or an array of docs.
+Each model (and query) can also take:
+
+- `processor` to normalize the adapter's raw response — see [Processors](#processors) below. Omit it and the default processor assumes the adapter returns a doc or an array of docs.
+- `retry` — an Effect `Schedule` applied to the adapter Effect on a **retryable** `AdapterError` (e.g. `Schedule.exponential("100 millis").pipe(Schedule.compose(Schedule.recurs(3)))`). An Effect adapter can mark an `AdapterError` `retryable: false` (a deterministic 4xx, say) to fail fast instead of looping.
+- `retryable` — a `(error: AdapterError) => boolean` classifier, for **Promise-first** adapters that reject (and so can't set the error's own `retryable` flag). Inspect `error.cause` to veto retries: `(e) => !(e.cause instanceof Response) || e.cause.status >= 500`. An error that opts out via its own `retryable: false` is a hard veto regardless. A veto is **stamped onto the error** (`retryable: false`), so what lands on `handle.error` / `lastError` and the `onError` sink always agrees with the engine's actual decision; the classifier runs exactly once per failed attempt.
+- `timeout` — a `Duration` bounding a **single attempt**; on expiry that attempt fails with an `AdapterError`.
+- `deadline` — a `Duration` bounding **all attempts together** (including retry backoff); on expiry the whole fetch fails with a non-retryable `AdapterError` tagged `reason: "deadline"`. **On by default**: the built-in `defaultDeadline` (2 minutes) applies whenever no `deadline` is configured, so the infinite default retry always terminates and the handle's promise eventually rejects (Suspense error boundaries fire). Opt out with `deadline: Duration.infinity`. (A per-attempt `timeout` is tagged `reason: "timeout"` — branch on `error.reason` rather than parsing `cause.message`.)
+- `isolateFailures` — when a multi-id batch fails terminally, split it and re-fetch the halves to **isolate** the offending id, so one bad record doesn't fail the whole batch and its healthy neighbors still load. Off by default; best for bulk endpoints. The sub-fetches run once (the chunk already exhausted its retry), a `deadline` breach is never bisected, and bisected halves inherit the chunk's **remaining** deadline budget (not a fresh one per recursion level) — the deadline stays the hard stop. Isolation needs a _terminal_ failure to engage, so when no `retry` is configured anywhere an isolating chunk automatically uses a bounded variant of the built-in default (`boundedDefaultRetry`, ~4 attempts); an explicitly configured `retry` — including an explicit `defaultRetry` — is honored as-is.
+
+These resolve per-call ?? store-wide ?? built-in default in one place — `store.resolveAdapterOptions(perCall?)`. Layered packages fetch through **`store.runAdapter(invoke, options)`**, which resolves these knobs, reports every failure to the store's `onError` sink, and counts against `maxConcurrency` — `@supergrain/queries` goes through it, so a query fetch inherits the same resilience as a document `find` by construction.
+
+Store-wide, `DocumentStoreConfig` also takes **`maxConcurrency`** (a positive integer or `"unbounded"`, default `"unbounded"`; anything below 1 is rejected at store creation) — caps how many `adapter.find` **attempts** run at once when a large render produces many chunks. The cap is a per-attempt semaphore, so it composes across batch windows and `isolateFailures` bisection, and a chunk sleeping between retries releases its slot instead of starving healthy chunks. And **`onError`**, an error sink called on **every failed attempt** (not just on give-up) plus terminal `NotFoundError` / `ProcessorError`, with `{ type, keys, attempt, retryable }` — for document fetches, `findQuery` fetches, and `@supergrain/queries` fetches alike. Use `attempt` / `retryable` to chart retry rate or alert only on hard (`retryable: false`) failures.
+
+The built-in default retry (`defaultRetry`) is **jittered** fibonacci (1s base, 0.8–1.2× spread, clamped to 60s), bounded by the built-in default `deadline` of 2 minutes — so out of the box a down backend retries for ~2 minutes (each failed attempt fires `onError` and bumps the handle's `failureCount` / `lastError`, so the outage is observable while retrying), then settles the terminal `error` with `reason: "deadline"`. Tune either side: a finite `Schedule` for fewer attempts, a different `deadline` for a different budget, or `deadline: Duration.infinity` to retry forever.
 
 Methods:
 
@@ -174,6 +204,7 @@ Methods:
 - `findQuery(type, params)` → `QueryHandle<T>`
 - `findQueryInMemory(type, params)` → `T | undefined`
 - `insertQueryResult(type, params, result)` → `void`
+- `resolveAdapterOptions(perCall?)` → `{ retry, retryIsDefault, timeout, deadline, retryable, onError }` — merge per-call overrides over the store-wide defaults, with the store's `onError` sink passed through so layered helpers can report failures that happen outside the engine (in-engine failures are reported automatically by `store.runAdapter`); `retryIsDefault` is true when `retry` is the built-in fallback rather than anything configured
 
 ### `createDocumentStoreContext<S extends DocumentStore<any, any>>()`
 
@@ -192,33 +223,49 @@ const { Provider, useDocumentStore, useDocument, useQuery } =
 
 For non-React use, import `createDocumentStore` directly from `@supergrain/silo`.
 
-### `DocumentHandle<T>`
+### `DocumentHandle<T, E = SiloError>`
 
-A reactive state machine for a single document. All fields are signals — reading them inside a `tracked()` scope subscribes to changes.
+A reactive handle for a single document — a `status`-discriminated union over flat fields, each tracked independently inside a `tracked()` scope.
 
 ```ts
-interface DocumentHandle<T> {
-  readonly status: "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
-  readonly data: T | undefined;
-  readonly error: Error | undefined;
-  readonly isPending: boolean; // true before first successful load
-  readonly isFetching: boolean; // true while a fetch is in flight for this handle
-  readonly hasData: boolean;
-  readonly fetchedAt: Date | undefined;
-  readonly promise: Promise<T> | undefined; // stable; pass to use()
-}
+type DocumentHandle<T, E = SiloError> =
+  | {
+      status: "pending";
+      value: undefined;
+      error: undefined;
+      fetchedAt: undefined;
+      isFetching: boolean;
+      failureCount: number; // failed attempts this cycle
+      lastError: E | undefined; // latest attempt error while retrying
+      promise: Promise<T> | undefined;
+    }
+  | {
+      status: "success";
+      value: T;
+      error: E | undefined;
+      fetchedAt: Date; // refetch error coexists
+      isFetching: boolean;
+      failureCount: number;
+      lastError: E | undefined;
+      promise: Promise<T> | undefined;
+    }
+  | {
+      status: "error";
+      value: undefined;
+      error: E;
+      fetchedAt: undefined;
+      isFetching: boolean;
+      failureCount: number;
+      lastError: E | undefined;
+      promise: Promise<T> | undefined;
+    };
 ```
 
-Lifecycle:
+Narrowing on `status` (or on `value !== undefined`) refines `value` to `T`. The fields still vary independently, so all states are representable — including a `value` present alongside a refetch `error` (stale data + refetch error), which a single flat status enum couldn't express: that's the `success` arm with `error` set. `status` stays `"success"` across a refetch (the orthogonal `isFetching` flips instead), so narrowing on it never adds a re-render. `value: undefined` is the not-loaded sentinel — a loaded-but-`null` value is `status: "success"` with `value: null`, distinct from `pending`. There is no separate "idle" status (earlier versions had `"IDLE"`): a not-yet-started handle is `status: "pending"` with `isFetching: false`, and a first load in flight is `status: "pending"` with `isFetching: true` — "has a fetch started" lives on the `isFetching` axis, not in `status`.
 
-```
-IDLE ──(non-null id, cache miss)──► PENDING ──► SUCCESS
-IDLE ──(non-null id, cache hit) ──► SUCCESS
-PENDING ──(fetch rejects)──► ERROR
-ERROR   ──(new data inserted)──► SUCCESS (with a fresh promise object)
-```
+`failureCount` / `lastError` make a _retrying_ fetch observable separately from a _terminal_ one. While `retry` keeps re-attempting, `error` stays unset (no give-up yet) but each failed attempt bumps `failureCount` and records `lastError` — so under the infinite default retry a down backend shows climbing failures and the latest cause instead of a silent spinner. They reset to `0` / `undefined` the moment an attempt succeeds; on terminal failure `lastError` equals `error`.
 
-`IDLE` is one-way — once a handle leaves `IDLE` for a given `(type, id)`, it never goes back. The only exception is `clearMemory()`, which drops handles to `IDLE` when no fetch is in flight.
+`clearMemory()` clears `value`/`error`/`fetchedAt` (an in-flight fetch survives and repopulates). Errors are typed: `AdapterError` (adapter failed), `NotFoundError` (key absent after fetch), `ProcessorError` (processor threw) — union `SiloError`.
 
 ### React hooks
 
@@ -227,7 +274,7 @@ From `@supergrain/silo/react`:
 All returned from `createDocumentStoreContext<S>()`; destructure and re-export from your store module.
 
 - `Provider({ config, initial?, onMount?, children })` — wraps `config` in `createDocumentStore()` exactly once per mount. Optional `initial` seeds documents/query results before the first render; optional `onMount` runs synchronously after seeding for imperative setup.
-- `useDocument(type, id | null | undefined)` → `DocumentHandle<T>`. `null`/`undefined` id returns an idle handle (useful for conditional fetching — `useDocument("user", isLoggedIn ? myId : null)`).
+- `useDocument(type, id | null | undefined)` → `DocumentHandle<T>`. `null`/`undefined` id returns an idle handle (useful for conditional fetching — `useDocument("user", isLoggedIn ? myId : null)`). "Idle" isn't a separate `status`: the handle reads `status: "pending"` with `isFetching: false` (detect it as `status === "pending" && !isFetching` if you need to). There's no `"IDLE"` status — it folded onto the orthogonal `isFetching` axis.
 - `useDocumentStore()` → store API. Escape hatch for imperative ops (`insertDocument`, `clearMemory`, query methods).
 - `useQuery(type, params | null | undefined)` → `QueryHandle<Result>`. Same null-handling as `useDocument`.
 - For lists, call `useDocumentStore().find(type, id)` for each id. Batching still happens under the hood; the public primitive stays one resource → one handle.
@@ -292,11 +339,11 @@ const post = useDocument("post", "1");
 Internally, the store's finder calls your adapter with the queued ids, expecting a shape the default processor understands:
 
 ```ts
-// finder calls adapter.find(ids); expects either a single doc or an array
-await adapter.find(["1", "2"]);
+// finder runs the Effect from adapter.find(ids); expects either a single doc or an array
+adapter.find(["1", "2"]); // Effect that produces:
 // → [{ id: "1", ... }, { id: "2", ... }]
 // or for a single id:
-await adapter.find(["1"]);
+adapter.find(["1"]); // Effect that produces:
 // → { id: "1", ... }
 ```
 
@@ -325,7 +372,7 @@ const cardStack = useDocument("card-stack", "42");
 Internally, the finder calls your adapter, expecting a JSON-API envelope:
 
 ```ts
-await adapter.find(["42"]);
+adapter.find(["42"]); // Effect that produces:
 // → {
 //     data: [
 //       { type: "card-stack", id: "42", attributes: { ... },
@@ -345,7 +392,7 @@ JSON-API relationship hooks live in a separate subpath:
 import { useBelongsTo, useHasMany } from "@supergrain/silo/react/json-api";
 
 const planbook = useBelongsTo(cardStack, "planbook");
-const cards = useHasMany(planbook.data, "cards");
+const cards = useHasMany(planbook.value ?? null, "cards");
 ```
 
 - `useBelongsTo(model, relationName)` → `DocumentHandle<Related>`. Reads `model.relationships[relationName].data` (a `{ type, id }`), then delegates to `useDocument`.
@@ -363,7 +410,8 @@ Documents are one surface. The store has a second, additive surface: **queries**
 The config surface forks at the top level — `models` for documents, `queries` for params-keyed results. One store, one memory, one finder.
 
 ```ts
-import { createDocumentStore, type QueryAdapter } from "@supergrain/silo";
+import { AdapterError, createDocumentStore, type QueryAdapter } from "@supergrain/silo";
+import { Effect } from "effect";
 
 type TypeToModel = { user: User; post: Post };
 
@@ -372,11 +420,14 @@ type TypeToQuery = {
 };
 
 const dashboardAdapter: QueryAdapter<{ workspaceId: number }> = {
-  async find(paramsList) {
-    return Promise.all(
-      paramsList.map((p) => fetch(`/api/dashboard?ws=${p.workspaceId}`).then((r) => r.json())),
-    );
-  },
+  find: (paramsList) =>
+    Effect.tryPromise({
+      try: () =>
+        Promise.all(
+          paramsList.map((p) => fetch(`/api/dashboard?ws=${p.workspaceId}`).then((r) => r.json())),
+        ),
+      catch: (cause) => new AdapterError({ type: "dashboard", keys: [], cause }),
+    }),
 };
 
 const store = createDocumentStore<TypeToModel, TypeToQuery>({
@@ -402,13 +453,15 @@ import { useQuery } from "@supergrain/silo/react";
 function DashboardView({ workspaceId }: { workspaceId: number }) {
   const handle = useQuery("dashboard", { workspaceId });
 
-  if (handle.isPending) return <Skeleton />;
-  if (handle.error) return <ErrorState error={handle.error} />;
-  return <Dashboard data={handle.data!} />;
+  if (handle.value === undefined) {
+    if (handle.error) return <ErrorState error={handle.error} />;
+    return <Skeleton />;
+  }
+  return <Dashboard data={handle.value} />;
 }
 ```
 
-Same `QueryHandle<T>` shape as `DocumentHandle<T>` — status/data/error/isPending/isFetching/promise. Same Suspense opt-in via `use(handle.promise)`. Same stable handle identity, so two components requesting `{ workspaceId: 7 }` get the same reactive object.
+Same `QueryHandle<T>` shape as `DocumentHandle<T>` — flat `value` / `error` / `isFetching` / `fetchedAt` / `failureCount` / `lastError` / `status` plus `promise`. Same Suspense opt-in via `use(handle.promise)`. Same stable handle identity, so two components requesting `{ workspaceId: 7 }` get the same reactive object.
 
 Object key identity is **deep-equal**: `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` hit the same slot. The library stable-stringifies for cache lookup; adapters see the raw objects.
 
@@ -435,11 +488,14 @@ type TypeToQuery = {
 };
 
 const usersByRoleAdapter: QueryAdapter<{ role: string }> = {
-  async find(paramsList) {
-    return Promise.all(
-      paramsList.map((p) => fetch(`/api/users?role=${p.role}`).then((r) => r.json())),
-    );
-  },
+  find: (paramsList) =>
+    Effect.tryPromise({
+      try: () =>
+        Promise.all(
+          paramsList.map((p) => fetch(`/api/users?role=${p.role}`).then((r) => r.json())),
+        ),
+      catch: (cause) => new AdapterError({ type: "usersByRole", keys: [], cause }),
+    }),
 };
 
 createDocumentStore<TypeToModel, TypeToQuery>({
@@ -454,7 +510,7 @@ Usage:
 
 ```tsx
 const query = useQuery("usersByRole", { role: "admin" });
-return query.data?.map((u) => <UserRow key={u.id} user={u} />);
+return query.value?.map((u) => <UserRow key={u.id} user={u} />) ?? null;
 ```
 
 What this gives you: 10 lines of config, works immediately, automatic batching of concurrent queries, Suspense-compatible.
@@ -506,7 +562,7 @@ Usage:
 const query = useQuery("usersByRole", { role: "admin" });
 
 // Dereference each id — each row gets its own reactive handle
-return query.data?.userIds.map((id) => <UserRow key={id} id={id} />);
+return query.value?.userIds.map((id) => <UserRow key={id} id={id} />) ?? null;
 ```
 
 What this gives you:
@@ -594,7 +650,7 @@ These aren't "same library, different maturity" — they're genuinely different 
 - **Cross-query sync without manual wiring.** Edit user #42 with `insertDocument("user", updated42)` — every list, detail view, and relationship re-renders instantly, no network call. TQ needs pattern invalidation precisely _because_ it doesn't normalize; each query has its own copy of the data that drifts.
 - **Request batching.** 50 `<UserCard id={x} />` components collapse into one network request. TQ has no equivalent built into the primitive.
 - **One cache, not two.** TQ almost always sits beside Zustand/Redux/etc. — two caches to reconcile. Our store is both.
-- **Fine-grained reactivity.** Reading `handle.data.name` re-renders only when `name` changes. TQ returns a new `{data, isLoading, error}` object every render — whole-handle subscription only, no field-level reads.
+- **Fine-grained reactivity.** Reading `handle.value` re-renders only when the value changes, not when a background refetch toggles `handle.isFetching`. TQ returns a new `{data, isLoading, error}` object every render — whole-handle subscription only, no field-level reads.
 - **Simpler invalidation model.** Normalization + reactive propagation handles most of what pattern invalidation exists to solve. You don't need an invalidation graph if mutations just write to the store.
 
 ### When to pick which

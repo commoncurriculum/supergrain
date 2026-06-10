@@ -2,6 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { createDocumentStore, type DocumentStore } from "../src";
+import { effectFind } from "./setup/effect-find";
 
 type TestModels = {
   user: { id: string; name: string };
@@ -72,14 +73,14 @@ function canonicalParamsKey(value: JsonValue): string {
 function createTestStore(): DocumentStore<TestModels, TestQueries> {
   return createDocumentStore<TestModels, TestQueries>({
     models: {
-      user: { adapter: { find: async () => [] } },
+      user: { adapter: { find: effectFind("user", async () => []) } },
     },
     queries: {
       search: {
         adapter: {
-          async find(paramsList) {
-            return paramsList.map((_, index) => ({ token: index }));
-          },
+          find: effectFind("search", async (paramsList: Array<JsonValue>) =>
+            paramsList.map((_, index) => ({ token: index })),
+          ),
         },
       },
     },

@@ -1,4 +1,7 @@
-import type { DocumentStore, DocumentTypes, Status, TypeRegistry } from "./store";
+import type { AdapterError, SiloError } from "./errors";
+import type { ResilienceOptions } from "./resolve";
+import type { DocumentHandle, DocumentStore, DocumentTypes, TypeRegistry } from "./store";
+import type { Effect } from "effect";
 
 // =============================================================================
 // QueryTypes — shape of a consumer's query type map
@@ -9,9 +12,10 @@ import type { DocumentStore, DocumentTypes, Status, TypeRegistry } from "./store
  * a query type (e.g. `"dashboard"`, `"usersByRole"`) and declares the shape
  * of its params (the cache key) and its result (the cacheable payload).
  *
- * Params must be JSON-serializable — the library stable-stringifies them for
- * cache identity. Dates, Maps, Sets, class instances, and functions are not
- * supported; stringify them yourself before passing.
+ * Params are stable-stringified for cache identity: primitives, plain objects,
+ * arrays, `Date`s (encoded by timestamp), and `bigint`s are all supported.
+ * Maps, Sets, and class instances are only distinguished by their
+ * own-enumerable keys, so prefer plain JSON-ish params.
  *
  * @example
  * ```ts
@@ -53,9 +57,10 @@ export type RegisteredQueries = TypeRegistry extends {
 
 /**
  * Talks to the API for a query model. Receives N params objects (raw —
- * the library does NOT stringify before handing off) and returns a raw
+ * the library does NOT stringify before handing off) and returns the raw
  * response. Behaves exactly like `DocumentAdapter` but `find` takes
- * `Array<Params>` instead of `Array<string>`.
+ * `Array<Params>` instead of `Array<string>`: **return a `Promise`** (rejection
+ * → `AdapterError`) or **return an `Effect`** for full control.
  *
  * Stringification is only for the library's internal cache lookup, dedup,
  * and in-flight tracking. The adapter sees the original params.
@@ -64,10 +69,16 @@ export type RegisteredQueries = TypeRegistry extends {
  * - `find` is called with a chunk of at most `batchSize` params objects
  *   (the library dedupes concurrent deep-equal-param requests before
  *   calling the adapter).
- * - A rejection rejects every deferred waiting on that chunk.
+ * - A rejected Promise / failed Effect fails every deferred waiting on the chunk.
+ * - `ctx.signal` aborts when the adapter Effect is interrupted (e.g. a
+ *   per-query `timeout` fires); thread it into your transport for a real
+ *   network abort, or ignore it.
  */
 export interface QueryAdapter<Params> {
-  find(paramsList: Array<Params>): Promise<unknown>;
+  find(
+    paramsList: Array<Params>,
+    ctx?: { signal?: AbortSignal },
+  ): Promise<unknown> | Effect.Effect<unknown, AdapterError>;
 }
 
 // =============================================================================
@@ -120,12 +131,17 @@ export type QueryProcessor<
  * input params, and pairs them by position. For envelope formats or
  * normalizing processors (inserting nested documents), supply a custom
  * `QueryProcessor`.
+ *
+ * The inherited resilience knobs ({@link ResilienceOptions}: `retry` /
+ * `timeout` / `deadline` / `retryable` / `isolateFailures`) override the
+ * store-wide defaults for this query — resolution precedence is per-query →
+ * store-wide → built-in `defaultRetry`.
  */
 export interface QueryConfig<
   M extends DocumentTypes,
   Q extends QueryTypes,
   Type extends keyof Q & string,
-> {
+> extends ResilienceOptions {
   adapter: QueryAdapter<Q[Type]["params"]>;
   processor?: QueryProcessor<M, Q, Type>;
 }
@@ -135,20 +151,11 @@ export interface QueryConfig<
 // =============================================================================
 
 /**
- * Reactive handle for a single query result. Structurally identical to
- * `DocumentHandle<T>`: same `status` / `data` / `error` / `isPending` /
- * `isFetching` / `hasData` / `fetchedAt` / `promise` fields, same state
- * machine, same Suspense semantics. The alias makes hook return types
- * read clearly at call sites (`useQuery(...) → QueryHandle<Dashboard>`
- * vs. `useDocument(...) → DocumentHandle<User>`).
+ * Reactive handle for a single query result — exactly a `DocumentHandle<T>`:
+ * the same flat orthogonal fields (`value` / `error` / `isFetching` /
+ * `fetchedAt`), same `promise`, same statechart, same Suspense semantics. The
+ * alias exists so hook return types read clearly at call sites
+ * (`useQuery(...) → QueryHandle<Dashboard>` vs. `useDocument(...) →
+ * DocumentHandle<User>`).
  */
-export interface QueryHandle<T> {
-  readonly status: Status;
-  readonly data: T | undefined;
-  readonly error: Error | undefined;
-  readonly isPending: boolean;
-  readonly isFetching: boolean;
-  readonly hasData: boolean;
-  readonly fetchedAt: Date | undefined;
-  readonly promise: Promise<T> | undefined;
-}
+export type QueryHandle<T, E = SiloError> = DocumentHandle<T, E>;

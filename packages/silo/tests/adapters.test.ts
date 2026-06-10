@@ -135,10 +135,10 @@ describe("bulk JSON-API adapter (card-stack)", () => {
 
     // The processor (jsonApiProcessor) unwrapped `{ data: [...] }` and the
     // store routed each card-stack into its own slot.
-    expect(h1.data?.id).toBe("1");
-    expect(h1.data?.attributes.title).toBe("Card Stack 1");
-    expect(h2.data?.id).toBe("2");
-    expect(h2.data?.attributes.title).toBe("Card Stack 2");
+    expect(h1.value?.id).toBe("1");
+    expect(h1.value?.attributes.title).toBe("Card Stack 1");
+    expect(h2.value?.id).toBe("2");
+    expect(h2.value?.attributes.title).toBe("Card Stack 2");
   });
 });
 
@@ -169,8 +169,8 @@ describe("fan-out query adapter (dashboard)", () => {
       ]),
     );
 
-    expect(h1.data?.totalActiveUsers).toBe(10);
-    expect(h2.data?.totalActiveUsers).toBe(20);
+    expect(h1.value?.totalActiveUsers).toBe(10);
+    expect(h2.value?.totalActiveUsers).toBe(20);
   });
 
   it("dedups deep-equal params at the finder layer — 3 concurrent identical findQuery → 1 request", async () => {

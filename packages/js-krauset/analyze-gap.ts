@@ -93,7 +93,7 @@ console.log("  Hook 4: useMemo           (from useComputed — creates computed 
 console.log("  Hook 5: useContext         (from Store.useStore())");
 console.log("  + alienEffect() creation  (alien-signals effect node)");
 console.log("  + computed() creation     (alien-signals computed for isSelected)");
-console.log("  + getCurrentSub/setCurrentSub per render");
+console.log("  + getActiveSub/setActiveSub per render");
 console.log("  + Proxy trap on every property read (item.id, item.label)");
 console.log("");
 console.log("Per 1000 rows: 5000 extra hook slots + 1000 effects + 1000 computeds + proxy reads");

@@ -64,8 +64,8 @@ type HasManyTarget<Model extends WithRelationships, K extends keyof Model["relat
  * @example
  * ```tsx
  * const planbook = useBelongsTo(cardStack, "planbook");
- * if (planbook.isPending) return <Spinner />;
- * return <span>{planbook.data?.attributes.title}</span>;
+ * if (planbook.value === undefined) return <Spinner />;
+ * return <span>{planbook.value.attributes.title}</span>;
  * ```
  */
 export function useBelongsTo<Model extends WithRelationships, RelName extends BelongsToKeys<Model>>(
@@ -109,7 +109,9 @@ export function useBelongsTo<Model extends WithRelationships, RelName extends Be
  * ```tsx
  * const cards = useHasMany(planbook, "cardStacks");
  * return cards.map((card, i) =>
- *   card.isPending ? <Skeleton key={i} /> : <Card key={card.data?.id ?? i} card={card.data!} />,
+ *   card.value !== undefined
+ *     ? <Card key={card.value.id} card={card.value} />
+ *     : <Skeleton key={i} />,
  * );
  * ```
  */
@@ -145,10 +147,10 @@ export function useHasMany<Model extends WithRelationships, RelName extends HasM
  * appear for each still-loading card, or where one failed card shouldn't
  * prevent the others from rendering.
  *
- * Each handle has its own independent `status`, `data`, `error`, and
+ * Each handle has its own independent `value` / `error` / `isFetching` and
  * `promise`. Fetching across the array is still batched into a single
- * `adapter.find(ids)` call by the internal finder — individual handles
- * don't mean individual network requests.
+ * `adapter.find(ids)` call by the internal finder — individual handles don't
+ * mean individual network requests.
  *
  * Empty relationship data or a `null`/`undefined` model returns an empty array.
  *
@@ -159,7 +161,7 @@ export function useHasMany<Model extends WithRelationships, RelName extends HasM
  *   <ul>
  *     {cards.map((c, i) => (
  *       <li key={i}>
- *         {c.isPending ? <Skeleton /> : c.data?.attributes.title}
+ *         {c.value !== undefined ? c.value.attributes.title : <Skeleton />}
  *       </li>
  *     ))}
  *   </ul>

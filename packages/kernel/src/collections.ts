@@ -13,7 +13,7 @@
  * `wrap()` dispatch here when the value is a Map or Set.
  */
 
-import { getCurrentSub, startBatch, endBatch, signal } from "alien-signals";
+import { getActiveSub, startBatch, endBatch, signal } from "alien-signals";
 
 import {
   $OWN_KEYS,
@@ -82,7 +82,7 @@ const collectionProxyCache = new WeakMap<object, object>();
 // ---------------------------------------------------------------------------
 
 function trackOwnKeys(target: object): void {
-  if (getCurrentSub()) {
+  if (getActiveSub()) {
     const nodes = getNodes(target);
     getNode(nodes, $OWN_KEYS, 0)();
   }
@@ -141,7 +141,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
       if (prop === "get") {
         return function reactiveGet(key: K): V | undefined {
           const rawKey = unwrap(key);
-          if (getCurrentSub()) {
+          if (getActiveSub()) {
             profileSignalRead();
             const s = getOrCreateKeySignal(rawKey);
             const v = s() as V | undefined;
@@ -156,7 +156,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
       if (prop === "has") {
         return function reactiveHas(key: K): boolean {
           const rawKey = unwrap(key);
-          if (getCurrentSub()) {
+          if (getActiveSub()) {
             profileSignalRead();
             getOrCreateKeySignal(rawKey)();
           } else {
@@ -274,7 +274,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
         ): void {
           trackOwnKeys(target);
           for (const [k, v] of rawTarget.entries()) {
-            if (getCurrentSub()) {
+            if (getActiveSub()) {
               profileSignalRead();
               getOrCreateKeySignal(k)();
             }
@@ -288,7 +288,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
         return function* reactiveEntries(): IterableIterator<[K, V]> {
           trackOwnKeys(target);
           for (const [k, v] of rawTarget.entries()) {
-            if (getCurrentSub()) {
+            if (getActiveSub()) {
               profileSignalRead();
               getOrCreateKeySignal(k)();
             }
@@ -315,7 +315,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
         return function* reactiveValues(): IterableIterator<V> {
           trackOwnKeys(target);
           for (const [k, v] of rawTarget.entries()) {
-            if (getCurrentSub()) {
+            if (getActiveSub()) {
               profileSignalRead();
               getOrCreateKeySignal(k)();
             }

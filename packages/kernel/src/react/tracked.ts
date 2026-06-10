@@ -1,7 +1,7 @@
-import type { ReactiveNode } from "alien-signals";
+import type { ReactiveNode } from "alien-signals/system";
 
 import { effect as alienEffect } from "@supergrain/kernel";
-import { getCurrentSub, setCurrentSub } from "@supergrain/kernel/internal";
+import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
 import { type FC, memo, useReducer } from "react";
 
 import { useDisposeOnUnmount } from "./use-dispose-on-unmount";
@@ -63,7 +63,7 @@ export function tracked<P extends object>(Component: FC<P>) {
       let capturedNode: ReactiveNode | undefined = null!; // eslint-disable-line unicorn/no-null -- set synchronously by alienEffect
       const cleanup = alienEffect(() => {
         if (firstRun) {
-          capturedNode = getCurrentSub();
+          capturedNode = getActiveSub();
           firstRun = false;
           return;
         }
@@ -81,8 +81,8 @@ export function tracked<P extends object>(Component: FC<P>) {
       delete fu.__sg;
     });
 
-    const prev = getCurrentSub();
-    setCurrentSub(fu.__sg.effectNode);
+    const prev = getActiveSub();
+    setActiveSub(fu.__sg.effectNode);
     try {
       return Component(props); // eslint-disable-line new-cap -- React function component call
     } finally {
@@ -90,7 +90,7 @@ export function tracked<P extends object>(Component: FC<P>) {
       // a Promise. Without this, activeSub would stay pointed at this component's
       // effect node and every subsequent signal read in the app would subscribe
       // to the wrong (now dead) effect.
-      setCurrentSub(prev);
+      setActiveSub(prev);
     }
   };
 

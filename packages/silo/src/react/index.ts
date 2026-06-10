@@ -163,6 +163,11 @@ export function createDocumentStoreContext<
     type: K,
     id: string | null | undefined,
   ): DocumentHandle<M[K]> {
+    // A pure reactive read: `find` returns a stable, reactive handle and the
+    // tracked component re-renders on the fields it reads. No effects — the
+    // hook never imperatively subscribes, and an in-flight fetch is not
+    // cancelled on unmount (it completes and caches).
+    //
     // useDocumentStore() returns S which extends DocumentStore<M, Q>; the cast
     // narrows back to the concrete DocumentStore<M, Q> so .find() is callable.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
@@ -174,7 +179,7 @@ export function createDocumentStoreContext<
     type: K,
     params: Q[K]["params"] | null | undefined,
   ): QueryHandle<Q[K]["result"]> {
-    // Same narrowing cast as useDocument above.
+    // Pure reactive read, like useDocument. Same narrowing cast.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
     return store.findQuery(type, params);
   }

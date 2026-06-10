@@ -33,11 +33,13 @@
 //   afterAll(() => server.close());
 // =============================================================================
 
+import { Effect, Schedule } from "effect";
 import { http, HttpResponse, type HttpHandler } from "msw";
 import { setupServer } from "msw/node";
 import { vi } from "vitest";
 
 import {
+  AdapterError,
   createDocumentStore,
   type DocumentStore,
   type DocumentAdapter,
@@ -169,33 +171,44 @@ export const API_BASE = "https://api.example.com";
 // everything beyond that is a consumer choice.
 
 export const userAdapter: DocumentAdapter = {
-  async find(ids) {
-    const qs = ids.map((id) => `id=${encodeURIComponent(id)}`).join("&");
-    const res = await fetch(`${API_BASE}/users?${qs}`);
-    if (!res.ok) throw new Error(`/users responded ${res.status}`);
-    return res.json();
-  },
+  find: (ids) =>
+    Effect.tryPromise({
+      try: async () => {
+        const qs = ids.map((id) => `id=${encodeURIComponent(id)}`).join("&");
+        const res = await fetch(`${API_BASE}/users?${qs}`);
+        if (!res.ok) throw new Error(`/users responded ${res.status}`);
+        return res.json();
+      },
+      catch: (cause) => new AdapterError({ type: "user", keys: ids, cause }),
+    }),
 };
 
 export const postAdapter: DocumentAdapter = {
-  async find(ids) {
-    return Promise.all(
-      ids.map(async (id) => {
-        const res = await fetch(`${API_BASE}/posts/${encodeURIComponent(id)}`);
-        if (!res.ok) throw new Error(`/posts/${id} responded ${res.status}`);
-        return res.json();
-      }),
-    );
-  },
+  find: (ids) =>
+    Effect.tryPromise({
+      try: () =>
+        Promise.all(
+          ids.map(async (id) => {
+            const res = await fetch(`${API_BASE}/posts/${encodeURIComponent(id)}`);
+            if (!res.ok) throw new Error(`/posts/${id} responded ${res.status}`);
+            return res.json();
+          }),
+        ),
+      catch: (cause) => new AdapterError({ type: "post", keys: ids, cause }),
+    }),
 };
 
 export const cardStackAdapter: DocumentAdapter = {
-  async find(ids) {
-    const qs = ids.map((id) => `id=${encodeURIComponent(id)}`).join("&");
-    const res = await fetch(`${API_BASE}/card-stacks?${qs}`);
-    if (!res.ok) throw new Error(`/card-stacks responded ${res.status}`);
-    return res.json();
-  },
+  find: (ids) =>
+    Effect.tryPromise({
+      try: async () => {
+        const qs = ids.map((id) => `id=${encodeURIComponent(id)}`).join("&");
+        const res = await fetch(`${API_BASE}/card-stacks?${qs}`);
+        if (!res.ok) throw new Error(`/card-stacks responded ${res.status}`);
+        return res.json();
+      },
+      catch: (cause) => new AdapterError({ type: "card-stack", keys: ids, cause }),
+    }),
 };
 
 // `dashboardAdapter` — query-keyed model. Params are structured objects, so
@@ -203,19 +216,22 @@ export const cardStackAdapter: DocumentAdapter = {
 // style — one GET per params object, returning results in the same order so
 // `defaultQueryProcessor` can pair them by position.
 export const dashboardAdapter: QueryAdapter<DashboardParams> = {
-  async find(paramsList) {
-    return Promise.all(
-      paramsList.map(async (p) => {
-        const qs = new URLSearchParams({
-          ws: String(p.workspaceId),
-          active: String(p.filters.active),
-        });
-        const res = await fetch(`${API_BASE}/dashboards?${qs.toString()}`);
-        if (!res.ok) throw new Error(`/dashboards responded ${res.status}`);
-        return res.json();
-      }),
-    );
-  },
+  find: (paramsList) =>
+    Effect.tryPromise({
+      try: () =>
+        Promise.all(
+          paramsList.map(async (p) => {
+            const qs = new URLSearchParams({
+              ws: String(p.workspaceId),
+              active: String(p.filters.active),
+            });
+            const res = await fetch(`${API_BASE}/dashboards?${qs.toString()}`);
+            if (!res.ok) throw new Error(`/dashboards responded ${res.status}`);
+            return res.json();
+          }),
+        ),
+      catch: (cause) => new AdapterError({ type: "dashboard", keys: [], cause }),
+    }),
 };
 
 // ─── Default MSW handlers ───────────────────────────────────────────────────
@@ -312,6 +328,10 @@ export function makeStoreConfig(
     queries: {
       dashboard: { adapter: dashboardAdapter },
     },
+    // Disable the built-in fibonacci default retry so the suite's failure
+    // assertions surface immediately instead of retrying forever. Resilience
+    // behavior is covered explicitly in resilience.test.ts.
+    retry: Schedule.recurs(0),
   };
   if (overrides.batchWindowMs !== undefined) config.batchWindowMs = overrides.batchWindowMs;
   if (overrides.batchSize !== undefined) config.batchSize = overrides.batchSize;

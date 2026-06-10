@@ -370,7 +370,7 @@ describe("createReactive(new Map()) — reactive Map", () => {
 
   it("N writes inside batch() fire one notification per affected key", () => {
     const m = createReactive(new Map<string, number>([["a", 0]]));
-    const effectFn = vi.fn(() => m.get("a"));
+    const effectFn = vi.fn(() => void m.get("a"));
 
     effect(effectFn);
     expect(effectFn).toHaveBeenCalledTimes(1);
@@ -387,7 +387,7 @@ describe("createReactive(new Map()) — reactive Map", () => {
 
   it("setting an existing key to the same value is a no-op for subscribers", () => {
     const m = createReactive(new Map<string, number>([["a", 1]]));
-    const effectFn = vi.fn(() => m.get("a"));
+    const effectFn = vi.fn(() => void m.get("a"));
 
     effect(effectFn);
     expect(effectFn).toHaveBeenCalledTimes(1);
@@ -694,7 +694,7 @@ describe("createReactive(new Set()) — reactive Set", () => {
 
   it("N structural writes inside batch() fire one notification", () => {
     const s = createReactive(new Set<string>());
-    const effectFn = vi.fn(() => s.size);
+    const effectFn = vi.fn(() => void s.size);
 
     effect(effectFn);
     expect(effectFn).toHaveBeenCalledTimes(1);
@@ -770,7 +770,7 @@ describe("Map tracking precision", () => {
 describe("Set mutator batching", () => {
   it("add() fires one notification (not two) for $OWN_KEYS + $VERSION", () => {
     const s = createReactive(new Set<string>());
-    const effectFn = vi.fn(() => s.size);
+    const effectFn = vi.fn(() => void s.size);
     effect(effectFn);
     expect(effectFn).toHaveBeenCalledTimes(1);
 
@@ -780,7 +780,7 @@ describe("Set mutator batching", () => {
 
   it("delete() fires one notification", () => {
     const s = createReactive(new Set<string>(["a"]));
-    const effectFn = vi.fn(() => s.size);
+    const effectFn = vi.fn(() => void s.size);
     effect(effectFn);
 
     s.delete("a");
@@ -789,7 +789,7 @@ describe("Set mutator batching", () => {
 
   it("clear() fires one notification", () => {
     const s = createReactive(new Set<string>(["a", "b"]));
-    const effectFn = vi.fn(() => s.size);
+    const effectFn = vi.fn(() => void s.size);
     effect(effectFn);
 
     s.clear();

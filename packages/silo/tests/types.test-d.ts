@@ -17,8 +17,11 @@ import {
   createDocumentStore,
   type DocumentHandle,
   type DocumentStore,
+  type HandleStatus,
   type QueryHandle,
+  type SiloError,
 } from "../src";
+import { effectFind } from "./setup/effect-find";
 
 interface User {
   id: string;
@@ -43,16 +46,28 @@ describe("createDocumentStore — public type surface", () => {
   it("returns a DocumentStore parameterized by the supplied Models and Queries", () => {
     const store = createDocumentStore<Models, Queries>({
       models: {
-        user: { adapter: { find: async (ids) => ids.map((id) => ({ id, name: "x" })) } },
+        user: {
+          adapter: {
+            find: effectFind("test", (ids: Array<string>) =>
+              Promise.resolve(ids.map((id) => ({ id, name: "x" }))),
+            ),
+          },
+        },
         post: {
           adapter: {
-            find: async (ids) => ids.map((id) => ({ id, title: "t", body: "b" })),
+            find: effectFind("test", (ids: Array<string>) =>
+              Promise.resolve(ids.map((id) => ({ id, title: "t", body: "b" }))),
+            ),
           },
         },
       },
       queries: {
         search: {
-          adapter: { find: async (paramsList) => paramsList.map(() => ({ total: 0, ids: [] })) },
+          adapter: {
+            find: effectFind("test", (paramsList: Array<{ q: string }>) =>
+              Promise.resolve(paramsList.map(() => ({ total: 0, ids: [] }))),
+            ),
+          },
         },
       },
     });
@@ -63,10 +78,18 @@ describe("createDocumentStore — public type surface", () => {
   it("typechecks Models without Queries (Q defaults to empty)", () => {
     const store = createDocumentStore<Models>({
       models: {
-        user: { adapter: { find: async (ids) => ids.map((id) => ({ id, name: "x" })) } },
+        user: {
+          adapter: {
+            find: effectFind("test", (ids: Array<string>) =>
+              Promise.resolve(ids.map((id) => ({ id, name: "x" }))),
+            ),
+          },
+        },
         post: {
           adapter: {
-            find: async (ids) => ids.map((id) => ({ id, title: "t", body: "b" })),
+            find: effectFind("test", (ids: Array<string>) =>
+              Promise.resolve(ids.map((id) => ({ id, title: "t", body: "b" }))),
+            ),
           },
         },
       },
@@ -74,7 +97,7 @@ describe("createDocumentStore — public type surface", () => {
 
     // Without Queries declared, find still narrows by type — proves the
     // default generic doesn't bleed into the document surface.
-    expectTypeOf(store.find("user", "1").data).toEqualTypeOf<User | undefined>();
+    expectTypeOf(store.find("user", "1").value).toEqualTypeOf<User | undefined>();
   });
 });
 
@@ -84,12 +107,12 @@ describe("DocumentStore.find / findInMemory — `type` narrows doc shape", () =>
   it("find('user', id) returns DocumentHandle<User>", () => {
     const h = store.find("user", "1");
     expectTypeOf(h).toEqualTypeOf<DocumentHandle<User>>();
-    expectTypeOf(h.data).toEqualTypeOf<User | undefined>();
+    expectTypeOf(h.value).toEqualTypeOf<User | undefined>();
   });
 
   it("find('post', id) returns DocumentHandle<Post>", () => {
     const h = store.find("post", "1");
-    expectTypeOf(h.data).toEqualTypeOf<Post | undefined>();
+    expectTypeOf(h.value).toEqualTypeOf<Post | undefined>();
   });
 
   it("findInMemory inferred as M[K] | undefined", () => {
@@ -111,16 +134,15 @@ describe("DocumentStore.find / findInMemory — `type` narrows doc shape", () =>
   });
 
   it("DocumentHandle exposes correctly-typed observable fields", () => {
-    // The fields below are the binding surface for UI components; pin their
-    // types so a refactor that relaxes any of them to `unknown` (or removes
-    // a field outright) breaks compilation here.
+    // The flat orthogonal fields below are the binding surface for UI
+    // components; pin their types so a refactor that relaxes any of them to
+    // `unknown` (or drops one) breaks compilation here.
     const h = store.find("user", "1");
-    expectTypeOf(h.status).toEqualTypeOf<"IDLE" | "PENDING" | "SUCCESS" | "ERROR">();
-    expectTypeOf(h.error).toEqualTypeOf<Error | undefined>();
-    expectTypeOf(h.isPending).toEqualTypeOf<boolean>();
+    expectTypeOf(h.value).toEqualTypeOf<User | undefined>();
+    expectTypeOf(h.error).toEqualTypeOf<SiloError | undefined>();
     expectTypeOf(h.isFetching).toEqualTypeOf<boolean>();
-    expectTypeOf(h.hasData).toEqualTypeOf<boolean>();
     expectTypeOf(h.fetchedAt).toEqualTypeOf<Date | undefined>();
+    expectTypeOf(h.status).toEqualTypeOf<HandleStatus>();
     expectTypeOf(h.promise).toEqualTypeOf<Promise<User> | undefined>();
   });
 });
@@ -149,7 +171,7 @@ describe("DocumentStore.findQuery — params and result narrowed by `type`", () 
   it("findQuery('search', params) returns QueryHandle<SearchResult>", () => {
     const h = store.findQuery("search", { q: "x" });
     expectTypeOf(h).toEqualTypeOf<QueryHandle<SearchResult>>();
-    expectTypeOf(h.data).toEqualTypeOf<SearchResult | undefined>();
+    expectTypeOf(h.value).toEqualTypeOf<SearchResult | undefined>();
   });
 
   it("findQueryInMemory inferred as result | undefined", () => {
@@ -190,15 +212,13 @@ describe("DocumentStore.insertQueryResult — params + result both narrowed", ()
 describe("QueryHandle exposes correctly-typed observable fields", () => {
   const store = {} as DocumentStore<Models, Queries>;
 
-  it("status / error / pending / data / promise all carry the result generic", () => {
+  it("value / error / promise all carry the result generic", () => {
     const h = store.findQuery("search", { q: "x" });
-    expectTypeOf(h.status).toEqualTypeOf<"IDLE" | "PENDING" | "SUCCESS" | "ERROR">();
-    expectTypeOf(h.data).toEqualTypeOf<SearchResult | undefined>();
-    expectTypeOf(h.error).toEqualTypeOf<Error | undefined>();
-    expectTypeOf(h.isPending).toEqualTypeOf<boolean>();
+    expectTypeOf(h.value).toEqualTypeOf<SearchResult | undefined>();
+    expectTypeOf(h.error).toEqualTypeOf<SiloError | undefined>();
     expectTypeOf(h.isFetching).toEqualTypeOf<boolean>();
-    expectTypeOf(h.hasData).toEqualTypeOf<boolean>();
     expectTypeOf(h.fetchedAt).toEqualTypeOf<Date | undefined>();
+    expectTypeOf(h.status).toEqualTypeOf<HandleStatus>();
     expectTypeOf(h.promise).toEqualTypeOf<Promise<SearchResult> | undefined>();
   });
 });

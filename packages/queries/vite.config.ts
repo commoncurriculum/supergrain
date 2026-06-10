@@ -10,7 +10,8 @@ export default defineConfig({
       fileName: "index",
     },
     rollupOptions: {
-      external: ["@supergrain/kernel", "@supergrain/silo"],
+      // `effect` is a peer dependency — never bundle it into the dist.
+      external: ["@supergrain/kernel", "@supergrain/silo", "@supergrain/silo/internal", "effect"],
       output: {
         globals: {
           "@supergrain/kernel": "SupergrainCore",

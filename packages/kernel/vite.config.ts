@@ -31,6 +31,7 @@ export default defineConfig({
         "@supergrain/kernel",
         "@supergrain/kernel/internal",
         "alien-signals",
+        "alien-signals/system",
       ],
       output: [
         {

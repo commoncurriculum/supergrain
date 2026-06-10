@@ -1,7 +1,18 @@
+import type { InternalState } from "../src/store";
+
+import { Effect, Schedule } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { createDocumentStore, type DocumentStore, type DocumentAdapter } from "../src";
-import { Finder, type InternalHandle, type InternalState } from "../src/finder";
+import {
+  AdapterError,
+  createDocumentStore,
+  type DocumentStore,
+  type DocumentAdapter,
+  type QueryAdapter,
+} from "../src";
+import { Finder } from "../src/finder";
+import { type InternalHandle, makeIdleHandle } from "../src/transitions";
+import { effectFind } from "./setup/effect-find";
 import { setupFakeTimers } from "./setup/timers";
 
 // =============================================================================
@@ -40,13 +51,13 @@ function makeUserAdapter(): IntrospectableAdapter {
   const calls: string[][] = [];
   const adapter: IntrospectableAdapter = {
     calls,
-    async find(ids) {
+    find: effectFind("user", async (ids: Array<string>) => {
       calls.push([...ids]);
       if (adapter.failIds && ids.some((id) => adapter.failIds!.has(id))) {
         throw new Error("adapter rejected");
       }
       return ids.filter((id) => !adapter.omitIds?.has(id)).map((id) => ({ id, name: `User${id}` }));
-    },
+    }),
   };
   return adapter;
 }
@@ -55,10 +66,10 @@ function makePostAdapter(): IntrospectableAdapter {
   const calls: string[][] = [];
   const adapter: IntrospectableAdapter = {
     calls,
-    async find(ids) {
+    find: effectFind("post", async (ids: Array<string>) => {
       calls.push([...ids]);
       return ids.map((id) => ({ id, title: `Post${id}` }));
-    },
+    }),
   };
   return adapter;
 }
@@ -77,6 +88,9 @@ function makeStore(opts: { batchWindowMs?: number; batchSize?: number } = {}): T
       user: { adapter: userAdapter },
       post: { adapter: postAdapter },
     },
+    // Disable the built-in fibonacci default retry so failure assertions
+    // surface immediately (resilience.test.ts covers retry behavior).
+    retry: Schedule.recurs(0),
     ...(opts.batchWindowMs !== undefined && { batchWindowMs: opts.batchWindowMs }),
     ...(opts.batchSize !== undefined && { batchSize: opts.batchSize }),
   };
@@ -227,10 +241,12 @@ describe("Finder errors", () => {
 
     await flushBatch();
 
-    expect(h1.status).toBe("ERROR");
-    expect(h2.status).toBe("ERROR");
-    expect(h3.status).toBe("ERROR");
-    expect(h1.error?.message).toMatch(/adapter rejected/);
+    expect(h1.error).toBeDefined();
+    expect(h2.error).toBeDefined();
+    expect(h3.error).toBeDefined();
+    expect(h1.error).toBeInstanceOf(AdapterError);
+    const cause = (h1.error as AdapterError).cause;
+    expect((cause as Error).message).toMatch(/adapter rejected/);
   });
 
   it("rejects a handle when the adapter returns without the requested id", async () => {
@@ -244,10 +260,10 @@ describe("Finder errors", () => {
 
     await flushBatch();
 
-    expect(h1.status).toBe("SUCCESS");
-    expect(h2.status).toBe("ERROR");
+    expect(h1.value).not.toBeUndefined();
+    expect(h2.value === undefined && h2.error !== undefined).toBe(true);
     expect(h2.error?.message).toMatch(/not found/i);
-    expect(h3.status).toBe("SUCCESS");
+    expect(h3.value).not.toBeUndefined();
   });
 
   it("rejects all pending handles when a processor throws", async () => {
@@ -257,10 +273,10 @@ describe("Finder errors", () => {
       models: {
         user: {
           adapter: {
-            async find(ids) {
+            find: effectFind("user", async (ids: Array<string>) => {
               calls.push([...ids]);
               return ids.map((id) => ({ id, name: `User${id}` }));
-            },
+            }),
           },
           processor: () => {
             throw new Error("processor exploded");
@@ -275,9 +291,10 @@ describe("Finder errors", () => {
 
     await flushBatch();
 
-    expect(h1.status).toBe("ERROR");
-    expect(h2.status).toBe("ERROR");
-    expect(h1.error?.message).toMatch(/processor exploded/);
+    expect(h1.error).toBeDefined();
+    expect(h2.error).toBeDefined();
+    const cause = (h1.error as { cause?: unknown }).cause;
+    expect((cause as Error).message).toMatch(/processor exploded/);
   });
 });
 
@@ -295,10 +312,10 @@ describe("Finder is adapter-agnostic", () => {
       models: {
         user: {
           adapter: {
-            async find(ids) {
+            find: effectFind("user", async (ids: Array<string>) => {
               calls.push([...ids]);
               return Promise.all(ids.map(async (id) => ({ id, name: `User${id}` })));
-            },
+            }),
           },
         },
         post: { adapter: makePostAdapter() },
@@ -313,9 +330,9 @@ describe("Finder is adapter-agnostic", () => {
 
     expect(calls).toHaveLength(1);
     expect([...calls[0]].sort()).toEqual(["1", "2", "3"]);
-    expect(h1.data?.name).toBe("User1");
-    expect(h2.data?.name).toBe("User2");
-    expect(h3.data?.name).toBe("User3");
+    expect(h1.value?.name).toBe("User1");
+    expect(h2.value?.name).toBe("User2");
+    expect(h3.value?.name).toBe("User3");
   });
 });
 
@@ -324,12 +341,12 @@ describe("Finder handles query-only batches", () => {
     type Types = { user: { id: string; name: string } };
     type Queries = { search: { params: { q: string }; result: { total: number } } };
 
-    const queryAdapter: { find: (p: unknown[]) => Promise<unknown>; calls: unknown[][] } = {
-      calls: [],
-      async find(paramsList) {
-        this.calls.push(paramsList);
+    const queryCalls: Array<ReadonlyArray<{ q: string }>> = [];
+    const queryAdapter: QueryAdapter<{ q: string }> = {
+      find: effectFind("search", async (paramsList: Array<{ q: string }>) => {
+        queryCalls.push(paramsList);
         return paramsList.map(() => ({ total: 42 }));
-      },
+      }),
     };
 
     const store = createDocumentStore<Types, Queries>({
@@ -340,9 +357,9 @@ describe("Finder handles query-only batches", () => {
     const h = store.findQuery("search", { q: "hello" });
     await flushBatch();
 
-    expect(h.status).toBe("SUCCESS");
-    expect(h.data?.total).toBe(42);
-    expect(queryAdapter.calls).toHaveLength(1);
+    expect(h.value).not.toBeUndefined();
+    expect(h.value?.total).toBe(42);
+    expect(queryCalls).toHaveLength(1);
   });
 });
 
@@ -356,21 +373,22 @@ describe("Finder normalizes adapter failures", () => {
       queries: {
         search: {
           adapter: {
-            async find() {
+            find: effectFind("search", async () => {
               throw "plain-string-error";
-            },
+            }),
           },
         },
       },
+      retry: Schedule.recurs(0),
     });
 
     const h = store.findQuery("search", { q: "oops" });
     await flushBatch();
     await h.promise?.catch(() => {});
 
-    expect(h.status).toBe("ERROR");
-    expect(h.error).toBeInstanceOf(Error);
-    expect(h.error?.message).toBe("plain-string-error");
+    expect(h.error).toBeDefined();
+    expect(h.error).toBeInstanceOf(AdapterError);
+    expect((h.error as AdapterError).cause).toBe("plain-string-error");
   });
 
   it("wraps a non-Error document adapter rejection in an Error", async () => {
@@ -378,21 +396,22 @@ describe("Finder normalizes adapter failures", () => {
       models: {
         user: {
           adapter: {
-            async find() {
+            find: effectFind("user", async () => {
               throw "document-string-error";
-            },
+            }),
           },
         },
         post: { adapter: makePostAdapter() },
       },
+      retry: Schedule.recurs(0),
     });
 
     const h = store.find("user", "1");
     await flushBatch();
 
-    expect(h.status).toBe("ERROR");
-    expect(h.error).toBeInstanceOf(Error);
-    expect(h.error?.message).toBe("document-string-error");
+    expect(h.error).toBeDefined();
+    expect(h.error).toBeInstanceOf(AdapterError);
+    expect((h.error as AdapterError).cause).toBe("document-string-error");
   });
 });
 
@@ -405,9 +424,9 @@ describe("Finder empty queues and orphaned handles", () => {
       models: {
         user: {
           adapter: {
-            async find(ids) {
-              return ids.map((id) => ({ id, name: `User${id}` }));
-            },
+            find: effectFind("user", async (ids: Array<string>) =>
+              ids.map((id) => ({ id, name: `User${id}` })),
+            ),
           },
         },
         post: { adapter: makePostAdapter() },
@@ -415,38 +434,42 @@ describe("Finder empty queues and orphaned handles", () => {
       queries: {
         search: {
           adapter: {
-            async find(paramsList) {
-              return paramsList.map(() => ({ total: 1 }));
-            },
+            find: effectFind("search", async (paramsList: Array<{ q: string }>) =>
+              paramsList.map(() => ({ total: 1 })),
+            ),
           },
         },
       },
     });
-    const finder = new Finder<TestTypes, Queries>({
-      models: {
-        user: {
-          adapter: {
-            async find(ids) {
-              documentCalls.push([...ids]);
-              return ids.map((id) => ({ id, name: `User${id}` }));
+    const finder = new Finder<TestTypes, Queries>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: {
+            adapter: {
+              find: effectFind("user", async (ids: Array<string>) => {
+                documentCalls.push([...ids]);
+                return ids.map((id) => ({ id, name: `User${id}` }));
+              }),
+            },
+          },
+          post: { adapter: makePostAdapter() },
+        },
+        queries: {
+          search: {
+            adapter: {
+              find: effectFind("search", async (paramsList: Array<{ q: string }>) => {
+                queryCalls.push([...paramsList]);
+                return paramsList.map(() => ({ total: 1 }));
+              }),
             },
           },
         },
-        post: { adapter: makePostAdapter() },
       },
-      queries: {
-        search: {
-          adapter: {
-            async find(paramsList) {
-              queryCalls.push([...paramsList]);
-              return paramsList.map(() => ({ total: 1 }));
-            },
-          },
-        },
-      },
-    });
+      { documents: new Map(), queries: new Map() },
+    );
 
-    finder.attach({ documents: new Map(), queries: new Map() }, store);
+    finder.attach(store);
     finder.queueDocument("user", "1");
     finder.queueDocument("user", "1");
     finder.queueQuery("search", "same-query", { q: "hello" });
@@ -459,52 +482,79 @@ describe("Finder empty queues and orphaned handles", () => {
   });
 
   it("allows an empty drain", async () => {
-    const finder = new Finder<TestTypes>({
-      models: {
-        user: { adapter: makeUserAdapter() },
-        post: { adapter: makePostAdapter() },
+    const finder = new Finder<TestTypes>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: { adapter: makeUserAdapter() },
+          post: { adapter: makePostAdapter() },
+        },
       },
-    });
+      { documents: new Map(), queries: new Map() },
+    );
 
-    finder.attach({ documents: new Map(), queries: new Map() }, {} as DocumentStore<TestTypes>);
+    finder.attach({} as DocumentStore<TestTypes>);
 
     await expect(finder.drain()).resolves.toBeUndefined();
   });
 
-  it("ignores a queued query when no query adapter is configured", async () => {
-    const finder = new Finder<TestTypes>({
-      models: {
-        user: { adapter: makeUserAdapter() },
-        post: { adapter: makePostAdapter() },
+  it("fails loudly when a queued query has no query adapter configured", async () => {
+    // `store.findQuery` validates the type before enqueueing, so a queued query
+    // without a config means a silo bug — the drain surfaces it instead of
+    // silently stranding the handles on `isFetching`.
+    const finder = new Finder<TestTypes>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: { adapter: makeUserAdapter() },
+          post: { adapter: makePostAdapter() },
+        },
       },
-    });
+      { documents: new Map(), queries: new Map() },
+    );
 
-    finder.attach({ documents: new Map(), queries: new Map() }, {} as DocumentStore<TestTypes>);
+    finder.attach({} as DocumentStore<TestTypes>);
     finder.queueQuery("missing" as never, "params", { q: "missing" } as never);
 
-    await expect(finder.drain()).resolves.toBeUndefined();
+    await expect(finder.drain()).rejects.toThrow(/no query "missing" is configured/);
+  });
+
+  it("fails loudly when a queued document has no model configured", async () => {
+    // `store.find` validates the type before enqueueing, so a queued document
+    // without a config means a silo bug — the drain surfaces it instead of
+    // silently stranding the handles on `isFetching`.
+    const finder = new Finder<TestTypes>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: { adapter: makeUserAdapter() },
+          post: { adapter: makePostAdapter() },
+        },
+      },
+      { documents: new Map(), queries: new Map() },
+    );
+
+    finder.attach({} as DocumentStore<TestTypes>);
+    finder.queueDocument("missing" as never, "1");
+
+    await expect(finder.drain()).rejects.toThrow(/no model "missing" is configured/);
   });
 
   // Helpers shared by the "handle removed mid-flight" scenarios below.
   function pendingHandle(): InternalHandle {
-    return {
-      status: "PENDING",
-      data: undefined,
-      hasData: false,
-      isPending: true,
-      isFetching: true,
-      fetchedAt: undefined,
-      error: undefined,
-      promise: undefined,
-      resolve: vi.fn<(v: unknown) => void>(),
-      reject: vi.fn<(e: unknown) => void>(),
-    };
+    const handle = makeIdleHandle();
+    // A fetch is in flight: no value yet, isFetching true, with resolver
+    // spies so we can assert they're never invoked once the handle is orphaned.
+    handle.isFetching = true;
+    handle.resolve = vi.fn<(v: unknown) => void>();
+    handle.reject = vi.fn<(e: unknown) => void>();
+    return handle;
   }
 
   function expectUntouched(handle: InternalHandle): void {
-    expect(handle.status).toBe("PENDING");
+    expect(handle.value).toBeUndefined();
     expect(handle.error).toBeUndefined();
-    expect(handle.fetchedAt).toBeUndefined();
+    expect(handle.isFetching).toBe(true);
     expect(handle.resolve).not.toHaveBeenCalled();
     expect(handle.reject).not.toHaveBeenCalled();
   }
@@ -524,34 +574,38 @@ describe("Finder empty queues and orphaned handles", () => {
 
     const store = createDocumentStore<TestTypes, Queries>({
       models: { user: { adapter: makeUserAdapter() }, post: { adapter: makePostAdapter() } },
-      queries: { search: { adapter: { find: async () => [] } } },
+      queries: { search: { adapter: { find: effectFind("search", async () => []) } } },
     });
 
-    const finder = new Finder<TestTypes, Queries>({
-      models: {
-        user: {
-          adapter: {
-            async find(ids) {
-              documentCalls.push([...ids]);
-              return ids.map((id) => ({ id, name: `User${id}` }));
+    const finder = new Finder<TestTypes, Queries>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: {
+            adapter: {
+              find: effectFind("user", async (ids: Array<string>) => {
+                documentCalls.push([...ids]);
+                return ids.map((id) => ({ id, name: `User${id}` }));
+              }),
+            },
+          },
+          post: { adapter: makePostAdapter() },
+        },
+        queries: {
+          search: {
+            adapter: {
+              find: effectFind("search", async (paramsList: Array<{ q: string }>) => {
+                queryCalls.push([...paramsList]);
+                return paramsList.map(() => ({ total: 1 }));
+              }),
             },
           },
         },
-        post: { adapter: makePostAdapter() },
       },
-      queries: {
-        search: {
-          adapter: {
-            async find(paramsList) {
-              queryCalls.push([...paramsList] as Array<{ q: string }>);
-              return paramsList.map(() => ({ total: 1 }));
-            },
-          },
-        },
-      },
-    });
+      state,
+    );
 
-    finder.attach(state, store);
+    finder.attach(store);
     finder.queueDocument("user", "1");
     finder.queueQuery("search", "search-key", { q: "hello" });
 
@@ -584,32 +638,36 @@ describe("Finder empty queues and orphaned handles", () => {
 
     const store = createDocumentStore<TestTypes, Queries>({
       models: { user: { adapter: makeUserAdapter() }, post: { adapter: makePostAdapter() } },
-      queries: { search: { adapter: { find: async () => [] } } },
+      queries: { search: { adapter: { find: effectFind("search", async () => []) } } },
     });
 
-    const finder = new Finder<TestTypes, Queries>({
-      models: {
-        user: {
-          adapter: {
-            async find() {
-              throw new Error("document fetch failed");
+    const finder = new Finder<TestTypes, Queries>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: {
+            adapter: {
+              find: effectFind("user", async () => {
+                throw new Error("document fetch failed");
+              }),
+            },
+          },
+          post: { adapter: makePostAdapter() },
+        },
+        queries: {
+          search: {
+            adapter: {
+              find: effectFind("search", async () => {
+                throw new Error("query fetch failed");
+              }),
             },
           },
         },
-        post: { adapter: makePostAdapter() },
       },
-      queries: {
-        search: {
-          adapter: {
-            async find() {
-              throw new Error("query fetch failed");
-            },
-          },
-        },
-      },
-    });
+      state,
+    );
 
-    finder.attach(state, store);
+    finder.attach(store);
     finder.queueDocument("user", "1");
     finder.queueQuery("search", "search-key", { q: "hello" });
 
@@ -622,5 +680,123 @@ describe("Finder empty queues and orphaned handles", () => {
     // The rejection path must not touch orphaned handles.
     expectUntouched(documentHandle);
     expectUntouched(queryHandle);
+  });
+
+  it("does not fail a removed handle when the processor throws", async () => {
+    const droppedHandle = pendingHandle();
+    const survivingHandle = pendingHandle();
+    const state: InternalState = {
+      documents: new Map([
+        [
+          "user",
+          new Map([
+            ["1", droppedHandle],
+            ["2", survivingHandle],
+          ]),
+        ],
+      ]),
+      queries: new Map(),
+    };
+
+    const store = createDocumentStore<TestTypes>({
+      models: { user: { adapter: makeUserAdapter() }, post: { adapter: makePostAdapter() } },
+    });
+
+    const finder = new Finder<TestTypes>(
+      {
+        retry: Schedule.recurs(0),
+        models: {
+          user: {
+            adapter: makeUserAdapter(),
+            processor: () => {
+              throw new Error("bad normalize");
+            },
+          },
+          post: { adapter: makePostAdapter() },
+        },
+      },
+      state,
+    );
+
+    finder.attach(store);
+    finder.queueDocument("user", "1");
+    finder.queueDocument("user", "2");
+
+    // Caller drops one waiting handle before the processor failure lands.
+    state.documents.get("user")!.delete("1");
+
+    await finder.drain();
+
+    // The surviving handle fails with the ProcessorError; the orphan is untouched.
+    expect(survivingHandle.error?._tag).toBe("ProcessorError");
+    expect(survivingHandle.isFetching).toBe(false);
+    expectUntouched(droppedHandle);
+  });
+});
+
+// =============================================================================
+// Adapter boundary: Promise-first, Effect opt-in
+//
+// The public contract accepts a Promise (the common case) OR an Effect. The
+// finder normalizes both onto its Effect engine; a Promise rejection becomes
+// an AdapterError (passed through untouched if the adapter already threw one).
+// =============================================================================
+
+describe("adapter boundary (Promise | Effect)", () => {
+  function storeWithUserFind(find: DocumentAdapter["find"]): DocumentStore<TestTypes> {
+    return createDocumentStore<TestTypes>({
+      models: {
+        user: { adapter: { find } },
+        post: { adapter: makePostAdapter() },
+      },
+      retry: Schedule.recurs(0),
+    });
+  }
+
+  it("accepts a Promise-returning adapter (no Effect) and populates the handle", async () => {
+    const store = storeWithUserFind(async (ids) => ids.map((id) => ({ id, name: `User${id}` })));
+    const h = store.find("user", "1");
+
+    await flushBatch();
+
+    expect(h.value?.name).toBe("User1");
+    expect(h.status).toBe("success");
+  });
+
+  it("wraps a Promise rejection into an AdapterError (cause preserved)", async () => {
+    const boom = new Error("network down");
+    const store = storeWithUserFind(async () => {
+      throw boom;
+    });
+    const h = store.find("user", "1");
+
+    await flushBatch();
+
+    expect(h.error).toBeInstanceOf(AdapterError);
+    expect((h.error as AdapterError).cause).toBe(boom);
+    expect((h.error as AdapterError).keys).toEqual(["1"]);
+  });
+
+  it("passes an AdapterError thrown by a Promise adapter through untouched (no double-wrap)", async () => {
+    const original = new AdapterError({ type: "user", keys: ["1"], cause: "explicit" });
+    const store = storeWithUserFind(async () => {
+      throw original;
+    });
+    const h = store.find("user", "1");
+
+    await flushBatch();
+
+    expect(h.error).toBe(original);
+  });
+
+  it("still accepts an Effect-returning adapter as-is", async () => {
+    const store = storeWithUserFind((ids) =>
+      Effect.succeed(ids.map((id) => ({ id, name: `User${id}` }))),
+    );
+    const h = store.find("user", "1");
+
+    await flushBatch();
+
+    expect(h.value?.name).toBe("User1");
   });
 });

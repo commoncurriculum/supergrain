@@ -1,0 +1,315 @@
+// =============================================================================
+// tests/transitions.test.ts
+// =============================================================================
+//
+// Unit tests for the handle statechart in `src/transitions.ts`. `applyEvent`
+// is a pure reducer over a tagged event alphabet operating on a flat
+// `InternalHandle`; these tests drive it directly on a plain `makeIdleHandle()`
+// object (no reactivity needed) so every event and branch — including the
+// promise lifecycle — is covered in isolation from the store/finder.
+// =============================================================================
+
+import { describe, expect, it } from "vitest";
+
+import { AdapterError } from "../src";
+import { applyEvent, HandleEvent, makeIdleHandle } from "../src/transitions";
+
+function err(): AdapterError {
+  return new AdapterError({ type: "user", keys: ["1"], cause: new Error("boom") });
+}
+
+describe("makeIdleHandle", () => {
+  it("starts in a clean pending state", () => {
+    const h = makeIdleHandle();
+    expect(h.value).toBeUndefined();
+    expect(h.error).toBeUndefined();
+    expect(h.isFetching).toBe(false);
+    expect(h.fetchedAt).toBeUndefined();
+    expect(h.status).toBe("pending");
+    expect(h.promise).toBeUndefined();
+  });
+});
+
+describe("applyEvent — fetch()", () => {
+  it("marks a fresh handle as fetching, status pending, and creates a promise", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+
+    expect(h.isFetching).toBe(true);
+    expect(h.value).toBeUndefined();
+    expect(h.status).toBe("pending");
+    expect(h.promise).toBeInstanceOf(Promise);
+  });
+
+  it("does not replace an existing in-flight promise on a second fetch", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    const first = h.promise;
+    applyEvent(h, HandleEvent.fetch());
+    expect(h.promise).toBe(first);
+  });
+});
+
+describe("applyEvent — insert(v)", () => {
+  it("sets value, fetchedAt, clears error, status success", () => {
+    const h = makeIdleHandle();
+    const doc = { id: "1" };
+    applyEvent(h, HandleEvent.insert(doc));
+
+    expect(h.value).toBe(doc);
+    expect(h.fetchedAt).toBeInstanceOf(Date);
+    expect(h.error).toBeUndefined();
+    expect(h.status).toBe("success");
+  });
+
+  it("resolves the pending fetch promise", async () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    const doc = { id: "1" };
+    applyEvent(h, HandleEvent.insert(doc));
+
+    await expect(h.promise).resolves.toBe(doc);
+  });
+});
+
+describe("applyEvent — settled()", () => {
+  it("ends activity after an insert", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.insert(7));
+    applyEvent(h, HandleEvent.settled(h.generation));
+
+    expect(h.isFetching).toBe(false);
+    expect(h.value).toBe(7);
+    expect(h.status).toBe("success");
+  });
+
+  it("resolves a still-pending promise when a value is present", async () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    // Simulate a value landing without going through Insert's resolver path.
+    h.value = 9;
+    h.status = "success";
+    applyEvent(h, HandleEvent.settled(h.generation));
+
+    await expect(h.promise).resolves.toBe(9);
+  });
+});
+
+describe("applyEvent — failed(err)", () => {
+  it("on a fresh handle: records the error, no value, status error, not fetching", async () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    const e = err();
+    applyEvent(h, HandleEvent.failed(e, h.generation));
+
+    expect(h.error).toBe(e);
+    expect(h.value).toBeUndefined();
+    expect(h.status).toBe("error");
+    expect(h.isFetching).toBe(false);
+    await expect(h.promise).rejects.toBe(e);
+  });
+
+  it("stale-while-revalidate: keeps the value when a refetch fails", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.insert(5));
+    const e = err();
+    applyEvent(h, HandleEvent.failed(e, h.generation));
+
+    expect(h.value).toBe(5); // value survives
+    expect(h.error).toBe(e);
+    expect(h.status).toBe("success"); // value present => success despite error
+    expect(h.isFetching).toBe(false);
+  });
+});
+
+describe("applyEvent — insert after a failed first load", () => {
+  it("hands out a NEW resolved promise (no pending resolver)", async () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.failed(err(), h.generation));
+    // Promise already rejected; swallow so it doesn't surface as unhandled.
+    await h.promise?.catch(() => {});
+
+    applyEvent(h, HandleEvent.insert(42));
+
+    expect(h.value).toBe(42);
+    expect(h.error).toBeUndefined();
+    expect(h.status).toBe("success");
+    await expect(h.promise).resolves.toBe(42);
+  });
+});
+
+describe("applyEvent — aborted()", () => {
+  it("ends activity without recording an outcome", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.aborted());
+
+    expect(h.isFetching).toBe(false);
+    expect(h.value).toBeUndefined();
+    expect(h.error).toBeUndefined();
+    expect(h.status).toBe("pending");
+  });
+
+  it("leaves a pending first-load promise pending for a later fetch to settle", async () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    const inflight = h.promise;
+
+    applyEvent(h, HandleEvent.aborted());
+    expect(h.promise).toBe(inflight);
+
+    // A later cycle can still resolve the same promise.
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.insert(11));
+    await expect(inflight).resolves.toBe(11);
+  });
+
+  it("keeps a stale value and error untouched", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.insert(5));
+    const e = err();
+    applyEvent(h, HandleEvent.failed(e, h.generation));
+
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.aborted());
+
+    expect(h.value).toBe(5);
+    expect(h.error).toBe(e);
+    expect(h.status).toBe("success");
+    expect(h.isFetching).toBe(false);
+  });
+});
+
+describe("applyEvent — reset()", () => {
+  it("when not fetching: clears everything and drops the promise", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.insert(3));
+    applyEvent(h, HandleEvent.settled(h.generation));
+
+    applyEvent(h, HandleEvent.reset());
+
+    expect(h.value).toBeUndefined();
+    expect(h.error).toBeUndefined();
+    expect(h.fetchedAt).toBeUndefined();
+    expect(h.status).toBe("pending");
+    expect(h.promise).toBeUndefined();
+  });
+
+  it("while fetching: clears value but keeps the in-flight fetch and promise", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    const inflight = h.promise;
+
+    applyEvent(h, HandleEvent.reset());
+
+    expect(h.value).toBeUndefined();
+    expect(h.isFetching).toBe(true);
+    expect(h.promise).toBe(inflight);
+  });
+});
+
+describe("applyEvent — insert(undefined) is a no-op", () => {
+  it("keeps the resolvers armed so a later Failed can still reject the first-load promise", async () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    const promise = h.promise!;
+
+    // A positional pairing with fewer results than params inserts `undefined`
+    // — recording it would resolve the promise with `undefined` and leave the
+    // NotFound that follows unable to reject.
+    applyEvent(h, HandleEvent.insert(undefined));
+
+    expect(h.value).toBeUndefined();
+    expect(h.fetchedAt).toBeUndefined();
+    expect(h.status).toBe("pending");
+    expect(h.isFetching).toBe(true);
+
+    const boom = err();
+    applyEvent(h, HandleEvent.failed(boom, h.generation));
+    await expect(promise).rejects.toBe(boom);
+    expect(h.status).toBe("error");
+  });
+});
+
+describe("applyEvent — insert() fetchedAt semantics", () => {
+  it("stamps fetchedAt when the insert answers a fetch or first populates the handle", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.insert({ id: "1" }));
+    expect(h.fetchedAt).toBeInstanceOf(Date);
+
+    const fresh = makeIdleHandle();
+    applyEvent(fresh, HandleEvent.insert({ id: "1" })); // first value, no fetch
+    expect(fresh.fetchedAt).toBeInstanceOf(Date);
+  });
+
+  it("preserves fetchedAt on a local insert into an already-loaded idle handle", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.insert({ id: "1", v: 1 }));
+    applyEvent(h, HandleEvent.settled(h.generation));
+    const fetched = h.fetchedAt;
+    expect(fetched).toBeInstanceOf(Date);
+
+    // A websocket-style push: data updates, but it isn't a fetch — TTL
+    // staleness checks must still see when the data was last *fetched*.
+    applyEvent(h, HandleEvent.insert({ id: "1", v: 2 }));
+    expect(h.value).toEqual({ id: "1", v: 2 });
+    expect(h.fetchedAt).toBe(fetched);
+  });
+});
+
+describe("applyEvent — generation fencing", () => {
+  it("drops stamped events from a superseded fetch cycle", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    const staleGen = h.generation;
+    applyEvent(h, HandleEvent.fetch()); // a newer fetch takes over
+    expect(h.generation).toBe(staleGen + 1);
+
+    // The superseded run's late events structurally cannot clobber the fresh
+    // cycle — ordering is enforced by the statechart, not interruption timing.
+    applyEvent(h, HandleEvent.retrying(err(), staleGen));
+    expect(h.failureCount).toBe(0);
+    applyEvent(h, HandleEvent.failed(err(), staleGen));
+    expect(h.error).toBeUndefined();
+    expect(h.isFetching).toBe(true);
+    applyEvent(h, HandleEvent.settled(staleGen));
+    expect(h.isFetching).toBe(true);
+    applyEvent(h, HandleEvent.aborted(staleGen));
+    expect(h.isFetching).toBe(true);
+
+    // The fresh cycle's stamped events apply normally.
+    applyEvent(h, HandleEvent.retrying(err(), h.generation));
+    expect(h.failureCount).toBe(1);
+    applyEvent(h, HandleEvent.aborted(h.generation));
+    expect(h.isFetching).toBe(false);
+  });
+
+  it("applies an unstamped aborted() unconditionally (destroy ends activity regardless of cycle)", () => {
+    const h = makeIdleHandle();
+    applyEvent(h, HandleEvent.fetch());
+    applyEvent(h, HandleEvent.aborted());
+    expect(h.isFetching).toBe(false);
+  });
+});
+
+describe("HandleEvent — cycle-settling events require a generation", () => {
+  it("rejects unstamped settled/retrying/failed at compile time", () => {
+    // Emitters must capture the cycle's generation when the fetch starts — an
+    // unstamped settle event would apply unconditionally, and the first
+    // feature that supersedes a live fetch (TTL revalidation, refetch) would
+    // silently reintroduce the late-clobber race fencing exists to prevent.
+    // @ts-expect-error -- settled() requires the fetch cycle's generation
+    HandleEvent.settled();
+    // @ts-expect-error -- retrying() requires the fetch cycle's generation
+    HandleEvent.retrying(err());
+    // @ts-expect-error -- failed() requires the fetch cycle's generation
+    HandleEvent.failed(err());
+  });
+});

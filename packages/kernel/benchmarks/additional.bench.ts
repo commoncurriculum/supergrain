@@ -106,7 +106,7 @@ describe("Additional: Signal Subscription/Unsubscription", () => {
     const store = createReactive({ value: 0 });
     const disposers = [];
     for (let i = 0; i < 10000; i++) {
-      disposers.push(effect(() => store.value));
+      disposers.push(effect(() => void store.value));
     }
     for (const d of disposers) {
       d();

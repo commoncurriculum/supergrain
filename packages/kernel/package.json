@@ -69,7 +69,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "alien-signals": "^2.0.7"
+    "alien-signals": "^3.2.1"
   },
   "devDependencies": {
     "@preact/signals-core": "^1.14.0",
