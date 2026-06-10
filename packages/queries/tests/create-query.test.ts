@@ -1179,4 +1179,24 @@ describe("single-flight supersession corners", () => {
     await first; // follows the replacement
     expect(q.results).toEqual([ref("v2", 0)]);
   });
+
+  it("fetchNextPage waiting on an in-flight fetch bails out when destroy() lands first", async () => {
+    const store = makeStore();
+    const { adapter, fetch, pending } = makeDeferredAdapter();
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+
+    const first = q.refetch();
+    await tick();
+    expect(pending).toHaveLength(1);
+    const nextPage = q.fetchNextPage(); // waits on the in-flight refetch
+    await tick();
+
+    // Destroy while the next page is queued: the wait ends (the run aborts),
+    // and the queued page must not start a fetch on a destroyed query.
+    q.destroy();
+    await first;
+    await nextPage;
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
 });
