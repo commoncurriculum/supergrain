@@ -20,16 +20,16 @@ export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
   /** A document/result was inserted (by a processor or `insertDocument`). */
   Insert: { readonly value: T };
   /** The in-flight fetch completed and the requested key is present. */
-  Settled: { readonly generation?: number };
+  Settled: { readonly generation: number };
   /**
    * A retryable attempt failed but the fetch is still in flight (more retries
    * to come). Records what's currently wrong (`lastError`) and bumps
    * `failureCount` without ending activity or settling the terminal `error` —
    * an outage is observable while retrying instead of a silent spinner.
    */
-  Retrying: { readonly error: E; readonly generation?: number };
+  Retrying: { readonly error: E; readonly generation: number };
   /** The fetch (or processor) failed, or the key was missing after fetch. */
-  Failed: { readonly error: E; readonly generation?: number };
+  Failed: { readonly error: E; readonly generation: number };
   /**
    * The in-flight fetch was abandoned without settling (interrupted,
    * superseded, or its owner was destroyed). Ends activity but records no
@@ -42,13 +42,14 @@ export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
   Reset: Record<never, never>;
 }>;
 
-// Settled / Retrying / Failed / Aborted may carry a fetch **generation** —
-// the value of `handle.generation` captured when their fetch cycle started
-// (`Fetch` bumps it). `applyEvent` drops a stamped event whose generation no
-// longer matches, so a superseded run's late events structurally cannot
-// clobber a fresh cycle's state — ordering is enforced by the statechart, not
-// by interruption timing. Unstamped events apply unconditionally (the finder
-// never supersedes a document fetch, so it doesn't stamp).
+// Settled / Retrying / Failed carry the fetch **generation** — the value of
+// `handle.generation` captured when their fetch cycle started (`Fetch` bumps
+// it). `applyEvent` drops a stamped event whose generation no longer matches,
+// so a superseded run's late events structurally cannot clobber a fresh
+// cycle's state — ordering is enforced by the statechart, not by interruption
+// timing. The stamp is *required* on cycle-settling events so an emitter
+// can't silently opt out of the fence; only `Aborted` may go unstamped
+// (`destroy()` ends activity unconditionally, whatever cycle is live).
 
 /**
  * Event constructors. Lowercase (vs. `Data.taggedEnum`'s capitalized
@@ -58,13 +59,13 @@ export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
 export const HandleEvent = {
   fetch: (): HandleEvent => ({ _tag: "Fetch" }),
   insert: <T>(value: T): HandleEvent<T> => ({ _tag: "Insert", value }),
-  settled: (generation?: number): HandleEvent => ({ _tag: "Settled", generation }),
-  retrying: (error: SiloError, generation?: number): HandleEvent => ({
+  settled: (generation: number): HandleEvent => ({ _tag: "Settled", generation }),
+  retrying: (error: SiloError, generation: number): HandleEvent => ({
     _tag: "Retrying",
     error,
     generation,
   }),
-  failed: (error: SiloError, generation?: number): HandleEvent => ({
+  failed: (error: SiloError, generation: number): HandleEvent => ({
     _tag: "Failed",
     error,
     generation,

@@ -34,6 +34,7 @@ export default defineConfig({
         "packages/queries/src/index.ts",
         "packages/queries/src/types.ts",
         "packages/silo/src/index.ts",
+        "packages/silo/src/internal.ts",
         "packages/silo/src/queries.ts",
       ],
       reportsDirectory: "./coverage",

@@ -2,7 +2,7 @@ import type { AdapterOptionOverrides } from "./resolve";
 
 import { Duration, Effect } from "effect";
 
-import { AdapterError } from "./errors";
+import { AdapterError, defectToAdapterError } from "./errors";
 
 // =============================================================================
 // runAdapter — the adapter engine
@@ -122,11 +122,6 @@ export function runAdapter<A>(
     }
   };
 
-  // Retry only when the error's own flag allows it (a `retryable: false` is a
-  // hard veto — e.g. the deadline error) *and* the optional classifier agrees.
-  const shouldRetry = (error: AdapterError): boolean =>
-    isRetryable(error) && (retryable === undefined || retryable(error));
-
   const attempt = Effect.suspend(() => {
     const controller = new AbortController();
     // A synchronous throw from the adapter (before it returns a Promise or
@@ -142,7 +137,13 @@ export function runAdapter<A>(
         error instanceof AdapterError ? error : new AdapterError({ type, keys, cause: error }),
       );
     }
-  });
+  }).pipe(
+    // A dying adapter Effect joins the typed channel here, so every consumer
+    // of the engine — the finder, `store.runAdapter` callers, layered
+    // packages — sees the same non-retryable `reason: "defect"` failure
+    // instead of a defect each has to net independently.
+    Effect.catchAllDefect((defect) => Effect.fail(defectToAdapterError(type, keys, defect))),
+  );
 
   const timed =
     timeout === undefined
@@ -165,28 +166,54 @@ export function runAdapter<A>(
   // waiting for a permit can't spuriously time the attempt out.
   const gated = permits === undefined ? timed : permits.withPermits(1)(timed);
 
+  // Classify each failure exactly once and stamp a veto onto the error itself.
+  // `retryable: undefined` is documented as retryable, so a classifier veto
+  // left unstamped would make the error consumers see (`handle.lastError`,
+  // the `onError` sink's `error`) contradict the engine's fail-fast — and an
+  // impure classifier re-evaluated per decision could disagree with itself.
+  const classified =
+    retryable === undefined
+      ? gated
+      : gated.pipe(
+          Effect.mapError((error) => {
+            if (!isRetryable(error) || retryable(error)) return error;
+            // A non-AdapterError failure value (an Effect adapter violating
+            // its declared channel) has nowhere to carry the verdict — pass
+            // it through rather than fabricating fields off it.
+            return error instanceof AdapterError
+              ? new AdapterError({
+                  type: error.type,
+                  keys: error.keys,
+                  cause: error.cause,
+                  retryable: false,
+                  reason: error.reason,
+                })
+              : error;
+          }),
+        );
+
   // Report each attempt's failure *before* the retry decision, so every failed
   // attempt is observed — including the one that becomes terminal — not just
   // the final give-up. Interruptions never hit the error channel, so a
   // superseded / timed-out attempt is correctly not reported here.
   const observed =
     onFailure === undefined
-      ? gated
-      : gated.pipe(
+      ? classified
+      : classified.pipe(
           Effect.tapError((error) =>
             Effect.sync(() => {
               attemptCount += 1;
-              notifyFailure(error, { attempt: attemptCount, retryable: shouldRetry(error) });
+              notifyFailure(error, { attempt: attemptCount, retryable: isRetryable(error) });
             }),
           ),
         );
 
   // Retry only retryable failures; a hard failure (a 4xx the adapter marked
-  // `retryable: false`, or one the `retryable` predicate rejects) fails fast.
+  // `retryable: false`, or one the classifier vetoed above) fails fast.
   const retried =
     retry === undefined
       ? observed
-      : observed.pipe(Effect.retry({ schedule: retry, while: shouldRetry }));
+      : observed.pipe(Effect.retry({ schedule: retry, while: isRetryable }));
 
   // An unset or infinite deadline (`Duration.infinity`, the opt-out from the
   // built-in default) means no overall bound.

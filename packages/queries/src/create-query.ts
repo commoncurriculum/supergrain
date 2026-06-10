@@ -1,12 +1,15 @@
 import type { CreateQueryParams, Query, QueryEnvelope, QueryModel } from "./types";
 
 import { batch, createReactive, unwrap } from "@supergrain/kernel";
-import { AdapterError, type DocumentTypes, ProcessorError, type SiloError } from "@supergrain/silo";
+import { type DocumentTypes, ProcessorError, type SiloError } from "@supergrain/silo";
 import {
   applyEvent,
+  defectToAdapterError,
+  emitToSink,
   HandleEvent,
   type InternalHandle,
   makeIdleHandle,
+  runProcessor,
 } from "@supergrain/silo/internal";
 import { Effect } from "effect";
 
@@ -27,9 +30,14 @@ import { Effect } from "effect";
  * `defaultRetry` bounded by `defaultDeadline` unless the store overrides
  * them) — disable retry with `Schedule.recurs(0)`.
  *
- * A fetch is **single-flight**: starting a new `refetch()` / `fetchNextPage()`
- * (or `destroy()`) interrupts any in-flight fetch — its adapter `signal`
- * aborts — so overlapping requests can't race to write the store.
+ * A fetch is **single-flight**: a new `refetch()` (or `destroy()`) interrupts
+ * any in-flight fetch — its adapter `signal` aborts — so overlapping requests
+ * can't race to write the store. `fetchNextPage()` instead *waits* for an
+ * in-flight fetch (superseding it would silently drop a fresher page 0 and
+ * merge the next page onto stale results), then reads `nextOffset` from what
+ * actually landed. A superseded run's returned promise follows its
+ * replacement, so `await refetch()` always reflects the state the query
+ * settled into rather than fulfilling silently.
  *
  * Pagination semantics (matches the Ember `live-query` helper):
  * - `refetch()` (offset 0, non-empty response) replaces the results array
@@ -56,15 +64,15 @@ export function createQuery<
   // happen outside the engine.
   const { onError } = store.resolveAdapterOptions();
 
-  // Report a commit failure to the store's telemetry sink. A throwing sink is
-  // swallowed: observability can't affect fetch state.
+  // Report a commit failure to the store's telemetry sink — the same shared
+  // sink-call rule (swallow contract included) the finder uses.
   function reportError(error: SiloError, info: { attempt: number; retryable: boolean }): void {
-    if (onError === undefined) return;
-    try {
-      onError(error, { type, keys: [id], attempt: info.attempt, retryable: info.retryable });
-    } catch {
-      // Swallowed — same contract as the finder's onError isolation.
-    }
+    emitToSink(onError, error, {
+      type,
+      keys: [id],
+      attempt: info.attempt,
+      retryable: info.retryable,
+    });
   }
 
   // Transient fetch state, driven through silo's handle statechart so the
@@ -113,6 +121,11 @@ export function createQuery<
     store.insertDocument(type, doc as unknown as M[K]);
   }
 
+  // The active run's settlement; cleared when it settles un-superseded. A
+  // superseded run's returned promise follows this chain, and `fetchNextPage`
+  // waits on it instead of aborting the run.
+  let inFlight: Promise<void> | undefined = undefined;
+
   function fetchPage(offset: number): Promise<void> {
     if (destroyed) return Promise.resolve();
 
@@ -149,19 +162,17 @@ export function createQuery<
       .pipe(
         Effect.flatMap((res) =>
           // A throw while committing (malformed envelope, a frozen-doc insert
-          // failing) joins the typed channel as a ProcessorError — the queries
-          // analogue of the finder's processor coercion — instead of escaping as
-          // a defect that the Aborted safety net would silently swallow.
+          // failing) joins the typed channel as a ProcessorError — the finder's
+          // own coercion rule — instead of escaping as a defect that the
+          // Aborted safety net would silently swallow.
           Effect.suspend(() => {
-            try {
+            const processorError = runProcessor(type, () =>
               batch(() => {
                 commitPage(res, offset);
                 applyEvent(handle, HandleEvent.settled(generation));
-              });
-              return Effect.void;
-            } catch (error) {
-              return Effect.fail(new ProcessorError({ type, cause: error }));
-            }
+              }),
+            );
+            return processorError === undefined ? Effect.void : Effect.fail(processorError);
           }),
         ),
         Effect.catchAll((error: SiloError) =>
@@ -177,18 +188,12 @@ export function createQuery<
           }),
         ),
         // Nothing above may escape as a defect — it would bypass Failed and be
-        // discarded by runPromiseExit, making the failure invisible. Anything
-        // unexpectedly thrown (e.g. an adapter Effect dying) settles the handle
-        // as a non-retryable `reason: "defect"` AdapterError.
+        // discarded by runPromiseExit, making the failure invisible. Adapter
+        // defects are already coerced by the engine; this net catches what's
+        // left with the same shared rule.
         Effect.catchAllDefect((defect) =>
           Effect.sync(() => {
-            const error = new AdapterError({
-              type,
-              keys: [id],
-              cause: defect,
-              retryable: false,
-              reason: "defect",
-            });
+            const error = defectToAdapterError(type, [id], defect);
             reportError(error, { attempt: 1, retryable: false });
             batch(() => applyEvent(handle, HandleEvent.failed(error, generation)));
           }),
@@ -203,9 +208,18 @@ export function createQuery<
         ),
       );
 
-    // `runPromiseExit` resolves (never rejects) on interruption, so a
-    // superseded/destroyed fetch settles quietly.
-    return Effect.runPromiseExit(program, { signal: controller.signal }).then(() => {});
+    // `runPromiseExit` resolves (never rejects) on interruption — but a
+    // superseded run settled nothing itself, so its promise follows the
+    // replacement instead of fulfilling silently: `await refetch()` always
+    // reflects the state the query actually settled into.
+    const run: Promise<void> = Effect.runPromiseExit(program, {
+      signal: controller.signal,
+    }).then(() => {
+      if (inFlight === run) inFlight = undefined;
+      if (activeController !== controller && inFlight !== undefined) return inFlight;
+    });
+    inFlight = run;
+    return run;
   }
 
   const unsub = params.subscribe?.(type, id, () => {
@@ -231,7 +245,14 @@ export function createQuery<
     get lastError(): SiloError | undefined {
       return handle.lastError;
     },
-    fetchNextPage(): Promise<void> {
+    async fetchNextPage(): Promise<void> {
+      // Wait out any in-flight fetch (typically a live-invalidation refetch)
+      // instead of superseding it — aborting would silently drop the fresher
+      // page 0 and merge this page onto stale results. Re-check after each
+      // wait: the run we waited on may itself have been superseded. The
+      // offset is read after the wait so it reflects what actually landed.
+      while (inFlight !== undefined) await inFlight;
+      if (destroyed) return;
       const next = readSlot()?.nextOffset ?? 0;
       return fetchPage(next);
     },

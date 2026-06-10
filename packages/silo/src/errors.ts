@@ -80,3 +80,32 @@ export class ProcessorError extends Data.TaggedError("ProcessorError")<{
 
 /** Every error a handle's `error` field can carry. */
 export type SiloError = AdapterError | NotFoundError | ProcessorError;
+
+/**
+ * Coerce a defect — an unexpected throw outside the typed failure channel —
+ * into it: a non-retryable {@link AdapterError} tagged `reason: "defect"`.
+ * The single defect rule shared by the engine (`runAdapter`), the finder's
+ * chunk safety net, and `@supergrain/queries`, so the same crash settles into
+ * the same error shape on every surface.
+ */
+export function defectToAdapterError(
+  type: string,
+  keys: ReadonlyArray<string>,
+  defect: unknown,
+): AdapterError {
+  return new AdapterError({ type, keys, cause: defect, retryable: false, reason: "defect" });
+}
+
+/**
+ * Run a processor/commit step, converting a throw into a
+ * {@link ProcessorError}. Shared by the finder's chunk pipeline and
+ * `@supergrain/queries`' commit step so the coercion rule can't drift.
+ */
+export function runProcessor(type: string, run: () => void): ProcessorError | undefined {
+  try {
+    run();
+    return undefined;
+  } catch (error) {
+    return new ProcessorError({ type, cause: error });
+  }
+}

@@ -8,6 +8,7 @@ import { Finder } from "./finder";
 import {
   type AdapterErrorSink,
   type AdapterOptionOverrides,
+  emitToSink,
   type ResilienceOptions,
   resolveAdapterOptions,
   type ResolvedAdapterOptions,
@@ -286,11 +287,13 @@ export interface DocumentStoreConfig<
   /**
    * Max concurrent `adapter.find` **attempts** across the store. A large
    * render (thousands of ids → many chunks) otherwise fires every chunk at
-   * once. `"unbounded"` (default) preserves that; set a number to cap
-   * simultaneous adapter calls and avoid a self-inflicted thundering herd.
-   * The bound is a per-attempt semaphore: it composes across batch windows
-   * and `isolateFailures` bisection, and a chunk sleeping between retries
-   * releases its slot, so failing chunks never starve healthy ones.
+   * once. `"unbounded"` (default) preserves that; set a positive integer to
+   * cap simultaneous adapter calls and avoid a self-inflicted thundering
+   * herd (anything below 1 is rejected at store creation — a zero-permit
+   * semaphore would block every fetch forever). The bound is a per-attempt
+   * semaphore: it composes across batch windows and `isolateFailures`
+   * bisection, and a chunk sleeping between retries releases its slot, so
+   * failing chunks never starve healthy ones.
    */
   maxConcurrency?: number | "unbounded";
   /**
@@ -457,30 +460,20 @@ function getOrCreateHandle(bucket: Map<string, InternalHandle>, key: string): In
 }
 
 /**
- * Resolve the handle for `key` in `bucket` and, if it's a never-loaded idle
- * handle (status "pending", no fetch in flight, no prior error), mark it
- * fetching and enqueue the request. Errored handles don't auto-retry; loaded
- * handles serve from cache. Shared by `find` and `findQuery` — the only
- * difference is which bucket and how the request is enqueued.
+ * True when the handle has never loaded (no value, no prior error) and no
+ * fetch is in flight — i.e. `find`/`findQuery` must enqueue a request.
+ * Errored handles don't auto-retry; loaded handles serve from cache.
+ *
+ * The gate is bookkeeping, not data the caller asked to observe — read it
+ * UNTRACKED via the raw target (the same pattern `applyEvent` uses), so a
+ * tracked render calling `find`/`findQuery` doesn't get subscribed to
+ * `isFetching`/`error` it never reads. Otherwise a `value`-only reader would
+ * re-render whenever a background refetch toggles `isFetching`, breaking the
+ * per-field contract documented on `DocumentHandle`.
  */
-function findOrFetch(
-  bucket: Map<string, InternalHandle>,
-  key: string,
-  enqueue: () => void,
-): InternalHandle {
-  const handle = getOrCreateHandle(bucket, key);
-  // The gate is bookkeeping, not data the caller asked to observe — read it
-  // UNTRACKED via the raw target (the same pattern `applyEvent` uses), so a
-  // tracked render calling `find`/`findQuery` doesn't get subscribed to
-  // `isFetching`/`error` it never reads. Otherwise a `value`-only reader would
-  // re-render whenever a background refetch toggles `isFetching`, breaking the
-  // per-field contract documented on `DocumentHandle`.
+function needsFetch(handle: InternalHandle): boolean {
   const raw = unwrap(handle);
-  if (!raw.isFetching && raw.value === undefined && raw.error === undefined) {
-    batch(() => applyEvent(handle, HandleEvent.fetch()));
-    enqueue();
-  }
-  return handle;
+  return !raw.isFetching && raw.value === undefined && raw.error === undefined;
 }
 
 export function createDocumentStore<
@@ -496,17 +489,21 @@ export function createDocumentStore<
   const store: DocumentStore<M, Q> = {
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
       if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
-      // Validate eagerly (after the null short-circuit, which never fetches) —
-      // an unconfigured type would otherwise enqueue a request no drain can
-      // serve, killing the whole batch window and stranding every handle in it.
-      if (config.models[type] === undefined) {
-        throw new Error(
-          `@supergrain/silo: no model "${type}" is configured — add it to DocumentStoreConfig.models`,
-        );
+      const handle = getOrCreateHandle(ensureBucket(state.documents, type), id);
+      if (needsFetch(handle)) {
+        // Validate only when a fetch must be enqueued — an unconfigured type
+        // would otherwise enqueue a request no drain can serve, killing the
+        // whole batch window and stranding every handle in it. A cached
+        // document (e.g. a sideload inserted under a type with no model
+        // config) stays readable: the cache path never needs an adapter.
+        if (config.models[type] === undefined) {
+          throw new Error(
+            `@supergrain/silo: no model "${type}" is configured — add it to DocumentStoreConfig.models`,
+          );
+        }
+        batch(() => applyEvent(handle, HandleEvent.fetch()));
+        finder.queueDocument(type, id);
       }
-      const handle = findOrFetch(ensureBucket(state.documents, type), id, () =>
-        finder.queueDocument(type, id),
-      );
       return handle as unknown as DocumentHandle<M[K]>;
     },
 
@@ -531,20 +528,24 @@ export function createDocumentStore<
       // The null short-circuit comes first — it never fetches, so the
       // conditional-read idiom `findQuery(type, ready ? params : null)` keeps
       // working even while the type is absent from config (e.g. feature-flagged
-      // out). Then validate eagerly: an unconfigured type would otherwise
-      // enqueue a request no drain can serve, stranding the handle.
+      // out).
       if (params === null || params === undefined)
         return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
-      if (config.queries?.[type] === undefined) {
-        throw new Error(
-          `@supergrain/silo: no query "${type}" is configured — add it to DocumentStoreConfig.queries`,
-        );
-      }
 
       const paramsKey = stableStringify(params);
-      const handle = findOrFetch(ensureBucket(state.queries, type), paramsKey, () =>
-        finder.queueQuery(type, paramsKey, params),
-      );
+      const handle = getOrCreateHandle(ensureBucket(state.queries, type), paramsKey);
+      if (needsFetch(handle)) {
+        // Validate only when a fetch must be enqueued — an unconfigured type
+        // would otherwise enqueue a request no drain can serve, stranding the
+        // handle. A result seeded via `insertQueryResult` stays readable.
+        if (config.queries?.[type] === undefined) {
+          throw new Error(
+            `@supergrain/silo: no query "${type}" is configured — add it to DocumentStoreConfig.queries`,
+          );
+        }
+        batch(() => applyEvent(handle, HandleEvent.fetch()));
+        finder.queueQuery(type, paramsKey, params);
+      }
       return handle as unknown as QueryHandle<Q[K]["result"]>;
     },
 
@@ -606,18 +607,12 @@ export function createDocumentStore<
         onFailure: (error, info) => {
           // Telemetry first, isolated — a throwing sink must not skip the
           // caller's own bookkeeping.
-          if (config.onError !== undefined) {
-            try {
-              config.onError(error, {
-                type,
-                keys,
-                attempt: info.attempt,
-                retryable: info.retryable,
-              });
-            } catch {
-              // Observability can't affect fetch state.
-            }
-          }
+          emitToSink(config.onError, error, {
+            type,
+            keys,
+            attempt: info.attempt,
+            retryable: info.retryable,
+          });
           onFailure?.(error, info);
         },
       });

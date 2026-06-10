@@ -26,7 +26,10 @@ retryable (the default). Effect adapters mark a deterministic failure
 than construct the error — get a config-level `retryable?: (error) => boolean`
 classifier (model / query / store, and `createQuery`) that inspects
 `error.cause` (e.g. a `Response`'s status); the error's own `retryable: false`
-remains a hard veto over the predicate.
+remains a hard veto over the predicate. The classifier runs exactly once per
+failed attempt and its veto is **stamped onto the error** (`retryable: false`),
+so `handle.error` / `lastError` and the `onError` sink always agree with the
+engine's actual retry decision.
 
 **A throwing failure sink can't break the engine.** `onError` now fires per
 attempt, and `runAdapter` isolates it (and the `deadline` breach notification)
@@ -56,11 +59,14 @@ the typed channel — a bug, not a network failure).
 when a multi-id batch fails terminally, the chunk is bisected and the halves
 re-fetched once, isolating the offending id so its healthy batch-mates still
 load instead of all failing together. Off by default. Isolation needs a
-_terminal_ failure to engage, so under the never-give-up `defaultRetry` an
-isolating chunk automatically uses a bounded variant (`boundedDefaultRetry`,
-~4 attempts); an explicitly configured `retry` is honored as-is. A `deadline`
-breach is never bisected — the deadline stays the hard stop rather than each
-half re-resolving a fresh budget.
+_terminal_ failure to engage, so when no `retry` is configured anywhere an
+isolating chunk automatically uses a bounded variant of the built-in default
+(`boundedDefaultRetry`, ~4 attempts); an explicitly configured `retry` —
+including an explicit `defaultRetry` — is honored as-is (provenance is tracked
+by resolution, not by reference comparison). A `deadline` breach is never
+bisected, and bisected halves inherit the chunk's **remaining** wall-clock
+budget rather than each recursion level re-arming a fresh one — the deadline
+stays the hard stop.
 
 **Bounded fan-out (`maxConcurrency`).** New store-wide
 `maxConcurrency?: number | "unbounded"` (default `"unbounded"`) caps how many
@@ -68,7 +74,8 @@ half re-resolving a fresh budget.
 doesn't fire every request simultaneously. The cap is a per-attempt semaphore:
 it composes across batch windows and `isolateFailures` bisection, and a chunk
 sleeping between retries releases its slot, so failing chunks never starve
-healthy ones.
+healthy ones. Values below 1 are rejected at store creation (a zero-permit
+semaphore would block every fetch forever).
 
 **Hardened query cache keys.** `stableStringify` now encodes non-finite numbers
 (`NaN` / `±Infinity`) distinctly — they previously all collapsed to `null` via
@@ -86,3 +93,8 @@ call it.
 - const { retry, timeout } = store.defaults;
 + const { retry, timeout, deadline } = store.resolveAdapterOptions(perCallOverrides);
 ```
+
+The resolved shape also carries `retryIsDefault` — true when `retry` is the
+built-in fallback rather than anything configured — so layered code can tell
+"unset" apart from "explicitly set to `defaultRetry`" without reference
+comparisons.

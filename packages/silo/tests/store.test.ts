@@ -544,3 +544,30 @@ describe("Store.findQuery — null params before type validation", () => {
     );
   });
 });
+
+describe("Store.find — cached documents of unconfigured types stay readable", () => {
+  // A processor may sideload documents under a type that has no model config —
+  // JSON-API `included` resources are inserted by their envelope `type`, and
+  // the relationship hooks read them back with `store.find(ref.type, ref.id)`.
+  // Validation only guards the fetch path: a cached handle resolves from
+  // memory without ever needing an adapter.
+  it("returns a cached sideloaded document without validating its type", () => {
+    store.insertDocument("comment" as never, { id: "c1", body: "hi" } as never);
+
+    const handle = store.find("comment" as never, "c1");
+
+    expect(handle.value).toEqual({ id: "c1", body: "hi" });
+    expect(handle.status).toBe("success");
+    expect(handle.isFetching).toBe(false);
+  });
+
+  it("returns a cached query result without validating its query type", () => {
+    store.insertQueryResult("ghost" as never, { q: "x" } as never, { total: 3 } as never);
+
+    const handle = store.findQuery("ghost" as never, { q: "x" } as never);
+
+    expect(handle.value).toEqual({ total: 3 });
+    expect(handle.status).toBe("success");
+    expect(handle.isFetching).toBe(false);
+  });
+});

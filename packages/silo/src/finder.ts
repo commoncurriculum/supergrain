@@ -8,13 +8,20 @@ import type {
   ResponseProcessor,
 } from "./store";
 
-import { batch } from "@supergrain/kernel";
+import { batch, unwrap } from "@supergrain/kernel";
 import { Duration, Effect, type Fiber, Schedule } from "effect";
 
-import { AdapterError, NotFoundError, ProcessorError, type SiloError } from "./errors";
+import {
+  type AdapterError,
+  defectToAdapterError,
+  NotFoundError,
+  type ProcessorError,
+  runProcessor,
+  type SiloError,
+} from "./errors";
 import { defaultProcessor, defaultQueryProcessor } from "./processors";
-import { type ResilienceOptions, resolveAdapterOptions } from "./resolve";
-import { boundedDefaultRetry, defaultRetry } from "./retry";
+import { emitToSink, type ResilienceOptions, resolveAdapterOptions } from "./resolve";
+import { boundedDefaultRetry } from "./retry";
 import { type AdapterFailureInfo, runAdapter } from "./run-adapter";
 import { applyEvent, HandleEvent, type InternalHandle } from "./transitions";
 
@@ -42,23 +49,30 @@ interface QueryChunkEntry {
 }
 
 /**
- * Identifies one chunk's waiting handles: which surface's buckets, the type,
- * and the requested keys (document ids or stringified query params).
+ * Identifies one chunk's waiting handles: the type, the requested keys
+ * (document ids or stringified query params), and the handles themselves,
+ * each paired with the fetch **generation** captured when the chunk started —
+ * settle events are stamped with it so the statechart fences out anything a
+ * superseded cycle might land late. A key whose handle was dropped before the
+ * chunk started has no waiter and is skipped by construction.
  */
 interface ChunkContext {
-  readonly buckets: Map<string, Map<string, InternalHandle>>;
   readonly type: string;
   readonly keys: ReadonlyArray<string>;
+  readonly waiters: ReadonlyArray<{
+    readonly key: string;
+    readonly handle: InternalHandle;
+    readonly generation: number;
+  }>;
 }
 
-/** Run a processor over a raw response, converting a throw into a `ProcessorError`. */
-function runProcessor(type: string, run: () => void): ProcessorError | undefined {
-  try {
-    run();
-    return undefined;
-  } catch (error) {
-    return new ProcessorError({ type, cause: error });
-  }
+/**
+ * Marks a chunk as a bisected re-fetch of a failed parent: retry is disabled
+ * (the parent already exhausted the schedule) and `deadlineAt` carries the
+ * parent's remaining wall-clock budget.
+ */
+interface BisectedRerun {
+  readonly deadlineAt: number | undefined;
 }
 
 export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>> {
@@ -85,6 +99,16 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     this.batchWindowMs = config.batchWindowMs ?? 15;
     this.batchSize = config.batchSize ?? 60;
     const maxConcurrency = config.maxConcurrency ?? "unbounded";
+    // A zero-permit semaphore would block every attempt forever — each fetch
+    // would hang until the deadline mislabels it `reason: "deadline"`.
+    if (
+      typeof maxConcurrency === "number" &&
+      (!Number.isInteger(maxConcurrency) || maxConcurrency < 1)
+    ) {
+      throw new Error(
+        `@supergrain/silo: maxConcurrency must be a positive integer or "unbounded" — got ${maxConcurrency}`,
+      );
+    }
     this.permits =
       typeof maxConcurrency === "number" ? Effect.unsafeMakeSemaphore(maxConcurrency) : undefined;
   }
@@ -198,27 +222,21 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
       Effect.flatMap((raw) => Effect.sync(() => commit(raw))),
       Effect.catchAll((error: AdapterError) =>
         // A deadline breach is never bisected: the deadline is the caller's
-        // hard stop, and each bisected half would re-resolve a *fresh* budget,
-        // multiplying the configured wall time by the recursion depth.
+        // hard stop — by the time it fires, the chunk's whole wall-clock
+        // budget (threaded through bisection by `drainChunk`) is spent.
         bisect === undefined || error.reason === "deadline"
           ? Effect.sync(() => this.failChunk(ctx, error))
           : bisect(),
       ),
       // Safety net: nothing inside a chunk may escape as a defect — a defect
       // would fail the drain's fan-out, interrupt sibling chunks mid-request,
-      // and strand every handle in the window on `isFetching: true`. Typed
-      // failures are handled above; anything else (a subscriber effect
-      // throwing during the commit flush, an adapter Effect dying) settles
-      // this chunk's handles with a non-retryable `reason: "defect"` error.
+      // and strand every handle in the window on `isFetching: true`. Adapter
+      // defects are already coerced by `runAdapter`; this net catches what's
+      // left (a subscriber effect throwing during the commit flush) with the
+      // same shared rule.
       Effect.catchAllDefect((defect) =>
         Effect.sync(() => {
-          const error = new AdapterError({
-            type: ctx.type,
-            keys: ctx.keys,
-            cause: defect,
-            retryable: false,
-            reason: "defect",
-          });
+          const error = defectToAdapterError(ctx.type, ctx.keys, defect);
           // `failChunk` never re-emits (the adapter path already reported per
           // attempt) — but a defect was never observed, so report it here.
           this.emitError(error, ctx, { attempt: 1, retryable: false });
@@ -252,6 +270,12 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
    * with optional poison-key bisection. `retryEnabled` is false for bisected
    * sub-chunks: the parent chunk already exhausted the retry schedule, so the
    * halves run once (recurs(0)) purely to partition which key is the poison.
+   *
+   * `deadlineAt` is the wall-clock instant (epoch ms) when the chunk's
+   * ORIGINAL deadline elapses. The top-level chunk computes it from the
+   * resolved deadline and threads it through bisection, so re-fetched halves
+   * inherit the *remaining* budget — the deadline stays the caller's hard
+   * stop instead of each recursion level re-arming a fresh one.
    */
   private drainChunk<Entry>(args: {
     type: string;
@@ -260,48 +284,77 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     keys: ReadonlyArray<string>;
     overrides: ResilienceOptions;
     retryEnabled: boolean;
+    deadlineAt: number | undefined;
     invoke: (ctx: {
       signal: AbortSignal;
     }) => Promise<unknown> | Effect.Effect<unknown, AdapterError>;
     process: (raw: unknown) => void;
-    rerun: (half: Array<Entry>) => Effect.Effect<void>;
+    rerun: (half: Array<Entry>, deadlineAt: number | undefined) => Effect.Effect<void>;
   }): Effect.Effect<void> {
     const { type, buckets, entries, keys, overrides, retryEnabled, invoke, process, rerun } = args;
-    const resolved = resolveAdapterOptions(this.config, overrides);
-    const isolate = overrides.isolateFailures ?? this.config.isolateFailures ?? false;
-    const bisectActive = isolate && entries.length > 1;
-    // Isolation engages only on a *terminal* failure, which the never-give-up
-    // built-in default retry has none of — so an isolating chunk bounds it.
-    // An explicitly configured `retry` (even an unbounded one) is honored.
-    const useBoundedDefault = bisectActive && resolved.retry === defaultRetry;
-    const configuredRetry = useBoundedDefault ? boundedDefaultRetry : resolved.retry;
-    const chunkRetry = retryEnabled ? configuredRetry : Schedule.recurs(0);
-    const ctx: ChunkContext = { buckets, type, keys };
+    // Suspended so the per-run state below (generations, the deadline budget)
+    // is captured when the chunk actually starts, not when it is built.
+    return Effect.suspend(() => {
+      const resolved = resolveAdapterOptions(this.config, overrides);
+      const isolate = overrides.isolateFailures ?? this.config.isolateFailures ?? false;
+      const bisectActive = isolate && entries.length > 1;
+      // Isolation engages only on a *terminal* failure, which the never-give-up
+      // built-in default retry has none of — so an isolating chunk bounds the
+      // built-in *fallback*. Provenance comes from resolution (`retryIsDefault`),
+      // not reference identity, so an explicitly configured `retry` — including
+      // an explicit `defaultRetry` — is honored as-is.
+      const useBoundedDefault = bisectActive && resolved.retryIsDefault;
+      const configuredRetry = useBoundedDefault ? boundedDefaultRetry : resolved.retry;
+      const chunkRetry = retryEnabled ? configuredRetry : Schedule.recurs(0);
 
-    return this.settleChunk(ctx, {
-      run: runAdapter(invoke, {
-        type,
-        keys,
-        retry: chunkRetry,
-        timeout: resolved.timeout,
-        deadline: resolved.deadline,
-        retryable: resolved.retryable,
-        permits: this.permits,
-        onFailure: (error, info) => this.onAttemptFailed(ctx, error, info),
-      }),
-      commit: (raw) =>
-        batch(() => {
-          const processorError = runProcessor(type, () => process(raw));
-          this.settleCommitted(ctx, processorError);
+      // Convert the resolved deadline into a wall-clock budget shared with any
+      // bisected halves; an infinite deadline has no budget to thread.
+      let { deadlineAt } = args;
+      let { deadline } = resolved;
+      const decoded = Duration.decode(deadline);
+      if (Duration.isFinite(decoded)) {
+        deadlineAt ??= Date.now() + Duration.toMillis(decoded);
+        deadline = Duration.millis(Math.max(0, deadlineAt - Date.now()));
+      }
+
+      // Capture each waiting handle and its fetch generation at chunk start —
+      // settle events are stamped with the generation, so a late event from a
+      // superseded cycle is structurally dropped by the statechart.
+      const bucket = buckets.get(type);
+      const waiters: Array<{ key: string; handle: InternalHandle; generation: number }> = [];
+      for (const key of keys) {
+        const handle = bucket?.get(key);
+        if (handle) waiters.push({ key, handle, generation: unwrap(handle).generation });
+      }
+      const ctx: ChunkContext = { type, keys, waiters };
+
+      return this.settleChunk(ctx, {
+        run: runAdapter(invoke, {
+          type,
+          keys,
+          retry: chunkRetry,
+          timeout: resolved.timeout,
+          deadline,
+          retryable: resolved.retryable,
+          permits: this.permits,
+          onFailure: (error, info) => this.onAttemptFailed(ctx, error, info),
         }),
-      bisect: bisectActive ? () => this.bisect(entries, rerun) : undefined,
+        commit: (raw) =>
+          batch(() => {
+            const processorError = runProcessor(type, () => process(raw));
+            this.settleCommitted(ctx, processorError);
+          }),
+        bisect: bisectActive
+          ? () => this.bisect(entries, (half) => rerun(half, deadlineAt))
+          : undefined,
+      });
     });
   }
 
   private drainDocumentChunk(
     type: string,
     ids: Array<string>,
-    retryEnabled = true,
+    bisected?: BisectedRerun,
   ): Effect.Effect<void> {
     const modelConfig = (this.config.models as Record<string, ModelConfig<M>>)[type];
     // `find` validates the type at enqueue time, so this is unreachable short
@@ -318,18 +371,19 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
       entries: ids,
       keys: ids,
       overrides: modelConfig,
-      retryEnabled,
+      retryEnabled: bisected === undefined,
+      deadlineAt: bisected?.deadlineAt,
       // oxlint-disable-next-line no-array-method-this-argument -- DocumentAdapter#find, not Array#find
       invoke: (adapterCtx) => modelConfig.adapter.find(ids, adapterCtx),
       process: (raw) => processor(raw, this.store as DocumentStore<M>, type as keyof M & string),
-      rerun: (half) => this.drainDocumentChunk(type, half, false),
+      rerun: (half, deadlineAt) => this.drainDocumentChunk(type, half, { deadlineAt }),
     });
   }
 
   private drainQueryChunk(
     type: string,
     chunk: Array<QueryChunkEntry>,
-    retryEnabled = true,
+    bisected?: BisectedRerun,
   ): Effect.Effect<void> {
     const queryConfig = (
       this.config.queries as Record<string, QueryConfig<M, Q, keyof Q & string>> | undefined
@@ -351,7 +405,8 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
       entries: chunk,
       keys: chunk.map((e) => e.paramsKey),
       overrides: queryConfig,
-      retryEnabled,
+      retryEnabled: bisected === undefined,
+      deadlineAt: bisected?.deadlineAt,
       // oxlint-disable-next-line no-array-method-this-argument -- QueryAdapter#find, not Array#find
       invoke: (adapterCtx) => queryConfig.adapter.find(paramsList, adapterCtx),
       process: (raw) =>
@@ -361,7 +416,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
           type as keyof Q & string,
           paramsList as ReadonlyArray<Q[keyof Q & string]["params"]>,
         ),
-      rerun: (half) => this.drainQueryChunk(type, half, false),
+      rerun: (half, deadlineAt) => this.drainQueryChunk(type, half, { deadlineAt }),
     });
   }
 
@@ -373,28 +428,24 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   private settleCommitted(ctx: ChunkContext, processorError: ProcessorError | undefined): void {
     // Post-success terminal failures: a single observation, never retried.
     const terminalInfo: AdapterFailureInfo = { attempt: 1, retryable: false };
-    const bucket = ctx.buckets.get(ctx.type);
 
     if (processorError) {
       // One processor throw is one failure — emit once for the whole chunk
       // (like the per-attempt adapter path), not once per key.
       this.emitError(processorError, ctx, terminalInfo);
-      for (const key of ctx.keys) {
-        const handle = bucket?.get(key);
-        if (handle) applyEvent(handle, HandleEvent.failed(processorError));
+      for (const { handle, generation } of ctx.waiters) {
+        applyEvent(handle, HandleEvent.failed(processorError, generation));
       }
       return;
     }
 
-    for (const key of ctx.keys) {
-      // A missing handle was dropped while the fetch was in flight — skip it.
-      const handle = bucket?.get(key);
-      if (handle && handle.value === undefined) {
+    for (const { key, handle, generation } of ctx.waiters) {
+      if (handle.value === undefined) {
         const notFound = new NotFoundError({ type: ctx.type, key });
         this.emitError(notFound, { type: ctx.type, keys: [key] }, terminalInfo);
-        applyEvent(handle, HandleEvent.failed(notFound));
-      } else if (handle) {
-        applyEvent(handle, HandleEvent.settled());
+        applyEvent(handle, HandleEvent.failed(notFound, generation));
+      } else {
+        applyEvent(handle, HandleEvent.settled(generation));
       }
     }
   }
@@ -409,10 +460,8 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
   private onAttemptFailed(ctx: ChunkContext, error: AdapterError, info: AdapterFailureInfo): void {
     this.emitError(error, ctx, info);
     batch(() => {
-      const bucket = ctx.buckets.get(ctx.type);
-      for (const key of ctx.keys) {
-        const handle = bucket?.get(key);
-        if (handle) applyEvent(handle, HandleEvent.retrying(error));
+      for (const { handle, generation } of ctx.waiters) {
+        applyEvent(handle, HandleEvent.retrying(error, generation));
       }
     });
   }
@@ -421,36 +470,26 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     // `onError` already fired per attempt (and for a deadline breach) via
     // `onAttemptFailed`; here we only settle the handles into terminal failure.
     batch(() => {
-      const bucket = ctx.buckets.get(ctx.type);
-      for (const key of ctx.keys) {
-        const handle = bucket?.get(key);
-        if (handle) applyEvent(handle, HandleEvent.failed(error));
+      for (const { handle, generation } of ctx.waiters) {
+        applyEvent(handle, HandleEvent.failed(error, generation));
       }
     });
   }
 
   /**
    * Notify the optional `config.onError` sink with the failing `type` / `keys`
-   * and the per-failure `info` (1-based `attempt`, whether `retryable`). A
-   * throwing telemetry callback must never break the engine, so it's isolated.
+   * and the per-failure `info` (1-based `attempt`, whether `retryable`).
    */
   private emitError(
     error: SiloError,
     target: { type: string; keys: ReadonlyArray<string> },
     info: AdapterFailureInfo,
   ): void {
-    const { onError } = this.config;
-    if (onError === undefined) return;
-    try {
-      onError(error, {
-        type: target.type,
-        keys: target.keys,
-        attempt: info.attempt,
-        retryable: info.retryable,
-      });
-    } catch {
-      // A throwing telemetry callback is swallowed — observability must not
-      // affect fetch state.
-    }
+    emitToSink(this.config.onError, error, {
+      type: target.type,
+      keys: target.keys,
+      attempt: info.attempt,
+      retryable: info.retryable,
+    });
   }
 }

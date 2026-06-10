@@ -8,11 +8,13 @@
 // batch window with fake timers exactly like finder.test.ts.
 // =============================================================================
 
-import { Duration, Effect, Schedule } from "effect";
+import { effect } from "@supergrain/kernel";
+import { Chunk, Duration, Effect, Schedule } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   AdapterError,
+  boundedDefaultRetry,
   createDocumentStore,
   defaultDeadline,
   defaultRetry,
@@ -918,6 +920,44 @@ describe("synchronously-throwing adapters", () => {
 describe("defect safety net (settleChunk)", () => {
   type Two = { a: { id: string; name: string }; b: { id: string; name: string } };
 
+  it("settles handles with reason 'defect' when a subscriber throws during the commit flush", async () => {
+    const seen: Array<{ keys: ReadonlyArray<string>; attempt: number }> = [];
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: { find: (ids) => Promise.resolve(ids.map((id) => ({ id, name: "U" }))) },
+        },
+      },
+      retry: Schedule.recurs(0),
+      onError: (error, ctx) => {
+        if (error instanceof AdapterError && error.reason === "defect") {
+          seen.push({ keys: ctx.keys, attempt: ctx.attempt });
+        }
+      },
+    });
+
+    const handle = store.find("user", "1");
+    // A consumer effect tracking the handle throws when the commit flush
+    // notifies it — a defect outside the adapter, which the engine's own
+    // coercion can't see. The chunk net must settle the handles, not let the
+    // throw fail the drain.
+    let threw = false;
+    const dispose = effect(() => {
+      if (!handle.isFetching && !threw) {
+        threw = true;
+        throw new Error("subscriber bug");
+      }
+    });
+    await settle(handle);
+
+    // The commit landed (value present) and the defect was recorded on the
+    // handle and reported once.
+    expect(handle.value).toEqual({ id: "1", name: "U" });
+    expect((handle.error as AdapterError).reason).toBe("defect");
+    expect(seen).toEqual([{ keys: ["1"], attempt: 1 }]);
+    dispose();
+  });
+
   it("settles handles with reason 'defect' when an adapter Effect dies, reporting once", async () => {
     const seen: Array<{ keys: ReadonlyArray<string>; attempt: number }> = [];
     const store = createDocumentStore<Two>({
@@ -1218,5 +1258,236 @@ describe("store.runAdapter — the engine boundary for layered packages", () => 
     // ran their attempts simultaneously.
     expect(track.max).toBe(1);
     expect(handle.value).toEqual({ id: "1", name: "1" });
+  });
+});
+
+describe("maxConcurrency validation", () => {
+  const models = { user: { adapter: { find: () => Effect.succeed([]) } } };
+
+  it("rejects 0 / negative / fractional values at store creation", () => {
+    // A zero-permit semaphore would block every adapter attempt forever and
+    // surface as a misleading reason:"deadline" two minutes later.
+    expect(() => createDocumentStore<Types, Queries>({ models, maxConcurrency: 0 })).toThrow(
+      /maxConcurrency/,
+    );
+    expect(() => createDocumentStore<Types, Queries>({ models, maxConcurrency: -1 })).toThrow(
+      /maxConcurrency/,
+    );
+    expect(() => createDocumentStore<Types, Queries>({ models, maxConcurrency: 1.5 })).toThrow(
+      /maxConcurrency/,
+    );
+  });
+
+  it("accepts 1 and 'unbounded'", () => {
+    expect(() => createDocumentStore<Types, Queries>({ models, maxConcurrency: 1 })).not.toThrow();
+    expect(() =>
+      createDocumentStore<Types, Queries>({ models, maxConcurrency: "unbounded" }),
+    ).not.toThrow();
+  });
+});
+
+describe("isolateFailures honors an explicitly configured defaultRetry", () => {
+  it("retries to the deadline instead of silently substituting the bounded variant", async () => {
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            find: (ids) =>
+              Effect.fail(new AdapterError({ type: "user", keys: [...ids], cause: "down" })),
+          },
+          // Explicit — the documented contract is "an explicitly configured
+          // `retry` (even an unbounded one) is honored as-is".
+          retry: defaultRetry,
+          deadline: "8 seconds",
+          isolateFailures: true,
+        },
+      },
+    });
+
+    const h1 = store.find("user", "1");
+    const h2 = store.find("user", "2");
+    for (let i = 0; i < 120 && (i === 0 || h1.isFetching || h2.isFetching); i++) {
+      await vi.advanceTimersByTimeAsync(250);
+    }
+    await h1.promise?.catch(() => {});
+    await h2.promise?.catch(() => {});
+
+    // The unbounded default retry never fails terminally before the deadline,
+    // so isolation must not engage — the deadline stays the hard stop.
+    expect((h1.error as AdapterError).reason).toBe("deadline");
+    expect((h2.error as AdapterError).reason).toBe("deadline");
+  });
+});
+
+describe("isolateFailures × deadline budget", () => {
+  it("bisected halves inherit the remaining deadline budget, not a fresh one", async () => {
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: {
+            // The bulk request burns 150ms of the 200ms budget before failing
+            // terminally; the per-id re-fetches hang forever.
+            find: (ids) =>
+              ids.length > 1
+                ? Effect.sleep("150 millis").pipe(
+                    Effect.zipRight(
+                      Effect.fail(
+                        new AdapterError({
+                          type: "user",
+                          keys: [...ids],
+                          cause: "bulk 500",
+                          retryable: false,
+                        }),
+                      ),
+                    ),
+                  )
+                : Effect.never,
+          },
+          retry: Schedule.recurs(0),
+          deadline: "200 millis",
+          isolateFailures: true,
+        },
+      },
+    });
+
+    const h1 = store.find("user", "1");
+    const h2 = store.find("user", "2");
+    // Batch window (15ms) + bulk failure (150ms) + remaining budget (~50ms)
+    // ≈ 215ms. A fresh per-half budget would keep the halves hanging to ~365ms.
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(h1.isFetching).toBe(false);
+    expect(h2.isFetching).toBe(false);
+    expect((h1.error as AdapterError).reason).toBe("deadline");
+    expect((h2.error as AdapterError).reason).toBe("deadline");
+    await h1.promise?.catch(() => {});
+    await h2.promise?.catch(() => {});
+  });
+});
+
+describe("retryable classifier — verdict lands on the error", () => {
+  it("stamps the classifier's veto onto the error consumers see", async () => {
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: { find: () => Promise.reject(new Error("404")) },
+          retry: Schedule.recurs(5),
+          retryable: () => false,
+        },
+      },
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    // The engine failed fast on the veto; the error must say so — `retryable`
+    // omitted is documented as "retryable", which would contradict what the
+    // engine actually did.
+    expect((handle.error as AdapterError).retryable).toBe(false);
+    expect((handle.lastError as AdapterError).retryable).toBe(false);
+  });
+
+  it("evaluates the classifier exactly once per failed attempt", async () => {
+    let calls = 0;
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: { find: () => Promise.reject(new Error("404")) },
+          retry: Schedule.recurs(5),
+          retryable: () => {
+            calls += 1;
+            return false;
+          },
+        },
+      },
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    expect(calls).toBe(1);
+  });
+
+  it("passes a classifier-vetoed non-AdapterError failure value through unchanged", async () => {
+    // An Effect adapter violating its declared failure channel has nowhere to
+    // carry the verdict — the raw value must reach the handle as-is
+    // (store-consistent) rather than having fields fabricated off it.
+    const raw = "raw failure" as unknown as AdapterError;
+    const store = createDocumentStore<Types, Queries>({
+      models: {
+        user: {
+          adapter: { find: () => Effect.fail(raw) },
+          retry: Schedule.recurs(0),
+          retryable: () => false,
+        },
+      },
+    });
+
+    const handle = store.find("user", "1");
+    await settle(handle);
+    await handle.promise?.catch(() => {});
+
+    expect(handle.error).toBe(raw);
+  });
+});
+
+describe("store.runAdapter — defect coercion", () => {
+  it("fails with a typed reason 'defect' AdapterError instead of dying", async () => {
+    const failures: Array<{ attempt: number; retryable: boolean }> = [];
+    const store = createDocumentStore<Types, Queries>({
+      models: { user: { adapter: { find: () => Effect.succeed([]) } } },
+    });
+
+    // The boundary is advertised as making layered fetches correct by
+    // construction — a dying adapter Effect must join the typed channel here,
+    // not escape as a defect every consumer has to net independently.
+    const program = store.runAdapter(() => Effect.die(new Error("adapter bug")), {
+      type: "user",
+      keys: ["1"],
+      retry: Schedule.recurs(3),
+      onFailure: (_error, info) =>
+        failures.push({ attempt: info.attempt, retryable: info.retryable }),
+    });
+    const error = await Effect.runPromise(Effect.flip(program));
+
+    expect(error).toBeInstanceOf(AdapterError);
+    expect(error.reason).toBe("defect");
+    // Observed exactly once and never retried.
+    expect(failures).toEqual([{ attempt: 1, retryable: false }]);
+  });
+});
+
+describe("defaultRetry delay bounds", () => {
+  const failure = (): AdapterError => new AdapterError({ type: "user", keys: ["1"], cause: "x" });
+
+  it("keeps every jittered delay within (0, 60s] and saturates at exactly 60s", async () => {
+    const inputs = Array.from({ length: 14 }, failure);
+    const delays = await Effect.runPromise(Schedule.run(Schedule.delays(defaultRetry), 0, inputs));
+    const ms = Chunk.toReadonlyArray(delays).map(Duration.toMillis);
+
+    expect(ms).toHaveLength(14);
+    for (const delay of ms) {
+      expect(delay).toBeGreaterThan(0);
+      expect(delay).toBeLessThanOrEqual(60_000);
+    }
+    // Fibonacci passes 75s by the 11th delay; jitter (0.8–1.2×) applied before
+    // the clamp means the ceiling is hit exactly — clamping before jittering
+    // would scatter these between 48s and 72s.
+    for (const delay of ms.slice(10)) expect(delay).toBe(60_000);
+  });
+
+  it("boundedDefaultRetry terminates after its 3 recurrences despite more failures", async () => {
+    const inputs = Array.from({ length: 10 }, failure);
+    const delays = await Effect.runPromise(
+      Schedule.run(Schedule.delays(boundedDefaultRetry), 0, inputs),
+    );
+
+    expect(Chunk.size(delays)).toBeGreaterThanOrEqual(3);
+    expect(Chunk.size(delays)).toBeLessThanOrEqual(4);
+    for (const delay of Chunk.toReadonlyArray(delays)) {
+      expect(Duration.toMillis(delay)).toBeLessThanOrEqual(60_000);
+    }
   });
 });

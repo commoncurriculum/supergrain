@@ -77,7 +77,7 @@ describe("applyEvent — settled()", () => {
     const h = makeIdleHandle();
     applyEvent(h, HandleEvent.fetch());
     applyEvent(h, HandleEvent.insert(7));
-    applyEvent(h, HandleEvent.settled());
+    applyEvent(h, HandleEvent.settled(h.generation));
 
     expect(h.isFetching).toBe(false);
     expect(h.value).toBe(7);
@@ -90,7 +90,7 @@ describe("applyEvent — settled()", () => {
     // Simulate a value landing without going through Insert's resolver path.
     h.value = 9;
     h.status = "success";
-    applyEvent(h, HandleEvent.settled());
+    applyEvent(h, HandleEvent.settled(h.generation));
 
     await expect(h.promise).resolves.toBe(9);
   });
@@ -101,7 +101,7 @@ describe("applyEvent — failed(err)", () => {
     const h = makeIdleHandle();
     applyEvent(h, HandleEvent.fetch());
     const e = err();
-    applyEvent(h, HandleEvent.failed(e));
+    applyEvent(h, HandleEvent.failed(e, h.generation));
 
     expect(h.error).toBe(e);
     expect(h.value).toBeUndefined();
@@ -115,7 +115,7 @@ describe("applyEvent — failed(err)", () => {
     applyEvent(h, HandleEvent.fetch());
     applyEvent(h, HandleEvent.insert(5));
     const e = err();
-    applyEvent(h, HandleEvent.failed(e));
+    applyEvent(h, HandleEvent.failed(e, h.generation));
 
     expect(h.value).toBe(5); // value survives
     expect(h.error).toBe(e);
@@ -128,7 +128,7 @@ describe("applyEvent — insert after a failed first load", () => {
   it("hands out a NEW resolved promise (no pending resolver)", async () => {
     const h = makeIdleHandle();
     applyEvent(h, HandleEvent.fetch());
-    applyEvent(h, HandleEvent.failed(err()));
+    applyEvent(h, HandleEvent.failed(err(), h.generation));
     // Promise already rejected; swallow so it doesn't surface as unhandled.
     await h.promise?.catch(() => {});
 
@@ -172,7 +172,7 @@ describe("applyEvent — aborted()", () => {
     applyEvent(h, HandleEvent.fetch());
     applyEvent(h, HandleEvent.insert(5));
     const e = err();
-    applyEvent(h, HandleEvent.failed(e));
+    applyEvent(h, HandleEvent.failed(e, h.generation));
 
     applyEvent(h, HandleEvent.fetch());
     applyEvent(h, HandleEvent.aborted());
@@ -189,7 +189,7 @@ describe("applyEvent — reset()", () => {
     const h = makeIdleHandle();
     applyEvent(h, HandleEvent.fetch());
     applyEvent(h, HandleEvent.insert(3));
-    applyEvent(h, HandleEvent.settled());
+    applyEvent(h, HandleEvent.settled(h.generation));
 
     applyEvent(h, HandleEvent.reset());
 
@@ -230,7 +230,7 @@ describe("applyEvent — insert(undefined) is a no-op", () => {
     expect(h.isFetching).toBe(true);
 
     const boom = err();
-    applyEvent(h, HandleEvent.failed(boom));
+    applyEvent(h, HandleEvent.failed(boom, h.generation));
     await expect(promise).rejects.toBe(boom);
     expect(h.status).toBe("error");
   });
@@ -252,7 +252,7 @@ describe("applyEvent — insert() fetchedAt semantics", () => {
     const h = makeIdleHandle();
     applyEvent(h, HandleEvent.fetch());
     applyEvent(h, HandleEvent.insert({ id: "1", v: 1 }));
-    applyEvent(h, HandleEvent.settled());
+    applyEvent(h, HandleEvent.settled(h.generation));
     const fetched = h.fetchedAt;
     expect(fetched).toBeInstanceOf(Date);
 
@@ -291,12 +291,25 @@ describe("applyEvent — generation fencing", () => {
     expect(h.isFetching).toBe(false);
   });
 
-  it("applies unstamped events unconditionally (the finder doesn't stamp)", () => {
+  it("applies an unstamped aborted() unconditionally (destroy ends activity regardless of cycle)", () => {
     const h = makeIdleHandle();
     applyEvent(h, HandleEvent.fetch());
-    const boom = err();
-    applyEvent(h, HandleEvent.failed(boom));
-    expect(h.error).toBe(boom);
+    applyEvent(h, HandleEvent.aborted());
     expect(h.isFetching).toBe(false);
+  });
+});
+
+describe("HandleEvent — cycle-settling events require a generation", () => {
+  it("rejects unstamped settled/retrying/failed at compile time", () => {
+    // Emitters must capture the cycle's generation when the fetch starts — an
+    // unstamped settle event would apply unconditionally, and the first
+    // feature that supersedes a live fetch (TTL revalidation, refetch) would
+    // silently reintroduce the late-clobber race fencing exists to prevent.
+    // @ts-expect-error -- settled() requires the fetch cycle's generation
+    HandleEvent.settled();
+    // @ts-expect-error -- retrying() requires the fetch cycle's generation
+    HandleEvent.retrying(err());
+    // @ts-expect-error -- failed() requires the fetch cycle's generation
+    HandleEvent.failed(err());
   });
 });

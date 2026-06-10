@@ -1069,3 +1069,114 @@ describe("DocumentStoreConfig.onError for query fetches", () => {
     expect(q.isFetching).toBe(false);
   });
 });
+
+describe("defect net for non-engine throws", () => {
+  it("settles as reason 'defect' when a subscriber throws during the Failed flush", async () => {
+    const store = makeStore();
+    const fetch = vi.fn(() =>
+      Effect.fail(new AdapterError({ type: "planbooks_for_user", keys: ["u1"], cause: "down" })),
+    );
+    const q = createQuery({ store, adapter: { fetch }, type: "planbooks_for_user", id: "u1" });
+
+    // A consumer effect tracking q.error throws when the Failed flush
+    // notifies it — a defect outside the engine, which runAdapter's own
+    // coercion can't see. The net must record it instead of letting
+    // runPromiseExit discard the failure invisibly.
+    let threw = false;
+    const dispose = effect(() => {
+      if (q.error !== undefined && !threw) {
+        threw = true;
+        throw new Error("subscriber bug");
+      }
+    });
+    await q.refetch();
+
+    expect(q.error).toBeInstanceOf(AdapterError);
+    expect((q.error as AdapterError).reason).toBe("defect");
+    expect(q.isFetching).toBe(false);
+    dispose();
+  });
+});
+
+describe("single-flight supersession corners", () => {
+  interface Envelope {
+    data: { results: Array<PlanbookRef> };
+    meta: { nextOffset: number | null };
+  }
+
+  /** Real-timer macrotask hop — lets forked fibers reach the adapter call. */
+  function tick(ms = 0): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function makeDeferredAdapter(): {
+    adapter: QueryAdapter<PlanbookRef>;
+    fetch: ReturnType<typeof vi.fn>;
+    pending: Array<{ offset: number; resolve: (env: Envelope) => void }>;
+  } {
+    const pending: Array<{ offset: number; resolve: (env: Envelope) => void }> = [];
+    const fetch = vi.fn(
+      (_id: string, opts: { offset: number; limit: number; signal?: AbortSignal }) =>
+        new Promise<Envelope>((resolve) => pending.push({ offset: opts.offset, resolve })),
+    );
+    return { adapter: { fetch }, fetch, pending };
+  }
+
+  it("fetchNextPage waits for an in-flight refetch instead of aborting it", async () => {
+    const store = makeStore();
+    const { adapter, fetch, pending } = makeDeferredAdapter();
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+
+    // Seed page 0.
+    const seed = q.refetch();
+    await tick();
+    pending[0]!.resolve({ data: { results: [ref("stale", 0)] }, meta: { nextOffset: 1 } });
+    await seed;
+
+    // A live invalidation starts a refetch…
+    const invalidation = q.refetch();
+    await tick();
+    // …and the user scrolls before it lands. Aborting the refetch here would
+    // silently drop the fresher page 0 and merge the next page onto stale data.
+    const nextPage = q.fetchNextPage();
+    await tick();
+
+    // The refetch must still be live — resolve it with the fresh page 0.
+    pending[1]!.resolve({ data: { results: [ref("fresh", 0)] }, meta: { nextOffset: 1 } });
+    await invalidation;
+    await tick();
+
+    // Only now does the next page go out, with the refreshed offset.
+    expect(fetch).toHaveBeenCalledTimes(3);
+    pending[2]!.resolve({ data: { results: [ref("p2", 1)] }, meta: { nextOffset: null } });
+    await nextPage;
+
+    expect(q.results).toEqual([ref("fresh", 0), ref("p2", 1)]);
+    expect(q.error).toBeUndefined();
+  });
+
+  it("an awaited refetch superseded by a newer refetch settles only when the replacement does", async () => {
+    const store = makeStore();
+    const { adapter, pending } = makeDeferredAdapter();
+    const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
+
+    const first = q.refetch();
+    await tick();
+    const second = q.refetch(); // supersedes — aborts the first run
+    await tick();
+
+    let firstSettled = false;
+    void first.then(() => {
+      firstSettled = true;
+    });
+    await tick(5);
+    // The superseded run committed nothing — its caller must not observe a
+    // silent success while the replacement is still in flight.
+    expect(firstSettled).toBe(false);
+
+    pending[1]!.resolve({ data: { results: [ref("v2", 0)] }, meta: { nextOffset: null } });
+    await second;
+    await first; // follows the replacement
+    expect(q.results).toEqual([ref("v2", 0)]);
+  });
+});

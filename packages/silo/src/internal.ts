@@ -10,3 +10,7 @@ export { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./
 // against `maxConcurrency` — this export exists for tooling/tests that need
 // the engine without a store.
 export { type AdapterRunOptions, runAdapter } from "./run-adapter";
+// The shared failure-policy helpers, so a layered package's defect coercion,
+// processor coercion, and telemetry-sink calls can't drift from the finder's.
+export { defectToAdapterError, runProcessor } from "./errors";
+export { emitToSink } from "./resolve";

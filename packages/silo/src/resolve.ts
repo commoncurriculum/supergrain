@@ -86,6 +86,14 @@ export type AdapterErrorSink = (error: SiloError, ctx: AdapterErrorContext) => v
 /** Fully-resolved resilience options, ready to hand to `runAdapter`. */
 export interface ResolvedAdapterOptions {
   readonly retry: Schedule.Schedule<unknown, AdapterError>;
+  /**
+   * True when `retry` is the built-in {@link defaultRetry} *fallback* — no
+   * `retry` was configured per-call or store-wide. The finder uses this to
+   * substitute the bounded default for an isolating chunk; provenance is
+   * tracked here (not by comparing `retry` against `defaultRetry` by
+   * reference) so an *explicitly* configured `defaultRetry` is honored as-is.
+   */
+  readonly retryIsDefault: boolean;
   readonly timeout: Duration.DurationInput | undefined;
   /** Always set: the configured deadline, falling back to {@link defaultDeadline}. */
   readonly deadline: Duration.DurationInput;
@@ -111,11 +119,32 @@ export function resolveAdapterOptions(
   defaults: AdapterOptionOverrides & { onError?: AdapterErrorSink },
   perCall?: AdapterOptionOverrides,
 ): ResolvedAdapterOptions {
+  const configuredRetry = perCall?.retry ?? defaults.retry;
   return {
-    retry: perCall?.retry ?? defaults.retry ?? defaultRetry,
+    retry: configuredRetry ?? defaultRetry,
+    retryIsDefault: configuredRetry === undefined,
     timeout: perCall?.timeout ?? defaults.timeout,
     deadline: perCall?.deadline ?? defaults.deadline ?? defaultDeadline,
     retryable: perCall?.retryable ?? defaults.retryable,
     onError: defaults.onError,
   };
+}
+
+/**
+ * Notify an optional telemetry sink of one failure. A throwing sink is always
+ * swallowed — observability can't affect fetch state. The one sink-call rule
+ * shared by the finder, `store.runAdapter`, and `@supergrain/queries`, so the
+ * swallow contract can't drift between surfaces.
+ */
+export function emitToSink(
+  sink: AdapterErrorSink | undefined,
+  error: SiloError,
+  ctx: AdapterErrorContext,
+): void {
+  if (sink === undefined) return;
+  try {
+    sink(error, ctx);
+  } catch {
+    // Swallowed: a throwing telemetry callback must never break the engine.
+  }
 }

@@ -40,13 +40,17 @@ Schedule.Schedule<unknown, AdapterError>` and `timeout?: Duration.DurationInput`
   now the built-in `defaultRetry`).
 - `Query.error` is now typed `SiloError | undefined` (was `Error | undefined`).
 
-**Single-flight.** Starting a new `refetch()` / `fetchNextPage()` (or
-`destroy()`) interrupts any in-flight fetch — its adapter `signal` aborts — so
-overlapping requests can't race to write the store. Supersession is also
-enforced _in the statechart_: every `Fetch` bumps the handle's internal fetch
-generation and a run's events are stamped with it, so a superseded run's late
-`Retrying` / `Failed` / `Settled` / `Aborted` is structurally dropped instead
-of relying on interruption timing.
+**Single-flight.** Starting a new `refetch()` (or `destroy()`) interrupts any
+in-flight fetch — its adapter `signal` aborts — so overlapping requests can't
+race to write the store. `fetchNextPage()` instead **waits** for an in-flight
+fetch (superseding it would silently drop a fresher page 0 and merge the next
+page onto stale results), then reads `nextOffset` from what actually landed. A
+superseded run's returned promise follows its replacement, so `await refetch()`
+always reflects the state the query settled into rather than fulfilling
+silently. Supersession is also enforced _in the statechart_: every `Fetch`
+bumps the handle's internal fetch generation and a run's events are stamped
+with it, so a superseded run's late `Retrying` / `Failed` / `Settled` /
+`Aborted` is structurally dropped instead of relying on interruption timing.
 
 **Shared statechart.** `createQuery`'s transient state (`isFetching` / `error` /
 `failureCount` / `lastError`) is now driven by the store's own handle statechart
@@ -57,11 +61,13 @@ the moment a refetch starts — like a silo handle, the previous error stays
 visible until the new fetch settles (success clears it; failure replaces it).
 
 **`store.find` / `store.findQuery` validate the type.** Calling either with a
-type that has no `DocumentStoreConfig` entry now throws immediately instead of
-stranding handles on `isFetching` forever. The `null`-params /-id short-circuit
-comes first, so the conditional-read idiom (`findQuery(type, ready ? params :
-null)`) keeps returning the idle handle even while the type is absent from
-config.
+type that has no `DocumentStoreConfig` entry now throws when a fetch would be
+required, instead of stranding handles on `isFetching` forever. Validation
+guards only the fetch path: a **cached** document or query result — e.g. a
+JSON-API sideload inserted under a type that is never fetched directly — stays
+readable without a config entry. The `null`-params /-id short-circuit comes
+first, so the conditional-read idiom (`findQuery(type, ready ? params : null)`)
+keeps returning the idle handle even while the type is absent from config.
 
 **No failure is silent.** A synchronously-throwing adapter (thrown before
 returning a Promise/Effect) joins the typed channel as an `AdapterError`, like
