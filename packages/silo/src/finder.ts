@@ -121,8 +121,11 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
 
   /**
    * Flush queued work in one pass. Exposed (non-private, returns a Promise) so
-   * tests can drive it deterministically without the window. Never rejects —
-   * all adapter/processor failures settle into handle state.
+   * tests can drive it deterministically without the window. Never rejects on
+   * adapter/processor failures or defects — those settle into handle state.
+   * The one exception is an invariant violation (a queued type with no
+   * config), which rejects loudly; `find` / `findQuery` validate at enqueue
+   * time, so reaching it means a silo bug.
    */
   drain(): Promise<void> {
     return Effect.runPromise(this.drainEffect());
