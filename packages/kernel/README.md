@@ -382,9 +382,9 @@ React features that trip up many state libraries — concurrent rendering, Suspe
 ## FAQ
 
 <details>
-<summary><strong>Why isn't my class instance / <code>Map</code> / <code>Set</code> reactive?</strong></summary>
+<summary><strong>Why isn't my class instance / <code>Date</code> / <code>RegExp</code> reactive?</strong></summary>
 
-Supergrain only proxies plain objects (`Object` constructor) and arrays. Class instances, `Map`, `Set`, `Date`, `RegExp`, and other built-ins pass through unchanged — they won't trigger re-renders when mutated. Store plain JSON-like data in your store; keep class instances and collections outside it. We may add `Map`/`Set` support in a later release.
+Supergrain proxies plain objects (including null-prototype), arrays, `Map`, and `Set` — reading and mutating any of them (`map.set(k, v)`, `set.add(x)`, `map.get(k)`) is tracked. Class instances, `Date`, `RegExp`, functions, and other built-ins pass through unchanged — they won't trigger re-renders when mutated. Store plain JSON-like data (objects, arrays, `Map`s, `Set`s) in your store; keep class instances outside it.
 
 </details>
 

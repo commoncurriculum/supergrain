@@ -649,9 +649,9 @@ These aren't "same library, different maturity" — they're genuinely different 
 | Invalidation                                           |     ✓      |           ✗            | add `invalidate` / `invalidateType`            |
 | Stale-time / gc-time                                   |     ✓      |           ✗            | add `staleMs`; compare against `fetchedAt`     |
 | Refetch on focus / reconnect / interval                |     ✓      |           ✗            | add opt-in hooks                               |
-| Retry with backoff                                     |     ✓      |           ✗            | add to Finder                                  |
-| Cancellation                                           |     ✓      |           ✗            | thread `AbortSignal` through adapter           |
-| Pagination / infinite queries                          |     ✓      |           ✗            | wrapper hook that extends an id-list           |
+| Retry with backoff                                     |     ✓      |           ✓            | — (jittered fibonacci default; configurable)   |
+| Cancellation                                           |     ✓      |           ✓            | — (adapter `AbortSignal`; not on unmount)      |
+| Pagination / infinite queries                          |     ✓      |           ✗            | `@supergrain/queries` (shipped)                |
 | Mutations + optimistic + rollback                      |     ✓      |           ✗            | next-PR write layer built on `insertDocument`  |
 | SSR / hydration                                        |     ✓      |           ✗            | serialize the store's reactive tree, rehydrate |
 | Persistence (localStorage / IDB)                       |     ✓      |           ✗            | serialize map on write, restore on init        |
@@ -662,7 +662,7 @@ These aren't "same library, different maturity" — they're genuinely different 
 
 ### What we give up vs TQ
 
-- **Shipped feature count.** TQ has years of polish; we're shipping a read layer. If you need stale-time, refetch-on-focus, mutations, or pagination _today_, TQ wins.
+- **Shipped feature count.** TQ has years of polish; we're shipping a read layer. If you need stale-time, refetch-on-focus, or mutations _today_, TQ wins. (Retry/backoff, cancellation, and pagination have since landed — pagination ships separately in [`@supergrain/queries`](../queries/README.md).)
 - **Partial-key pattern invalidation.** `invalidateQueries({ queryKey: ['users'] })` in TQ matches every key starting with `['users']`. Our planned `invalidateType('users-by-role')` is blunter — drops everything under a type in one call. Predicate invalidation (`invalidateWhere`) handles the precise cases. Net: ~5% of real-world invalidation needs are less ergonomic.
 - **Zero-discipline fetching.** Write `queryFn` and you're done. Here you write adapter + processor + provider wiring. More up-front work; pays off if normalization matters to you.
 - **Mature ecosystem.** Persisters, devtools, SSR integrations, community plugins.
@@ -677,7 +677,7 @@ These aren't "same library, different maturity" — they're genuinely different 
 
 ### When to pick which
 
-- **Pick TQ today** if you need stale-time, refetch, mutations, or pagination _shipping now_. If "opaque cache, refetch on events" fits your mental model and you don't want to think about normalization. If your queries don't overlap enough for cross-query sync to matter.
+- **Pick TQ today** if you need stale-time, refetch-on-focus, or mutations _shipping now_. If "opaque cache, refetch on events" fits your mental model and you don't want to think about normalization. If your queries don't overlap enough for cross-query sync to matter.
 - **Pick document-store** if you want fine-grained reactive state as your primary model and documents should be part of that. If cross-query sync would meaningfully simplify your app (entity updates radiating without keys). If you're okay being on a library with a smaller feature surface today, trusting that the additive features will land.
 - **Use both in one app during migration.** Totally viable. TQ for search/list/cursor queries where opacity is fine; document-store for entity reads that benefit from normalization. They don't step on each other.
 
@@ -691,10 +691,9 @@ These are deliberate — every one was considered and left out for this read lay
 
 - Writes, dispatch, optimistic updates — a separate write layer will build on this.
 - Stale-time / refetch-on-focus / background revalidation.
-- Imperative `handle.refetch()` — observe fresh data by calling `insertDocument` from a socket handler or a mutation response.
-- Retry with backoff.
-- Server-push invalidation.
-- Cancellation of in-flight fetches.
+- Imperative `handle.refetch()` on a document — observe fresh data by calling `insertDocument` from a socket handler or a mutation response. (Paginated queries in [`@supergrain/queries`](../queries/README.md) do expose `refetch()` / `fetchNextPage()`.)
+- Server-push invalidation for individual documents — push fresh data with `insertDocument` instead. ([`@supergrain/queries`](../queries/README.md) adds an opt-in `subscribe` hook for paginated queries.)
+- Unmount-driven cancellation — an in-flight fetch completes and populates the cache even after its component unmounts. Adapters still receive an `AbortSignal` that fires on `timeout` / `deadline` / interrupt, so request cancellation itself is supported.
 - **Auto-suspending hooks.** `useDocument` returns a handle; it never throws to Suspense on its own. Suspense is a one-line opt-in (`use(handle.promise)`). The reverse — recovering a handle from an auto-suspending hook — isn't possible, so the primitive stays non-suspending and auto-suspend is a trivial wrapper anyone can write.
 
 ## License

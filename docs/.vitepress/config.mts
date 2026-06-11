@@ -16,6 +16,8 @@ export default defineConfig({
       { text: "Home", link: "/" },
       { text: "Husk", link: "/husk" },
       { text: "Silo", link: "/silo" },
+      { text: "Queries", link: "/queries" },
+      { text: "Mill", link: "/mill" },
       { text: "Comparison", link: "/comparison" },
     ],
 

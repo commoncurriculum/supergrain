@@ -244,6 +244,9 @@ pnpm add @supergrain/kernel @supergrain/husk
 
 # State + API queries
 pnpm add @supergrain/kernel @supergrain/silo
+
+# ...plus paginated / live-subscription queries
+pnpm add @supergrain/kernel @supergrain/silo @supergrain/queries
 ```
 
 React bindings ship at `@supergrain/<pkg>/react` subpaths and require `react >= 18.2`.
@@ -251,6 +254,7 @@ React bindings ship at `@supergrain/<pkg>/react` subpaths and require `react >= 
 ## Also available
 
 - **[@supergrain/husk](./packages/husk/README.md)** — Reactive side-effect primitives: `resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`, plus the `modifier` / `useModifier` DOM primitive. Layer between kernel's reactive core and application data layers.
+- **[@supergrain/queries](./packages/queries/README.md)** — Pagination + live-subscription queries built on `@supergrain/silo`. A reactive `createQuery` handle that pages through a resource, merges each page into the store, and refetches when the server signals staleness — on the same fetch engine as a silo document `find`.
 - **[@supergrain/mill](./packages/mill/README.md)** — MongoDB-style update operators (`$set`, `$inc`, `$push`, `$pull`, `$addToSet`, `$min`, `$max`, `$unset`) for batched, path-aware writes. Optional — plain `store.x = 1` is the usual path; reach for `mill` when you want to apply several updates atomically or use dot notation for deeply nested writes.
 
 ## Comparison
