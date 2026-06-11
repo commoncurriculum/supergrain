@@ -175,7 +175,7 @@ export type DocumentHandle<T, E = SiloError> =
  * `AdapterError` automatically. Power users can **return an `Effect`** instead
  * to control the failure channel, compose their own retries, or manage
  * resources; it's used as-is. The library doesn't inspect the raw value — only
- * the paired `ResponseProcessor` does.
+ * the model's configured `ResponseProcessor`(s) do.
  *
  * Contract:
  * - `find` receives a chunk of at most `DocumentStoreConfig.batchSize` ids,
@@ -213,42 +213,92 @@ export interface DocumentAdapter {
 }
 
 // =============================================================================
-// ResponseProcessor — raw response → inserts
+// ResponseProcessor — ordered response pipeline step
 // =============================================================================
 
 /**
- * Transforms a raw adapter response into store inserts. Calls
- * `store.insertDocument(type, doc)` for every document it wants cached (primary
- * + sideloaded). Returns nothing; the library looks up each requested
- * `(type, id)` via `store.findInMemory` afterward to settle the handle.
+ * Context handed to every {@link ResponseProcessor} in a model's pipeline: the
+ * `store` (to read cached docs and insert new ones), the `type` the caller
+ * passed to `find(type, id)`, and the chunk's requested `ids`.
+ */
+export interface ProcessorContext<M extends DocumentTypes> {
+  /** The store — read with `findInMemory`, write with `insertDocument`. */
+  readonly store: DocumentStore<M>;
+  /** The type the caller passed to `find(type, id)` for this chunk. */
+  readonly type: keyof M & string;
+  /** The document ids this chunk fetched. */
+  readonly ids: Array<string>;
+}
+
+/**
+ * One step in a model's ordered response pipeline.
+ *
+ * The adapter returns a response. Silo passes that response through each
+ * processor in order. A processor may **mutate** the response, **return a
+ * replacement** response, perform **side effects**, or **insert documents**
+ * into the store. If it returns `undefined` (or `null`), the current response
+ * continues unchanged to the next processor. Most pipelines end with an
+ * insertion processor that calls `store.insertDocument(type, doc)` for every
+ * document worth caching; the library then looks up each requested
+ * `(type, id)` via `store.findInMemory` to settle the handle.
  *
  * Contract:
  * - Synchronous. For async normalization, do it in the adapter Effect.
- * - If it throws, every deferred on the chunk fails with a `ProcessorError`.
+ * - If it throws, the remaining processors do not run and every deferred on
+ *   the chunk fails with a `ProcessorError`.
+ *
+ * @example
+ * ```ts
+ * const normalize: ResponseProcessor<M> = (response) => {
+ *   for (const doc of responseDocs(response)) migrateInPlace(doc);
+ *   return response;
+ * };
+ *
+ * const insert: ResponseProcessor<M> = (response, { store, type }) => {
+ *   for (const doc of responseDocs(response)) store.insertDocument(type, doc);
+ * };
+ * ```
  */
 export type ResponseProcessor<M extends DocumentTypes> = (
-  raw: unknown,
-  store: DocumentStore<M>,
-  type: keyof M & string,
-) => void;
+  response: unknown,
+  context: ProcessorContext<M>,
+) => unknown | void;
 
 // =============================================================================
 // Per-model config
 // =============================================================================
 
 /**
- * Per-model wiring: the adapter that talks to the API, an optional processor
- * that normalizes its response, and optional Effect-native resilience.
+ * Per-model wiring: the adapter that talks to the API, the response
+ * processor(s) that turn its response into store inserts, and optional
+ * Effect-native resilience.
  *
- * If `processor` is omitted, the library uses `defaultProcessor`. The inherited
- * resilience knobs ({@link ResilienceOptions}: `retry` / `timeout` /
- * `deadline` / `retryable` / `isolateFailures`) override the store-wide
- * defaults for this model — resolution precedence is per-model → store-wide →
- * built-in `defaultRetry`.
+ * Responses run through an **ordered pipeline**. Configure it either way:
+ * - `processor` — a single {@link ResponseProcessor} (normalized to a
+ *   one-element pipeline).
+ * - `processors` — an ordered array of {@link ResponseProcessor}s, run in
+ *   declared order.
+ *
+ * Supply at most one. Setting **both** is a configuration error and throws at
+ * store creation — the intent is ambiguous. If neither is supplied, the
+ * library uses `defaultProcessor` (so `{ adapter }`,
+ * `{ adapter, processor: defaultProcessor }`, and
+ * `{ adapter, processors: [defaultProcessor] }` are equivalent).
+ *
+ * The inherited resilience knobs ({@link ResilienceOptions}: `retry` /
+ * `timeout` / `deadline` / `retryable` / `isolateFailures`) override the
+ * store-wide defaults for this model — resolution precedence is per-model →
+ * store-wide → built-in `defaultRetry`.
  */
 export interface ModelConfig<M extends DocumentTypes> extends ResilienceOptions {
   adapter: DocumentAdapter;
+  /** A single response processor. Mutually exclusive with `processors`. */
   processor?: ResponseProcessor<M>;
+  /**
+   * An ordered response pipeline, run in declared order. Mutually exclusive
+   * with `processor`.
+   */
+  processors?: ReadonlyArray<ResponseProcessor<M>>;
 }
 
 // =============================================================================
@@ -270,7 +320,7 @@ export interface DocumentStoreConfig<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
 > extends ResilienceOptions {
-  /** Per-type adapter + optional processor wiring for documents. */
+  /** Per-type adapter + optional response-processor pipeline for documents. */
   models: { [K in keyof M]: ModelConfig<M> };
   /** Per-type adapter + optional processor wiring for queries. Optional. */
   queries?: { [K in keyof Q & string]: QueryConfig<M, Q, K> };

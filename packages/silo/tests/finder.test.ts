@@ -11,6 +11,7 @@ import {
   type QueryAdapter,
 } from "../src";
 import { Finder } from "../src/finder";
+import { defaultProcessor } from "../src/processors";
 import { type InternalHandle, makeIdleHandle } from "../src/transitions";
 import { effectFind } from "./setup/effect-find";
 import { setupFakeTimers } from "./setup/timers";
@@ -798,5 +799,229 @@ describe("adapter boundary (Promise | Effect)", () => {
     await flushBatch();
 
     expect(h.value?.name).toBe("User1");
+  });
+});
+
+// =============================================================================
+// Processor pipeline
+//
+// A model's response is fed through an ordered array of processors. Each may
+// mutate the response, return a replacement, perform a side effect, or insert
+// documents. Returning undefined/null passes the current response through
+// unchanged; a throw stops the pipeline and fails the chunk with a
+// ProcessorError — the same terminal behavior as a single `processor` throw.
+// =============================================================================
+
+type UserDoc = { id: string; name: string };
+
+/** A document adapter that returns one `{ id, name }` per requested id. */
+function userDocsFind(): DocumentAdapter["find"] {
+  return async (ids) => ids.map((id) => ({ id, name: `User${id}` }));
+}
+
+/** A terminal insertion processor: inserts each doc under the context's type. */
+const insertUserDocs = (
+  response: unknown,
+  { store, type }: { store: DocumentStore<TestTypes>; type: keyof TestTypes & string },
+): void => {
+  for (const doc of response as ReadonlyArray<UserDoc>) {
+    store.insertDocument(type, doc as TestTypes[keyof TestTypes & string]);
+  }
+};
+
+describe("processor pipeline", () => {
+  it("runs processors in declared order and hands each the requested ids", async () => {
+    const order: number[] = [];
+    let sawIds: ReadonlyArray<string> | undefined;
+    const store = createDocumentStore<TestTypes>({
+      models: {
+        user: {
+          adapter: { find: userDocsFind() },
+          processors: [
+            (response, { ids }) => {
+              order.push(0);
+              sawIds = ids;
+              return response;
+            },
+            (response) => {
+              order.push(1);
+              return response;
+            },
+            (response, ctx) => {
+              order.push(2);
+              insertUserDocs(response, ctx);
+            },
+          ],
+        },
+        post: { adapter: makePostAdapter() },
+      },
+      retry: Schedule.recurs(0),
+    });
+
+    const h = store.find("user", "1");
+    await flushBatch();
+
+    expect(order).toEqual([0, 1, 2]);
+    expect(sawIds).toEqual(["1"]);
+    expect(h.value?.name).toBe("User1");
+  });
+
+  it("replaces the response passed to later processors when a processor returns a value", async () => {
+    let downstream: unknown;
+    const store = createDocumentStore<TestTypes>({
+      models: {
+        user: {
+          // Adapter returns an envelope; the first processor unwraps it.
+          adapter: { find: async (ids) => ({ data: ids }) },
+          processors: [
+            (response) =>
+              (response as { data: string[] }).data.map((id) => ({ id, name: `User${id}` })),
+            (response, ctx) => {
+              downstream = response;
+              insertUserDocs(response, ctx);
+            },
+          ],
+        },
+        post: { adapter: makePostAdapter() },
+      },
+      retry: Schedule.recurs(0),
+    });
+
+    const h = store.find("user", "7");
+    await flushBatch();
+
+    // The second processor saw the replacement, not the raw envelope.
+    expect(downstream).toEqual([{ id: "7", name: "User7" }]);
+    expect(h.value?.name).toBe("User7");
+  });
+
+  it("passes the current response through unchanged when a processor returns undefined", async () => {
+    const seen: unknown[] = [];
+    const store = createDocumentStore<TestTypes>({
+      models: {
+        user: {
+          adapter: { find: userDocsFind() },
+          processors: [
+            (response) => {
+              seen.push(response);
+              // No return → undefined → pass-through.
+            },
+            (response, ctx) => {
+              seen.push(response);
+              insertUserDocs(response, ctx);
+            },
+          ],
+        },
+        post: { adapter: makePostAdapter() },
+      },
+      retry: Schedule.recurs(0),
+    });
+
+    const h = store.find("user", "1");
+    await flushBatch();
+
+    // Same reference flowed to the next step — the void return didn't replace it.
+    expect(seen[0]).toBe(seen[1]);
+    expect(h.value?.name).toBe("User1");
+  });
+
+  it("supports a side-effect-only processor before the insertion processor", async () => {
+    const mirrored: string[] = [];
+    const store = createDocumentStore<TestTypes>({
+      models: {
+        user: {
+          adapter: { find: userDocsFind() },
+          processors: [
+            // Mutate the response in place.
+            (response) => {
+              for (const doc of response as ReadonlyArray<UserDoc>) {
+                doc.name = doc.name.toUpperCase();
+              }
+            },
+            // Side effect only: mirror ids elsewhere, no return, no insert.
+            (response) => {
+              for (const doc of response as ReadonlyArray<UserDoc>) mirrored.push(doc.id);
+            },
+            insertUserDocs,
+          ],
+        },
+        post: { adapter: makePostAdapter() },
+      },
+      retry: Schedule.recurs(0),
+    });
+
+    const h = store.find("user", "3");
+    await flushBatch();
+
+    expect(mirrored).toEqual(["3"]);
+    expect(h.value?.name).toBe("USER3"); // in-place mutation survived to the insert
+  });
+
+  it("stops the pipeline on a thrown processor and fails the chunk with a ProcessorError", async () => {
+    const ran: string[] = [];
+    const store = createDocumentStore<TestTypes>({
+      models: {
+        user: {
+          adapter: { find: userDocsFind() },
+          processors: [
+            () => {
+              ran.push("first");
+            },
+            () => {
+              ran.push("boom");
+              throw new Error("pipeline exploded");
+            },
+            (response, ctx) => {
+              ran.push("insert");
+              insertUserDocs(response, ctx);
+            },
+          ],
+        },
+        post: { adapter: makePostAdapter() },
+      },
+      retry: Schedule.recurs(0),
+    });
+
+    const h = store.find("user", "1");
+    await flushBatch();
+
+    // The processor after the throw never ran.
+    expect(ran).toEqual(["first", "boom"]);
+    expect(h.error?._tag).toBe("ProcessorError");
+    const cause = (h.error as { cause?: unknown }).cause;
+    expect((cause as Error).message).toMatch(/pipeline exploded/);
+  });
+
+  it("throws at store creation when a model sets both `processor` and `processors`", () => {
+    expect(() =>
+      createDocumentStore<TestTypes>({
+        models: {
+          user: {
+            adapter: makeUserAdapter(),
+            processor: insertUserDocs,
+            processors: [insertUserDocs],
+          },
+          post: { adapter: makePostAdapter() },
+        },
+      }),
+    ).toThrow(/both `processor` and `processors`/);
+  });
+
+  it("treats `processors: [defaultProcessor]` the same as the implicit default", async () => {
+    const store = createDocumentStore<TestTypes>({
+      models: {
+        user: {
+          adapter: { find: userDocsFind() },
+          processors: [defaultProcessor],
+        },
+        post: { adapter: makePostAdapter() },
+      },
+      retry: Schedule.recurs(0),
+    });
+
+    const h = store.find("user", "5");
+    await flushBatch();
+
+    expect(h.value).toEqual({ id: "5", name: "User5" });
   });
 });

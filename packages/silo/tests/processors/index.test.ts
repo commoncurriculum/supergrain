@@ -75,7 +75,7 @@ describe("defaultProcessor", () => {
     const { store, inserts } = makeFakeStore();
     const user = makeUser("1");
 
-    defaultProcessor(user, store, "user");
+    defaultProcessor(user, { store, type: "user", ids: ["1"] });
 
     expect(inserts).toEqual([{ type: "user", doc: user }]);
   });
@@ -84,7 +84,7 @@ describe("defaultProcessor", () => {
     const { store, inserts } = makeFakeStore();
     const users = [makeUser("1"), makeUser("2"), makeUser("3")];
 
-    defaultProcessor(users, store, "user");
+    defaultProcessor(users, { store, type: "user", ids: ["1", "2", "3"] });
 
     expect(inserts).toEqual([
       { type: "user", doc: users[0] },
@@ -101,14 +101,14 @@ describe("defaultProcessor", () => {
     const user = makeUser("1");
     expect("type" in user).toBe(false);
 
-    defaultProcessor(user, store, "user");
+    defaultProcessor(user, { store, type: "user", ids: ["1"] });
 
     expect(inserts).toEqual([{ type: "user", doc: user }]);
   });
 
   it("returns void — the library looks up resolved docs from memory afterwards", () => {
     const { store } = makeFakeStore();
-    const result = defaultProcessor(makeUser("1"), store, "user");
+    const result = defaultProcessor(makeUser("1"), { store, type: "user", ids: ["1"] });
     expect(result).toBeUndefined();
   });
 
@@ -123,7 +123,7 @@ describe("defaultProcessor", () => {
 
     // Everything goes in under "user" because that's the arg — the second
     // item is structurally compatible (it has an id) and gets inserted.
-    defaultProcessor(mixed, store, "user");
+    defaultProcessor(mixed, { store, type: "user", ids: ["1", "10"] });
 
     expect(inserts).toHaveLength(2);
     expect(inserts[0].type).toBe("user");
@@ -132,7 +132,7 @@ describe("defaultProcessor", () => {
 
   it("handles an empty array response without inserting anything", () => {
     const { store, inserts } = makeFakeStore();
-    expect(() => defaultProcessor([], store, "user")).not.toThrow();
+    expect(() => defaultProcessor([], { store, type: "user", ids: [] })).not.toThrow();
     expect(inserts).toEqual([]);
   });
 });

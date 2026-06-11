@@ -204,7 +204,7 @@ const store = createDocumentStore<TypeToModel>({
 
 Each model (and query) can also take:
 
-- `processor` to normalize the adapter's raw response — see [Processors](#processors) below. Omit it and the default processor assumes the adapter returns a doc or an array of docs.
+- `processor` (a single step) or `processors` (an ordered pipeline) to turn the adapter's response into store inserts — see [Processors](#processors) below. Omit both and the default processor assumes the adapter returns a doc or an array of docs. Supplying **both** is a configuration error and throws at store creation.
 - `retry` — an Effect `Schedule` applied to the adapter Effect on a **retryable** `AdapterError` (e.g. `Schedule.exponential("100 millis").pipe(Schedule.compose(Schedule.recurs(3)))`). An Effect adapter can mark an `AdapterError` `retryable: false` (a deterministic 4xx, say) to fail fast instead of looping.
 - `retryable` — a `(error: AdapterError) => boolean` classifier, for **Promise-first** adapters that reject (and so can't set the error's own `retryable` flag). Inspect `error.cause` to veto retries: `(e) => !(e.cause instanceof Response) || e.cause.status >= 500`. An error that opts out via its own `retryable: false` is a hard veto regardless. A veto is **stamped onto the error** (`retryable: false`), so what lands on `handle.error` / `lastError` and the `onError` sink always agrees with the engine's actual decision; the classifier runs exactly once per failed attempt.
 - `timeout` — a `Duration` bounding a **single attempt**; on expiry that attempt fails with an `AdapterError`.
@@ -344,7 +344,28 @@ The Finder is internal — you never construct or import it — but it's what ma
 
 ## Processors
 
-The adapter returns whatever its fetch chain returns — typically already-parsed JSON. The processor takes that parsed response and calls `store.insertDocument(type, doc)` for every document worth caching.
+The adapter returns whatever its fetch chain returns — typically already-parsed JSON. A processor takes that parsed response and calls `store.insertDocument(type, doc)` for every document worth caching.
+
+Processors are an **ordered response pipeline.** The adapter returns a response. Silo passes that response through each processor in order. A processor may mutate the response, return a replacement response, perform side effects, or insert documents into the store. If it returns `undefined`, the current response continues to the next processor. Most pipelines end with an insertion processor.
+
+Configure a single step with `processor`, or an ordered array with `processors`:
+
+```ts
+createDocumentStore<TypeToModel>({
+  models: {
+    "card-stack": {
+      adapter: cardStackAdapter,
+      processors: [
+        migrateCardStackResponse(), // mutate fetched docs in place
+        mirrorResponseDocumentsToEmber(emberStore), // side effect: hydrate another store
+        jsonApiProcessor, // insert into silo
+      ],
+    },
+  },
+});
+```
+
+That reads in execution order: fetch card stacks → migrate the response docs → mirror them into the other store → insert them into silo. `processor` and `processors` are mutually exclusive — supplying both throws at store creation. `{ adapter }`, `{ adapter, processor: defaultProcessor }`, and `{ adapter, processors: [defaultProcessor] }` are all equivalent.
 
 Processors are **keyed by envelope shape, not by model.** One processor normally serves many adapters: every REST endpoint that returns `{id, ...}` or `[{id, ...}, ...]` shares `defaultProcessor`; every JSON-API endpoint in your app shares `jsonApiProcessor`; a custom `graphqlProcessor` would serve every GraphQL-returning adapter. The per-model `processor` field isn't one-per-adapter — it's "which envelope parser does this adapter's response need."
 
@@ -423,7 +444,25 @@ const cards = useHasMany(planbook.value ?? null, "cards");
 
 ### Custom
 
-Any function matching `(raw, store, type) => void` works. If you need GraphQL, a REST envelope, or a bespoke wire format — write one. Processors are synchronous; for async normalization, do it in the adapter.
+A processor is any function matching `(response, context) => unknown | void`, where `context` is `{ store, type, ids }`:
+
+```ts
+import { type ResponseProcessor } from "@supergrain/silo";
+
+// Transform: return a replacement response for the next step.
+const normalize: ResponseProcessor<TypeToModel> = (response) => {
+  for (const doc of responseDocs(response)) migrateInPlace(doc);
+  return response;
+};
+
+// Insert: the terminal step. Returns nothing — silo reads each requested
+// (type, id) from memory afterward to settle the handle.
+const insert: ResponseProcessor<TypeToModel> = (response, { store, type }) => {
+  for (const doc of responseDocs(response)) store.insertDocument(type, doc);
+};
+```
+
+Returning a value replaces the response handed to later processors; returning `undefined` passes the current response through unchanged. If you need GraphQL, a REST envelope, or a bespoke wire format — write one. Processors are synchronous; for async normalization, do it in the adapter. If a processor throws, the remaining processors don't run and the fetch fails with a `ProcessorError` — the same terminal behavior as a single-`processor` throw.
 
 ## Queries
 

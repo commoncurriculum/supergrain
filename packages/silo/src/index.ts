@@ -16,6 +16,7 @@ export type {
   DocumentTypes,
   HandleStatus,
   ModelConfig,
+  ProcessorContext,
   RegisteredTypes,
   ResponseProcessor,
   StoreAdapterRunOptions,

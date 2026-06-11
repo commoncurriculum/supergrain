@@ -5,6 +5,7 @@ import type {
   DocumentTypes,
   InternalState,
   ModelConfig,
+  ProcessorContext,
   ResponseProcessor,
 } from "./store";
 
@@ -75,6 +76,30 @@ interface BisectedRerun {
   readonly deadlineAt: number | undefined;
 }
 
+/**
+ * Normalize a model's processor config into an ordered pipeline.
+ *
+ * `{ adapter }`, `{ processor }`, and `{ processors }` all collapse to one
+ * array here — the spec's `config.processors ?? [config.processor ??
+ * defaultProcessor]`. Setting **both** `processor` and `processors` is an
+ * ambiguous config and throws (the Finder constructor calls this for every
+ * model so the throw lands at store creation, not on first fetch). An explicit
+ * empty `processors: []` is honored as "run nothing".
+ */
+function resolveProcessors<M extends DocumentTypes>(
+  type: string,
+  modelConfig: ModelConfig<M>,
+): ReadonlyArray<ResponseProcessor<M>> {
+  if (modelConfig.processor !== undefined && modelConfig.processors !== undefined) {
+    throw new Error(
+      `@supergrain/silo: model "${type}" sets both \`processor\` and \`processors\` — supply one or the other`,
+    );
+  }
+  return (
+    modelConfig.processors ?? [modelConfig.processor ?? (defaultProcessor as ResponseProcessor<M>)]
+  );
+}
+
 export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>> {
   private config: DocumentStoreConfig<M, Q>;
   private batchWindowMs: number;
@@ -111,6 +136,14 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     }
     this.permits =
       typeof maxConcurrency === "number" ? Effect.unsafeMakeSemaphore(maxConcurrency) : undefined;
+    // Validate processor config eagerly: a model that sets both `processor`
+    // and `processors` is ambiguous and should fail loudly at store creation,
+    // not silently on the first fetch of that model.
+    for (const [type, modelConfig] of Object.entries(config.models) as Array<
+      [string, ModelConfig<M>]
+    >) {
+      resolveProcessors(type, modelConfig);
+    }
   }
 
   attach(store: DocumentStore<M, Q>): void {
@@ -362,8 +395,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     if (!modelConfig) {
       throw new Error(`@supergrain/silo: no model "${type}" is configured`);
     }
-    const processor: ResponseProcessor<M> =
-      modelConfig.processor ?? (defaultProcessor as ResponseProcessor<M>);
+    const processors = resolveProcessors(type, modelConfig);
 
     return this.drainChunk({
       type,
@@ -375,7 +407,23 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
       deadlineAt: bisected?.deadlineAt,
       // oxlint-disable-next-line no-array-method-this-argument -- DocumentAdapter#find, not Array#find
       invoke: (adapterCtx) => modelConfig.adapter.find(ids, adapterCtx),
-      process: (raw) => processor(raw, this.store as DocumentStore<M>, type as keyof M & string),
+      // Ordered response pipeline: feed the adapter response through each
+      // processor in turn. A processor may mutate it, return a replacement, or
+      // perform side effects (typically `insertDocument`). `?? response` is the
+      // pass-through — returning undefined/null leaves the current response for
+      // the next step. A throw stops the pipeline (the remaining processors do
+      // not run) and `runProcessor` turns it into a `ProcessorError`.
+      process: (raw) => {
+        const context: ProcessorContext<M> = {
+          store: this.store as DocumentStore<M>,
+          type: type as keyof M & string,
+          ids,
+        };
+        let response: unknown = raw;
+        for (const processor of processors) {
+          response = processor(response, context) ?? response;
+        }
+      },
       rerun: (half, deadlineAt) => this.drainDocumentChunk(type, half, { deadlineAt }),
     });
   }

@@ -1,5 +1,5 @@
 import type { QueryTypes } from "../queries";
-import type { DocumentStore, DocumentTypes } from "../store";
+import type { DocumentStore, DocumentTypes, ProcessorContext } from "../store";
 
 // =============================================================================
 // defaultProcessor — insert by (type, id), no envelope
@@ -30,11 +30,10 @@ import type { DocumentStore, DocumentTypes } from "../store";
  * implementation of the JSON-API envelope.
  */
 export function defaultProcessor<M extends DocumentTypes>(
-  raw: unknown,
-  store: DocumentStore<M>,
-  type: keyof M & string,
+  response: unknown,
+  { store, type }: ProcessorContext<M>,
 ): void {
-  const docs = Array.isArray(raw) ? raw : [raw];
+  const docs = Array.isArray(response) ? response : [response];
   for (const doc of docs) store.insertDocument(type, doc as M[keyof M & string]);
 }
 
