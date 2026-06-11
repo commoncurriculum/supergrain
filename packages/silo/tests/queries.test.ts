@@ -845,4 +845,23 @@ describe("query processor pipeline", () => {
 
     expect(handle.value).toEqual({ hits: ["z"] });
   });
+
+  it("runs nothing for an explicit empty `processors: []` — handle settles to NotFoundError", async () => {
+    const store = createDocumentStore<PipelineTypes, PipelineQueries>({
+      models: emptyUserModel,
+      queries: {
+        search: {
+          adapter: searchAdapter((paramsList) => paramsList.map((p) => ({ hits: [p.q] }))),
+          processors: [],
+        },
+      },
+    });
+
+    const handle = store.findQuery("search", { q: "x" });
+    await flushCoalescer();
+    await handle.promise!.catch(() => {});
+
+    expect(handle.value).toBeUndefined();
+    expect(handle.error?._tag).toBe("NotFoundError");
+  });
 });

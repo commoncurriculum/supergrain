@@ -1024,4 +1024,22 @@ describe("processor pipeline", () => {
 
     expect(h.value).toEqual({ id: "5", name: "User5" });
   });
+
+  it("runs nothing for an explicit empty `processors: []` — handle settles to NotFoundError", async () => {
+    // `processors ?? [processor ?? default]` honors an explicit `[]` as "run
+    // nothing": no processor inserts, so the requested id is never found.
+    const store = createDocumentStore<TestTypes>({
+      models: {
+        user: { adapter: { find: userDocsFind() }, processors: [] },
+        post: { adapter: makePostAdapter() },
+      },
+      retry: Schedule.recurs(0),
+    });
+
+    const h = store.find("user", "1");
+    await flushBatch();
+
+    expect(h.value).toBeUndefined();
+    expect(h.error?._tag).toBe("NotFoundError");
+  });
 });
