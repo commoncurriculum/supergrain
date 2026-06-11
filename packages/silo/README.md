@@ -167,12 +167,12 @@ store.insertDocument("user", {
 
 This is **whole-document reactivity**: reading `handle.value` (or any field off it) re-renders when the document is replaced. There's no per-field tracking _inside_ a document — the snapshot is swapped atomically, so every read sees a consistent object.
 
-Don't mutate a stored document in place. Stored docs are **frozen**, so an in-place write throws — deliberately. Two reasons:
+Don't mutate a stored document in place — always build a new object. Stored docs are **frozen**, so a top-level in-place write (`doc.id = …`) throws instead of silently corrupting the cache. Two reasons this matters:
 
-1. **It keeps the contract honest.** Insert applies a new value only when the reference actually changes (`applyEvent` skips the write otherwise), so mutating-and-reinserting the _same_ object would silently fail to re-render. Freezing turns that latent no-op into a loud error.
+1. **It keeps the contract honest.** Insert applies a new value only when the reference actually changes (`applyEvent` skips the write otherwise), so mutating-and-reinserting the _same_ object would silently fail to re-render. The freeze turns that latent no-op into a loud error.
 2. **It preserves reference identity.** The kernel's reactive proxy returns frozen targets unwrapped, so `handle.value` hands back the exact object you inserted — stable `===` for memoization and dependency arrays.
 
-To "edit", spread into a new object as above.
+The freeze is shallow: a _nested_ write (`doc.attributes.name = …`) won't throw, it just silently breaks reactivity. Either way the rule is the same — never edit a cached document, spread into a new one (as above).
 
 ## Why this instead of TanStack Query / SWR?
 

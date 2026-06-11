@@ -122,6 +122,31 @@ describe("Store.find — already in memory (fast path)", () => {
   });
 });
 
+describe("Store.insertDocument — immutability contract", () => {
+  it("freezes the stored document so a top-level in-place mutation throws", () => {
+    const user = makeUser("1");
+    store.insertDocument("user", user);
+
+    const stored = store.findInMemory("user", "1")!;
+    // Frozen: the wholesale-replace contract can't be bypassed by mutation.
+    expect(Object.isFrozen(stored)).toBe(true);
+    // Returned by reference (the kernel hands frozen targets back unwrapped),
+    // so the === identity consumers memoize on holds.
+    expect(stored).toBe(user);
+    // A top-level write is rejected loudly (strict mode) rather than silently
+    // corrupting the cache and skipping the re-render past applyEvent's guard.
+    expect(() => {
+      stored.id = "mutated";
+    }).toThrow();
+  });
+
+  it("accepts an already-frozen document", () => {
+    const user = Object.freeze(makeUser("2"));
+    expect(() => store.insertDocument("user", user)).not.toThrow();
+    expect(store.findInMemory("user", "2")).toBe(user);
+  });
+});
+
 describe("Store.find — not in memory (delegates to internal batching)", () => {
   it("returns a PENDING handle while the fetch is in flight", () => {
     const handle = store.find("user", "1");
