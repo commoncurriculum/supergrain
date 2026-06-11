@@ -116,7 +116,7 @@ const PlanbookList = tracked(({ userId }: { userId: string }) => {
   );
 
   useEffect(() => {
-    void query.refetch();
+    query.refetch();
     return () => query.destroy();
   }, [query]);
 
@@ -128,7 +128,7 @@ const PlanbookList = tracked(({ userId }: { userId: string }) => {
         ))}
       </ul>
       {query.nextOffset !== null && (
-        <button disabled={query.isFetching} onClick={() => void query.fetchNextPage()}>
+        <button disabled={query.isFetching} onClick={() => query.fetchNextPage()}>
           {query.isFetching ? "Loading…" : "Load more"}
         </button>
       )}
