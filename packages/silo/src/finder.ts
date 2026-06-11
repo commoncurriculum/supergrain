@@ -1,4 +1,4 @@
-import type { QueryConfig, QueryProcessor, QueryTypes } from "./queries";
+import type { QueryConfig, QueryProcessor, QueryProcessorContext, QueryTypes } from "./queries";
 import type {
   DocumentStore,
   DocumentStoreConfig,
@@ -77,26 +77,43 @@ interface BisectedRerun {
 }
 
 /**
- * Normalize a model's processor config into an ordered pipeline.
- *
+ * Normalize a `{ processor?, processors? }` config into an ordered pipeline —
+ * the spec's `config.processors ?? [config.processor ?? defaultProcessor]`, so
  * `{ adapter }`, `{ processor }`, and `{ processors }` all collapse to one
- * array here — the spec's `config.processors ?? [config.processor ??
- * defaultProcessor]`. Setting **both** `processor` and `processors` is an
- * ambiguous config and throws (the Finder constructor calls this for every
- * model so the throw lands at store creation, not on first fetch). An explicit
- * empty `processors: []` is honored as "run nothing".
+ * array. Setting **both** `processor` and `processors` is an ambiguous config
+ * and throws; the Finder constructor calls this for every model and query so
+ * the throw lands at store creation, not on first fetch. An explicit empty
+ * `processors: []` is honored as "run nothing". Shared by both surfaces — the
+ * document and query pipelines differ only in their processor type and default.
  */
+function resolvePipeline<P>(
+  label: string,
+  config: { processor?: P; processors?: ReadonlyArray<P> },
+  fallback: P,
+): ReadonlyArray<P> {
+  if (config.processor !== undefined && config.processors !== undefined) {
+    throw new Error(
+      `@supergrain/silo: ${label} sets both \`processor\` and \`processors\` — supply one or the other`,
+    );
+  }
+  return config.processors ?? [config.processor ?? fallback];
+}
+
 function resolveProcessors<M extends DocumentTypes>(
   type: string,
   modelConfig: ModelConfig<M>,
 ): ReadonlyArray<ResponseProcessor<M>> {
-  if (modelConfig.processor !== undefined && modelConfig.processors !== undefined) {
-    throw new Error(
-      `@supergrain/silo: model "${type}" sets both \`processor\` and \`processors\` — supply one or the other`,
-    );
-  }
-  return (
-    modelConfig.processors ?? [modelConfig.processor ?? (defaultProcessor as ResponseProcessor<M>)]
+  return resolvePipeline(`model "${type}"`, modelConfig, defaultProcessor as ResponseProcessor<M>);
+}
+
+function resolveQueryProcessors<M extends DocumentTypes, Q extends QueryTypes>(
+  type: string,
+  queryConfig: QueryConfig<M, Q, keyof Q & string>,
+): ReadonlyArray<QueryProcessor<M, Q, keyof Q & string>> {
+  return resolvePipeline(
+    `query "${type}"`,
+    queryConfig,
+    defaultQueryProcessor as unknown as QueryProcessor<M, Q, keyof Q & string>,
   );
 }
 
@@ -136,13 +153,20 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
     }
     this.permits =
       typeof maxConcurrency === "number" ? Effect.unsafeMakeSemaphore(maxConcurrency) : undefined;
-    // Validate processor config eagerly: a model that sets both `processor`
-    // and `processors` is ambiguous and should fail loudly at store creation,
-    // not silently on the first fetch of that model.
+    // Validate processor config eagerly: a model or query that sets both
+    // `processor` and `processors` is ambiguous and should fail loudly at store
+    // creation, not silently on the first fetch of that type.
     for (const [type, modelConfig] of Object.entries(config.models) as Array<
       [string, ModelConfig<M>]
     >) {
       resolveProcessors(type, modelConfig);
+    }
+    if (config.queries) {
+      for (const [type, queryConfig] of Object.entries(config.queries) as Array<
+        [string, QueryConfig<M, Q, keyof Q & string>]
+      >) {
+        resolveQueryProcessors(type, queryConfig);
+      }
     }
   }
 
@@ -442,9 +466,7 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
       throw new Error(`@supergrain/silo: no query "${type}" is configured`);
     }
 
-    const processor: QueryProcessor<M, Q, keyof Q & string> =
-      queryConfig.processor ??
-      (defaultQueryProcessor as unknown as QueryProcessor<M, Q, keyof Q & string>);
+    const processors = resolveQueryProcessors(type, queryConfig);
     const paramsList = chunk.map((e) => e.params);
 
     return this.drainChunk({
@@ -457,13 +479,22 @@ export class Finder<M extends DocumentTypes, Q extends QueryTypes = Record<strin
       deadlineAt: bisected?.deadlineAt,
       // oxlint-disable-next-line no-array-method-this-argument -- QueryAdapter#find, not Array#find
       invoke: (adapterCtx) => queryConfig.adapter.find(paramsList, adapterCtx),
-      process: (raw) =>
-        processor(
-          raw,
-          this.store,
-          type as keyof Q & string,
-          paramsList as ReadonlyArray<Q[keyof Q & string]["params"]>,
-        ),
+      // Ordered response pipeline, mirroring the document surface: feed the
+      // adapter response through each query processor in turn. `?? response` is
+      // the pass-through; a throw stops the pipeline and becomes a
+      // ProcessorError. The context carries `paramsList` so a processor can
+      // pair each result with the params that produced it.
+      process: (raw) => {
+        const context: QueryProcessorContext<M, Q, keyof Q & string> = {
+          store: this.store,
+          type: type as keyof Q & string,
+          paramsList: paramsList as ReadonlyArray<Q[keyof Q & string]["params"]>,
+        };
+        let response: unknown = raw;
+        for (const processor of processors) {
+          response = processor(response, context) ?? response;
+        }
+      },
       rerun: (half, deadlineAt) => this.drainQueryChunk(type, half, { deadlineAt }),
     });
   }

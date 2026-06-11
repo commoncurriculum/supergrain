@@ -82,55 +82,79 @@ export interface QueryAdapter<Params> {
 }
 
 // =============================================================================
-// QueryProcessor — raw response → inserts
+// QueryProcessor — ordered response pipeline step (query surface)
 // =============================================================================
 
 /**
- * Transforms a raw query-adapter response into store inserts.
+ * Context handed to every {@link QueryProcessor} in a query's pipeline: the
+ * `store`, the `type` the caller passed to `findQuery(type, params)`, and the
+ * chunk's input `paramsList` (so a result can be associated with the params
+ * that produced it). Mirrors {@link import("./store").ProcessorContext} on the
+ * document surface, with `paramsList` in place of `ids`.
+ */
+export interface QueryProcessorContext<
+  M extends DocumentTypes,
+  Q extends QueryTypes,
+  Type extends keyof Q & string,
+> {
+  /** The store — insert results with `insertQueryResult`, docs with `insertDocument`. */
+  readonly store: DocumentStore<M, Q>;
+  /** The type the caller passed to `findQuery(type, params)` for this chunk. */
+  readonly type: Type;
+  /** The batch's input params, aligned to the adapter's positional results. */
+  readonly paramsList: ReadonlyArray<Q[Type]["params"]>;
+}
+
+/**
+ * One step in a query's ordered response pipeline.
  *
- * Unlike `ResponseProcessor` (which operates purely on documents), a query
- * processor receives the batch's input params (`paramsList`) as a fourth
- * argument so it can associate each result with the params that produced
- * it. The processor calls `store.insertQueryResult(type, params, result)`
- * for every result it wants cached.
+ * Like {@link import("./store").ResponseProcessor} on the document surface, but
+ * its context carries the batch's input `paramsList` (instead of `ids`) so it
+ * can associate each result with the params that produced it. Silo passes the
+ * adapter response through each processor in order. A processor may **mutate**
+ * the response, **return a replacement** response, perform **side effects**, or
+ * **insert results** via `store.insertQueryResult(type, params, result)`. If it
+ * returns `undefined` (or `null`), the current response continues unchanged to
+ * the next processor. Most pipelines end with an insertion processor.
  *
  * A query processor can also call `store.insertDocument(...)` to normalize
- * nested entities into the documents cache — this is how queries populate
- * the shared memory so `useDocument` reads benefit from results fetched
- * via queries. Example: a `usersByRole` query inserts each returned user
- * as a document, then stores the id-list as the query result.
+ * nested entities into the documents cache — this is how queries populate the
+ * shared memory so `useDocument` reads benefit from results fetched via
+ * queries. Example: a `usersByRole` query inserts each returned user as a
+ * document, then stores the id-list as the query result.
  *
  * Contract:
  * - Synchronous. For async normalization, do it in the adapter before it returns.
- * - Must call `store.insertQueryResult(...)` for every result it wants
- *   cached — the library does NOT auto-insert anything from a processor.
- * - If the processor throws, all deferreds waiting on this chunk reject
- *   with the thrown error.
+ * - The terminal step must call `store.insertQueryResult(...)` for every result
+ *   it wants cached — the library does NOT auto-insert anything from a processor.
+ * - If it throws, the remaining processors do not run and all deferreds waiting
+ *   on this chunk reject with the thrown error.
  */
 export type QueryProcessor<
   M extends DocumentTypes,
   Q extends QueryTypes,
   Type extends keyof Q & string,
-> = (
-  raw: unknown,
-  store: DocumentStore<M, Q>,
-  type: Type,
-  paramsList: ReadonlyArray<Q[Type]["params"]>,
-) => void;
+> = (response: unknown, context: QueryProcessorContext<M, Q, Type>) => unknown | void;
 
 // =============================================================================
 // Per-query config
 // =============================================================================
 
 /**
- * Per-query wiring: the adapter that talks to the API and the optional
- * processor that normalizes its response.
+ * Per-query wiring: the adapter that talks to the API and the response
+ * processor(s) that turn its response into store inserts.
  *
- * If `processor` is omitted, the library uses `defaultQueryProcessor` —
- * assumes the adapter returns an array of results aligned 1:1 with the
- * input params, and pairs them by position. For envelope formats or
- * normalizing processors (inserting nested documents), supply a custom
- * `QueryProcessor`.
+ * Responses run through an **ordered pipeline**, configured either way:
+ * - `processor` — a single {@link QueryProcessor} (normalized to a one-element
+ *   pipeline).
+ * - `processors` — an ordered array of {@link QueryProcessor}s, run in declared
+ *   order.
+ *
+ * Supply at most one; setting **both** throws at store creation. If neither is
+ * supplied, the library uses `defaultQueryProcessor` — assumes the adapter
+ * returns an array of results aligned 1:1 with the input params, and pairs them
+ * by position. For envelope formats or normalizing processors (inserting nested
+ * documents), supply your own.
  *
  * The inherited resilience knobs ({@link ResilienceOptions}: `retry` /
  * `timeout` / `deadline` / `retryable` / `isolateFailures`) override the
@@ -143,7 +167,13 @@ export interface QueryConfig<
   Type extends keyof Q & string,
 > extends ResilienceOptions {
   adapter: QueryAdapter<Q[Type]["params"]>;
+  /** A single query processor. Mutually exclusive with `processors`. */
   processor?: QueryProcessor<M, Q, Type>;
+  /**
+   * An ordered query-response pipeline, run in declared order. Mutually
+   * exclusive with `processor`.
+   */
+  processors?: ReadonlyArray<QueryProcessor<M, Q, Type>>;
 }
 
 // =============================================================================

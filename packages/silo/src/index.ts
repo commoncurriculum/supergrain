@@ -48,6 +48,7 @@ export type {
   QueryConfig,
   QueryHandle,
   QueryProcessor,
+  QueryProcessorContext,
   QueryTypes,
   RegisteredQueries,
 } from "./queries";

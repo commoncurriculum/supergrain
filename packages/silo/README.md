@@ -594,12 +594,10 @@ type TypeToQuery = {
 };
 
 const usersByRoleProcessor: QueryProcessor<TypeToModel, TypeToQuery, "usersByRole"> = (
-  raw,
-  store,
-  type,
-  paramsList,
+  response,
+  { store, type, paramsList },
 ) => {
-  const results = raw as Array<User[]>; // adapter returns one User[] per params
+  const results = response as Array<User[]>; // adapter returns one User[] per params
   for (let i = 0; i < paramsList.length; i++) {
     const users = results[i];
     // Normalize: insert each user into the documents cache
@@ -643,7 +641,7 @@ Plain → normalized is a local change (swap the result type, add a processor, d
 
 ### Default query processor
 
-If `QueryConfig.processor` is omitted, the library uses `defaultQueryProcessor` — assumes the adapter returns an array of results aligned 1:1 with the input params, and pairs them by position:
+If `QueryConfig.processor` (and `processors`) is omitted, the library uses `defaultQueryProcessor` — assumes the adapter returns an array of results aligned 1:1 with the input params, and pairs them by position:
 
 ```ts
 // adapter returns: [resultForParams0, resultForParams1, ...]
@@ -651,6 +649,8 @@ If `QueryConfig.processor` is omitted, the library uses `defaultQueryProcessor` 
 ```
 
 No normalization (nested entities stay inside the query result). For normalization, write a custom processor as shown above.
+
+Queries support the same **ordered pipeline** as documents — supply `processors: [...]` instead of a single `processor` to compose response steps in execution order. A query processor is `(response, context) => unknown | void`, where `context` is `{ store, type, paramsList }` (`paramsList` in place of a document processor's `ids`). The same rules apply: returning a value replaces the response for later steps, returning `undefined` passes it through, a throw stops the pipeline with a `ProcessorError`, and supplying both `processor` and `processors` throws at store creation.
 
 ### When to use which
 

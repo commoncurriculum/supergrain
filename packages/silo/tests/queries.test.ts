@@ -26,6 +26,7 @@ import { Effect } from "effect";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { defaultQueryProcessor } from "../src/processors";
 import { createDocumentStore } from "../src/store";
 import {
   API_BASE,
@@ -363,7 +364,7 @@ describe("Queries share memory with documents", () => {
               })),
             ),
           },
-          processor: (raw, store, type, paramsList) => {
+          processor: (raw, { store, type, paramsList }) => {
             const results = raw as Array<{
               userId: string;
               embeddedUser: { id: string; name: string };
@@ -688,5 +689,160 @@ describe("query key stability (stableStringify)", () => {
     // Same params, keys declared in the opposite order → same slot.
     const reordered = { tag: "x", at } as { at: Date; tag: string };
     expect(store.findQueryInMemory("events", reordered)).toEqual({ n: 7 });
+  });
+});
+
+// =============================================================================
+// Query processor pipeline
+//
+// The query surface gets the same ordered pipeline as documents: `processors`
+// run in order after the adapter resolves, each may mutate / replace / side-
+// effect / insert, undefined passes through, and a throw stops the pipeline
+// with a ProcessorError. The context carries `paramsList` (not `ids`).
+// =============================================================================
+
+type PipelineTypes = { user: { id: string; name: string } };
+type PipelineQueries = { search: { params: { q: string }; result: { hits: Array<string> } } };
+
+/** A query adapter whose response is computed from the batch's paramsList. */
+function searchAdapter(fn: (paramsList: Array<{ q: string }>) => unknown) {
+  return { find: effectFind("search", async (paramsList: Array<{ q: string }>) => fn(paramsList)) };
+}
+
+const emptyUserModel = { user: { adapter: { find: effectFind("user", async () => []) } } };
+
+describe("query processor pipeline", () => {
+  it("runs processors in order, threading paramsList and response replacements", async () => {
+    const order: Array<number> = [];
+    let sawParams: ReadonlyArray<{ q: string }> | undefined;
+    const store = createDocumentStore<PipelineTypes, PipelineQueries>({
+      models: emptyUserModel,
+      queries: {
+        search: {
+          // Adapter returns a raw envelope; the first processor reshapes it.
+          adapter: searchAdapter((paramsList) => paramsList.map((p) => ({ raw: p.q }))),
+          processors: [
+            (response, { paramsList }) => {
+              order.push(0);
+              sawParams = paramsList;
+              return (response as Array<{ raw: string }>).map((r) => ({ hits: [r.raw] }));
+            },
+            (response, { store, type, paramsList }) => {
+              order.push(1);
+              const results = response as Array<{ hits: Array<string> }>;
+              for (let i = 0; i < paramsList.length; i++) {
+                store.insertQueryResult(type, paramsList[i], results[i]);
+              }
+            },
+          ],
+        },
+      },
+    });
+
+    const handle = store.findQuery("search", { q: "hello" });
+    await flushCoalescer();
+    await handle.promise;
+
+    expect(order).toEqual([0, 1]);
+    expect(sawParams).toEqual([{ q: "hello" }]);
+    expect(handle.value).toEqual({ hits: ["hello"] });
+  });
+
+  it("passes the response through unchanged when a query processor returns undefined", async () => {
+    const seen: Array<unknown> = [];
+    const store = createDocumentStore<PipelineTypes, PipelineQueries>({
+      models: emptyUserModel,
+      queries: {
+        search: {
+          adapter: searchAdapter((paramsList) => paramsList.map((p) => ({ hits: [p.q] }))),
+          processors: [
+            (response) => {
+              seen.push(response);
+              // No return → pass-through.
+            },
+            (response, { store, type, paramsList }) => {
+              seen.push(response);
+              const results = response as Array<{ hits: Array<string> }>;
+              for (let i = 0; i < paramsList.length; i++) {
+                store.insertQueryResult(type, paramsList[i], results[i]);
+              }
+            },
+          ],
+        },
+      },
+    });
+
+    const handle = store.findQuery("search", { q: "x" });
+    await flushCoalescer();
+    await handle.promise;
+
+    expect(seen[0]).toBe(seen[1]); // same reference flowed through
+    expect(handle.value).toEqual({ hits: ["x"] });
+  });
+
+  it("stops the pipeline on a thrown query processor and fails with a ProcessorError", async () => {
+    const ran: Array<string> = [];
+    const store = createDocumentStore<PipelineTypes, PipelineQueries>({
+      models: emptyUserModel,
+      queries: {
+        search: {
+          adapter: searchAdapter(() => []),
+          processors: [
+            () => {
+              ran.push("first");
+            },
+            () => {
+              ran.push("boom");
+              throw new Error("query-pipeline-exploded");
+            },
+            () => {
+              ran.push("insert");
+            },
+          ],
+        },
+      },
+    });
+
+    const handle = store.findQuery("search", { q: "x" });
+    await flushCoalescer();
+    await handle.promise!.catch(() => {});
+
+    expect(ran).toEqual(["first", "boom"]); // the step after the throw never ran
+    expect(handle.error?._tag).toBe("ProcessorError");
+    const cause = (handle.error as { cause?: unknown }).cause;
+    expect((cause as Error).message).toBe("query-pipeline-exploded");
+  });
+
+  it("throws at store creation when a query sets both `processor` and `processors`", () => {
+    expect(() =>
+      createDocumentStore<PipelineTypes, PipelineQueries>({
+        models: emptyUserModel,
+        queries: {
+          search: {
+            adapter: searchAdapter(() => []),
+            processor: () => {},
+            processors: [() => {}],
+          },
+        },
+      }),
+    ).toThrow(/both `processor` and `processors`/);
+  });
+
+  it("treats `processors: [defaultQueryProcessor]` the same as the implicit default", async () => {
+    const store = createDocumentStore<PipelineTypes, PipelineQueries>({
+      models: emptyUserModel,
+      queries: {
+        search: {
+          adapter: searchAdapter((paramsList) => paramsList.map((p) => ({ hits: [p.q] }))),
+          processors: [defaultQueryProcessor],
+        },
+      },
+    });
+
+    const handle = store.findQuery("search", { q: "z" });
+    await flushCoalescer();
+    await handle.promise;
+
+    expect(handle.value).toEqual({ hits: ["z"] });
   });
 });

@@ -2,10 +2,11 @@
 "@supergrain/silo": minor
 ---
 
-Add an ordered response-processor pipeline to `ModelConfig`.
+Add an ordered response-processor pipeline to both surfaces — `ModelConfig`
+(documents) and `QueryConfig` (queries).
 
-A model can now declare `processors: ResponseProcessor[]` — an ordered pipeline
-run in declared order after `adapter.find(ids)` resolves. This makes the fetch
+A model or query can now declare `processors: [...]` — an ordered pipeline run
+in declared order after `adapter.find(...)` resolves. This makes the fetch
 lifecycle explicit and lets applications compose response work in execution
 order (migrate → mirror into another store → insert into silo) instead of
 cramming every responsibility into one processor.
@@ -36,11 +37,17 @@ normalized to a one-element pipeline, so `{ adapter }`,
 **both** `processor` and `processors` on the same model is a configuration error
 and throws at store creation.
 
-**`ResponseProcessor` signature.** Its shape is now
-`(response, context) => unknown | void`, where `context` is
-`{ store, type, ids }` (previously `(raw, store, type) => void`). The bundled
-`defaultProcessor` / `jsonApiProcessor` and every config that uses them are
-unaffected; hand-written custom processors that relied on the old positional
-`(raw, store, type)` arguments should read `store` / `type` off the context
-object and can now return a replacement response. A new `ProcessorContext` type
-is exported for typing custom processors.
+**Processor signatures.** Both processor types now have the shape
+`(response, context) => unknown | void`:
+
+- `ResponseProcessor` (documents): `context` is `{ store, type, ids }`
+  (previously `(raw, store, type) => void`).
+- `QueryProcessor` (queries): `context` is `{ store, type, paramsList }`
+  (previously `(raw, store, type, paramsList) => void`).
+
+The bundled `defaultProcessor` / `jsonApiProcessor` / `defaultQueryProcessor`
+and every config that uses them are unaffected; hand-written custom processors
+that relied on the old positional arguments should read `store` / `type` /
+`paramsList` off the context object and can now return a replacement response.
+New `ProcessorContext` and `QueryProcessorContext` types are exported for typing
+custom processors.

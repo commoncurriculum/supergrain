@@ -1,5 +1,5 @@
-import type { QueryTypes } from "../queries";
-import type { DocumentStore, DocumentTypes, ProcessorContext } from "../store";
+import type { QueryProcessorContext, QueryTypes } from "../queries";
+import type { DocumentTypes, ProcessorContext } from "../store";
 
 // =============================================================================
 // defaultProcessor — insert by (type, id), no envelope
@@ -67,14 +67,11 @@ export function defaultProcessor<M extends DocumentTypes>(
  * sideloads), write a custom processor — this default only handles the
  * position-paired case.
  */
-// oxlint-disable-next-line max-params
 export function defaultQueryProcessor<M extends DocumentTypes, Q extends QueryTypes>(
-  raw: unknown,
-  store: DocumentStore<M, Q>,
-  type: keyof Q & string,
-  paramsList: ReadonlyArray<unknown>,
+  response: unknown,
+  { store, type, paramsList }: QueryProcessorContext<M, Q, keyof Q & string>,
 ): void {
-  const results = raw as ReadonlyArray<unknown>;
+  const results = response as ReadonlyArray<unknown>;
   for (let i = 0; i < paramsList.length; i++) {
     store.insertQueryResult(
       type,

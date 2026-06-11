@@ -157,7 +157,7 @@ describe("defaultQueryProcessor", () => {
       makeDashboard({ totalActiveUsers: 80 }),
     ];
 
-    defaultQueryProcessor(results, store, "dashboard", paramsList);
+    defaultQueryProcessor(results, { store, type: "dashboard", paramsList });
 
     expect(inserts).toEqual([
       { type: "dashboard", params: paramsList[0], result: results[0] },
@@ -173,7 +173,7 @@ describe("defaultQueryProcessor", () => {
     const params: DashboardParams = { workspaceId: 7, filters: { active: true } };
     const result = makeDashboard({ totalActiveUsers: 70 });
 
-    defaultQueryProcessor([result], store, "dashboard", [params]);
+    defaultQueryProcessor([result], { store, type: "dashboard", paramsList: [params] });
 
     expect(inserts).toHaveLength(1);
     expect(inserts[0].params).toBe(params);
@@ -188,22 +188,26 @@ describe("defaultQueryProcessor", () => {
     ];
     const results = [makeDashboard(), makeDashboard()];
 
-    defaultQueryProcessor(results, store, "dashboard", paramsList);
+    defaultQueryProcessor(results, { store, type: "dashboard", paramsList });
 
     expect(inserts.every((i) => i.type === "dashboard")).toBe(true);
   });
 
   it("returns void — the library looks up resolved query results from memory afterwards", () => {
     const { store } = makeFakeQueryStore();
-    const result = defaultQueryProcessor([makeDashboard()], store, "dashboard", [
-      { workspaceId: 7, filters: { active: true } },
-    ]);
+    const result = defaultQueryProcessor([makeDashboard()], {
+      store,
+      type: "dashboard",
+      paramsList: [{ workspaceId: 7, filters: { active: true } }],
+    });
     expect(result).toBeUndefined();
   });
 
   it("handles an empty paramsList without inserting anything", () => {
     const { store, inserts } = makeFakeQueryStore();
-    expect(() => defaultQueryProcessor([], store, "dashboard", [])).not.toThrow();
+    expect(() =>
+      defaultQueryProcessor([], { store, type: "dashboard", paramsList: [] }),
+    ).not.toThrow();
     expect(inserts).toEqual([]);
   });
 });
