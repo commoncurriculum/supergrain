@@ -519,8 +519,10 @@ export function createDocumentStore<
       //   1. `applyEvent` writes `handle.value` only when the reference changes
       //      (`raw.value !== value` guard in transitions.ts), so mutating and
       //      reinserting the same object would silently fail to re-render.
-      //      Freezing turns that latent no-op into a loud throw (shallow, so
-      //      only top-level writes throw — the wholesale-replace rule stands).
+      //      Freezing turns that latent no-op into a loud throw in strict mode
+      //      (which ESM/bundled code always is; sloppy mode fails silently).
+      //      The freeze is shallow, so only top-level writes throw — the
+      //      wholesale-replace rule stands.
       //   2. `createReactiveProxy` returns frozen targets unwrapped (read.ts),
       //      so `handle.value` hands back this exact object — stable `===`
       //      identity for consumers that memoize on it.
