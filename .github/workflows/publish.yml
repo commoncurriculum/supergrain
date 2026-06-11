@@ -32,6 +32,14 @@ jobs:
           cache: "pnpm"
           registry-url: "https://registry.npmjs.org"
 
+      # pnpm 10.x delegates `pnpm publish` to the npm CLI. npm trusted
+      # publishing (OIDC) requires npm >= 11.5.1, so make sure the npm on PATH
+      # is recent enough regardless of what Node 24 happens to bundle.
+      - name: Ensure npm supports trusted publishing (OIDC)
+        run: |
+          npm install -g npm@latest
+          npm --version
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -47,5 +55,12 @@ jobs:
           commit: "Release: Version Packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # No NPM_TOKEN: authentication uses npm trusted publishing (OIDC).
+          # The job's `id-token: write` permission lets npm mint a short-lived,
+          # repo-scoped credential, so no long-lived token is needed. Each
+          # published package (@supergrain/kernel, @supergrain/mill,
+          # @supergrain/silo) must have a Trusted Publisher configured at
+          # npmjs.com pointing at commoncurriculum/supergrain + publish.yml.
+          # Provenance attestations are generated automatically on OIDC
+          # publishes; set it explicitly so intent is clear and verifiable.
+          NPM_CONFIG_PROVENANCE: "true"
