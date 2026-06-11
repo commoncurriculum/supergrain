@@ -13,7 +13,8 @@
 // Env: GITHUB_TOKEN (contents: write), GITHUB_REPOSITORY, GITHUB_SHA — all set
 // automatically by GitHub Actions.
 
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const token = process.env.GITHUB_TOKEN;
@@ -61,11 +62,41 @@ function changelogNotes(pkgDir, version) {
     .trim();
 }
 
-async function isOnNpm(name, version) {
-  const res = await fetch(`https://registry.npmjs.org/${name}/${version}`, {
-    headers: { accept: "application/json" },
-  });
-  return res.ok;
+// The registry can be briefly eventually-consistent right after `npm publish`
+// (a version that was just published may 404 for a few seconds). Retry with
+// backoff so a fresh publish isn't mistaken for "not published".
+async function isOnNpm(name, version, { attempts = 6, baseDelayMs = 2000 } = {}) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await fetch(`https://registry.npmjs.org/${name}/${version}`, {
+        headers: { accept: "application/json" },
+      });
+      if (res.ok) return true;
+    } catch {
+      // network blip — fall through to retry
+    }
+    if (attempt < attempts) {
+      await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
+    }
+  }
+  return false;
+}
+
+// Tags are effectively immutable once pushed, so point each Release at the
+// commit that actually introduced `version` (the changesets "Version Packages"
+// commit) rather than whatever commit happens to be running this workflow.
+// Otherwise backfilled Releases would be tagged at an unrelated later commit.
+// Requires full git history (checkout with fetch-depth: 0); falls back to the
+// current SHA if the commit can't be determined.
+function commitForVersion(pkgDir, version) {
+  const pattern = `"version": "${version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`;
+  const result = spawnSync(
+    "git",
+    ["log", "-1", "--format=%H", "-G", pattern, "--", `${pkgDir}/package.json`],
+    { encoding: "utf8" },
+  );
+  const found = (result.stdout ?? "").trim();
+  return found || sha;
 }
 
 let created = 0;
@@ -97,7 +128,7 @@ for (const entry of readdirSync(PACKAGES_DIR)) {
 
   const res = await gh("POST", `/repos/${owner}/${repo}/releases`, {
     tag_name: tag,
-    target_commitish: sha,
+    target_commitish: commitForVersion(dir, pkg.version),
     name: tag,
     body: changelogNotes(dir, pkg.version) || `Release ${tag}`,
   });
