@@ -11,10 +11,10 @@ Pagination + live-subscription queries for [`@supergrain/silo`](../silo/README.m
 ## Install
 
 ```bash
-pnpm add @supergrain/queries @supergrain/silo @supergrain/kernel
+pnpm add @supergrain/queries @supergrain/silo @supergrain/kernel effect
 ```
 
-`effect` is a peer dependency (installed transitively; you don't have to write Effect to use it).
+`effect` is a peer dependency of `@supergrain/silo` and `@supergrain/queries` — install it alongside (shown above). It's the engine silo runs on; you don't have to write any Effect yourself.
 
 ## Why a separate package?
 
@@ -46,9 +46,14 @@ type Models = {
 const store: DocumentStore<Models> = createDocumentStore<Models>({
   models: {
     // `createQuery` owns this slot's fetching through its own QueryAdapter, so the
-    // model adapter here is a never-called placeholder — required only because
-    // every declared type needs a `models` entry.
-    planbooks_for_user: { adapter: { find: () => Promise.resolve([]) } },
+    // model adapter here is never called. It throws so a stray
+    // `store.find("planbooks_for_user", id)` fails loudly instead of silently
+    // returning the wrong shape — every declared type still needs a `models` entry.
+    planbooks_for_user: {
+      adapter: {
+        find: () => Promise.reject(new Error("planbooks_for_user is driven by createQuery")),
+      },
+    },
     // `planbook` has a real adapter so `useDocument("planbook", id)` works too.
     planbook: {
       adapter: {
@@ -123,7 +128,7 @@ const PlanbookList = tracked(({ userId }: { userId: string }) => {
         ))}
       </ul>
       {query.nextOffset !== null && (
-        <button disabled={query.isFetching} onClick={() => query.fetchNextPage()}>
+        <button disabled={query.isFetching} onClick={() => void query.fetchNextPage()}>
           {query.isFetching ? "Loading…" : "Load more"}
         </button>
       )}
