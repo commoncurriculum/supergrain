@@ -227,7 +227,7 @@ export interface ProcessorContext<M extends DocumentTypes> {
   /** The type the caller passed to `find(type, id)` for this chunk. */
   readonly type: keyof M & string;
   /** The document ids this chunk fetched. */
-  readonly ids: Array<string>;
+  readonly ids: ReadonlyArray<string>;
 }
 
 /**
