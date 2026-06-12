@@ -462,7 +462,7 @@ const insert: ResponseProcessor<TypeToModel> = (response, { store, type }) => {
 };
 ```
 
-Returning a value replaces the response handed to later processors; returning `undefined` passes the current response through unchanged. If you need GraphQL, a REST envelope, or a bespoke wire format — write one. Processors are synchronous; for async normalization, do it in the adapter. If a processor throws, the remaining processors don't run and the fetch fails with a `ProcessorError` — the same terminal behavior as a single-`processor` throw.
+Returning a value replaces the response handed to later processors; returning `undefined` (or `null`) passes the current response through unchanged. If you need GraphQL, a REST envelope, or a bespoke wire format — write one. Processors are synchronous; for async normalization, do it in the adapter. If a processor throws, the remaining processors don't run and the fetch fails with a `ProcessorError` — the same terminal behavior as a single-`processor` throw.
 
 ## Queries
 
