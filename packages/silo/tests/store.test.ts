@@ -85,10 +85,10 @@ describe("Store memory operations", () => {
 });
 
 // =============================================================================
-// hooks.prepInsert — the one normalization funnel every insert passes through
+// hooks.prepareInsert — the one normalization funnel every insert passes through
 // =============================================================================
 
-describe("Store — hooks.prepInsert", () => {
+describe("Store — hooks.prepareInsert", () => {
   // Local models mirror the consumer scenario: JSON-API-ish docs that share a
   // literal `type` discriminant and carry an optional `meta` bag to normalize.
   interface CardStack {
@@ -108,9 +108,9 @@ describe("Store — hooks.prepInsert", () => {
   // no fetch is enqueued — so a stub that resolves nothing is enough.
   const stubAdapter: DocumentAdapter = { find: () => Promise.resolve([]) };
 
-  function makeStore(prepInsert: StoreHooks<Models>["prepInsert"]) {
+  function makeStore(prepareInsert: StoreHooks<Models>["prepareInsert"]) {
     return createDocumentStore<Models>({
-      hooks: { prepInsert },
+      hooks: { prepareInsert },
       models: {
         "card-stack": { adapter: stubAdapter },
         planbook: { adapter: stubAdapter },
@@ -170,6 +170,27 @@ describe("Store — hooks.prepInsert", () => {
     expect(cs.meta).toEqual({ touched: true });
   });
 
+  it("vetoes the insert when the hook returns null — nothing is written", () => {
+    const store = makeStore((doc) => (doc.id === "drop" ? null : doc));
+
+    store.insertDocument("card-stack", { id: "drop", type: "card-stack" });
+    store.insertDocument("card-stack", { id: "keep", type: "card-stack" });
+
+    expect(store.findInMemory("card-stack", "drop")).toBeUndefined();
+    expect(unwrap(store.findInMemory("card-stack", "keep"))?.id).toBe("keep");
+  });
+
+  it("a null veto leaves any existing cached document untouched", () => {
+    const store = makeStore((doc) => (doc.id === "1" && (doc.meta?.drop ?? false) ? null : doc));
+
+    const original: CardStack = { id: "1", type: "card-stack" };
+    store.insertDocument("card-stack", original);
+    // A later vetoed insert for the same id must not clear what's cached.
+    store.insertDocument("card-stack", { id: "1", type: "card-stack", meta: { drop: true } });
+
+    expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(original);
+  });
+
   it("narrows on the doc.type discriminant for per-type normalization", () => {
     const store = makeStore((doc) => {
       if (doc.type === "card-stack") doc.meta = { kind: "stack" };
@@ -193,7 +214,7 @@ describe("Store — hooks.prepInsert", () => {
     });
 
     // Drive the processor exactly as the finder does after a fetch: its
-    // `store.insertDocument(...)` calls funnel through `prepInsert` just like a
+    // `store.insertDocument(...)` calls funnel through `prepareInsert` just like a
     // direct insert, for both the requested `data` doc and the `included`
     // sideload (a different type entirely).
     jsonApiProcessor(

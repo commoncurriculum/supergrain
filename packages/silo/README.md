@@ -224,14 +224,15 @@ The built-in default retry (`defaultRetry`) is **jittered** fibonacci (1s base, 
 
 Store-wide, `DocumentStoreConfig` takes a **`hooks`** object (parallel to `models` / `queries`) for cross-cutting behavior that must run no matter which code path reaches the store. Today it holds one hook:
 
-- **`prepInsert(doc, type)`** — a doc-in / doc-out normalization hook run on **every** `insertDocument(type, doc)`. It's the one funnel every document passes through on its way into the cache: a direct `store.insertDocument(...)`, a processor insert (including JSON-API `included` sideloads), a Provider `initial` seed, or any future code path. So a shape migration or a defaulted field lives in exactly one place instead of every insertion site.
+- **`prepareInsert(doc, type)`** — a doc-in / doc-out normalization hook run on **every** `insertDocument(type, doc)`. It's the one funnel every document passes through on its way into the cache: a direct `store.insertDocument(...)`, a processor insert (including JSON-API `included` sideloads), a Provider `initial` seed, or any future code path. So a shape migration or a defaulted field lives in exactly one place instead of every insertion site.
 
 ```ts
 const store = createDocumentStore<TypeToModel>({
   hooks: {
     // Card-stacks can arrive as JSON-API `data`, as an `included` sideload, or
-    // pushed in directly — `prepInsert` catches them all at the boundary.
-    prepInsert(doc) {
+    // pushed in directly — `prepareInsert` catches them all at the boundary.
+    prepareInsert(doc) {
+      if (doc.archived) return null; // drop — never cache archived docs
       if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
       doc.meta ??= {};
       return doc;
@@ -243,9 +244,9 @@ const store = createDocumentStore<TypeToModel>({
 });
 ```
 
-Normalize **in place** (mutate `doc`) and/or **return a replacement** — the returned doc is what gets stored, and returning nothing keeps the (possibly mutated) `doc`, mirroring the `?? response` pass-through of a [processor](#processors). It runs _before_ the doc is wrapped in the reactive proxy, so in-place edits here notify no subscribers — they're part of building the document, not updating one already on screen. When your models share a literal `type` discriminant, branch on `doc.type` to narrow; otherwise branch on the `type` argument (for models whose documents don't carry their own type).
+Normalize **in place** (mutate `doc`) and/or **return a replacement** — the returned doc is what gets stored. Returning nothing (or `undefined`) keeps the (possibly mutated) `doc`, mirroring the `?? response` pass-through of a [processor](#processors); returning **`null` vetoes the insert** — the document is dropped and nothing is written, so it's the place to filter records that should never enter the cache. It runs _before_ the doc is wrapped in the reactive proxy, so in-place edits here notify no subscribers — they're part of building the document, not updating one already on screen. When your models share a literal `type` discriminant, branch on `doc.type` to narrow; otherwise branch on the `type` argument (for models whose documents don't carry their own type).
 
-`prepInsert` covers documents only (`insertDocument`); query results (`insertQueryResult`) are not run through it.
+`prepareInsert` covers documents only (`insertDocument`); query results (`insertQueryResult`) are not run through it.
 
 Methods:
 

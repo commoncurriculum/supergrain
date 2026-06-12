@@ -165,11 +165,11 @@ describe("DocumentStore.insertDocument — `doc` narrowed by `type`", () => {
   });
 });
 
-describe("DocumentStoreConfig.hooks.prepInsert — doc is the model union", () => {
+describe("DocumentStoreConfig.hooks.prepareInsert — doc is the model union", () => {
   it("types `doc` as the model union and `type` as the type keys", () => {
     createDocumentStore<Models>({
       hooks: {
-        prepInsert(doc, type) {
+        prepareInsert(doc, type) {
           // The hook is store-wide, so `doc` is the union of every model and
           // `type` the union of every key — narrow with a discriminant or the
           // `type` argument inside.
@@ -201,7 +201,7 @@ describe("DocumentStoreConfig.hooks.prepInsert — doc is the model union", () =
     createDocumentStore<Models>({
       hooks: {
         // @ts-expect-error -- the return must be a model doc (or void), not an arbitrary object
-        prepInsert: () => ({ not: "a model" }),
+        prepareInsert: () => ({ not: "a model" }),
       },
       models: {
         user: {

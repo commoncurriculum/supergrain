@@ -325,8 +325,10 @@ export interface StoreHooks<M extends DocumentTypes> {
    * Receives the document and the `type` it's being inserted under. Normalize
    * **in place** (migrate a legacy shape, default a missing field) and/or
    * **return a replacement** — the returned doc is what gets stored. Returning
-   * nothing keeps the (possibly mutated) `doc`, mirroring the `?? response`
-   * pass-through of {@link ResponseProcessor}.
+   * nothing (or `undefined`) keeps the (possibly mutated) `doc`, mirroring the
+   * `?? response` pass-through of {@link ResponseProcessor}. Returning **`null`
+   * vetoes the insert** — the document is dropped and nothing is written, so
+   * this is the place to filter out records that should never enter the cache.
    *
    * Runs *before* the doc is wrapped in the reactive proxy, so in-place
    * mutations here notify no subscribers — they're part of building the
@@ -340,7 +342,8 @@ export interface StoreHooks<M extends DocumentTypes> {
    * ```ts
    * createDocumentStore<TypeToModel>({
    *   hooks: {
-   *     prepInsert(doc) {
+   *     prepareInsert(doc) {
+   *       if (doc.archived) return null; // drop — never cache archived docs
    *       if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
    *       doc.meta ??= {};
    *       return doc;
@@ -350,7 +353,10 @@ export interface StoreHooks<M extends DocumentTypes> {
    * });
    * ```
    */
-  prepInsert?: (doc: M[keyof M & string], type: keyof M & string) => M[keyof M & string] | void;
+  prepareInsert?: (
+    doc: M[keyof M & string],
+    type: keyof M & string,
+  ) => M[keyof M & string] | null | void;
 }
 
 // =============================================================================
@@ -377,7 +383,7 @@ export interface DocumentStoreConfig<
   /** Per-type adapter + optional processor wiring for queries. Optional. */
   queries?: { [K in keyof Q & string]: QueryConfig<M, Q, K> };
   /**
-   * Store-wide lifecycle hooks — currently `prepInsert`, run on every
+   * Store-wide lifecycle hooks — currently `prepareInsert`, run on every
    * `insertDocument`. Parallel to `models` / `queries`. See {@link StoreHooks}.
    */
   hooks?: StoreHooks<M>;
@@ -636,16 +642,18 @@ export function createDocumentStore<
       // (`createReactiveProxy` bails on `Object.isFrozen`), which would kill
       // per-field reactivity and the in-place update path above.
       //
-      // `hooks.prepInsert` is the one funnel every document passes through on
+      // `hooks.prepareInsert` is the one funnel every document passes through on
       // its way in — direct inserts, processor inserts (incl. JSON-API
       // sideloads), and Provider seeds all reach here. Run it BEFORE wrapping
       // so its in-place normalization touches the plain object, not the
-      // reactive proxy (no spurious notifications). Returning nothing keeps the
-      // mutated `doc`, mirroring the processor `?? response` pass-through.
-      const prepInsert = config.hooks?.prepInsert;
+      // reactive proxy (no spurious notifications). `undefined`/no return keeps
+      // the mutated `doc` (the processor `?? response` pass-through); `null`
+      // vetoes the insert — drop the document, write nothing.
+      const prepareInsert = config.hooks?.prepareInsert;
       let prepared: M[keyof M & string] = doc;
-      if (prepInsert) {
-        const result = prepInsert(doc, type);
+      if (prepareInsert) {
+        const result = prepareInsert(doc, type);
+        if (result === null) return;
         if (result !== undefined) prepared = result;
       }
       batch(() => {
