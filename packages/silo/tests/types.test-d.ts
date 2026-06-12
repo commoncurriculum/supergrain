@@ -175,7 +175,7 @@ describe("DocumentStoreConfig.hooks.prepareInsert — doc is the model union", (
           // of every model — narrow with a discriminant or the `type` argument.
           expectTypeOf(type).toEqualTypeOf<"user" | "post">();
           expectTypeOf(doc).toEqualTypeOf<User | Post>();
-          return doc;
+          return { type, doc }; // the (type, doc) pair to actually insert
         },
         afterInsert(type, doc) {
           // Same surface as prepareInsert — the type + its committed doc.
@@ -202,10 +202,10 @@ describe("DocumentStoreConfig.hooks.prepareInsert — doc is the model union", (
     });
   });
 
-  it("rejects a return value that is no model shape", () => {
+  it("rejects a return value that is not a { type, doc } pair", () => {
     createDocumentStore<Models>({
       hooks: {
-        // @ts-expect-error -- the return must be a model doc (or void), not an arbitrary object
+        // @ts-expect-error -- the return must be a { type, doc } pair (or null/void), not an arbitrary object
         prepareInsert: () => ({ not: "a model" }),
       },
       models: {

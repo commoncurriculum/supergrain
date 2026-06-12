@@ -224,9 +224,9 @@ The built-in default retry (`defaultRetry`) is **jittered** fibonacci (1s base, 
 
 Store-wide, `DocumentStoreConfig` takes a **`hooks`** object (parallel to `models` / `queries`) for cross-cutting behavior that must run no matter which code path reaches the store. The two hooks bracket **every** `insertDocument(type, doc)` — a direct `store.insertDocument(...)`, a processor insert (including JSON-API `included` sideloads), a Provider `initial` seed, or any future code path. So a shape migration, a defaulted field, or a mirror to another store lives in exactly one place instead of every insertion site.
 
-Both share the **same `(type, doc)` signature as `insertDocument`** and form a pipeline around it: `prepareInsert → insertDocument → afterInsert`.
+Both take the **same `(type, doc)` arguments as `insertDocument`** and form a pipeline around it: `prepareInsert → insertDocument → afterInsert`.
 
-- **`prepareInsert(type, doc)`** — a doc-in / doc-out normalization hook that runs on the way _in_.
+- **`prepareInsert(type, doc)`** — a normalization hook that runs on the way _in_; returns the `{ type, doc }` to actually insert.
 - **`afterInsert(type, doc)`** — a side-effect observer that runs on the way _out_, after the write is committed.
 
 ```ts
@@ -238,7 +238,7 @@ const store = createDocumentStore<TypeToModel>({
       if (doc.archived) return null; // drop — never cache archived docs
       if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
       doc.meta ??= {};
-      return doc;
+      return { type, doc }; // or just mutate in place and return nothing
     },
     // Bridge every committed Supergrain insert back into the existing Ember store.
     afterInsert: (type, doc) => emberStore.insertDocument(doc),
@@ -249,9 +249,9 @@ const store = createDocumentStore<TypeToModel>({
 });
 ```
 
-**`prepareInsert`** — normalize **in place** (mutate `doc`) and/or **return a replacement** — the returned doc is what gets stored. Returning nothing (or `undefined`) keeps the (possibly mutated) `doc`, mirroring the `?? response` pass-through of a [processor](#processors); returning **`null` vetoes the insert** — the document is dropped and nothing is written, so it's the place to filter records that should never enter the cache. It runs _before_ the doc is wrapped in the reactive proxy, so in-place edits here notify no subscribers — they're part of building the document, not updating one already on screen. When your models share a literal `type` discriminant, branch on `doc.type` to narrow; otherwise branch on the `type` argument (for models whose documents don't carry their own type).
+**`prepareInsert`** — normalize **in place** (mutate `doc`) and/or **return a replacement `{ type, doc }` pair** — that pair is what gets inserted. Returning a pair can change _either_ coordinate: a different `doc` (wholesale replace) and/or a different `type` (re-route the document to another bucket). The pair carries `type` explicitly because a silo doc needn't carry its own. Returning nothing (or `undefined`) keeps the original `(type, doc)` with the (possibly mutated) `doc`, mirroring the `?? response` pass-through of a [processor](#processors) — so the common "mutate in place" case needs no return. Returning **`null` vetoes the insert** — the document is dropped and nothing is written, the place to filter records that should never enter the cache. It runs _before_ the doc is wrapped in the reactive proxy, so in-place edits notify no subscribers. When your models share a literal `type` discriminant, branch on `doc.type` to narrow; otherwise branch on the `type` argument (for models whose documents don't carry their own type). One caveat on re-routing: when a `store.find(type, id)` drove the insert, the handle is settled by looking the doc up under the _requested_ type — re-route to a different type and that handle settles as `NotFound`, so re-route deliberately.
 
-**`afterInsert`** — runs once per committed document, _after_ the reactive write has flushed (cache settled, subscribers notified). It receives the exact object that was stored (the post-`prepareInsert` doc, identical to `unwrap(store.findInMemory(type, doc.id))`); its return value is ignored. Use it for side effects: mirror the document into another store, update a derived index, emit telemetry. It does **not** run when `prepareInsert` vetoes the insert (there's nothing to observe). Calling `store.insertDocument(...)` from inside it funnels back through the same hooks — fine for cascading related records, but mind the recursion.
+**`afterInsert`** — runs once per committed document, _after_ the reactive write has flushed (cache settled, subscribers notified). It receives the final `(type, doc)` actually written — the post-`prepareInsert` pair, re-routing included (the `doc` is identical to `unwrap(store.findInMemory(type, doc.id))`); its return value is ignored. Use it for side effects: mirror the document into another store, update a derived index, emit telemetry. It does **not** run when `prepareInsert` vetoes the insert (there's nothing to observe). Calling `store.insertDocument(...)` from inside it funnels back through the same hooks — fine for cascading related records, but mind the recursion.
 
 Both hooks cover documents only (`insertDocument`); query results (`insertQueryResult`) are not run through them.
 

@@ -126,7 +126,7 @@ describe("Store — hooks.prepareInsert", () => {
     const calls: Array<[string, string]> = [];
     const store = makeStore((type, doc) => {
       calls.push([type, doc.id]);
-      return doc;
+      return { type, doc };
     });
 
     store.insertDocument("card-stack", { id: "1", type: "card-stack" });
@@ -139,9 +139,9 @@ describe("Store — hooks.prepareInsert", () => {
   });
 
   it("normalizes in place — the mutated object is what lands in the cache", () => {
-    const store = makeStore((_type, doc) => {
+    const store = makeStore((type, doc) => {
       doc.meta ??= {};
-      return doc;
+      return { type, doc };
     });
     const cs: CardStack = { id: "1", type: "card-stack" };
 
@@ -152,13 +152,24 @@ describe("Store — hooks.prepareInsert", () => {
     expect(cs.meta).toEqual({});
   });
 
-  it("stores the replacement when the hook returns a new object", () => {
+  it("stores the replacement when the hook returns a new doc in the pair", () => {
     const replacement: CardStack = { id: "1", type: "card-stack", meta: { normalized: true } };
-    const store = makeStore(() => replacement);
+    const store = makeStore((type) => ({ type, doc: replacement }));
 
     store.insertDocument("card-stack", { id: "1", type: "card-stack" });
 
     expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(replacement);
+  });
+
+  it("re-routes the document when the hook returns a different type", () => {
+    // A legacy payload arrives under "card-stack" but should be cached as a
+    // planbook — the returned pair changes the bucket.
+    const store = makeStore((_type, doc) => ({ type: "planbook", doc }));
+
+    store.insertDocument("card-stack", { id: "x", type: "card-stack" });
+
+    expect(store.findInMemory("card-stack", "x")).toBeUndefined();
+    expect(unwrap(store.findInMemory("planbook", "x"))?.id).toBe("x");
   });
 
   it("falls back to the (mutated) doc when the hook returns nothing", () => {
@@ -175,7 +186,7 @@ describe("Store — hooks.prepareInsert", () => {
   });
 
   it("vetoes the insert when the hook returns null — nothing is written", () => {
-    const store = makeStore((_type, doc) => (doc.id === "drop" ? null : doc));
+    const store = makeStore((type, doc) => (doc.id === "drop" ? null : { type, doc }));
 
     store.insertDocument("card-stack", { id: "drop", type: "card-stack" });
     store.insertDocument("card-stack", { id: "keep", type: "card-stack" });
@@ -185,8 +196,8 @@ describe("Store — hooks.prepareInsert", () => {
   });
 
   it("a null veto leaves any existing cached document untouched", () => {
-    const store = makeStore((_type, doc) =>
-      doc.id === "1" && (doc.meta?.drop ?? false) ? null : doc,
+    const store = makeStore((type, doc) =>
+      doc.id === "1" && (doc.meta?.drop ?? false) ? null : { type, doc },
     );
 
     const original: CardStack = { id: "1", type: "card-stack" };
@@ -198,10 +209,10 @@ describe("Store — hooks.prepareInsert", () => {
   });
 
   it("narrows on the doc.type discriminant for per-type normalization", () => {
-    const store = makeStore((_type, doc) => {
+    const store = makeStore((type, doc) => {
       if (doc.type === "card-stack") doc.meta = { kind: "stack" };
       else doc.meta = { kind: "book" };
-      return doc;
+      return { type, doc };
     });
 
     store.insertDocument("card-stack", { id: "1", type: "card-stack" });
@@ -216,7 +227,7 @@ describe("Store — hooks.prepareInsert", () => {
     const store = makeStore((type, doc) => {
       seen.push(`${type}:${doc.id}`);
       doc.meta ??= {};
-      return doc;
+      return { type, doc };
     });
 
     // Drive the processor exactly as the finder does after a fetch: its
@@ -275,7 +286,7 @@ describe("Store — hooks.prepareInsert", () => {
     const replacement: CardStack = { id: "1", type: "card-stack", meta: { normalized: true } };
     let received: CardStack | Planbook | undefined;
     const store = makeHookStore({
-      prepareInsert: () => replacement,
+      prepareInsert: (type) => ({ type, doc: replacement }),
       afterInsert: (_type, doc) => {
         received = doc;
       },
@@ -290,7 +301,7 @@ describe("Store — hooks.prepareInsert", () => {
   it("afterInsert does NOT run when prepareInsert vetoes with null", () => {
     const observed: Array<string> = [];
     const store = makeHookStore({
-      prepareInsert: (_type, doc) => (doc.id === "drop" ? null : doc),
+      prepareInsert: (type, doc) => (doc.id === "drop" ? null : { type, doc }),
       afterInsert: (_type, doc) => observed.push(doc.id),
     });
 
@@ -303,9 +314,9 @@ describe("Store — hooks.prepareInsert", () => {
   it("prepareInsert runs before afterInsert for a single insert", () => {
     const order: Array<string> = [];
     const store = makeHookStore({
-      prepareInsert: (_type, doc) => {
+      prepareInsert: (type, doc) => {
         order.push("prepare");
-        return doc;
+        return { type, doc };
       },
       afterInsert: () => order.push("after"),
     });
