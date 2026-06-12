@@ -222,21 +222,24 @@ The built-in default retry (`defaultRetry`) is **jittered** fibonacci (1s base, 
 
 ### Hooks
 
-Store-wide, `DocumentStoreConfig` takes a **`hooks`** object (parallel to `models` / `queries`) for cross-cutting behavior that must run no matter which code path reaches the store. Today it holds one hook:
+Store-wide, `DocumentStoreConfig` takes a **`hooks`** object (parallel to `models` / `queries`) for cross-cutting behavior that must run no matter which code path reaches the store. The two hooks bracket **every** `insertDocument(type, doc)` — a direct `store.insertDocument(...)`, a processor insert (including JSON-API `included` sideloads), a Provider `initial` seed, or any future code path. So a shape migration, a defaulted field, or a mirror to another store lives in exactly one place instead of every insertion site.
 
-- **`prepareInsert(doc, type)`** — a doc-in / doc-out normalization hook run on **every** `insertDocument(type, doc)`. It's the one funnel every document passes through on its way into the cache: a direct `store.insertDocument(...)`, a processor insert (including JSON-API `included` sideloads), a Provider `initial` seed, or any future code path. So a shape migration or a defaulted field lives in exactly one place instead of every insertion site.
+- **`prepareInsert(doc, type)`** — a doc-in / doc-out normalization hook that runs on the way _in_.
+- **`afterInsert(doc, type)`** — a side-effect observer that runs on the way _out_, after the write is committed.
 
 ```ts
 const store = createDocumentStore<TypeToModel>({
   hooks: {
     // Card-stacks can arrive as JSON-API `data`, as an `included` sideload, or
-    // pushed in directly — `prepareInsert` catches them all at the boundary.
+    // pushed in directly — these hooks catch them all at the boundary.
     prepareInsert(doc) {
       if (doc.archived) return null; // drop — never cache archived docs
       if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
       doc.meta ??= {};
       return doc;
     },
+    // Bridge every committed Supergrain insert back into the existing Ember store.
+    afterInsert: (doc) => emberStore.insertDocument(doc),
   },
   models: {
     "card-stack": { adapter: cardStackAdapter, processor: jsonApiProcessor },
@@ -244,9 +247,11 @@ const store = createDocumentStore<TypeToModel>({
 });
 ```
 
-Normalize **in place** (mutate `doc`) and/or **return a replacement** — the returned doc is what gets stored. Returning nothing (or `undefined`) keeps the (possibly mutated) `doc`, mirroring the `?? response` pass-through of a [processor](#processors); returning **`null` vetoes the insert** — the document is dropped and nothing is written, so it's the place to filter records that should never enter the cache. It runs _before_ the doc is wrapped in the reactive proxy, so in-place edits here notify no subscribers — they're part of building the document, not updating one already on screen. When your models share a literal `type` discriminant, branch on `doc.type` to narrow; otherwise branch on the `type` argument (for models whose documents don't carry their own type).
+**`prepareInsert`** — normalize **in place** (mutate `doc`) and/or **return a replacement** — the returned doc is what gets stored. Returning nothing (or `undefined`) keeps the (possibly mutated) `doc`, mirroring the `?? response` pass-through of a [processor](#processors); returning **`null` vetoes the insert** — the document is dropped and nothing is written, so it's the place to filter records that should never enter the cache. It runs _before_ the doc is wrapped in the reactive proxy, so in-place edits here notify no subscribers — they're part of building the document, not updating one already on screen. When your models share a literal `type` discriminant, branch on `doc.type` to narrow; otherwise branch on the `type` argument (for models whose documents don't carry their own type).
 
-`prepareInsert` covers documents only (`insertDocument`); query results (`insertQueryResult`) are not run through it.
+**`afterInsert`** — runs once per committed document, _after_ the reactive write has flushed (cache settled, subscribers notified). It receives the exact object that was stored (the post-`prepareInsert` doc, identical to `unwrap(store.findInMemory(type, doc.id))`); its return value is ignored. Use it for side effects: mirror the document into another store, update a derived index, emit telemetry. It does **not** run when `prepareInsert` vetoes the insert (there's nothing to observe). Calling `store.insertDocument(...)` from inside it funnels back through the same hooks — fine for cascading related records, but mind the recursion.
+
+Both hooks cover documents only (`insertDocument`); query results (`insertQueryResult`) are not run through them.
 
 Methods:
 

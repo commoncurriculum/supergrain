@@ -357,6 +357,39 @@ export interface StoreHooks<M extends DocumentTypes> {
     doc: M[keyof M & string],
     type: keyof M & string,
   ) => M[keyof M & string] | null | void;
+
+  /**
+   * Observer run **after** a document is committed to the cache by
+   * `insertDocument(type, doc)` — the write half of the bracket whose read half
+   * is {@link StoreHooks.prepareInsert}. Fires for every insertion path (direct,
+   * processor, JSON-API sideload, Provider seed) once per committed document,
+   * *after* the reactive write has flushed, so subscribers have already been
+   * notified and the cache is settled.
+   *
+   * Receives the exact object that was stored (the post-`prepareInsert` doc;
+   * identical to `unwrap(store.findInMemory(type, doc.id))`) and its `type`.
+   * Its return value is ignored — this is for side effects: mirror the document
+   * into another store (e.g. an existing Ember store), update a derived index,
+   * emit telemetry.
+   *
+   * Does **not** run when `prepareInsert` vetoes the insert by returning `null`
+   * (nothing was written, so there is nothing to observe). Calling
+   * `store.insertDocument(...)` from inside `afterInsert` is allowed and funnels
+   * back through the same hooks — handy for cascading related records, but mind
+   * the obvious recursion.
+   *
+   * @example
+   * ```ts
+   * createDocumentStore<TypeToModel>({
+   *   hooks: {
+   *     // Bridge every Supergrain insert back into the existing Ember store.
+   *     afterInsert: (doc) => emberStore.insertDocument(doc),
+   *   },
+   *   models: { ... },
+   * });
+   * ```
+   */
+  afterInsert?: (doc: M[keyof M & string], type: keyof M & string) => void;
 }
 
 // =============================================================================
@@ -383,8 +416,9 @@ export interface DocumentStoreConfig<
   /** Per-type adapter + optional processor wiring for queries. Optional. */
   queries?: { [K in keyof Q & string]: QueryConfig<M, Q, K> };
   /**
-   * Store-wide lifecycle hooks — currently `prepareInsert`, run on every
-   * `insertDocument`. Parallel to `models` / `queries`. See {@link StoreHooks}.
+   * Store-wide lifecycle hooks — `prepareInsert` / `afterInsert`, bracketing
+   * every `insertDocument`. Parallel to `models` / `queries`. See
+   * {@link StoreHooks}.
    */
   hooks?: StoreHooks<M>;
   /**
@@ -660,6 +694,11 @@ export function createDocumentStore<
         const handle = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
         applyEvent(handle, HandleEvent.insert(prepared));
       });
+      // `afterInsert` is the write half of the bracket — it runs once the batch
+      // has flushed (cache settled, subscribers notified), and is skipped when
+      // `prepareInsert` vetoed above. Side-effect only; the stored object is the
+      // exact `prepared` reference handed in.
+      config.hooks?.afterInsert?.(prepared, type);
     },
 
     findQuery<K extends keyof Q & string>(

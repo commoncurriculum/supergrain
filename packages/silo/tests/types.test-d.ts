@@ -177,6 +177,11 @@ describe("DocumentStoreConfig.hooks.prepareInsert — doc is the model union", (
           expectTypeOf(type).toEqualTypeOf<"user" | "post">();
           return doc;
         },
+        afterInsert(doc, type) {
+          // Same surface as prepareInsert — the committed doc + its type.
+          expectTypeOf(doc).toEqualTypeOf<User | Post>();
+          expectTypeOf(type).toEqualTypeOf<"user" | "post">();
+        },
       },
       models: {
         user: {

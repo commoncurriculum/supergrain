@@ -108,14 +108,18 @@ describe("Store — hooks.prepareInsert", () => {
   // no fetch is enqueued — so a stub that resolves nothing is enough.
   const stubAdapter: DocumentAdapter = { find: () => Promise.resolve([]) };
 
-  function makeStore(prepareInsert: StoreHooks<Models>["prepareInsert"]) {
+  function makeHookStore(hooks: StoreHooks<Models>) {
     return createDocumentStore<Models>({
-      hooks: { prepareInsert },
+      hooks,
       models: {
         "card-stack": { adapter: stubAdapter },
         planbook: { adapter: stubAdapter },
       },
     });
+  }
+
+  function makeStore(prepareInsert: StoreHooks<Models>["prepareInsert"]) {
+    return makeHookStore({ prepareInsert });
   }
 
   it("runs on every insertDocument, receiving the doc and its type", () => {
@@ -242,6 +246,71 @@ describe("Store — hooks.prepareInsert", () => {
     store.insertDocument("card-stack", cs);
 
     expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(cs);
+  });
+
+  // ─── afterInsert — the write half of the bracket ────────────────────────────
+
+  it("afterInsert runs on every insert, after the value is committed", () => {
+    const observed: Array<[string, string]> = [];
+    const store = makeHookStore({
+      afterInsert: (doc, type) => {
+        // The cache is already settled when afterInsert fires.
+        expect(unwrap(store.findInMemory(type, doc.id))).toBe(doc);
+        observed.push([type, doc.id]);
+      },
+    });
+
+    store.insertDocument("card-stack", { id: "1", type: "card-stack" });
+    store.insertDocument("planbook", { id: "p1", type: "planbook" });
+
+    expect(observed).toEqual([
+      ["card-stack", "1"],
+      ["planbook", "p1"],
+    ]);
+  });
+
+  it("afterInsert receives the post-prepareInsert (stored) doc", () => {
+    const replacement: CardStack = { id: "1", type: "card-stack", meta: { normalized: true } };
+    let received: CardStack | Planbook | undefined;
+    const store = makeHookStore({
+      prepareInsert: () => replacement,
+      afterInsert: (doc) => {
+        received = doc;
+      },
+    });
+
+    store.insertDocument("card-stack", { id: "1", type: "card-stack" });
+
+    expect(received).toBe(replacement);
+    expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(replacement);
+  });
+
+  it("afterInsert does NOT run when prepareInsert vetoes with null", () => {
+    const observed: Array<string> = [];
+    const store = makeHookStore({
+      prepareInsert: (doc) => (doc.id === "drop" ? null : doc),
+      afterInsert: (doc) => observed.push(doc.id),
+    });
+
+    store.insertDocument("card-stack", { id: "drop", type: "card-stack" });
+    store.insertDocument("card-stack", { id: "keep", type: "card-stack" });
+
+    expect(observed).toEqual(["keep"]);
+  });
+
+  it("prepareInsert runs before afterInsert for a single insert", () => {
+    const order: Array<string> = [];
+    const store = makeHookStore({
+      prepareInsert: (doc) => {
+        order.push("prepare");
+        return doc;
+      },
+      afterInsert: () => order.push("after"),
+    });
+
+    store.insertDocument("card-stack", { id: "1", type: "card-stack" });
+
+    expect(order).toEqual(["prepare", "after"]);
   });
 });
 
