@@ -220,6 +220,33 @@ Store-wide, `DocumentStoreConfig` also takes **`maxConcurrency`** (a positive in
 
 The built-in default retry (`defaultRetry`) is **jittered** fibonacci (1s base, 0.8–1.2× spread, clamped to 60s), bounded by the built-in default `deadline` of 2 minutes — so out of the box a down backend retries for ~2 minutes (each failed attempt fires `onError` and bumps the handle's `failureCount` / `lastError`, so the outage is observable while retrying), then settles the terminal `error` with `reason: "deadline"`. Tune either side: a finite `Schedule` for fewer attempts, a different `deadline` for a different budget, or `deadline: Duration.infinity` to retry forever.
 
+### Hooks
+
+Store-wide, `DocumentStoreConfig` takes a **`hooks`** object (parallel to `models` / `queries`) for cross-cutting behavior that must run no matter which code path reaches the store. Today it holds one hook:
+
+- **`prepInsert(doc, type)`** — a doc-in / doc-out normalization hook run on **every** `insertDocument(type, doc)`. It's the one funnel every document passes through on its way into the cache: a direct `store.insertDocument(...)`, a processor insert (including JSON-API `included` sideloads), a Provider `initial` seed, or any future code path. So a shape migration or a defaulted field lives in exactly one place instead of every insertion site.
+
+```ts
+const store = createDocumentStore<TypeToModel>({
+  hooks: {
+    // Card-stacks can arrive as JSON-API `data`, as an `included` sideload, or
+    // pushed in directly — `prepInsert` catches them all at the boundary.
+    prepInsert(doc) {
+      if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
+      doc.meta ??= {};
+      return doc;
+    },
+  },
+  models: {
+    "card-stack": { adapter: cardStackAdapter, processor: jsonApiProcessor },
+  },
+});
+```
+
+Normalize **in place** (mutate `doc`) and/or **return a replacement** — the returned doc is what gets stored, and returning nothing keeps the (possibly mutated) `doc`, mirroring the `?? response` pass-through of a [processor](#processors). It runs _before_ the doc is wrapped in the reactive proxy, so in-place edits here notify no subscribers — they're part of building the document, not updating one already on screen. When your models share a literal `type` discriminant, branch on `doc.type` to narrow; otherwise branch on the `type` argument (for models whose documents don't carry their own type).
+
+`prepInsert` covers documents only (`insertDocument`); query results (`insertQueryResult`) are not run through it.
+
 Methods:
 
 - `find(type, id)` → `DocumentHandle<T>`

@@ -20,6 +20,7 @@ export type {
   RegisteredTypes,
   ResponseProcessor,
   StoreAdapterRunOptions,
+  StoreHooks,
   TypeRegistry,
 } from "./store";
 

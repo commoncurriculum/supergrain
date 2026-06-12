@@ -302,6 +302,58 @@ export interface ModelConfig<M extends DocumentTypes> extends ResilienceOptions 
 }
 
 // =============================================================================
+// StoreHooks — store-wide lifecycle hooks
+// =============================================================================
+
+/**
+ * Store-wide lifecycle hooks, declared once at store creation and parallel to
+ * `models` / `queries` in {@link DocumentStoreConfig}. The single place for
+ * cross-cutting behavior that must run no matter which code path reaches the
+ * store. Grouping hooks under one key (rather than scattering them onto the
+ * config root) keeps the surface extensible — future hooks slot in here without
+ * widening `DocumentStoreConfig` itself.
+ */
+export interface StoreHooks<M extends DocumentTypes> {
+  /**
+   * Normalization hook run on **every** `insertDocument(type, doc)` — whether
+   * the caller is a response {@link ResponseProcessor} (including JSON-API
+   * `included` sideloads), a direct `store.insertDocument(...)`, a Provider
+   * `initial` seed, or any future code path. The one funnel every document
+   * passes through on its way into the cache, so shape migrations and
+   * defaulting live in exactly one place instead of every insertion site.
+   *
+   * Receives the document and the `type` it's being inserted under. Normalize
+   * **in place** (migrate a legacy shape, default a missing field) and/or
+   * **return a replacement** — the returned doc is what gets stored. Returning
+   * nothing keeps the (possibly mutated) `doc`, mirroring the `?? response`
+   * pass-through of {@link ResponseProcessor}.
+   *
+   * Runs *before* the doc is wrapped in the reactive proxy, so in-place
+   * mutations here notify no subscribers — they're part of building the
+   * document, not updating one already on screen.
+   *
+   * When your models share a literal `type` discriminant, branch on `doc.type`
+   * to narrow `doc`; otherwise branch on the `type` argument (e.g. for models
+   * whose documents don't carry their own type field).
+   *
+   * @example
+   * ```ts
+   * createDocumentStore<TypeToModel>({
+   *   hooks: {
+   *     prepInsert(doc) {
+   *       if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
+   *       doc.meta ??= {};
+   *       return doc;
+   *     },
+   *   },
+   *   models: { ... },
+   * });
+   * ```
+   */
+  prepInsert?: (doc: M[keyof M & string], type: keyof M & string) => M[keyof M & string] | void;
+}
+
+// =============================================================================
 // DocumentStore config
 // =============================================================================
 
@@ -324,6 +376,11 @@ export interface DocumentStoreConfig<
   models: { [K in keyof M]: ModelConfig<M> };
   /** Per-type adapter + optional processor wiring for queries. Optional. */
   queries?: { [K in keyof Q & string]: QueryConfig<M, Q, K> };
+  /**
+   * Store-wide lifecycle hooks — currently `prepInsert`, run on every
+   * `insertDocument`. Parallel to `models` / `queries`. See {@link StoreHooks}.
+   */
+  hooks?: StoreHooks<M>;
   /**
    * Batch-window duration in ms. `find` / `findQuery` calls within this window
    * collapse into their respective `adapter.find(...)` invocations. Default: 15.
@@ -578,9 +635,22 @@ export function createDocumentStore<
       // freeze: a frozen target is handed back unwrapped by the kernel
       // (`createReactiveProxy` bails on `Object.isFrozen`), which would kill
       // per-field reactivity and the in-place update path above.
+      //
+      // `hooks.prepInsert` is the one funnel every document passes through on
+      // its way in — direct inserts, processor inserts (incl. JSON-API
+      // sideloads), and Provider seeds all reach here. Run it BEFORE wrapping
+      // so its in-place normalization touches the plain object, not the
+      // reactive proxy (no spurious notifications). Returning nothing keeps the
+      // mutated `doc`, mirroring the processor `?? response` pass-through.
+      const prepInsert = config.hooks?.prepInsert;
+      let prepared: M[keyof M & string] = doc;
+      if (prepInsert) {
+        const result = prepInsert(doc, type);
+        if (result !== undefined) prepared = result;
+      }
       batch(() => {
-        const handle = getOrCreateHandle(ensureBucket(state.documents, type), doc.id);
-        applyEvent(handle, HandleEvent.insert(doc));
+        const handle = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
+        applyEvent(handle, HandleEvent.insert(prepared));
       });
     },
 

@@ -2,7 +2,8 @@ import { effect, unwrap } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
-import { createDocumentStore } from "../src/store";
+import { jsonApiProcessor } from "../src/processors/json-api";
+import { createDocumentStore, type DocumentAdapter, type StoreHooks } from "../src/store";
 import {
   API_BASE,
   clearRequests,
@@ -80,6 +81,146 @@ describe("Store memory operations", () => {
     store.clearMemory();
 
     expect(store.findInMemory("user", "1")).toBeUndefined();
+  });
+});
+
+// =============================================================================
+// hooks.prepInsert — the one normalization funnel every insert passes through
+// =============================================================================
+
+describe("Store — hooks.prepInsert", () => {
+  // Local models mirror the consumer scenario: JSON-API-ish docs that share a
+  // literal `type` discriminant and carry an optional `meta` bag to normalize.
+  interface CardStack {
+    id: string;
+    type: "card-stack";
+    cards?: ReadonlyArray<unknown>;
+    meta?: Record<string, unknown>;
+  }
+  interface Planbook {
+    id: string;
+    type: "planbook";
+    meta?: Record<string, unknown>;
+  }
+  type Models = { "card-stack": CardStack; planbook: Planbook };
+
+  // The adapter is never invoked here — `insertDocument` is a pure memory write,
+  // no fetch is enqueued — so a stub that resolves nothing is enough.
+  const stubAdapter: DocumentAdapter = { find: () => Promise.resolve([]) };
+
+  function makeStore(prepInsert: StoreHooks<Models>["prepInsert"]) {
+    return createDocumentStore<Models>({
+      hooks: { prepInsert },
+      models: {
+        "card-stack": { adapter: stubAdapter },
+        planbook: { adapter: stubAdapter },
+      },
+    });
+  }
+
+  it("runs on every insertDocument, receiving the doc and its type", () => {
+    const calls: Array<[string, string]> = [];
+    const store = makeStore((doc, type) => {
+      calls.push([type, doc.id]);
+      return doc;
+    });
+
+    store.insertDocument("card-stack", { id: "1", type: "card-stack" });
+    store.insertDocument("planbook", { id: "p1", type: "planbook" });
+
+    expect(calls).toEqual([
+      ["card-stack", "1"],
+      ["planbook", "p1"],
+    ]);
+  });
+
+  it("normalizes in place — the mutated object is what lands in the cache", () => {
+    const store = makeStore((doc) => {
+      doc.meta ??= {};
+      return doc;
+    });
+    const cs: CardStack = { id: "1", type: "card-stack" };
+
+    store.insertDocument("card-stack", cs);
+
+    // Stored object IS the inserted one (no copy) and carries the defaulted bag.
+    expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(cs);
+    expect(cs.meta).toEqual({});
+  });
+
+  it("stores the replacement when the hook returns a new object", () => {
+    const replacement: CardStack = { id: "1", type: "card-stack", meta: { normalized: true } };
+    const store = makeStore(() => replacement);
+
+    store.insertDocument("card-stack", { id: "1", type: "card-stack" });
+
+    expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(replacement);
+  });
+
+  it("falls back to the (mutated) doc when the hook returns nothing", () => {
+    const store = makeStore((doc) => {
+      doc.meta = { touched: true };
+      // no return — the pass-through keeps the mutated doc, like a processor
+    });
+    const cs: CardStack = { id: "1", type: "card-stack" };
+
+    store.insertDocument("card-stack", cs);
+
+    expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(cs);
+    expect(cs.meta).toEqual({ touched: true });
+  });
+
+  it("narrows on the doc.type discriminant for per-type normalization", () => {
+    const store = makeStore((doc) => {
+      if (doc.type === "card-stack") doc.meta = { kind: "stack" };
+      else doc.meta = { kind: "book" };
+      return doc;
+    });
+
+    store.insertDocument("card-stack", { id: "1", type: "card-stack" });
+    store.insertDocument("planbook", { id: "p1", type: "planbook" });
+
+    expect(unwrap(store.findInMemory("card-stack", "1"))?.meta).toEqual({ kind: "stack" });
+    expect(unwrap(store.findInMemory("planbook", "p1"))?.meta).toEqual({ kind: "book" });
+  });
+
+  it("runs for processor-driven inserts, including JSON-API `included` sideloads", () => {
+    const seen: Array<string> = [];
+    const store = makeStore((doc, type) => {
+      seen.push(`${type}:${doc.id}`);
+      doc.meta ??= {};
+      return doc;
+    });
+
+    // Drive the processor exactly as the finder does after a fetch: its
+    // `store.insertDocument(...)` calls funnel through `prepInsert` just like a
+    // direct insert, for both the requested `data` doc and the `included`
+    // sideload (a different type entirely).
+    jsonApiProcessor(
+      {
+        data: [{ id: "cs1", type: "card-stack" }],
+        included: [{ id: "pb1", type: "planbook" }],
+      },
+      { store, type: "card-stack", ids: ["cs1"] },
+    );
+
+    expect(seen).toEqual(["card-stack:cs1", "planbook:pb1"]);
+    expect(unwrap(store.findInMemory("card-stack", "cs1"))?.meta).toEqual({});
+    expect(unwrap(store.findInMemory("planbook", "pb1"))?.meta).toEqual({});
+  });
+
+  it("is optional — a store without hooks inserts unchanged", () => {
+    const store = createDocumentStore<Models>({
+      models: {
+        "card-stack": { adapter: stubAdapter },
+        planbook: { adapter: stubAdapter },
+      },
+    });
+    const cs: CardStack = { id: "1", type: "card-stack" };
+
+    store.insertDocument("card-stack", cs);
+
+    expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(cs);
   });
 });
 

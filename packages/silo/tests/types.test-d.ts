@@ -165,6 +165,64 @@ describe("DocumentStore.insertDocument — `doc` narrowed by `type`", () => {
   });
 });
 
+describe("DocumentStoreConfig.hooks.prepInsert — doc is the model union", () => {
+  it("types `doc` as the model union and `type` as the type keys", () => {
+    createDocumentStore<Models>({
+      hooks: {
+        prepInsert(doc, type) {
+          // The hook is store-wide, so `doc` is the union of every model and
+          // `type` the union of every key — narrow with a discriminant or the
+          // `type` argument inside.
+          expectTypeOf(doc).toEqualTypeOf<User | Post>();
+          expectTypeOf(type).toEqualTypeOf<"user" | "post">();
+          return doc;
+        },
+      },
+      models: {
+        user: {
+          adapter: {
+            find: effectFind("test", (ids: Array<string>) =>
+              Promise.resolve(ids.map((id) => ({ id, name: "x" }))),
+            ),
+          },
+        },
+        post: {
+          adapter: {
+            find: effectFind("test", (ids: Array<string>) =>
+              Promise.resolve(ids.map((id) => ({ id, title: "t", body: "b" }))),
+            ),
+          },
+        },
+      },
+    });
+  });
+
+  it("rejects a return value that is no model shape", () => {
+    createDocumentStore<Models>({
+      hooks: {
+        // @ts-expect-error -- the return must be a model doc (or void), not an arbitrary object
+        prepInsert: () => ({ not: "a model" }),
+      },
+      models: {
+        user: {
+          adapter: {
+            find: effectFind("test", (ids: Array<string>) =>
+              Promise.resolve(ids.map((id) => ({ id, name: "x" }))),
+            ),
+          },
+        },
+        post: {
+          adapter: {
+            find: effectFind("test", (ids: Array<string>) =>
+              Promise.resolve(ids.map((id) => ({ id, title: "t", body: "b" }))),
+            ),
+          },
+        },
+      },
+    });
+  });
+});
+
 describe("DocumentStore.findQuery — params and result narrowed by `type`", () => {
   const store = {} as DocumentStore<Models, Queries>;
 
