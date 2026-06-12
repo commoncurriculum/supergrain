@@ -15,14 +15,12 @@ export type {
   DocumentStoreConfig,
   DocumentTypes,
   HandleStatus,
-  InferDocumentsFromModelConfig,
   ModelConfig,
   ModelType,
   ProcessorContext,
   RegisteredTypes,
   ResponseProcessor,
   StoreAdapterRunOptions,
-  TypedModelConfig,
   TypeRegistry,
 } from "./store";
 

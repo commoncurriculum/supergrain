@@ -204,7 +204,7 @@ const store = createDocumentStore<TypeToModel>({
 
 #### Two typing styles
 
-`createDocumentStore` returns the same `DocumentStore<Documents, Queries>` whichever way you type it. The example above passes the document map as the generic (`TypeToModel`) — best when you already have an app-wide schema. You can equivalently **colocate** each document type with its model config using `type: typeOf<T>()` and let Silo **infer** the map — best for incremental schemas, where a separate `Documents` type would just duplicate the configured model set:
+`createDocumentStore` returns a `DocumentStore<Documents, Queries>` whichever way you type the documents. The example above passes the document map as the generic (`TypeToModel`) — best when you already have an app-wide schema. You can equivalently **colocate** each document type with its model config using `type: typeOf<T>()` and let Silo **infer** the map — best for incremental schemas, where a separate `Documents` type would just duplicate the configured model set:
 
 ```ts
 import { createDocumentStore, typeOf } from "@supergrain/silo";
@@ -218,7 +218,12 @@ const store = createDocumentStore({
 // store: DocumentStore<{ user: User; post: Post }>
 ```
 
-Both forms produce the identical store: `store.find("user", id)` is a `DocumentHandle<User>`, `store.findInMemory("post", id)` is `Post | undefined`, and `store.insertDocument("post", doc)` requires a `Post`. The `type: typeOf<T>()` marker is a zero-runtime phantom — it exists only for inference and the store never reads it. Mix the styles per store, not per model: every model in an inferred config needs a `type` marker (a missing one is a compile error), or supply the explicit generic and use none.
+Both forms produce the identical store: `store.find("user", id)` is a `DocumentHandle<User>`, `store.findInMemory("post", id)` is `Post | undefined`, and `store.insertDocument("post", doc)` requires a `Post`. The `type: typeOf<T>()` marker is a zero-runtime phantom — it exists only for inference and the store never reads it.
+
+Two boundaries to know:
+
+- **Pick one style per store.** Marking _some_ models with `type` but not others is a compile error — either mark every model, or mark none and supply the explicit generic. (A config with no markers is just the explicit style; pass `<Documents>`.)
+- **Inference covers documents, not queries.** Query types can't be derived from a `typeOf<T>()` marker, so the inferred form rejects a `queries` field rather than hand back untyped query handles. A store with queries uses the explicit generic — `createDocumentStore<Documents, Queries>({ models, queries })` — which types both fully.
 
 Each model (and query) can also take:
 

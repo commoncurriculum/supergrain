@@ -573,28 +573,34 @@ function needsFetch(handle: InternalHandle): boolean {
 /**
  * A {@link ModelConfig} that also carries a {@link ModelType} marker on `type`.
  * The inferred-config overload of {@link createDocumentStore} constrains each
- * model to this shape and reads the marker to build the document map.
- * `ModelConfig<any>` keeps full per-model parity — the adapter, `processor` /
- * `processors`, and the inherited {@link ResilienceOptions} (`retry` /
- * `timeout` / `deadline` / `retryable` / `isolateFailures`) — so the inferred
- * style gives up nothing the explicit-generic style has; only `type` is added.
+ * model to this shape and reads the marker to build the document map. Internal
+ * to the inference — not part of the public API (consumers write
+ * `type: typeOf<T>()` and never name this type).
  *
- * Note on processors: the inferred document map can't be threaded back into a
- * processor that lives inside the very object it's inferred from, so an *inline*
- * processor here receives a `ProcessorContext` over the open `DocumentTypes`
- * map, not the inferred map. For a fully-typed pipeline, declare a standalone
- * `ResponseProcessor<YourDocuments>` and reference it — that is the pattern the
- * docs show, and it carries precise types into the inferred config unchanged.
+ * The `any` in `ModelConfig<any>` is load-bearing — do NOT tighten it to
+ * `ModelConfig<DocumentTypes>`. It keeps full per-model parity (the adapter,
+ * `processor` / `processors`, and the inherited {@link ResilienceOptions}:
+ * `retry` / `timeout` / `deadline` / `retryable` / `isolateFailures`) while
+ * accepting a processor written against any document map. The inferred map
+ * can't be threaded back into a processor that lives inside the very object
+ * it's inferred from, so an *inline* processor here receives a
+ * `ProcessorContext` over the open `DocumentTypes` map, not the inferred map;
+ * tightening the `any` would only narrow that further and could break the
+ * structural match the overload depends on. For a fully-typed pipeline, declare
+ * a standalone `ResponseProcessor<YourDocuments>` and reference it — the pattern
+ * the docs show — which carries precise types into an inferred config unchanged.
  */
-export type TypedModelConfig = ModelConfig<any> & { type: ModelType<{ id: string }> };
+type TypedModelConfig = ModelConfig<any> & { type: ModelType<{ id: string }> };
 
 /**
  * Build the `DocumentTypes` map from a record of {@link TypedModelConfig}s by
  * reading each model's `type` marker — the inference behind the `typeOf<T>()`
  * config style. Mapping over `keyof Models & string` keeps the configured keys
- * (e.g. `"card-stack"`) as the document-map keys.
+ * (e.g. `"card-stack"`) as the document-map keys. Internal: a model lacking a
+ * `type` marker maps to `never` here, so this is only sound on a fully-marked
+ * config — which is exactly the constraint the inferred overload enforces.
  */
-export type InferDocumentsFromModelConfig<Models> = {
+type InferDocumentsFromModelConfig<Models> = {
   [K in keyof Models & string]: Models[K] extends { type: ModelType<infer T> } ? T : never;
 };
 
@@ -618,13 +624,15 @@ export type InferDocumentsFromModelConfig<Models> = {
  *    });
  *    ```
  *
- * The two overloads below provide these styles; this is the implementation
- * signature (intentionally broad — it delegates to the generic builder, which
- * holds the real, type-checked body).
+ * The inferred style covers documents only — `queries` can't be inferred from a
+ * `typeOf<T>()` marker, so a store with queries uses the explicit generic (which
+ * types them fully). The first signature is that explicit overload and the
+ * implementation; the second is the inferred-config overload.
  */
 // Explicit-generic overload — the original API, kept FIRST. Chosen whenever
 // `Documents` is supplied as a type argument, or inferred from a pre-typed
-// config value whose models carry no `type` marker.
+// config value whose models carry no `type` marker. This same signature is the
+// implementation below, so its generic body stays fully type-checked.
 export function createDocumentStore<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
@@ -633,24 +641,20 @@ export function createDocumentStore<
 // marker on every model fails the explicit overload's excess-property check
 // (`type` is not a `ModelConfig` field) and falls through to here, where the
 // document map is inferred from the markers. `const Models` preserves the
-// configured keys as the document-map keys.
-export function createDocumentStore<
-  const Models extends Record<string, TypedModelConfig>,
-  Queries extends QueryTypes = Record<string, never>,
->(
-  config: Omit<DocumentStoreConfig<InferDocumentsFromModelConfig<Models>, Queries>, "models"> & {
+// configured keys as the document-map keys. `queries` is deliberately excluded:
+// query types can't be inferred from `typeOf<T>()`, and silently widening them
+// to the open `QueryTypes` would hand back untyped (`unknown`) query handles —
+// so a `queries` field here is rejected (no overload matches) and the caller is
+// steered to the explicit generic, which types queries fully.
+export function createDocumentStore<const Models extends Record<string, TypedModelConfig>>(
+  config: Omit<DocumentStoreConfig<InferDocumentsFromModelConfig<Models>>, "models" | "queries"> & {
     models: Models;
   },
-): DocumentStore<InferDocumentsFromModelConfig<Models>, Queries>;
-export function createDocumentStore(
-  config: DocumentStoreConfig<any, any>,
-): DocumentStore<any, any> {
-  return buildDocumentStore(config);
-}
-
-function buildDocumentStore<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>>(
-  config: DocumentStoreConfig<M, Q>,
-): DocumentStore<M, Q> {
+): DocumentStore<InferDocumentsFromModelConfig<Models>>;
+export function createDocumentStore<
+  M extends DocumentTypes,
+  Q extends QueryTypes = Record<string, never>,
+>(config: DocumentStoreConfig<M, Q>): DocumentStore<M, Q> {
   const state = createReactive<InternalState>({
     documents: new Map(),
     queries: new Map(),

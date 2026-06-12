@@ -175,6 +175,18 @@ describe("createDocumentStore — inferred model-config typing (typeOf<T>)", () 
       models: { user: { type: typeOf<User>(), adapter, processor: insert } },
     });
   });
+
+  it("inferred config rejects `queries` — use the explicit generic for queries", () => {
+    // Query types can't be inferred from `typeOf<T>()`. Rather than silently
+    // hand back untyped (`unknown`) query handles, the inferred overload refuses
+    // a `queries` field so the caller is steered to the explicit-generic form.
+    const queryAdapter: DocumentAdapter = { find: () => Promise.resolve([]) };
+    // @ts-expect-error -- `queries` is not supported on the inferred overload
+    createDocumentStore({
+      models: { user: { type: typeOf<User>(), adapter } },
+      queries: { search: { adapter: queryAdapter } },
+    });
+  });
 });
 
 describe("DocumentStore.find / findInMemory — `type` narrows doc shape", () => {
