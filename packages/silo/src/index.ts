@@ -16,6 +16,7 @@ export type {
   DocumentTypes,
   HandleStatus,
   ModelConfig,
+  ProcessorContext,
   RegisteredTypes,
   ResponseProcessor,
   StoreAdapterRunOptions,
@@ -47,6 +48,7 @@ export type {
   QueryConfig,
   QueryHandle,
   QueryProcessor,
+  QueryProcessorContext,
   QueryTypes,
   RegisteredQueries,
 } from "./queries";

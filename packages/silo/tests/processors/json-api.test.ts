@@ -53,7 +53,7 @@ describe("jsonApiProcessor", () => {
     // synthesize a JSON-API-shaped envelope here.)
     const userWithType = { ...makeUser("1"), type: "user" as const };
 
-    jsonApiProcessor({ data: [userWithType] }, store, "user");
+    jsonApiProcessor({ data: [userWithType] }, { store, type: "user", ids: [] });
 
     expect(inserts).toEqual([{ type: "user", doc: userWithType }]);
   });
@@ -63,7 +63,10 @@ describe("jsonApiProcessor", () => {
     const userWithType = { ...makeUser("1"), type: "user" as const };
     const postWithType = { ...makePost("10"), type: "post" as const };
 
-    jsonApiProcessor({ data: [userWithType], included: [postWithType] }, store, "user");
+    jsonApiProcessor(
+      { data: [userWithType], included: [postWithType] },
+      { store, type: "user", ids: [] },
+    );
 
     expect(inserts).toEqual([
       { type: "user", doc: userWithType },
@@ -75,7 +78,7 @@ describe("jsonApiProcessor", () => {
     const { store, inserts } = makeFakeStore();
     const userWithType = { ...makeUser("1"), type: "user" as const };
 
-    jsonApiProcessor({ data: [userWithType] }, store, "user");
+    jsonApiProcessor({ data: [userWithType] }, { store, type: "user", ids: [] });
 
     expect(inserts).toEqual([{ type: "user", doc: userWithType }]);
   });
@@ -84,7 +87,7 @@ describe("jsonApiProcessor", () => {
     const { store, inserts } = makeFakeStore();
     const postWithType = { ...makePost("10"), type: "post" as const };
 
-    jsonApiProcessor({ data: [], included: [postWithType] }, store, "user");
+    jsonApiProcessor({ data: [], included: [postWithType] }, { store, type: "user", ids: [] });
 
     expect(inserts).toEqual([{ type: "post", doc: postWithType }]);
   });
@@ -96,7 +99,10 @@ describe("jsonApiProcessor", () => {
     const post11 = { ...makePost("11"), type: "post" as const };
     const user2 = { ...makeUser("2"), type: "user" as const };
 
-    jsonApiProcessor({ data: [userWithType], included: [post10, post11, user2] }, store, "user");
+    jsonApiProcessor(
+      { data: [userWithType], included: [post10, post11, user2] },
+      { store, type: "user", ids: [] },
+    );
 
     expect(inserts).toHaveLength(4);
     const byType = inserts.reduce<Record<string, number>>(
@@ -109,7 +115,7 @@ describe("jsonApiProcessor", () => {
   it("returns void — the library looks up resolved docs from memory afterwards", () => {
     const { store } = makeFakeStore();
     const userWithType = { ...makeUser("1"), type: "user" as const };
-    const result = jsonApiProcessor({ data: [userWithType] }, store, "user");
+    const result = jsonApiProcessor({ data: [userWithType] }, { store, type: "user", ids: [] });
     expect(result).toBeUndefined();
   });
 
@@ -120,7 +126,7 @@ describe("jsonApiProcessor", () => {
     const { store, inserts } = makeFakeStore();
     const postWithType = { ...makePost("10"), type: "post" as const };
 
-    jsonApiProcessor({ data: [], included: [postWithType] }, store, "user");
+    jsonApiProcessor({ data: [], included: [postWithType] }, { store, type: "user", ids: [] });
 
     expect(inserts[0]?.type).toBe("post");
   });
@@ -131,7 +137,7 @@ describe("jsonApiProcessor", () => {
     const postWithType = { ...makePost("10"), type: "post" as const };
 
     // No `data` key at all — only `included`
-    jsonApiProcessor({ included: [postWithType] } as any, store, "user");
+    jsonApiProcessor({ included: [postWithType] } as any, { store, type: "user", ids: [] });
 
     // Only the included doc was inserted (data defaulted to [])
     expect(inserts).toHaveLength(1);
@@ -147,7 +153,7 @@ describe("jsonApiProcessor", () => {
     const u2 = { ...makeUser("2"), type: "user" as const };
     const u3 = { ...makeUser("3"), type: "user" as const };
 
-    jsonApiProcessor({ data: [u1, u2, u3] }, store, "user");
+    jsonApiProcessor({ data: [u1, u2, u3] }, { store, type: "user", ids: [] });
 
     expect(inserts).toEqual([
       { type: "user", doc: u1 },
@@ -159,7 +165,7 @@ describe("jsonApiProcessor", () => {
   it("handles an empty envelope ({}) without throwing or inserting anything", () => {
     const { store, inserts } = makeFakeStore();
 
-    expect(() => jsonApiProcessor({} as any, store, "user")).not.toThrow();
+    expect(() => jsonApiProcessor({} as any, { store, type: "user", ids: [] })).not.toThrow();
     expect(inserts).toEqual([]);
   });
 });

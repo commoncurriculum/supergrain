@@ -1,4 +1,4 @@
-import type { DocumentStore, DocumentTypes } from "../store";
+import type { DocumentTypes, ProcessorContext } from "../store";
 
 // =============================================================================
 // JSON-API types
@@ -111,11 +111,10 @@ interface JsonApiEnvelope {
  * ```
  */
 export function jsonApiProcessor<M extends DocumentTypes>(
-  raw: unknown,
-  store: DocumentStore<M>,
-  _type: keyof M & string,
+  response: unknown,
+  { store }: ProcessorContext<M>,
 ): void {
-  const envelope = raw as JsonApiEnvelope;
+  const envelope = response as JsonApiEnvelope;
   const data = envelope.data ?? [];
   const included = envelope.included ?? [];
   for (const doc of data) {
