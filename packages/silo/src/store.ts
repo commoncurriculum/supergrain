@@ -245,7 +245,7 @@ export interface ProcessorContext<M extends DocumentTypes> {
  * Contract:
  * - Synchronous. For async normalization, do it in the adapter Effect.
  * - If it throws, the remaining processors do not run and every deferred on
- *   the chunk fails with a `ProcessorError`.
+ *   the chunk fails with a `ProcessorError` (its `cause` is the thrown error).
  *
  * @example
  * ```ts

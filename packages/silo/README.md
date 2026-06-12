@@ -344,7 +344,10 @@ The Finder is internal — you never construct or import it — but it's what ma
 
 ## Processors
 
+The adapter returns whatever its fetch chain returns — typically already-parsed JSON. A processor takes that parsed response and calls `store.insertDocument(type, doc)` for every document worth caching.
+
 Processors are an **ordered response pipeline.** The adapter returns a response. Silo passes that response through each processor in order. A processor may mutate the response, return a replacement response, perform side effects, or insert documents into the store. If it returns `undefined` (or `null`), the current response continues to the next processor. Most pipelines end with an insertion processor.
+
 Configure a single step with `processor`, or an ordered array with `processors`:
 
 ```ts
@@ -459,7 +462,7 @@ const insert: ResponseProcessor<TypeToModel> = (response, { store, type }) => {
 };
 ```
 
-Returning a value replaces the response handed to later processors; returning `undefined` (or `null`) passes the current response through unchanged. If you need GraphQL, a REST envelope, or a bespoke wire format — write one. Processors are synchronous; for async normalization, do it in the adapter. If a processor throws, the remaining processors don't run and the fetch fails with a `ProcessorError` — the same terminal behavior as a single-`processor` throw.
+Returning a value replaces the response handed to later processors; returning `undefined` (or `null`) passes the current response through unchanged. (Pass-through uses `??`, so `null` can't be used to replace the response.) If you need GraphQL, a REST envelope, or a bespoke wire format — write one. Processors are synchronous; for async normalization, do it in the adapter. If a processor throws, the remaining processors don't run and the fetch fails with a `ProcessorError` — the same terminal behavior as a single-`processor` throw.
 
 ## Queries
 

@@ -127,8 +127,8 @@ export interface QueryProcessorContext<
  * - Synchronous. For async normalization, do it in the adapter before it returns.
  * - The terminal step must call `store.insertQueryResult(...)` for every result
  *   it wants cached — the library does NOT auto-insert anything from a processor.
- * - If it throws, the remaining processors do not run and all deferreds waiting
- *   on this chunk reject with the thrown error.
+ * - If it throws, the remaining processors do not run and every deferred on the
+ *   chunk fails with a `ProcessorError` (its `cause` is the thrown error).
  */
 export type QueryProcessor<
   M extends DocumentTypes,
