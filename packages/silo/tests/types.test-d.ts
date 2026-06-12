@@ -165,22 +165,19 @@ describe("DocumentStore.insertDocument — `doc` narrowed by `type`", () => {
   });
 });
 
-describe("DocumentStoreConfig.hooks.prepareInsert — doc is the model union", () => {
-  it("types `doc` as the model union and `type` as the type keys", () => {
+describe("DocumentStoreConfig.hooks.prepareInsert — `doc`/return tied to the type key", () => {
+  it("types `doc` as M[K] and accepts returning the (same-model) doc", () => {
     createDocumentStore<Models>({
       hooks: {
-        prepareInsert(type, doc) {
-          // Same `(type, doc)` arg order as `insertDocument`. The hook is
-          // store-wide, so `type` is the union of every key and `doc` the union
-          // of every model — narrow with a discriminant or the `type` argument.
-          expectTypeOf(type).toEqualTypeOf<"user" | "post">();
-          expectTypeOf(doc).toEqualTypeOf<User | Post>();
-          return doc; // returns only the doc — the caller already knows the type
+        prepareInsert(_type, doc) {
+          // Generic over the type key K — `type: K`, `doc: M[K]`. `doc` carries
+          // the model's own fields (here, the shared `id`), and returning it is
+          // accepted because it's the M[K] the hook received.
+          expectTypeOf(doc.id).toEqualTypeOf<string>();
+          return doc;
         },
-        afterInsert(type, doc) {
-          // Same surface as prepareInsert — the type + its committed doc.
-          expectTypeOf(type).toEqualTypeOf<"user" | "post">();
-          expectTypeOf(doc).toEqualTypeOf<User | Post>();
+        afterInsert(_type, doc) {
+          expectTypeOf(doc.id).toEqualTypeOf<string>();
         },
       },
       models: {
@@ -202,11 +199,11 @@ describe("DocumentStoreConfig.hooks.prepareInsert — doc is the model union", (
     });
   });
 
-  it("rejects a return value that is not a model doc", () => {
+  it("rejects returning a fixed-model doc that ignores the type key", () => {
     createDocumentStore<Models>({
       hooks: {
-        // @ts-expect-error -- the return must be a model doc (or null/void), not an arbitrary object
-        prepareInsert: () => ({ not: "a model" }),
+        // @ts-expect-error -- a fixed User can't satisfy M[K] for an arbitrary K (the insert could be a Post)
+        prepareInsert: () => ({ id: "1", name: "x" }),
       },
       models: {
         user: {

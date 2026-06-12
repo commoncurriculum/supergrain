@@ -324,11 +324,12 @@ export interface StoreHooks<M extends DocumentTypes> {
    *
    * Takes the **same `(type, doc)` arguments as `insertDocument`** and sits
    * directly in front of it: `prepareInsert → insertDocument → afterInsert`.
-   * `type` is an *input* — the hook needs it to do per-type work, since a silo
-   * doc need not carry its own type — but the hook **returns only the doc** to
-   * insert: the caller already knows the type, so there's nothing to hand back
-   * on that axis. Normalize the doc **in place** (migrate a legacy shape,
-   * default a missing field) and return it, or return a wholesale replacement.
+   * It's **generic over the type key `K`**, so `doc` is typed as `M[K]` and the
+   * returned doc is checked against `M[K]` too — you can't accidentally return a
+   * doc of the wrong model. The caller already knows the type, so the hook
+   * **returns only the doc** (not the type). Normalize the doc **in place**
+   * (migrate a legacy shape, default a missing field) and return it, or return a
+   * wholesale replacement of the same model.
    *
    * Returning **`null` or `undefined` vetoes the insert** — nothing is written.
    * The two are treated identically (a hook that doesn't return a doc inserts
@@ -339,9 +340,10 @@ export interface StoreHooks<M extends DocumentTypes> {
    * mutations here notify no subscribers — they're part of building the
    * document, not updating one already on screen.
    *
-   * When your models share a literal `type` discriminant, branch on `doc.type`
-   * to narrow `doc`; otherwise branch on the `type` argument (e.g. for models
-   * whose documents don't carry their own type field).
+   * Inside a store-wide hook `doc` widens to the model union; narrow it with a
+   * literal `type` discriminant (`if (doc.type === "card-stack")`) when your
+   * models carry one, or branch on the `type` argument for models whose
+   * documents don't.
    *
    * @example
    * ```ts
@@ -358,10 +360,7 @@ export interface StoreHooks<M extends DocumentTypes> {
    * });
    * ```
    */
-  prepareInsert?: (
-    type: keyof M & string,
-    doc: M[keyof M & string],
-  ) => M[keyof M & string] | null | void;
+  prepareInsert?: <K extends keyof M & string>(type: K, doc: M[K]) => M[K] | null | void;
 
   /**
    * Observer run **after** a document is committed to the cache by
@@ -395,7 +394,7 @@ export interface StoreHooks<M extends DocumentTypes> {
    * });
    * ```
    */
-  afterInsert?: (type: keyof M & string, doc: M[keyof M & string]) => void;
+  afterInsert?: <K extends keyof M & string>(type: K, doc: M[K]) => void;
 }
 
 // =============================================================================
@@ -690,7 +689,7 @@ export function createDocumentStore<
       // the mutated `doc` (the processor `?? response` pass-through); `null`
       // vetoes the insert — drop the document, write nothing.
       const prepareInsert = config.hooks?.prepareInsert;
-      let prepared: M[keyof M & string] = doc;
+      let prepared: M[K] = doc;
       if (prepareInsert) {
         const result = prepareInsert(type, doc);
         // `null` and `undefined` (incl. no `return`) are the same — veto, write

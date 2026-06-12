@@ -152,13 +152,15 @@ describe("Store — hooks.prepareInsert", () => {
     expect(cs.meta).toEqual({});
   });
 
-  it("stores the replacement when the hook returns a new doc", () => {
-    const replacement: CardStack = { id: "1", type: "card-stack", meta: { normalized: true } };
-    const store = makeStore(() => replacement);
+  it("stores the replacement when the hook returns a new (spread) doc", () => {
+    const store = makeStore((_type, doc) => ({ ...doc, meta: { normalized: true } }));
+    const input: CardStack = { id: "1", type: "card-stack" };
 
-    store.insertDocument("card-stack", { id: "1", type: "card-stack" });
+    store.insertDocument("card-stack", input);
 
-    expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(replacement);
+    const stored = unwrap(store.findInMemory("card-stack", "1"));
+    expect(stored).not.toBe(input); // a fresh object replaced the input
+    expect(stored?.meta).toEqual({ normalized: true });
   });
 
   it("vetoes the insert when the hook returns null — nothing is written", () => {
@@ -270,10 +272,9 @@ describe("Store — hooks.prepareInsert", () => {
   });
 
   it("afterInsert receives the post-prepareInsert (stored) doc", () => {
-    const replacement: CardStack = { id: "1", type: "card-stack", meta: { normalized: true } };
     let received: CardStack | Planbook | undefined;
     const store = makeHookStore({
-      prepareInsert: () => replacement,
+      prepareInsert: (_type, doc) => ({ ...doc, meta: { normalized: true } }),
       afterInsert: (_type, doc) => {
         received = doc;
       },
@@ -281,8 +282,9 @@ describe("Store — hooks.prepareInsert", () => {
 
     store.insertDocument("card-stack", { id: "1", type: "card-stack" });
 
-    expect(received).toBe(replacement);
-    expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(replacement);
+    // afterInsert sees the exact post-prepareInsert object that was stored.
+    expect(received).toBe(unwrap(store.findInMemory("card-stack", "1")));
+    expect((received as CardStack).meta).toEqual({ normalized: true });
   });
 
   it("afterInsert does NOT run when prepareInsert vetoes with null", () => {
