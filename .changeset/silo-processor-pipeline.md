@@ -25,7 +25,7 @@ cramming every responsibility into one processor.
 **Ordered pipeline semantics.** Silo passes the adapter response through each
 processor in order. A processor may mutate the response, **return a replacement
 response** (handed to later processors), perform side effects, or insert
-documents. Returning `undefined` passes the current response through unchanged.
+documents. Returning `undefined` (or `null`) passes the current response through unchanged.
 A throw stops the pipeline (the remaining processors don't run) and fails the
 chunk with a `ProcessorError` — the same terminal behavior as a single
 `processor` throw.
