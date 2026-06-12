@@ -322,32 +322,22 @@ export interface StoreHooks<M extends DocumentTypes> {
    * passes through on its way into the cache, so shape migrations and
    * defaulting live in exactly one place instead of every insertion site.
    *
-   * Takes the **same `(type, doc)` arguments as `insertDocument`** — it sits
+   * Takes the **same `(type, doc)` arguments as `insertDocument`** and sits
    * directly in front of it: `prepareInsert → insertDocument → afterInsert`.
-   * Normalize the doc **in place** (migrate a legacy shape, default a missing
-   * field) and/or **return a replacement `{ type, doc }` pair** — that pair is
-   * what gets inserted. Returning a pair lets the hook change *either*
-   * coordinate: a different `doc` (wholesale replace) and/or a different `type`
-   * (re-route the document to another bucket — useful when a legacy payload
-   * arrives under one type but should be cached as another). Because a silo doc
-   * need not carry its own `type`, the pair carries it explicitly, mirroring the
-   * `(type, doc)` it received.
+   * `type` is an *input* — the hook needs it to do per-type work, since a silo
+   * doc need not carry its own type — but the hook **returns only the doc** to
+   * insert: the caller already knows the type, so there's nothing to hand back
+   * on that axis. Normalize the doc **in place** (migrate a legacy shape,
+   * default a missing field) and return it, or return a wholesale replacement.
    *
-   * Returning nothing (or `undefined`) keeps the original `(type, doc)` with the
-   * (possibly mutated) `doc`, mirroring the `?? response` pass-through of
-   * {@link ResponseProcessor} — so the common "mutate in place" case needs no
-   * return at all. Returning **`null` vetoes the insert** — the document is
-   * dropped and nothing is written, the place to filter out records that should
-   * never enter the cache.
+   * Returning **`null` or `undefined` vetoes the insert** — nothing is written.
+   * The two are treated identically (a hook that doesn't return a doc inserts
+   * nothing), so this is the place to filter out records that should never
+   * enter the cache.
    *
    * Runs *before* the doc is wrapped in the reactive proxy, so in-place
    * mutations here notify no subscribers — they're part of building the
    * document, not updating one already on screen.
-   *
-   * Note on re-routing: when a fetch (`store.find(type, id)`) drives the insert,
-   * the handle is settled by looking the doc up under the **requested** type. If
-   * `prepareInsert` re-routes to a *different* type, that requested handle won't
-   * find its value and settles as `NotFound` — re-route deliberately.
    *
    * When your models share a literal `type` discriminant, branch on `doc.type`
    * to narrow `doc`; otherwise branch on the `type` argument (e.g. for models
@@ -361,7 +351,7 @@ export interface StoreHooks<M extends DocumentTypes> {
    *       if (doc.archived) return null; // drop — never cache archived docs
    *       if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
    *       doc.meta ??= {};
-   *       return { type, doc }; // (or just mutate in place and return nothing)
+   *       return doc;
    *     },
    *   },
    *   models: { ... },
@@ -371,7 +361,7 @@ export interface StoreHooks<M extends DocumentTypes> {
   prepareInsert?: (
     type: keyof M & string,
     doc: M[keyof M & string],
-  ) => { type: keyof M & string; doc: M[keyof M & string] } | null | void;
+  ) => M[keyof M & string] | null | void;
 
   /**
    * Observer run **after** a document is committed to the cache by
@@ -382,10 +372,9 @@ export interface StoreHooks<M extends DocumentTypes> {
    * reactive write has flushed, so subscribers have already been notified and
    * the cache is settled.
    *
-   * Receives the **final `(type, doc)` actually written** — the
-   * post-`prepareInsert` pair, re-routing included. The `doc` is the exact
-   * object that was stored (identical to
-   * `unwrap(store.findInMemory(type, doc.id))`). Its return value is ignored —
+   * Receives the `type` and the **doc that was actually written** — the
+   * post-`prepareInsert` doc, identical to
+   * `unwrap(store.findInMemory(type, doc.id))`. Its return value is ignored —
    * this is for side effects: mirror the document into another store (e.g. an
    * existing Ember store), update a derived index, emit telemetry.
    *
@@ -701,29 +690,23 @@ export function createDocumentStore<
       // the mutated `doc` (the processor `?? response` pass-through); `null`
       // vetoes the insert — drop the document, write nothing.
       const prepareInsert = config.hooks?.prepareInsert;
-      let insertType: keyof M & string = type;
       let prepared: M[keyof M & string] = doc;
       if (prepareInsert) {
         const result = prepareInsert(type, doc);
-        if (result === null) return;
-        // A returned `{ type, doc }` pair can change either coordinate — replace
-        // the doc and/or re-route it to another bucket. `undefined`/no return
-        // keeps the original `(type, doc)` with the (possibly mutated) doc.
-        if (result !== undefined) {
-          insertType = result.type;
-          prepared = result.doc;
-        }
+        // `null` and `undefined` (incl. no `return`) are the same — veto, write
+        // nothing. The hook returns the doc to insert; anything nullish drops it.
+        if (result === null || result === undefined) return;
+        prepared = result;
       }
       batch(() => {
-        const handle = getOrCreateHandle(ensureBucket(state.documents, insertType), prepared.id);
+        const handle = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
         applyEvent(handle, HandleEvent.insert(prepared));
       });
       // `afterInsert` is the tail of `prepareInsert → insertDocument →
       // afterInsert` — it runs once the batch has flushed (cache settled,
       // subscribers notified), and is skipped when `prepareInsert` vetoed
-      // above. It sees the FINAL `(type, doc)` actually written — the
-      // post-`prepareInsert` pair, re-routing included.
-      config.hooks?.afterInsert?.(insertType, prepared);
+      // above. The stored object is the exact `prepared` reference handed in.
+      config.hooks?.afterInsert?.(type, prepared);
     },
 
     findQuery<K extends keyof Q & string>(

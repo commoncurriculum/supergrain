@@ -226,7 +226,7 @@ Store-wide, `DocumentStoreConfig` takes a **`hooks`** object (parallel to `model
 
 Both take the **same `(type, doc)` arguments as `insertDocument`** and form a pipeline around it: `prepareInsert → insertDocument → afterInsert`.
 
-- **`prepareInsert(type, doc)`** — a normalization hook that runs on the way _in_; returns the `{ type, doc }` to actually insert.
+- **`prepareInsert(type, doc)`** — a normalization hook that runs on the way _in_; returns the doc to insert (or `null` to veto).
 - **`afterInsert(type, doc)`** — a side-effect observer that runs on the way _out_, after the write is committed.
 
 ```ts
@@ -238,7 +238,7 @@ const store = createDocumentStore<TypeToModel>({
       if (doc.archived) return null; // drop — never cache archived docs
       if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
       doc.meta ??= {};
-      return { type, doc }; // or just mutate in place and return nothing
+      return doc;
     },
     // Bridge every committed Supergrain insert back into the existing Ember store.
     afterInsert: (type, doc) => emberStore.insertDocument(doc),
@@ -249,9 +249,9 @@ const store = createDocumentStore<TypeToModel>({
 });
 ```
 
-**`prepareInsert`** — normalize **in place** (mutate `doc`) and/or **return a replacement `{ type, doc }` pair** — that pair is what gets inserted. Returning a pair can change _either_ coordinate: a different `doc` (wholesale replace) and/or a different `type` (re-route the document to another bucket). The pair carries `type` explicitly because a silo doc needn't carry its own. Returning nothing (or `undefined`) keeps the original `(type, doc)` with the (possibly mutated) `doc`, mirroring the `?? response` pass-through of a [processor](#processors) — so the common "mutate in place" case needs no return. Returning **`null` vetoes the insert** — the document is dropped and nothing is written, the place to filter records that should never enter the cache. It runs _before_ the doc is wrapped in the reactive proxy, so in-place edits notify no subscribers. When your models share a literal `type` discriminant, branch on `doc.type` to narrow; otherwise branch on the `type` argument (for models whose documents don't carry their own type). One caveat on re-routing: when a `store.find(type, id)` drove the insert, the handle is settled by looking the doc up under the _requested_ type — re-route to a different type and that handle settles as `NotFound`, so re-route deliberately.
+**`prepareInsert`** — `type` is an _input_ (the hook needs it to do per-type work, since a silo doc needn't carry its own type), but it **returns only the doc**: the caller already knows the `type`, so there's nothing to hand back on that axis. Normalize **in place** (mutate `doc`) and return it, or return a wholesale replacement. Returning **`null` or `undefined` vetoes the insert** — the two are treated identically, so a hook that doesn't return a doc writes nothing; that's the place to filter records that should never enter the cache. It runs _before_ the doc is wrapped in the reactive proxy, so in-place edits notify no subscribers. When your models share a literal `type` discriminant, branch on `doc.type` to narrow; otherwise branch on the `type` argument (for models whose documents don't carry their own type).
 
-**`afterInsert`** — runs once per committed document, _after_ the reactive write has flushed (cache settled, subscribers notified). It receives the final `(type, doc)` actually written — the post-`prepareInsert` pair, re-routing included (the `doc` is identical to `unwrap(store.findInMemory(type, doc.id))`); its return value is ignored. Use it for side effects: mirror the document into another store, update a derived index, emit telemetry. It does **not** run when `prepareInsert` vetoes the insert (there's nothing to observe). Calling `store.insertDocument(...)` from inside it funnels back through the same hooks — fine for cascading related records, but mind the recursion.
+**`afterInsert`** — runs once per committed document, _after_ the reactive write has flushed (cache settled, subscribers notified). It receives the `type` and the doc that was actually written (the post-`prepareInsert` doc, identical to `unwrap(store.findInMemory(type, doc.id))`); its return value is ignored. Use it for side effects: mirror the document into another store, update a derived index, emit telemetry. It does **not** run when `prepareInsert` vetoes the insert (there's nothing to observe). Calling `store.insertDocument(...)` from inside it funnels back through the same hooks — fine for cascading related records, but mind the recursion.
 
 Both hooks cover documents only (`insertDocument`); query results (`insertQueryResult`) are not run through them.
 
