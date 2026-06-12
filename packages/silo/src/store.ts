@@ -322,13 +322,15 @@ export interface StoreHooks<M extends DocumentTypes> {
    * passes through on its way into the cache, so shape migrations and
    * defaulting live in exactly one place instead of every insertion site.
    *
-   * Receives the document and the `type` it's being inserted under. Normalize
-   * **in place** (migrate a legacy shape, default a missing field) and/or
-   * **return a replacement** — the returned doc is what gets stored. Returning
-   * nothing (or `undefined`) keeps the (possibly mutated) `doc`, mirroring the
-   * `?? response` pass-through of {@link ResponseProcessor}. Returning **`null`
-   * vetoes the insert** — the document is dropped and nothing is written, so
-   * this is the place to filter out records that should never enter the cache.
+   * Takes the **same `(type, doc)` arguments as `insertDocument`** — it sits
+   * directly in front of it: `prepareInsert → insertDocument → afterInsert`.
+   * Normalize the doc **in place** (migrate a legacy shape, default a missing
+   * field) and/or **return a replacement** — the returned doc is what gets
+   * stored. Returning nothing (or `undefined`) keeps the (possibly mutated)
+   * `doc`, mirroring the `?? response` pass-through of {@link ResponseProcessor}.
+   * Returning **`null` vetoes the insert** — the document is dropped and nothing
+   * is written, so this is the place to filter out records that should never
+   * enter the cache.
    *
    * Runs *before* the doc is wrapped in the reactive proxy, so in-place
    * mutations here notify no subscribers — they're part of building the
@@ -342,7 +344,7 @@ export interface StoreHooks<M extends DocumentTypes> {
    * ```ts
    * createDocumentStore<TypeToModel>({
    *   hooks: {
-   *     prepareInsert(doc) {
+   *     prepareInsert(type, doc) {
    *       if (doc.archived) return null; // drop — never cache archived docs
    *       if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
    *       doc.meta ??= {};
@@ -354,23 +356,24 @@ export interface StoreHooks<M extends DocumentTypes> {
    * ```
    */
   prepareInsert?: (
-    doc: M[keyof M & string],
     type: keyof M & string,
+    doc: M[keyof M & string],
   ) => M[keyof M & string] | null | void;
 
   /**
    * Observer run **after** a document is committed to the cache by
-   * `insertDocument(type, doc)` — the write half of the bracket whose read half
-   * is {@link StoreHooks.prepareInsert}. Fires for every insertion path (direct,
-   * processor, JSON-API sideload, Provider seed) once per committed document,
-   * *after* the reactive write has flushed, so subscribers have already been
-   * notified and the cache is settled.
+   * `insertDocument(type, doc)` — the tail of the
+   * `prepareInsert → insertDocument → afterInsert` pipeline, sharing the same
+   * `(type, doc)` arguments. Fires for every insertion path (direct, processor,
+   * JSON-API sideload, Provider seed) once per committed document, *after* the
+   * reactive write has flushed, so subscribers have already been notified and
+   * the cache is settled.
    *
-   * Receives the exact object that was stored (the post-`prepareInsert` doc;
-   * identical to `unwrap(store.findInMemory(type, doc.id))`) and its `type`.
-   * Its return value is ignored — this is for side effects: mirror the document
-   * into another store (e.g. an existing Ember store), update a derived index,
-   * emit telemetry.
+   * Its `doc` is the exact object that was stored (the post-`prepareInsert`
+   * doc; identical to `unwrap(store.findInMemory(type, doc.id))`). Its return
+   * value is ignored — this is for side effects: mirror the document into
+   * another store (e.g. an existing Ember store), update a derived index, emit
+   * telemetry.
    *
    * Does **not** run when `prepareInsert` vetoes the insert by returning `null`
    * (nothing was written, so there is nothing to observe). Calling
@@ -383,13 +386,13 @@ export interface StoreHooks<M extends DocumentTypes> {
    * createDocumentStore<TypeToModel>({
    *   hooks: {
    *     // Bridge every Supergrain insert back into the existing Ember store.
-   *     afterInsert: (doc) => emberStore.insertDocument(doc),
+   *     afterInsert: (type, doc) => emberStore.insertDocument(doc),
    *   },
    *   models: { ... },
    * });
    * ```
    */
-  afterInsert?: (doc: M[keyof M & string], type: keyof M & string) => void;
+  afterInsert?: (type: keyof M & string, doc: M[keyof M & string]) => void;
 }
 
 // =============================================================================
@@ -686,7 +689,7 @@ export function createDocumentStore<
       const prepareInsert = config.hooks?.prepareInsert;
       let prepared: M[keyof M & string] = doc;
       if (prepareInsert) {
-        const result = prepareInsert(doc, type);
+        const result = prepareInsert(type, doc);
         if (result === null) return;
         if (result !== undefined) prepared = result;
       }
@@ -694,11 +697,12 @@ export function createDocumentStore<
         const handle = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
         applyEvent(handle, HandleEvent.insert(prepared));
       });
-      // `afterInsert` is the write half of the bracket — it runs once the batch
-      // has flushed (cache settled, subscribers notified), and is skipped when
-      // `prepareInsert` vetoed above. Side-effect only; the stored object is the
-      // exact `prepared` reference handed in.
-      config.hooks?.afterInsert?.(prepared, type);
+      // `afterInsert` is the tail of `prepareInsert → insertDocument →
+      // afterInsert` — it runs once the batch has flushed (cache settled,
+      // subscribers notified), and is skipped when `prepareInsert` vetoed
+      // above. Side-effect only; the stored object is the exact `prepared`
+      // reference handed in.
+      config.hooks?.afterInsert?.(type, prepared);
     },
 
     findQuery<K extends keyof Q & string>(

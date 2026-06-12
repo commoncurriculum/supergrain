@@ -169,18 +169,18 @@ describe("DocumentStoreConfig.hooks.prepareInsert — doc is the model union", (
   it("types `doc` as the model union and `type` as the type keys", () => {
     createDocumentStore<Models>({
       hooks: {
-        prepareInsert(doc, type) {
-          // The hook is store-wide, so `doc` is the union of every model and
-          // `type` the union of every key — narrow with a discriminant or the
-          // `type` argument inside.
-          expectTypeOf(doc).toEqualTypeOf<User | Post>();
+        prepareInsert(type, doc) {
+          // Same `(type, doc)` arg order as `insertDocument`. The hook is
+          // store-wide, so `type` is the union of every key and `doc` the union
+          // of every model — narrow with a discriminant or the `type` argument.
           expectTypeOf(type).toEqualTypeOf<"user" | "post">();
+          expectTypeOf(doc).toEqualTypeOf<User | Post>();
           return doc;
         },
-        afterInsert(doc, type) {
-          // Same surface as prepareInsert — the committed doc + its type.
-          expectTypeOf(doc).toEqualTypeOf<User | Post>();
+        afterInsert(type, doc) {
+          // Same surface as prepareInsert — the type + its committed doc.
           expectTypeOf(type).toEqualTypeOf<"user" | "post">();
+          expectTypeOf(doc).toEqualTypeOf<User | Post>();
         },
       },
       models: {

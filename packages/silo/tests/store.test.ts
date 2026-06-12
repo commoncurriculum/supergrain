@@ -122,9 +122,9 @@ describe("Store — hooks.prepareInsert", () => {
     return makeHookStore({ prepareInsert });
   }
 
-  it("runs on every insertDocument, receiving the doc and its type", () => {
+  it("runs on every insertDocument, receiving the type and its doc", () => {
     const calls: Array<[string, string]> = [];
-    const store = makeStore((doc, type) => {
+    const store = makeStore((type, doc) => {
       calls.push([type, doc.id]);
       return doc;
     });
@@ -139,7 +139,7 @@ describe("Store — hooks.prepareInsert", () => {
   });
 
   it("normalizes in place — the mutated object is what lands in the cache", () => {
-    const store = makeStore((doc) => {
+    const store = makeStore((_type, doc) => {
       doc.meta ??= {};
       return doc;
     });
@@ -162,7 +162,7 @@ describe("Store — hooks.prepareInsert", () => {
   });
 
   it("falls back to the (mutated) doc when the hook returns nothing", () => {
-    const store = makeStore((doc) => {
+    const store = makeStore((_type, doc) => {
       doc.meta = { touched: true };
       // no return — the pass-through keeps the mutated doc, like a processor
     });
@@ -175,7 +175,7 @@ describe("Store — hooks.prepareInsert", () => {
   });
 
   it("vetoes the insert when the hook returns null — nothing is written", () => {
-    const store = makeStore((doc) => (doc.id === "drop" ? null : doc));
+    const store = makeStore((_type, doc) => (doc.id === "drop" ? null : doc));
 
     store.insertDocument("card-stack", { id: "drop", type: "card-stack" });
     store.insertDocument("card-stack", { id: "keep", type: "card-stack" });
@@ -185,7 +185,9 @@ describe("Store — hooks.prepareInsert", () => {
   });
 
   it("a null veto leaves any existing cached document untouched", () => {
-    const store = makeStore((doc) => (doc.id === "1" && (doc.meta?.drop ?? false) ? null : doc));
+    const store = makeStore((_type, doc) =>
+      doc.id === "1" && (doc.meta?.drop ?? false) ? null : doc,
+    );
 
     const original: CardStack = { id: "1", type: "card-stack" };
     store.insertDocument("card-stack", original);
@@ -196,7 +198,7 @@ describe("Store — hooks.prepareInsert", () => {
   });
 
   it("narrows on the doc.type discriminant for per-type normalization", () => {
-    const store = makeStore((doc) => {
+    const store = makeStore((_type, doc) => {
       if (doc.type === "card-stack") doc.meta = { kind: "stack" };
       else doc.meta = { kind: "book" };
       return doc;
@@ -211,7 +213,7 @@ describe("Store — hooks.prepareInsert", () => {
 
   it("runs for processor-driven inserts, including JSON-API `included` sideloads", () => {
     const seen: Array<string> = [];
-    const store = makeStore((doc, type) => {
+    const store = makeStore((type, doc) => {
       seen.push(`${type}:${doc.id}`);
       doc.meta ??= {};
       return doc;
@@ -253,7 +255,7 @@ describe("Store — hooks.prepareInsert", () => {
   it("afterInsert runs on every insert, after the value is committed", () => {
     const observed: Array<[string, string]> = [];
     const store = makeHookStore({
-      afterInsert: (doc, type) => {
+      afterInsert: (type, doc) => {
         // The cache is already settled when afterInsert fires.
         expect(unwrap(store.findInMemory(type, doc.id))).toBe(doc);
         observed.push([type, doc.id]);
@@ -274,7 +276,7 @@ describe("Store — hooks.prepareInsert", () => {
     let received: CardStack | Planbook | undefined;
     const store = makeHookStore({
       prepareInsert: () => replacement,
-      afterInsert: (doc) => {
+      afterInsert: (_type, doc) => {
         received = doc;
       },
     });
@@ -288,8 +290,8 @@ describe("Store — hooks.prepareInsert", () => {
   it("afterInsert does NOT run when prepareInsert vetoes with null", () => {
     const observed: Array<string> = [];
     const store = makeHookStore({
-      prepareInsert: (doc) => (doc.id === "drop" ? null : doc),
-      afterInsert: (doc) => observed.push(doc.id),
+      prepareInsert: (_type, doc) => (doc.id === "drop" ? null : doc),
+      afterInsert: (_type, doc) => observed.push(doc.id),
     });
 
     store.insertDocument("card-stack", { id: "drop", type: "card-stack" });
@@ -301,7 +303,7 @@ describe("Store — hooks.prepareInsert", () => {
   it("prepareInsert runs before afterInsert for a single insert", () => {
     const order: Array<string> = [];
     const store = makeHookStore({
-      prepareInsert: (doc) => {
+      prepareInsert: (_type, doc) => {
         order.push("prepare");
         return doc;
       },

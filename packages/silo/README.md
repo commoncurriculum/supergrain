@@ -224,22 +224,24 @@ The built-in default retry (`defaultRetry`) is **jittered** fibonacci (1s base, 
 
 Store-wide, `DocumentStoreConfig` takes a **`hooks`** object (parallel to `models` / `queries`) for cross-cutting behavior that must run no matter which code path reaches the store. The two hooks bracket **every** `insertDocument(type, doc)` — a direct `store.insertDocument(...)`, a processor insert (including JSON-API `included` sideloads), a Provider `initial` seed, or any future code path. So a shape migration, a defaulted field, or a mirror to another store lives in exactly one place instead of every insertion site.
 
-- **`prepareInsert(doc, type)`** — a doc-in / doc-out normalization hook that runs on the way _in_.
-- **`afterInsert(doc, type)`** — a side-effect observer that runs on the way _out_, after the write is committed.
+Both share the **same `(type, doc)` signature as `insertDocument`** and form a pipeline around it: `prepareInsert → insertDocument → afterInsert`.
+
+- **`prepareInsert(type, doc)`** — a doc-in / doc-out normalization hook that runs on the way _in_.
+- **`afterInsert(type, doc)`** — a side-effect observer that runs on the way _out_, after the write is committed.
 
 ```ts
 const store = createDocumentStore<TypeToModel>({
   hooks: {
     // Card-stacks can arrive as JSON-API `data`, as an `included` sideload, or
     // pushed in directly — these hooks catch them all at the boundary.
-    prepareInsert(doc) {
+    prepareInsert(type, doc) {
       if (doc.archived) return null; // drop — never cache archived docs
       if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
       doc.meta ??= {};
       return doc;
     },
     // Bridge every committed Supergrain insert back into the existing Ember store.
-    afterInsert: (doc) => emberStore.insertDocument(doc),
+    afterInsert: (type, doc) => emberStore.insertDocument(doc),
   },
   models: {
     "card-stack": { adapter: cardStackAdapter, processor: jsonApiProcessor },
