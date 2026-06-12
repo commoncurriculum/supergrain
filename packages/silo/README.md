@@ -344,10 +344,7 @@ The Finder is internal — you never construct or import it — but it's what ma
 
 ## Processors
 
-The adapter returns whatever its fetch chain returns — typically already-parsed JSON. A processor takes that parsed response and calls `store.insertDocument(type, doc)` for every document worth caching.
-
-Processors are an **ordered response pipeline.** The adapter returns a response. Silo passes that response through each processor in order. A processor may mutate the response, return a replacement response, perform side effects, or insert documents into the store. If it returns `undefined`, the current response continues to the next processor. Most pipelines end with an insertion processor.
-
+Processors are an **ordered response pipeline.** The adapter returns a response. Silo passes that response through each processor in order. A processor may mutate the response, return a replacement response, perform side effects, or insert documents into the store. If it returns `undefined` (or `null`), the current response continues to the next processor. Most pipelines end with an insertion processor.
 Configure a single step with `processor`, or an ordered array with `processors`:
 
 ```ts
