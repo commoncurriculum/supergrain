@@ -512,22 +512,11 @@ export function createDocumentStore<
     },
 
     insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
-      // Freeze stored docs to pin the wholesale-replace contract: a document is
-      // an immutable snapshot, updated only by inserting a NEW object — which
-      // swaps `handle.value` and re-renders readers — never by mutating in
-      // place. Two payoffs:
-      //   1. `applyEvent` writes `handle.value` only when the reference changes
-      //      (`raw.value !== value` guard in transitions.ts), so mutating and
-      //      reinserting the same object would silently fail to re-render.
-      //      Freezing turns that latent no-op into a loud throw in strict mode
-      //      (which ESM/bundled code always is; sloppy mode fails silently).
-      //      The freeze is shallow, so only top-level writes throw — the
-      //      wholesale-replace rule stands.
-      //   2. `createReactiveProxy` returns frozen targets unwrapped (read.ts),
-      //      so `handle.value` hands back this exact object — stable `===`
-      //      identity for consumers that memoize on it.
-      if (!Object.isFrozen(doc)) Object.freeze(doc);
-
+      // Store the document as-is — deliberately NOT frozen. A frozen object
+      // can't carry the kernel's reactive nodes: createReactiveProxy returns
+      // frozen targets unwrapped (read.ts), which collapses per-field document
+      // reactivity into a single whole-value dependency. Documents are
+      // first-class reactive state, so they must stay wrappable.
       batch(() => {
         const handle = getOrCreateHandle(ensureBucket(state.documents, type), doc.id);
         applyEvent(handle, HandleEvent.insert(doc));
@@ -575,12 +564,9 @@ export function createDocumentStore<
       params: Q[K]["params"],
       result: Q[K]["result"],
     ): void {
-      // Same wholesale-replace contract as insertDocument (see there): freeze
-      // the result so it's an immutable snapshot the kernel hands back by
-      // identity. Guarded for null / non-object results, which can't be frozen.
-      if (result !== null && typeof result === "object" && !Object.isFrozen(result)) {
-        Object.freeze(result);
-      }
+      // Stored as-is (NOT frozen) so query results stay reactive too — freezing
+      // would short-circuit the kernel's proxy and kill per-field reactivity.
+      // See insertDocument.
 
       const paramsKey = stableStringify(params);
       batch(() => {

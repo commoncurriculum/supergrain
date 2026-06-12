@@ -1,3 +1,4 @@
+import { unwrap } from "@supergrain/kernel";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
@@ -97,7 +98,7 @@ describe("silo property-based tests", () => {
 
         store.insertQueryResult("search", params, result);
 
-        expect(store.findQueryInMemory("search", reordered)).toBe(result);
+        expect(unwrap(store.findQueryInMemory("search", reordered)!)).toBe(result);
         expect(store.findQuery("search", params)).toBe(store.findQuery("search", reordered));
       }),
       { numRuns: 100 },

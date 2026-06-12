@@ -1,4 +1,4 @@
-import { effect } from "@supergrain/kernel";
+import { effect, unwrap } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -66,7 +66,9 @@ describe("Store memory operations", () => {
     const user = makeUser("1");
     store.insertDocument("user", user);
 
-    expect(store.findInMemory("user", "1")).toBe(user);
+    // Documents are stored by reference behind a reactive proxy — unwrap to the
+    // raw object to assert identity (the read itself is a live reactive value).
+    expect(unwrap(store.findInMemory("user", "1")!)).toBe(user);
   });
 
   it("findInMemory returns undefined for a missing document", () => {
@@ -113,7 +115,7 @@ describe("Store.find — already in memory (fast path)", () => {
     const handle = store.find("user", "1");
 
     expect(handle.value).not.toBeUndefined();
-    expect(handle.value).toBe(user);
+    expect(unwrap(handle.value!)).toBe(user);
     expect(handle.isFetching).toBe(false);
     expect(handle.status).toBe("success");
 
@@ -122,28 +124,32 @@ describe("Store.find — already in memory (fast path)", () => {
   });
 });
 
-describe("Store.insertDocument — immutability contract", () => {
-  it("freezes the stored document so a top-level in-place mutation throws", () => {
-    const user = makeUser("1");
-    store.insertDocument("user", user);
+describe("Store documents are fine-grained reactive", () => {
+  it("tracks fields independently — an in-place edit re-runs only that field's readers", () => {
+    store.insertDocument("user", makeUser("1"));
+    const handle = store.find("user", "1");
 
-    const stored = store.findInMemory("user", "1")!;
-    // Frozen: the wholesale-replace contract can't be bypassed by mutation.
-    expect(Object.isFrozen(stored)).toBe(true);
-    // Returned by reference (the kernel hands frozen targets back unwrapped),
-    // so the === identity consumers memoize on holds.
-    expect(stored).toBe(user);
-    // A top-level write is rejected loudly (strict mode) rather than silently
-    // corrupting the cache and skipping the re-render past applyEvent's guard.
-    expect(() => {
-      stored.id = "mutated";
-    }).toThrow();
-  });
+    const firstNames: Array<string | undefined> = [];
+    const lastNames: Array<string | undefined> = [];
+    const stopFirst = effect(() => {
+      firstNames.push(handle.value?.attributes.firstName);
+    });
+    const stopLast = effect(() => {
+      lastNames.push(handle.value?.attributes.lastName);
+    });
+    expect(firstNames).toEqual(["User1"]);
+    expect(lastNames).toEqual(["Test"]);
 
-  it("accepts an already-frozen document", () => {
-    const user = Object.freeze(makeUser("2"));
-    expect(() => store.insertDocument("user", user)).not.toThrow();
-    expect(store.findInMemory("user", "2")).toBe(user);
+    // The stored document is a live reactive object, not a frozen snapshot:
+    // editing one field notifies that field's readers and no others. This is
+    // the per-field document reactivity a freeze would silently destroy.
+    handle.value!.attributes.firstName = "Ada";
+
+    expect(firstNames).toEqual(["User1", "Ada"]); // re-ran: it read firstName
+    expect(lastNames).toEqual(["Test"]); // untouched: lastName never changed
+
+    stopFirst();
+    stopLast();
   });
 });
 
@@ -381,7 +387,7 @@ describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", (
     store.insertDocument("user", user);
 
     expect(handle.value).not.toBeUndefined();
-    expect(handle.value).toBe(user);
+    expect(unwrap(handle.value!)).toBe(user);
     expect(handle.isFetching).toBe(false);
     expect(handle.status).toBe("success");
   });
@@ -402,7 +408,7 @@ describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", (
     store.insertDocument("user", user);
 
     expect(handle.value).not.toBeUndefined();
-    expect(handle.value).toBe(user);
+    expect(unwrap(handle.value!)).toBe(user);
     // A fresh value supersedes any prior error: error is cleared and the
     // handle's status flips to success.
     expect(handle.error).toBeUndefined();

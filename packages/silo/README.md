@@ -152,27 +152,20 @@ An in-flight fetch is **not** cancelled when a component unmounts — it complet
 
 The whole engine — batch window included — runs on Effect's clock (`Effect.sleep`), so timing is fully deterministic in tests.
 
-### Updating documents
+### Documents are fine-grained reactive
 
-Documents are **immutable snapshots, replaced wholesale.** To change one, call `insertDocument(type, newDoc)` with a _new_ object — every handle referencing that `(type, id)` re-renders, no query-key invalidation, no network call.
+A stored document is a **live reactive object, not a snapshot.** Read a single field and your component subscribes to _that field_ — the same fine-grained reactivity the kernel gives local state. Documents are first-class citizens of the reactive graph, not opaque blobs cached beside it.
 
-```ts
-// Edit user #42 — build a new object, don't mutate the cached one.
-const prev = store.findInMemory("user", "42")!;
-store.insertDocument("user", {
-  ...prev,
-  attributes: { ...prev.attributes, firstName: "Ada" },
-});
+```tsx
+function Name({ id }: { id: string }) {
+  const user = useDocument("user", id);
+  // Subscribes to firstName specifically — an in-place edit to a sibling
+  // field (lastName, email, …) won't re-render this component.
+  return <>{user.value?.attributes.firstName}</>;
+}
 ```
 
-This is **whole-document reactivity**: reading `handle.value` (or any field off it) re-renders when the document is replaced. There's no per-field tracking _inside_ a document — the snapshot is swapped atomically, so every read sees a consistent object.
-
-Don't mutate a stored document in place — always build a new object. Stored docs are **frozen**, so a top-level in-place write (`doc.id = …`) is rejected — a `TypeError` in strict mode (which ESM and bundled app code always use) — instead of silently corrupting the cache. Two reasons this matters:
-
-1. **It keeps the contract honest.** Insert applies a new value only when the reference actually changes (`applyEvent` skips the write otherwise), so mutating-and-reinserting the _same_ object would silently fail to re-render. The freeze turns that latent no-op into a loud error.
-2. **It preserves reference identity.** The kernel's reactive proxy returns frozen targets unwrapped, so `handle.value` hands back the exact object you inserted — stable `===` for memoization and dependency arrays.
-
-The freeze is shallow: a _nested_ write (`doc.attributes.name = …`) won't throw, it just silently breaks reactivity. Either way the rule is the same — never edit a cached document, spread into a new one (as above).
+`insertDocument(type, doc)` replaces the cached document and re-renders every view referencing that `(type, id)` — cross-component sync with no query-key invalidation and no network round-trip. For optimistic local tweaks you can also mutate a field in place (`handle.value.attributes.firstName = …`); because the document is reactive, that notifies exactly the readers of the field you touched.
 
 ## Why this instead of TanStack Query / SWR?
 
