@@ -562,22 +562,22 @@ export function createDocumentStore<
     },
 
     insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
-      // Freeze stored docs to pin the wholesale-replace contract: a document is
-      // an immutable snapshot, updated only by inserting a NEW object — which
-      // swaps `handle.value` and re-renders readers — never by mutating in
-      // place. Two payoffs:
-      //   1. `applyEvent` writes `handle.value` only when the reference changes
-      //      (`raw.value !== value` guard in transitions.ts), so mutating and
-      //      reinserting the same object would silently fail to re-render.
-      //      Freezing turns that latent no-op into a loud throw in strict mode
-      //      (which ESM/bundled code always is; sloppy mode fails silently).
-      //      The freeze is shallow, so only top-level writes throw — the
-      //      wholesale-replace rule stands.
-      //   2. `createReactiveProxy` returns frozen targets unwrapped (read.ts),
-      //      so `handle.value` hands back this exact object — stable `===`
-      //      identity for consumers that memoize on it.
-      if (!Object.isFrozen(doc)) Object.freeze(doc);
-
+      // Stored docs are LIVE and reactive at field granularity — not frozen
+      // snapshots. The kernel wraps the inserted object in a reactive proxy
+      // (read.ts), so a `handle.value.<field>` read subscribes to just that
+      // field, and there are two ways to update a document:
+      //   1. Mutate a field in place (`handle.value.attributes.name = "Ada"`).
+      //      Fine-grained: only readers of that field re-render. The write goes
+      //      through the proxy's signal, so no reinsert is needed.
+      //   2. Insert a NEW object. Wholesale replace; readers of the whole doc
+      //      re-render. `applyEvent` writes `handle.value` only when the
+      //      reference actually changes (`raw.value !== value` in
+      //      transitions.ts), so swapping in a fresh object always notifies.
+      // No copy is made — the inserted object IS the stored target (unwrap the
+      // handle's value to recover the exact reference). We deliberately do NOT
+      // freeze: a frozen target is handed back unwrapped by the kernel
+      // (`createReactiveProxy` bails on `Object.isFrozen`), which would kill
+      // per-field reactivity and the in-place update path above.
       batch(() => {
         const handle = getOrCreateHandle(ensureBucket(state.documents, type), doc.id);
         applyEvent(handle, HandleEvent.insert(doc));
@@ -625,13 +625,10 @@ export function createDocumentStore<
       params: Q[K]["params"],
       result: Q[K]["result"],
     ): void {
-      // Same wholesale-replace contract as insertDocument (see there): freeze
-      // the result so it's an immutable snapshot the kernel hands back by
-      // identity. Guarded for null / non-object results, which can't be frozen.
-      if (result !== null && typeof result === "object" && !Object.isFrozen(result)) {
-        Object.freeze(result);
-      }
-
+      // Like insertDocument: query results are live and reactive — not frozen.
+      // An object result is wrapped in a reactive proxy by the kernel, so reads
+      // track the fields they touch and an in-place mutation re-renders just
+      // those subscribers. Update in place or insert a fresh result; both work.
       const paramsKey = stableStringify(params);
       batch(() => {
         const handle = getOrCreateHandle(ensureBucket(state.queries, type), paramsKey);

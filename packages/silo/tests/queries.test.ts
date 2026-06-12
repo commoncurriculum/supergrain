@@ -21,7 +21,7 @@
 // pin the contract the implementation must meet.
 // =============================================================================
 
-import { effect } from "@supergrain/kernel";
+import { effect, unwrap } from "@supergrain/kernel";
 import { Effect } from "effect";
 import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -222,7 +222,9 @@ describe("DocumentStore.insertQueryResult + findQueryInMemory", () => {
 
     store.insertQueryResult("dashboard", params, result);
 
-    expect(store.findQueryInMemory("dashboard", params)).toBe(result);
+    // The stored result is the exact object inserted (no copy), handed back
+    // through a reactive proxy — unwrap to compare raw identity.
+    expect(unwrap(store.findQueryInMemory("dashboard", params))).toBe(result);
   });
 
   it("overwrites at the same slot (last-write-wins)", () => {
@@ -259,7 +261,7 @@ describe("DocumentStore.insertQueryResult + findQueryInMemory", () => {
     const result = makeDashboard({ totalActiveUsers: 42 });
     store.insertQueryResult("dashboard", p1, result);
 
-    expect(store.findQueryInMemory("dashboard", p2)).toBe(result);
+    expect(unwrap(store.findQueryInMemory("dashboard", p2))).toBe(result);
   });
 });
 
@@ -439,7 +441,7 @@ describe("Queries share memory with documents", () => {
     store.insertQueryResult("dashboard", params, result);
 
     expect(handle.value).not.toBeUndefined();
-    expect(handle.value).toBe(result);
+    expect(unwrap(handle.value)).toBe(result); // reactive proxy over the exact object
     // A fresh value supersedes any prior error: the error clears and status
     // flips to success.
     expect(handle.error).toBeUndefined();

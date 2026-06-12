@@ -1,4 +1,4 @@
-import { effect } from "@supergrain/kernel";
+import { effect, unwrap } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -66,7 +66,9 @@ describe("Store memory operations", () => {
     const user = makeUser("1");
     store.insertDocument("user", user);
 
-    expect(store.findInMemory("user", "1")).toBe(user);
+    // The stored value is the exact object inserted (no copy), handed back
+    // through a reactive proxy — unwrap to compare raw identity.
+    expect(unwrap(store.findInMemory("user", "1"))).toBe(user);
   });
 
   it("findInMemory returns undefined for a missing document", () => {
@@ -113,7 +115,7 @@ describe("Store.find — already in memory (fast path)", () => {
     const handle = store.find("user", "1");
 
     expect(handle.value).not.toBeUndefined();
-    expect(handle.value).toBe(user);
+    expect(unwrap(handle.value)).toBe(user); // reactive proxy over the exact object
     expect(handle.isFetching).toBe(false);
     expect(handle.status).toBe("success");
 
@@ -122,25 +124,55 @@ describe("Store.find — already in memory (fast path)", () => {
   });
 });
 
-describe("Store.insertDocument — immutability contract", () => {
-  it("freezes the stored document so a top-level in-place mutation throws", () => {
+describe("Store.insertDocument — documents are live and reactive", () => {
+  it("does NOT freeze the stored document — it can be mutated in place", () => {
     const user = makeUser("1");
     store.insertDocument("user", user);
 
     const stored = store.findInMemory("user", "1")!;
-    // Frozen: the wholesale-replace contract can't be bypassed by mutation.
-    expect(Object.isFrozen(stored)).toBe(true);
-    // Returned by reference (the kernel hands frozen targets back unwrapped),
-    // so the === identity consumers memoize on holds.
-    expect(stored).toBe(user);
-    // A top-level write is rejected loudly (strict mode) rather than silently
-    // corrupting the cache and skipping the re-render past applyEvent's guard.
+    // Not frozen: the document stays in the reactive graph (a frozen target is
+    // handed back unwrapped by the kernel, dropping per-field reactivity).
+    expect(Object.isFrozen(unwrap(stored))).toBe(false);
+    // No copy: the stored value is the exact object inserted, behind a proxy.
+    expect(unwrap(stored)).toBe(user);
+    // A top-level write succeeds. The old freeze was shallow — it rejected
+    // exactly this top-level write while letting nested writes through — so a
+    // top-level write (not a nested one) is what proves the doc is unfrozen.
     expect(() => {
-      stored.id = "mutated";
-    }).toThrow();
+      stored.attributes = { ...user.attributes, firstName: "Ada" };
+    }).not.toThrow();
+    expect(stored.attributes.firstName).toBe("Ada");
+    expect(user.attributes.firstName).toBe("Ada"); // same underlying object
   });
 
-  it("accepts an already-frozen document", () => {
+  it("re-renders only the readers of the field mutated in place", () => {
+    store.insertDocument("user", makeUser("1", { firstName: "User1", lastName: "Original" }));
+    const handle = store.find("user", "1");
+
+    const firstNameReads: Array<string | undefined> = [];
+    effect(() => {
+      firstNameReads.push(handle.value?.attributes.firstName);
+    });
+    const lastNameReads: Array<string | undefined> = [];
+    effect(() => {
+      lastNameReads.push(handle.value?.attributes.lastName);
+    });
+    expect(firstNameReads).toEqual(["User1"]);
+    expect(lastNameReads).toEqual(["Original"]);
+
+    // Mutate only firstName in place — the firstName subscriber re-fires, no
+    // reinsert; the sibling lastName subscriber does NOT re-run. That second
+    // assertion is the "only" in fine-grained: coarse, whole-doc tracking would
+    // re-run both.
+    store.findInMemory("user", "1")!.attributes.firstName = "Ada";
+    expect(firstNameReads.at(-1)).toBe("Ada");
+    expect(lastNameReads).toEqual(["Original"]); // never re-ran
+  });
+
+  it("accepts an already-frozen document the consumer froze (opts out of reactivity)", () => {
+    // The store never freezes for you, but it tolerates a consumer-frozen doc:
+    // it round-trips by reference (frozen targets are returned unwrapped) — at
+    // the cost of per-field reactivity, which is the consumer's choice.
     const user = Object.freeze(makeUser("2"));
     expect(() => store.insertDocument("user", user)).not.toThrow();
     expect(store.findInMemory("user", "2")).toBe(user);
@@ -381,7 +413,7 @@ describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", (
     store.insertDocument("user", user);
 
     expect(handle.value).not.toBeUndefined();
-    expect(handle.value).toBe(user);
+    expect(unwrap(handle.value)).toBe(user); // reactive proxy over the exact object
     expect(handle.isFetching).toBe(false);
     expect(handle.status).toBe("success");
   });
@@ -402,7 +434,7 @@ describe("Store.insertDocument — updates IDLE and ERROR handles to SUCCESS", (
     store.insertDocument("user", user);
 
     expect(handle.value).not.toBeUndefined();
-    expect(handle.value).toBe(user);
+    expect(unwrap(handle.value)).toBe(user); // reactive proxy over the exact object
     // A fresh value supersedes any prior error: error is cleared and the
     // handle's status flips to success.
     expect(handle.error).toBeUndefined();

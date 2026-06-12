@@ -154,10 +154,18 @@ The whole engine — batch window included — runs on Effect's clock (`Effect.s
 
 ### Updating documents
 
-Documents are **immutable snapshots, replaced wholesale.** To change one, call `insertDocument(type, newDoc)` with a _new_ object — every handle referencing that `(type, id)` re-renders, no query-key invalidation, no network call.
+Stored documents are **live and reactive at field granularity** — the same fine-grained reactivity as the rest of `@supergrain/kernel`. `handle.value` hands back a reactive proxy of the cached object, so reading `handle.value.attributes.firstName` subscribes to _that field_, and there are two ways to update a document — both reactive, no query-key invalidation, no network call:
+
+**1. Mutate a field in place.** Only the readers of that field re-render.
 
 ```ts
-// Edit user #42 — build a new object, don't mutate the cached one.
+const user = store.findInMemory("user", "42")!;
+user.attributes.firstName = "Ada"; // re-renders only firstName readers
+```
+
+**2. Replace the whole document.** Insert a _new_ object; every reader of the document re-renders.
+
+```ts
 const prev = store.findInMemory("user", "42")!;
 store.insertDocument("user", {
   ...prev,
@@ -165,14 +173,9 @@ store.insertDocument("user", {
 });
 ```
 
-This is **whole-document reactivity**: reading `handle.value` (or any field off it) re-renders when the document is replaced. There's no per-field tracking _inside_ a document — the snapshot is swapped atomically, so every read sees a consistent object.
+Reach for in-place when you're editing one field and want the tightest possible re-render; reach for wholesale replace when a socket push or mutation response hands you a fresh object. `insertDocument` writes `handle.value` only when the reference actually changes, so swapping in a new object always notifies, while an in-place field write notifies through that field's own signal.
 
-Don't mutate a stored document in place — always build a new object. Stored docs are **frozen**, so a top-level in-place write (`doc.id = …`) is rejected — a `TypeError` in strict mode (which ESM and bundled app code always use) — instead of silently corrupting the cache. Two reasons this matters:
-
-1. **It keeps the contract honest.** Insert applies a new value only when the reference actually changes (`applyEvent` skips the write otherwise), so mutating-and-reinserting the _same_ object would silently fail to re-render. The freeze turns that latent no-op into a loud error.
-2. **It preserves reference identity.** The kernel's reactive proxy returns frozen targets unwrapped, so `handle.value` hands back the exact object you inserted — stable `===` for memoization and dependency arrays.
-
-The freeze is shallow: a _nested_ write (`doc.attributes.name = …`) won't throw, it just silently breaks reactivity. Either way the rule is the same — never edit a cached document, spread into a new one (as above).
+No copy is made on insert — the object you pass _is_ the cached target, just handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
 
 ## Why this instead of TanStack Query / SWR?
 
