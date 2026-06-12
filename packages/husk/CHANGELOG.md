@@ -1,5 +1,11 @@
 # @supergrain/husk
 
+## 5.1.0
+
+### Patch Changes
+
+- @supergrain/kernel@5.1.0
+
 ## 5.0.0
 
 ### Minor Changes

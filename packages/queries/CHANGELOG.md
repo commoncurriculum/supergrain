@@ -1,5 +1,13 @@
 # @supergrain/queries
 
+## 5.1.0
+
+### Patch Changes
+
+- Updated dependencies [9ffce96]
+  - @supergrain/silo@5.1.0
+  - @supergrain/kernel@5.1.0
+
 ## 5.0.0
 
 ### Minor Changes
