@@ -7,7 +7,7 @@
 //   @supergrain/silo/react/json-api      — useBelongsTo / useHasMany
 //   @supergrain/silo/internal            — handle statechart, for layered packages
 
-export { createDocumentStore } from "./store";
+export { createDocumentStore, typeOf } from "./store";
 export type {
   DocumentAdapter,
   DocumentHandle,
@@ -15,11 +15,14 @@ export type {
   DocumentStoreConfig,
   DocumentTypes,
   HandleStatus,
+  InferDocumentsFromModelConfig,
   ModelConfig,
+  ModelType,
   ProcessorContext,
   RegisteredTypes,
   ResponseProcessor,
   StoreAdapterRunOptions,
+  TypedModelConfig,
   TypeRegistry,
 } from "./store";
 

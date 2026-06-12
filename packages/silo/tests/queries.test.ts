@@ -27,7 +27,7 @@ import { http, HttpResponse } from "msw";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { defaultQueryProcessor } from "../src/processors";
-import { createDocumentStore } from "../src/store";
+import { createDocumentStore, type DocumentStore } from "../src/store";
 import {
   API_BASE,
   clearRequests,
@@ -662,7 +662,7 @@ describe("query key stability (stableStringify)", () => {
   type KeyModels = { doc: { id: string } };
   type KeyQueries = { events: { params: { at: Date; tag: string }; result: { n: number } } };
 
-  function makeKeyStore(): ReturnType<typeof createDocumentStore<KeyModels, KeyQueries>> {
+  function makeKeyStore(): DocumentStore<KeyModels, KeyQueries> {
     return createDocumentStore<KeyModels, KeyQueries>({
       models: { doc: { adapter: { find: () => Effect.succeed([]) } } },
     });

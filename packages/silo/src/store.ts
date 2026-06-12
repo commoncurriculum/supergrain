@@ -265,6 +265,46 @@ export type ResponseProcessor<M extends DocumentTypes> = (
 ) => unknown | void;
 
 // =============================================================================
+// ModelType — zero-runtime document-type marker for inferred model configs
+// =============================================================================
+
+/**
+ * Phantom marker that colocates a model's document type with its config so
+ * `createDocumentStore` can **infer** the `DocumentTypes` map instead of taking
+ * it as an explicit generic. `T` is carried only at the type level — the
+ * `__modelType` field never exists at runtime (it's optional and `typeOf<T>()`
+ * returns an empty object), so a `type` marker has zero runtime cost and zero
+ * runtime behavior. The store never reads it.
+ *
+ * @see typeOf
+ */
+export interface ModelType<T extends { id: string }> {
+  readonly __modelType?: T;
+}
+
+/**
+ * Build a {@link ModelType} marker for a document type. Put it on a model
+ * config's `type` field and `createDocumentStore` infers the document map from
+ * the configured models instead of an explicit generic:
+ *
+ * @example
+ * ```ts
+ * const store = createDocumentStore({
+ *   models: {
+ *     user: { type: typeOf<User>(), adapter: userAdapter },
+ *   },
+ * });
+ * // store: DocumentStore<{ user: User }>
+ * ```
+ *
+ * The returned value is a phantom — it exists only for inference and is never
+ * read at runtime.
+ */
+export function typeOf<T extends { id: string }>(): ModelType<T> {
+  return {} as ModelType<T>;
+}
+
+// =============================================================================
 // Per-model config
 // =============================================================================
 
@@ -526,10 +566,91 @@ function needsFetch(handle: InternalHandle): boolean {
   return !raw.isFetching && raw.value === undefined && raw.error === undefined;
 }
 
+// =============================================================================
+// Inferred model-config typing — colocate document types with model configs
+// =============================================================================
+
+/**
+ * A {@link ModelConfig} that also carries a {@link ModelType} marker on `type`.
+ * The inferred-config overload of {@link createDocumentStore} constrains each
+ * model to this shape and reads the marker to build the document map.
+ * `ModelConfig<any>` keeps full per-model parity — the adapter, `processor` /
+ * `processors`, and the inherited {@link ResilienceOptions} (`retry` /
+ * `timeout` / `deadline` / `retryable` / `isolateFailures`) — so the inferred
+ * style gives up nothing the explicit-generic style has; only `type` is added.
+ *
+ * Note on processors: the inferred document map can't be threaded back into a
+ * processor that lives inside the very object it's inferred from, so an *inline*
+ * processor here receives a `ProcessorContext` over the open `DocumentTypes`
+ * map, not the inferred map. For a fully-typed pipeline, declare a standalone
+ * `ResponseProcessor<YourDocuments>` and reference it — that is the pattern the
+ * docs show, and it carries precise types into the inferred config unchanged.
+ */
+export type TypedModelConfig = ModelConfig<any> & { type: ModelType<{ id: string }> };
+
+/**
+ * Build the `DocumentTypes` map from a record of {@link TypedModelConfig}s by
+ * reading each model's `type` marker — the inference behind the `typeOf<T>()`
+ * config style. Mapping over `keyof Models & string` keeps the configured keys
+ * (e.g. `"card-stack"`) as the document-map keys.
+ */
+export type InferDocumentsFromModelConfig<Models> = {
+  [K in keyof Models & string]: Models[K] extends { type: ModelType<infer T> } ? T : never;
+};
+
+/**
+ * Create a document store. Two equivalent typing styles, same returned
+ * `DocumentStore<Documents, Queries>`:
+ *
+ * 1. **Explicit generic** — pass the document map as the type argument. Best
+ *    when you already have an app-wide schema:
+ *    ```ts
+ *    createDocumentStore<{ user: User; post: Post }>({
+ *      models: { user: { adapter }, post: { adapter } },
+ *    });
+ *    ```
+ * 2. **Inferred from `typeOf<T>()`** — colocate each document type with its
+ *    model config and let Silo infer the map. Best for incremental schemas, so
+ *    the configured model set isn't duplicated in a separate `Documents` type:
+ *    ```ts
+ *    createDocumentStore({
+ *      models: { user: { type: typeOf<User>(), adapter } },
+ *    });
+ *    ```
+ *
+ * The two overloads below provide these styles; this is the implementation
+ * signature (intentionally broad — it delegates to the generic builder, which
+ * holds the real, type-checked body).
+ */
+// Explicit-generic overload — the original API, kept FIRST. Chosen whenever
+// `Documents` is supplied as a type argument, or inferred from a pre-typed
+// config value whose models carry no `type` marker.
 export function createDocumentStore<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
->(config: DocumentStoreConfig<M, Q>): DocumentStore<M, Q> {
+>(config: DocumentStoreConfig<M, Q>): DocumentStore<M, Q>;
+// Inferred-config overload. An inline `models` object literal with a `type`
+// marker on every model fails the explicit overload's excess-property check
+// (`type` is not a `ModelConfig` field) and falls through to here, where the
+// document map is inferred from the markers. `const Models` preserves the
+// configured keys as the document-map keys.
+export function createDocumentStore<
+  const Models extends Record<string, TypedModelConfig>,
+  Queries extends QueryTypes = Record<string, never>,
+>(
+  config: Omit<DocumentStoreConfig<InferDocumentsFromModelConfig<Models>, Queries>, "models"> & {
+    models: Models;
+  },
+): DocumentStore<InferDocumentsFromModelConfig<Models>, Queries>;
+export function createDocumentStore(
+  config: DocumentStoreConfig<any, any>,
+): DocumentStore<any, any> {
+  return buildDocumentStore(config);
+}
+
+function buildDocumentStore<M extends DocumentTypes, Q extends QueryTypes = Record<string, never>>(
+  config: DocumentStoreConfig<M, Q>,
+): DocumentStore<M, Q> {
   const state = createReactive<InternalState>({
     documents: new Map(),
     queries: new Map(),

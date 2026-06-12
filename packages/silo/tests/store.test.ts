@@ -2,7 +2,7 @@ import { effect } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
-import { createDocumentStore } from "../src/store";
+import { createDocumentStore, type DocumentAdapter, typeOf } from "../src/store";
 import {
   API_BASE,
   clearRequests,
@@ -594,5 +594,43 @@ describe("Store.find — cached documents of unconfigured types stay readable", 
     expect(handle.value).toEqual({ total: 3 });
     expect(handle.status).toBe("success");
     expect(handle.isFetching).toBe(false);
+  });
+});
+
+describe("typeOf<T>() inferred model config — marker has no runtime effect", () => {
+  interface Widget {
+    id: string;
+    label: string;
+  }
+
+  it("typeOf() returns an empty marker with no runtime payload", () => {
+    const marker = typeOf<Widget>();
+    expect(Object.keys(marker)).toEqual([]);
+    expect(marker.__modelType).toBeUndefined();
+  });
+
+  it("a store built from a `type`-marked config behaves like any other store", () => {
+    const adapter: DocumentAdapter = { find: () => Promise.resolve([]) };
+    const inferred = createDocumentStore({
+      models: { widget: { type: typeOf<Widget>(), adapter } },
+    });
+
+    // The extra `type` field is ignored at runtime: insert/read round-trips,
+    // and the model is registered exactly as `{ widget: { adapter } }` would be.
+    inferred.insertDocument("widget", { id: "w1", label: "hello" });
+    expect(inferred.findInMemory("widget", "w1")).toEqual({ id: "w1", label: "hello" });
+
+    const cached = inferred.find("widget", "w1");
+    expect(cached.value).toEqual({ id: "w1", label: "hello" });
+    expect(cached.status).toBe("success");
+  });
+
+  it("still validates unconfigured types on the `type`-marked config", () => {
+    const adapter: DocumentAdapter = { find: () => Promise.resolve([]) };
+    const inferred = createDocumentStore({
+      models: { widget: { type: typeOf<Widget>(), adapter } },
+    });
+
+    expect(() => inferred.find("ghost" as never, "x")).toThrow(/no model "ghost" is configured/);
   });
 });

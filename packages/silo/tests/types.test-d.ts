@@ -15,11 +15,14 @@ import { describe, expectTypeOf, it } from "vitest";
 
 import {
   createDocumentStore,
+  type DocumentAdapter,
   type DocumentHandle,
   type DocumentStore,
   type HandleStatus,
   type QueryHandle,
+  type ResponseProcessor,
   type SiloError,
+  typeOf,
 } from "../src";
 import { effectFind } from "./setup/effect-find";
 
@@ -98,6 +101,79 @@ describe("createDocumentStore — public type surface", () => {
     // Without Queries declared, find still narrows by type — proves the
     // default generic doesn't bleed into the document surface.
     expectTypeOf(store.find("user", "1").value).toEqualTypeOf<User | undefined>();
+  });
+});
+
+describe("createDocumentStore — inferred model-config typing (typeOf<T>)", () => {
+  // A minimal adapter; the inferred-config path reads only the `type` markers
+  // for the document map, never the adapter's shape.
+  const adapter: DocumentAdapter = { find: () => Promise.resolve([]) };
+
+  it("infers DocumentStore<Documents> from typeOf<T>() markers (no generic)", () => {
+    const store = createDocumentStore({
+      models: {
+        user: { type: typeOf<User>(), adapter },
+        post: { type: typeOf<Post>(), adapter },
+      },
+    });
+
+    // The inferred store is exactly the explicitly-typed store.
+    expectTypeOf(store).toEqualTypeOf<DocumentStore<{ user: User; post: Post }>>();
+  });
+
+  it("inferred store narrows find / findInMemory / insertDocument by `type`", () => {
+    const store = createDocumentStore({
+      models: {
+        user: { type: typeOf<User>(), adapter },
+        post: { type: typeOf<Post>(), adapter },
+      },
+    });
+
+    expectTypeOf(store.find("user", "1")).toEqualTypeOf<DocumentHandle<User>>();
+    expectTypeOf(store.find("user", "1").value).toEqualTypeOf<User | undefined>();
+    expectTypeOf(store.findInMemory("post", "1")).toEqualTypeOf<Post | undefined>();
+    store.insertDocument("user", { id: "1", name: "x" });
+  });
+
+  it("inferred store rejects a wrong doc shape and unknown type", () => {
+    const store = createDocumentStore({
+      models: { user: { type: typeOf<User>(), adapter } },
+    });
+
+    // @ts-expect-error -- "title" doesn't exist on User
+    store.insertDocument("user", { id: "1", title: "t" });
+    // @ts-expect-error -- "ghost" is not a configured model
+    store.find("ghost", "1");
+  });
+
+  it("the `type` marker is additive — explicit generic still infers normally", () => {
+    // No markers, explicit generic: unchanged behavior, hits the original overload.
+    const store = createDocumentStore<{ user: User }>({
+      models: { user: { adapter } },
+    });
+    expectTypeOf(store.find("user", "1").value).toEqualTypeOf<User | undefined>();
+  });
+
+  it("typeOf<T>() requires an `id: string` shape", () => {
+    // @ts-expect-error -- a type without `id` can't be a document
+    typeOf<{ name: string }>();
+  });
+
+  it("inferred config accepts both `processor` and `processors`", () => {
+    // A standalone processor typed to a named document map (the recommended,
+    // fully-typed pattern) flows into an inferred config's pipeline unchanged —
+    // as a single `processor` or in a `processors` array.
+    type Docs = { user: User; post: Post };
+    const insert: ResponseProcessor<Docs> = (_response, { store }) => {
+      store.insertDocument("user", { id: "1", name: "x" });
+    };
+
+    createDocumentStore({
+      models: { user: { type: typeOf<User>(), adapter, processors: [insert] } },
+    });
+    createDocumentStore({
+      models: { user: { type: typeOf<User>(), adapter, processor: insert } },
+    });
   });
 });
 

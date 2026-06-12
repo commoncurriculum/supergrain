@@ -202,6 +202,24 @@ const store = createDocumentStore<TypeToModel>({
 });
 ```
 
+#### Two typing styles
+
+`createDocumentStore` returns the same `DocumentStore<Documents, Queries>` whichever way you type it. The example above passes the document map as the generic (`TypeToModel`) — best when you already have an app-wide schema. You can equivalently **colocate** each document type with its model config using `type: typeOf<T>()` and let Silo **infer** the map — best for incremental schemas, where a separate `Documents` type would just duplicate the configured model set:
+
+```ts
+import { createDocumentStore, typeOf } from "@supergrain/silo";
+
+const store = createDocumentStore({
+  models: {
+    user: { type: typeOf<User>(), adapter: userAdapter },
+    post: { type: typeOf<Post>(), adapter: postAdapter },
+  },
+});
+// store: DocumentStore<{ user: User; post: Post }>
+```
+
+Both forms produce the identical store: `store.find("user", id)` is a `DocumentHandle<User>`, `store.findInMemory("post", id)` is `Post | undefined`, and `store.insertDocument("post", doc)` requires a `Post`. The `type: typeOf<T>()` marker is a zero-runtime phantom — it exists only for inference and the store never reads it. Mix the styles per store, not per model: every model in an inferred config needs a `type` marker (a missing one is a compile error), or supply the explicit generic and use none.
+
 Each model (and query) can also take:
 
 - `processor` (a single step) or `processors` (an ordered pipeline) to turn the adapter's response into store inserts — see [Processors](#processors) below. Omit both and the default processor assumes the adapter returns a doc or an array of docs. Supplying **both** is a configuration error and throws at store creation.
