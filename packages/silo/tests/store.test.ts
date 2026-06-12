@@ -125,7 +125,7 @@ describe("Store.find — already in memory (fast path)", () => {
 });
 
 describe("Store.insertDocument — documents are live and reactive", () => {
-  it("does NOT freeze the stored document — a field can be mutated in place", () => {
+  it("does NOT freeze the stored document — it can be mutated in place", () => {
     const user = makeUser("1");
     store.insertDocument("user", user);
 
@@ -135,27 +135,38 @@ describe("Store.insertDocument — documents are live and reactive", () => {
     expect(Object.isFrozen(unwrap(stored))).toBe(false);
     // No copy: the stored value is the exact object inserted, behind a proxy.
     expect(unwrap(stored)).toBe(user);
-    // A top-level write succeeds (no throw) and lands on the underlying object.
+    // A top-level write succeeds. The old freeze was shallow — it rejected
+    // exactly this top-level write while letting nested writes through — so a
+    // top-level write (not a nested one) is what proves the doc is unfrozen.
     expect(() => {
-      stored.attributes.firstName = "Ada";
+      stored.attributes = { ...user.attributes, firstName: "Ada" };
     }).not.toThrow();
     expect(stored.attributes.firstName).toBe("Ada");
     expect(user.attributes.firstName).toBe("Ada"); // same underlying object
   });
 
-  it("re-renders only the readers of a field mutated in place", () => {
-    store.insertDocument("user", makeUser("1", { firstName: "User1" }));
+  it("re-renders only the readers of the field mutated in place", () => {
+    store.insertDocument("user", makeUser("1", { firstName: "User1", lastName: "Original" }));
     const handle = store.find("user", "1");
 
     const firstNameReads: Array<string | undefined> = [];
     effect(() => {
       firstNameReads.push(handle.value?.attributes.firstName);
     });
+    const lastNameReads: Array<string | undefined> = [];
+    effect(() => {
+      lastNameReads.push(handle.value?.attributes.lastName);
+    });
     expect(firstNameReads).toEqual(["User1"]);
+    expect(lastNameReads).toEqual(["Original"]);
 
-    // Mutate the field in place — the field subscriber re-fires, no reinsert.
+    // Mutate only firstName in place — the firstName subscriber re-fires, no
+    // reinsert; the sibling lastName subscriber does NOT re-run. That second
+    // assertion is the "only" in fine-grained: coarse, whole-doc tracking would
+    // re-run both.
     store.findInMemory("user", "1")!.attributes.firstName = "Ada";
     expect(firstNameReads.at(-1)).toBe("Ada");
+    expect(lastNameReads).toEqual(["Original"]); // never re-ran
   });
 
   it("accepts an already-frozen document the consumer froze (opts out of reactivity)", () => {
