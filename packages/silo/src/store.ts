@@ -1,9 +1,10 @@
-import type { AdapterError, SiloError } from "./errors";
+import type { StoreHooks } from "./hooks";
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
 import type { Effect } from "effect";
 
 import { batch, createReactive, unwrap } from "@supergrain/kernel";
 
+import { type AdapterError, ProcessorError, type SiloError } from "./errors";
 import { Finder } from "./finder";
 import {
   type AdapterErrorSink,
@@ -50,6 +51,10 @@ export type { InternalState };
  * ```
  */
 export type DocumentTypes = Record<string, { id: string }>;
+
+// Store-wide lifecycle hooks live in their own module; re-exported here so the
+// public surface (`import { StoreHooks } from "@supergrain/silo"`) is unchanged.
+export type { StoreHooks } from "./hooks";
 
 // =============================================================================
 // TypeRegistry — for module augmentation
@@ -325,6 +330,12 @@ export interface DocumentStoreConfig<
   /** Per-type adapter + optional processor wiring for queries. Optional. */
   queries?: { [K in keyof Q & string]: QueryConfig<M, Q, K> };
   /**
+   * Store-wide lifecycle hooks — `prepareInsert` / `afterInsert`, bracketing
+   * every `insertDocument`. Parallel to `models` / `queries`. See
+   * {@link StoreHooks}.
+   */
+  hooks?: StoreHooks<M>;
+  /**
    * Batch-window duration in ms. `find` / `findQuery` calls within this window
    * collapse into their respective `adapter.find(...)` invocations. Default: 15.
    */
@@ -351,8 +362,9 @@ export interface DocumentStoreConfig<
    * fetch isn't silent) and on a terminal `NotFoundError` / `ProcessorError`,
    * with the failing `type` / `keys`, the 1-based `attempt`, and whether the
    * failure was `retryable`. Fires for document fetches, `findQuery` fetches,
-   * and `@supergrain/queries` fetches alike. For logging / metrics; a throwing
-   * callback never affects the store.
+   * and `@supergrain/queries` fetches alike — plus an isolated `afterInsert`
+   * hook throw (reported as a `ProcessorError`). For logging / metrics; a
+   * throwing callback never affects the store.
    */
   onError?: AdapterErrorSink;
 }
@@ -573,15 +585,49 @@ export function createDocumentStore<
       //      re-render. `applyEvent` writes `handle.value` only when the
       //      reference actually changes (`raw.value !== value` in
       //      transitions.ts), so swapping in a fresh object always notifies.
-      // No copy is made — the inserted object IS the stored target (unwrap the
-      // handle's value to recover the exact reference). We deliberately do NOT
-      // freeze: a frozen target is handed back unwrapped by the kernel
-      // (`createReactiveProxy` bails on `Object.isFrozen`), which would kill
-      // per-field reactivity and the in-place update path above.
+      // No copy is made — the inserted (or `prepareInsert`-returned) object IS
+      // the stored target (unwrap the handle's value to recover the exact
+      // reference). We deliberately do NOT freeze: a frozen target is handed
+      // back unwrapped by the kernel (`createReactiveProxy` bails on
+      // `Object.isFrozen`), which would kill per-field reactivity and the
+      // in-place update path above.
+      //
+      // `hooks.prepareInsert` is the one funnel every document passes through on
+      // its way in (direct inserts, processor/sideload inserts, Provider seeds).
+      // Pass-through follows the response-processor `?? response` convention:
+      // returning nothing keeps the (possibly mutated) `doc`; only an explicit
+      // `null` vetoes the insert. Run it before wrapping so in-place edits to a
+      // brand-new object touch the plain object, not the reactive proxy.
+      const prepareInsert = config.hooks?.prepareInsert;
+      let prepared: M[K] = doc;
+      if (prepareInsert) {
+        const result = prepareInsert(type, doc);
+        if (result === null) return; // explicit veto — write nothing
+        prepared = result ?? doc; // undefined / no return = keep `doc` as-is
+      }
       batch(() => {
-        const handle = getOrCreateHandle(ensureBucket(state.documents, type), doc.id);
-        applyEvent(handle, HandleEvent.insert(doc));
+        const handle = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
+        applyEvent(handle, HandleEvent.insert(prepared));
       });
+      // `afterInsert` tails the pipeline. The value is committed (findInMemory
+      // returns it); within an enclosing batch — a fetch commit, or a caller's
+      // own batch() — subscriber notifications are still pending and flush when
+      // that outermost batch ends. Skipped when `prepareInsert` vetoed. Isolated
+      // like the `onError` sink: a throwing observer is reported, never allowed
+      // to corrupt the commit or fail sibling docs in the same fetch.
+      const afterInsert = config.hooks?.afterInsert;
+      if (afterInsert) {
+        try {
+          afterInsert(type, prepared);
+        } catch (error) {
+          emitToSink(config.onError, new ProcessorError({ type, cause: error }), {
+            type,
+            keys: [prepared.id],
+            attempt: 1,
+            retryable: false,
+          });
+        }
+      }
     },
 
     findQuery<K extends keyof Q & string>(

@@ -17,6 +17,7 @@ import {
   createDocumentStore,
   type DocumentHandle,
   type DocumentStore,
+  type DocumentStoreConfig,
   type HandleStatus,
   type QueryHandle,
   type SiloError,
@@ -41,6 +42,24 @@ interface SearchResult {
 
 type Models = { user: User; post: Post };
 type Queries = { search: { params: { q: string }; result: SearchResult } };
+
+// Shared `models` config for tests that only vary another field (e.g. `hooks`).
+const userPostModels = {
+  user: {
+    adapter: {
+      find: effectFind("test", (ids: Array<string>) =>
+        Promise.resolve(ids.map((id) => ({ id, name: "x" }))),
+      ),
+    },
+  },
+  post: {
+    adapter: {
+      find: effectFind("test", (ids: Array<string>) =>
+        Promise.resolve(ids.map((id) => ({ id, title: "t", body: "b" }))),
+      ),
+    },
+  },
+} satisfies DocumentStoreConfig<Models>["models"];
 
 describe("createDocumentStore — public type surface", () => {
   it("returns a DocumentStore parameterized by the supplied Models and Queries", () => {
@@ -162,6 +181,59 @@ describe("DocumentStore.insertDocument — `doc` narrowed by `type`", () => {
   it("rejects an extra field", () => {
     // @ts-expect-error -- excess property
     store.insertDocument("user", { id: "1", name: "x", extra: true });
+  });
+});
+
+describe("DocumentStoreConfig.hooks.prepareInsert — `doc`/return tied to the type key", () => {
+  it("types `doc` as M[K] and accepts returning the doc — or nothing (pass-through)", () => {
+    createDocumentStore<Models>({
+      hooks: {
+        prepareInsert(_type, doc) {
+          // Generic over the type key K — `type: K`, `doc: M[K]`. `doc` carries
+          // the model's own fields (here, the shared `id`), and returning it is
+          // accepted because it's the M[K] the hook received.
+          expectTypeOf(doc.id).toEqualTypeOf<string>();
+          return doc;
+        },
+        afterInsert(_type, doc) {
+          expectTypeOf(doc.id).toEqualTypeOf<string>();
+        },
+      },
+      models: userPostModels,
+    });
+  });
+
+  it("accepts a hook that mutates in place and returns nothing (no `| void` footgun)", () => {
+    createDocumentStore<Models>({
+      hooks: {
+        // No `return` is valid — the `void` arm is the pass-through path, not a
+        // silent veto, so forgetting `return doc` is harmless rather than data loss.
+        prepareInsert(_type, doc) {
+          void doc.id;
+        },
+      },
+      models: userPostModels,
+    });
+  });
+
+  it("rejects returning a fixed-model doc that ignores the type key", () => {
+    createDocumentStore<Models>({
+      hooks: {
+        // @ts-expect-error -- a fixed User can't satisfy M[K] for an arbitrary K (the insert could be a Post)
+        prepareInsert: () => ({ id: "1", name: "x" }),
+      },
+      models: userPostModels,
+    });
+  });
+
+  it("rejects a non-generic hook that pre-narrows its parameters to one model", () => {
+    createDocumentStore<Models>({
+      hooks: {
+        // @ts-expect-error -- a hook fixed to ("user", User) can't accept an arbitrary (K, M[K])
+        prepareInsert: (_type: "user", doc: User) => doc,
+      },
+      models: userPostModels,
+    });
   });
 });
 

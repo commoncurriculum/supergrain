@@ -175,7 +175,7 @@ store.insertDocument("user", {
 
 Reach for in-place when you're editing one field and want the tightest possible re-render; reach for wholesale replace when a socket push or mutation response hands you a fresh object. `insertDocument` writes `handle.value` only when the reference actually changes, so swapping in a new object always notifies, while an in-place field write notifies through that field's own signal.
 
-No copy is made on insert — the object you pass _is_ the cached target, just handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
+No copy is made on insert — the object you pass _is_ the cached target, just handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). (If a `prepareInsert` hook returns a replacement, that returned object is the cached target instead.) Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
 
 ## Why this instead of TanStack Query / SWR?
 
@@ -230,6 +230,40 @@ Methods:
 - `findQueryInMemory(type, params)` → `T | undefined`
 - `insertQueryResult(type, params, result)` → `void`
 - `resolveAdapterOptions(perCall?)` → `{ retry, retryIsDefault, timeout, deadline, retryable, onError }` — merge per-call overrides over the store-wide defaults, with the store's `onError` sink passed through so layered helpers can report failures that happen outside the engine (in-engine failures are reported automatically by `store.runAdapter`); `retryIsDefault` is true when `retry` is the built-in fallback rather than anything configured
+
+### Hooks
+
+`DocumentStoreConfig` takes an optional **`hooks`** object (parallel to `models` / `queries`) for cross-cutting behavior that must run no matter which code path reaches the store. Its two hooks bracket **every** `insertDocument(type, doc)` — a direct `store.insertDocument(...)`, a processor insert (including JSON-API `included` sideloads), a Provider `initial` seed — and form the pipeline `prepareInsert → insertDocument → afterInsert`. So a shape migration, a defaulted field, or a mirror to another store lives in exactly one place instead of every insertion site.
+
+```ts
+const store = createDocumentStore<TypeToModel>({
+  hooks: {
+    // Card-stacks can arrive as JSON-API `data`, as an `included` sideload, or
+    // pushed in directly — these hooks catch them all at the boundary.
+    prepareInsert(type, doc) {
+      if (doc.archived) return null; // drop — never cache archived docs
+      if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
+      doc.meta ??= {};
+      return doc;
+    },
+    // Bridge every committed Supergrain insert back into the existing Ember store.
+    afterInsert: (type, doc) => emberStore.insertDocument(doc),
+  },
+  models: {
+    "card-stack": { adapter: cardStackAdapter, processor: jsonApiProcessor },
+  },
+});
+```
+
+**`prepareInsert(type, doc)`** — a normalization hook on the way _in_. It's generic over the type key `K`, so `doc` is typed `M[K]` and a returned doc is checked against `M[K]` too (you can't return a doc of the wrong model). Return semantics follow the response-processor `?? response` convention:
+
+- **Return the doc** (or a wholesale replacement of the same model) — that object is stored.
+- **Return nothing** (`undefined` / no `return`) — pass-through: the `doc` you were given is stored as-is, so normalizing **in place** and forgetting `return doc` is harmless.
+- **Return `null`** — veto: nothing is written; the only way to drop a record. ⚠️ If a `find(type, id)` requested this exact doc, vetoing settles that handle as a `NotFoundError` (the fetch succeeded but cached nothing).
+
+Because `@supergrain/queries` stores its result envelopes through `insertDocument`, this hook also sees those envelopes — return docs you don't recognize unchanged (the pass-through path does this for you); only `return null` for shapes you deliberately drop. For a brand-new object `prepareInsert` runs _before_ the reactive proxy wraps it, so in-place edits notify no subscribers; a throw propagates (on a fetch it surfaces as a `ProcessorError`). Inside the hook `doc` widens to the model union — narrow it with a literal discriminant on the doc (`if (doc.type === "card-stack")`); testing the `type` argument does **not** narrow `doc`, so discriminant-free models need an explicit cast.
+
+**`afterInsert(type, doc)`** — a side-effect observer on the way _out_. When it runs the value is committed (`findInMemory(type, doc.id)` returns it); inside an enclosing batch (a fetch commit, or your own `batch(...)`) subscriber notifications are still pending and flush when that batch ends — so rely on the cache being settled, not on renders having happened. It receives the doc that was actually stored (the post-`prepareInsert` object, same reference as `unwrap(store.findInMemory(type, doc.id))`); this is the raw target, so treat it as read-only — mutating it bypasses reactivity. Its return value is ignored. A throw is **isolated**: reported to the store's `onError` sink and swallowed, so a failing observer never corrupts the commit or fails sibling docs in the same fetch. It does **not** run when `prepareInsert` vetoes. Calling `store.insertDocument(...)` from inside re-enters the hooks — fine for cascading related records, but guard against unbounded recursion.
 
 ### `createDocumentStoreContext<S extends DocumentStore<any, any>>()`
 
