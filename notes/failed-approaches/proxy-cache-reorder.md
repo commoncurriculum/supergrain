@@ -5,7 +5,7 @@
 > **TL;DR:** Reordering `createReactiveProxy` to check the `$PROXY` cache before
 > the `instanceof Map`/`instanceof Set` branches (to save two `instanceof`
 > checks on the hottest read path), plus removing a provably-redundant
-> `getActiveSub()` in `trackArrayVersion`, measured flat. The apparent +2–7%
+> `getActiveSub()` in `trackArrayVersion`, measured flat. The apparent +2-7%
 > read-path gains were artifacts of outlier samples in the baseline runs, not a
 > real effect. Same conclusion as every other store-internals micro-opt: V8
 > already handles these checks cheaply, so removing them doesn't move the needle.
@@ -82,7 +82,7 @@ Aggregate deltas (after vs baseline) looked like a small consistent win:
 | ---------------- | ------: | ------: |
 | Property Read 1M |   +1.8% |   +2.6% |
 | proxy, 3 reads   |   +3.2% |   +6.9% |
-| proxy, 1 read    |   +3.8% |   −7.3% |
+| proxy, 1 read    |   +3.8% |   -7.3% |
 
 But the per-run samples tell the real story — the distributions fully overlap:
 
@@ -97,7 +97,7 @@ proxy_3read
 
 Baseline holds both the highest (3.64) and lowest (3.19) PropRead1M values. The
 "+6.9%" proxy_3read gain was driven entirely by one `28.9` outlier in a baseline
-sample. proxy_1read swung +3.8% → −7.3% between rounds. There is no separation.
+sample. proxy_1read swung +3.8% → -7.3% between rounds. There is no separation.
 
 An earlier single-run `vitest bench --compare` was even more misleading:
 PropRead1M `[1.06x]`, Granular Reactivity `[1.96x]` (on a ±15.7% rme bench),
@@ -107,7 +107,7 @@ proxy `[0.95x]` — all noise.
 
 - **Aggregates hid outliers.** Means of 4 noisy runs are swung by a single GC/
   scheduling outlier in either direction. The deltas sat entirely inside the
-  per-bench variance (sd 3–15%).
+  per-bench variance (sd 3-15%).
 - **The checks are cheap.** `instanceof Map`/`Set` are monomorphic prototype
   walks; V8 runs them essentially for free. Removing two of them from a path
   whose cost is dominated by the proxy trap + signal read + effect machinery is
@@ -130,5 +130,5 @@ proxy `[0.95x]` — all noise.
 ## Related
 
 - [Inline Primitive Checks](inline-primitive-checks-optimization.md) — same lesson, the `wrap`/`unwrap` inlining version
-- [Fast Push Bypass Proxy](fast-push-bypass-proxy.md) — one branch in the get handler regressed unrelated benchmarks 13–27%
+- [Fast Push Bypass Proxy](fast-push-bypass-proxy.md) — one branch in the get handler regressed unrelated benchmarks 13-27%
 - [Proxy Optimization Trade-offs](../architecture/proxy-optimization-trade-offs.md) — why the get handler shape is sensitive
