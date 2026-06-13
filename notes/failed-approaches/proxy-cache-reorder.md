@@ -78,11 +78,11 @@ Metric is `hz` — **higher = faster**.
 
 Aggregate deltas (after vs baseline) looked like a small consistent win:
 
-| Bench         | round 1 | round 2 |
-| ------------- | ------: | ------: |
-| Property Read 1M | +1.8% | +2.6% |
-| proxy, 3 reads   | +3.2% | +6.9% |
-| proxy, 1 read    | +3.8% | −7.3% |
+| Bench            | round 1 | round 2 |
+| ---------------- | ------: | ------: |
+| Property Read 1M |   +1.8% |   +2.6% |
+| proxy, 3 reads   |   +3.2% |   +6.9% |
+| proxy, 1 read    |   +3.8% |   −7.3% |
 
 But the per-run samples tell the real story — the distributions fully overlap:
 
