@@ -74,6 +74,7 @@ Don't retry these. Each doc explains what was tried and why it failed.
 **Store internals:**
 [Context Switching](failed-approaches/context-switching-optimization.md) |
 [Inline Primitive Checks](failed-approaches/inline-primitive-checks-optimization.md) |
+[Proxy Cache Reorder](failed-approaches/proxy-cache-reorder.md) |
 [Reactivity-Breaking](failed-approaches/reactivity-breaking-optimizations.md) |
 [Signal Prototype](failed-approaches/signal-prototype-optimization.md) |
 [WeakMap Node Storage](failed-approaches/weakmap-node-storage-optimization.md)
