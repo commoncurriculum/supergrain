@@ -64,6 +64,28 @@ function seedQueries<M extends DocumentTypes, Q extends QueryTypes>(
 }
 
 /**
+ * Resolve the store a Provider binds to context. Two sources: adopt the
+ * caller's pre-built `store` (built outside React — SSR prep, a pre-React
+ * imperative handle, or one shared across trees), or construct one from
+ * `config` (the common case — an isolated store per mount). Exactly one is
+ * required; with neither there's nothing to bind, so this throws.
+ *
+ * `store` arrives as the caller's `S`, which by construction extends
+ * `DocumentStore<DocumentTypes, QueryTypes>`; narrow it to the concrete
+ * `DocumentStore<M, Q>` (the same upcast `useDocument`/`useQuery` use).
+ */
+function resolveStore<M extends DocumentTypes, Q extends QueryTypes>(
+  config: DocumentStoreConfig<M, Q> | undefined,
+  store: DocumentStore<DocumentTypes, QueryTypes> | undefined,
+): DocumentStore<M, Q> {
+  if (store !== undefined) return store as unknown as DocumentStore<M, Q>;
+  if (config !== undefined) return createDocumentStore<M, Q>(config);
+  throw new Error(
+    "@supergrain/silo/react: createDocumentStoreContext Provider requires either a `config` (to construct a store) or a `store` (to adopt an existing one)",
+  );
+}
+
+/**
  * Create an isolated document-store React binding — Context + Provider + hooks,
  * all tied to a fresh React Context that doesn't collide with any other call
  * to this factory.
@@ -141,24 +163,10 @@ export function createDocumentStoreContext<
     children: ReactNode;
   }): ReactNode {
     const [store] = useState<S>(() => {
-      // Two ways to get the store: construct it from `config` (the common case
-      // — one isolated store per mount), or adopt a `store` the caller built
-      // outside React (SSR prep, a pre-React imperative handle, or one shared
-      // across trees). One source is required; with neither there's nothing to
-      // bind.
-      if (config === undefined && providedStore === undefined) {
-        throw new Error(
-          "@supergrain/silo/react: createDocumentStoreContext Provider requires either a `config` (to construct a store) or a `store` (to adopt an existing one)",
-        );
-      }
-      // Adopt the caller's store when given — narrowing the S upcast back to the
-      // concrete DocumentStore<M, Q>, the same cast useDocument/useQuery use — or
-      // construct one from config. `initial` seeding and `onMount` then run the
-      // same way regardless of source, so the props stay orthogonal.
-      const s =
-        providedStore === undefined
-          ? createDocumentStore<M, Q>(config as DocumentStoreConfig<M, Q>)
-          : (providedStore as unknown as DocumentStore<M, Q>);
+      // Resolve which store to use (construct from config, or adopt the
+      // provided one), then seed + mount it the same way regardless of source —
+      // so `initial` and `onMount` stay orthogonal to how the store was got.
+      const s = resolveStore<M, Q>(config, providedStore);
       if (initial?.model) seedModels(s, initial.model);
       if (initial?.query) seedQueries(s, initial.query);
       const typedStore = s as unknown as S;
