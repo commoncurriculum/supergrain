@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   AdapterError,
+  createDocumentStore,
   type DocumentStore,
   type DocumentStoreConfig,
   type QueryAdapter,
@@ -480,6 +481,86 @@ describe("Provider initial data seeding", () => {
     );
 
     expect(screen.getByTestId("q").textContent).toBe(String(result.totalActiveUsers));
+  });
+});
+
+// =============================================================================
+// Provider `store` prop — adopt a store built outside React instead of
+// constructing one from `config`. Useful for SSR setup, an imperative handle
+// held before React mounts, or one store shared across trees.
+// =============================================================================
+
+describe("Provider store prop", () => {
+  it("adopts a pre-built store — hooks read from the provided instance", () => {
+    const store = createDocumentStore<TypeToModel, TypeToQuery>(makeStoreConfig());
+    store.insertDocument("user", makeUser("1", { firstName: "Prebuilt" }));
+
+    render(
+      <Provider store={store}>
+        <UserBadge userId="1" />
+      </Provider>,
+    );
+
+    // No `config` was constructed — the badge reads the doc that was inserted
+    // into the externally-built store before render.
+    expect(screen.getByText("Prebuilt")).toBeDefined();
+  });
+
+  it("shares one adopted store across two Providers", () => {
+    const store = createDocumentStore<TypeToModel, TypeToQuery>(makeStoreConfig());
+
+    // Write-only seed — plain component, not `tracked` (see SeedUser note).
+    function Seed() {
+      const s = useDocumentStore();
+      s.insertDocument("user", makeUser("1", { firstName: "Shared" }));
+      return null;
+    }
+
+    render(
+      <>
+        <Provider store={store}>
+          <Seed />
+        </Provider>
+        <Provider store={store}>
+          <UserBadge userId="1" />
+        </Provider>
+      </>,
+    );
+
+    // Both Providers adopt the same instance, so a doc the first tree seeded is
+    // visible in the second. A `config`-constructed Provider would isolate them.
+    expect(screen.getByText("Shared")).toBeDefined();
+  });
+
+  it("applies `initial` seeding and `onMount` against an adopted store", () => {
+    const store = createDocumentStore<TypeToModel, TypeToQuery>(makeStoreConfig());
+    let mountedWith: DocumentStore<TypeToModel, TypeToQuery> | null = null;
+
+    render(
+      <Provider
+        store={store}
+        initial={{ model: { user: { "1": makeUser("1", { firstName: "Seeded" }) } } }}
+        onMount={(s) => {
+          mountedWith = s;
+        }}
+      >
+        <UserBadge userId="1" />
+      </Provider>,
+    );
+
+    expect(screen.getByText("Seeded")).toBeDefined();
+    // onMount received the very store we passed in, not a fresh construction.
+    expect(mountedWith).toBe(store);
+  });
+
+  it("throws when neither config nor store is provided", () => {
+    expect(() =>
+      render(
+        <Provider>
+          <span>child</span>
+        </Provider>,
+      ),
+    ).toThrow(/requires either a .config.*or a .store./);
   });
 });
 

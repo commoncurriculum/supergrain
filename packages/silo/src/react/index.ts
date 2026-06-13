@@ -74,10 +74,18 @@ function seedQueries<M extends DocumentTypes, Q extends QueryTypes>(
  * exactly once per mount. Every SSR request, every test, every React tree
  * gets an isolated store by construction.
  *
+ * Pass `store` instead of `config` to adopt a store you built outside React —
+ * for SSR setup, an imperative handle held before React mounts, or one shared
+ * across trees — and the Provider binds that instance to context as-is rather
+ * than constructing a new one. Provide exactly one of `config` or `store`;
+ * supplying neither throws.
+ *
  * Optional `initial` seeds documents and query results before the first
  * render. Optional `onMount` runs synchronously after seeding for imperative
- * setup (preloads, subscriptions). Both run inside the `useState`
- * initializer, so under React StrictMode in dev they are double-invoked —
+ * setup (preloads, subscriptions). Both run regardless of whether the store
+ * was constructed from `config` or adopted via `store`, and both run inside
+ * the `useState` initializer, so under React StrictMode in dev (and on an
+ * adopted store that's shared across trees) they may run more than once —
  * keep them idempotent.
  *
  * @example
@@ -98,7 +106,8 @@ export function createDocumentStoreContext<
   >,
 >(): {
   Provider: (props: {
-    config: DocumentStoreConfig<ModelsOf<S>, QueriesOf<S>>;
+    config?: DocumentStoreConfig<ModelsOf<S>, QueriesOf<S>>;
+    store?: S;
     initial?: InitialDocumentStoreData<ModelsOf<S>, QueriesOf<S>>;
     onMount?: (store: S) => void;
     children: ReactNode;
@@ -120,17 +129,36 @@ export function createDocumentStoreContext<
 
   function Provider({
     config,
+    store: providedStore,
     initial,
     onMount,
     children,
   }: {
-    config: DocumentStoreConfig<M, Q>;
+    config?: DocumentStoreConfig<M, Q>;
+    store?: S;
     initial?: InitialDocumentStoreData<M, Q>;
     onMount?: (store: S) => void;
     children: ReactNode;
   }): ReactNode {
     const [store] = useState<S>(() => {
-      const s = createDocumentStore<M, Q>(config);
+      // Two ways to get the store: construct it from `config` (the common case
+      // — one isolated store per mount), or adopt a `store` the caller built
+      // outside React (SSR prep, a pre-React imperative handle, or one shared
+      // across trees). One source is required; with neither there's nothing to
+      // bind.
+      if (config === undefined && providedStore === undefined) {
+        throw new Error(
+          "@supergrain/silo/react: createDocumentStoreContext Provider requires either a `config` (to construct a store) or a `store` (to adopt an existing one)",
+        );
+      }
+      // Adopt the caller's store when given — narrowing the S upcast back to the
+      // concrete DocumentStore<M, Q>, the same cast useDocument/useQuery use — or
+      // construct one from config. `initial` seeding and `onMount` then run the
+      // same way regardless of source, so the props stay orthogonal.
+      const s =
+        providedStore === undefined
+          ? createDocumentStore<M, Q>(config as DocumentStoreConfig<M, Q>)
+          : (providedStore as unknown as DocumentStore<M, Q>);
       if (initial?.model) seedModels(s, initial.model);
       if (initial?.query) seedQueries(s, initial.query);
       const typedStore = s as unknown as S;
