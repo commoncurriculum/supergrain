@@ -1,9 +1,15 @@
-import { effect, unwrap } from "@supergrain/kernel";
+import { batch, effect, unwrap } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
+import { ProcessorError, type SiloError } from "../src/errors";
 import { jsonApiProcessor } from "../src/processors/json-api";
-import { createDocumentStore, type DocumentAdapter, type StoreHooks } from "../src/store";
+import {
+  createDocumentStore,
+  type DocumentAdapter,
+  type DocumentStoreConfig,
+  type StoreHooks,
+} from "../src/store";
 import {
   API_BASE,
   clearRequests,
@@ -85,10 +91,10 @@ describe("Store memory operations", () => {
 });
 
 // =============================================================================
-// hooks.prepareInsert — the one normalization funnel every insert passes through
+// hooks.prepareInsert / afterInsert — the one funnel every insert passes through
 // =============================================================================
 
-describe("Store — hooks.prepareInsert", () => {
+describe("Store — hooks", () => {
   // Local models mirror the consumer scenario: JSON-API-ish docs that share a
   // literal `type` discriminant and carry an optional `meta` bag to normalize.
   interface CardStack {
@@ -105,12 +111,17 @@ describe("Store — hooks.prepareInsert", () => {
   type Models = { "card-stack": CardStack; planbook: Planbook };
 
   // The adapter is never invoked here — `insertDocument` is a pure memory write,
-  // no fetch is enqueued — so a stub that resolves nothing is enough.
-  const stubAdapter: DocumentAdapter = { find: () => Promise.resolve([]) };
+  // no fetch is enqueued — so the shared inline-adapter helper resolving nothing
+  // is enough.
+  const stubAdapter: DocumentAdapter = { find: effectFind("stub", async () => []) };
 
-  function makeHookStore(hooks: StoreHooks<Models>) {
+  function makeHookStore(
+    hooks: StoreHooks<Models>,
+    onError?: DocumentStoreConfig<Models>["onError"],
+  ) {
     return createDocumentStore<Models>({
       hooks,
+      onError,
       models: {
         "card-stack": { adapter: stubAdapter },
         planbook: { adapter: stubAdapter },
@@ -121,6 +132,8 @@ describe("Store — hooks.prepareInsert", () => {
   function makeStore(prepareInsert: StoreHooks<Models>["prepareInsert"]) {
     return makeHookStore({ prepareInsert });
   }
+
+  // ─── prepareInsert ──────────────────────────────────────────────────────────
 
   it("runs on every insertDocument, receiving the type and its doc", () => {
     const calls: Array<[string, string]> = [];
@@ -152,6 +165,21 @@ describe("Store — hooks.prepareInsert", () => {
     expect(cs.meta).toEqual({});
   });
 
+  it("passes through (keeps the mutated doc) when the hook returns nothing", () => {
+    // No `return` → undefined → pass-through, matching the response-processor
+    // `?? response` convention: the in-place-mutated `doc` is stored as-is, NOT
+    // vetoed. This is the safe outcome for a hook that forgot `return doc`.
+    const store = makeStore((_type, doc) => {
+      doc.meta = { touched: true };
+    });
+    const cs: CardStack = { id: "1", type: "card-stack" };
+
+    store.insertDocument("card-stack", cs);
+
+    expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(cs);
+    expect(cs.meta).toEqual({ touched: true });
+  });
+
   it("stores the replacement when the hook returns a new (spread) doc", () => {
     const store = makeStore((_type, doc) => ({ ...doc, meta: { normalized: true } }));
     const input: CardStack = { id: "1", type: "card-stack" };
@@ -163,7 +191,18 @@ describe("Store — hooks.prepareInsert", () => {
     expect(stored?.meta).toEqual({ normalized: true });
   });
 
-  it("vetoes the insert when the hook returns null — nothing is written", () => {
+  it("stores under the returned doc's id when the hook rewrites it", () => {
+    // The handle is keyed by the prepared doc's id — a hook that re-keys ids
+    // (id migration) lands the doc under the new id, not the caller's.
+    const store = makeStore((_type, doc) => ({ ...doc, id: `${doc.id}-v2` }));
+
+    store.insertDocument("card-stack", { id: "1", type: "card-stack" });
+
+    expect(store.findInMemory("card-stack", "1")).toBeUndefined();
+    expect(unwrap(store.findInMemory("card-stack", "1-v2"))?.id).toBe("1-v2");
+  });
+
+  it("vetoes the insert only when the hook returns null — nothing is written", () => {
     const store = makeStore((_type, doc) => (doc.id === "drop" ? null : doc));
 
     store.insertDocument("card-stack", { id: "drop", type: "card-stack" });
@@ -173,21 +212,8 @@ describe("Store — hooks.prepareInsert", () => {
     expect(unwrap(store.findInMemory("card-stack", "keep"))?.id).toBe("keep");
   });
 
-  it("treats undefined (no return) the same as null — both veto", () => {
-    const store = makeStore((_type, doc) => {
-      doc.meta = { touched: true };
-      // no `return` → undefined → veto, identical to returning null
-    });
-
-    store.insertDocument("card-stack", { id: "1", type: "card-stack" });
-
-    expect(store.findInMemory("card-stack", "1")).toBeUndefined();
-  });
-
   it("a null veto leaves any existing cached document untouched", () => {
-    const store = makeStore((_type, doc) =>
-      doc.id === "1" && (doc.meta?.drop ?? false) ? null : doc,
-    );
+    const store = makeStore((_type, doc) => (doc.meta?.drop === true ? null : doc));
 
     const original: CardStack = { id: "1", type: "card-stack" };
     store.insertDocument("card-stack", original);
@@ -195,6 +221,17 @@ describe("Store — hooks.prepareInsert", () => {
     store.insertDocument("card-stack", { id: "1", type: "card-stack", meta: { drop: true } });
 
     expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(original);
+  });
+
+  it("propagates a prepareInsert throw to the caller (it builds the doc)", () => {
+    const store = makeStore(() => {
+      throw new Error("boom");
+    });
+
+    expect(() => store.insertDocument("card-stack", { id: "1", type: "card-stack" })).toThrow(
+      "boom",
+    );
+    expect(store.findInMemory("card-stack", "1")).toBeUndefined();
   });
 
   it("narrows on the doc.type discriminant for per-type normalization", () => {
@@ -250,16 +287,12 @@ describe("Store — hooks.prepareInsert", () => {
     expect(unwrap(store.findInMemory("card-stack", "1"))).toBe(cs);
   });
 
-  // ─── afterInsert — the write half of the bracket ────────────────────────────
+  // ─── afterInsert ──────────────────────────────────────────────────────────
 
-  it("afterInsert runs on every insert, after the value is committed", () => {
+  it("afterInsert runs once per insert with the type and committed doc id", () => {
     const observed: Array<[string, string]> = [];
     const store = makeHookStore({
-      afterInsert: (type, doc) => {
-        // The cache is already settled when afterInsert fires.
-        expect(unwrap(store.findInMemory(type, doc.id))).toBe(doc);
-        observed.push([type, doc.id]);
-      },
+      afterInsert: (type, doc) => observed.push([type, doc.id]),
     });
 
     store.insertDocument("card-stack", { id: "1", type: "card-stack" });
@@ -282,9 +315,27 @@ describe("Store — hooks.prepareInsert", () => {
 
     store.insertDocument("card-stack", { id: "1", type: "card-stack" });
 
-    // afterInsert sees the exact post-prepareInsert object that was stored.
+    // afterInsert sees the exact post-prepareInsert object that was stored, and
+    // prepareInsert necessarily ran first to produce it.
     expect(received).toBe(unwrap(store.findInMemory("card-stack", "1")));
     expect((received as CardStack).meta).toEqual({ normalized: true });
+  });
+
+  it("afterInsert observes the committed value even inside an enclosing batch", () => {
+    let seen: unknown;
+    const store = makeHookStore({
+      afterInsert: (type, doc) => {
+        // The value is in the cache when afterInsert runs, regardless of the
+        // batch depth — only subscriber notifications are deferred to the
+        // outermost flush.
+        seen = unwrap(store.findInMemory(type, doc.id));
+      },
+    });
+    const cs: CardStack = { id: "1", type: "card-stack" };
+
+    batch(() => store.insertDocument("card-stack", cs));
+
+    expect(seen).toBe(cs);
   });
 
   it("afterInsert does NOT run when prepareInsert vetoes with null", () => {
@@ -300,19 +351,54 @@ describe("Store — hooks.prepareInsert", () => {
     expect(observed).toEqual(["keep"]);
   });
 
-  it("prepareInsert runs before afterInsert for a single insert", () => {
-    const order: Array<string> = [];
-    const store = makeHookStore({
-      prepareInsert: (_type, doc) => {
-        order.push("prepare");
-        return doc;
+  it("isolates an afterInsert throw — the commit stands and onError is notified", () => {
+    const errors: Array<SiloError> = [];
+    const store = makeHookStore(
+      {
+        afterInsert: (_type, doc) => {
+          if (doc.id === "boom") throw new Error("mirror failed");
+        },
       },
-      afterInsert: () => order.push("after"),
-    });
+      (error) => errors.push(error),
+    );
 
-    store.insertDocument("card-stack", { id: "1", type: "card-stack" });
+    // The throwing observer must not propagate to the caller...
+    expect(() =>
+      store.insertDocument("card-stack", { id: "boom", type: "card-stack" }),
+    ).not.toThrow();
+    // ...the document is still committed...
+    expect(unwrap(store.findInMemory("card-stack", "boom"))?.id).toBe("boom");
+    // ...the failure is reported to the store's onError sink as a ProcessorError...
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(ProcessorError);
+    // ...and a sibling insert afterwards is unaffected.
+    store.insertDocument("card-stack", { id: "ok", type: "card-stack" });
+    expect(unwrap(store.findInMemory("card-stack", "ok"))?.id).toBe("ok");
+  });
 
-    expect(order).toEqual(["prepare", "after"]);
+  it("isolates an afterInsert throw mid processor run — sibling docs still commit", () => {
+    const errors: Array<SiloError> = [];
+    const store = makeHookStore(
+      {
+        afterInsert: (_type, doc) => {
+          if (doc.id === "cs1") throw new Error("mirror failed");
+        },
+      },
+      (error) => errors.push(error),
+    );
+
+    jsonApiProcessor(
+      {
+        data: [{ id: "cs1", type: "card-stack" }],
+        included: [{ id: "pb1", type: "planbook" }],
+      },
+      { store, type: "card-stack", ids: ["cs1"] },
+    );
+
+    // The throwing observer on the first doc doesn't abort the sideload insert.
+    expect(unwrap(store.findInMemory("card-stack", "cs1"))?.id).toBe("cs1");
+    expect(unwrap(store.findInMemory("planbook", "pb1"))?.id).toBe("pb1");
+    expect(errors).toHaveLength(1);
   });
 });
 

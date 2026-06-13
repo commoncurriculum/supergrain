@@ -1,9 +1,10 @@
-import type { AdapterError, SiloError } from "./errors";
+import type { StoreHooks } from "./hooks";
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
 import type { Effect } from "effect";
 
 import { batch, createReactive, unwrap } from "@supergrain/kernel";
 
+import { type AdapterError, ProcessorError, type SiloError } from "./errors";
 import { Finder } from "./finder";
 import {
   type AdapterErrorSink,
@@ -50,6 +51,10 @@ export type { InternalState };
  * ```
  */
 export type DocumentTypes = Record<string, { id: string }>;
+
+// Store-wide lifecycle hooks live in their own module; re-exported here so the
+// public surface (`import { StoreHooks } from "@supergrain/silo"`) is unchanged.
+export type { StoreHooks } from "./hooks";
 
 // =============================================================================
 // TypeRegistry — for module augmentation
@@ -302,102 +307,6 @@ export interface ModelConfig<M extends DocumentTypes> extends ResilienceOptions 
 }
 
 // =============================================================================
-// StoreHooks — store-wide lifecycle hooks
-// =============================================================================
-
-/**
- * Store-wide lifecycle hooks, declared once at store creation and parallel to
- * `models` / `queries` in {@link DocumentStoreConfig}. The single place for
- * cross-cutting behavior that must run no matter which code path reaches the
- * store. Grouping hooks under one key (rather than scattering them onto the
- * config root) keeps the surface extensible — future hooks slot in here without
- * widening `DocumentStoreConfig` itself.
- */
-export interface StoreHooks<M extends DocumentTypes> {
-  /**
-   * Normalization hook run on **every** `insertDocument(type, doc)` — whether
-   * the caller is a response {@link ResponseProcessor} (including JSON-API
-   * `included` sideloads), a direct `store.insertDocument(...)`, a Provider
-   * `initial` seed, or any future code path. The one funnel every document
-   * passes through on its way into the cache, so shape migrations and
-   * defaulting live in exactly one place instead of every insertion site.
-   *
-   * Takes the **same `(type, doc)` arguments as `insertDocument`** and sits
-   * directly in front of it: `prepareInsert → insertDocument → afterInsert`.
-   * It's **generic over the type key `K`**, so `doc` is typed as `M[K]` and the
-   * returned doc is checked against `M[K]` too — you can't accidentally return a
-   * doc of the wrong model. The caller already knows the type, so the hook
-   * **returns only the doc** (not the type). Normalize the doc **in place**
-   * (migrate a legacy shape, default a missing field) and return it, or return a
-   * wholesale replacement of the same model.
-   *
-   * Returning **`null` or `undefined` vetoes the insert** — nothing is written.
-   * The two are treated identically (a hook that doesn't return a doc inserts
-   * nothing), so this is the place to filter out records that should never
-   * enter the cache.
-   *
-   * Runs *before* the doc is wrapped in the reactive proxy, so in-place
-   * mutations here notify no subscribers — they're part of building the
-   * document, not updating one already on screen.
-   *
-   * Inside a store-wide hook `doc` widens to the model union; narrow it with a
-   * literal `type` discriminant (`if (doc.type === "card-stack")`) when your
-   * models carry one, or branch on the `type` argument for models whose
-   * documents don't.
-   *
-   * @example
-   * ```ts
-   * createDocumentStore<TypeToModel>({
-   *   hooks: {
-   *     prepareInsert(type, doc) {
-   *       if (doc.archived) return null; // drop — never cache archived docs
-   *       if (doc.type === "card-stack") migrateFromCardsInPlace(doc);
-   *       doc.meta ??= {};
-   *       return doc;
-   *     },
-   *   },
-   *   models: { ... },
-   * });
-   * ```
-   */
-  prepareInsert?: <K extends keyof M & string>(type: K, doc: M[K]) => M[K] | null | void;
-
-  /**
-   * Observer run **after** a document is committed to the cache by
-   * `insertDocument(type, doc)` — the tail of the
-   * `prepareInsert → insertDocument → afterInsert` pipeline, sharing the same
-   * `(type, doc)` arguments. Fires for every insertion path (direct, processor,
-   * JSON-API sideload, Provider seed) once per committed document, *after* the
-   * reactive write has flushed, so subscribers have already been notified and
-   * the cache is settled.
-   *
-   * Receives the `type` and the **doc that was actually written** — the
-   * post-`prepareInsert` doc, identical to
-   * `unwrap(store.findInMemory(type, doc.id))`. Its return value is ignored —
-   * this is for side effects: mirror the document into another store (e.g. an
-   * existing Ember store), update a derived index, emit telemetry.
-   *
-   * Does **not** run when `prepareInsert` vetoes the insert by returning `null`
-   * (nothing was written, so there is nothing to observe). Calling
-   * `store.insertDocument(...)` from inside `afterInsert` is allowed and funnels
-   * back through the same hooks — handy for cascading related records, but mind
-   * the obvious recursion.
-   *
-   * @example
-   * ```ts
-   * createDocumentStore<TypeToModel>({
-   *   hooks: {
-   *     // Bridge every Supergrain insert back into the existing Ember store.
-   *     afterInsert: (type, doc) => emberStore.insertDocument(doc),
-   *   },
-   *   models: { ... },
-   * });
-   * ```
-   */
-  afterInsert?: <K extends keyof M & string>(type: K, doc: M[K]) => void;
-}
-
-// =============================================================================
 // DocumentStore config
 // =============================================================================
 
@@ -453,8 +362,9 @@ export interface DocumentStoreConfig<
    * fetch isn't silent) and on a terminal `NotFoundError` / `ProcessorError`,
    * with the failing `type` / `keys`, the 1-based `attempt`, and whether the
    * failure was `retryable`. Fires for document fetches, `findQuery` fetches,
-   * and `@supergrain/queries` fetches alike. For logging / metrics; a throwing
-   * callback never affects the store.
+   * and `@supergrain/queries` fetches alike — plus an isolated `afterInsert`
+   * hook throw (reported as a `ProcessorError`). For logging / metrics; a
+   * throwing callback never affects the store.
    */
   onError?: AdapterErrorSink;
 }
@@ -675,37 +585,49 @@ export function createDocumentStore<
       //      re-render. `applyEvent` writes `handle.value` only when the
       //      reference actually changes (`raw.value !== value` in
       //      transitions.ts), so swapping in a fresh object always notifies.
-      // No copy is made — the inserted object IS the stored target (unwrap the
-      // handle's value to recover the exact reference). We deliberately do NOT
-      // freeze: a frozen target is handed back unwrapped by the kernel
-      // (`createReactiveProxy` bails on `Object.isFrozen`), which would kill
-      // per-field reactivity and the in-place update path above.
+      // No copy is made — the inserted (or `prepareInsert`-returned) object IS
+      // the stored target (unwrap the handle's value to recover the exact
+      // reference). We deliberately do NOT freeze: a frozen target is handed
+      // back unwrapped by the kernel (`createReactiveProxy` bails on
+      // `Object.isFrozen`), which would kill per-field reactivity and the
+      // in-place update path above.
       //
       // `hooks.prepareInsert` is the one funnel every document passes through on
-      // its way in — direct inserts, processor inserts (incl. JSON-API
-      // sideloads), and Provider seeds all reach here. Run it BEFORE wrapping
-      // so its in-place normalization touches the plain object, not the
-      // reactive proxy (no spurious notifications). `undefined`/no return keeps
-      // the mutated `doc` (the processor `?? response` pass-through); `null`
-      // vetoes the insert — drop the document, write nothing.
+      // its way in (direct inserts, processor/sideload inserts, Provider seeds).
+      // Pass-through follows the response-processor `?? response` convention:
+      // returning nothing keeps the (possibly mutated) `doc`; only an explicit
+      // `null` vetoes the insert. Run it before wrapping so in-place edits to a
+      // brand-new object touch the plain object, not the reactive proxy.
       const prepareInsert = config.hooks?.prepareInsert;
       let prepared: M[K] = doc;
       if (prepareInsert) {
         const result = prepareInsert(type, doc);
-        // `null` and `undefined` (incl. no `return`) are the same — veto, write
-        // nothing. The hook returns the doc to insert; anything nullish drops it.
-        if (result === null || result === undefined) return;
-        prepared = result;
+        if (result === null) return; // explicit veto — write nothing
+        prepared = result ?? doc; // undefined / no return = keep `doc` as-is
       }
       batch(() => {
         const handle = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
         applyEvent(handle, HandleEvent.insert(prepared));
       });
-      // `afterInsert` is the tail of `prepareInsert → insertDocument →
-      // afterInsert` — it runs once the batch has flushed (cache settled,
-      // subscribers notified), and is skipped when `prepareInsert` vetoed
-      // above. The stored object is the exact `prepared` reference handed in.
-      config.hooks?.afterInsert?.(type, prepared);
+      // `afterInsert` tails the pipeline. The value is committed (findInMemory
+      // returns it); within an enclosing batch — a fetch commit, or a caller's
+      // own batch() — subscriber notifications are still pending and flush when
+      // that outermost batch ends. Skipped when `prepareInsert` vetoed. Isolated
+      // like the `onError` sink: a throwing observer is reported, never allowed
+      // to corrupt the commit or fail sibling docs in the same fetch.
+      const afterInsert = config.hooks?.afterInsert;
+      if (afterInsert) {
+        try {
+          afterInsert(type, prepared);
+        } catch (error) {
+          emitToSink(config.onError, new ProcessorError({ type, cause: error }), {
+            type,
+            keys: [prepared.id],
+            attempt: 1,
+            retryable: false,
+          });
+        }
+      }
     },
 
     findQuery<K extends keyof Q & string>(
