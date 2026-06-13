@@ -267,7 +267,7 @@ Because `@supergrain/queries` stores its result envelopes through `insertDocumen
 
 ### `createDocumentStoreContext<S extends DocumentStore<any, any>>()`
 
-The React context wrapper. Mirrors `createStoreContext<T>()` from `@supergrain/kernel/react`: the type parameter `S` is the store type; the Provider takes the same `config` you'd pass to `createDocumentStore()` and constructs the store internally once per mount.
+The React context wrapper. Mirrors `createStoreContext<T>()` from `@supergrain/kernel/react`: the type parameter `S` is the store type; the Provider takes the same `config` you'd pass to `createDocumentStore()` and constructs the store internally once per mount. Pass `store` instead of `config` to adopt a store _instance_ you built outside React — to share one store across multiple React roots, or drive it from non-React code. `config` and `store` are the two ends of one pipeline (recipe vs. built store), so provide exactly one of the two — passing both throws.
 
 ```ts
 type DocStore = DocumentStore<TypeToModel, TypeToQuery>;
@@ -332,7 +332,7 @@ From `@supergrain/silo/react`:
 
 All returned from `createDocumentStoreContext<S>()`; destructure and re-export from your store module.
 
-- `Provider({ config, initial?, onMount?, children })` — wraps `config` in `createDocumentStore()` exactly once per mount. Optional `initial` seeds documents/query results before the first render; optional `onMount` runs synchronously after seeding for imperative setup.
+- `Provider({ config?, store?, initial?, onMount?, children })` — provide exactly one of `config` (wrapped in `createDocumentStore()` exactly once per mount) or `store` (an existing store instance, adopted as-is — to share one store across multiple React roots or drive it from non-React code); supplying neither, or both, throws. Optional `initial` seeds documents/query results before the first render; optional `onMount` runs synchronously after seeding for imperative setup. Both run regardless of which source supplied the store.
 - `useDocument(type, id | null | undefined)` → `DocumentHandle<T>`. `null`/`undefined` id returns an idle handle (useful for conditional fetching — `useDocument("user", isLoggedIn ? myId : null)`). "Idle" isn't a separate `status`: the handle reads `status: "pending"` with `isFetching: false` (detect it as `status === "pending" && !isFetching` if you need to). There's no `"IDLE"` status — it folded onto the orthogonal `isFetching` axis.
 - `useDocumentStore()` → store API. Escape hatch for imperative ops (`insertDocument`, `clearMemory`, query methods).
 - `useQuery(type, params | null | undefined)` → `QueryHandle<Result>`. Same null-handling as `useDocument`.
