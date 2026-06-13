@@ -64,11 +64,13 @@ function seedQueries<M extends DocumentTypes, Q extends QueryTypes>(
 }
 
 /**
- * Resolve the store a Provider binds to context. Two sources: adopt the
- * caller's pre-built `store` (built outside React — SSR prep, a pre-React
- * imperative handle, or one shared across trees), or construct one from
- * `config` (the common case — an isolated store per mount). Exactly one is
- * required; with neither there's nothing to bind, so this throws.
+ * Resolve the store a Provider binds to context. `config` and `store` are the
+ * two ends of one pipeline — `config` is the recipe, `store` is the result of
+ * `createDocumentStore(config)` — so exactly one is required: construct from
+ * `config` (the common case — an isolated store per mount), or adopt a pre-built
+ * `store`. With neither there's nothing to bind; with both the `config` would be
+ * redundant (an adopted store already has its config baked in). Either violation
+ * throws.
  *
  * `store` arrives as the caller's `S`, which by construction extends
  * `DocumentStore<DocumentTypes, QueryTypes>`; narrow it to the concrete
@@ -78,6 +80,11 @@ function resolveStore<M extends DocumentTypes, Q extends QueryTypes>(
   config: DocumentStoreConfig<M, Q> | undefined,
   store: DocumentStore<DocumentTypes, QueryTypes> | undefined,
 ): DocumentStore<M, Q> {
+  if (config !== undefined && store !== undefined) {
+    throw new Error(
+      "@supergrain/silo/react: createDocumentStoreContext Provider takes exactly one of `config` (to construct a store) or `store` (to adopt an existing one), not both — an adopted store already has its config baked in",
+    );
+  }
   if (store !== undefined) return store as unknown as DocumentStore<M, Q>;
   if (config !== undefined) return createDocumentStore<M, Q>(config);
   throw new Error(
@@ -96,11 +103,13 @@ function resolveStore<M extends DocumentTypes, Q extends QueryTypes>(
  * exactly once per mount. Every SSR request, every test, every React tree
  * gets an isolated store by construction.
  *
- * Pass `store` instead of `config` to adopt a store you built outside React —
- * for SSR setup, an imperative handle held before React mounts, or one shared
- * across trees — and the Provider binds that instance to context as-is rather
- * than constructing a new one. Provide exactly one of `config` or `store`;
- * supplying neither throws.
+ * Pass `store` instead of `config` to adopt a store instance you built outside
+ * React — to share one store across multiple React roots, or to drive it from
+ * non-React code — and the Provider binds that instance to context as-is rather
+ * than constructing a new one. (For a Provider-owned store, `config` with
+ * `initial`/`onMount` already covers seeding and imperative setup.) `config`
+ * and `store` are the two ends of one pipeline (recipe vs. built store), so
+ * provide exactly one — supplying neither, or both, throws.
  *
  * Optional `initial` seeds documents and query results before the first
  * render. Optional `onMount` runs synchronously after seeding for imperative

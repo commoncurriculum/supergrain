@@ -562,6 +562,21 @@ describe("Provider store prop", () => {
       ),
     ).toThrow(/requires either a .config.*or a .store./);
   });
+
+  it("throws when both config and store are provided", () => {
+    // `config` and `store` are the two ends of one pipeline; an adopted store
+    // already has its config baked in, so supplying both is a contradiction.
+    // Both props are optional, so this is type-legal — the guard is runtime.
+    const store = createDocumentStore<TypeToModel, TypeToQuery>(makeStoreConfig());
+
+    expect(() =>
+      render(
+        <Provider config={makeStoreConfig()} store={store}>
+          <span>child</span>
+        </Provider>,
+      ),
+    ).toThrow(/exactly one of .config.*or .store.*not both/);
+  });
 });
 
 // =============================================================================
