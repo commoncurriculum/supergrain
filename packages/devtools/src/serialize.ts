@@ -185,15 +185,15 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
     // carry a `_tag` and extra fields (`type`, `keys`, `cause`, …). Prefer the
     // tag as the display name, and surface own-enumerable props so the cause is
     // visible without expanding a raw object.
+    // Reached only from walkComposite, which `walk` guards with the depth/cycle
+    // checks — so `depth < maxDepth` already holds here.
     const tagged = error as Error & { _tag?: string };
-    const name = tagged._tag ?? error.name ?? "Error";
+    const name = tagged._tag ?? error.name;
     const entries: Array<readonly [string, JsonNode]> = [];
-    if (depth < maxDepth) {
-      const own = error as unknown as Record<string, unknown>;
-      const keys = Object.keys(error).filter((k) => k !== "message");
-      for (const key of keys.slice(0, maxEntries)) {
-        entries.push([key, walk(own[key], depth + 1)]);
-      }
+    const own = error as unknown as Record<string, unknown>;
+    const keys = Object.keys(error).filter((k) => k !== "message");
+    for (const key of keys.slice(0, maxEntries)) {
+      entries.push([key, walk(own[key], depth + 1)]);
     }
     return { t: "error", name, message: error.message, entries };
   }

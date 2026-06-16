@@ -48,16 +48,17 @@ export const SiloPanelContent = tracked(function SiloPanelContent({
   onSelect,
 }: SiloPanelContentProps) {
   // Serialize the value/error for the selected entry only — the list needs
-  // scalar status alone, so a large cache stays cheap to render.
+  // scalar status alone, so a large cache stays cheap to render. The bridge is
+  // always a real store's (the parent only renders this with a valid one), so
+  // the snapshot is never undefined.
   const snapshot = snapshotSilo(bridge, {
     includeValue: (_kind, type, key) =>
       selected !== null && selected.tab === tab && selected.type === type && selected.key === key,
-  });
+  })!;
 
-  const docCount = snapshot?.totals.documents ?? 0;
-  const queryCount = snapshot?.totals.queries ?? 0;
-  let groups: ReadonlyArray<SiloTypeSnapshot> = [];
-  if (snapshot) groups = tab === "documents" ? snapshot.documents : snapshot.queries;
+  const docCount = snapshot.totals.documents;
+  const queryCount = snapshot.totals.queries;
+  const groups = tab === "documents" ? snapshot.documents : snapshot.queries;
   const needle = search.trim().toLowerCase();
   const filtered = filterGroups(groups, needle);
   const selectedEntry = findSelected(filtered, selected, tab);
@@ -126,11 +127,11 @@ export const SiloStatusDot = tracked(function SiloStatusDot({
   let fetching = 0;
   let errored = 0;
   for (const bridge of bridges) {
-    const snapshot = snapshotSilo(bridge);
-    if (snapshot) {
-      fetching += snapshot.totals.fetching;
-      errored += snapshot.totals.errored;
-    }
+    // Bridges always come from a real store (see resolveStores), so the
+    // snapshot is never undefined.
+    const snapshot = snapshotSilo(bridge)!;
+    fetching += snapshot.totals.fetching;
+    errored += snapshot.totals.errored;
   }
   const variant = dotVariant(fetching, errored);
   return <span className={`sgdt-toggle-dot${variant ? ` ${variant}` : ""}`} />;

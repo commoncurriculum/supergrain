@@ -1,5 +1,5 @@
 import { getSiloDevtools, snapshotSilo } from "@supergrain/devtools";
-import { effect } from "@supergrain/kernel";
+import { createReactive, effect } from "@supergrain/kernel";
 import { createDocumentStore, type DocumentStore } from "@supergrain/silo";
 import { SILO_DEVTOOLS } from "@supergrain/silo/devtools";
 import { describe, expect, it } from "vitest";
@@ -152,5 +152,72 @@ describe("snapshotSilo()", () => {
     expect(runs).toBeGreaterThan(afterInsert);
 
     stop();
+  });
+
+  it("accepts a devtools bridge directly, not only a store", () => {
+    const store = makeStore();
+    store.insertDocument("user", { id: "1", name: "Ada" });
+    const bridge = getSiloDevtools(store)!;
+
+    // Pass the bridge (not the store) — exercises the bridge passthrough.
+    const snap = snapshotSilo(bridge)!;
+    expect(snap.documents.find((g) => g.type === "user")!.entries).toHaveLength(1);
+  });
+});
+
+// A hand-built bridge lets us put handles into states (fetching, errored with a
+// distinct lastError) that are awkward to produce through real async fetches.
+function syntheticBridge() {
+  const handle = (over: Record<string, unknown>) => ({
+    status: "pending",
+    isFetching: false,
+    value: undefined,
+    error: undefined,
+    fetchedAt: undefined,
+    failureCount: 0,
+    lastError: undefined,
+    ...over,
+  });
+
+  const documents = new Map([
+    [
+      "user",
+      new Map<string, unknown>([
+        [
+          "ok",
+          handle({ status: "success", value: { id: "ok", name: "Ada" }, fetchedAt: new Date(0) }),
+        ],
+        ["busy", handle({ isFetching: true })],
+        [
+          "bad",
+          handle({
+            status: "error",
+            error: new Error("boom"),
+            lastError: new Error("still trying"),
+            failureCount: 2,
+          }),
+        ],
+      ]),
+    ],
+  ]);
+
+  const state = createReactive({ documents, queries: new Map() });
+  return { state, documentTypes: ["user"], queryTypes: [], clearMemory() {} };
+}
+
+describe("snapshotSilo() — handle states", () => {
+  it("counts fetching/errored handles and serializes error + lastError", () => {
+    const snap = snapshotSilo(syntheticBridge(), { includeValue: () => true })!;
+    expect(snap.totals.fetching).toBe(1);
+    expect(snap.totals.errored).toBe(1);
+
+    const entries = snap.documents.find((g) => g.type === "user")!.entries;
+    const bad = entries.find((e) => e.key === "bad")!;
+    expect(bad.status).toBe("error");
+    expect(bad.error?.t).toBe("error");
+    expect(bad.lastError?.t).toBe("error");
+
+    const busy = entries.find((e) => e.key === "busy")!;
+    expect(busy.isFetching).toBe(true);
   });
 });

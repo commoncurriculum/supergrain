@@ -180,7 +180,10 @@ function buildEntry(key: string, handle: InternalHandle, ctx: EntryContext): Sil
     fetchedAt: handle.fetchedAt ? handle.fetchedAt.getTime() : null,
   };
   if (ctx.includeValue(ctx.kind, ctx.type, key)) {
-    entry.value = serialize(handle.value, ctx.serializeOptions);
+    // Serialize only what's actually present — an empty handle has no value to
+    // show, so the detail view can fall back to "No value cached." rather than
+    // rendering a bare `undefined`.
+    if (handle.value !== undefined) entry.value = serialize(handle.value, ctx.serializeOptions);
     if (handle.error !== undefined) entry.error = serialize(handle.error, ctx.serializeOptions);
     if (handle.lastError !== undefined && handle.lastError !== handle.error) {
       entry.lastError = serialize(handle.lastError, ctx.serializeOptions);

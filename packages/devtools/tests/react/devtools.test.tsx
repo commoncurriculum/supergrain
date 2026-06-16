@@ -1,5 +1,7 @@
 import { SupergrainDevtools } from "@supergrain/devtools/react";
+import { createReactive } from "@supergrain/kernel";
 import { createDocumentStore, type DocumentStore } from "@supergrain/silo";
+import { SILO_DEVTOOLS } from "@supergrain/silo/devtools";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -8,11 +10,52 @@ afterEach(() => cleanup());
 type Models = {
   user: { id: string; name: string };
 };
+type Queries = {
+  search: { params: { q: string }; result: { ids: Array<string> } };
+};
 
 function makeStore(): DocumentStore<Models> {
   return createDocumentStore<Models>({
     models: { user: { adapter: { find: () => Promise.resolve([]) } } },
   });
+}
+
+function makeStoreWithQuery(): DocumentStore<Models, Queries> {
+  return createDocumentStore<Models, Queries>({
+    models: { user: { adapter: { find: () => Promise.resolve([]) } } },
+    queries: { search: { adapter: { find: () => Promise.resolve([]) } } },
+  });
+}
+
+// Build a fake store carrying a hand-crafted devtools bridge so handle states
+// (fetching, errored) can be rendered deterministically without real fetches.
+function handle(over: Record<string, unknown>): Record<string, unknown> {
+  return {
+    status: "pending",
+    isFetching: false,
+    value: undefined,
+    error: undefined,
+    fetchedAt: undefined,
+    failureCount: 0,
+    lastError: undefined,
+    ...over,
+  };
+}
+
+function syntheticStore(docs: Record<string, Array<[string, Record<string, unknown>]>>): object {
+  const documents = new Map(
+    Object.entries(docs).map(([type, entries]) => [type, new Map(entries)] as const),
+  );
+  const state = createReactive({ documents, queries: new Map() });
+  const bridge = {
+    state,
+    documentTypes: Object.keys(docs),
+    queryTypes: [],
+    clearMemory: () => {},
+  };
+  const store = {};
+  Object.defineProperty(store, SILO_DEVTOOLS, { value: bridge, enumerable: false });
+  return store;
 }
 
 describe("<SupergrainDevtools />", () => {
@@ -85,5 +128,135 @@ describe("<SupergrainDevtools />", () => {
     // The entry remains listed (handle persists) but resets to pending, and the
     // detail selection is cleared.
     expect(screen.getByText("Select an entry to inspect it.")).toBeTruthy();
+  });
+
+  it("closes the panel", () => {
+    render(<SupergrainDevtools store={makeStore()} initialIsOpen />);
+    expect(screen.getByText("Supergrain Devtools")).toBeTruthy();
+    fireEvent.click(screen.getByTitle("Close"));
+    expect(screen.queryByText("Supergrain Devtools")).toBeNull();
+  });
+
+  it("anchors to the configured corner", () => {
+    const { container } = render(<SupergrainDevtools store={makeStore()} position="top-left" />);
+    const root = container.querySelector(".sgdt-root") as HTMLElement;
+    expect(root.style.top).toBe("16px");
+    expect(root.style.left).toBe("16px");
+  });
+
+  it("switches tabs, filters, and toggles a group", async () => {
+    const store = makeStoreWithQuery();
+    render(<SupergrainDevtools store={store} initialIsOpen />);
+
+    await act(async () => {
+      store.insertDocument("user", { id: "u1", name: "Ada" });
+      store.insertQueryResult("search", { q: "ada" }, { ids: ["u1"] });
+    });
+
+    expect(screen.getByText("user")).toBeTruthy();
+
+    const filter = screen.getByPlaceholderText(/Filter documents/);
+    // Match by key, by type name, then no match.
+    fireEvent.change(filter, { target: { value: "u1" } });
+    expect(screen.getByText("u1")).toBeTruthy();
+    fireEvent.change(filter, { target: { value: "user" } });
+    expect(screen.getByText("user")).toBeTruthy();
+    fireEvent.change(filter, { target: { value: "zzz" } });
+    expect(screen.getByText("No matches.")).toBeTruthy();
+    fireEvent.change(filter, { target: { value: "" } });
+
+    // Collapse the type group.
+    fireEvent.click(screen.getByText("user"));
+
+    // Switch to the Queries tab.
+    fireEvent.click(screen.getByText(/Queries/));
+    expect(screen.getByText("search")).toBeTruthy();
+  });
+
+  it("supports multiple named stores via a selector", () => {
+    render(
+      <SupergrainDevtools
+        stores={{ app: makeStore(), junk: {}, admin: makeStore() }}
+        initialIsOpen
+      />,
+    );
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(select).toBeTruthy();
+    fireEvent.change(select, { target: { value: "admin" } });
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("admin");
+  });
+
+  it("shows a fetching dot on the collapsed toggle", () => {
+    const { container } = render(
+      <SupergrainDevtools
+        store={syntheticStore({ user: [["busy", handle({ isFetching: true })]] })}
+      />,
+    );
+    expect(container.querySelector(".sgdt-toggle-dot.fetching")).toBeTruthy();
+  });
+
+  it("shows an error dot on the collapsed toggle", () => {
+    const { container } = render(
+      <SupergrainDevtools
+        store={syntheticStore({
+          user: [["bad", handle({ status: "error", error: new Error("x") })]],
+        })}
+      />,
+    );
+    expect(container.querySelector(".sgdt-toggle-dot.error")).toBeTruthy();
+  });
+
+  it("renders each status, detail sections, and selection across types and tabs", () => {
+    const store = syntheticStore({
+      user: [
+        [
+          "ok",
+          handle({ status: "success", value: { id: "ok", name: "Ada" }, fetchedAt: new Date(0) }),
+        ],
+        ["busy", handle({ isFetching: true })],
+        [
+          "bad",
+          handle({
+            status: "error",
+            error: new Error("boom"),
+            lastError: new Error("again"),
+            failureCount: 2,
+          }),
+        ],
+        ["idle", handle({})],
+      ],
+      post: [["p1", handle({ status: "success", value: { id: "p1" } })]],
+    });
+    render(<SupergrainDevtools store={store} initialIsOpen />);
+
+    // Status badges for the varied handles.
+    expect(screen.getByText("fetching")).toBeTruthy();
+    expect(screen.getAllByText("success").length).toBeGreaterThan(0);
+
+    // Errored entry: both error and last-attempt-error sections.
+    fireEvent.click(screen.getByText("bad"));
+    expect(screen.getByText("Error")).toBeTruthy();
+    expect(screen.getByText("Last attempt error")).toBeTruthy();
+
+    // Successful entry: value explorer (also a cross-type selection: the `post`
+    // group is now compared against a `user` selection).
+    fireEvent.click(screen.getByText("ok"));
+    expect(screen.getByText("name:")).toBeTruthy();
+
+    // Idle entry: no cached value.
+    fireEvent.click(screen.getByText("idle"));
+    expect(screen.getByText("No value cached.")).toBeTruthy();
+
+    // Filter the selected entry out of view → the selection is no longer found.
+    fireEvent.change(screen.getByPlaceholderText(/Filter documents/), {
+      target: { value: "busy" },
+    });
+    expect(screen.getByText("Select an entry to inspect it.")).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText(/Filter documents/), { target: { value: "" } });
+
+    // With a documents selection, switch tabs and back (selected.tab vs active).
+    fireEvent.click(screen.getByText(/Queries/));
+    fireEvent.click(screen.getByText(/Documents/));
+    expect(screen.getByText("user")).toBeTruthy();
   });
 });

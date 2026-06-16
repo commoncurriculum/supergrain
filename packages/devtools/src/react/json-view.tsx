@@ -93,6 +93,7 @@ function Leaf({ node }: { node: JsonNode }) {
     case "max-depth": {
       return <span className="sgdt-json-meta">…</span>;
     }
+    /* c8 ignore next 3 -- exhaustive over leaf kinds; composite kinds never reach Leaf */
     default: {
       return null;
     }
@@ -132,6 +133,7 @@ function compositeSummary(node: JsonNode): string {
     case "error": {
       return `${node.name}: ${node.message}`;
     }
+    /* c8 ignore next 3 -- exhaustive over composite kinds; leaves never reach here */
     default: {
       return "";
     }
@@ -155,6 +157,7 @@ function compositeChildren(node: JsonNode): Array<Child> {
     case "error": {
       return node.entries.map(([k, n]) => ({ label: k, node: n }));
     }
+    /* c8 ignore next 3 -- exhaustive over composite kinds; leaves never reach here */
     default: {
       return [];
     }
