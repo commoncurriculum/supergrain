@@ -54,7 +54,7 @@ describe("<JsonView />", () => {
   it("collapses and expands a composite on click", () => {
     render(<JsonView node={serialize({ a: 1 })} label="value" />);
     const summary = screen.getByText(/1 key/);
-    const toggle = summary.closest(".sgdt-json-toggle")!;
+    const toggle = summary.closest("button")!;
     fireEvent.click(toggle); // collapse
     fireEvent.click(toggle); // expand
     expect(screen.getByText(/1 key/)).toBeTruthy();

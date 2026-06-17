@@ -17,12 +17,19 @@ pnpm add -D @supergrain/devtools
 powers the panel's accessible controls — keyboard nav, focus management, ARIA)
 come along as dependencies.
 
+The panel is styled with Tailwind in the [Untitled UI](https://www.untitledui.com/)
+design language, but ships as a **prebuilt, self-contained `style.css`** — you
+don't need Tailwind in your own app, and it carries no global reset, so it won't
+restyle anything outside the panel.
+
 ## Usage
 
-Drop `<SupergrainDevtools>` next to your app and hand it the store you got from
+Import the stylesheet once (anywhere in your app's entry), then drop
+`<SupergrainDevtools>` next to your app and hand it the store you got from
 `createDocumentStore` (or from a Provider's `useDocumentStore()`):
 
 ```tsx
+import "@supergrain/devtools/style.css";
 import { SupergrainDevtools } from "@supergrain/devtools/react";
 
 function Root() {

@@ -3,16 +3,20 @@
 // it can't loop and never touches the live store. Each composite node keeps its
 // own open/closed state, like the TanStack devtools data explorer. The
 // expand/collapse control is a react-aria `Button` (focusable, Enter/Space,
-// exposes `aria-expanded`).
+// exposes `aria-expanded`); styling follows the Untitled UI design language.
 
 import type { JsonNode } from "../serialize";
 
 import { useState } from "react";
 import { Button } from "react-aria-components";
 
+const TOGGLE =
+  "cursor-pointer rounded text-left text-gray-700 outline-none hover:bg-gray-100 data-[focus-visible]:ring-2 data-[focus-visible]:ring-violet-500";
+const META = "text-gray-400 italic";
+
 export function JsonView({ node, label }: { node: JsonNode; label?: string }) {
   return (
-    <div className="sgdt-json">
+    <div className="font-mono text-xs leading-relaxed">
       <JsonNodeView node={node} label={label} depth={0} />
     </div>
   );
@@ -24,11 +28,11 @@ function JsonNodeView({ node, label, depth }: { node: JsonNode; label?: string; 
   const composite = describeComposite(node);
   const [open, setOpen] = useState(depth < AUTO_OPEN_DEPTH);
 
-  const keyLabel = label === undefined ? null : <span className="sgdt-json-key">{label}: </span>;
+  const keyLabel = label === undefined ? null : <span className="text-violet-700">{label}: </span>;
 
   if (composite === null) {
     return (
-      <span className="sgdt-json-row">
+      <span className="block">
         {keyLabel}
         <Leaf node={node} />
       </span>
@@ -36,14 +40,14 @@ function JsonNodeView({ node, label, depth }: { node: JsonNode; label?: string; 
   }
 
   return (
-    <div className="sgdt-json-row">
-      <Button className="sgdt-json-toggle" aria-expanded={open} onPress={() => setOpen((v) => !v)}>
-        <span className="sgdt-json-meta">{open ? "▾ " : "▸ "}</span>
+    <div className="block">
+      <Button className={TOGGLE} aria-expanded={open} onPress={() => setOpen((v) => !v)}>
+        <span className="text-gray-400">{open ? "▾ " : "▸ "}</span>
         {keyLabel}
-        <span className="sgdt-json-meta">{composite.summary}</span>
+        <span className={META}>{composite.summary}</span>
       </Button>
       {open && composite.children.length > 0 && (
-        <div className="sgdt-indent">
+        <div className="ml-1 border-l border-gray-200 pl-3.5">
           {composite.children.map((child) => (
             <JsonNodeView key={child.key} node={child.node} label={child.label} depth={depth + 1} />
           ))}
@@ -56,37 +60,37 @@ function JsonNodeView({ node, label, depth }: { node: JsonNode; label?: string; 
 function Leaf({ node }: { node: JsonNode }) {
   switch (node.t) {
     case "null": {
-      return <span className="sgdt-json-null">null</span>;
+      return <span className="text-gray-400">null</span>;
     }
     case "undefined": {
-      return <span className="sgdt-json-null">undefined</span>;
+      return <span className="text-gray-400">undefined</span>;
     }
     case "boolean": {
-      return <span className="sgdt-json-boolean">{String(node.value)}</span>;
+      return <span className="text-red-600">{String(node.value)}</span>;
     }
     case "number": {
-      return <span className="sgdt-json-number">{node.text}</span>;
+      return <span className="text-amber-700">{node.text}</span>;
     }
     case "string": {
-      return <span className="sgdt-json-string">{JSON.stringify(node.value)}</span>;
+      return <span className="text-emerald-700">{JSON.stringify(node.value)}</span>;
     }
     case "bigint": {
-      return <span className="sgdt-json-number">{node.text}</span>;
+      return <span className="text-amber-700">{node.text}</span>;
     }
     case "date": {
-      return <span className="sgdt-json-string">{node.text}</span>;
+      return <span className="text-emerald-700">{node.text}</span>;
     }
     case "symbol": {
-      return <span className="sgdt-json-meta">{node.text}</span>;
+      return <span className={META}>{node.text}</span>;
     }
     case "function": {
-      return <span className="sgdt-json-meta">ƒ {node.name}()</span>;
+      return <span className={META}>ƒ {node.name}()</span>;
     }
     case "circular": {
-      return <span className="sgdt-json-meta">[Circular]</span>;
+      return <span className={META}>[Circular]</span>;
     }
     case "max-depth": {
-      return <span className="sgdt-json-meta">…</span>;
+      return <span className={META}>…</span>;
     }
     /* c8 ignore next 3 -- exhaustive over leaf kinds; composite kinds never reach Leaf */
     default: {

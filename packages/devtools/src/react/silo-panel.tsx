@@ -1,5 +1,6 @@
 // The silo inspector: tabs (with live counts), a filter box, and a master/detail
-// view over a store's cached documents and query results.
+// view over a store's cached documents and query results. Controls are
+// react-aria-components styled with Tailwind in the Untitled UI design language.
 //
 // `SiloPanelContent` and `SiloStatusDot` are wrapped in `tracked()` so reading
 // the store's reactive state during render subscribes them to it — counts, the
@@ -29,7 +30,13 @@ import {
   snapshotSilo,
 } from "../silo";
 import { JsonView } from "./json-view";
-import { STATUS_COLOR } from "./styles";
+
+const FOCUS = "data-[focus-visible]:ring-2 data-[focus-visible]:ring-violet-500";
+const TAB = `cursor-pointer rounded-t-md px-3 py-1.5 text-sm font-medium text-gray-500 outline-none hover:text-gray-700 data-[selected]:bg-white data-[selected]:text-violet-700 data-[selected]:shadow-[inset_0_-2px_0_0_#7c3aed] ${FOCUS}`;
+const GROUP_HEADER = `sticky top-0 z-10 flex w-full items-center gap-1.5 border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-left text-sm font-semibold text-gray-600 outline-none hover:bg-gray-100 ${FOCUS}`;
+const ENTRY = `flex w-full items-center gap-2 border-b border-gray-50 py-1.5 pr-3 pl-6 text-left outline-none hover:bg-gray-50 data-[selected]:bg-violet-50 ${FOCUS}`;
+const EMPTY = "p-5 text-center text-sm text-gray-400";
+const BADGE = "rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
 
 export type SiloTab = "documents" | "queries";
 
@@ -78,17 +85,20 @@ export const SiloPanelContent = tracked(function SiloPanelContent({
   const surface = (
     <>
       <SearchField
-        className="sgdt-search"
+        className="border-b border-gray-200 px-3 py-2"
         aria-label={`Filter ${tab}`}
         value={search}
         onChange={onSearchChange}
       >
-        <Input placeholder={`Filter ${tab} by type or key…`} />
+        <Input
+          className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 outline-none placeholder:text-gray-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-500/30"
+          placeholder={`Filter ${tab} by type or key…`}
+        />
       </SearchField>
-      <div className="sgdt-body">
-        <div className="sgdt-list">
+      <div className="flex min-h-0 flex-1">
+        <div className="w-[44%] min-w-[200px] overflow-auto border-r border-gray-200">
           {filtered.length === 0 ? (
-            <div className="sgdt-empty">{needle ? "No matches." : `No cached ${tab} yet.`}</div>
+            <div className={EMPTY}>{needle ? "No matches." : `No cached ${tab} yet.`}</div>
           ) : (
             filtered.map((group) => (
               <TypeGroup
@@ -101,11 +111,11 @@ export const SiloPanelContent = tracked(function SiloPanelContent({
             ))
           )}
         </div>
-        <div className="sgdt-detail">
+        <div className="flex-1 overflow-auto p-3">
           {selectedEntry ? (
             <EntryDetail entry={selectedEntry} />
           ) : (
-            <div className="sgdt-empty">Select an entry to inspect it.</div>
+            <div className={EMPTY}>Select an entry to inspect it.</div>
           )}
         </div>
       </div>
@@ -114,22 +124,25 @@ export const SiloPanelContent = tracked(function SiloPanelContent({
 
   return (
     <Tabs
-      className="sgdt-tabs-root"
+      className="flex min-h-0 flex-1 flex-col"
       selectedKey={tab}
       onSelectionChange={(key) => onTabChange(key as SiloTab)}
     >
-      <TabList className="sgdt-tabs" aria-label="Cache surface">
-        <Tab id="documents" className="sgdt-tab">
-          Documents<span className="sgdt-count">{docCount}</span>
+      <TabList
+        className="flex gap-1 border-b border-gray-200 bg-gray-50 px-3 pt-2"
+        aria-label="Cache surface"
+      >
+        <Tab id="documents" className={TAB}>
+          Documents<span className="ml-1.5 font-normal text-gray-400">{docCount}</span>
         </Tab>
-        <Tab id="queries" className="sgdt-tab">
-          Queries<span className="sgdt-count">{queryCount}</span>
+        <Tab id="queries" className={TAB}>
+          Queries<span className="ml-1.5 font-normal text-gray-400">{queryCount}</span>
         </Tab>
       </TabList>
-      <TabPanel id="documents" className="sgdt-tabpanel">
+      <TabPanel id="documents" className="flex min-h-0 flex-1 flex-col outline-none">
         {surface}
       </TabPanel>
-      <TabPanel id="queries" className="sgdt-tabpanel">
+      <TabPanel id="queries" className="flex min-h-0 flex-1 flex-col outline-none">
         {surface}
       </TabPanel>
     </Tabs>
@@ -155,14 +168,18 @@ export const SiloStatusDot = tracked(function SiloStatusDot({
     fetching += activity.fetching;
     errored += activity.errored;
   }
-  const variant = dotVariant(fetching, errored);
-  return <span className={`sgdt-toggle-dot${variant ? ` ${variant}` : ""}`} />;
+  return (
+    <span
+      data-variant={dotVariant(fetching, errored)}
+      className="inline-block size-2 rounded-full bg-emerald-500 data-[variant=error]:bg-red-500 data-[variant=fetching]:animate-pulse data-[variant=fetching]:bg-blue-500"
+    />
+  );
 });
 
 function dotVariant(fetching: number, errored: number): string {
   if (fetching > 0) return "fetching";
   if (errored > 0) return "error";
-  return "";
+  return "ok";
 }
 
 function TypeGroup({
@@ -179,10 +196,14 @@ function TypeGroup({
   const [open, setOpen] = useState(true);
   return (
     <div>
-      <Button className="sgdt-group-header" aria-expanded={open} onPress={() => setOpen((v) => !v)}>
-        <span className={`sgdt-caret${open ? " open" : ""}`}>▸</span>
+      <Button className={GROUP_HEADER} aria-expanded={open} onPress={() => setOpen((v) => !v)}>
+        <span
+          className={`inline-block w-2.5 text-gray-400 transition-transform${open ? " rotate-90" : ""}`}
+        >
+          ▸
+        </span>
         <span>{group.type}</span>
-        <span className="sgdt-group-count">({group.entries.length})</span>
+        <span className="font-normal text-gray-400">({group.entries.length})</span>
       </Button>
       {open &&
         group.entries.map((entry) => {
@@ -194,12 +215,12 @@ function TypeGroup({
           return (
             <ToggleButton
               key={entry.key}
-              className="sgdt-entry"
+              className={ENTRY}
               isSelected={isSelected}
               onPress={() => onSelect({ tab, type: group.type, key: entry.key })}
             >
               <StatusBadge entry={entry} />
-              <span className="sgdt-entry-key" title={entry.key}>
+              <span className="flex-1 truncate font-mono text-xs text-gray-700" title={entry.key}>
                 {entry.key}
               </span>
             </ToggleButton>
@@ -210,59 +231,71 @@ function TypeGroup({
 }
 
 function StatusBadge({ entry }: { entry: SiloEntrySnapshot }) {
-  const { label, color } = badge(entry);
-  return (
-    <span className="sgdt-badge" style={{ background: `${color}22`, color }}>
-      {label}
-    </span>
-  );
+  const tone = badge(entry);
+  return <span className={`${BADGE} ${tone.badge}`}>{tone.label}</span>;
 }
 
-function badge(entry: SiloEntrySnapshot): { label: string; color: string } {
-  if (entry.isFetching) return { label: "fetching", color: STATUS_COLOR.fetching };
-  if (entry.status === "error") return { label: "error", color: STATUS_COLOR.error };
-  if (entry.status === "success") return { label: "success", color: STATUS_COLOR.success };
-  return { label: "pending", color: STATUS_COLOR.pending };
+interface Tone {
+  label: string;
+  badge: string;
+  text: string;
+}
+
+function badge(entry: SiloEntrySnapshot): Tone {
+  if (entry.isFetching)
+    return { label: "fetching", badge: "bg-blue-50 text-blue-700", text: "text-blue-700" };
+  if (entry.status === "error")
+    return { label: "error", badge: "bg-red-50 text-red-700", text: "text-red-700" };
+  if (entry.status === "success") {
+    return { label: "success", badge: "bg-emerald-50 text-emerald-700", text: "text-emerald-700" };
+  }
+  return { label: "pending", badge: "bg-gray-100 text-gray-500", text: "text-gray-500" };
 }
 
 function EntryDetail({ entry }: { entry: SiloEntrySnapshot }) {
-  const { label, color } = badge(entry);
+  const tone = badge(entry);
   return (
     <div>
-      <div className="sgdt-detail-key">{entry.key}</div>
-      <div className="sgdt-meta">
-        <span className="sgdt-meta-k">status</span>
-        <span className="sgdt-meta-v" style={{ color }}>
-          {label}
-        </span>
-        <span className="sgdt-meta-k">isFetching</span>
-        <span className="sgdt-meta-v">{String(entry.isFetching)}</span>
-        <span className="sgdt-meta-k">failureCount</span>
-        <span className="sgdt-meta-v">{entry.failureCount}</span>
-        <span className="sgdt-meta-k">fetchedAt</span>
-        <span className="sgdt-meta-v">
+      <div className="mb-2 break-all font-mono text-sm font-semibold text-gray-900">
+        {entry.key}
+      </div>
+      <div className="mb-3 grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1">
+        <span className="text-gray-500">status</span>
+        <span className={`font-mono text-xs ${tone.text}`}>{tone.label}</span>
+        <span className="text-gray-500">isFetching</span>
+        <span className="font-mono text-xs text-gray-700">{String(entry.isFetching)}</span>
+        <span className="text-gray-500">failureCount</span>
+        <span className="font-mono text-xs text-gray-700">{entry.failureCount}</span>
+        <span className="text-gray-500">fetchedAt</span>
+        <span className="font-mono text-xs text-gray-700">
           {entry.fetchedAt === null ? "—" : new Date(entry.fetchedAt).toLocaleTimeString()}
         </span>
       </div>
 
       {entry.value !== undefined && (
         <>
-          <div className="sgdt-section-title">Value</div>
+          <div className="mt-2.5 mb-1 text-[10px] font-bold tracking-wider text-gray-500 uppercase">
+            Value
+          </div>
           <JsonView node={entry.value} />
         </>
       )}
       {entry.value === undefined && !entry.hasValue && (
-        <div className="sgdt-empty">No value cached.</div>
+        <div className={EMPTY}>No value cached.</div>
       )}
       {entry.error !== undefined && (
         <>
-          <div className="sgdt-section-title sgdt-json-error">Error</div>
+          <div className="mt-2.5 mb-1 text-[10px] font-bold tracking-wider text-red-600 uppercase">
+            Error
+          </div>
           <JsonView node={entry.error} />
         </>
       )}
       {entry.lastError !== undefined && (
         <>
-          <div className="sgdt-section-title">Last attempt error</div>
+          <div className="mt-2.5 mb-1 text-[10px] font-bold tracking-wider text-gray-500 uppercase">
+            Last attempt error
+          </div>
           <JsonView node={entry.lastError} />
         </>
       )}

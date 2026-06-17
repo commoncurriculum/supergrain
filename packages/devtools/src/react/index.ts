@@ -18,4 +18,3 @@ export {
   type SiloTab,
 } from "./silo-panel";
 export { JsonView } from "./json-view";
-export { injectStyles, STATUS_COLOR, STYLE_ID } from "./styles";

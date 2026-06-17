@@ -5,18 +5,25 @@
 // reads its non-enumerable devtools bridge and never calls `find`, so opening it
 // can't trigger fetches.
 //
+// Controls are react-aria-components, styled with Tailwind in the Untitled UI
+// design language. Import the stylesheet once: `@supergrain/devtools/style.css`.
+//
 // Built to grow: the shell (toggle, framing, store selector, clear) is generic,
 // and the body is one inspector among future ones (a raw kernel store, the
 // profiler) that can become additional tabs.
 
-import { type CSSProperties, useCallback, useEffect, useState } from "react";
+import { type CSSProperties, useCallback, useState } from "react";
 import { Button, ListBox, ListBoxItem, Popover, Select, SelectValue } from "react-aria-components";
 
 import { getSiloDevtools, type SiloDevtoolsBridge } from "../silo";
 import { type SelectedEntry, type SiloTab, SiloPanelContent, SiloStatusDot } from "./silo-panel";
-import { injectStyles } from "./styles";
 
 export type DevtoolsPosition = "bottom-right" | "bottom-left" | "top-right" | "top-left";
+
+const FOCUS = "data-[focus-visible]:ring-2 data-[focus-visible]:ring-violet-500";
+const TOGGLE = `inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 shadow-sm outline-none hover:bg-gray-50 ${FOCUS}`;
+const ICON_BTN = `rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 outline-none hover:bg-gray-50 ${FOCUS}`;
+const SELECT_TRIGGER = `sgdt-select inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-700 outline-none hover:bg-gray-50 ${FOCUS}`;
 
 export interface SupergrainDevtoolsProps {
   /** A silo `DocumentStore` to inspect. */
@@ -31,11 +38,9 @@ export interface SupergrainDevtoolsProps {
   /** Corner the toggle button anchors to. Default `"bottom-right"`. */
   position?: DevtoolsPosition;
   /**
-   * Render nothing and skip injecting styles. Pass
-   * `process.env.NODE_ENV === "production"` to keep the panel out of production.
-   * (The store's silo-side devtools bridge is always present regardless — it's a
-   * tiny non-enumerable hook, like the Redux devtools global; see
-   * `@supergrain/silo/devtools`.)
+   * Render nothing. Pass `process.env.NODE_ENV === "production"` to keep the
+   * panel out of production. (The store's silo-side devtools bridge is always
+   * present regardless — a tiny non-enumerable hook; see `@supergrain/silo/devtools`.)
    */
   disabled?: boolean;
 }
@@ -52,10 +57,6 @@ export function SupergrainDevtools({
   position = "bottom-right",
   disabled = false,
 }: SupergrainDevtoolsProps) {
-  useEffect(() => {
-    if (!disabled) injectStyles();
-  }, [disabled]);
-
   const [open, setOpen] = useState(initialIsOpen);
   const [activeName, setActiveName] = useState<string | null>(null);
   const [tab, setTab] = useState<SiloTab>("documents");
@@ -82,25 +83,31 @@ export function SupergrainDevtools({
 
   if (!open) {
     return (
-      <div className="sgdt-root" style={anchor(position)}>
+      <div
+        className="sgdt-root fixed z-[99999] font-sans text-sm text-gray-700"
+        style={anchor(position)}
+      >
         <Button
-          className="sgdt-toggle"
+          className={TOGGLE}
           aria-label="Open Supergrain devtools"
           onPress={() => setOpen(true)}
         >
           <SiloStatusDot bridges={bridges} />
-          <span className="sgdt-grain">🌾</span> Supergrain
+          <span className="text-amber-500">🌾</span> Supergrain
         </Button>
       </div>
     );
   }
 
   return (
-    <div className="sgdt-root" style={anchor(position)}>
-      <div className="sgdt-panel">
-        <div className="sgdt-header">
-          <span className="sgdt-title">
-            <span className="sgdt-grain">🌾</span> Supergrain Devtools
+    <div
+      className="sgdt-root fixed z-[99999] font-sans text-sm text-gray-700"
+      style={anchor(position)}
+    >
+      <div className="flex h-[440px] max-h-[calc(100vh-2rem)] w-[720px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+        <div className="flex items-center gap-2.5 border-b border-gray-200 px-3 py-2.5">
+          <span className="text-sm font-semibold text-gray-900">
+            <span className="text-amber-500">🌾</span> Supergrain Devtools
           </span>
           {named.length > 1 && (
             <Select
@@ -111,14 +118,20 @@ export function SupergrainDevtools({
                 setSelected(null);
               }}
             >
-              <Button className="sgdt-select">
+              <Button className={SELECT_TRIGGER}>
                 <SelectValue />
-                <span aria-hidden="true">▾</span>
+                <span aria-hidden="true" className="text-gray-400">
+                  ▾
+                </span>
               </Button>
-              <Popover className="sgdt-popover">
-                <ListBox className="sgdt-listbox">
+              <Popover className="z-[100000] rounded-lg border border-gray-200 bg-white p-1 font-sans text-sm text-gray-700 shadow-lg">
+                <ListBox className="max-h-60 overflow-auto outline-none">
                   {named.map((s) => (
-                    <ListBoxItem key={s.name} id={s.name} className="sgdt-option">
+                    <ListBoxItem
+                      key={s.name}
+                      id={s.name}
+                      className="cursor-pointer rounded-md px-2.5 py-1.5 text-sm text-gray-700 outline-none data-[focused]:bg-gray-100 data-[selected]:font-semibold data-[selected]:text-violet-700"
+                    >
                       {s.name}
                     </ListBoxItem>
                   ))}
@@ -126,9 +139,9 @@ export function SupergrainDevtools({
               </Popover>
             </Select>
           )}
-          <span className="sgdt-spacer" />
+          <span className="flex-1" />
           <Button
-            className="sgdt-iconbtn"
+            className={ICON_BTN}
             aria-label="Clear this store's cache"
             onPress={() => {
               active.bridge.clearMemory();
@@ -137,7 +150,7 @@ export function SupergrainDevtools({
           >
             Clear
           </Button>
-          <Button className="sgdt-iconbtn" aria-label="Close" onPress={() => setOpen(false)}>
+          <Button className={ICON_BTN} aria-label="Close" onPress={() => setOpen(false)}>
             ✕
           </Button>
         </div>

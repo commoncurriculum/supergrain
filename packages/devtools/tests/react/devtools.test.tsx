@@ -233,7 +233,7 @@ describe("<SupergrainDevtools />", () => {
         store={syntheticStore({ user: [["busy", handle({ isFetching: true })]] })}
       />,
     );
-    expect(container.querySelector(".sgdt-toggle-dot.fetching")).toBeTruthy();
+    expect(container.querySelector('[data-variant="fetching"]')).toBeTruthy();
   });
 
   it("shows an error dot on the collapsed toggle", () => {
@@ -244,7 +244,7 @@ describe("<SupergrainDevtools />", () => {
         })}
       />,
     );
-    expect(container.querySelector(".sgdt-toggle-dot.error")).toBeTruthy();
+    expect(container.querySelector('[data-variant="error"]')).toBeTruthy();
   });
 
   it("renders each status, detail sections, and selection across types and tabs", () => {
