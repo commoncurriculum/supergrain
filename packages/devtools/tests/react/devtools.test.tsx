@@ -197,6 +197,22 @@ describe("<SupergrainDevtools />", () => {
     expect(values).toContain("store (2)");
   });
 
+  it("renders interactive controls as keyboard-accessible buttons", async () => {
+    const store = makeStore();
+    render(<SupergrainDevtools store={store} initialIsOpen />);
+    await act(async () => {
+      store.insertDocument("user", { id: "k1", name: "Ada" });
+    });
+
+    const header = screen.getByText("user").closest("button");
+    expect(header?.getAttribute("aria-expanded")).toBe("true");
+
+    const entry = screen.getByText("k1").closest("button");
+    expect(entry).toBeTruthy();
+    fireEvent.click(screen.getByText("k1"));
+    expect(entry?.getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("supports multiple named stores via a selector", () => {
     render(
       <SupergrainDevtools

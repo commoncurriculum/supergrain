@@ -43,6 +43,14 @@ describe("<JsonView />", () => {
     expect(screen.getByText(/AdapterError: boom/)).toBeTruthy();
   });
 
+  it("renders the expand control as a button exposing expanded state", () => {
+    render(<JsonView node={serialize({ a: 1 })} />);
+    const toggle = screen.getByText(/1 key/).closest("button");
+    expect(toggle).toBeTruthy();
+    // Root opens by default (depth 0), so it reports expanded.
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+  });
+
   it("collapses and expands a composite on click", () => {
     render(<JsonView node={serialize({ a: 1 })} label="value" />);
     const summary = screen.getByText(/1 key/);

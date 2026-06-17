@@ -55,13 +55,13 @@ const CSS = `
 .sgdt-list { width: 44%; min-width: 200px; overflow: auto; border-right: 1px solid #1d1d27; }
 .sgdt-detail { flex: 1; overflow: auto; padding: 10px 12px; }
 
-.sgdt-group-header { display: flex; align-items: center; gap: 6px; padding: 6px 10px; color: #c2c2d0; font-weight: 600; cursor: pointer; position: sticky; top: 0; background: #0d0d12; border-bottom: 1px solid #1d1d27; }
+.sgdt-group-header { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 10px; color: #c2c2d0; font: inherit; font-weight: 600; text-align: left; cursor: pointer; position: sticky; top: 0; background: #0d0d12; appearance: none; border: none; border-bottom: 1px solid #1d1d27; }
 .sgdt-group-header:hover { background: #14141b; }
 .sgdt-group-count { color: #6e7187; font-weight: 500; }
 .sgdt-caret { width: 10px; display: inline-block; color: #6e7187; transition: transform 0.1s; }
 .sgdt-caret.open { transform: rotate(90deg); }
 
-.sgdt-entry { display: flex; align-items: center; gap: 8px; padding: 5px 10px 5px 24px; cursor: pointer; border-bottom: 1px solid #14141b; }
+.sgdt-entry { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 10px 5px 24px; cursor: pointer; color: inherit; font: inherit; text-align: left; background: transparent; appearance: none; border: none; border-bottom: 1px solid #14141b; }
 .sgdt-entry:hover { background: #14141b; }
 .sgdt-entry.selected { background: #1f2733; }
 .sgdt-entry-key { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -76,7 +76,7 @@ const CSS = `
 
 .sgdt-json { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 .sgdt-json-row { display: block; }
-.sgdt-json-toggle { cursor: pointer; user-select: none; }
+.sgdt-json-toggle { cursor: pointer; user-select: none; font: inherit; color: inherit; text-align: left; background: none; appearance: none; border: none; padding: 0; }
 .sgdt-json-toggle:hover { background: #1a1a23; border-radius: 3px; }
 .sgdt-json-key { color: #7ee787; }
 .sgdt-json-string { color: #a5d6ff; }

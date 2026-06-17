@@ -18,12 +18,12 @@ describe("serialize() — exotic values & limits", () => {
     expect(node.entries[0]![0]).toBe(`{"a":1}`);
   });
 
-  it("falls back to String() for cyclic map keys", () => {
+  it("returns a placeholder for an unserializable (cyclic) map key", () => {
     const key: Record<string, unknown> = {};
     key["self"] = key;
     const node = serialize(new Map<unknown, number>([[key, 1]]));
     if (node.t !== "map") throw new Error("expected map");
-    expect(typeof node.entries[0]![0]).toBe("string");
+    expect(node.entries[0]![0]).toBe("[unserializable key]");
   });
 
   it("renders bigint map keys with the n suffix", () => {

@@ -24,7 +24,9 @@ import type { InternalState } from "./store";
  * {@link SiloDevtoolsBridge}. Uses `Symbol.for` so a devtools client compiled
  * against a different copy of this module still finds it.
  */
-export const SILO_DEVTOOLS: unique symbol = Symbol.for("@supergrain/silo.devtools");
+// `Symbol.for` returns a process-global `symbol`; it is intentionally shared
+// across bundles, so it's typed as a plain `symbol` rather than `unique symbol`.
+export const SILO_DEVTOOLS = Symbol.for("@supergrain/silo.devtools");
 
 /**
  * The introspection handle a devtools client reads off a store via

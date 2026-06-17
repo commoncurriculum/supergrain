@@ -156,11 +156,16 @@ function TypeGroup({
   const [open, setOpen] = useState(true);
   return (
     <div>
-      <div className="sgdt-group-header" onClick={() => setOpen((v) => !v)}>
+      <button
+        type="button"
+        className="sgdt-group-header"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
         <span className={`sgdt-caret${open ? " open" : ""}`}>▸</span>
         <span>{group.type}</span>
         <span className="sgdt-group-count">({group.entries.length})</span>
-      </div>
+      </button>
       {open &&
         group.entries.map((entry) => {
           const isSelected =
@@ -169,16 +174,18 @@ function TypeGroup({
             selected.type === group.type &&
             selected.key === entry.key;
           return (
-            <div
+            <button
+              type="button"
               key={entry.key}
               className={`sgdt-entry${isSelected ? " selected" : ""}`}
+              aria-pressed={isSelected}
               onClick={() => onSelect({ tab, type: group.type, key: entry.key })}
             >
               <StatusBadge entry={entry} />
               <span className="sgdt-entry-key" title={entry.key}>
                 {entry.key}
               </span>
-            </div>
+            </button>
           );
         })}
     </div>

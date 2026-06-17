@@ -34,11 +34,16 @@ function JsonNodeView({ node, label, depth }: { node: JsonNode; label?: string; 
 
   return (
     <div className="sgdt-json-row">
-      <span className="sgdt-json-toggle" onClick={() => setOpen((v) => !v)}>
+      <button
+        type="button"
+        className="sgdt-json-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
         <span className="sgdt-json-meta">{open ? "▾ " : "▸ "}</span>
         {keyLabel}
         <span className="sgdt-json-meta">{composite.summary}</span>
-      </span>
+      </button>
       {open && composite.children.length > 0 && (
         <div className="sgdt-indent">
           {composite.children.map((child) => (

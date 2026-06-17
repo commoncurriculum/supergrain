@@ -49,11 +49,15 @@ Inspecting several stores at once:
 
 | Prop            | Type                                         | Default          | Description                                |
 | --------------- | -------------------------------------------- | ---------------- | ------------------------------------------ |
-| `store`         | `DocumentStore`                              | —                | A single store to inspect.                 |
-| `stores`        | `Record<string, DocumentStore>`              | —                | Several named stores, shown in a selector. |
+| `store`         | `unknown` — pass a silo `DocumentStore`      | —                | A single store to inspect.                 |
+| `stores`        | `Record<string, unknown>` — silo stores      | —                | Several named stores, shown in a selector. |
 | `initialIsOpen` | `boolean`                                    | `false`          | Open the panel on mount.                   |
 | `position`      | `"bottom-right" \| "bottom-left" \| "top-*"` | `"bottom-right"` | Corner the toggle anchors to.              |
 | `disabled`      | `boolean`                                    | `false`          | Render nothing at all.                     |
+
+`store` / `stores` are typed `unknown` to avoid coupling the panel to silo's
+generic `DocumentStore<M, Q>` — pass your store directly; non-silo values are
+ignored.
 
 ## What you see
 
