@@ -10,6 +10,16 @@
 
 import { tracked } from "@supergrain/kernel/react";
 import { useState } from "react";
+import {
+  Button,
+  Input,
+  SearchField,
+  Tab,
+  TabList,
+  TabPanel,
+  Tabs,
+  ToggleButton,
+} from "react-aria-components";
 
 import {
   siloActivity,
@@ -62,29 +72,19 @@ export const SiloPanelContent = tracked(function SiloPanelContent({
   const filtered = filterGroups(groups, needle);
   const selectedEntry = findSelected(filtered, selected, tab);
 
-  return (
+  // The search box + master/detail for the active tab. Referenced from both
+  // TabPanels, but react-aria only mounts the selected panel's children, so it
+  // renders exactly once.
+  const surface = (
     <>
-      <div className="sgdt-tabs">
-        <button
-          className={`sgdt-tab${tab === "documents" ? " active" : ""}`}
-          onClick={() => onTabChange("documents")}
-        >
-          Documents<span className="sgdt-count">{docCount}</span>
-        </button>
-        <button
-          className={`sgdt-tab${tab === "queries" ? " active" : ""}`}
-          onClick={() => onTabChange("queries")}
-        >
-          Queries<span className="sgdt-count">{queryCount}</span>
-        </button>
-      </div>
-      <div className="sgdt-search">
-        <input
-          value={search}
-          placeholder={`Filter ${tab} by type or key…`}
-          onChange={(e) => onSearchChange(e.target.value)}
-        />
-      </div>
+      <SearchField
+        className="sgdt-search"
+        aria-label={`Filter ${tab}`}
+        value={search}
+        onChange={onSearchChange}
+      >
+        <Input placeholder={`Filter ${tab} by type or key…`} />
+      </SearchField>
       <div className="sgdt-body">
         <div className="sgdt-list">
           {filtered.length === 0 ? (
@@ -110,6 +110,29 @@ export const SiloPanelContent = tracked(function SiloPanelContent({
         </div>
       </div>
     </>
+  );
+
+  return (
+    <Tabs
+      className="sgdt-tabs-root"
+      selectedKey={tab}
+      onSelectionChange={(key) => onTabChange(key as SiloTab)}
+    >
+      <TabList className="sgdt-tabs" aria-label="Cache surface">
+        <Tab id="documents" className="sgdt-tab">
+          Documents<span className="sgdt-count">{docCount}</span>
+        </Tab>
+        <Tab id="queries" className="sgdt-tab">
+          Queries<span className="sgdt-count">{queryCount}</span>
+        </Tab>
+      </TabList>
+      <TabPanel id="documents" className="sgdt-tabpanel">
+        {surface}
+      </TabPanel>
+      <TabPanel id="queries" className="sgdt-tabpanel">
+        {surface}
+      </TabPanel>
+    </Tabs>
   );
 });
 
@@ -156,16 +179,11 @@ function TypeGroup({
   const [open, setOpen] = useState(true);
   return (
     <div>
-      <button
-        type="button"
-        className="sgdt-group-header"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
+      <Button className="sgdt-group-header" aria-expanded={open} onPress={() => setOpen((v) => !v)}>
         <span className={`sgdt-caret${open ? " open" : ""}`}>▸</span>
         <span>{group.type}</span>
         <span className="sgdt-group-count">({group.entries.length})</span>
-      </button>
+      </Button>
       {open &&
         group.entries.map((entry) => {
           const isSelected =
@@ -174,18 +192,17 @@ function TypeGroup({
             selected.type === group.type &&
             selected.key === entry.key;
           return (
-            <button
-              type="button"
+            <ToggleButton
               key={entry.key}
-              className={`sgdt-entry${isSelected ? " selected" : ""}`}
-              aria-pressed={isSelected}
-              onClick={() => onSelect({ tab, type: group.type, key: entry.key })}
+              className="sgdt-entry"
+              isSelected={isSelected}
+              onPress={() => onSelect({ tab, type: group.type, key: entry.key })}
             >
               <StatusBadge entry={entry} />
               <span className="sgdt-entry-key" title={entry.key}>
                 {entry.key}
               </span>
-            </button>
+            </ToggleButton>
           );
         })}
     </div>

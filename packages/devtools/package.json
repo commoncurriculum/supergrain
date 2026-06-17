@@ -57,7 +57,8 @@
   },
   "dependencies": {
     "@supergrain/kernel": "workspace:*",
-    "@supergrain/silo": "workspace:*"
+    "@supergrain/silo": "workspace:*",
+    "react-aria-components": "^1.18.0"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",

@@ -10,6 +10,7 @@
 // profiler) that can become additional tabs.
 
 import { type CSSProperties, useCallback, useEffect, useState } from "react";
+import { Button, ListBox, ListBoxItem, Popover, Select, SelectValue } from "react-aria-components";
 
 import { getSiloDevtools, type SiloDevtoolsBridge } from "../silo";
 import { type SelectedEntry, type SiloTab, SiloPanelContent, SiloStatusDot } from "./silo-panel";
@@ -82,14 +83,14 @@ export function SupergrainDevtools({
   if (!open) {
     return (
       <div className="sgdt-root" style={anchor(position)}>
-        <button
+        <Button
           className="sgdt-toggle"
-          onClick={() => setOpen(true)}
-          title="Open Supergrain devtools"
+          aria-label="Open Supergrain devtools"
+          onPress={() => setOpen(true)}
         >
           <SiloStatusDot bridges={bridges} />
           <span className="sgdt-grain">🌾</span> Supergrain
-        </button>
+        </Button>
       </div>
     );
   }
@@ -102,35 +103,43 @@ export function SupergrainDevtools({
             <span className="sgdt-grain">🌾</span> Supergrain Devtools
           </span>
           {named.length > 1 && (
-            <select
-              className="sgdt-select"
-              value={active.name}
-              onChange={(e) => {
-                setActiveName(e.target.value);
+            <Select
+              aria-label="Inspected store"
+              selectedKey={active.name}
+              onSelectionChange={(key) => {
+                setActiveName(String(key));
                 setSelected(null);
               }}
             >
-              {named.map((s) => (
-                <option key={s.name} value={s.name}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+              <Button className="sgdt-select">
+                <SelectValue />
+                <span aria-hidden="true">▾</span>
+              </Button>
+              <Popover className="sgdt-popover">
+                <ListBox className="sgdt-listbox">
+                  {named.map((s) => (
+                    <ListBoxItem key={s.name} id={s.name} className="sgdt-option">
+                      {s.name}
+                    </ListBoxItem>
+                  ))}
+                </ListBox>
+              </Popover>
+            </Select>
           )}
           <span className="sgdt-spacer" />
-          <button
+          <Button
             className="sgdt-iconbtn"
-            title="Clear this store's cache"
-            onClick={() => {
+            aria-label="Clear this store's cache"
+            onPress={() => {
               active.bridge.clearMemory();
               setSelected(null);
             }}
           >
             Clear
-          </button>
-          <button className="sgdt-iconbtn" title="Close" onClick={() => setOpen(false)}>
+          </Button>
+          <Button className="sgdt-iconbtn" aria-label="Close" onPress={() => setOpen(false)}>
             ✕
-          </button>
+          </Button>
         </div>
         <SiloPanelContent
           bridge={active.bridge}

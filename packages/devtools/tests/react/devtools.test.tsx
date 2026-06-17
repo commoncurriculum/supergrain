@@ -74,7 +74,7 @@ describe("<SupergrainDevtools />", () => {
     const store = makeStore();
     render(<SupergrainDevtools store={store} />);
     expect(screen.queryByText("Supergrain Devtools")).toBeNull();
-    fireEvent.click(screen.getByTitle("Open Supergrain devtools"));
+    fireEvent.click(screen.getByRole("button", { name: "Open Supergrain devtools" }));
     expect(screen.getByText("Supergrain Devtools")).toBeTruthy();
   });
 
@@ -122,7 +122,7 @@ describe("<SupergrainDevtools />", () => {
     expect(screen.getByText('"X"')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.click(screen.getByTitle("Clear this store's cache"));
+      fireEvent.click(screen.getByRole("button", { name: "Clear this store's cache" }));
     });
 
     // The entry remains listed (handle persists) but resets to pending, and the
@@ -133,7 +133,7 @@ describe("<SupergrainDevtools />", () => {
   it("closes the panel", () => {
     render(<SupergrainDevtools store={makeStore()} initialIsOpen />);
     expect(screen.getByText("Supergrain Devtools")).toBeTruthy();
-    fireEvent.click(screen.getByTitle("Close"));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByText("Supergrain Devtools")).toBeNull();
   });
 
@@ -187,14 +187,15 @@ describe("<SupergrainDevtools />", () => {
     expect(screen.getByText("No cached queries yet.")).toBeTruthy();
   });
 
-  it("disambiguates a stores key colliding with the single store", () => {
-    render(
+  it("disambiguates a stores key colliding with the single store", async () => {
+    const { container } = render(
       <SupergrainDevtools store={makeStore()} stores={{ store: makeStore() }} initialIsOpen />,
     );
-    const select = screen.getByRole("combobox") as HTMLSelectElement;
-    const values = Array.from(select.options).map((o) => o.value);
-    expect(values).toContain("store");
-    expect(values).toContain("store (2)");
+    // Open the react-aria Select via its trigger.
+    fireEvent.click(container.querySelector(".sgdt-select")!);
+    const labels = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(labels).toContain("store");
+    expect(labels).toContain("store (2)");
   });
 
   it("renders interactive controls as keyboard-accessible buttons", async () => {
@@ -213,17 +214,17 @@ describe("<SupergrainDevtools />", () => {
     expect(entry?.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("supports multiple named stores via a selector", () => {
-    render(
+  it("supports multiple named stores via a selector", async () => {
+    const { container } = render(
       <SupergrainDevtools
         stores={{ app: makeStore(), junk: {}, admin: makeStore() }}
         initialIsOpen
       />,
     );
-    const select = screen.getByRole("combobox") as HTMLSelectElement;
-    expect(select).toBeTruthy();
-    fireEvent.change(select, { target: { value: "admin" } });
-    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("admin");
+    // Defaults to the first valid store ("app"); open the selector and switch.
+    fireEvent.click(container.querySelector(".sgdt-select")!);
+    fireEvent.click(await screen.findByRole("option", { name: "admin" }));
+    expect(container.querySelector(".sgdt-select")!.textContent).toContain("admin");
   });
 
   it("shows a fetching dot on the collapsed toggle", () => {

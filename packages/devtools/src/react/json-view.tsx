@@ -1,11 +1,14 @@
 // A small collapsible explorer for a serialized {@link JsonNode}. Pure: it
 // renders an already-plain tree (no proxies, no cycles — see ../serialize), so
 // it can't loop and never touches the live store. Each composite node keeps its
-// own open/closed state, like the TanStack devtools data explorer.
+// own open/closed state, like the TanStack devtools data explorer. The
+// expand/collapse control is a react-aria `Button` (focusable, Enter/Space,
+// exposes `aria-expanded`).
 
 import type { JsonNode } from "../serialize";
 
 import { useState } from "react";
+import { Button } from "react-aria-components";
 
 export function JsonView({ node, label }: { node: JsonNode; label?: string }) {
   return (
@@ -34,16 +37,11 @@ function JsonNodeView({ node, label, depth }: { node: JsonNode; label?: string; 
 
   return (
     <div className="sgdt-json-row">
-      <button
-        type="button"
-        className="sgdt-json-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
+      <Button className="sgdt-json-toggle" aria-expanded={open} onPress={() => setOpen((v) => !v)}>
         <span className="sgdt-json-meta">{open ? "▾ " : "▸ "}</span>
         {keyLabel}
         <span className="sgdt-json-meta">{composite.summary}</span>
-      </button>
+      </Button>
       {open && composite.children.length > 0 && (
         <div className="sgdt-indent">
           {composite.children.map((child) => (

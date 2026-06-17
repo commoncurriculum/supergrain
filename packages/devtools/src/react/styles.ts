@@ -16,9 +16,9 @@ export const STATUS_COLOR = {
 const CSS = `
 .sgdt-root { position: fixed; z-index: 99999; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px; color: #e6e6ef; }
 .sgdt-toggle {
-  display: flex; align-items: center; gap: 6px; cursor: pointer; border: none;
+  display: flex; align-items: center; gap: 6px; cursor: pointer; appearance: none;
   background: #16161d; color: #e6e6ef; border-radius: 999px; padding: 8px 14px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.4); font-weight: 600; font-size: 12px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4); font-family: inherit; font-weight: 600; font-size: 12px;
   border: 1px solid #2b2b38;
 }
 .sgdt-toggle:hover { background: #20202b; }
@@ -37,18 +37,27 @@ const CSS = `
 .sgdt-title { font-weight: 700; letter-spacing: 0.2px; }
 .sgdt-title .sgdt-grain { color: #d7a64b; }
 .sgdt-spacer { flex: 1; }
-.sgdt-iconbtn { background: transparent; border: 1px solid #2b2b38; color: #c2c2d0; border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 11px; }
+.sgdt-iconbtn { background: transparent; border: 1px solid #2b2b38; color: #c2c2d0; border-radius: 6px; padding: 4px 8px; cursor: pointer; font-family: inherit; font-size: 11px; appearance: none; }
 .sgdt-iconbtn:hover { background: #20202b; color: #fff; }
-.sgdt-select { background: #0d0d12; color: #e6e6ef; border: 1px solid #2b2b38; border-radius: 6px; padding: 3px 6px; font-size: 11px; }
+.sgdt-select { display: inline-flex; align-items: center; gap: 6px; background: #0d0d12; color: #e6e6ef; border: 1px solid #2b2b38; border-radius: 6px; padding: 3px 6px; font-family: inherit; font-size: 11px; cursor: pointer; appearance: none; }
+.sgdt-select:hover { background: #16161d; }
 
+.sgdt-popover { z-index: 100000; background: #16161d; border: 1px solid #2b2b38; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); padding: 4px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 12px; color: #e6e6ef; }
+.sgdt-listbox { outline: none; max-height: 240px; overflow: auto; }
+.sgdt-option { padding: 5px 10px; border-radius: 6px; cursor: pointer; outline: none; }
+.sgdt-option[data-focused] { background: #20202b; }
+.sgdt-option[data-selected] { color: #fff; font-weight: 600; }
+
+.sgdt-tabs-root { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.sgdt-tabpanel { display: flex; flex-direction: column; flex: 1; min-height: 0; outline: none; }
 .sgdt-tabs { display: flex; gap: 2px; padding: 6px 10px 0; background: #16161d; }
-.sgdt-tab { background: transparent; border: none; color: #9aa0b4; padding: 6px 12px; cursor: pointer; border-radius: 6px 6px 0 0; font-size: 12px; font-weight: 600; }
+.sgdt-tab { background: transparent; border: none; color: #9aa0b4; padding: 6px 12px; cursor: pointer; border-radius: 6px 6px 0 0; font-size: 12px; font-weight: 600; outline: none; }
 .sgdt-tab:hover { color: #e6e6ef; }
-.sgdt-tab.active { color: #fff; background: #0d0d12; }
+.sgdt-tab[data-selected] { color: #fff; background: #0d0d12; }
 .sgdt-tab .sgdt-count { color: #6e7187; font-weight: 500; margin-left: 5px; }
 
 .sgdt-search { padding: 8px 10px; border-bottom: 1px solid #1d1d27; }
-.sgdt-search input { width: 100%; box-sizing: border-box; background: #16161d; border: 1px solid #2b2b38; border-radius: 6px; color: #e6e6ef; padding: 5px 8px; font-size: 12px; }
+.sgdt-search input { width: 100%; box-sizing: border-box; background: #16161d; border: 1px solid #2b2b38; border-radius: 6px; color: #e6e6ef; padding: 5px 8px; font-family: inherit; font-size: 12px; }
 .sgdt-search input::placeholder { color: #6e7187; }
 
 .sgdt-body { display: flex; flex: 1; min-height: 0; }
@@ -63,7 +72,7 @@ const CSS = `
 
 .sgdt-entry { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 10px 5px 24px; cursor: pointer; color: inherit; font: inherit; text-align: left; background: transparent; appearance: none; border: none; border-bottom: 1px solid #14141b; }
 .sgdt-entry:hover { background: #14141b; }
-.sgdt-entry.selected { background: #1f2733; }
+.sgdt-entry[data-selected] { background: #1f2733; }
 .sgdt-entry-key { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .sgdt-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; padding: 1px 6px; border-radius: 4px; }
 .sgdt-empty { color: #6e7187; padding: 18px 14px; text-align: center; }
@@ -86,6 +95,13 @@ const CSS = `
 .sgdt-json-meta { color: #8b949e; font-style: italic; }
 .sgdt-json-error { color: #f85149; }
 .sgdt-indent { padding-left: 14px; border-left: 1px solid #1d1d27; margin-left: 3px; }
+
+/* Keyboard focus ring for the react-aria controls (data-focus-visible). */
+.sgdt-toggle[data-focus-visible], .sgdt-iconbtn[data-focus-visible], .sgdt-select[data-focus-visible],
+.sgdt-tab[data-focus-visible], .sgdt-entry[data-focus-visible], .sgdt-group-header[data-focus-visible],
+.sgdt-json-toggle[data-focus-visible], .sgdt-option[data-focus-visible] {
+  outline: 2px solid #58a6ff; outline-offset: -2px;
+}
 `;
 
 /** Inject the stylesheet once into the document head (idempotent, SSR-safe). */

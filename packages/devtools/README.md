@@ -12,8 +12,10 @@ additional tabs later.
 pnpm add -D @supergrain/devtools
 ```
 
-`react` is a peer dependency. `@supergrain/silo` and `@supergrain/kernel` come
-along as dependencies.
+`react` is a peer dependency. `@supergrain/silo`, `@supergrain/kernel`, and
+[`react-aria-components`](https://react-spectrum.adobe.com/react-aria/) (which
+powers the panel's accessible controls — keyboard nav, focus management, ARIA)
+come along as dependencies.
 
 ## Usage
 

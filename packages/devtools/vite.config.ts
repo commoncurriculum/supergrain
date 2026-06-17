@@ -25,6 +25,7 @@ export default defineConfig({
         "react",
         "react-dom",
         "react/jsx-runtime",
+        "react-aria-components",
         "@supergrain/kernel",
         "@supergrain/kernel/internal",
         "@supergrain/kernel/react",
