@@ -1,4 +1,9 @@
-import { getSiloDevtools, siloActivity, snapshotSilo } from "@supergrain/devtools";
+import {
+  getSiloDevtools,
+  siloActivity,
+  snapshotSilo,
+  type SiloDevtoolsBridge,
+} from "@supergrain/devtools";
 import { createReactive, effect } from "@supergrain/kernel";
 import { createDocumentStore, type DocumentStore } from "@supergrain/silo";
 import { SILO_DEVTOOLS } from "@supergrain/silo/devtools";
@@ -26,6 +31,12 @@ function makeStore(): DocumentStore<Models, Queries> {
   });
 }
 
+// The data-layer functions operate on a resolved bridge; getSiloDevtools is the
+// one boundary that turns a store into one.
+function bridgeOf(store: unknown): SiloDevtoolsBridge {
+  return getSiloDevtools(store)!;
+}
+
 describe("getSiloDevtools()", () => {
   it("returns a bridge for a store and undefined otherwise", () => {
     const store = makeStore();
@@ -44,24 +55,12 @@ describe("getSiloDevtools()", () => {
 });
 
 describe("snapshotSilo()", () => {
-  it("returns undefined for a non-store", () => {
-    expect(snapshotSilo({})).toBeUndefined();
-    expect(snapshotSilo(undefined)).toBeUndefined();
-  });
-
-  it("rejects a partial or malformed bridge", () => {
-    // Has `state` but missing/typo'd type arrays — must not be treated as a bridge.
-    expect(snapshotSilo({ state: {}, documentTypes: [] })).toBeUndefined();
-    expect(snapshotSilo({ state: {}, documentTypes: "x", queryTypes: [] })).toBeUndefined();
-  });
-
   it("lists inserted documents with status and metadata", () => {
     const store = makeStore();
     store.insertDocument("user", { id: "1", name: "Ada" });
 
-    const snap = snapshotSilo(store);
-    expect(snap).toBeDefined();
-    const users = snap!.documents.find((g) => g.type === "user");
+    const snap = snapshotSilo(bridgeOf(store));
+    const users = snap.documents.find((g) => g.type === "user");
     expect(users?.entries).toHaveLength(1);
     const entry = users!.entries[0]!;
     expect(entry.key).toBe("1");
@@ -74,7 +73,7 @@ describe("snapshotSilo()", () => {
   });
 
   it("includes configured-but-empty types", () => {
-    const snap = snapshotSilo(makeStore())!;
+    const snap = snapshotSilo(bridgeOf(makeStore()));
     expect(snap.documents.map((g) => g.type).sort()).toEqual(["post", "user"]);
     expect(snap.queries.map((g) => g.type)).toEqual(["search"]);
     expect(snap.documents.find((g) => g.type === "post")?.entries).toHaveLength(0);
@@ -84,7 +83,7 @@ describe("snapshotSilo()", () => {
     const store = makeStore();
     store.insertQueryResult("search", { q: "ada" }, { ids: ["1"] });
 
-    const snap = snapshotSilo(store)!;
+    const snap = snapshotSilo(bridgeOf(store));
     const search = snap.queries.find((g) => g.type === "search");
     expect(search?.entries).toHaveLength(1);
     expect(search!.entries[0]!.key).toBe(`{"q":"ada"}`);
@@ -96,9 +95,9 @@ describe("snapshotSilo()", () => {
     store.insertDocument("user", { id: "1", name: "Ada" });
     store.insertDocument("user", { id: "2", name: "Bob" });
 
-    const snap = snapshotSilo(store, {
+    const snap = snapshotSilo(bridgeOf(store), {
       includeValue: (kind, type, key) => kind === "document" && type === "user" && key === "1",
-    })!;
+    });
     const entries = snap.documents.find((g) => g.type === "user")!.entries;
     const ada = entries.find((e) => e.key === "1")!;
     const bob = entries.find((e) => e.key === "2")!;
@@ -112,27 +111,25 @@ describe("snapshotSilo()", () => {
     }
   });
 
-  it("reports totals for fetching and errored handles", () => {
+  it("reports entry counts per surface", () => {
     const store = makeStore();
     store.insertDocument("user", { id: "1", name: "Ada" });
     store.insertDocument("user", { id: "2", name: "Bob" });
     store.insertQueryResult("search", { q: "x" }, { ids: [] });
 
-    const snap = snapshotSilo(store)!;
+    const snap = snapshotSilo(bridgeOf(store));
     expect(snap.totals.documents).toBe(2);
     expect(snap.totals.queries).toBe(1);
-    expect(snap.totals.fetching).toBe(0);
-    expect(snap.totals.errored).toBe(0);
   });
 
   it("reflects clearMemory through the bridge", () => {
     const store = makeStore();
     store.insertDocument("user", { id: "1", name: "Ada" });
-    const bridge = getSiloDevtools(store)!;
+    const bridge = bridgeOf(store);
 
     bridge.clearMemory();
 
-    const snap = snapshotSilo(store)!;
+    const snap = snapshotSilo(bridge);
     const entry = snap.documents.find((g) => g.type === "user")!.entries[0]!;
     expect(entry.status).toBe("pending");
     expect(entry.hasValue).toBe(false);
@@ -141,10 +138,11 @@ describe("snapshotSilo()", () => {
   it("is reactive: re-runs in a kernel effect when the store changes", () => {
     const store = makeStore();
     store.insertDocument("user", { id: "1", name: "Ada" });
+    const bridge = bridgeOf(store);
 
     let runs = 0;
     const stop = effect(() => {
-      snapshotSilo(store);
+      snapshotSilo(bridge);
       runs++;
     });
     const initial = runs;
@@ -159,21 +157,11 @@ describe("snapshotSilo()", () => {
 
     stop();
   });
-
-  it("accepts a devtools bridge directly, not only a store", () => {
-    const store = makeStore();
-    store.insertDocument("user", { id: "1", name: "Ada" });
-    const bridge = getSiloDevtools(store)!;
-
-    // Pass the bridge (not the store) — exercises the bridge passthrough.
-    const snap = snapshotSilo(bridge)!;
-    expect(snap.documents.find((g) => g.type === "user")!.entries).toHaveLength(1);
-  });
 });
 
-// A hand-built bridge lets us put handles into states (fetching, errored with a
-// distinct lastError) that are awkward to produce through real async fetches.
-function syntheticBridge() {
+// A hand-built store whose bridge holds handles in states (fetching, errored
+// with a distinct lastError) that are awkward to produce through real fetches.
+function syntheticStore(): object {
   const handle = (over: Record<string, unknown>) => ({
     status: "pending",
     isFetching: false,
@@ -208,27 +196,24 @@ function syntheticBridge() {
   ]);
 
   const state = createReactive({ documents, queries: new Map() });
-  return { state, documentTypes: ["user"], queryTypes: [], clearMemory() {} };
+  const bridge = { state, documentTypes: ["user"], queryTypes: [], clearMemory() {} };
+  const store = {};
+  Object.defineProperty(store, SILO_DEVTOOLS, { value: bridge });
+  return store;
 }
 
 describe("siloActivity()", () => {
-  it("returns zeroes for a non-store", () => {
-    expect(siloActivity({})).toEqual({ fetching: 0, errored: 0 });
-  });
-
   it("counts in-flight and terminally-errored handles, ignoring stale-success", () => {
-    // syntheticBridge: ok (success), busy (fetching), bad (status error).
-    const activity = siloActivity(syntheticBridge());
+    // syntheticStore: ok (success), busy (fetching), bad (status error).
+    const activity = siloActivity(bridgeOf(syntheticStore()));
     expect(activity.fetching).toBe(1);
     expect(activity.errored).toBe(1);
   });
 });
 
 describe("snapshotSilo() — handle states", () => {
-  it("counts fetching/errored handles and serializes error + lastError", () => {
-    const snap = snapshotSilo(syntheticBridge(), { includeValue: () => true })!;
-    expect(snap.totals.fetching).toBe(1);
-    expect(snap.totals.errored).toBe(1);
+  it("serializes error + lastError for an errored handle", () => {
+    const snap = snapshotSilo(bridgeOf(syntheticStore()), { includeValue: () => true });
 
     const entries = snap.documents.find((g) => g.type === "user")!.entries;
     const bad = entries.find((e) => e.key === "bad")!;

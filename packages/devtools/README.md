@@ -49,7 +49,7 @@ Inspecting several stores at once:
 
 | Prop            | Type                                         | Default          | Description                                |
 | --------------- | -------------------------------------------- | ---------------- | ------------------------------------------ |
-| `store`         | `DocumentStore` (or its bridge)              | —                | A single store to inspect.                 |
+| `store`         | `DocumentStore`                              | —                | A single store to inspect.                 |
 | `stores`        | `Record<string, DocumentStore>`              | —                | Several named stores, shown in a selector. |
 | `initialIsOpen` | `boolean`                                    | `false`          | Open the panel on mount.                   |
 | `position`      | `"bottom-right" \| "bottom-left" \| "top-*"` | `"bottom-right"` | Corner the toggle anchors to.              |
@@ -83,13 +83,20 @@ The root entry (`@supergrain/devtools`) has no React dependency and is the data
 layer the UI is built on — useful for custom inspectors, logging, or tests:
 
 ```ts
-import { snapshotSilo, serialize } from "@supergrain/devtools";
+import { getSiloDevtools, snapshotSilo, siloActivity, serialize } from "@supergrain/devtools";
 
-const snap = snapshotSilo(store); // { documents, queries, totals }
+const bridge = getSiloDevtools(store); // undefined if it isn't a silo store
+if (bridge) {
+  const snap = snapshotSilo(bridge); // { documents, queries, totals }
+  const activity = siloActivity(bridge); // { fetching, errored }
+}
 // Run inside a kernel effect()/tracked() scope to subscribe to changes.
 ```
 
-- `snapshotSilo(store, options?)` — a plain snapshot of the cache. Pass
+- `getSiloDevtools(store)` — the one boundary that turns a store into an
+  inspectable `bridge` (or `undefined`).
+- `snapshotSilo(bridge, options?)` — a plain snapshot of the cache. Pass
   `includeValue` to serialize the value/error of selected entries only.
+- `siloActivity(bridge)` — cheap fetching/errored counts for an indicator.
 - `serialize(value, options?)` — turn an arbitrary (possibly reactive,
   possibly cyclic) value into a depth/breadth-capped `JsonNode` tree.

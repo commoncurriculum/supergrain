@@ -59,11 +59,10 @@ export interface SiloTypeSnapshot {
 export interface SiloStoreSnapshot {
   readonly documents: ReadonlyArray<SiloTypeSnapshot>;
   readonly queries: ReadonlyArray<SiloTypeSnapshot>;
+  /** Entry counts per surface — drives the tab labels. */
   readonly totals: {
     readonly documents: number;
     readonly queries: number;
-    readonly fetching: number;
-    readonly errored: number;
   };
 }
 
@@ -80,52 +79,35 @@ export interface SnapshotOptions {
 }
 
 /**
- * Build a {@link SiloStoreSnapshot} from a store reference or its bridge.
- * Returns `undefined` if `storeOrBridge` isn't a silo store with a devtools
- * bridge (e.g. an unrelated value, or a build of silo without devtools).
+ * Build a {@link SiloStoreSnapshot} from a store's devtools `bridge` (get one
+ * with {@link getSiloDevtools}). Reading the bridge's reactive state subscribes
+ * the calling `effect()` / `tracked()` scope, so the snapshot stays live.
  */
 export function snapshotSilo(
-  storeOrBridge: unknown,
+  bridge: SiloDevtoolsBridge,
   options: SnapshotOptions = {},
-): SiloStoreSnapshot | undefined {
-  const bridge = toBridge(storeOrBridge);
-  if (!bridge) return undefined;
-
-  const includeValue = options.includeValue ?? (() => false);
-  const totals: Totals = { fetching: 0, errored: 0 };
-  const base = { includeValue, serializeOptions: options.serialize, totals };
-
+): SiloStoreSnapshot {
+  const ctx = {
+    includeValue: options.includeValue ?? (() => false),
+    serializeOptions: options.serialize,
+  };
   const documents = collectGroups(bridge.state.documents, bridge.documentTypes, {
-    ...base,
+    ...ctx,
     kind: "document",
   });
-  const queries = collectGroups(bridge.state.queries, bridge.queryTypes, {
-    ...base,
-    kind: "query",
-  });
+  const queries = collectGroups(bridge.state.queries, bridge.queryTypes, { ...ctx, kind: "query" });
 
   return {
     documents,
     queries,
-    totals: {
-      documents: countEntries(documents),
-      queries: countEntries(queries),
-      fetching: totals.fetching,
-      errored: totals.errored,
-    },
+    totals: { documents: countEntries(documents), queries: countEntries(queries) },
   };
-}
-
-interface Totals {
-  fetching: number;
-  errored: number;
 }
 
 interface BaseContext {
   readonly kind: SiloEntryKind;
   readonly includeValue: (kind: SiloEntryKind, type: string, key: string) => boolean;
   readonly serializeOptions: SerializeOptions | undefined;
-  readonly totals: Totals;
 }
 
 interface EntryContext extends BaseContext {
@@ -165,12 +147,6 @@ function collectEntries(
 }
 
 function buildEntry(key: string, handle: InternalHandle, ctx: EntryContext): SiloEntrySnapshot {
-  if (handle.isFetching) ctx.totals.fetching++;
-  // Count only terminal errors (no value yet) — a stale-while-revalidate
-  // handle whose refetch failed keeps `status: "success"` and is still serving
-  // a value, so it shouldn't read as "errored" (and shouldn't redden the dot).
-  if (handle.status === "error") ctx.totals.errored++;
-
   // Mutable builder: `value` / `error` / `lastError` are attached only when
   // present and requested, so a list snapshot stays scalar-cheap.
   const entry: Writable<SiloEntrySnapshot> = {
@@ -199,30 +175,6 @@ function countEntries(groups: ReadonlyArray<SiloTypeSnapshot>): number {
   return groups.reduce((sum, group) => sum + group.entries.length, 0);
 }
 
-/**
- * Coerce a value to a {@link SiloDevtoolsBridge}, or `undefined` if it is
- * neither a silo store nor a complete bridge. Accepts a store (reads its
- * attached bridge) OR a bridge passed directly — the single "is this
- * inspectable?" check shared by `snapshotSilo`, `siloActivity`, and the React
- * shell, so all entry points agree on what they accept. The structural branch
- * requires the full shape (`state` + array `documentTypes` + array
- * `queryTypes`) so a partial object can't slip through and crash later.
- */
-export function toBridge(storeOrBridge: unknown): SiloDevtoolsBridge | undefined {
-  const viaStore = getSiloDevtools(storeOrBridge);
-  if (viaStore) return viaStore;
-  if (
-    storeOrBridge !== null &&
-    typeof storeOrBridge === "object" &&
-    "state" in storeOrBridge &&
-    Array.isArray((storeOrBridge as { documentTypes?: unknown }).documentTypes) &&
-    Array.isArray((storeOrBridge as { queryTypes?: unknown }).queryTypes)
-  ) {
-    return storeOrBridge as SiloDevtoolsBridge;
-  }
-  return undefined;
-}
-
 /** Live fetching/errored counts across a store's cache — cheap enough for an
  * always-mounted indicator. */
 export interface SiloActivity {
@@ -236,10 +188,12 @@ export interface SiloActivity {
  * `snapshotSilo` would allocate the entire grouped-entry tree and subscribe a
  * tracked scope to every handle field on every cached entry. This reads only
  * `isFetching` / `status`, so the dot re-renders on far fewer signals.
+ *
+ * Counts a handle as errored only on a *terminal* error (`status: "error"`): a
+ * stale-while-revalidate success whose refetch failed keeps serving a value and
+ * shouldn't redden the dot.
  */
-export function siloActivity(storeOrBridge: unknown): SiloActivity {
-  const bridge = toBridge(storeOrBridge);
-  if (!bridge) return { fetching: 0, errored: 0 };
+export function siloActivity(bridge: SiloDevtoolsBridge): SiloActivity {
   const counts = { fetching: 0, errored: 0 };
   countActivity(bridge.state.documents, counts);
   countActivity(bridge.state.queries, counts);

@@ -49,13 +49,11 @@ export const SiloPanelContent = tracked(function SiloPanelContent({
   onSelect,
 }: SiloPanelContentProps) {
   // Serialize the value/error for the selected entry only — the list needs
-  // scalar status alone, so a large cache stays cheap to render. The bridge is
-  // always a real store's (the parent only renders this with a valid one), so
-  // the snapshot is never undefined.
+  // scalar status alone, so a large cache stays cheap to render.
   const snapshot = snapshotSilo(bridge, {
     includeValue: (_kind, type, key) =>
       selected !== null && selected.tab === tab && selected.type === type && selected.key === key,
-  })!;
+  });
 
   const docCount = snapshot.totals.documents;
   const queryCount = snapshot.totals.queries;

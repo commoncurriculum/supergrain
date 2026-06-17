@@ -19,7 +19,6 @@ export {
   siloActivity,
   type SnapshotOptions,
   snapshotSilo,
-  toBridge,
 } from "./silo";
 
 export { type JsonNode, serialize, type SerializeOptions } from "./serialize";

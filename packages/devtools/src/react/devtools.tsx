@@ -11,14 +11,14 @@
 
 import { type CSSProperties, useCallback, useEffect, useState } from "react";
 
-import { type SiloDevtoolsBridge, toBridge } from "../silo";
+import { getSiloDevtools, type SiloDevtoolsBridge } from "../silo";
 import { type SelectedEntry, type SiloTab, SiloPanelContent, SiloStatusDot } from "./silo-panel";
 import { injectStyles } from "./styles";
 
 export type DevtoolsPosition = "bottom-right" | "bottom-left" | "top-right" | "top-left";
 
 export interface SupergrainDevtoolsProps {
-  /** A silo `DocumentStore` (or its devtools bridge) to inspect. */
+  /** A silo `DocumentStore` to inspect. */
   store?: unknown;
   /**
    * Several named stores, shown in a selector. Keys are the labels. Use this
@@ -152,11 +152,11 @@ function resolveStores(
 ): Array<NamedStore> {
   const named: Array<NamedStore> = [];
   const used = new Set<string>();
-  // Accept a store OR a bare bridge (matching snapshotSilo), and guarantee
-  // unique names so the selector never renders duplicate keys or hides a store
-  // behind a name collision (e.g. `store` plus a `stores` entry named "store").
+  // Guarantee unique names so the selector never renders duplicate keys or hides
+  // a store behind a name collision (e.g. `store` plus a `stores` entry named
+  // "store").
   const add = (name: string, candidate: unknown): void => {
-    const bridge = toBridge(candidate);
+    const bridge = getSiloDevtools(candidate);
     if (!bridge) return;
     let unique = name;
     let n = 2;

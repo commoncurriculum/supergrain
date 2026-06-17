@@ -197,13 +197,6 @@ describe("<SupergrainDevtools />", () => {
     expect(values).toContain("store (2)");
   });
 
-  it("accepts a bare devtools bridge as the store prop", () => {
-    const realStore = makeStore();
-    const bridge = (realStore as unknown as Record<symbol, unknown>)[SILO_DEVTOOLS];
-    render(<SupergrainDevtools store={bridge} initialIsOpen />);
-    expect(screen.getByText("Supergrain Devtools")).toBeTruthy();
-  });
-
   it("supports multiple named stores via a selector", () => {
     render(
       <SupergrainDevtools
