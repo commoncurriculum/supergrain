@@ -1,0 +1,13 @@
+/*
+ * Tailwind entry for the devtools panel. Imports the theme + utilities but NOT
+ * preflight, so dropping this stylesheet into a host app never resets the app's
+ * own element styles. Compiled to `dist/style.css`; consumers import it once
+ * (`import "@supergrain/devtools/style.css"`).
+ */
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Scan the panel's components for the utility classes they use. */
+@source "./react";

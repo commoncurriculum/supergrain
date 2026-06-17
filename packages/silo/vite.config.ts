@@ -7,6 +7,7 @@ export default defineConfig({
       entry: {
         index: "src/index.ts",
         internal: "src/internal.ts",
+        devtools: "src/devtools.ts",
         "processors/index": "src/processors/index.ts",
         "processors/json-api": "src/processors/json-api.ts",
         "react/index": "src/react/index.ts",

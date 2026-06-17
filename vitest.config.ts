@@ -36,6 +36,8 @@ export default defineConfig({
         "packages/silo/src/index.ts",
         "packages/silo/src/internal.ts",
         "packages/silo/src/queries.ts",
+        "packages/devtools/src/index.ts",
+        "packages/devtools/src/react/index.ts",
       ],
       reportsDirectory: "./coverage",
     },
@@ -147,6 +149,35 @@ export default defineConfig({
             ],
           },
           setupFiles: ["./packages/kernel/tests/react/setup.ts"],
+          globals: true,
+        },
+        resolve,
+        ssr,
+      },
+      {
+        test: {
+          include: ["packages/devtools/tests/**/*.test.{ts,tsx}"],
+          exclude: ["packages/devtools/tests/react/**/*.test.{ts,tsx}"],
+          environment: "node",
+        },
+        resolve,
+        ssr,
+      },
+      {
+        plugins: [react()],
+        test: {
+          include: ["packages/devtools/tests/react/**/*.test.{ts,tsx}"],
+          browser: {
+            enabled: true,
+            provider: playwright(),
+            headless: true,
+            instances: [
+              {
+                browser: "chromium",
+              },
+            ],
+          },
+          setupFiles: ["./packages/devtools/tests/react/setup.ts"],
           globals: true,
         },
         resolve,

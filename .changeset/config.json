@@ -8,7 +8,8 @@
       "@supergrain/mill",
       "@supergrain/silo",
       "@supergrain/husk",
-      "@supergrain/queries"
+      "@supergrain/queries",
+      "@supergrain/devtools"
     ]
   ],
   "linked": [],

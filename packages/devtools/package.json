@@ -1,13 +1,13 @@
 {
-  "name": "@supergrain/silo",
+  "name": "@supergrain/devtools",
   "version": "6.2.0",
-  "description": "Document-oriented store for Supergrain with TypeScript support",
+  "description": "Devtools for Supergrain: a floating panel to inspect the silo document store (and more, eventually).",
   "keywords": [
-    "document",
+    "devtools",
+    "inspector",
     "reactive",
     "store",
-    "supergrain",
-    "typescript"
+    "supergrain"
   ],
   "homepage": "https://commoncurriculum.github.io/supergrain/",
   "bugs": {
@@ -18,7 +18,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/commoncurriculum/supergrain.git",
-    "directory": "packages/silo"
+    "directory": "packages/devtools"
   },
   "files": [
     "dist",
@@ -35,42 +35,13 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./internal": {
-      "@supergrain/source": "./src/internal.ts",
-      "types": "./src/internal.ts",
-      "import": "./dist/internal.js",
-      "require": "./dist/internal.cjs"
-    },
-    "./devtools": {
-      "@supergrain/source": "./src/devtools.ts",
-      "types": "./src/devtools.ts",
-      "import": "./dist/devtools.js",
-      "require": "./dist/devtools.cjs"
-    },
-    "./processors": {
-      "@supergrain/source": "./src/processors/index.ts",
-      "types": "./src/processors/index.ts",
-      "import": "./dist/processors/index.js",
-      "require": "./dist/processors/index.cjs"
-    },
-    "./processors/json-api": {
-      "@supergrain/source": "./src/processors/json-api.ts",
-      "types": "./src/processors/json-api.ts",
-      "import": "./dist/processors/json-api.js",
-      "require": "./dist/processors/json-api.cjs"
-    },
     "./react": {
       "@supergrain/source": "./src/react/index.ts",
       "types": "./src/react/index.ts",
       "import": "./dist/react/index.js",
       "require": "./dist/react/index.cjs"
     },
-    "./react/json-api": {
-      "@supergrain/source": "./src/react/json-api.ts",
-      "types": "./src/react/json-api.ts",
-      "import": "./dist/react/json-api.js",
-      "require": "./dist/react/json-api.cjs"
-    }
+    "./style.css": "./dist/style.css"
   },
   "publishConfig": {
     "access": "public"
@@ -78,16 +49,21 @@
   "scripts": {
     "prepack": "cp ../../README.md .",
     "postpack": "rm README.md",
-    "build": "vite build",
+    "build": "vite build && pnpm run build:css",
+    "build:css": "tailwindcss -i src/devtools.css -o dist/style.css --minify",
     "dev": "vite build --watch",
     "lint": "oxlint -c ../../.oxlintrc.json src/",
     "test": "vitest run",
+    "test:react": "vitest run --config vitest.browser.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@supergrain/kernel": "workspace:*"
+    "@supergrain/kernel": "workspace:*",
+    "@supergrain/silo": "workspace:*",
+    "react-aria-components": "^1.18.0"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.3.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.1.13",
@@ -95,14 +71,15 @@
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/browser": "4.1.0",
     "effect": "^3.21.2",
-    "msw": "^2.13.4",
     "playwright": "^1.55.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5",
     "vitest": "4.1.0"
   },
   "peerDependencies": {
-    "effect": "^3.21.0",
     "react": "^18.2.0 || ^19.0.0"
   },
   "peerDependenciesMeta": {

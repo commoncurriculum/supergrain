@@ -4,6 +4,7 @@ import type { Effect } from "effect";
 
 import { batch, createReactive, unwrap } from "@supergrain/kernel";
 
+import { attachSiloDevtools } from "./devtools";
 import { type AdapterError, ProcessorError, type SiloError } from "./errors";
 import { Finder } from "./finder";
 import {
@@ -729,6 +730,18 @@ export function createDocumentStore<
   };
 
   finder.attach(store);
+
+  // Expose a non-enumerable introspection bridge for devtools. Purely
+  // observational — it hands out the live reactive `state` (so a client
+  // subscribes via the kernel) plus the configured type names; it never calls
+  // `find`, so inspecting a store can't trigger fetches. See `./devtools`.
+  attachSiloDevtools(store, {
+    state,
+    documentTypes: Object.keys(config.models),
+    queryTypes: Object.keys(config.queries ?? {}),
+    clearMemory: () => store.clearMemory(),
+  });
+
   return store;
 }
 
