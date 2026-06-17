@@ -1,4 +1,4 @@
-import { getSiloDevtools, snapshotSilo } from "@supergrain/devtools";
+import { getSiloDevtools, siloActivity, snapshotSilo } from "@supergrain/devtools";
 import { createReactive, effect } from "@supergrain/kernel";
 import { createDocumentStore, type DocumentStore } from "@supergrain/silo";
 import { SILO_DEVTOOLS } from "@supergrain/silo/devtools";
@@ -47,6 +47,12 @@ describe("snapshotSilo()", () => {
   it("returns undefined for a non-store", () => {
     expect(snapshotSilo({})).toBeUndefined();
     expect(snapshotSilo(undefined)).toBeUndefined();
+  });
+
+  it("rejects a partial or malformed bridge", () => {
+    // Has `state` but missing/typo'd type arrays — must not be treated as a bridge.
+    expect(snapshotSilo({ state: {}, documentTypes: [] })).toBeUndefined();
+    expect(snapshotSilo({ state: {}, documentTypes: "x", queryTypes: [] })).toBeUndefined();
   });
 
   it("lists inserted documents with status and metadata", () => {
@@ -204,6 +210,19 @@ function syntheticBridge() {
   const state = createReactive({ documents, queries: new Map() });
   return { state, documentTypes: ["user"], queryTypes: [], clearMemory() {} };
 }
+
+describe("siloActivity()", () => {
+  it("returns zeroes for a non-store", () => {
+    expect(siloActivity({})).toEqual({ fetching: 0, errored: 0 });
+  });
+
+  it("counts in-flight and terminally-errored handles, ignoring stale-success", () => {
+    // syntheticBridge: ok (success), busy (fetching), bad (status error).
+    const activity = siloActivity(syntheticBridge());
+    expect(activity.fetching).toBe(1);
+    expect(activity.errored).toBe(1);
+  });
+});
 
 describe("snapshotSilo() — handle states", () => {
   it("counts fetching/errored handles and serializes error + lastError", () => {

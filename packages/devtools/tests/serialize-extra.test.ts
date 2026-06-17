@@ -26,6 +26,24 @@ describe("serialize() — exotic values & limits", () => {
     expect(typeof node.entries[0]![0]).toBe("string");
   });
 
+  it("renders bigint map keys with the n suffix", () => {
+    const node = serialize(new Map<unknown, string>([[10n, "v"]]));
+    if (node.t !== "map") throw new Error("expected map");
+    expect(node.entries[0]![0]).toBe("10n");
+  });
+
+  it("surfaces a non-enumerable Error cause", () => {
+    const node = serialize(new Error("outer", { cause: new Error("inner") }));
+    if (node.t !== "error") throw new Error("expected error");
+    expect(node.entries.some(([k]) => k === "cause")).toBe(true);
+  });
+
+  it("does not duplicate an already-enumerable cause", () => {
+    const node = serialize(Object.assign(new Error("outer"), { cause: "boom" }));
+    if (node.t !== "error") throw new Error("expected error");
+    expect(node.entries.filter(([k]) => k === "cause")).toHaveLength(1);
+  });
+
   it("stringifies primitive and null map keys", () => {
     const node = serialize(
       new Map<unknown, string>([

@@ -7,11 +7,15 @@
 // The bridge is attached as a non-enumerable, `Symbol.for`-keyed property so it
 // never widens the typed `DocumentStore` surface and never shows up in
 // `Object.keys` / `JSON.stringify` of a store. It is always attached (dev and
-// prod) — the cost is a single `defineProperty` at store creation and a
-// reference held alive as long as the store is; nothing is computed until a
-// devtools client actually reads it. Mirrors how `@supergrain/kernel/internal`
-// exposes machinery to layered packages: not part of the public API contract,
-// shapes here may change in minor releases.
+// prod), the intentional devtools-hook pattern (cf. React/Redux): the cost is
+// one `defineProperty` at store creation, and the bridge holds no retention the
+// store didn't already have — `state` is captured by the store's own methods,
+// so the bridge adds no GC root and nothing is computed until a devtools client
+// reads it. (`@supergrain/devtools` gates whether the *panel* renders via its
+// `disabled` prop; the bridge itself stays, like `window.__REDUX_DEVTOOLS…`.)
+// Mirrors how `@supergrain/kernel/internal` exposes machinery to layered
+// packages: not part of the public API contract, shapes here may change in
+// minor releases.
 
 import type { InternalState } from "./store";
 

@@ -12,10 +12,11 @@ import { tracked } from "@supergrain/kernel/react";
 import { useState } from "react";
 
 import {
-  snapshotSilo,
+  siloActivity,
   type SiloDevtoolsBridge,
   type SiloEntrySnapshot,
   type SiloTypeSnapshot,
+  snapshotSilo,
 } from "../silo";
 import { JsonView } from "./json-view";
 import { STATUS_COLOR } from "./styles";
@@ -88,7 +89,7 @@ export const SiloPanelContent = tracked(function SiloPanelContent({
       </div>
       <div className="sgdt-body">
         <div className="sgdt-list">
-          {filtered.every((g) => g.entries.length === 0) ? (
+          {filtered.length === 0 ? (
             <div className="sgdt-empty">{needle ? "No matches." : `No cached ${tab} yet.`}</div>
           ) : (
             filtered.map((group) => (
@@ -127,11 +128,11 @@ export const SiloStatusDot = tracked(function SiloStatusDot({
   let fetching = 0;
   let errored = 0;
   for (const bridge of bridges) {
-    // Bridges always come from a real store (see resolveStores), so the
-    // snapshot is never undefined.
-    const snapshot = snapshotSilo(bridge)!;
-    fetching += snapshot.totals.fetching;
-    errored += snapshot.totals.errored;
+    // Cheap totals-only scan — no group/entry allocation, and subscribes the
+    // (always-mounted) dot to just `isFetching` / `status` per handle.
+    const activity = siloActivity(bridge);
+    fetching += activity.fetching;
+    errored += activity.errored;
   }
   const variant = dotVariant(fetching, errored);
   return <span className={`sgdt-toggle-dot${variant ? ` ${variant}` : ""}`} />;

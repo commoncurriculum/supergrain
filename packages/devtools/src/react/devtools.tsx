@@ -9,9 +9,9 @@
 // and the body is one inspector among future ones (a raw kernel store, the
 // profiler) that can become additional tabs.
 
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useState } from "react";
 
-import { getSiloDevtools, type SiloDevtoolsBridge } from "../silo";
+import { type SiloDevtoolsBridge, toBridge } from "../silo";
 import { type SelectedEntry, type SiloTab, SiloPanelContent, SiloStatusDot } from "./silo-panel";
 import { injectStyles } from "./styles";
 
@@ -30,8 +30,11 @@ export interface SupergrainDevtoolsProps {
   /** Corner the toggle button anchors to. Default `"bottom-right"`. */
   position?: DevtoolsPosition;
   /**
-   * Render nothing at all. Pass `process.env.NODE_ENV === "production"` to keep
-   * the devtools out of production bundles' runtime entirely.
+   * Render nothing and skip injecting styles. Pass
+   * `process.env.NODE_ENV === "production"` to keep the panel out of production.
+   * (The store's silo-side devtools bridge is always present regardless — it's a
+   * tiny non-enumerable hook, like the Redux devtools global; see
+   * `@supergrain/silo/devtools`.)
    */
   disabled?: boolean;
 }
@@ -52,13 +55,24 @@ export function SupergrainDevtools({
     if (!disabled) injectStyles();
   }, [disabled]);
 
-  const named = useMemo(() => resolveStores(store, stores), [store, stores]);
-
   const [open, setOpen] = useState(initialIsOpen);
   const [activeName, setActiveName] = useState<string | null>(null);
   const [tab, setTab] = useState<SiloTab>("documents");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<SelectedEntry | null>(null);
+
+  // Stable callback so the memoized (tracked) panel can skip re-rendering when
+  // only unrelated parent state changes.
+  const onTabChange = useCallback((next: SiloTab) => {
+    setTab(next);
+    setSelected(null);
+  }, []);
+
+  // Resolving stores is cheap (a symbol read per store); compute it each render
+  // rather than a useMemo that never hits when `stores` is an inline literal.
+  // The bridge objects within are stable, so the active bridge passed down is
+  // stable too.
+  const named = resolveStores(store, stores);
 
   if (disabled || named.length === 0) return null;
 
@@ -123,10 +137,7 @@ export function SupergrainDevtools({
           tab={tab}
           search={search}
           selected={selected}
-          onTabChange={(next) => {
-            setTab(next);
-            setSelected(null);
-          }}
+          onTabChange={onTabChange}
           onSearchChange={setSearch}
           onSelect={setSelected}
         />
@@ -140,15 +151,22 @@ function resolveStores(
   stores: Readonly<Record<string, unknown>> | undefined,
 ): Array<NamedStore> {
   const named: Array<NamedStore> = [];
-  if (store !== undefined) {
-    const bridge = getSiloDevtools(store);
-    if (bridge) named.push({ name: "store", bridge });
-  }
+  const used = new Set<string>();
+  // Accept a store OR a bare bridge (matching snapshotSilo), and guarantee
+  // unique names so the selector never renders duplicate keys or hides a store
+  // behind a name collision (e.g. `store` plus a `stores` entry named "store").
+  const add = (name: string, candidate: unknown): void => {
+    const bridge = toBridge(candidate);
+    if (!bridge) return;
+    let unique = name;
+    let n = 2;
+    while (used.has(unique)) unique = `${name} (${n++})`;
+    used.add(unique);
+    named.push({ name: unique, bridge });
+  };
+  if (store !== undefined) add("store", store);
   if (stores) {
-    for (const name of Object.keys(stores)) {
-      const bridge = getSiloDevtools(stores[name]);
-      if (bridge) named.push({ name, bridge });
-    }
+    for (const name of Object.keys(stores)) add(name, stores[name]);
   }
   return named;
 }

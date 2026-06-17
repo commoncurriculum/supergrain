@@ -88,7 +88,7 @@ export function snapshotSilo(
   storeOrBridge: unknown,
   options: SnapshotOptions = {},
 ): SiloStoreSnapshot | undefined {
-  const bridge = asBridge(storeOrBridge);
+  const bridge = toBridge(storeOrBridge);
   if (!bridge) return undefined;
 
   const includeValue = options.includeValue ?? (() => false);
@@ -166,7 +166,10 @@ function collectEntries(
 
 function buildEntry(key: string, handle: InternalHandle, ctx: EntryContext): SiloEntrySnapshot {
   if (handle.isFetching) ctx.totals.fetching++;
-  if (handle.error !== undefined) ctx.totals.errored++;
+  // Count only terminal errors (no value yet) — a stale-while-revalidate
+  // handle whose refetch failed keeps `status: "success"` and is still serving
+  // a value, so it shouldn't read as "errored" (and shouldn't redden the dot).
+  if (handle.status === "error") ctx.totals.errored++;
 
   // Mutable builder: `value` / `error` / `lastError` are attached only when
   // present and requested, so a list snapshot stays scalar-cheap.
@@ -196,18 +199,61 @@ function countEntries(groups: ReadonlyArray<SiloTypeSnapshot>): number {
   return groups.reduce((sum, group) => sum + group.entries.length, 0);
 }
 
-function asBridge(storeOrBridge: unknown): SiloDevtoolsBridge | undefined {
-  // Accept either a store (read its bridge) or a bridge directly (it has the
-  // `state` + `documentTypes` shape). Lets callers pass whichever they hold.
+/**
+ * Coerce a value to a {@link SiloDevtoolsBridge}, or `undefined` if it is
+ * neither a silo store nor a complete bridge. Accepts a store (reads its
+ * attached bridge) OR a bridge passed directly — the single "is this
+ * inspectable?" check shared by `snapshotSilo`, `siloActivity`, and the React
+ * shell, so all entry points agree on what they accept. The structural branch
+ * requires the full shape (`state` + array `documentTypes` + array
+ * `queryTypes`) so a partial object can't slip through and crash later.
+ */
+export function toBridge(storeOrBridge: unknown): SiloDevtoolsBridge | undefined {
   const viaStore = getSiloDevtools(storeOrBridge);
   if (viaStore) return viaStore;
   if (
     storeOrBridge !== null &&
     typeof storeOrBridge === "object" &&
     "state" in storeOrBridge &&
-    "documentTypes" in storeOrBridge
+    Array.isArray((storeOrBridge as { documentTypes?: unknown }).documentTypes) &&
+    Array.isArray((storeOrBridge as { queryTypes?: unknown }).queryTypes)
   ) {
     return storeOrBridge as SiloDevtoolsBridge;
   }
   return undefined;
+}
+
+/** Live fetching/errored counts across a store's cache — cheap enough for an
+ * always-mounted indicator. */
+export interface SiloActivity {
+  readonly fetching: number;
+  readonly errored: number;
+}
+
+/**
+ * Tally in-flight and errored handles without building the full snapshot. The
+ * collapsed status dot only needs these two numbers; routing it through
+ * `snapshotSilo` would allocate the entire grouped-entry tree and subscribe a
+ * tracked scope to every handle field on every cached entry. This reads only
+ * `isFetching` / `status`, so the dot re-renders on far fewer signals.
+ */
+export function siloActivity(storeOrBridge: unknown): SiloActivity {
+  const bridge = toBridge(storeOrBridge);
+  if (!bridge) return { fetching: 0, errored: 0 };
+  const counts = { fetching: 0, errored: 0 };
+  countActivity(bridge.state.documents, counts);
+  countActivity(bridge.state.queries, counts);
+  return counts;
+}
+
+function countActivity(
+  buckets: Map<string, Map<string, InternalHandle>>,
+  counts: { fetching: number; errored: number },
+): void {
+  for (const bucket of buckets.values()) {
+    for (const handle of bucket.values()) {
+      if (handle.isFetching) counts.fetching++;
+      else if (handle.status === "error") counts.errored++;
+    }
+  }
 }

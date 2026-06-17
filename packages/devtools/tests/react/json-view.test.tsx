@@ -74,4 +74,17 @@ describe("<JsonView />", () => {
     rerender(<JsonView node={serialize({ a: 1, b: 2, c: 3 }, { maxEntries: 2 })} />);
     expect(screen.getByText(/\+1/)).toBeTruthy();
   });
+
+  it("shows a truncation count on capped maps and sets", () => {
+    const map = new Map([
+      ["a", 1],
+      ["b", 2],
+      ["c", 3],
+    ]);
+    const { rerender } = render(<JsonView node={serialize(map, { maxEntries: 2 })} />);
+    expect(screen.getByText(/Map\(3\) \+1/)).toBeTruthy();
+
+    rerender(<JsonView node={serialize(new Set([1, 2, 3]), { maxEntries: 2 })} />);
+    expect(screen.getByText(/Set\(3\) \+1/)).toBeTruthy();
+  });
 });

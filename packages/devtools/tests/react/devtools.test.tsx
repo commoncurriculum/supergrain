@@ -173,6 +173,37 @@ describe("<SupergrainDevtools />", () => {
     expect(screen.getByText("search")).toBeTruthy();
   });
 
+  it("shows configured-but-empty type groups instead of an empty state", () => {
+    render(<SupergrainDevtools store={makeStore()} initialIsOpen />);
+    // The configured `user` type renders its header even with zero entries.
+    expect(screen.getByText("user")).toBeTruthy();
+    expect(screen.queryByText("No cached documents yet.")).toBeNull();
+  });
+
+  it("shows the empty state for a tab with no configured types", () => {
+    // makeStore configures no queries, so the Queries tab has nothing at all.
+    render(<SupergrainDevtools store={makeStore()} initialIsOpen />);
+    fireEvent.click(screen.getByText(/Queries/));
+    expect(screen.getByText("No cached queries yet.")).toBeTruthy();
+  });
+
+  it("disambiguates a stores key colliding with the single store", () => {
+    render(
+      <SupergrainDevtools store={makeStore()} stores={{ store: makeStore() }} initialIsOpen />,
+    );
+    const select = screen.getByRole("combobox") as HTMLSelectElement;
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toContain("store");
+    expect(values).toContain("store (2)");
+  });
+
+  it("accepts a bare devtools bridge as the store prop", () => {
+    const realStore = makeStore();
+    const bridge = (realStore as unknown as Record<symbol, unknown>)[SILO_DEVTOOLS];
+    render(<SupergrainDevtools store={bridge} initialIsOpen />);
+    expect(screen.getByText("Supergrain Devtools")).toBeTruthy();
+  });
+
   it("supports multiple named stores via a selector", () => {
     render(
       <SupergrainDevtools

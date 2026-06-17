@@ -192,6 +192,11 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
     const entries: Array<readonly [string, JsonNode]> = [];
     const own = error as unknown as Record<string, unknown>;
     const keys = Object.keys(error).filter((k) => k !== "message");
+    // `Error.cause` (and `stack`) are non-enumerable, so Object.keys misses them.
+    // Surface `cause` explicitly when present — it usually holds the real
+    // failure (e.g. `new Error(msg, { cause })`); Effect's tagged errors already
+    // expose it enumerably, so guard against listing it twice.
+    if (own["cause"] !== undefined && !keys.includes("cause")) keys.push("cause");
     for (const key of keys.slice(0, maxEntries)) {
       entries.push([key, walk(own[key], depth + 1)]);
     }
@@ -210,12 +215,14 @@ function numberText(value: number): string {
 
 function keyLabel(key: unknown): string {
   if (typeof key === "string") return key;
-  if (typeof key === "object" && key !== null) {
-    try {
-      return JSON.stringify(unwrap(key));
-    } catch {
-      return String(key);
-    }
+  // Match the bigint leaf's `10n` rendering rather than a bare `10`.
+  if (typeof key === "bigint") return `${key}n`;
+  try {
+    if (typeof key === "object" && key !== null) return JSON.stringify(unwrap(key));
+    return String(key);
+  } catch {
+    // A cyclic key (JSON.stringify throws) or an object with a throwing
+    // toString must never crash the inspector — degrade to a placeholder.
+    return "[unserializable key]";
   }
-  return String(key);
 }
