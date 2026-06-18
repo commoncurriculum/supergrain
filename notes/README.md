@@ -72,7 +72,7 @@ Don't retry these. Each doc explains what was tried and why it failed.
 [JS Framework Benchmark Attempts](failed-approaches/js-framework-benchmark-optimization-attempts.md)
 
 **Mill (update operators):**
-[Array removal via proxy splice](failed-approaches/mill-array-removal-via-proxy-splice.md)
+[Why not mingo](failed-approaches/mingo-for-mill-operators.md)
 
 **Store internals:**
 [Context Switching](failed-approaches/context-switching-optimization.md) |
