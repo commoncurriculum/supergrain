@@ -38,8 +38,10 @@ pnpm typecheck    # react-router typegen + fumadocs-mdx + tsc --noEmit
 - Each page needs frontmatter with at least a `title`.
 
 The package pages (`kernel`, `husk`, `silo`, `queries`, `mill`) are currently
-**ported copies** of each package's `README.md`. Until that is automated, update
-the source README and re-sync.
+**seeded** from each package's `README.md` and are meant to diverge into
+curated, docs-first content over time. The package READMEs stay the canonical
+home for the tested code examples (validated by `@supergrain/doc-tests`); the
+comparison guide is the one docs-only page that owns its examples here.
 
 ## Branding & layout
 
@@ -65,5 +67,9 @@ The `/supergrain/` base path is configured in two places that must stay in sync:
   focused library.
 - **Static search** — the example ships server-route search; a fully static
   Pages deploy needs Fumadocs' build-time (static) search index.
-- **Retire VitePress** — once this site is confirmed, remove the old `docs/`
-  VitePress site and its root scripts.
+- **Drop the unused `vitepress` devDependency** — VitePress (the old `docs/`
+  site and its root scripts) is gone, but the root `vitepress` devDependency
+  can't be removed yet: that needs regenerating the root lockfile, which a
+  cold `pnpm install` currently can't do because `packages/js-krauset-main`
+  pins unpublished `@supergrain/core` / `@supergrain/react` packages. Remove
+  `vitepress` once that pre-existing landmine is fixed.

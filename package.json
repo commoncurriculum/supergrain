@@ -8,7 +8,6 @@
   "author": "",
   "main": "index.js",
   "scripts": {
-    "dev": "vitepress dev docs",
     "test": "vitest",
     "coverage": "vitest run --coverage",
     "test:validate": "pnpm --filter @supergrain/doc-tests run test:validate",
@@ -21,10 +20,7 @@
     "typecheck": "pnpm -r --filter=\"@supergrain/*\" run typecheck && pnpm --filter=\"js-framework-benchmark-react-supergrain\" run typecheck",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm -r publish",
-    "docs:dev": "vitepress dev docs",
-    "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "release": "pnpm -r publish"
   },
   "dependencies": {
     "alien-signals": "^3.2.1"

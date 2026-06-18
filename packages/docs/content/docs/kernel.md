@@ -189,7 +189,7 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
 
 > React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](/docs/husk).
 
-See how Supergrain compares to useState, Zustand, Redux, and MobX in the [comparison guide](https://github.com/commoncurriculum/supergrain/blob/main/docs/comparison.md).
+See how Supergrain compares to useState, Zustand, Redux, and MobX in the [comparison guide](/docs/comparison).
 
 ## Features
 
@@ -415,7 +415,7 @@ Path autocompletion and type checking work up to 5 levels of nesting. Beyond tha
 <details>
 <summary><strong>How does this compare to other signal-based React libraries?</strong></summary>
 
-See the [Comparison Guide](https://github.com/commoncurriculum/supergrain/blob/main/docs/comparison.md). Briefly: most signal libraries (Preact Signals, MobX, Jotai) require you to wrap individual values in signal/atom containers. Supergrain wraps a _whole object tree_ in a Proxy, so you write plain `store.user.name = "x"` and reads/writes are tracked automatically. Internally we use alien-signals for propagation, and `tracked()` gives per-component subscription scoping — closer in spirit to Solid's reactive components than to React Compiler's auto-memoization.
+See the [Comparison Guide](/docs/comparison). Briefly: most signal libraries (Preact Signals, MobX, Jotai) require you to wrap individual values in signal/atom containers. Supergrain wraps a _whole object tree_ in a Proxy, so you write plain `store.user.name = "x"` and reads/writes are tracked automatically. Internally we use alien-signals for propagation, and `tracked()` gives per-component subscription scoping — closer in spirit to Solid's reactive components than to React Compiler's auto-memoization.
 
 </details>
 
