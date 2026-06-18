@@ -67,9 +67,3 @@ The `/supergrain/` base path is configured in two places that must stay in sync:
   focused library.
 - **Static search** — the example ships server-route search; a fully static
   Pages deploy needs Fumadocs' build-time (static) search index.
-- **Drop the unused `vitepress` devDependency** — VitePress (the old `docs/`
-  site and its root scripts) is gone, but the root `vitepress` devDependency
-  can't be removed yet: that needs regenerating the root lockfile, which a
-  cold `pnpm install` currently can't do because `packages/js-krauset-main`
-  pins unpublished `@supergrain/core` / `@supergrain/react` packages. Remove
-  `vitepress` once that pre-existing landmine is fixed.
