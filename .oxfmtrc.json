@@ -1,5 +1,5 @@
 {
-  "ignorePatterns": ["**/CHANGELOG.md"],
+  "ignorePatterns": ["**/CHANGELOG.md", "packages/docs/**"],
   "sortImports": {
     "groups": [
       "type-import",

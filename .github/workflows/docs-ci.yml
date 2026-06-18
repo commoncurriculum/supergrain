@@ -1,0 +1,40 @@
+name: Docs CI
+
+on:
+  pull_request:
+    paths:
+      - "packages/docs/**"
+      - ".github/workflows/docs-ci.yml"
+
+jobs:
+  build:
+    name: Docs / typecheck + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # Isolated sub-project with its own lockfile (see packages/docs/README.md).
+        working-directory: packages/docs
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: packages/docs/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --ignore-workspace --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Build (with Pages output)
+        run: pnpm run build:pages

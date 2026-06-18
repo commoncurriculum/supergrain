@@ -21,6 +21,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        # The docs site is an isolated sub-project with its own lockfile.
+        working-directory: packages/docs
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,20 +39,21 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+          cache-dependency-path: packages/docs/pnpm-lock.yaml
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --ignore-workspace --frozen-lockfile
 
       - name: Build docs
-        run: pnpm run docs:build
+        run: pnpm run build:pages
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/.vitepress/dist
+          path: packages/docs/build/client/supergrain
 
   deploy:
     environment:

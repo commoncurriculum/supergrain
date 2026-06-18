@@ -12,16 +12,15 @@ import { describe, it, expect } from "vitest";
 
 describe("README Documentation Validation", () => {
   const rootDir = join(__dirname, "../../..");
-  // Collect all documentation markdown: root README.md + docs/*.md + packages/*/README.md
+  // Collect documentation markdown that carries tested examples:
+  //   root README.md
+  //   + the docs site's comparison guide — the one docs-only page with examples
+  //     (the docs site's package reference pages mirror each package README,
+  //     which is the canonical source scanned below)
+  //   + packages/*/README.md
   const docFiles = [join(rootDir, "README.md")];
-  const docsDir = join(rootDir, "docs");
-  if (existsSync(docsDir)) {
-    for (const file of readdirSync(docsDir)) {
-      if (file.endsWith(".md")) {
-        docFiles.push(join(docsDir, file));
-      }
-    }
-  }
+  const comparisonGuide = join(rootDir, "packages/docs/content/docs/comparison.md");
+  if (existsSync(comparisonGuide)) docFiles.push(comparisonGuide);
   const packagesDir = join(rootDir, "packages");
   if (existsSync(packagesDir)) {
     for (const pkg of readdirSync(packagesDir)) {
