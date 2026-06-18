@@ -272,8 +272,8 @@ importers:
   packages/js-krauset:
     dependencies:
       '@supergrain/kernel':
-        specifier: workspace:*
-        version: link:../kernel
+        specifier: 6.2.0
+        version: 6.2.0(arktype@2.2.0)(react@19.2.4)
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -323,18 +323,15 @@ importers:
 
   packages/js-krauset-main:
     dependencies:
-      '@supergrain/core':
-        specifier: 2.0.0
-        version: 2.0.0(arktype@2.2.0)
-      '@supergrain/react':
-        specifier: 2.0.0
-        version: 2.0.0(arktype@2.2.0)(react@19.0.0)
+      '@supergrain/kernel':
+        specifier: 6.2.0
+        version: 6.2.0(arktype@2.2.0)(react@19.2.4)
       react:
-        specifier: 19.0.0
-        version: 19.0.0
+        specifier: 19.2.4
+        version: 19.2.4
       react-dom:
-        specifier: 19.0.0
-        version: 19.0.0(react@19.0.0)
+        specifier: 19.2.4
+        version: 19.2.4(react@19.2.4)
     devDependencies:
       '@rollup/plugin-strip':
         specifier: ^3.0.4
@@ -1940,19 +1937,16 @@ packages:
   '@standard-schema/utils@0.3.0':
     resolution: {integrity: sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g==}
 
-  '@supergrain/core@2.0.0':
-    resolution: {integrity: sha512-NP/y0kwviXZ7K8ews9nvGWTuddTTzAn8SB89ZxwLTyrb8dAYl5RhyOHCMH0hDUOyNYkLTvYeftyb7eIvYC2RWw==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+  '@supergrain/kernel@6.2.0':
+    resolution: {integrity: sha512-DftKA97U2ofOTeK3CmZy9uNOa7tCKw+jkF97bE92MGnvY3NalCOV2pFwIS2bgikbfABevDgMtM5R4cApGuZxSg==}
     peerDependencies:
       arktype: '>=2.0.0'
+      react: ^18.2.0 || ^19.0.0
     peerDependenciesMeta:
       arktype:
         optional: true
-
-  '@supergrain/react@2.0.0':
-    resolution: {integrity: sha512-6lJqRLYBkM+hdT+x4hknNDnOA3hKNLljX3RcozEx6pkY4RCEFtl/oQQYIXBVP32tx2skrStPjW0D4xhGsDfJzA==}
-    peerDependencies:
-      react: ^18.2.0 || ^19.0.0
+      react:
+        optional: true
 
   '@swc/helpers@0.5.23':
     resolution: {integrity: sha512-5lSsMOTXURePglDfvuAQUqkGek9Hg2kksOYay2m0+XR++b2NWYL/4sWyuvVBIs8oKnJaxkdi9whaL/sqN13afw==}
@@ -2352,9 +2346,6 @@ packages:
 
   alien-signals@0.4.14:
     resolution: {integrity: sha512-itUAVzhczTmP2U5yX67xVpsbbOiquusbWVyA9N+sy6+r6YVbFkahXvNCeEPWEOMhwDYwbVbGHFkVL03N9I5g+Q==}
-
-  alien-signals@2.0.7:
-    resolution: {integrity: sha512-wE7y3jmYeb0+h6mr5BOovuqhFv22O/MV9j5p0ndJsa7z1zJNPGQ4ph5pQk/kTTCWRC3xsA4SmtwmkzQO+7NCNg==}
 
   alien-signals@3.2.1:
     resolution: {integrity: sha512-I8FjmltrfnDFoZedi5CG8DghVYNhzb/Ijluz7tCSJH0xpd0484Kowhbb1XDYOxfJpU1p5wnM2X54dA+IfGyD1g==}
@@ -3302,11 +3293,6 @@ packages:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
       react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
 
-  react-dom@19.0.0:
-    resolution: {integrity: sha512-4GV5sHFG0e/0AD4X+ySy6UJd3jVl1iNsNHdpad0qhABJ11twS3TTBnseqsKurKcsNqCEFeGL3uLpVChpIO3QfQ==}
-    peerDependencies:
-      react: ^19.0.0
-
   react-dom@19.1.1:
     resolution: {integrity: sha512-Dlq/5LAZgF0Gaz6yiqZCf6VCcZs1ghAJyrsu84Q/GT0gV+mCxbfmKNoGRKBYMJ8IEdGPqu49YWXD02GCknEDkw==}
     peerDependencies:
@@ -3340,10 +3326,6 @@ packages:
     resolution: {integrity: sha512-H3ar+SOWP920EbVg7qWfP3fZjZiwhlEJAEJQqjt+w8oKijCwFgr0+R4941PIHscOXRNRvEOjvWilitImC0DdBg==}
     peerDependencies:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
-
-  react@19.0.0:
-    resolution: {integrity: sha512-V8AVnmPIICiWpGfm6GLzCR/W5FXLchHop40W4nXBmdlEceh16rCN8O8LNWm5bh5XUX91fh7KpA+W0TgMKmgTpQ==}
-    engines: {node: '>=0.10.0'}
 
   react@19.1.1:
     resolution: {integrity: sha512-w8nqGImo45dmMIfljjMwOGtbmC/mk4CMYhWIicdSflH91J9TyCyczcPFXJzrZ/ZXcgGRFeP6BU0BEJTw6tZdfQ==}
@@ -3424,9 +3406,6 @@ packages:
   saxes@6.0.0:
     resolution: {integrity: sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==}
     engines: {node: '>=v12.22.7'}
-
-  scheduler@0.25.0:
-    resolution: {integrity: sha512-xFVuu11jh+xcO7JOAGJNOXld8/TcEHK/4CituBUeUb5hqxJLj9YuemAEuvm9gQ/+pgXYfbQuqAkiYu+u7YEsNA==}
 
   scheduler@0.26.0:
     resolution: {integrity: sha512-NlHwttCI/l5gCPR3D1nNXtWABUmBwvZpEQiD4IXSbIDq8BzLIK/7Ir5gTFSGZDUu37K5cMNp0hFtzO38sC7gWA==}
@@ -5173,18 +5152,12 @@ snapshots:
 
   '@standard-schema/utils@0.3.0': {}
 
-  '@supergrain/core@2.0.0(arktype@2.2.0)':
+  '@supergrain/kernel@6.2.0(arktype@2.2.0)(react@19.2.4)':
     dependencies:
-      alien-signals: 2.0.7
+      alien-signals: 3.2.1
     optionalDependencies:
       arktype: 2.2.0
-
-  '@supergrain/react@2.0.0(arktype@2.2.0)(react@19.0.0)':
-    dependencies:
-      '@supergrain/core': 2.0.0(arktype@2.2.0)
-      react: 19.0.0
-    transitivePeerDependencies:
-      - arktype
+      react: 19.2.4
 
   '@swc/helpers@0.5.23':
     dependencies:
@@ -5654,8 +5627,6 @@ snapshots:
       '@algolia/requester-node-http': 5.40.0
 
   alien-signals@0.4.14: {}
-
-  alien-signals@2.0.7: {}
 
   alien-signals@3.2.1: {}
 
@@ -6610,11 +6581,6 @@ snapshots:
       react-stately: 3.47.0(react@19.2.4)
       use-sync-external-store: 1.6.0(react@19.2.4)
 
-  react-dom@19.0.0(react@19.0.0):
-    dependencies:
-      react: 19.0.0
-      scheduler: 0.25.0
-
   react-dom@19.1.1(react@19.1.1):
     dependencies:
       react: 19.1.1
@@ -6647,8 +6613,6 @@ snapshots:
       '@swc/helpers': 0.5.23
       react: 19.2.4
       use-sync-external-store: 1.6.0(react@19.2.4)
-
-  react@19.0.0: {}
 
   react@19.1.1: {}
 
@@ -6739,8 +6703,6 @@ snapshots:
   saxes@6.0.0:
     dependencies:
       xmlchars: 2.2.0
-
-  scheduler@0.25.0: {}
 
   scheduler@0.26.0: {}
 
