@@ -9,6 +9,7 @@ import {
 } from "@supergrain/kernel/internal";
 
 import {
+  type ArrayPullAllOperations,
   type ArrayPullOperations,
   type ArrayWriteOperations,
   deleteValueAtPath,
@@ -43,7 +44,7 @@ function describeValue(value: unknown): string {
 }
 
 function assertArrayTarget(
-  operator: "$push" | "$pull" | "$addToSet",
+  operator: "$push" | "$pull" | "$pullAll" | "$addToSet",
   path: string,
   result: { parent: any; key: string } | null,
 ): Array<any> {
@@ -159,20 +160,11 @@ function syncIndexedSignals(nodes: any, arr: Array<any>): void {
   }
 }
 
-// Operates on the RAW (unwrapped) array, not through the proxy.
-// Must manually manage signals since proxy handlers aren't involved.
-function pullFromArray(arr: Array<any>, condition: any): boolean {
-  let removed = false;
-  const originalLength = arr.length;
-
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (isObjectMatch(arr[i], condition)) {
-      arr.splice(i, 1);
-      removed = true;
-    }
-  }
-
-  if (removed && arr.length !== originalLength) {
+// Synchronizes reactive signals after elements were spliced out of a raw
+// (unwrapped) array. Proxy handlers aren't involved when mutating the raw
+// array directly, so the affected signals must be bumped manually.
+function notifyArrayRemoval(arr: Array<any>, originalLength: number): void {
+  if (arr.length !== originalLength) {
     bumpVersion(arr);
 
     const nodes = getNodesIfExist(arr);
@@ -189,6 +181,47 @@ function pullFromArray(arr: Array<any>, condition: any): boolean {
       syncIndexedSignals(nodes, arr);
     }
     /* c8 ignore stop */
+  }
+}
+
+// Operates on the RAW (unwrapped) array, not through the proxy.
+// Removes every element matching `condition` (object conditions match by
+// partial deep equality via isObjectMatch).
+function pullFromArray(arr: Array<any>, condition: any): boolean {
+  let removed = false;
+  const originalLength = arr.length;
+
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (isObjectMatch(arr[i], condition)) {
+      arr.splice(i, 1);
+      removed = true;
+    }
+  }
+
+  if (removed) {
+    notifyArrayRemoval(arr, originalLength);
+  }
+
+  return removed;
+}
+
+// Operates on the RAW (unwrapped) array, not through the proxy.
+// Removes every element that deep-equals any value in `valuesToRemove`.
+// Unlike $pull, matching is exact (full deep equality) — partial object
+// conditions never match.
+function pullAllFromArray(arr: Array<any>, valuesToRemove: Array<any>): boolean {
+  let removed = false;
+  const originalLength = arr.length;
+
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (valuesToRemove.some((value) => isEqual(arr[i], value))) {
+      arr.splice(i, 1);
+      removed = true;
+    }
+  }
+
+  if (removed) {
+    notifyArrayRemoval(arr, originalLength);
   }
 
   return removed;
@@ -280,6 +313,15 @@ function $pull(target: object, operations: Record<string, any>): void {
   }
 }
 
+function $pullAll(target: object, operations: Record<string, any>): void {
+  for (const path of Object.keys(operations)) {
+    const result = resolveParentPath(target, path);
+    const arr = assertArrayTarget("$pullAll", path, result);
+    const valuesToRemove = operations[path];
+    pullAllFromArray(arr, valuesToRemove);
+  }
+}
+
 function $addToSet(target: object, operations: Record<string, any>): void {
   for (const path of Object.keys(operations)) {
     const result = resolveParentPath(target, path);
@@ -354,6 +396,7 @@ const operatorList = [
   "$max",
   "$push",
   "$pull",
+  "$pullAll",
   "$addToSet",
 ];
 
@@ -363,6 +406,7 @@ const operators: Record<string, (target: object, operations: any) => void> = {
   $inc,
   $push,
   $pull,
+  $pullAll,
   $addToSet,
   $rename,
   $min,
@@ -375,7 +419,7 @@ const operators: Record<string, (target: object, operations: any) => void> = {
  * Each operator's value type is derived from `T`:
  *   - `$set` / `$unset` accept any path within `T` (see `Path<T>`).
  *   - `$inc` / `$min` / `$max` accept numeric paths only.
- *   - `$push` / `$pull` / `$addToSet` accept array paths only.
+ *   - `$push` / `$pull` / `$pullAll` / `$addToSet` accept array paths only.
  *
  * Per-path value typing is enforced: `$set: { "user.name": 42 }` is rejected
  * when `user.name` is typed as `string`.
@@ -386,6 +430,7 @@ export type StrictUpdateOperations<T extends object> = Partial<{
   $inc: NumericPathOperations<T>;
   $push: ArrayWriteOperations<T>;
   $pull: ArrayPullOperations<T>;
+  $pullAll: ArrayPullAllOperations<T>;
   $addToSet: ArrayWriteOperations<T>;
   $rename: Record<string, string>;
   $min: NumericPathOperations<T>;

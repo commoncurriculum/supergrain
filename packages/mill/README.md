@@ -1,6 +1,6 @@
 # @supergrain/mill
 
-MongoDB-style update operators for Supergrain stores. Write batched, path-aware updates with the familiar `$set`, `$inc`, `$push`, `$pull`, `$addToSet`, `$min`, `$max`, `$unset` vocabulary.
+MongoDB-style update operators for Supergrain stores. Write batched, path-aware updates with the familiar `$set`, `$inc`, `$push`, `$pull`, `$pullAll`, `$addToSet`, `$min`, `$max`, `$unset` vocabulary.
 
 Use this when you want:
 
@@ -48,6 +48,9 @@ update(store, { $push: { items: { $each: ["e", "f"] } } });
 // $pull — remove from arrays
 update(store, { $pull: { items: "b" } });
 
+// $pullAll — remove every occurrence of multiple values at once
+update(store, { $pullAll: { items: ["a", "c"] } });
+
 // $addToSet — add only if not already present
 update(store, { $addToSet: { tags: "vue" } });
 
@@ -74,6 +77,7 @@ Every `update()` call runs under one `batch()`, so subscribers fire once even wh
 | `$inc`      | Adds a numeric delta to each target. Negative values decrement.                           |
 | `$push`     | Appends to an array. Use `{ $each: [...] }` to append multiple items in one operation.    |
 | `$pull`     | Removes every occurrence of the value from the target array.                              |
+| `$pullAll`  | Removes every element matching any value in the given array (exact deep equality).        |
 | `$addToSet` | Appends only if the value isn't already in the array (shallow equality).                  |
 | `$min`      | Assigns the operand only if it's less than the current value.                             |
 | `$max`      | Assigns the operand only if it's greater than the current value.                          |

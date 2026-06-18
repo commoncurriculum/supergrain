@@ -97,6 +97,53 @@ describe("MongoDB Style Operators", () => {
     expect(state.scores).toEqual([3, 4]);
   });
 
+  it("$pullAll: should remove every occurrence of each listed value", () => {
+    const state = createReactive({ scores: [1, 2, 3, 2, 4, 1] });
+    update(state, { $pullAll: { scores: [1, 2] } });
+    expect(state.scores).toEqual([3, 4]);
+  });
+
+  it("$pullAll: should match whole documents by deep equality, not partial match", () => {
+    const state = createReactive({
+      users: [
+        { id: 1, name: "A" },
+        { id: 2, name: "B" },
+        { id: 3, name: "C" },
+      ],
+    });
+    update(state, {
+      $pullAll: {
+        users: [
+          { id: 1, name: "A" },
+          { id: 3 } as any, // partial — must NOT match { id: 3, name: "C" }
+        ],
+      },
+    });
+    expect(state.users).toEqual([
+      { id: 2, name: "B" },
+      { id: 3, name: "C" },
+    ]);
+  });
+
+  it("$pullAll: should leave the array unchanged when nothing matches", () => {
+    const state = createReactive({ scores: [1, 2, 3] });
+    update(state, { $pullAll: { scores: [4, 5] } });
+    expect(state.scores).toEqual([1, 2, 3]);
+  });
+
+  it("$pullAll: should invalidate array structure subscribers", () => {
+    const state = createReactive({ scores: [1, 2, 3, 4] });
+    let keys: string[] = [];
+
+    effect(() => {
+      keys = Object.keys(state.scores);
+    });
+
+    expect(keys).toEqual(["0", "1", "2", "3"]);
+    update(state, { $pullAll: { scores: [2, 4] } });
+    expect(keys).toEqual(["0", "1"]);
+  });
+
   it("$addToSet: should add unique elements to an array", () => {
     const state = createReactive({ tags: ["a", "b"] });
     update(state, { $addToSet: { tags: "c" } });
@@ -210,6 +257,7 @@ describe("MongoDB Style Operators", () => {
 
     expect(() => update(store, { $push: { user: "x" } as any })).toThrow(/array/i);
     expect(() => update(store, { $pull: { user: "x" } as any })).toThrow(/array/i);
+    expect(() => update(store, { $pullAll: { user: ["x"] } as any })).toThrow(/array/i);
     expect(() => update(store, { $addToSet: { user: "x" } as any })).toThrow(/array/i);
   });
 
@@ -545,6 +593,25 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     update(store, { $max: { score: 150 } }); // 150 > 100, writes
     expect(store.score).toBe(150);
     expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("$pullAll fires structure effects when elements are removed and stays silent otherwise", () => {
+    const store = createReactive({ items: [1, 2, 3] as Array<number> });
+    let length = -1;
+    const lengthFn = vi.fn(() => {
+      length = store.items.length;
+    });
+    effect(lengthFn);
+    expect(length).toBe(3);
+    expect(lengthFn).toHaveBeenCalledTimes(1);
+
+    update(store, { $pullAll: { items: [2] } });
+    expect(length).toBe(2);
+    expect(lengthFn).toHaveBeenCalledTimes(2);
+
+    update(store, { $pullAll: { items: [99] } }); // nothing matches — no structural change
+    expect(length).toBe(2);
+    expect(lengthFn).toHaveBeenCalledTimes(2);
   });
 
   it("multi-operator update fires each affected effect at most once (batched)", () => {
