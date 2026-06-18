@@ -131,6 +131,12 @@ describe("MongoDB Style Operators", () => {
     expect(state.scores).toEqual([1, 2, 3]);
   });
 
+  it("$pullAll: should reject a non-array operand with a descriptive error", () => {
+    const state = createReactive({ scores: [1, 2, 3] });
+    expect(() => update(state, { $pullAll: { scores: 5 } as any })).toThrow(/array of values/i);
+    expect(state.scores).toEqual([1, 2, 3]);
+  });
+
   it("$pullAll: should invalidate array structure subscribers", () => {
     const state = createReactive({ scores: [1, 2, 3, 4] });
     let keys: string[] = [];

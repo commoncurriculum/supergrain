@@ -165,22 +165,28 @@ function syncIndexedSignals(nodes: any, arr: Array<any>): void {
 // array directly, so the affected signals must be bumped manually. Callers
 // invoke this only when at least one element was actually removed.
 function notifyArrayRemoval(arr: Array<any>): void {
+  // bumpVersion lazily materializes the node container, so getNodesIfExist
+  // below returns it for any normal array. nodes is only ever absent for the
+  // pathological frozen-array case — where the splice that triggers this would
+  // already have thrown — so the guard is purely defensive.
   bumpVersion(arr);
 
   const nodes = getNodesIfExist(arr);
-  /* c8 ignore start -- raw arrays have no reactive nodes to synchronize */
-  if (nodes) {
-    bumpOwnKeysSignal(arr, nodes);
-
-    const lengthSignal = nodes["length"];
-    if (lengthSignal && lengthSignal() !== arr.length) {
-      profileSignalWrite();
-      lengthSignal(arr.length);
-    }
-
-    syncIndexedSignals(nodes, arr);
+  /* c8 ignore start -- unreachable: bumpVersion just created the node container */
+  if (!nodes) {
+    return;
   }
   /* c8 ignore stop */
+
+  bumpOwnKeysSignal(arr, nodes);
+
+  const lengthSignal = nodes["length"];
+  if (lengthSignal && lengthSignal() !== arr.length) {
+    profileSignalWrite();
+    lengthSignal(arr.length);
+  }
+
+  syncIndexedSignals(nodes, arr);
 }
 
 // Operates on the RAW (unwrapped) array, not through the proxy.
@@ -315,6 +321,11 @@ function $pullAll(target: object, operations: Record<string, any>): void {
     const result = resolveParentPath(target, path);
     const arr = assertArrayTarget("$pullAll", path, result);
     const valuesToRemove = operations[path];
+    if (!Array.isArray(valuesToRemove)) {
+      throw new TypeError(
+        `$pullAll path "${path}" requires an array of values to remove, received ${describeValue(valuesToRemove)}.`,
+      );
+    }
     pullAllFromArray(arr, valuesToRemove);
   }
 }
