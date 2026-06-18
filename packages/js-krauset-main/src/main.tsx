@@ -1,12 +1,11 @@
 import {
-  createStore,
-  startBatch,
-  endBatch,
+  createReactive,
+  batch,
   enableProfiling,
   resetProfiler,
   getProfile,
-} from "@supergrain/core";
-import { tracked, For, provideStore, useComputed } from "@supergrain/react";
+} from "@supergrain/kernel";
+import { tracked, For, useComputed } from "@supergrain/kernel/react";
 import { Profiler, useCallback, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
@@ -107,18 +106,17 @@ export interface AppState {
 
 export interface RowProps {
   item: RowData;
+  store: AppState;
   onSelect: (id: number) => void;
   onRemove: (id: number) => void;
 }
 
 // --- Storable Implementation ---
 
-const store = createStore<AppState>({
+const store = createReactive<AppState>({
   data: [],
   selected: null,
 });
-
-const Store = provideStore(store);
 
 export const run = (count: number) => {
   store.data = buildData(count);
@@ -130,28 +128,28 @@ export const add = () => {
 };
 
 export const update = () => {
-  startBatch();
-  for (let i = 0; i < store.data.length; i += 10) {
-    store.data[i].label = store.data[i].label + " !!!";
-  }
-  endBatch();
+  batch(() => {
+    for (let i = 0; i < store.data.length; i += 10) {
+      store.data[i].label = store.data[i].label + " !!!";
+    }
+  });
 };
 
 export const clear = () => {
-  startBatch();
-  store.data = [];
-  store.selected = null;
-  endBatch();
+  batch(() => {
+    store.data = [];
+    store.selected = null;
+  });
 };
 
 export const swapRows = () => {
   if (store.data.length > 998) {
-    startBatch();
-    const row1 = store.data[1];
-    const row998 = store.data[998];
-    store.data[1] = row998;
-    store.data[998] = row1;
-    endBatch();
+    batch(() => {
+      const row1 = store.data[1];
+      const row998 = store.data[998];
+      store.data[1] = row998;
+      store.data[998] = row1;
+    });
   }
 };
 
@@ -223,10 +221,10 @@ const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }
   </div>
 );
 
-export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
+export const Row = tracked(({ item, store, onSelect, onRemove }: RowProps) => {
   rowRenderCount++;
-  const store = Store.useStore();
-  const isSelected = useComputed(() => store.selected === item.id);
+  const id = item.id;
+  const isSelected = useComputed(() => store.selected === id);
   return (
     <tr className={isSelected ? "danger" : ""}>
       <td className="col-md-1">{item.id}</td>
@@ -273,7 +271,13 @@ export const App = tracked(() => {
           <tbody ref={tbodyRef}>
             <For each={store.data} parent={tbodyRef}>
               {(item: RowData) => (
-                <Row key={item.id} item={item} onSelect={handleSelect} onRemove={handleRemove} />
+                <Row
+                  key={item.id}
+                  item={item}
+                  store={store}
+                  onSelect={handleSelect}
+                  onRemove={handleRemove}
+                />
               )}
             </For>
           </tbody>
@@ -289,10 +293,6 @@ if (typeof window !== "undefined") {
   const container = document.getElementById("main");
   if (container) {
     const root = createRoot(container);
-    root.render(
-      <Store.Provider>
-        <App />
-      </Store.Provider>,
-    );
+    root.render(<App />);
   }
 }

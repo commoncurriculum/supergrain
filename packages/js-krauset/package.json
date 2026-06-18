@@ -14,7 +14,7 @@
     "perf:analyze": "node perf-profile.ts"
   },
   "dependencies": {
-    "@supergrain/kernel": "workspace:*",
+    "@supergrain/kernel": "6.2.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
