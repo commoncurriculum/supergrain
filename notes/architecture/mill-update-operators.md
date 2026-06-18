@@ -90,7 +90,7 @@ All `c8 ignore` pragmas were removed: `incrementValue` was rewritten as
 `notifyArrayRemoval` ignore disappeared with the function. `operators.ts` and
 `path.ts` are at 100% coverage with no ignores.
 
-## Observation: a real gap in the kernel's *proxy* delete trap
+## Observation: a real gap in the kernel's _proxy_ delete trap
 
 While exploring whether mill could remove elements by splicing the **proxy**
 directly, I found a genuine kernel limitation worth recording:
@@ -98,7 +98,7 @@ directly, I found a genuine kernel limitation worth recording:
 - `writeHandler.deleteProperty` (in `packages/kernel/src/write.ts`) does a
   **silent delete** for array elements — it only bumps `ownKeys`. Its rationale
   is "splice/pop/shift handle element moves via `set()`," which is true for
-  *moved* survivors but **not** for the element at the vacated tail index.
+  _moved_ survivors but **not** for the element at the vacated tail index.
 - Consequence: calling `store.items.splice(1, 1)` / `pop()` **directly on the
   proxy** does not notify an effect that subscribed to exactly the removed tail
   index — it reads a stale value until something else invalidates it.
