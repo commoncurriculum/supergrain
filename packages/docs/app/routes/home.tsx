@@ -2,6 +2,7 @@ import type { Route } from './+types/home';
 import { HomeLayout } from 'fumadocs-ui/layouts/home';
 import { Link } from 'react-router';
 import { baseOptions } from '@/lib/layout.shared';
+import { gitConfig } from '@/lib/shared';
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -37,7 +38,7 @@ export default function Home() {
           </Link>
           <a
             className="rounded-full border px-5 py-2.5 text-sm font-medium"
-            href="https://github.com/commoncurriculum/supergrain"
+            href={`https://github.com/${gitConfig.user}/${gitConfig.repo}`}
           >
             GitHub
           </a>
