@@ -1,61 +1,55 @@
 # REJECTED: Using mingo for mill's update operators
 
-> **STATUS: REJECTED.** We considered backing `@supergrain/mill`'s update
-> operators with [mingo](https://github.com/kofrasa/mingo) (a MongoDB
-> query/update engine for plain JS objects) and decided against it. mingo
-> mutates plain data and never touches the kernel's signal layer, so it would
-> force a diff/reconcile pass and give up fine-grained reactivity, per-path type
-> safety, and bundle size. mill hand-rolls a small set of operators on top of
-> the kernel's own write primitives instead.
+> **STATUS: REJECTED.** mill hand-rolls a small, strictly-typed set of update
+> operators instead of depending on [mingo](https://github.com/kofrasa/mingo).
+> **Reactivity is _not_ the reason** — see the correction below. The decision
+> rests on type safety, dependency footprint, and ownership of the operator
+> surface.
 
 **Date:** June 2026
 
-## Context
+## Correction: "mingo would bypass our signals" is false
 
-`@supergrain/mill` provides MongoDB-style update operators (`$set`, `$unset`,
-`$inc`, `$min`, `$max`, `$push`, `$pull`, `$pullAll`, `$addToSet`, `$rename`)
-that apply to a reactive store. mingo already implements the MongoDB query +
-update language in JavaScript, so the natural question is: why not just delegate
-to it?
+An earlier draft of this note claimed mingo couldn't be used because it mutates
+plain objects without notifying signals, forcing a diff/reconcile pass. **That
+is wrong**, and it's contradicted by experiments in this very repo:
 
-## Why we are NOT using mingo
+- The kernel proxy traps **every** write/delete on the object, regardless of
+  which code performs it. If a library mutates a document **in place** through
+  the **proxy** (not the unwrapped raw object), its `obj.x = …` / `delete` /
+  array-method calls go through the `set`/`deleteProperty` traps and drive the
+  signals — no reconcile step.
+- Verified: when mill's operators were temporarily rewritten to mutate through
+  the proxy, the reactivity tests passed. The kernel's
+  `packages/kernel/tests/write/array-mutation.test.ts` independently proves that
+  `splice` / `push` / `pop` / `shift` called on the proxy fire effects.
 
-1. **It doesn't drive our signals — this is the deciding reason.** Supergrain's
-   reactivity comes entirely from the kernel's proxy/signal layer. mingo applies
-   updates to the plain underlying object without notifying any signal. To make
-   the UI react we'd then have to diff the before/after state and replay the
-   changes into signals — the exact reconciliation pass we work to avoid. mill's
-   operators instead call the kernel write primitives (`setProperty` /
-   `deleteProperty`) as they mutate, so the right signals fire inline with no
-   reconcile step.
+So mingo, handed the proxy, would react fine (assuming its updater mutates in
+place rather than cloning — not separately verified). Reactivity is a non-issue.
 
-2. **No fine-grained control.** We want precise signal behavior — e.g. removing
-   one array element should fire only the affected indices and `length`, not
-   invalidate the whole array; a nested `$set` should touch only the written
-   leaf. That requires owning the mutation loop. A general engine that produces
-   a new document (or mutates opaquely) can't express that granularity.
+## Why we still hand-roll the operators
 
-3. **Per-path type safety.** mill's operators are strictly typed against the
-   store shape `T` (`Path<T>` / `PathValue<T, P>`), so `$set: { "user.name": 42 }`
-   is a compile error when `user.name` is a `string`. mingo operates on loosely
-   typed `any` documents; adopting it would forfeit that checking.
+- **Type safety.** mill's operators are typed against the store shape `T`
+  (`Path<T>` / `PathValue<T, P>`), so `$set: { "user.name": 42 }` is a compile
+  error when `user.name` is a `string`. mingo operates on loosely typed `any`
+  documents and would forfeit that.
+- **Dependency footprint / surface area.** mill needs a small, fixed set of
+  update operators. mingo is a full MongoDB query + aggregation + update engine;
+  adopting it pulls in API and code we don't ship.
+- **Ownership of semantics.** Keeping the operators in-house means we control
+  edge cases (deep-equality matching, `$each`, `$pull` vs `$pullAll`, rename
+  conflicts) with no external runtime dependency in a core path.
 
-4. **Bundle size / surface area.** mingo is a full Mongo query + aggregation +
-   update engine. mill needs a small, fixed subset of update operators. Pulling
-   in the whole engine is bytes and API we don't ship.
+## A perf nuance (not about mingo specifically)
 
-5. **Ownership of semantics.** Keeping the operators in-house means we control
-   edge cases (deep-equality matching, `$each`, `$pull` vs `$pullAll`, rename
-   conflicts) and have no external runtime dependency in a core code path.
-
-## What we do instead
-
-A compact dispatcher in `operators.ts` maps each operator to a function that
-mutates the (unwrapped) target through the kernel's write primitives, all inside
-a single `batch()`. No external dependency, no reconciliation.
+mill applies its operators to the **unwrapped** target via the kernel's write
+primitives rather than mutating the proxy. That isn't because the proxy "doesn't
+work" — it's because navigating the proxy re-reads each path segment (a signal
+read per segment), which the kernel's profiler accounting tests pin to zero for
+`update()`. Any approach that drove mutations through the proxy — mingo included
+— would add that navigation overhead.
 
 ## If we ever want broader Mongo compatibility
 
-Add more operators to `operators.ts` the same way — each one calling the kernel
-primitives — rather than delegating mutation to a library that bypasses the
-signal layer.
+Add more operators to `operators.ts` the same way, each calling the kernel
+primitives.
