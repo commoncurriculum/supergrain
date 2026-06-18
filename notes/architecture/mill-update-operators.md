@@ -76,7 +76,8 @@ in-place compaction built entirely from the kernel primitives (`compactArray`):
 1. Walk the array; shift each survivor down with `setProperty` (fires only the
    indices whose value actually changed).
 2. Remove the vacated tail with `deleteProperty` per index (fires each vacated
-   index signal → `undefined`, plus ownKeys/version).
+   index signal → `undefined` — the value an out-of-bounds `arr[i]` read
+   returns — plus ownKeys/version).
 3. Truncate with `setProperty(arr, "length", newLength)`.
 
 If nothing matches, the array is left completely untouched (no writes, so
@@ -108,7 +109,16 @@ directly, I found a genuine kernel limitation worth recording:
   mill's `compactArray` is correct.
 
 This is why mill operates on raw + primitives rather than splicing the proxy.
-Fixing the proxy trap (mirroring the standalone helper) is a plausible future
-improvement, but it touches the hot delete path that the js-framework-benchmark
-drives directly (remove/clear), so it must be benchmarked before changing — do
-not change it casually.
+
+On the semantics: native array removal (`splice` / `filter`) shortens the array,
+so the old tail index becomes out-of-bounds and an `arr[i]` read returns
+`undefined`. Notifying the vacated index with `undefined` simply mirrors that —
+it is the native-consistent answer, and it matches the kernel's object-delete
+path. mill is therefore already native-correct.
+
+The one place still **not** native is the kernel's **proxy** trap: making
+`store.items.splice()` fire the vacated index the same way would align the proxy
+with native semantics. The blocker is no longer "is `undefined` right" (native
+says yes) but performance — it touches the hot delete path the
+js-framework-benchmark drives directly (remove/clear), so it must be benchmarked
+before changing. Do not change it casually.
