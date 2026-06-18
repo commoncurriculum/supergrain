@@ -144,6 +144,11 @@ describe("README Core Examples", () => {
       update(state, { $pull: { items: "b" } });
       expect(state.items).not.toContain("b");
 
+      // $pullAll
+      update(state, { $pullAll: { items: ["a", "c"] } });
+      expect(state.items).not.toContain("a");
+      expect(state.items).not.toContain("c");
+
       // $addToSet
       update(state, { $addToSet: { tags: "vue" } });
       expect(state.tags).toContain("vue");

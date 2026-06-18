@@ -9,7 +9,7 @@
 //   - `$set` / `$unset` / `$inc` / `$push` / `$pull` / `$min` / `$max` reject
 //     unknown paths and mismatched value shapes.
 //   - `$inc`, `$min`, `$max` reject non-numeric paths.
-//   - `$push` / `$pull` / `$addToSet` reject non-array paths.
+//   - `$push` / `$pull` / `$pullAll` / `$addToSet` reject non-array paths.
 //
 // Runtime no-op; everything below is checked by `tsc --noEmit`.
 // =============================================================================
@@ -110,6 +110,30 @@ describe("update — $push / $addToSet (array-only)", () => {
   it("rejects a wrong element type", () => {
     // @ts-expect-error -- scores holds numbers
     update(state, { $push: { scores: "100" } });
+  });
+});
+
+describe("update — $pullAll (array-only)", () => {
+  const state = {} as User;
+
+  it("accepts array paths with an array of the element type", () => {
+    update(state, { $pullAll: { tags: ["javascript", "rust"] } });
+    update(state, { $pullAll: { scores: [1, 2, 3] } });
+  });
+
+  it("rejects a non-array path", () => {
+    // @ts-expect-error -- name is not an array path
+    update(state, { $pullAll: { name: ["x"] } });
+  });
+
+  it("rejects a wrong element type", () => {
+    // @ts-expect-error -- scores holds numbers
+    update(state, { $pullAll: { scores: ["100"] } });
+  });
+
+  it("rejects a single value instead of an array", () => {
+    // @ts-expect-error -- $pullAll requires an array of values
+    update(state, { $pullAll: { scores: 100 } });
   });
 });
 

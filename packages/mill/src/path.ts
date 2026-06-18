@@ -169,6 +169,10 @@ export type ArrayPullOperations<T extends object> = {
   [P in ArrayPath<T>]?: PathValue<T, P> extends Array<infer Item> ? Item | Partial<Item> : never;
 };
 
+export type ArrayPullAllOperations<T extends object> = {
+  [P in ArrayPath<T>]?: PathValue<T, P> extends Array<infer Item> ? Array<Item> : never;
+};
+
 export interface ArrayModifiers<T> {
   $each: Array<T>;
 }
