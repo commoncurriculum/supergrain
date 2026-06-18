@@ -1,5 +1,11 @@
 # @supergrain/mill
 
+## 6.3.0
+
+### Patch Changes
+
+- @supergrain/kernel@6.3.0
+
 ## 6.2.0
 
 ### Patch Changes

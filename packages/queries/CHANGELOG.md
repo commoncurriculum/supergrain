@@ -1,5 +1,13 @@
 # @supergrain/queries
 
+## 6.3.0
+
+### Patch Changes
+
+- Updated dependencies [c959d10]
+  - @supergrain/silo@6.3.0
+  - @supergrain/kernel@6.3.0
+
 ## 6.2.0
 
 ### Patch Changes
