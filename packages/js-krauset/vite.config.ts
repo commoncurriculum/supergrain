@@ -1,7 +1,6 @@
 import strip from "@rollup/plugin-strip";
 import react from "@vitejs/plugin-react";
 /// <reference types="vitest" />
-import { resolve } from "path";
 import { defineConfig } from "vite";
 import dts from "vite-plugin-dts";
 
@@ -17,17 +16,8 @@ export default defineConfig({
     }),
   ],
 
-  // This is the key change:
-  // We use aliasing to tell Vite to bundle the local supergrain packages
-  // directly from their source code. This makes the package self-contained
-  // and removes the need for a pnpm workspace when you copy this package.
-  resolve: {
-    alias: {
-      "@supergrain/kernel/react": resolve(__dirname, "../kernel/src/react/index.ts"),
-      "@supergrain/kernel/internal": resolve(__dirname, "../kernel/src/internal.ts"),
-      "@supergrain/kernel": resolve(__dirname, "../kernel/src/index.ts"),
-    },
-  },
+  // Uses the published @supergrain/kernel packages (resolved from node_modules),
+  // not local workspace source — so the bundle matches what consumers get from npm.
 
   build: {
     // Keep function names readable for profiling and debugging
