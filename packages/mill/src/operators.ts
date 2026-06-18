@@ -1,12 +1,5 @@
-import { unwrap, getNodesIfExist } from "@supergrain/kernel";
-import {
-  bumpOwnKeysSignal,
-  bumpVersion,
-  endBatch,
-  profileSignalWrite,
-  setProperty,
-  startBatch,
-} from "@supergrain/kernel/internal";
+import { batch, unwrap } from "@supergrain/kernel";
+import { setProperty, deleteProperty } from "@supergrain/kernel/internal";
 
 import {
   type ArrayPullAllOperations,
@@ -23,10 +16,12 @@ import {
 /**
  * MongoDB-style operators for updating reactive stores.
  *
- * PERFORMANCE NOTE: All operators in this file have been optimized to use
- * setProperty() for ALL mutations, eliminating the need for reconciliation.
- * This ensures that signals are updated immediately during the operation,
- * rather than requiring a separate reconciliation pass.
+ * Mutations are applied to the raw (unwrapped) target using the kernel's own
+ * write primitives — `setProperty` and `deleteProperty` — which emit the
+ * fine-grained signal updates the proxy would. Operating on the raw object
+ * avoids redundant proxy-navigation reads, and routing every write through the
+ * kernel primitives means this module keeps no manual signal bookkeeping of
+ * its own. The whole `update()` runs inside a single `batch()`.
  */
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -105,21 +100,28 @@ export function isEqual(a: unknown, b: unknown): boolean {
   return true;
 }
 
-// Precise function for incrementing numeric values
-// OPTIMIZATION: Uses setProperty to ensure signal updates
-function incrementValue(parent: any, key: string, increment: number): void {
-  const currentValue = parent[key];
-  if (typeof currentValue === "number") {
-    setProperty(parent, key, currentValue + increment);
-    /* c8 ignore start -- assertNumericTarget prevents other non-nullish values */
-  } else if (currentValue === null || currentValue === undefined) {
-    setProperty(parent, key, increment);
+function isObjectMatch(obj: any, condition: any): boolean {
+  if (!isObject(obj) || !isObject(condition)) {
+    return isEqual(obj, condition);
   }
-  /* c8 ignore stop */
+
+  for (const key of Object.keys(condition)) {
+    if (!Object.hasOwn(obj, key) || !isEqual(obj[key], condition[key])) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
-// Precise function for comparing and setting min/max values
-// OPTIMIZATION: Uses setProperty to ensure signal updates
+// Increment a numeric value via setProperty. assertNumericTarget guarantees the
+// current value is a number, null, or undefined; a missing/nullish value starts
+// from 0.
+function incrementValue(parent: any, key: string, increment: number): void {
+  const current = parent[key];
+  setProperty(parent, key, (typeof current === "number" ? current : 0) + increment);
+}
+
 interface CompareAndSetOpts {
   parent: any;
   key: string;
@@ -139,7 +141,6 @@ function compareAndSetValue({ parent, key, newValue, isMin }: CompareAndSetOpts)
   }
 }
 
-// Precise function for array push operations
 function pushToArray(arr: Array<any>, itemsToAdd: Array<any>): void {
   const startIndex = arr.length;
   for (let i = 0; i < itemsToAdd.length; i++) {
@@ -147,91 +148,36 @@ function pushToArray(arr: Array<any>, itemsToAdd: Array<any>): void {
   }
 }
 
-function syncIndexedSignals(nodes: any, arr: Array<any>): void {
-  for (const key of Object.keys(nodes)) {
-    if (key !== "length" && !isNaN(Number(key))) {
-      const sig = nodes[key];
-      const newValue = (arr as any)[key];
-      if (sig() !== newValue) {
-        profileSignalWrite();
-        sig(newValue);
+// Removes every element for which `shouldRemove` returns true, in place, using
+// the kernel's write primitives. Survivors are shifted down with setProperty
+// (notifying their per-index signals) and the vacated tail is removed with
+// deleteProperty + a length write, so every affected signal — index, length,
+// ownKeys, version — is driven by the kernel rather than re-implemented here.
+function compactArray(arr: Array<any>, shouldRemove: (value: any) => boolean): void {
+  const originalLength = arr.length;
+  let writeIndex = 0;
+
+  for (let readIndex = 0; readIndex < originalLength; readIndex++) {
+    const value = arr[readIndex];
+    if (!shouldRemove(value)) {
+      if (writeIndex !== readIndex) {
+        setProperty(arr, writeIndex, value);
       }
-    }
-  }
-}
-
-// Synchronizes reactive signals after elements were spliced out of a raw
-// (unwrapped) array. Proxy handlers aren't involved when mutating the raw
-// array directly, so the affected signals must be bumped manually. Callers
-// invoke this only when at least one element was actually removed.
-function notifyArrayRemoval(arr: Array<any>): void {
-  // bumpVersion lazily materializes the node container, so getNodesIfExist
-  // below returns it for any normal array. nodes is only ever absent for the
-  // pathological frozen-array case — where the splice that triggers this would
-  // already have thrown — so the guard is purely defensive.
-  bumpVersion(arr);
-
-  const nodes = getNodesIfExist(arr);
-  /* c8 ignore start -- unreachable: bumpVersion just created the node container */
-  if (!nodes) {
-    return;
-  }
-  /* c8 ignore stop */
-
-  bumpOwnKeysSignal(arr, nodes);
-
-  const lengthSignal = nodes["length"];
-  if (lengthSignal && lengthSignal() !== arr.length) {
-    profileSignalWrite();
-    lengthSignal(arr.length);
-  }
-
-  syncIndexedSignals(nodes, arr);
-}
-
-// Operates on the RAW (unwrapped) array, not through the proxy.
-// Removes every element matching `condition` (object conditions match by
-// partial deep equality via isObjectMatch).
-function pullFromArray(arr: Array<any>, condition: any): boolean {
-  let removed = false;
-
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (isObjectMatch(arr[i], condition)) {
-      arr.splice(i, 1);
-      removed = true;
+      writeIndex++;
     }
   }
 
-  if (removed) {
-    notifyArrayRemoval(arr);
+  if (writeIndex === originalLength) {
+    return; // Nothing removed — leave the array (and its signals) untouched.
   }
 
-  return removed;
+  for (let i = originalLength - 1; i >= writeIndex; i--) {
+    deleteProperty(arr, i);
+  }
+  setProperty(arr, "length", writeIndex);
 }
 
-// Operates on the RAW (unwrapped) array, not through the proxy.
-// Removes every element that deep-equals any value in `valuesToRemove`.
-// Unlike $pull, matching is exact (full deep equality) — partial object
-// conditions never match.
-function pullAllFromArray(arr: Array<any>, valuesToRemove: Array<any>): boolean {
-  let removed = false;
-
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (valuesToRemove.some((value) => isEqual(arr[i], value))) {
-      arr.splice(i, 1);
-      removed = true;
-    }
-  }
-
-  if (removed) {
-    notifyArrayRemoval(arr);
-  }
-
-  return removed;
-}
-
-// Precise function for addToSet operations
-function addUniqueToArray(arr: Array<any>, itemsToAdd: Array<any>): boolean {
+function addUniqueToArray(arr: Array<any>, itemsToAdd: Array<any>): void {
   const newItems: Array<any> = [];
 
   for (const item of itemsToAdd) {
@@ -244,13 +190,8 @@ function addUniqueToArray(arr: Array<any>, itemsToAdd: Array<any>): boolean {
   }
 
   if (newItems.length > 0) {
-    const startIndex = arr.length;
-    for (let i = 0; i < newItems.length; i++) {
-      setProperty(arr, startIndex + i, newItems[i]);
-    }
-    return true;
+    pushToArray(arr, newItems);
   }
-  return false;
 }
 
 function $set(target: object, operations: Record<string, unknown>): void {
@@ -270,8 +211,7 @@ function $inc(target: object, operations: Record<string, number>): void {
     const result = resolveParentPath(target, path);
     if (result) {
       assertNumericTarget("$inc", path, result.parent[result.key]);
-      const incValue = operations[path]!;
-      incrementValue(result.parent, result.key, incValue);
+      incrementValue(result.parent, result.key, operations[path]!);
     } else {
       // Path doesn't exist, create it
       setValueAtPath(target, path, operations[path]!);
@@ -293,26 +233,13 @@ function $push(target: object, operations: Record<string, any>): void {
   }
 }
 
-function isObjectMatch(obj: any, condition: any): boolean {
-  if (!isObject(obj) || !isObject(condition)) {
-    return isEqual(obj, condition);
-  }
-
-  for (const key of Object.keys(condition)) {
-    if (!Object.hasOwn(obj, key) || !isEqual(obj[key], condition[key])) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 function $pull(target: object, operations: Record<string, any>): void {
   for (const path of Object.keys(operations)) {
     const result = resolveParentPath(target, path);
     const arr = assertArrayTarget("$pull", path, result);
     const condition = operations[path];
-    pullFromArray(arr, condition);
+    // Object conditions match by partial deep equality (isObjectMatch).
+    compactArray(arr, (value) => isObjectMatch(value, condition));
   }
 }
 
@@ -326,7 +253,9 @@ function $pullAll(target: object, operations: Record<string, any>): void {
         `$pullAll path "${path}" requires an array of values to remove, received ${describeValue(valuesToRemove)}.`,
       );
     }
-    pullAllFromArray(arr, valuesToRemove);
+    // Unlike $pull, matching is exact (full deep equality) — partial object
+    // conditions never match.
+    compactArray(arr, (value) => valuesToRemove.some((candidate) => isEqual(value, candidate)));
   }
 }
 
@@ -455,8 +384,8 @@ export type UpdateOperations<T extends object = Record<string, any>> = StrictUpd
 
 export function update<T extends object>(target: T, operations: UpdateOperations<T>): void {
   const raw = unwrap(target) as object;
-  startBatch();
-  try {
+  // Coalesce every write in this call into a single notification.
+  batch(() => {
     for (const op of operatorList) {
       if (op in operations) {
         const operator = operators[op];
@@ -464,7 +393,5 @@ export function update<T extends object>(target: T, operations: UpdateOperations
         operator?.(raw, opArgs);
       }
     }
-  } finally {
-    endBatch();
-  }
+  });
 }

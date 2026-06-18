@@ -14,6 +14,7 @@ Project documentation, research findings, and design decisions for Supergrain.
 - [Safe Compile-Time Optimizations](architecture/safe-compile-time-optimizations.md) -- Unimplemented compile-time ideas
 - [Vite Compiler Plugin](architecture/vite-compiler-plugin-plan.md) -- Original plan (readSignal abandoned; createView + $$() shipped)
 - [Silo Architecture](architecture/silo-architecture.md) -- Design spec for `@supergrain/silo` (document-store read layer)
+- [Mill Update Operators](architecture/mill-update-operators.md) -- Why mill hand-rolls Mongo-style operators (not mingo) and mutates raw via kernel write primitives
 
 ## Benchmarks
 
