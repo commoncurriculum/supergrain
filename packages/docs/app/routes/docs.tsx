@@ -15,6 +15,7 @@ import { gitConfig } from '@/lib/shared';
 import { useFumadocsLoader } from 'fumadocs-core/source/client';
 import { getPageImagePath } from '@/lib/og';
 import { useMDXComponents } from '@/components/mdx';
+import { withBase } from '@/lib/base';
 
 export async function loader({ params }: Route.LoaderArgs) {
   const slugs = params['*'].split('/').filter((v) => v.length > 0);
@@ -23,9 +24,10 @@ export async function loader({ params }: Route.LoaderArgs) {
 
   return {
     path: page.path,
-    markdownUrl: getPageMarkdownUrl(page).url,
+    // Base-prefixed so they resolve under the /supergrain/ Pages subpath.
+    markdownUrl: withBase(getPageMarkdownUrl(page).url),
     pageTree: await source.serializePageTree(source.getPageTree()),
-    imagePath: getPageImagePath(slugs),
+    imagePath: withBase(getPageImagePath(slugs)),
   };
 }
 
@@ -54,7 +56,7 @@ const clientLoader = browserCollections.docs.createClientLoader({
           <MarkdownCopyButton markdownUrl={markdownUrl} />
           <ViewOptionsPopover
             markdownUrl={markdownUrl}
-            githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/content/docs/${path}`}
+            githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/packages/docs/content/docs/${path}`}
           />
         </div>
         <DocsBody>

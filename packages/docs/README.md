@@ -63,7 +63,3 @@ The `/supergrain/` base path is configured in two places that must stay in sync:
 
 - **Live interactive demos** — embed real `@supergrain/kernel` components in
   `.mdx` pages (aliasing kernel source) to show fine-grained re-rendering.
-- **Twoslash** — type-on-hover code blocks, a strong fit for a type-inference
-  focused library.
-- **Static search** — the example ships server-route search; a fully static
-  Pages deploy needs Fumadocs' build-time (static) search index.

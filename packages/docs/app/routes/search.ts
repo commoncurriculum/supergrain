@@ -1,4 +1,3 @@
-import type { Route } from './+types/search';
 import { createFromSource } from 'fumadocs-core/search/server';
 import { source } from '@/lib/source';
 
@@ -7,6 +6,9 @@ const server = createFromSource(source, {
   language: 'english',
 });
 
-export async function loader({ request }: Route.LoaderArgs) {
-  return server.GET(request);
+// Build-time static search index: prerendered to /api/search and downloaded by
+// the client (app/components/search.tsx). Works on a static GitHub Pages deploy
+// where there is no server to answer per-query search requests.
+export async function loader() {
+  return server.staticGET();
 }

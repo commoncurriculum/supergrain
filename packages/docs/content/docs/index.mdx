@@ -33,6 +33,20 @@ function Counter() {
 }
 ```
 
+## Type inference
+
+Supergrain infers everything from your plain object — no generics, no casts.
+Hover any identifier below to see its inferred type:
+
+```ts twoslash
+import { createReactive } from '@supergrain/kernel';
+
+const store = createReactive({ user: { name: 'Ada' }, count: 0 });
+
+const name = store.user.name;
+//    ^?
+```
+
 ## Packages
 
 <Cards>
