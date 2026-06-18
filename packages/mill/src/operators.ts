@@ -162,26 +162,25 @@ function syncIndexedSignals(nodes: any, arr: Array<any>): void {
 
 // Synchronizes reactive signals after elements were spliced out of a raw
 // (unwrapped) array. Proxy handlers aren't involved when mutating the raw
-// array directly, so the affected signals must be bumped manually.
-function notifyArrayRemoval(arr: Array<any>, originalLength: number): void {
-  if (arr.length !== originalLength) {
-    bumpVersion(arr);
+// array directly, so the affected signals must be bumped manually. Callers
+// invoke this only when at least one element was actually removed.
+function notifyArrayRemoval(arr: Array<any>): void {
+  bumpVersion(arr);
 
-    const nodes = getNodesIfExist(arr);
-    /* c8 ignore start -- raw arrays have no reactive nodes to synchronize */
-    if (nodes) {
-      bumpOwnKeysSignal(arr, nodes);
+  const nodes = getNodesIfExist(arr);
+  /* c8 ignore start -- raw arrays have no reactive nodes to synchronize */
+  if (nodes) {
+    bumpOwnKeysSignal(arr, nodes);
 
-      const lengthSignal = nodes["length"];
-      if (lengthSignal && lengthSignal() !== arr.length) {
-        profileSignalWrite();
-        lengthSignal(arr.length);
-      }
-
-      syncIndexedSignals(nodes, arr);
+    const lengthSignal = nodes["length"];
+    if (lengthSignal && lengthSignal() !== arr.length) {
+      profileSignalWrite();
+      lengthSignal(arr.length);
     }
-    /* c8 ignore stop */
+
+    syncIndexedSignals(nodes, arr);
   }
+  /* c8 ignore stop */
 }
 
 // Operates on the RAW (unwrapped) array, not through the proxy.
@@ -189,7 +188,6 @@ function notifyArrayRemoval(arr: Array<any>, originalLength: number): void {
 // partial deep equality via isObjectMatch).
 function pullFromArray(arr: Array<any>, condition: any): boolean {
   let removed = false;
-  const originalLength = arr.length;
 
   for (let i = arr.length - 1; i >= 0; i--) {
     if (isObjectMatch(arr[i], condition)) {
@@ -199,7 +197,7 @@ function pullFromArray(arr: Array<any>, condition: any): boolean {
   }
 
   if (removed) {
-    notifyArrayRemoval(arr, originalLength);
+    notifyArrayRemoval(arr);
   }
 
   return removed;
@@ -211,7 +209,6 @@ function pullFromArray(arr: Array<any>, condition: any): boolean {
 // conditions never match.
 function pullAllFromArray(arr: Array<any>, valuesToRemove: Array<any>): boolean {
   let removed = false;
-  const originalLength = arr.length;
 
   for (let i = arr.length - 1; i >= 0; i--) {
     if (valuesToRemove.some((value) => isEqual(arr[i], value))) {
@@ -221,7 +218,7 @@ function pullAllFromArray(arr: Array<any>, valuesToRemove: Array<any>): boolean 
   }
 
   if (removed) {
-    notifyArrayRemoval(arr, originalLength);
+    notifyArrayRemoval(arr);
   }
 
   return removed;
