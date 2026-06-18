@@ -1,0 +1,45 @@
+---
+title: Introduction
+description: Reactive state for React with super fine-grained reactivity.
+---
+
+Supergrain is a reactive store library for React with **super fine-grained
+reactivity**. You write plain objects and mutate them directly — Supergrain
+re-renders only the components that actually read the properties that changed.
+
+No reducers. No selectors. No `useMemo`/`useCallback` dance. No immutability
+rules.
+
+## Why Supergrain
+
+- **Plain objects** — read properties, assign values, push to arrays. No special syntax.
+- **Fine-grained** — only the components that read a changed property re-render.
+- **Synchronous** — state updates are immediate, not deferred to the next render.
+- **Type-safe** — full TypeScript inference on stores and mutations, no generics or casts.
+- **Tiny** — the core is a few kilobytes min+brotli.
+- **SSR-ready** — works with Next.js, RSC, and React 19.
+
+## Quick start
+
+```tsx
+import { createReactive } from '@supergrain/kernel';
+import { useReactive } from '@supergrain/kernel/react';
+
+const store = createReactive({ count: 0 });
+
+function Counter() {
+  const snap = useReactive(store);
+  return <button onClick={() => store.count++}>Count: {snap.count}</button>;
+}
+```
+
+## Packages
+
+<Cards>
+  <Card title="Kernel" href="/docs/kernel" description="The core reactive store and React bindings." />
+  <Card title="Husk" href="/docs/husk" description="Reactive side-effect primitives: resources, tasks, modifiers." />
+  <Card title="Silo" href="/docs/silo" description="A Suspense-native, request-batched reactive document cache." />
+  <Card title="Queries" href="/docs/queries" description="Pagination and live-subscription queries for Silo." />
+  <Card title="Mill" href="/docs/mill" description="MongoDB-style update operators ($set, $push, ...)." />
+  <Card title="Comparison" href="/docs/comparison" description="How Supergrain compares to other reactive libraries." />
+</Cards>

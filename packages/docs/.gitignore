@@ -1,0 +1,11 @@
+.DS_Store
+/node_modules/
+
+# React Router
+/.react-router/
+/build/
+.source
+
+# The repo-root .gitignore ignores `lib/` (build artifacts), which would swallow
+# our source directory app/lib. Re-include it.
+!app/lib/

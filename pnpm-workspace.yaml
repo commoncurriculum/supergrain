@@ -1,2 +1,7 @@
 packages:
   - "packages/*"
+  # The docs site is an isolated sub-project: it runs a bleeding-edge toolchain
+  # (Vite 8 / React Router 8 / TypeScript 6) and keeps its own lockfile so it
+  # never perturbs the core library's dependency resolution. Install it with
+  # `pnpm install --ignore-workspace` from inside packages/docs.
+  - "!packages/docs"
