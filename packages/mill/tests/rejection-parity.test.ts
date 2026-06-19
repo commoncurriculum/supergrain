@@ -23,6 +23,14 @@ const cases: Array<RejectionCase> = [
   { name: "$addToSet onto a number", doc: { a: 5 }, ops: { $addToSet: { a: 1 } } },
   { name: "$pull on a number", doc: { a: 5 }, ops: { $pull: { a: 1 } } },
   { name: "$pullAll on a number", doc: { a: 5 }, ops: { $pullAll: { a: [1] } } },
+
+  // Array operators whose path runs *through* a scalar intermediate: there is no
+  // array to operate on and Mongo can't traverse the scalar.
+  { name: "$push through a scalar", doc: { a: 5 }, ops: { $push: { "a.b": 1 } } },
+  { name: "$addToSet through a scalar", doc: { a: 5 }, ops: { $addToSet: { "a.b": 1 } } },
+  { name: "$pull through a scalar", doc: { a: 5 }, ops: { $pull: { "a.b": 1 } } },
+  { name: "$pullAll through a scalar", doc: { a: 5 }, ops: { $pullAll: { "a.b": [1] } } },
+  { name: "$pop through a scalar", doc: { a: 5 }, ops: { $pop: { "a.b": 1 } } },
 ];
 
 describe("rejection parity (mill vs real mongod)", () => {

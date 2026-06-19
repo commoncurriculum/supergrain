@@ -1,4 +1,4 @@
-import { splitPath } from "./path";
+import { isArrayIndex, splitPath } from "./path";
 import { cloneValue, isContainer } from "./util";
 
 // ─── undo accumulation ──────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ export function capturePathUndo(undo: MutableUndo, raw: object, path: string): v
     if (
       i > 0 &&
       Array.isArray(current) &&
-      /^\d+$/u.test(segment) &&
+      isArrayIndex(segment) &&
       Number(segment) >= current.length
     ) {
       undoSet(undo, parts.slice(0, i).join("."), cloneValue(current));
@@ -96,7 +96,7 @@ export function capturePathUndo(undo: MutableUndo, raw: object, path: string): v
   // exact, replayable inverse is to restore the whole prior array.
   if (
     Array.isArray(current) &&
-    /^\d+$/.test(leafKey) &&
+    isArrayIndex(leafKey) &&
     Number(leafKey) >= current.length &&
     parts.length > 1
   ) {

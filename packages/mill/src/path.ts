@@ -4,7 +4,10 @@ import { setProperty, deleteProperty } from "@supergrain/kernel/internal";
 
 import { isContainer } from "./util";
 
-const ARRAY_INDEX = /^\d+$/u;
+/** Whether a path segment is a non-negative integer array index (`"0"`, `"3"`). */
+export function isArrayIndex(segment: string): boolean {
+  return /^\d+$/u.test(segment);
+}
 
 export type PathSegment = string;
 
@@ -137,7 +140,7 @@ export function ensureParentPath(target: object, path: string): { parent: any; k
       // Absent intermediate — Mongo creates the missing branch as an object.
       // Growing an array through an out-of-bounds index pads the gap with null
       // (Mongo's behavior) rather than leaving sparse holes.
-      if (Array.isArray(current) && ARRAY_INDEX.test(part)) {
+      if (Array.isArray(current) && isArrayIndex(part)) {
         for (let j = current.length; j < Number(part); j++) {
           setProperty(current, String(j), null);
         }
@@ -158,7 +161,7 @@ export function ensureParentPath(target: object, path: string): { parent: any; k
 
 export function setValueAtPath(target: object, path: string, value: unknown): void {
   const { parent, key } = ensureParentPath(target, path);
-  if (Array.isArray(parent) && ARRAY_INDEX.test(key)) {
+  if (Array.isArray(parent) && isArrayIndex(key)) {
     // Writing past the end grows the array; Mongo pads the gap with null rather
     // than leaving holes. e.g. [1] + "scores.3" -> [1, null, null, 4].
     for (let i = parent.length; i < Number(key); i++) {
