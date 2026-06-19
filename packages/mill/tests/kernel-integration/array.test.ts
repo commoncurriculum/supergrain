@@ -1,4 +1,4 @@
-import { update } from "@supergrain/mill";
+import { update } from "../../src";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import {
@@ -8,7 +8,7 @@ import {
   disableProfiling,
   resetProfiler,
   getProfile,
-} from "../../src";
+} from "@supergrain/kernel";
 
 describe("Array Support", () => {
   let store: any;

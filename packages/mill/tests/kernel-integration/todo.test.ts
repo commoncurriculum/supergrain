@@ -1,7 +1,7 @@
-import { update } from "@supergrain/mill";
+import { update } from "../../src";
 import { describe, it, expect, vi } from "vitest";
 
-import { createReactive, effect } from "../../src";
+import { createReactive, effect } from "@supergrain/kernel";
 
 interface Task {
   id: string;

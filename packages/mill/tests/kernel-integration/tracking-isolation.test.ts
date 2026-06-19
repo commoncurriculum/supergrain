@@ -1,4 +1,4 @@
-import { update } from "@supergrain/mill";
+import { update } from "../../src";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import {
@@ -8,8 +8,8 @@ import {
   disableProfiling,
   resetProfiler,
   getProfile,
-} from "../../src";
-import { getActiveSub, setActiveSub } from "../../src/internal";
+} from "@supergrain/kernel";
+import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
 
 describe("Tracking Isolation Analysis", () => {
   beforeEach(() => {
