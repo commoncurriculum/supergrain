@@ -46,8 +46,16 @@ function planRename(context: OperatorContext, rawFrom: string, rawTo: string): R
   assertNotArrayElement(context.raw, from);
   assertNotArrayElement(context.raw, to);
   const source = resolveParentPath(context.raw, from);
-  if (!source || !Object.hasOwn(source.parent, source.key)) {
-    return null; // missing source — Mongo treats this as a no-op
+  if (!source) {
+    // A non-object intermediate blocks traversal — Mongo rejects this ("cannot
+    // use the part ... to traverse the element ...") rather than treating it as
+    // a no-op. (A *missing leaf* under a real object, below, stays a no-op.)
+    throw new TypeError(
+      `$rename cannot traverse source path "${from}": a segment runs through a non-object value.`,
+    );
+  }
+  if (!Object.hasOwn(source.parent, source.key)) {
+    return null; // missing leaf under a real object — Mongo treats this as a no-op
   }
   const destination = resolveParentPath(context.raw, to);
   if (destination && Object.hasOwn(destination.parent, destination.key)) {

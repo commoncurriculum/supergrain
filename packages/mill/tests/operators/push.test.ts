@@ -11,6 +11,14 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
+  it("$push creates the array when the field is missing", () => {
+    const store = createReactive<any>({ keep: 1 });
+    const { undo, rewindAndAssertRestored } = applyWithUndo(store, {}, { $push: { tags: "a" } });
+    expect(store.tags).toEqual(["a"]);
+    expect(undo).toEqual({ $unset: { tags: "" } });
+    rewindAndAssertRestored();
+  });
+
   it("$push: should add multiple elements with $each", () => {
     const state = createReactive({ tags: ["a", "b"] });
     const { rewindAndAssertRestored } = applyWithUndo(

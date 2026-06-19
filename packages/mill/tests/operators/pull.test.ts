@@ -41,6 +41,15 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
+  it("$pull on a missing field is a no-op", () => {
+    const store = createReactive<any>({ keep: 1 });
+    const { undo, rewindAndAssertRestored } = applyWithUndo(store, {}, { $pull: { tags: 2 } });
+    expect(store.tags).toBeUndefined();
+    expect(store.keep).toBe(1);
+    expect(undo).toEqual({}); // no-op produces no undo
+    rewindAndAssertRestored();
+  });
+
   it("$pull mutates an untracked array without indexed subscribers", () => {
     const store = createReactive<any>({ items: [1, 2, 3] });
     const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $pull: { items: 2 } });

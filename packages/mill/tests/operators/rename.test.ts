@@ -39,6 +39,20 @@ describe("MongoDB Style Operators", () => {
     expect(store.users[0].name).toBe("Alice");
   });
 
+  it("rejects $rename of a direct array element, like MongoDB", () => {
+    const store = createReactive<any>({ tags: ["a", "b"] });
+    expect(() => update(store, {}, { $rename: { "tags.0": "tags.x" } })).toThrow(/array element/i);
+    expect(store.tags).toEqual(["a", "b"]);
+  });
+
+  it("rejects a $rename whose source path runs through a scalar, like MongoDB", () => {
+    const store = createReactive<any>({ user: { name: "John" } });
+    expect(() =>
+      update(store, {}, { $rename: { "user.name.first.deep": "user.renamed" } }),
+    ).toThrow(/cannot traverse/i);
+    expect(store.user).toEqual({ name: "John" });
+  });
+
   it("$rename ignores missing source paths", () => {
     const store = createReactive<any>({ user: { name: "Jane" } });
     const { undo, rewindAndAssertRestored } = applyWithUndo(

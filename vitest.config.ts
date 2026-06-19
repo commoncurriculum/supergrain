@@ -54,6 +54,11 @@ export default defineConfig({
         test: {
           include: ["packages/mill/**/*.test.{ts,tsx}"],
           environment: "node",
+          // mill validates every mutating test against a real mongod; boot it
+          // once and replay after each test (mirrors packages/mill/vitest.config.ts).
+          globalSetup: ["./packages/mill/tests/global-setup.ts"],
+          setupFiles: ["./packages/mill/tests/setup.ts"],
+          hookTimeout: 240_000,
         },
         resolve,
         ssr,
