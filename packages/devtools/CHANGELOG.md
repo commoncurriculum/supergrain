@@ -1,5 +1,12 @@
 # @supergrain/devtools
 
+## 7.0.0
+
+### Patch Changes
+
+- @supergrain/kernel@7.0.0
+- @supergrain/silo@7.0.0
+
 ## 6.3.0
 
 ### Minor Changes
