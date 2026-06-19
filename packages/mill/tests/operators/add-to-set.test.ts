@@ -38,6 +38,18 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
+  it("$addToSet dedups Date values by time", () => {
+    const store = createReactive<any>({ when: [new Date("2021-01-01T00:00:00.000Z")] });
+    const rec = undoRecorder(store);
+
+    rec.apply({}, { $addToSet: { when: new Date("2021-01-01T00:00:00.000Z") } }); // duplicate
+    expect(store.when).toHaveLength(1);
+
+    rec.apply({}, { $addToSet: { when: new Date("2022-01-01T00:00:00.000Z") } }); // new
+    expect(store.when).toHaveLength(2);
+    rec.rewindAndAssertRestored();
+  });
+
   it("$addToSet: should handle $each modifier", () => {
     const state = createReactive({ tags: ["a", "b"] });
     const { rewindAndAssertRestored } = applyWithUndo(

@@ -37,6 +37,12 @@ export function isEqual(a: unknown, b: unknown): boolean {
     return false;
   }
 
+  // Dates have no enumerable own keys, so compare by time rather than falling
+  // through to the structural key check (which would treat all Dates as equal).
+  if (a instanceof Date || b instanceof Date) {
+    return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  }
+
   if (Array.isArray(a) || Array.isArray(b)) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
       return false;

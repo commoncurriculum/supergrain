@@ -84,7 +84,10 @@ function matchesQueryEntry(value: unknown, key: string, condition: unknown): boo
 
 /** Match a document/array-element against a query document. */
 export function matchesQuery(value: unknown, query: unknown): boolean {
-  if (!isObject(query)) {
+  // A non-plain value (primitive, or a Date — which has no enumerable keys and
+  // would otherwise read as an empty "match everything" query) is an equality
+  // target, not a query document.
+  if (!isObject(query) || query instanceof Date) {
     return isEqual(value, query);
   }
   return Object.keys(query).every((key) => matchesQueryEntry(value, key, query[key]));

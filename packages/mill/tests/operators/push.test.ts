@@ -155,14 +155,28 @@ describe("$push modifiers", () => {
     rewindAndAssertRestored();
   });
 
-  it("$sort orders across BSON types (number < string < object < array < boolean)", () => {
-    const store = createReactive<any>({ a: [true, [1], { x: 1 }, "s", 5] });
+  it("$sort orders across BSON types (number < string < object < array < boolean < date)", () => {
+    const date = new Date("2020-01-01T00:00:00.000Z");
+    const store = createReactive<any>({ a: [date, true, [1], { x: 1 }, "s", 5] });
     const { rewindAndAssertRestored } = applyWithUndo(
       store,
       {},
       { $push: { a: { $each: [], $sort: 1 } } },
     );
-    expect(store.a).toEqual([5, "s", { x: 1 }, [1], true]);
+    expect(store.a).toEqual([5, "s", { x: 1 }, [1], true, date]);
+    rewindAndAssertRestored();
+  });
+
+  it("$sort orders dates chronologically", () => {
+    const earlier = new Date("2019-01-01T00:00:00.000Z");
+    const later = new Date("2020-01-01T00:00:00.000Z");
+    const store = createReactive<any>({ a: [later, earlier] });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $push: { a: { $each: [], $sort: 1 } } },
+    );
+    expect(store.a).toEqual([earlier, later]);
     rewindAndAssertRestored();
   });
 

@@ -63,6 +63,33 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
+  it("$pull removes array elements equal to a Date value (by time)", () => {
+    const d2 = new Date("2022-01-01T00:00:00.000Z");
+    const store = createReactive<any>({
+      when: [new Date("2021-01-01T00:00:00.000Z"), d2, new Date("2021-01-01T00:00:00.000Z")],
+    });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $pull: { when: new Date("2021-01-01T00:00:00.000Z") } },
+    );
+    expect(store.when).toEqual([d2]);
+    rewindAndAssertRestored();
+  });
+
+  it("$pull a Date leaves non-Date elements untouched", () => {
+    const store = createReactive<any>({
+      items: [new Date("2021-01-01T00:00:00.000Z"), { x: 1 }, 5],
+    });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $pull: { items: new Date("2021-01-01T00:00:00.000Z") } },
+    );
+    expect(store.items).toEqual([{ x: 1 }, 5]);
+    rewindAndAssertRestored();
+  });
+
   it("$pull mutates an untracked array without indexed subscribers", () => {
     const store = createReactive<any>({ items: [1, 2, 3] });
     const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $pull: { items: 2 } });

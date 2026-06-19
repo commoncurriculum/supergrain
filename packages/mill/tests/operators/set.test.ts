@@ -32,6 +32,28 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
+  it("$set is a no-op when setting a Date equal (by time) to the current value", () => {
+    const store = createReactive<any>({ at: new Date("2020-05-01T00:00:00.000Z") });
+    const { undo, rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $set: { at: new Date("2020-05-01T00:00:00.000Z") } },
+    );
+    expect(undo).toEqual({}); // equal Date → no write
+    rewindAndAssertRestored();
+  });
+
+  it("$set replacing a Date with an object is not a no-op", () => {
+    const store = createReactive<any>({ at: new Date("2020-05-01T00:00:00.000Z") });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $set: { at: { kind: "none" } } },
+    );
+    expect(store.at).toEqual({ kind: "none" });
+    rewindAndAssertRestored();
+  });
+
   it("$set fires effects subscribed to the written path and not to siblings", () => {
     const store = createReactive({ a: 1, b: 2 });
     const aFn = vi.fn(() => void store.a);

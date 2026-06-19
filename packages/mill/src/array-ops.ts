@@ -116,12 +116,13 @@ function compareScalar(a: any, b: any): number {
 
 // MongoDB's canonical BSON type ordering (the subset that appears in plain
 // update documents): null/missing < numbers < strings < objects < arrays <
-// booleans. $sort uses this, not raw JS `<`/`>`, so mixed types and a missing
-// sort key order exactly the way Mongo orders them.
+// booleans < dates. $sort uses this, not raw JS `<`/`>`, so mixed types and a
+// missing sort key order exactly the way Mongo orders them.
 function bsonTypeRank(value: unknown): number {
   if (value === null || value === undefined) return 1;
   if (typeof value === "number") return 2;
   if (typeof value === "string") return 3;
+  if (value instanceof Date) return 7;
   if (Array.isArray(value)) return 5;
   if (typeof value === "boolean") return 6;
   return 4; // object
@@ -136,6 +137,7 @@ function bsonCompare(a: unknown, b: unknown): number {
   return match(rankA)
     .with(2, 3, () => compareScalar(a, b))
     .with(6, () => compareScalar(a ? 1 : 0, b ? 1 : 0))
+    .with(7, () => compareScalar((a as Date).getTime(), (b as Date).getTime()))
     .otherwise(() => 0); // null/missing, and objects/arrays (kept stable)
 }
 
