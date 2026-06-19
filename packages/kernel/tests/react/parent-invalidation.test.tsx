@@ -134,7 +134,7 @@ describe("Parent Invalidation Depth Tests", () => {
 
     // Test 1: Update deeply nested object property (path past Path<T> default depth)
     await act(async () => {
-      update(store, {
+      update(store, {}, {
         $set: {
           "level0.level1.level2.level3.level4.value": "updated-deep",
         },
@@ -158,11 +158,15 @@ describe("Parent Invalidation Depth Tests", () => {
     const arrayBefore = arrayRenderCount;
     const arrayItemBefore = arrayItemRenderCount;
     await act(async () => {
-      update(store, {
-        $set: {
-          "array.0.nested.deep.value": "updated-array-deep",
+      update(
+        store,
+        {},
+        {
+          $set: {
+            "array.0.nested.deep.value": "updated-array-deep",
+          },
         },
-      });
+      );
       await flushMicrotasks();
     });
     expect(rootRenderCount).toBe(1); // still untouched
@@ -173,7 +177,7 @@ describe("Parent Invalidation Depth Tests", () => {
     // Test 3: Update intermediate level directly — replaces level2 object with a different shape
     const level2Before = level2RenderCount;
     await act(async () => {
-      update(store, {
+      update(store, {}, {
         $set: {
           "level0.level1.level2": { newProp: "direct-update" },
         },
@@ -244,11 +248,15 @@ describe("Parent Invalidation Depth Tests", () => {
 
     // Update deeply nested property in array item
     await act(async () => {
-      update(store, {
-        $set: {
-          "items.0.details.meta.tag": "UPDATED",
+      update(
+        store,
+        {},
+        {
+          $set: {
+            "items.0.details.meta.tag": "UPDATED",
+          },
         },
-      });
+      );
       await flushMicrotasks();
     });
 

@@ -141,63 +141,63 @@ function applyMillModelOperation(state: MillState, operation: MillOperation): vo
 function applyMillReactiveOperation(state: MillState, operation: MillOperation): void {
   switch (operation.type) {
     case "setCount": {
-      update(state, { $set: { count: operation.value } });
+      update(state, {}, { $set: { count: operation.value } });
       return;
     }
     case "setScore": {
-      update(state, { $set: { "nested.score": operation.value } });
+      update(state, {}, { $set: { "nested.score": operation.value } });
       return;
     }
     case "unsetCount": {
-      update(state, { $unset: { count: 1 } });
+      update(state, {}, { $unset: { count: 1 } });
       return;
     }
     case "unsetScore": {
-      update(state, { $unset: { "nested.score": 1 } });
+      update(state, {}, { $unset: { "nested.score": 1 } });
       return;
     }
     case "incCount": {
-      update(state, { $inc: { count: operation.value } });
+      update(state, {}, { $inc: { count: operation.value } });
       return;
     }
     case "incScore": {
-      update(state, { $inc: { "nested.score": operation.value } });
+      update(state, {}, { $inc: { "nested.score": operation.value } });
       return;
     }
     case "minCount": {
-      update(state, { $min: { count: operation.value } });
+      update(state, {}, { $min: { count: operation.value } });
       return;
     }
     case "minScore": {
-      update(state, { $min: { "nested.score": operation.value } });
+      update(state, {}, { $min: { "nested.score": operation.value } });
       return;
     }
     case "maxCount": {
-      update(state, { $max: { count: operation.value } });
+      update(state, {}, { $max: { count: operation.value } });
       return;
     }
     case "maxScore": {
-      update(state, { $max: { "nested.score": operation.value } });
+      update(state, {}, { $max: { "nested.score": operation.value } });
       return;
     }
     case "pushTag": {
-      update(state, { $push: { tags: operation.value } });
+      update(state, {}, { $push: { tags: operation.value } });
       return;
     }
     case "pushManyTags": {
-      update(state, { $push: { tags: { $each: operation.values } } });
+      update(state, {}, { $push: { tags: { $each: operation.values } } });
       return;
     }
     case "pullTag": {
-      update(state, { $pull: { tags: operation.value } });
+      update(state, {}, { $pull: { tags: operation.value } });
       return;
     }
     case "addToSetTag": {
-      update(state, { $addToSet: { tags: operation.value } });
+      update(state, {}, { $addToSet: { tags: operation.value } });
       return;
     }
     case "addManyToSetTags": {
-      update(state, { $addToSet: { tags: { $each: operation.values } } });
+      update(state, {}, { $addToSet: { tags: { $each: operation.values } } });
       return;
     }
   }
@@ -273,7 +273,7 @@ describe("property-based $pull with object queries", () => {
 
           for (const query of queries) {
             expected.items = expected.items.filter((item) => !modelMatches(item, query));
-            update(store, { $pull: { items: query } });
+            update(store, {}, { $pull: { items: query } });
             expect(unwrap(store).items).toEqual(expected.items);
           }
         },
@@ -344,19 +344,81 @@ function applyRenameReactive(state: RenameState, op: RenameOp): { threw: boolean
   try {
     switch (op.type) {
       case "set":
-        update(state, { $set: { [op.field]: op.value } } as never);
+        update(state, {}, { $set: { [op.field]: op.value } } as never);
         return { threw: false };
       case "unset":
-        update(state, { $unset: { [op.field]: 1 } } as never);
+        update(state, {}, { $unset: { [op.field]: 1 } } as never);
         return { threw: false };
       case "rename":
-        update(state, { $rename: { [op.from]: op.to } } as never);
+        update(state, {}, { $rename: { [op.from]: op.to } } as never);
         return { threw: false };
     }
   } catch {
     return { threw: true };
   }
 }
+
+// ─── undo round-trip ─────────────────────────────────────────────────────────
+//
+// The defining property of the data-first undo: for any operation, applying the
+// returned `undo` to the post-update document restores the exact prior state.
+
+function operationToOps(operation: MillOperation): Record<string, unknown> {
+  switch (operation.type) {
+    case "setCount":
+      return { $set: { count: operation.value } };
+    case "setScore":
+      return { $set: { "nested.score": operation.value } };
+    case "unsetCount":
+      return { $unset: { count: 1 } };
+    case "unsetScore":
+      return { $unset: { "nested.score": 1 } };
+    case "incCount":
+      return { $inc: { count: operation.value } };
+    case "incScore":
+      return { $inc: { "nested.score": operation.value } };
+    case "minCount":
+      return { $min: { count: operation.value } };
+    case "minScore":
+      return { $min: { "nested.score": operation.value } };
+    case "maxCount":
+      return { $max: { count: operation.value } };
+    case "maxScore":
+      return { $max: { "nested.score": operation.value } };
+    case "pushTag":
+      return { $push: { tags: operation.value } };
+    case "pushManyTags":
+      return { $push: { tags: { $each: operation.values } } };
+    case "pullTag":
+      return { $pull: { tags: operation.value } };
+    case "addToSetTag":
+      return { $addToSet: { tags: operation.value } };
+    case "addManyToSetTags":
+      return { $addToSet: { tags: { $each: operation.values } } };
+  }
+}
+
+describe("property-based undo round-trip", () => {
+  it("applying the generated undo restores the exact prior document", () => {
+    fc.assert(
+      fc.property(fc.array(millOperationArbitrary, { maxLength: 40 }), (operations) => {
+        const store = createReactive<MillState>({ count: 0, nested: { score: 0 }, tags: [] });
+
+        for (const operation of operations) {
+          const ops = operationToOps(operation);
+          const before = structuredClone(unwrap(store));
+          const { undo } = update(store, {}, ops as never);
+          update(store, {}, undo);
+          expect(unwrap(store)).toEqual(before);
+
+          // Advance to the post-operation state for the next step in the chain.
+          update(store, {}, ops as never);
+        }
+      }),
+      { numRuns: 100 },
+    );
+  });
+});
 
 describe("property-based $rename with set/unset/rename mix", () => {
   it("matches reference semantics including conflict-throws", () => {

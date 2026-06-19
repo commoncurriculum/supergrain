@@ -90,7 +90,7 @@ describe("Direct Mutation Support", () => {
     expect(store.count).toBe(5);
 
     // Use traditional updateStore
-    update(store, { $set: { count: 10 } });
+    update(store, {}, { $set: { count: 10 } });
     expect(store.count).toBe(10);
 
     // Use direct mutation on nested property
@@ -98,12 +98,12 @@ describe("Direct Mutation Support", () => {
     expect(store.user.name).toBe("Jane");
 
     // Use traditional updateStore on nested property
-    update(store, { $set: { "user.name": "Bob" } });
+    update(store, {}, { $set: { "user.name": "Bob" } });
     expect(store.user.name).toBe("Bob");
 
     // Both approaches should work together seamlessly
     store.count = 15;
-    update(store, { $set: { "user.name": "Alice" } });
+    update(store, {}, { $set: { "user.name": "Alice" } });
 
     expect(store.count).toBe(15);
     expect(store.user.name).toBe("Alice");

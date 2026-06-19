@@ -70,11 +70,15 @@ describe("tracked() for Todo App", () => {
 
     // Use `act` to wrap the state update
     await act(async () => {
-      update(store, {
-        $push: {
-          tasks: newTask,
+      update(
+        store,
+        {},
+        {
+          $push: {
+            tasks: newTask,
+          },
         },
-      });
+      );
       await flushMicrotasks();
     });
 
@@ -102,11 +106,15 @@ describe("tracked() for Todo App", () => {
 
     // Remove the first task
     await act(async () => {
-      update(store, {
-        $pull: {
-          tasks: { id: "task-1" },
+      update(
+        store,
+        {},
+        {
+          $pull: {
+            tasks: { id: "task-1" },
+          },
         },
-      });
+      );
       await flushMicrotasks();
     });
 
@@ -135,11 +143,15 @@ describe("tracked() for Todo App", () => {
     const newText = "This text has been updated";
     // Update the text of the first task
     await act(async () => {
-      update(store, {
-        $set: {
-          "tasks.0.text": newText,
+      update(
+        store,
+        {},
+        {
+          $set: {
+            "tasks.0.text": newText,
+          },
         },
-      });
+      );
       await flushMicrotasks();
     });
 
@@ -166,11 +178,15 @@ describe("tracked() for Todo App", () => {
 
     // Mark the task as completed
     await act(async () => {
-      update(store, {
-        $set: {
-          "tasks.0.isCompleted": true,
+      update(
+        store,
+        {},
+        {
+          $set: {
+            "tasks.0.isCompleted": true,
+          },
         },
-      });
+      );
       await flushMicrotasks();
     });
 

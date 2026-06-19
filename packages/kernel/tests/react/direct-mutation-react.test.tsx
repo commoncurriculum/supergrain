@@ -77,12 +77,16 @@ describe("Direct Mutation with React Integration", () => {
           <button
             data-testid="operator-button"
             onClick={() =>
-              update(store, {
-                $set: {
-                  operatorValue: store.operatorValue + 1,
-                  "nested.operatorProp": `operator-${store.operatorValue + 1}`,
+              update(
+                store,
+                {},
+                {
+                  $set: {
+                    operatorValue: store.operatorValue + 1,
+                    "nested.operatorProp": `operator-${store.operatorValue + 1}`,
+                  },
                 },
-              })
+              )
             }
           >
             Operator Update
@@ -212,15 +216,19 @@ describe("Direct Mutation with React Integration", () => {
             data-testid="operator-updates"
             onClick={() => {
               // Reset using traditional approach for comparison
-              update(store, {
-                $set: {
-                  counter: 0,
-                  "user.name": "John",
-                  "user.age": 25,
-                  "todos.0.text": "Learn Storable",
-                  "todos.0.done": false,
+              update(
+                store,
+                {},
+                {
+                  $set: {
+                    counter: 0,
+                    "user.name": "John",
+                    "user.age": 25,
+                    "todos.0.text": "Learn Storable",
+                    "todos.0.done": false,
+                  },
                 },
-              });
+              );
             }}
           >
             Operator Updates (Verbose API)

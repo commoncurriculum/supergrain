@@ -117,7 +117,7 @@ describe("Core: Property Updates with Effects", () => {
     }
 
     for (let i = 0; i < 1000; i++) {
-      update(store, { $set: { count: i + 1 } });
+      update(store, {}, { $set: { count: i + 1 } });
     }
 
     await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
@@ -167,7 +167,7 @@ describe("Core: Batch Updates", () => {
       store.c;
     });
 
-    update(store, { $set: { a: 1, b: 2, c: 3 } });
+    update(store, {}, { $set: { a: 1, b: 2, c: 3 } });
 
     await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
 
@@ -214,7 +214,7 @@ describe("Core: Array Operations", () => {
     });
 
     for (let i = 0; i < 100; i++) {
-      update(store, { $push: { items: i } });
+      update(store, {}, { $push: { items: i } });
     }
 
     await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
@@ -265,7 +265,7 @@ describe("Core: Deep Updates", () => {
     });
 
     for (let i = 0; i < 100; i++) {
-      update(store, { $set: { "l1.l2.l3.value": i + 1 } });
+      update(store, {}, { $set: { "l1.l2.l3.value": i + 1 } });
     }
 
     await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
@@ -325,7 +325,7 @@ describe("Core: Granular Reactivity", () => {
       validationError(`[@supergrain/kernel] Unexpected initial runs: ${runs.join(", ")}`);
     }
 
-    update(store, { $set: { "prop5.nested": 999 } });
+    update(store, {}, { $set: { "prop5.nested": 999 } });
 
     await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
 
@@ -375,7 +375,7 @@ describe("Core: Non-reactive Store Operations", () => {
   bench("@supergrain/kernel: 1000 non-reactive updates", () => {
     const _store = createReactive({ count: 0 });
     for (let i = 0; i < 1000; i++) {
-      update(_store, { $set: { count: i + 1 } });
+      update(_store, {}, { $set: { count: i + 1 } });
     }
   });
 

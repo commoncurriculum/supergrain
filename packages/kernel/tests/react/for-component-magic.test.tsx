@@ -73,7 +73,7 @@ describe("For Component Magic Tests", () => {
 
     // Test: Update data.0.label
     await act(async () => {
-      update(store, { $set: { "data.0.label": "Updated Item 1" } });
+      update(store, {}, { $set: { "data.0.label": "Updated Item 1" } });
       await flushMicrotasks();
     });
   });
@@ -98,7 +98,7 @@ describe("For Component Magic Tests", () => {
     render(<TestComponent />);
 
     await act(async () => {
-      update(store, { $set: { "data.0.label": "Updated!" } });
+      update(store, {}, { $set: { "data.0.label": "Updated!" } });
       await flushMicrotasks();
     });
   });

@@ -38,7 +38,7 @@ describe("Additional: Plain vs Proxy Performance", () => {
     bench("proxy object: 100k property sets", () => {
       const _proxyObject = createReactive({ value: 0 });
       for (let i = 0; i < 100000; i++) {
-        update(_proxyObject, { $set: { value: i } });
+        update(_proxyObject, {}, { $set: { value: i } });
       }
     });
   });
@@ -145,16 +145,16 @@ describe("Additional: Batched vs Unbatched Updates", () => {
         store.j;
     });
 
-    update(store, { $set: { a: 1 } });
-    update(store, { $set: { b: 2 } });
-    update(store, { $set: { c: 3 } });
-    update(store, { $set: { d: 4 } });
-    update(store, { $set: { e: 5 } });
-    update(store, { $set: { f: 6 } });
-    update(store, { $set: { g: 7 } });
-    update(store, { $set: { h: 8 } });
-    update(store, { $set: { i: 9 } });
-    update(store, { $set: { j: 10 } });
+    update(store, {}, { $set: { a: 1 } });
+    update(store, {}, { $set: { b: 2 } });
+    update(store, {}, { $set: { c: 3 } });
+    update(store, {}, { $set: { d: 4 } });
+    update(store, {}, { $set: { e: 5 } });
+    update(store, {}, { $set: { f: 6 } });
+    update(store, {}, { $set: { g: 7 } });
+    update(store, {}, { $set: { h: 8 } });
+    update(store, {}, { $set: { i: 9 } });
+    update(store, {}, { $set: { j: 10 } });
 
     void total;
     void effectRan;
@@ -209,20 +209,24 @@ describe("Additional: Batched vs Unbatched Updates", () => {
         store.j;
     });
 
-    update(store, {
-      $set: {
-        a: 1,
-        b: 2,
-        c: 3,
-        d: 4,
-        e: 5,
-        f: 6,
-        g: 7,
-        h: 8,
-        i: 9,
-        j: 10,
+    update(
+      store,
+      {},
+      {
+        $set: {
+          a: 1,
+          b: 2,
+          c: 3,
+          d: 4,
+          e: 5,
+          f: 6,
+          g: 7,
+          h: 8,
+          i: 9,
+          j: 10,
+        },
       },
-    });
+    );
 
     void total;
     void effectRan;
@@ -235,7 +239,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
   bench("Array.push: 1000 items", () => {
     const _store = createReactive({ items: [] as number[] });
     for (let i = 0; i < 1000; i++) {
-      update(_store, { $push: { items: i } });
+      update(_store, {}, { $push: { items: i } });
     }
   });
 
@@ -245,7 +249,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
     for (let i = 0; i < 1000; i++) {
       const items = [...store.items];
       items.pop();
-      update(store, { $set: { items } });
+      update(store, {}, { $set: { items } });
     }
   });
 
@@ -255,7 +259,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
     for (let i = 0; i < 1000; i++) {
       const items = [...store.items];
       items.shift();
-      update(store, { $set: { items } });
+      update(store, {}, { $set: { items } });
     }
   });
 
@@ -263,7 +267,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
     const store = createReactive({ items: [] as number[] });
     for (let i = 0; i < 1000; i++) {
       const items = [i, ...store.items];
-      update(store, { $set: { items } });
+      update(store, {}, { $set: { items } });
     }
   });
 
@@ -272,7 +276,7 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
     const store = createReactive({ items: initial });
     const items = [...store.items];
     items.splice(250, 500);
-    update(store, { $set: { items } });
+    update(store, {}, { $set: { items } });
   });
 
   bench("Array.splice: add 500 to 1000", () => {
@@ -281,14 +285,14 @@ describe("Additional: Array Operations (Non-Reactive)", () => {
     const newItems = Array.from({ length: 500 }, (_, i) => i + 1000);
     const items = [...store.items];
     items.splice(500, 0, ...newItems);
-    update(store, { $set: { items } });
+    update(store, {}, { $set: { items } });
   });
 
   bench("Array.sort: 1000 items", () => {
     const initial = Array.from({ length: 1000 }, () => Math.random());
     const store = createReactive({ items: initial });
     const items = [...store.items].sort((a, b) => a - b);
-    update(store, { $set: { items } });
+    update(store, {}, { $set: { items } });
   });
 });
 
@@ -394,11 +398,15 @@ describe("Additional: Complex Scenarios", () => {
     });
 
     // Sort by value
-    update(grid, {
-      $set: {
-        rows: [...grid.rows].sort((a, b) => (a.value > b.value ? 1 : -1)),
+    update(
+      grid,
+      {},
+      {
+        $set: {
+          rows: [...grid.rows].sort((a, b) => (a.value > b.value ? 1 : -1)),
+        },
       },
-    });
+    );
 
     // Filter by category
     const categoryToFilter = "Category 5";
@@ -406,19 +414,19 @@ describe("Additional: Complex Scenarios", () => {
       ...row,
       visible: row.category === categoryToFilter,
     }));
-    update(grid, { $set: { rows: updatedRows } });
+    update(grid, {}, { $set: { rows: updatedRows } });
 
     // Bulk update values
     const rowsWithUpdatedValues = grid.rows.map((row, i) =>
       i < 50 ? { ...row, value: row.value * 1.1 } : row,
     );
-    update(grid, { $set: { rows: rowsWithUpdatedValues } });
+    update(grid, {}, { $set: { rows: rowsWithUpdatedValues } });
 
     // Toggle selection
     const rowsWithToggledSelection = grid.rows.map((row, i) =>
       i % 5 === 0 ? { ...row, selected: !row.selected } : row,
     );
-    update(grid, { $set: { rows: rowsWithToggledSelection } });
+    update(grid, {}, { $set: { rows: rowsWithToggledSelection } });
     void visibleRowCount;
   });
 
@@ -456,7 +464,7 @@ describe("Additional: Complex Scenarios", () => {
     effect(() => {
       const subtotal = cart.items.reduce((acc, item) => acc + item.subtotal, 0);
       const discounted = subtotal * (1 - cart.globalDiscount);
-      update(cart, { $set: { total: discounted * (1 + cart.taxRate) } });
+      update(cart, {}, { $set: { total: discounted * (1 + cart.taxRate) } });
     });
 
     // Update quantities and calculate subtotals
@@ -465,7 +473,7 @@ describe("Additional: Complex Scenarios", () => {
       quantity: 2,
       subtotal: item.price * 2,
     }));
-    update(cart, { $set: { items: itemsWithQuantity } });
+    update(cart, {}, { $set: { items: itemsWithQuantity } });
 
     // Apply item-level discounts
     const itemsWithDiscounts = cart.items.map((item, i) =>
@@ -477,13 +485,13 @@ describe("Additional: Complex Scenarios", () => {
           }
         : item,
     );
-    update(cart, { $set: { items: itemsWithDiscounts } });
+    update(cart, {}, { $set: { items: itemsWithDiscounts } });
 
     // Apply global discount
-    update(cart, { $set: { globalDiscount: 0.05 } }); // 5% off everything
+    update(cart, {}, { $set: { globalDiscount: 0.05 } }); // 5% off everything
 
     // Remove some items
-    update(cart, { $set: { items: cart.items.slice(0, 40) } });
+    update(cart, {}, { $set: { items: cart.items.slice(0, 40) } });
   });
 
   interface TreeNode {
@@ -524,7 +532,7 @@ describe("Additional: Complex Scenarios", () => {
     if (deepNode) {
       deepNode.selected = true;
     }
-    update(tree, { $set: { root: rootCopy } });
+    update(tree, {}, { $set: { root: rootCopy } });
 
     // Collapse leaf nodes
     function collapseLeaves(node: TreeNode) {
@@ -539,7 +547,7 @@ describe("Additional: Complex Scenarios", () => {
     }
     const rootCopy2 = JSON.parse(JSON.stringify(tree.root));
     collapseLeaves(rootCopy2);
-    update(tree, { $set: { root: rootCopy2 } });
+    update(tree, {}, { $set: { root: rootCopy2 } });
   });
 });
 
@@ -554,7 +562,7 @@ describe("Additional: Mixed Read/Write Loads", () => {
     });
 
     for (let i = 0; i < 100; i++) {
-      update(store, { $set: { count: i } });
+      update(store, {}, { $set: { count: i } });
       store.count; // Read after write
     }
 
@@ -598,16 +606,16 @@ describe("Additional: Complex Object Structures", () => {
     });
 
     // Update nested property
-    update(user, { $set: { "profile.settings.theme": "dark" } });
+    update(user, {}, { $set: { "profile.settings.theme": "dark" } });
 
     // Add a new post
-    update(user, { $push: { posts: { id: 3, title: "Third Post", likes: 5 } } });
+    update(user, {}, { $push: { posts: { id: 3, title: "Third Post", likes: 5 } } });
 
     // Update an item in the array
-    update(user, { $inc: { "posts.0.likes": 1 } });
+    update(user, {}, { $inc: { "posts.0.likes": 1 } });
 
     // Replace a nested object
-    update(user, { $set: { "profile.age": 31 } });
+    update(user, {}, { $set: { "profile.age": 31 } });
     void totalLikes;
   });
 });
@@ -639,7 +647,7 @@ describe("Additional: Circular Dependencies", () => {
       next: store.nodes[(i + 1) % 10] || null,
       prev: store.nodes[(i + 9) % 10] || null,
     }));
-    update(store, { $set: { nodes: linkedNodes } });
+    update(store, {}, { $set: { nodes: linkedNodes } });
 
     // Traverse and update
     let current = store.nodes[0];
@@ -650,6 +658,6 @@ describe("Additional: Circular Dependencies", () => {
         current = current.next!; // We know it's not null in a circular list
       }
     }
-    update(store, { $inc: updates });
+    update(store, {}, { $inc: updates });
   });
 });

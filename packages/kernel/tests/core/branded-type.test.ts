@@ -90,14 +90,14 @@ describe("Branded type - runtime behavior unchanged", () => {
     const state = createReactive({ count: 0, nested: { value: "hello" } });
     expect(state.count).toBe(0);
     expect(state.nested.value).toBe("hello");
-    update(state, { $set: { count: 5 } });
+    update(state, {}, { $set: { count: 5 } });
     expect(state.count).toBe(5);
   });
 
   it("arrays still work at runtime", () => {
     const state = createReactive({ items: [{ id: "1" }] });
     expect(state.items[0]?.id).toBe("1");
-    update(state, { $push: { items: { id: "2" } } });
+    update(state, {}, { $push: { items: { id: "2" } } });
     expect(state.items.length).toBe(2);
   });
 });

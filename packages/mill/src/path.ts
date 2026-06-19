@@ -1,5 +1,7 @@
 import { setProperty, deleteProperty } from "@supergrain/kernel/internal";
 
+import { isContainer } from "./util";
+
 export type PathSegment = string;
 
 type Primitive = string | number | boolean | bigint | symbol | null | undefined;
@@ -7,6 +9,9 @@ type Depth = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 type PrevDepth = [never, 0, 1, 2, 3, 4, 5];
 
 type ArrayKey = `${number}`;
+// Array segments accept a concrete index or one of MongoDB's positional tokens:
+// `$` (first element matched by the query) and `$[]` (every element).
+type PositionalArrayKey = ArrayKey | "$" | "$[]";
 
 type Join<K extends string, P extends string> = `${K}.${P}`;
 
@@ -38,7 +43,7 @@ export type Path<T, D extends Depth = 5> = [D] extends [0]
   : T extends Primitive | ((...args: Array<never>) => unknown)
     ? never
     : T extends ReadonlyArray<infer U>
-      ? ArrayKey | Join<ArrayKey, Path<U, PrevDepth[D]>>
+      ? PositionalArrayKey | Join<PositionalArrayKey, Path<U, PrevDepth[D]>>
       : T extends object
         ? {
             [K in Extract<keyof T, string>]:
@@ -51,14 +56,14 @@ export type Path<T, D extends Depth = 5> = [D] extends [0]
 
 export type PathValue<T, P extends string> = P extends `${infer Head}.${infer Tail}`
   ? T extends ReadonlyArray<infer U>
-    ? Head extends ArrayKey
+    ? Head extends PositionalArrayKey
       ? PathValue<U, Tail>
       : never
     : Head extends keyof T
       ? PathValue<T[Head], Tail>
       : never
   : T extends ReadonlyArray<infer U>
-    ? P extends ArrayKey
+    ? P extends PositionalArrayKey
       ? U
       : never
     : P extends keyof T
@@ -79,10 +84,6 @@ export type ArrayPath<T> = Extract<
   }[Path<T>],
   string
 >;
-
-function isContainer(value: unknown): value is Record<string, unknown> | unknown[] {
-  return value !== null && typeof value === "object";
-}
 
 export function splitPath(path: string): Array<PathSegment> {
   if (path.length === 0) {
@@ -147,19 +148,72 @@ export function deleteValueAtPath(target: object, path: string): void {
   }
 }
 
+/**
+ * Read the value at a dotted path, returning `undefined` if any segment along
+ * the way is missing or not a container. Never throws on a missing path (it
+ * does validate path *syntax* via `splitPath`).
+ */
+export function getValueAtPath(target: unknown, path: string): unknown {
+  const parts = splitPath(path);
+  let current: any = target;
+
+  for (const part of parts) {
+    if (!isContainer(current)) {
+      return undefined;
+    }
+    current = (current as any)[part];
+  }
+
+  return current;
+}
+
+/** Whether the leaf key at `path` is an own property of its (container) parent. */
+export function hasValueAtPath(target: unknown, path: string): boolean {
+  const parts = splitPath(path);
+  let current: any = target;
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!isContainer(current)) {
+      return false;
+    }
+    current = (current as any)[parts[i]!];
+  }
+
+  return isContainer(current) && Object.hasOwn(current, parts[parts.length - 1]!);
+}
+
 export type SetPathOperations<T extends object> = {
   [P in Path<T>]?: PathValue<T, P>;
 };
 
 export type UnsetPathOperations<T extends object> = {
-  [P in Path<T>]?: true | 1;
+  // Mongo ignores the operand; `""` is its idiomatic placeholder (and what
+  // generated undo documents use), `1`/`true` are accepted for convenience.
+  [P in Path<T>]?: true | 1 | "";
 };
 
 export type NumericPathOperations<T extends object> = {
   [P in NumericPath<T>]?: number;
 };
 
+/**
+ * Standard MongoDB `$push` modifiers. No mill-specific additions — `$each`,
+ * `$position`, `$slice`, and `$sort` are exactly Mongo's.
+ */
+export interface ArrayModifiers<T> {
+  $each: Array<T>;
+  $position?: number;
+  $slice?: number;
+  $sort?: 1 | -1 | Record<string, 1 | -1>;
+}
+
 export type ArrayWriteOperations<T extends object> = {
+  [P in ArrayPath<T>]?: PathValue<T, P> extends Array<infer Item>
+    ? Item | ArrayModifiers<Item>
+    : never;
+};
+
+export type ArrayPushOperations<T extends object> = {
   [P in ArrayPath<T>]?: PathValue<T, P> extends Array<infer Item>
     ? Item | ArrayModifiers<Item>
     : never;
@@ -173,6 +227,6 @@ export type ArrayPullAllOperations<T extends object> = {
   [P in ArrayPath<T>]?: PathValue<T, P> extends Array<infer Item> ? Array<Item> : never;
 };
 
-export interface ArrayModifiers<T> {
-  $each: Array<T>;
-}
+export type ArrayPopOperations<T extends object> = {
+  [P in ArrayPath<T>]?: 1 | -1;
+};

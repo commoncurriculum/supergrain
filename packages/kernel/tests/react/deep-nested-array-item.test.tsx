@@ -48,11 +48,15 @@ describe("Deep Nested Array Item Tests", () => {
 
     // Test 1: Update the deeply nested objThree value
     await act(async () => {
-      update(store, {
-        $set: {
-          "items.0.obj.objTwo.objThree": 42,
+      update(
+        store,
+        {},
+        {
+          $set: {
+            "items.0.obj.objTwo.objThree": 42,
+          },
         },
-      });
+      );
       await flushMicrotasks();
     });
 
@@ -60,7 +64,7 @@ describe("Deep Nested Array Item Tests", () => {
 
     // Test 2: Update a different deep property to test specificity (new prop — bypass typing)
     await act(async () => {
-      update(store, {
+      update(store, {}, {
         $set: {
           "items.0.obj.objTwo.newProp": "hello",
         },
@@ -70,7 +74,7 @@ describe("Deep Nested Array Item Tests", () => {
 
     // Test 3: Update a completely different part of the structure (new prop — bypass typing)
     await act(async () => {
-      update(store, {
+      update(store, {}, {
         $set: {
           "items.0.differentProp": "unrelated",
         },
@@ -120,11 +124,15 @@ describe("Deep Nested Array Item Tests", () => {
 
     // Update deeply nested property in first item
     await act(async () => {
-      update(store, {
-        $set: {
-          "items.0.obj.objTwo.objThree": "A-UPDATED",
+      update(
+        store,
+        {},
+        {
+          $set: {
+            "items.0.obj.objTwo.objThree": "A-UPDATED",
+          },
         },
-      });
+      );
       await flushMicrotasks();
     });
 
@@ -167,11 +175,15 @@ describe("Deep Nested Array Item Tests", () => {
     const { container } = render(<ForComponent />);
 
     await act(async () => {
-      update(store, {
-        $set: {
-          "items.0.obj.objTwo.objThree": 200,
+      update(
+        store,
+        {},
+        {
+          $set: {
+            "items.0.obj.objTwo.objThree": 200,
+          },
         },
-      });
+      );
       await flushMicrotasks();
     });
 

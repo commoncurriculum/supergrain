@@ -49,7 +49,7 @@ describe("Todo App Core Tests", () => {
       isCompleted: false,
       text: "Write tests based on USAGE.md",
     };
-    update(state, { $push: { "userTaskList.tasks": newTask } });
+    update(state, {}, { $push: { "userTaskList.tasks": newTask } });
 
     expect(state.userTaskList.tasks.length).toBe(1);
     expect(state.userTaskList.tasks[0]).toEqual(newTask);
@@ -83,7 +83,7 @@ describe("Todo App Core Tests", () => {
     expect(idsSeen).toEqual(["task-1", "task-2"]);
     expect(listEffect).toHaveBeenCalledTimes(1);
 
-    update(state, { $pull: { "userTaskList.tasks": { id: "task-1" } } });
+    update(state, {}, { $pull: { "userTaskList.tasks": { id: "task-1" } } });
 
     expect(state.userTaskList.tasks.length).toBe(1);
     expect(state.userTaskList.tasks[0]!.id).toBe("task-2");
@@ -124,7 +124,7 @@ describe("Todo App Core Tests", () => {
     expect(row0Text).toBe("Initial text");
     expect(row1Text).toBe("Another task");
 
-    update(state, { $set: { "userTaskList.tasks.0.text": newText } });
+    update(state, {}, { $set: { "userTaskList.tasks.0.text": newText } });
 
     expect(state.userTaskList.tasks[0]!.text).toBe(newText);
     expect(state.userTaskList.tasks[1]!.text).toBe("Another task");
@@ -161,7 +161,7 @@ describe("Todo App Core Tests", () => {
     expect(textSeen).toBe("Do something");
     expect(completedSeen).toBe(false);
 
-    update(state, { $set: { "userTaskList.tasks.0.isCompleted": true } });
+    update(state, {}, { $set: { "userTaskList.tasks.0.isCompleted": true } });
 
     expect(state.userTaskList.tasks[0]!.isCompleted).toBe(true);
     // The completion-tracking effect re-fires; the text effect is unaffected

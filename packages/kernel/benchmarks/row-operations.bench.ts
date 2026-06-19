@@ -109,7 +109,7 @@ describe("Core: Row Operations", () => {
 
       // Select a row in the middle of the dataset
       // @ts-ignore
-      update(store, { $set: { selected: store.data[500].id } });
+      update(store, {}, { $set: { selected: store.data[500].id } });
 
       dispose();
     },
@@ -138,12 +138,16 @@ describe("Core: Row Operations", () => {
       if (store.data.length > 998) {
         const row1 = store.data[1];
         const row998 = store.data[998];
-        update(store, {
-          $set: {
-            "data.1": row998,
-            "data.998": row1,
+        update(
+          store,
+          {},
+          {
+            $set: {
+              "data.1": row998,
+              "data.998": row1,
+            },
           },
-        });
+        );
       }
 
       dispose();

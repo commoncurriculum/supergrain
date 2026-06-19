@@ -69,7 +69,7 @@ describe("Tracking Isolation Analysis", () => {
     resetProfiler();
 
     // Update parent property
-    update(store, { $set: { parent: 2 } });
+    update(store, {}, { $set: { parent: 2 } });
 
     expect(parentEffectRuns).toBe(2); // Parent should re-run
     expect(childEffectRuns).toBe(1); // Child should NOT re-run
@@ -79,7 +79,7 @@ describe("Tracking Isolation Analysis", () => {
     resetProfiler();
 
     // Update child property
-    update(store, { $set: { child: 20 } });
+    update(store, {}, { $set: { child: 20 } });
 
     expect(parentEffectRuns).toBe(2); // Parent should NOT re-run
     expect(childEffectRuns).toBe(2); // Child should re-run
