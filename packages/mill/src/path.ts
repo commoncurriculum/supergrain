@@ -1,3 +1,5 @@
+import type { Query } from "./query";
+
 import { setProperty, deleteProperty } from "@supergrain/kernel/internal";
 
 import { isContainer } from "./util";
@@ -238,7 +240,12 @@ export type ArrayPushOperations<T extends object> = {
 };
 
 export type ArrayPullOperations<T extends object> = {
-  [P in ArrayPath<T>]?: PathValue<T, P> extends Array<infer Item> ? Item | Partial<Item> : never;
+  // $pull removes elements matching a value, a partial document, or a Mongo
+  // query condition ({ $gte: 4 } on scalars, { field: { $gte: 5 } } on docs) —
+  // the same condition grammar the query matcher understands.
+  [P in ArrayPath<T>]?: PathValue<T, P> extends Array<infer Item>
+    ? Item | Partial<Item> | Query<Item>
+    : never;
 };
 
 export type ArrayPullAllOperations<T extends object> = {

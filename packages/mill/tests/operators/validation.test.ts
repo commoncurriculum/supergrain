@@ -39,13 +39,15 @@ describe("MongoDB Style Operators — validation and path creation", () => {
     expect(() => update(store, {}, { $pull: { value: "x" } })).toThrow(/null/i);
   });
 
-  it("$push through a non-container intermediate throws", () => {
+  it("$push through a non-container (scalar) intermediate throws", () => {
     const store = createReactive<any>({ a: 42 });
-    expect(() => update(store, {}, { $push: { "a.items": "x" } })).toThrow(/must resolve/i);
+    expect(() => update(store, {}, { $push: { "a.items": "x" } })).toThrow(
+      /must point to an array/i,
+    );
   });
 
-  it("rejects array operators when a deep parent path cannot be resolved", () => {
+  it("rejects array operators when a scalar blocks a deep parent path", () => {
     const store = createReactive<any>({ a: 42 });
-    expect(() => update(store, {}, { $push: { "a.b.c": "x" } })).toThrow(/must resolve/i);
+    expect(() => update(store, {}, { $push: { "a.b.c": "x" } })).toThrow(/must point to an array/i);
   });
 });

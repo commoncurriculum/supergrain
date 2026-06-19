@@ -50,6 +50,19 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
+  it("$pull through a missing intermediate is a no-op", () => {
+    const store = createReactive<any>({ keep: 1 });
+    // Two missing segments ("a" and "b") — Mongo no-ops on the absent array.
+    const { undo, rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $pull: { "a.b.items": 2 } },
+    );
+    expect(store.a).toBeUndefined();
+    expect(undo).toEqual({}); // no-op produces no undo
+    rewindAndAssertRestored();
+  });
+
   it("$pull mutates an untracked array without indexed subscribers", () => {
     const store = createReactive<any>({ items: [1, 2, 3] });
     const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $pull: { items: 2 } });
@@ -101,11 +114,7 @@ describe("MongoDB Style Operators", () => {
 describe("$pull with query conditions", () => {
   it("removes elements matching an operator condition", () => {
     const store = createReactive({ nums: [1, 2, 3, 4, 5] });
-    const { rewindAndAssertRestored } = applyWithUndo(
-      store,
-      {},
-      { $pull: { nums: { $gte: 4 } } as any },
-    );
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $pull: { nums: { $gte: 4 } } });
     expect(store.nums).toEqual([1, 2, 3]);
     rewindAndAssertRestored();
   });
@@ -115,7 +124,7 @@ describe("$pull with query conditions", () => {
     const { rewindAndAssertRestored } = applyWithUndo(
       store,
       {},
-      { $pull: { nums: { $gte: 2, $lte: 4 } } as any },
+      { $pull: { nums: { $gte: 2, $lte: 4 } } },
     );
     expect(store.nums).toEqual([1, 5]);
     rewindAndAssertRestored();
@@ -126,7 +135,7 @@ describe("$pull with query conditions", () => {
     const { undo, rewindAndAssertRestored } = applyWithUndo(
       store,
       {},
-      { $pull: { nums: { foo: 1 } } as any },
+      { $pull: { nums: { foo: 1 } } },
     );
     expect(store.nums).toEqual([1, 2, 3]);
     expect(undo).toEqual({});
@@ -145,7 +154,7 @@ describe("$pull with query conditions", () => {
       store,
       {},
       {
-        $pull: { tasks: { priority: { $gte: 5 } } } as any,
+        $pull: { tasks: { priority: { $gte: 5 } } },
       },
     );
     expect(store.tasks).toEqual([{ id: 1, priority: 1 }]);

@@ -19,6 +19,18 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
+  it("$push creates the whole branch when an intermediate is missing", () => {
+    const store = createReactive<any>({ keep: 1 });
+    const { undo, rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $push: { "a.items": "x" } },
+    );
+    expect(store.a).toEqual({ items: ["x"] });
+    expect(undo).toEqual({ $unset: { a: "" } });
+    rewindAndAssertRestored();
+  });
+
   it("$push: should add multiple elements with $each", () => {
     const state = createReactive({ tags: ["a", "b"] });
     const { rewindAndAssertRestored } = applyWithUndo(

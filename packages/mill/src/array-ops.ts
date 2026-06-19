@@ -1,7 +1,7 @@
 import { deleteProperty, setProperty } from "@supergrain/kernel/internal";
 
-import { getValueAtPath, resolveParentPath } from "./path";
-import { describeValue, isObject } from "./util";
+import { getValueAtPath, resolveParentPath, splitPath } from "./path";
+import { describeValue, isContainer, isObject } from "./util";
 
 // ─── array primitives (fine-grained, in place) ──────────────────────────────
 //
@@ -25,10 +25,37 @@ export interface ArrayTarget {
   key: string;
 }
 
+// Whether some ancestor on `path` is a present non-container (a scalar blocking
+// traversal), as opposed to merely absent. A scalar in the way is an error for
+// every array operator; a merely-absent ancestor means the field doesn't exist
+// yet (Mongo creates it for $push/$addToSet, no-ops for $pull/$pullAll/$pop).
+function pathBlockedByScalar(raw: object, path: string): boolean {
+  const parts = splitPath(path);
+  let current: unknown = raw;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (current === undefined) {
+      return false; // an absent ancestor — creatable, not blocked
+    }
+    if (!isContainer(current)) {
+      return true; // a scalar ancestor blocks the path
+    }
+    current = (current as Record<string, unknown>)[parts[i]!];
+  }
+  return current !== undefined && !isContainer(current); // a scalar leaf-parent blocks too
+}
+
 export function resolveArrayTarget(operator: string, raw: object, path: string): ArrayTarget {
   const result = resolveParentPath(raw, path);
   if (!result) {
-    throw new Error(`${operator} path "${path}" must resolve to an existing object or array.`);
+    // The parent path isn't fully present. A scalar in the way is always an
+    // error; a merely-missing intermediate means the field is absent and the
+    // caller decides (create vs no-op), exactly like a missing leaf.
+    if (pathBlockedByScalar(raw, path)) {
+      throw new TypeError(
+        `${operator} path "${path}" must point to an array — a non-object value blocks the path.`,
+      );
+    }
+    return { arr: undefined, parent: undefined, key: splitPath(path).at(-1)! };
   }
 
   const value = result.parent[result.key];
