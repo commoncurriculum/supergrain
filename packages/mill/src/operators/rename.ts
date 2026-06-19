@@ -1,13 +1,37 @@
-import { deleteValueAtPath, resolveParentPath, setValueAtPath } from "../path";
+import { deleteValueAtPath, resolveParentPath, setValueAtPath, splitPath } from "../path";
 import { resolvePaths } from "../query";
 import { capturePathUndo, undoSet } from "../undo";
-import { cloneValue } from "../util";
+import { cloneValue, isContainer } from "../util";
 import { type OperatorContext } from "./shared";
 
 interface RenameMove {
   from: string;
   to: string;
   value: unknown;
+}
+
+// MongoDB forbids $rename when the source or destination lives inside an array
+// element ("The source field cannot be an array element ... has an array field
+// called ..."). Reject any path whose traversal passes through an array.
+function assertNotArrayElement(raw: object, path: string): void {
+  const parts = splitPath(path);
+  let current: unknown = raw;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (Array.isArray(current)) {
+      throw new TypeError(
+        `$rename cannot operate on "${path}": MongoDB forbids $rename through array elements.`,
+      );
+    }
+    if (!isContainer(current)) {
+      return; // a missing/scalar ancestor is handled by the normal no-op/throw paths
+    }
+    current = (current as Record<string, unknown>)[parts[i]!];
+  }
+  if (Array.isArray(current)) {
+    throw new TypeError(
+      `$rename cannot operate on "${path}": MongoDB forbids $rename through array elements.`,
+    );
+  }
 }
 
 // Returns the move to perform, or null when the rename is a no-op (source and
@@ -19,6 +43,8 @@ function planRename(context: OperatorContext, rawFrom: string, rawTo: string): R
   if (from === to) {
     return null;
   }
+  assertNotArrayElement(context.raw, from);
+  assertNotArrayElement(context.raw, to);
   const source = resolveParentPath(context.raw, from);
   if (!source || !Object.hasOwn(source.parent, source.key)) {
     return null; // missing source — Mongo treats this as a no-op

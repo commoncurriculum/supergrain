@@ -28,19 +28,19 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
-  it("$min and $max leave null values unchanged", () => {
-    const minStore = createReactive<any>({ score: null });
-    const maxStore = createReactive<any>({ score: null });
+  it("$min keeps an existing null (null sorts below every number)", () => {
+    const store = createReactive<any>({ score: null });
+    const { undo, rewindAndAssertRestored } = applyWithUndo(store, {}, { $min: { score: 10 } });
+    expect(store.score).toBe(null);
+    expect(undo).toEqual({}); // no-op
+    rewindAndAssertRestored();
+  });
 
-    const min = applyWithUndo(minStore, {}, { $min: { score: 10 } });
-    const max = applyWithUndo(maxStore, {}, { $max: { score: 10 } });
-
-    expect(minStore.score).toBe(null);
-    expect(maxStore.score).toBe(null);
-    expect(min.undo).toEqual({});
-    expect(max.undo).toEqual({});
-    min.rewindAndAssertRestored();
-    max.rewindAndAssertRestored();
+  it("$max replaces an existing null with the value (everything sorts above null)", () => {
+    const store = createReactive<any>({ score: null });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $max: { score: 10 } });
+    expect(store.score).toBe(10);
+    rewindAndAssertRestored();
   });
 
   it("$min fires only when the value actually changes", () => {

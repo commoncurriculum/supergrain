@@ -86,9 +86,9 @@ describe("setValueAtPath", () => {
     expect(target).toEqual({ a: { b: { c: 1 } } });
   });
 
-  it("overwrites a non-container intermediate", () => {
+  it("rejects creating a field inside a non-container intermediate", () => {
     const target: Record<string, unknown> = { a: 5 };
-    setValueAtPath(target, "a.b", 1);
-    expect(target).toEqual({ a: { b: 1 } });
+    expect(() => setValueAtPath(target, "a.b", 1)).toThrow(/cannot create field/i);
+    expect(target).toEqual({ a: 5 });
   });
 });

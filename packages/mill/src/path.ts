@@ -2,6 +2,8 @@ import { setProperty, deleteProperty } from "@supergrain/kernel/internal";
 
 import { isContainer } from "./util";
 
+const ARRAY_INDEX = /^\d+$/u;
+
 export type PathSegment = string;
 
 type Primitive = string | number | boolean | bigint | symbol | null | undefined;
@@ -129,8 +131,15 @@ export function ensureParentPath(target: object, path: string): { parent: any; k
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i]!;
     const existing = (current as any)[part];
-    if (!isContainer(existing)) {
+    if (existing === undefined) {
+      // Absent intermediate — Mongo creates the missing branch as an object.
       setProperty(current, part, {});
+    } else if (!isContainer(existing)) {
+      // A scalar (number/string/boolean/null) can't gain a subfield: Mongo
+      // rejects rather than silently overwriting it. e.g. {a: 42} + "a.b".
+      throw new TypeError(
+        `Cannot create field '${parts[i + 1]}' in element {${part}: ${JSON.stringify(existing)}}.`,
+      );
     }
     current = (current as any)[part];
   }
@@ -140,6 +149,13 @@ export function ensureParentPath(target: object, path: string): { parent: any; k
 
 export function setValueAtPath(target: object, path: string, value: unknown): void {
   const { parent, key } = ensureParentPath(target, path);
+  if (Array.isArray(parent) && ARRAY_INDEX.test(key)) {
+    // Writing past the end grows the array; Mongo pads the gap with null rather
+    // than leaving holes. e.g. [1] + "scores.3" -> [1, null, null, 4].
+    for (let i = parent.length; i < Number(key); i++) {
+      setProperty(parent, String(i), null);
+    }
+  }
   setProperty(parent, key, value);
 }
 

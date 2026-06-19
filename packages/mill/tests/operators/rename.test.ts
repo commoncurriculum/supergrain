@@ -31,6 +31,14 @@ describe("MongoDB Style Operators", () => {
     expect(state.user.fullName).toBe("John Doe");
   });
 
+  it("rejects $rename through an array element, like MongoDB", () => {
+    const store = createReactive<any>({ users: [{ name: "Alice" }] });
+    expect(() => update(store, {}, { $rename: { "users.0.name": "users.0.fullName" } })).toThrow(
+      /array element/i,
+    );
+    expect(store.users[0].name).toBe("Alice");
+  });
+
   it("$rename ignores missing source paths", () => {
     const store = createReactive<any>({ user: { name: "Jane" } });
     const { undo, rewindAndAssertRestored } = applyWithUndo(

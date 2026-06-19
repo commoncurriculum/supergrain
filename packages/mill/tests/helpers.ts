@@ -2,6 +2,29 @@ import { unwrap } from "@supergrain/kernel";
 import { expect } from "vitest";
 
 import { update, type Query, type UpdateOperations, type UpdateOptions } from "../src";
+import { recordUpdate } from "./mongo-oracle";
+
+function snapshot<T extends object>(store: T): Record<string, unknown> {
+  return structuredClone(unwrap(store)) as Record<string, unknown>;
+}
+
+// Record the update mill just performed so the global `afterEach` can replay it
+// against real mongod and confirm mill matched MongoDB exactly.
+function record<T extends object>(
+  before: Record<string, unknown>,
+  query: Query<T>,
+  ops: UpdateOperations<T>,
+  options: UpdateOptions | undefined,
+  after: Record<string, unknown>,
+): void {
+  recordUpdate({
+    before,
+    query: (query ?? {}) as Record<string, unknown>,
+    ops: ops as Record<string, unknown>,
+    options: options as Record<string, unknown> | undefined,
+    after,
+  });
+}
 
 /**
  * Apply an update to `store`, returning the generated `undo` plus a `rewindAndAssertRestored()`.
@@ -21,8 +44,9 @@ export function applyWithUndo<T extends object>(
   ops: UpdateOperations<T>,
   options?: UpdateOptions,
 ): { undo: UpdateOperations<T>; rewindAndAssertRestored: () => void } {
-  const before = structuredClone(unwrap(store) as object);
+  const before = snapshot(store);
   const { undo } = update(store, query, ops, options);
+  record(before, query, ops, options, snapshot(store));
   return {
     undo,
     rewindAndAssertRestored: () => {
@@ -52,11 +76,13 @@ export function undoRecorder<T extends object>(
   ) => UpdateOperations<T>;
   rewindAndAssertRestored: () => void;
 } {
-  const before = structuredClone(unwrap(store) as object);
+  const initial = snapshot(store);
   const undos: Array<UpdateOperations<T>> = [];
   return {
     apply: (query, ops, options) => {
+      const before = snapshot(store);
       const { undo } = update(store, query, ops, options);
+      record(before, query, ops, options, snapshot(store));
       undos.push(undo);
       return undo;
     },
@@ -64,7 +90,7 @@ export function undoRecorder<T extends object>(
       for (let i = undos.length - 1; i >= 0; i--) {
         update(store, {}, undos[i]!);
       }
-      expect(unwrap(store)).toEqual(before);
+      expect(unwrap(store)).toEqual(initial);
     },
   };
 }

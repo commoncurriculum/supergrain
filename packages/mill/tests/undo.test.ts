@@ -36,11 +36,10 @@ describe("undo — scalar operators", () => {
     expect(undo).toEqual({ $unset: { a: "" } });
   });
 
-  it("$set overwriting a non-container intermediate restores it exactly", () => {
-    const { undo } = roundTrip({ a: 42 } as Record<string, unknown>, {
-      $set: { "a.b": 1 },
-    });
-    expect(undo).toEqual({ $set: { a: 42 } });
+  it("$set creating a field inside a scalar throws (no undo), like MongoDB", () => {
+    const store = createReactive({ a: 42 } as Record<string, unknown>);
+    expect(() => update(store, {}, { $set: { "a.b": 1 } })).toThrow(/cannot create field/i);
+    expect(unwrap(store)).toEqual({ a: 42 });
   });
 
   it("$unset restores the removed value", () => {

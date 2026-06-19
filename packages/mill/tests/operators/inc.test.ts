@@ -47,32 +47,30 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
-  it("$inc initializes existing null and undefined values", () => {
-    const store = createReactive<any>({ fromNull: null, fromUndefined: undefined });
-    const { rewindAndAssertRestored } = applyWithUndo(
-      store,
-      {},
-      { $inc: { fromNull: 3, fromUndefined: 4 } },
-    );
-    expect(store.fromNull).toBe(3);
+  it("$inc creates an absent (undefined) field", () => {
+    const store = createReactive<any>({ fromUndefined: undefined });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $inc: { fromUndefined: 4 } });
     expect(store.fromUndefined).toBe(4);
     rewindAndAssertRestored();
   });
 
-  it("numeric operators create missing nested paths when the parent resolver returns null", () => {
+  it("$inc on an existing null throws, like MongoDB", () => {
+    const store = createReactive<any>({ fromNull: null });
+    expect(() => update(store, {}, { $inc: { fromNull: 3 } })).toThrow(/number/i);
+    expect(store.fromNull).toBe(null);
+  });
+
+  it("numeric operators reject creating a field inside a scalar, like MongoDB", () => {
     const incStore = createReactive<any>({ a: 42 });
     const minStore = createReactive<any>({ a: 42 });
     const maxStore = createReactive<any>({ a: 42 });
 
-    const inc = applyWithUndo(incStore, {}, { $inc: { "a.b": 1 } });
-    const min = applyWithUndo(minStore, {}, { $min: { "a.c": 2 } });
-    const max = applyWithUndo(maxStore, {}, { $max: { "a.d": 3 } });
+    expect(() => update(incStore, {}, { $inc: { "a.b": 1 } })).toThrow(/cannot create field/i);
+    expect(() => update(minStore, {}, { $min: { "a.c": 2 } })).toThrow(/cannot create field/i);
+    expect(() => update(maxStore, {}, { $max: { "a.d": 3 } })).toThrow(/cannot create field/i);
 
-    expect(incStore.a).toEqual({ b: 1 });
-    expect(minStore.a).toEqual({ c: 2 });
-    expect(maxStore.a).toEqual({ d: 3 });
-    inc.rewindAndAssertRestored();
-    min.rewindAndAssertRestored();
-    max.rewindAndAssertRestored();
+    expect(incStore.a).toBe(42);
+    expect(minStore.a).toBe(42);
+    expect(maxStore.a).toBe(42);
   });
 });

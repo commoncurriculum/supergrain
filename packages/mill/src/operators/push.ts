@@ -19,7 +19,7 @@ export function $push(context: OperatorContext, operations: Record<string, any>)
       setValueAtPath(context.raw, path, created);
       return;
     }
-    const arr = target.arr;
+    const { arr } = target;
 
     const pureAppend =
       sort === undefined &&

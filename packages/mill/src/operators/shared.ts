@@ -32,8 +32,18 @@ export function eachPath(
 
 // ─── numeric writes ($inc / $mul / $min / $max) ─────────────────────────────
 
-function assertNumericTarget(operator: string, path: string, currentValue: unknown): void {
-  if (currentValue !== undefined && currentValue !== null && typeof currentValue !== "number") {
+function assertNumericTarget(
+  operator: string,
+  path: string,
+  currentValue: unknown,
+  allowNull: boolean,
+): void {
+  // $min/$max compare against an existing null (it sorts below every number);
+  // $inc/$mul reject it the way real MongoDB does ("non-numeric type null").
+  if (currentValue === null && allowNull) {
+    return;
+  }
+  if (currentValue !== undefined && typeof currentValue !== "number") {
     throw new Error(
       `${operator} path "${path}" must point to a number, received ${describeValue(currentValue)}.`,
     );
@@ -42,12 +52,14 @@ function assertNumericTarget(operator: string, path: string, currentValue: unkno
 
 export interface NumericWrite {
   operator: string;
+  // Whether an existing `null` is a valid target ($min/$max) or an error ($inc/$mul).
+  allowNull: boolean;
   compute: (previous: number | null | undefined) => number | undefined;
 }
 
 export function writeNumeric(context: OperatorContext, path: string, write: NumericWrite): void {
   const previous = getValueAtPath(context.raw, path) as number | null | undefined;
-  assertNumericTarget(write.operator, path, previous);
+  assertNumericTarget(write.operator, path, previous, write.allowNull);
   const next = write.compute(previous);
   if (next === undefined) {
     return; // no-op

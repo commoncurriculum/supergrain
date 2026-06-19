@@ -4,17 +4,16 @@ import { describe, it, expect, vi } from "vitest";
 import { applyWithUndo, undoRecorder } from "../helpers";
 
 describe("MongoDB Style Operators", () => {
-  it("should handle sparse array writes and later pulls consistently", () => {
-    const state = createReactive<{ scores: number[] }>({ scores: [1] });
+  it("fills gaps with null on an out-of-bounds write, then pulls consistently", () => {
+    const state = createReactive<{ scores: Array<number | null> }>({ scores: [1] });
     const rec = undoRecorder(state);
 
+    // Writing past the end grows the array; Mongo pads the gap with null.
     rec.apply({}, { $set: { "scores.3": 4 } });
-    expect(state.scores.length).toBe(4);
-    expect(1 in state.scores).toBe(false);
-    expect(state.scores[3]).toBe(4);
+    expect(state.scores).toEqual([1, null, null, 4]);
 
     rec.apply({}, { $pull: { scores: 4 } });
-    expect(state.scores).toEqual([1, undefined, undefined]);
+    expect(state.scores).toEqual([1, null, null]);
 
     rec.rewindAndAssertRestored();
   });
@@ -40,6 +39,7 @@ describe("MongoDB Style Operators", () => {
       meta: {
         lastUpdated: 0,
       },
+      legacy: "v1",
     });
 
     const { rewindAndAssertRestored } = applyWithUndo(
@@ -52,14 +52,14 @@ describe("MongoDB Style Operators", () => {
           "meta.lastUpdated": 12345,
         },
         $inc: { "users.0.profile.views": 5 },
-        $rename: { "users.0.name": "users.0.fullName" },
+        // $rename on a top-level field — Mongo forbids $rename through array elements.
+        $rename: { legacy: "version" },
         $unset: { "users.1.profile": 1 },
       },
     );
 
     const firstUser = state.users[0];
-    expect((firstUser as any).name).toBeUndefined();
-    expect((firstUser as any).fullName).toBe("Alice");
+    expect(firstUser.name).toBe("Alice");
     expect(firstUser.profile.bio).toBe("Updated bio");
     expect(firstUser.profile.email).toBe("alice@example.com");
     expect(firstUser.profile.views).toBe(15);
@@ -69,6 +69,8 @@ describe("MongoDB Style Operators", () => {
     expect((secondUser as any).profile).toBeUndefined();
 
     expect(state.meta.lastUpdated).toBe(12345);
+    expect((state as any).legacy).toBeUndefined();
+    expect(state.version).toBe("v1");
     rewindAndAssertRestored();
   });
 
