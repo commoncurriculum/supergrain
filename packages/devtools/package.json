@@ -55,7 +55,7 @@
     "lint": "oxlint -c ../../.oxlintrc.json src/",
     "test": "vitest run",
     "test:react": "vitest run --config vitest.browser.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@supergrain/kernel": "workspace:*",
@@ -68,7 +68,7 @@
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-react": "^6.0.2",
     "@vitest/browser": "4.1.0",
     "effect": "^3.21.2",
     "playwright": "^1.55.0",
@@ -76,7 +76,7 @@
     "react-dom": "^19.1.1",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.9.2",
-    "vite": "^7.1.5",
+    "vite": "^8.0.16",
     "vitest": "4.1.0"
   },
   "peerDependencies": {
