@@ -1,6 +1,5 @@
 import { createReactive } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
-import { update } from "@supergrain/mill";
 import { render, screen, act } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 
@@ -70,15 +69,7 @@ describe("tracked() for Todo App", () => {
 
     // Use `act` to wrap the state update
     await act(async () => {
-      update(
-        store,
-        {},
-        {
-          $push: {
-            tasks: newTask,
-          },
-        },
-      );
+      store.tasks.push(newTask);
       await flushMicrotasks();
     });
 
@@ -106,15 +97,9 @@ describe("tracked() for Todo App", () => {
 
     // Remove the first task
     await act(async () => {
-      update(
-        store,
-        {},
-        {
-          $pull: {
-            tasks: { id: "task-1" },
-          },
-        },
-      );
+      for (let i = store.tasks.length - 1; i >= 0; i--) {
+        if (store.tasks[i]!.id === "task-1") store.tasks.splice(i, 1);
+      }
       await flushMicrotasks();
     });
 
@@ -143,15 +128,7 @@ describe("tracked() for Todo App", () => {
     const newText = "This text has been updated";
     // Update the text of the first task
     await act(async () => {
-      update(
-        store,
-        {},
-        {
-          $set: {
-            "tasks.0.text": newText,
-          },
-        },
-      );
+      store.tasks[0]!.text = newText;
       await flushMicrotasks();
     });
 
@@ -178,15 +155,7 @@ describe("tracked() for Todo App", () => {
 
     // Mark the task as completed
     await act(async () => {
-      update(
-        store,
-        {},
-        {
-          $set: {
-            "tasks.0.isCompleted": true,
-          },
-        },
-      );
+      store.tasks[0]!.isCompleted = true;
       await flushMicrotasks();
     });
 

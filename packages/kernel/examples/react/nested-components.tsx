@@ -1,6 +1,5 @@
 import { createReactive } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
-import { update } from "@supergrain/mill";
 
 // Create a store with separate properties for different component levels
 const store = createReactive({
@@ -43,9 +42,7 @@ const Child = tracked(() => {
       <h3>Child Component</h3>
       <p>Value: {store.child.value}</p>
       <p>Render count: {childRenders}</p>
-      <button onClick={() => update(store, {}, { $set: { "child.value": store.child.value + 1 } })}>
-        Increment Child
-      </button>
+      <button onClick={() => (store.child.value = store.child.value + 1)}>Increment Child</button>
     </div>
   );
 });
@@ -66,9 +63,7 @@ const Parent = tracked(() => {
       <h2>Parent Component</h2>
       <p>Value: {store.parent.value}</p>
       <p>Render count: {parentRenders}</p>
-      <button
-        onClick={() => update(store, {}, { $set: { "parent.value": store.parent.value + 10 } })}
-      >
+      <button onClick={() => (store.parent.value = store.parent.value + 10)}>
         Increment Parent
       </button>
       <Child />
@@ -93,23 +88,13 @@ const GrandParent = tracked(() => {
       <p>Value: {store.grandparent.value}</p>
       <p>Render count: {grandparentRenders}</p>
       <p>Theme: {store.shared.theme}</p>
-      <button
-        onClick={() =>
-          update(
-            store,
-            {},
-            {
-              $set: { "grandparent.value": store.grandparent.value + 100 },
-            },
-          )
-        }
-      >
+      <button onClick={() => (store.grandparent.value = store.grandparent.value + 100)}>
         Increment Grandparent
       </button>
       <button
         onClick={() => {
           const newTheme = store.shared.theme === "light" ? "dark" : "light";
-          update(store, {}, { $set: { "shared.theme": newTheme } });
+          store.shared.theme = newTheme;
         }}
       >
         Toggle Theme (affects only Grandparent)
@@ -209,18 +194,10 @@ export function NestedComponentsExample() {
         <button
           onClick={() => {
             // Reset all values
-            update(
-              store,
-              {},
-              {
-                $set: {
-                  "grandparent.value": 1,
-                  "parent.value": 10,
-                  "child.value": 100,
-                  "shared.theme": "light",
-                },
-              },
-            );
+            store.grandparent.value = 1;
+            store.parent.value = 10;
+            store.child.value = 100;
+            store.shared.theme = "light";
             grandparentRenders = 0;
             parentRenders = 0;
             childRenders = 0;

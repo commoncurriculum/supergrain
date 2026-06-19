@@ -1,4 +1,3 @@
-import { update } from "@supergrain/mill";
 import { effect } from "alien-signals";
 import { createRoot, createEffect, createSignal, batch } from "solid-js/dist/solid.js";
 import { createStore as createSolidStore } from "solid-js/store/dist/store.js";
@@ -20,7 +19,7 @@ async function validatePropertyUpdates() {
   });
 
   for (let i = 0; i < 1000; i++) {
-    update(storableStore, {}, { $set: { count: i + 1 } });
+    storableStore.count = i + 1;
   }
   await nextTick();
 
@@ -74,7 +73,7 @@ async function validateDeepUpdates() {
   });
 
   for (let i = 0; i < 100; i++) {
-    update(storableStore, {}, { $set: { "l1.l2.l3.value": i + 1 } });
+    storableStore.l1.l2.l3.value = i + 1;
   }
   await nextTick();
   console.log(
@@ -166,7 +165,7 @@ async function validateGranularReactivity() {
   await nextTick();
   console.log(`[@supergrain/kernel] Initial runs: ${storableRuns.join(", ")}`);
 
-  update(storableStore, {}, { $set: { "prop5.nested": 999 } });
+  storableStore.prop5.nested = 999;
   await nextTick();
 
   const storablePassed = storableRuns[5] === 2 && storableRuns.every((r, i) => i === 5 || r === 1);

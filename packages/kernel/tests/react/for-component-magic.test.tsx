@@ -7,7 +7,6 @@ import {
 } from "@supergrain/kernel";
 import { startBatch, endBatch } from "@supergrain/kernel/internal";
 import { tracked, For } from "@supergrain/kernel/react";
-import { update } from "@supergrain/mill";
 import { render, act, cleanup } from "@testing-library/react";
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -73,7 +72,7 @@ describe("For Component Magic Tests", () => {
 
     // Test: Update data.0.label
     await act(async () => {
-      update(store, {}, { $set: { "data.0.label": "Updated Item 1" } });
+      store.data[0]!.label = "Updated Item 1";
       await flushMicrotasks();
     });
   });
@@ -98,7 +97,7 @@ describe("For Component Magic Tests", () => {
     render(<TestComponent />);
 
     await act(async () => {
-      update(store, {}, { $set: { "data.0.label": "Updated!" } });
+      store.data[0]!.label = "Updated!";
       await flushMicrotasks();
     });
   });

@@ -1,6 +1,5 @@
 import { createReactive } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
-import { update } from "@supergrain/mill";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 
@@ -76,18 +75,10 @@ describe("Direct Mutation with React Integration", () => {
           </button>
           <button
             data-testid="operator-button"
-            onClick={() =>
-              update(
-                store,
-                {},
-                {
-                  $set: {
-                    operatorValue: store.operatorValue + 1,
-                    "nested.operatorProp": `operator-${store.operatorValue + 1}`,
-                  },
-                },
-              )
-            }
+            onClick={() => {
+              store.operatorValue = store.operatorValue + 1;
+              store.nested.operatorProp = `operator-${store.operatorValue}`;
+            }}
           >
             Operator Update
           </button>
@@ -216,19 +207,11 @@ describe("Direct Mutation with React Integration", () => {
             data-testid="operator-updates"
             onClick={() => {
               // Reset using traditional approach for comparison
-              update(
-                store,
-                {},
-                {
-                  $set: {
-                    counter: 0,
-                    "user.name": "John",
-                    "user.age": 25,
-                    "todos.0.text": "Learn Storable",
-                    "todos.0.done": false,
-                  },
-                },
-              );
+              store.counter = 0;
+              store.user.name = "John";
+              store.user.age = 25;
+              store.todos[0]!.text = "Learn Storable";
+              store.todos[0]!.done = false;
             }}
           >
             Operator Updates (Verbose API)
