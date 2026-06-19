@@ -1,6 +1,3 @@
-import { update } from "../../src";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-
 import {
   createReactive,
   effect,
@@ -10,6 +7,9 @@ import {
   getProfile,
 } from "@supergrain/kernel";
 import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+
+import { update } from "../../src";
 
 describe("Tracking Isolation Analysis", () => {
   beforeEach(() => {

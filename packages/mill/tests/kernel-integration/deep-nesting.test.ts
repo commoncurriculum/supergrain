@@ -1,7 +1,7 @@
-import { update } from "../../src";
+import { createReactive, effect, computed } from "@supergrain/kernel";
 import { describe, it, expect, vi } from "vitest";
 
-import { createReactive, effect, computed } from "@supergrain/kernel";
+import { update } from "../../src";
 
 describe("Deep Nesting Operations (Type Safe)", () => {
   const createComplexStore = () => {

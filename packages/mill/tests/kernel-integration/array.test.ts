@@ -1,6 +1,3 @@
-import { update } from "../../src";
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-
 import {
   createReactive,
   effect,
@@ -9,6 +6,9 @@ import {
   resetProfiler,
   getProfile,
 } from "@supergrain/kernel";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+import { update } from "../../src";
 
 describe("Array Support", () => {
   let store: any;
