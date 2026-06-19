@@ -2,13 +2,19 @@ import { createReactive, effect } from "@supergrain/kernel";
 import { describe, it, expect, vi } from "vitest";
 
 import { update } from "../src";
+import { applyWithUndo, undoRecorder } from "./helpers";
+
+// Every mutating test below applies an update, asserts the forward result, then
+// runs the generated `undo` and asserts the document is restored to its exact
+// starting state (`rewind` / `rewindAll` do that assertion). Error cases throw,
+// so they have no undo to verify.
 
 describe("MongoDB Style Operators", () => {
   it("$set: should set top-level and nested properties", () => {
     const state = createReactive({
       user: { name: "John", address: { city: "New York" } },
     });
-    update(
+    const { rewind } = applyWithUndo(
       state,
       {},
       {
@@ -17,42 +23,48 @@ describe("MongoDB Style Operators", () => {
     );
     expect(state.user.name).toBe("Jane");
     expect(state.user.address.city).toBe("Boston");
+    rewind();
   });
 
   it("$unset: should remove a property", () => {
     const state = createReactive({
       user: { name: "John", email: "john@doe.com" },
     });
-    update(state, {}, { $unset: { "user.email": 1 } });
+    const { rewind } = applyWithUndo(state, {}, { $unset: { "user.email": 1 } });
     expect(state.user.name).toBe("John");
     expect((state.user as any).email).toBeUndefined();
+    rewind();
   });
 
   it("$inc: should increment numeric values", () => {
     const state = createReactive({
       stats: { views: 100, likes: 50 },
     });
-    update(state, {}, { $inc: { "stats.views": 1, "stats.likes": -5 } });
+    const { rewind } = applyWithUndo(state, {}, { $inc: { "stats.views": 1, "stats.likes": -5 } });
     expect(state.stats.views).toBe(101);
     expect(state.stats.likes).toBe(45);
+    rewind();
   });
 
   it("$push: should add an element to an array", () => {
     const state = createReactive({ tags: ["a", "b"] });
-    update(state, {}, { $push: { tags: "c" } });
+    const { rewind } = applyWithUndo(state, {}, { $push: { tags: "c" } });
     expect(state.tags).toEqual(["a", "b", "c"]);
+    rewind();
   });
 
   it("$push: should add multiple elements with $each", () => {
     const state = createReactive({ tags: ["a", "b"] });
-    update(state, {}, { $push: { tags: { $each: ["c", "d"] } } });
+    const { rewind } = applyWithUndo(state, {}, { $push: { tags: { $each: ["c", "d"] } } });
     expect(state.tags).toEqual(["a", "b", "c", "d"]);
+    rewind();
   });
 
   it("$pull: should remove elements from an array by value", () => {
     const state = createReactive({ scores: [1, 2, 3, 2, 4] });
-    update(state, {}, { $pull: { scores: 2 } });
+    const { rewind } = applyWithUndo(state, {}, { $pull: { scores: 2 } });
     expect(state.scores).toEqual([1, 3, 4]);
+    rewind();
   });
 
   it("$pull: should remove elements matching an object", () => {
@@ -62,8 +74,9 @@ describe("MongoDB Style Operators", () => {
         { id: 2, name: "B" },
       ],
     });
-    update(state, {}, { $pull: { users: { id: 1, name: "A" } } });
+    const { rewind } = applyWithUndo(state, {}, { $pull: { users: { id: 1, name: "A" } } });
     expect(state.users).toEqual([{ id: 2, name: "B" }]);
+    rewind();
   });
 
   it("$pull: should invalidate array structure subscribers", () => {
@@ -75,36 +88,43 @@ describe("MongoDB Style Operators", () => {
     });
 
     expect(keys).toEqual(["0", "1", "2"]);
-    update(state, {}, { $pull: { scores: 2 } });
+    const { rewind } = applyWithUndo(state, {}, { $pull: { scores: 2 } });
     expect(keys).toEqual(["0", "1"]);
+    rewind();
   });
 
   it("should handle sparse array writes and later pulls consistently", () => {
     const state = createReactive<{ scores: number[] }>({ scores: [1] });
+    const rec = undoRecorder(state);
 
-    update(state, {}, { $set: { "scores.3": 4 } });
+    rec.apply({}, { $set: { "scores.3": 4 } });
     expect(state.scores.length).toBe(4);
     expect(1 in state.scores).toBe(false);
     expect(state.scores[3]).toBe(4);
 
-    update(state, {}, { $pull: { scores: 4 } });
+    rec.apply({}, { $pull: { scores: 4 } });
     expect(state.scores).toEqual([1, undefined, undefined]);
+
+    rec.rewindAll();
   });
 
   it("should allow direct mutations and operator updates to compose on arrays", () => {
     const state = createReactive({ scores: [1, 2] });
 
     state.scores[0] = 3;
-    update(state, {}, { $push: { scores: 4 } });
-    update(state, {}, { $pull: { scores: 2 } });
+    const rec = undoRecorder(state);
+    rec.apply({}, { $push: { scores: 4 } });
+    rec.apply({}, { $pull: { scores: 2 } });
 
     expect(state.scores).toEqual([3, 4]);
+    rec.rewindAll();
   });
 
   it("$pullAll: should remove every occurrence of each listed value", () => {
     const state = createReactive({ scores: [1, 2, 3, 2, 4, 1] });
-    update(state, {}, { $pullAll: { scores: [1, 2] } });
+    const { rewind } = applyWithUndo(state, {}, { $pullAll: { scores: [1, 2] } });
     expect(state.scores).toEqual([3, 4]);
+    rewind();
   });
 
   it("$pullAll: should match whole documents by deep equality, not partial match", () => {
@@ -115,7 +135,7 @@ describe("MongoDB Style Operators", () => {
         { id: 3, name: "C" },
       ],
     });
-    update(
+    const { rewind } = applyWithUndo(
       state,
       {},
       {
@@ -131,12 +151,15 @@ describe("MongoDB Style Operators", () => {
       { id: 2, name: "B" },
       { id: 3, name: "C" },
     ]);
+    rewind();
   });
 
   it("$pullAll: should leave the array unchanged when nothing matches", () => {
     const state = createReactive({ scores: [1, 2, 3] });
-    update(state, {}, { $pullAll: { scores: [4, 5] } });
+    const { undo, rewind } = applyWithUndo(state, {}, { $pullAll: { scores: [4, 5] } });
     expect(state.scores).toEqual([1, 2, 3]);
+    expect(undo).toEqual({}); // no-op produces no undo
+    rewind();
   });
 
   it("$pullAll: should reject a non-array operand with a descriptive error", () => {
@@ -154,56 +177,77 @@ describe("MongoDB Style Operators", () => {
     });
 
     expect(keys).toEqual(["0", "1", "2", "3"]);
-    update(state, {}, { $pullAll: { scores: [2, 4] } });
+    const { rewind } = applyWithUndo(state, {}, { $pullAll: { scores: [2, 4] } });
     expect(keys).toEqual(["0", "1"]);
+    rewind();
   });
 
   it("$addToSet: should add unique elements to an array", () => {
     const state = createReactive({ tags: ["a", "b"] });
-    update(state, {}, { $addToSet: { tags: "c" } });
+    const rec = undoRecorder(state);
+    rec.apply({}, { $addToSet: { tags: "c" } });
     expect(state.tags).toEqual(["a", "b", "c"]);
-    update(state, {}, { $addToSet: { tags: "a" } }); // Try adding a duplicate
+    rec.apply({}, { $addToSet: { tags: "a" } }); // Try adding a duplicate
     expect(state.tags).toEqual(["a", "b", "c"]);
+    rec.rewindAll();
   });
 
   it("$addToSet: should handle $each modifier", () => {
     const state = createReactive({ tags: ["a", "b"] });
-    update(state, {}, { $addToSet: { tags: { $each: ["c", "a", "d"] } } });
+    const { rewind } = applyWithUndo(
+      state,
+      {},
+      { $addToSet: { tags: { $each: ["c", "a", "d"] } } },
+    );
     expect(state.tags).toEqual(["a", "b", "c", "d"]);
+    rewind();
   });
 
   it("$addToSet: should ignore duplicates inside $each", () => {
     const state = createReactive({ tags: ["a"] });
-    update(state, {}, { $addToSet: { tags: { $each: ["b", "b", "a", "c", "c"] } } });
+    const { rewind } = applyWithUndo(
+      state,
+      {},
+      {
+        $addToSet: { tags: { $each: ["b", "b", "a", "c", "c"] } },
+      },
+    );
     expect(state.tags).toEqual(["a", "b", "c"]);
+    rewind();
   });
 
   it("$rename: should rename fields", () => {
     const state = createReactive<any>({
       user: { name: "John", address: { street: "123 Main St" } },
     });
-    update(state, {}, { $rename: { "user.name": "user.fullName" } });
-    update(state, {}, { $rename: { "user.address": "user.location" } });
+    const rec = undoRecorder(state);
+    rec.apply({}, { $rename: { "user.name": "user.fullName" } });
+    rec.apply({}, { $rename: { "user.address": "user.location" } });
     expect((state.user as any).name).toBeUndefined();
     expect((state.user as any).fullName).toBe("John");
     expect((state.user as any).address).toBeUndefined();
     expect((state.user as any).location).toEqual({ street: "123 Main St" });
+    rec.rewindAll();
   });
 
   it("$min: should update if value is smaller", () => {
     const state = createReactive({ score: 100 });
-    update(state, {}, { $min: { score: 150 } });
+    const rec = undoRecorder(state);
+    rec.apply({}, { $min: { score: 150 } });
     expect(state.score).toBe(100);
-    update(state, {}, { $min: { score: 50 } });
+    rec.apply({}, { $min: { score: 50 } });
     expect(state.score).toBe(50);
+    rec.rewindAll();
   });
 
   it("$max: should update if value is larger", () => {
     const state = createReactive({ score: 100 });
-    update(state, {}, { $max: { score: 50 } });
+    const rec = undoRecorder(state);
+    rec.apply({}, { $max: { score: 50 } });
     expect(state.score).toBe(100);
-    update(state, {}, { $max: { score: 150 } });
+    rec.apply({}, { $max: { score: 150 } });
     expect(state.score).toBe(150);
+    rec.rewindAll();
   });
 
   it("should handle reactivity correctly", () => {
@@ -215,9 +259,10 @@ describe("MongoDB Style Operators", () => {
     effect(effectFn);
     expect(currentCount).toBe(0);
     expect(effectFn).toHaveBeenCalledTimes(1);
-    update(state, {}, { $inc: { count: 1 } });
+    const { rewind } = applyWithUndo(state, {}, { $inc: { count: 1 } });
     expect(currentCount).toBe(1);
     expect(effectFn).toHaveBeenCalledTimes(2);
+    rewind();
   });
 
   it("should handle a complex combination of operators", () => {
@@ -231,7 +276,7 @@ describe("MongoDB Style Operators", () => {
       },
     });
 
-    update(
+    const { rewind } = applyWithUndo(
       state,
       {},
       {
@@ -258,6 +303,7 @@ describe("MongoDB Style Operators", () => {
     expect((secondUser as any).profile).toBeUndefined();
 
     expect(state.meta.lastUpdated).toBe(12345);
+    rewind();
   });
 
   it("should reject empty or malformed update paths", () => {
@@ -321,14 +367,16 @@ describe("MongoDB Style Operators — validation and path creation", () => {
 
   it("$addToSet deduplicates object elements using deep isEqual", () => {
     const store = createReactive<any>({ items: [{ id: 1, name: "Alice" }] });
-    update(store, {}, { $addToSet: { items: { id: 1, name: "Alice" } } });
+    const rec = undoRecorder(store);
+    rec.apply({}, { $addToSet: { items: { id: 1, name: "Alice" } } });
     expect(store.items).toHaveLength(1);
 
-    update(store, {}, { $addToSet: { items: { id: 2, name: "Bob" } } });
+    rec.apply({}, { $addToSet: { items: { id: 2, name: "Bob" } } });
     expect(store.items).toHaveLength(2);
 
-    update(store, {}, { $addToSet: { items: { id: 1 } } });
+    rec.apply({}, { $addToSet: { items: { id: 1 } } });
     expect(store.items).toHaveLength(3);
+    rec.rewindAll();
   });
 
   it("$addToSet handles large object values", () => {
@@ -336,67 +384,82 @@ describe("MongoDB Style Operators — validation and path creation", () => {
     const obj1 = Object.fromEntries(keys.map((k) => [k, k]));
     const obj2 = Object.fromEntries(keys.map((k) => [k, k]));
     const store = createReactive<any>({ items: [obj1] });
+    const rec = undoRecorder(store);
 
-    update(store, {}, { $addToSet: { items: obj2 } });
+    rec.apply({}, { $addToSet: { items: obj2 } });
     expect(store.items).toHaveLength(1);
 
     const obj3 = { ...obj2, key0: "different" };
-    update(store, {}, { $addToSet: { items: obj3 } });
+    rec.apply({}, { $addToSet: { items: obj3 } });
     expect(store.items).toHaveLength(2);
+    rec.rewindAll();
   });
 
   it("$inc creates a new path when it does not exist", () => {
     const store = createReactive<any>({});
-    update(store, {}, { $inc: { newCounter: 5 } });
+    const { undo, rewind } = applyWithUndo(store, {}, { $inc: { newCounter: 5 } });
     expect(store.newCounter).toBe(5);
+    expect(undo).toEqual({ $unset: { newCounter: "" } });
+    rewind();
   });
 
   it("$inc initializes existing null and undefined values", () => {
     const store = createReactive<any>({ fromNull: null, fromUndefined: undefined });
-    update(store, {}, { $inc: { fromNull: 3, fromUndefined: 4 } });
+    const { rewind } = applyWithUndo(store, {}, { $inc: { fromNull: 3, fromUndefined: 4 } });
     expect(store.fromNull).toBe(3);
     expect(store.fromUndefined).toBe(4);
+    rewind();
   });
 
   it("$min creates a new path when it does not exist", () => {
     const store = createReactive<any>({});
-    update(store, {}, { $min: { score: 10 } });
+    const { rewind } = applyWithUndo(store, {}, { $min: { score: 10 } });
     expect(store.score).toBe(10);
+    rewind();
   });
 
   it("$min initializes existing undefined values", () => {
     const store = createReactive<any>({ score: undefined });
-    update(store, {}, { $min: { score: 10 } });
+    const { rewind } = applyWithUndo(store, {}, { $min: { score: 10 } });
     expect(store.score).toBe(10);
+    rewind();
   });
 
   it("$max creates a new path when it does not exist", () => {
     const store = createReactive<any>({});
-    update(store, {}, { $max: { score: 10 } });
+    const { rewind } = applyWithUndo(store, {}, { $max: { score: 10 } });
     expect(store.score).toBe(10);
+    rewind();
   });
 
   it("$max initializes existing undefined values", () => {
     const store = createReactive<any>({ score: undefined });
-    update(store, {}, { $max: { score: 10 } });
+    const { rewind } = applyWithUndo(store, {}, { $max: { score: 10 } });
     expect(store.score).toBe(10);
+    rewind();
   });
 
   it("$min and $max leave null values unchanged", () => {
     const minStore = createReactive<any>({ score: null });
     const maxStore = createReactive<any>({ score: null });
 
-    update(minStore, {}, { $min: { score: 10 } });
-    update(maxStore, {}, { $max: { score: 10 } });
+    const min = applyWithUndo(minStore, {}, { $min: { score: 10 } });
+    const max = applyWithUndo(maxStore, {}, { $max: { score: 10 } });
 
     expect(minStore.score).toBe(null);
     expect(maxStore.score).toBe(null);
+    expect(min.undo).toEqual({});
+    expect(max.undo).toEqual({});
+    min.rewind();
+    max.rewind();
   });
 
   it("$set creates missing nested paths", () => {
     const store = createReactive<any>({});
-    update(store, {}, { $set: { "brand.new.path": "value" } });
+    const { undo, rewind } = applyWithUndo(store, {}, { $set: { "brand.new.path": "value" } });
     expect(store.brand.new.path).toBe("value");
+    expect(undo).toEqual({ $unset: { brand: "" } });
+    rewind();
   });
 
   it("rejects array operators when a deep parent path cannot be resolved", () => {
@@ -409,25 +472,30 @@ describe("MongoDB Style Operators — validation and path creation", () => {
     const minStore = createReactive<any>({ a: 42 });
     const maxStore = createReactive<any>({ a: 42 });
 
-    update(incStore, {}, { $inc: { "a.b": 1 } });
-    update(minStore, {}, { $min: { "a.c": 2 } });
-    update(maxStore, {}, { $max: { "a.d": 3 } });
+    const inc = applyWithUndo(incStore, {}, { $inc: { "a.b": 1 } });
+    const min = applyWithUndo(minStore, {}, { $min: { "a.c": 2 } });
+    const max = applyWithUndo(maxStore, {}, { $max: { "a.d": 3 } });
 
     expect(incStore.a).toEqual({ b: 1 });
     expect(minStore.a).toEqual({ c: 2 });
     expect(maxStore.a).toEqual({ d: 3 });
+    inc.rewind();
+    min.rewind();
+    max.rewind();
   });
 
   it("$pull mutates an untracked array without indexed subscribers", () => {
     const store = createReactive<any>({ items: [1, 2, 3] });
-    update(store, {}, { $pull: { items: 2 } });
+    const { rewind } = applyWithUndo(store, {}, { $pull: { items: 2 } });
     expect(store.items).toEqual([1, 3]);
+    rewind();
   });
 
   it("$pull can update a raw object without reactive array nodes", () => {
     const store = { items: [1, 2, 3] };
-    update(store, {}, { $pull: { items: 2 } });
+    const { rewind } = applyWithUndo(store, {}, { $pull: { items: 2 } });
     expect(store.items).toEqual([1, 3]);
+    rewind();
   });
 
   it("$pull leaves unchanged indexed signals alone", () => {
@@ -450,29 +518,34 @@ describe("MongoDB Style Operators — validation and path creation", () => {
 
     // After $pull(2), the array is [1, 3]: index 0 still holds 1, index 2 is
     // empty. Only the index-2 effect should be invalidated.
-    update(store, {}, { $pull: { items: 2 } });
+    const { rewind } = applyWithUndo(store, {}, { $pull: { items: 2 } });
 
     expect(first).toBe(1);
     expect(third).toBeUndefined();
     expect(firstFn).toHaveBeenCalledTimes(1);
     expect(thirdFn).toHaveBeenCalledTimes(2);
+    rewind();
   });
 
   it("$rename ignores missing source paths", () => {
     const store = createReactive<any>({ user: { name: "Jane" } });
-    update(store, {}, { $rename: { "user.missing": "user.other" } });
+    const { undo, rewind } = applyWithUndo(
+      store,
+      {},
+      { $rename: { "user.missing": "user.other" } },
+    );
     expect(store.user).toEqual({ name: "Jane" });
+    expect(undo).toEqual({}); // no-op
+    rewind();
   });
 });
 
 // =============================================================================
 // Per-operator reactivity
 //
-// Each operator must produce the right reactive notifications. The shared
-// kernel test suite covers the proxy contract for direct mutations; these
-// tests pin that the *operator dispatcher* in mill exercises that contract
-// correctly for every kind of operator. Sparse pre-existing coverage (just
-// $inc and $pull) was leaving the rest unverified.
+// Each operator must produce the right reactive notifications. These pin that
+// the operator dispatcher exercises the proxy contract correctly. The forward
+// effect counts are asserted before `rewindAll()` replays the undo.
 // =============================================================================
 
 describe("MongoDB Style Operators — reactivity per operator", () => {
@@ -483,11 +556,12 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     effect(aFn);
     effect(bFn);
 
-    update(store, {}, { $set: { a: 10 } });
+    const { rewind } = applyWithUndo(store, {}, { $set: { a: 10 } });
 
     expect(store.a).toBe(10);
     expect(aFn).toHaveBeenCalledTimes(2);
     expect(bFn).toHaveBeenCalledTimes(1);
+    rewind();
   });
 
   it("$unset fires effects observing the removed property and ownKeys watchers", () => {
@@ -505,12 +579,13 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     expect(observedB).toBe(2);
     expect(keys.sort()).toEqual(["a", "b"]);
 
-    update(store, {}, { $unset: { b: 1 } });
+    const { rewind } = applyWithUndo(store, {}, { $unset: { b: 1 } });
 
     expect(observedB).toBeUndefined();
     expect(bFn).toHaveBeenCalledTimes(2);
     expect(keys).toEqual(["a"]);
     expect(keysFn).toHaveBeenCalledTimes(2);
+    rewind();
   });
 
   it("$push fires effects subscribed to length and to iteration", () => {
@@ -528,12 +603,13 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     effect(lengthFn);
     effect(iterFn);
 
-    update(store, {}, { $push: { items: { id: 2 } } });
+    const { rewind } = applyWithUndo(store, {}, { $push: { items: { id: 2 } } });
 
     expect(length).toBe(2);
     expect(ids).toEqual([1, 2]);
     expect(lengthFn).toHaveBeenCalledTimes(2);
     expect(iterFn).toHaveBeenCalledTimes(2);
+    rewind();
   });
 
   it("$addToSet fires effects when adding a new element and stays silent on a duplicate", () => {
@@ -546,14 +622,16 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     expect(length).toBe(2);
     expect(lengthFn).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $addToSet: { tags: "c" } });
+    const rec = undoRecorder(store);
+    rec.apply({}, { $addToSet: { tags: "c" } });
     expect(length).toBe(3);
     expect(lengthFn).toHaveBeenCalledTimes(2);
 
-    update(store, {}, { $addToSet: { tags: "a" } });
+    rec.apply({}, { $addToSet: { tags: "a" } });
     expect(length).toBe(3);
     // Duplicate didn't structurally change the array — no re-run.
     expect(lengthFn).toHaveBeenCalledTimes(2);
+    rec.rewindAll();
   });
 
   it("$rename fires effects on both the source and destination paths", () => {
@@ -573,7 +651,7 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     expect(name).toBe("John");
     expect(fullName).toBeUndefined();
 
-    update(store, {}, { $rename: { "user.name": "user.fullName" } });
+    const { rewind } = applyWithUndo(store, {}, { $rename: { "user.name": "user.fullName" } });
 
     expect(store.user.name).toBeUndefined();
     expect(store.user.fullName).toBe("John");
@@ -581,6 +659,7 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     expect(fullName).toBe("John");
     expect(nameFn).toHaveBeenCalledTimes(2);
     expect(fullNameFn).toHaveBeenCalledTimes(2);
+    rewind();
   });
 
   it("$min fires only when the value actually changes", () => {
@@ -589,13 +668,15 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     effect(fn);
     expect(fn).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $min: { score: 150 } }); // 150 > 100, no-op
+    const rec = undoRecorder(store);
+    rec.apply({}, { $min: { score: 150 } }); // 150 > 100, no-op
     expect(store.score).toBe(100);
     expect(fn).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $min: { score: 50 } }); // 50 < 100, writes
+    rec.apply({}, { $min: { score: 50 } }); // 50 < 100, writes
     expect(store.score).toBe(50);
     expect(fn).toHaveBeenCalledTimes(2);
+    rec.rewindAll();
   });
 
   it("$max fires only when the value actually changes", () => {
@@ -604,13 +685,15 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     effect(fn);
     expect(fn).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $max: { score: 50 } }); // 50 < 100, no-op
+    const rec = undoRecorder(store);
+    rec.apply({}, { $max: { score: 50 } }); // 50 < 100, no-op
     expect(store.score).toBe(100);
     expect(fn).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $max: { score: 150 } }); // 150 > 100, writes
+    rec.apply({}, { $max: { score: 150 } }); // 150 > 100, writes
     expect(store.score).toBe(150);
     expect(fn).toHaveBeenCalledTimes(2);
+    rec.rewindAll();
   });
 
   it("$pullAll fires structure effects when elements are removed and stays silent otherwise", () => {
@@ -623,13 +706,15 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     expect(length).toBe(3);
     expect(lengthFn).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $pullAll: { items: [2] } });
+    const rec = undoRecorder(store);
+    rec.apply({}, { $pullAll: { items: [2] } });
     expect(length).toBe(2);
     expect(lengthFn).toHaveBeenCalledTimes(2);
 
-    update(store, {}, { $pullAll: { items: [99] } }); // nothing matches — no structural change
+    rec.apply({}, { $pullAll: { items: [99] } }); // nothing matches — no structural change
     expect(length).toBe(2);
     expect(lengthFn).toHaveBeenCalledTimes(2);
+    rec.rewindAll();
   });
 
   it("multi-operator update fires each affected effect at most once (batched)", () => {
@@ -641,7 +726,7 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     effect(scoreFn);
     effect(lengthFn);
 
-    update(
+    const { rewind } = applyWithUndo(
       store,
       {},
       {
@@ -657,6 +742,7 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
     expect(store.count).toBe(5);
     expect(store.score).toBe(99);
     expect(store.items).toEqual([1, 2, 3]);
+    rewind();
   });
 });
 
@@ -667,20 +753,24 @@ describe("MongoDB Style Operators — reactivity per operator", () => {
 describe("$pull with query conditions", () => {
   it("removes elements matching an operator condition", () => {
     const store = createReactive({ nums: [1, 2, 3, 4, 5] });
-    update(store, {}, { $pull: { nums: { $gte: 4 } } as any });
+    const { rewind } = applyWithUndo(store, {}, { $pull: { nums: { $gte: 4 } } as any });
     expect(store.nums).toEqual([1, 2, 3]);
+    rewind();
   });
 
   it("removes elements matching a combined range condition", () => {
     const store = createReactive({ nums: [1, 2, 3, 4, 5] });
-    update(store, {}, { $pull: { nums: { $gte: 2, $lte: 4 } } as any });
+    const { rewind } = applyWithUndo(store, {}, { $pull: { nums: { $gte: 2, $lte: 4 } } as any });
     expect(store.nums).toEqual([1, 5]);
+    rewind();
   });
 
   it("does not remove primitive elements when given a field condition", () => {
     const store = createReactive({ nums: [1, 2, 3] });
-    update(store, {}, { $pull: { nums: { foo: 1 } } as any });
+    const { undo, rewind } = applyWithUndo(store, {}, { $pull: { nums: { foo: 1 } } as any });
     expect(store.nums).toEqual([1, 2, 3]);
+    expect(undo).toEqual({});
+    rewind();
   });
 
   it("removes documents matching a field-with-operator condition", () => {
@@ -691,8 +781,15 @@ describe("$pull with query conditions", () => {
         { id: 3, priority: 9 },
       ],
     });
-    update(store, {}, { $pull: { tasks: { priority: { $gte: 5 } } } as any });
+    const { rewind } = applyWithUndo(
+      store,
+      {},
+      {
+        $pull: { tasks: { priority: { $gte: 5 } } } as any,
+      },
+    );
     expect(store.tasks).toEqual([{ id: 1, priority: 1 }]);
+    rewind();
   });
 });
 
@@ -703,14 +800,16 @@ describe("$pull with query conditions", () => {
 describe("$mul", () => {
   it("multiplies an existing number", () => {
     const store = createReactive({ price: 10 });
-    update(store, {}, { $mul: { price: 3 } });
+    const { rewind } = applyWithUndo(store, {}, { $mul: { price: 3 } });
     expect(store.price).toBe(30);
+    rewind();
   });
 
   it("treats a missing field as 0", () => {
     const store = createReactive<{ price?: number }>({});
-    update(store, {}, { $mul: { price: 5 } });
+    const { rewind } = applyWithUndo(store, {}, { $mul: { price: 5 } });
     expect(store.price).toBe(0);
+    rewind();
   });
 
   it("rejects a non-number target", () => {
@@ -726,20 +825,24 @@ describe("$mul", () => {
 describe("$pop", () => {
   it("removes the last element with $pop: 1", () => {
     const store = createReactive({ items: ["a", "b", "c"] });
-    update(store, {}, { $pop: { items: 1 } });
+    const { rewind } = applyWithUndo(store, {}, { $pop: { items: 1 } });
     expect(store.items).toEqual(["a", "b"]);
+    rewind();
   });
 
   it("removes the first element with $pop: -1", () => {
     const store = createReactive({ items: ["a", "b", "c"] });
-    update(store, {}, { $pop: { items: -1 } });
+    const { rewind } = applyWithUndo(store, {}, { $pop: { items: -1 } });
     expect(store.items).toEqual(["b", "c"]);
+    rewind();
   });
 
   it("is a no-op on an empty array", () => {
     const store = createReactive({ items: [] as Array<string> });
-    update(store, {}, { $pop: { items: 1 } });
+    const { undo, rewind } = applyWithUndo(store, {}, { $pop: { items: 1 } });
     expect(store.items).toEqual([]);
+    expect(undo).toEqual({});
+    rewind();
   });
 
   it("rejects a non-array target", () => {
@@ -755,32 +858,53 @@ describe("$pop", () => {
 describe("$push modifiers", () => {
   it("$position inserts at an index", () => {
     const store = createReactive({ items: ["a", "d"] });
-    update(store, {}, { $push: { items: { $each: ["b", "c"], $position: 1 } } });
+    const { rewind } = applyWithUndo(
+      store,
+      {},
+      {
+        $push: { items: { $each: ["b", "c"], $position: 1 } },
+      },
+    );
     expect(store.items).toEqual(["a", "b", "c", "d"]);
+    rewind();
   });
 
   it("$position counts from the end when negative", () => {
     const store = createReactive({ items: ["a", "b", "d"] });
-    update(store, {}, { $push: { items: { $each: ["c"], $position: -1 } } });
+    const { rewind } = applyWithUndo(
+      store,
+      {},
+      {
+        $push: { items: { $each: ["c"], $position: -1 } },
+      },
+    );
     expect(store.items).toEqual(["a", "b", "c", "d"]);
+    rewind();
   });
 
   it("$slice keeps the first N after appending", () => {
     const store = createReactive({ items: [1, 2, 3] });
-    update(store, {}, { $push: { items: { $each: [4, 5], $slice: 3 } } });
+    const { rewind } = applyWithUndo(store, {}, { $push: { items: { $each: [4, 5], $slice: 3 } } });
     expect(store.items).toEqual([1, 2, 3]);
+    rewind();
   });
 
   it("$slice with a negative count keeps the last N", () => {
     const store = createReactive({ items: [1, 2, 3] });
-    update(store, {}, { $push: { items: { $each: [4, 5], $slice: -2 } } });
+    const { rewind } = applyWithUndo(
+      store,
+      {},
+      { $push: { items: { $each: [4, 5], $slice: -2 } } },
+    );
     expect(store.items).toEqual([4, 5]);
+    rewind();
   });
 
   it("$sort orders scalar elements ascending", () => {
     const store = createReactive({ scores: [3, 1] });
-    update(store, {}, { $push: { scores: { $each: [2], $sort: 1 } } });
+    const { rewind } = applyWithUndo(store, {}, { $push: { scores: { $each: [2], $sort: 1 } } });
     expect(store.scores).toEqual([1, 2, 3]);
+    rewind();
   });
 
   it("$sort orders document elements by a field", () => {
@@ -790,23 +914,27 @@ describe("$push modifiers", () => {
         { name: "B", score: 10 },
       ],
     });
-    update(
+    const { rewind } = applyWithUndo(
       store,
       {},
-      { $push: { players: { $each: [{ name: "C", score: 20 }], $sort: { score: 1 } } } },
+      {
+        $push: { players: { $each: [{ name: "C", score: 20 }], $sort: { score: 1 } } },
+      },
     );
     expect(store.players.map((p) => p.name)).toEqual(["B", "C", "A"]);
+    rewind();
   });
 
   it("$sort keeps equal scalar elements stable", () => {
     const store = createReactive({ scores: [2] });
-    update(store, {}, { $push: { scores: { $each: [2], $sort: 1 } } });
+    const { rewind } = applyWithUndo(store, {}, { $push: { scores: { $each: [2], $sort: 1 } } });
     expect(store.scores).toEqual([2, 2]);
+    rewind();
   });
 
   it("$sort keeps document elements with equal keys stable", () => {
     const store = createReactive({ rows: [{ score: 5, name: "a" }] });
-    update(
+    const { rewind } = applyWithUndo(
       store,
       {},
       {
@@ -814,6 +942,7 @@ describe("$push modifiers", () => {
       },
     );
     expect(store.rows.map((r) => r.score)).toEqual([5, 5]);
+    rewind();
   });
 });
 
@@ -824,21 +953,24 @@ describe("$push modifiers", () => {
 describe("deep equality of array-valued elements", () => {
   it("$addToSet treats arrays of equal length but differing items as distinct", () => {
     const store = createReactive<{ rows: Array<Array<number>> }>({ rows: [[1, 2]] });
+    const rec = undoRecorder(store);
 
-    update(store, {}, { $addToSet: { rows: [1, 3] } });
+    rec.apply({}, { $addToSet: { rows: [1, 3] } });
     expect(store.rows).toEqual([
       [1, 2],
       [1, 3],
     ]);
 
     // An exact-length, exact-value duplicate is rejected.
-    update(store, {}, { $addToSet: { rows: [1, 2] } });
+    rec.apply({}, { $addToSet: { rows: [1, 2] } });
     expect(store.rows).toHaveLength(2);
+    rec.rewindAll();
   });
 
   it("$addToSet treats arrays of different lengths as distinct", () => {
     const store = createReactive<{ rows: Array<Array<number>> }>({ rows: [[1, 2]] });
-    update(store, {}, { $addToSet: { rows: [1, 2, 3] } });
+    const { rewind } = applyWithUndo(store, {}, { $addToSet: { rows: [1, 2, 3] } });
     expect(store.rows).toHaveLength(2);
+    rewind();
   });
 });

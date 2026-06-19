@@ -17,7 +17,13 @@ import {
   splitPath,
   type UnsetPathOperations,
 } from "./path";
-import { matchesQuery, type Query, resolvePaths } from "./query";
+import {
+  type ArrayFilter,
+  arrayFilterIdentifier,
+  matchesQuery,
+  type Query,
+  resolvePaths,
+} from "./query";
 import { cloneValue, describeValue, isContainer, isEqual, isObject } from "./util";
 
 /**
@@ -265,6 +271,7 @@ interface OperatorContext {
   raw: object;
   undo: MutableUndo;
   query: Query;
+  arrayFilters: ReadonlyArray<ArrayFilter>;
 }
 
 function eachPath(
@@ -274,7 +281,7 @@ function eachPath(
 ): void {
   for (const rawPath of Object.keys(operations)) {
     const value = operations[rawPath];
-    for (const path of resolvePaths(context.raw, context.query, rawPath)) {
+    for (const path of resolvePaths(context.raw, rawPath, context)) {
       apply(path, value);
     }
   }
@@ -375,8 +382,8 @@ interface RenameMove {
 // destination are the same path, or the source doesn't exist). Throws when the
 // destination already exists.
 function planRename(context: OperatorContext, rawFrom: string, rawTo: string): RenameMove | null {
-  const from = resolvePaths(context.raw, context.query, rawFrom)[0]!;
-  const to = resolvePaths(context.raw, context.query, rawTo)[0]!;
+  const from = resolvePaths(context.raw, rawFrom, context)[0]!;
+  const to = resolvePaths(context.raw, rawTo, context)[0]!;
   if (from === to) {
     return null;
   }
@@ -649,6 +656,37 @@ export interface UpdateResult<T extends object> {
 }
 
 /**
+ * Options for `update()`. Mirrors the MongoDB driver's update options object.
+ */
+export interface UpdateOptions {
+  /**
+   * Filter documents for the `$[<identifier>]` filtered positional operator —
+   * each targets one identifier and an element qualifies when its conditions
+   * match. Every `$[<identifier>]` in the update needs a matching filter, and
+   * every supplied filter must be used.
+   */
+  arrayFilters?: Array<ArrayFilter>;
+}
+
+// Collect the `$[<identifier>]` identifiers referenced in an update document's
+// paths, so we can flag supplied arrayFilters that go unused. Only path keys are
+// scanned — Mongo's positional operators aren't valid in `$rename` values, and
+// every operator's payload is a path-keyed object.
+function referencedArrayFilterIdentifiers(operations: UpdateOperations<any>): Set<string> {
+  const used = new Set<string>();
+  for (const payload of Object.values(operations)) {
+    for (const key of Object.keys(payload as Record<string, unknown>)) {
+      for (const segment of key.split(".")) {
+        if (segment.startsWith("$[") && segment.endsWith("]") && segment.length > 3) {
+          used.add(segment.slice(2, -1));
+        }
+      }
+    }
+  }
+  return used;
+}
+
+/**
  * Apply a MongoDB update document to `doc` in place.
  *
  * @param doc        The document to mutate (a reactive store or a plain object).
@@ -656,16 +694,46 @@ export interface UpdateResult<T extends object> {
  * @param query      A Mongo query used only to resolve positional paths
  *                   (`items.$.name`). Pass `{}` when the update has none.
  * @param operations A standard Mongo update document.
+ * @param options    Optional Mongo update options — `arrayFilters` for the
+ *                   `$[<identifier>]` filtered positional operator.
  * @returns          `{ doc, undo }` — `undo` reverses the actual changes made.
  */
+// The 4-arg shape mirrors the MongoDB driver's update(filter, update, options),
+// with the document split out as the first argument.
+// eslint-disable-next-line max-params
 export function update<T extends object>(
   doc: T,
   query: Query<T>,
   operations: UpdateOperations<T>,
+  options?: UpdateOptions,
 ): UpdateResult<T> {
   const raw = unwrap(doc) as object;
   const undo: MutableUndo = {};
-  const context: OperatorContext = { raw, undo, query: query as Query };
+  const arrayFilters = options?.arrayFilters ?? [];
+
+  // When arrayFilters are supplied, enforce Mongo's two consistency rules (in
+  // its order): every referenced identifier must have a filter, then every
+  // supplied filter must be used. When none are supplied, a stray `$[id]` is
+  // still caught at resolution time, so the common path pays nothing here.
+  if (arrayFilters.length > 0) {
+    const referenced = referencedArrayFilterIdentifiers(operations);
+    const provided = new Set(arrayFilters.map(arrayFilterIdentifier));
+    for (const identifier of referenced) {
+      if (!provided.has(identifier)) {
+        throw new Error(`No array filter found for identifier "${identifier}".`);
+      }
+    }
+    for (const filter of arrayFilters) {
+      const identifier = arrayFilterIdentifier(filter);
+      if (!referenced.has(identifier)) {
+        throw new Error(
+          `The array filter for identifier "${identifier}" was not used in the update.`,
+        );
+      }
+    }
+  }
+
+  const context: OperatorContext = { raw, undo, query: query as Query, arrayFilters };
 
   // Coalesce every write in this call into a single notification.
   batch(() => {

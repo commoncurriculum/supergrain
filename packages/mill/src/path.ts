@@ -10,8 +10,10 @@ type PrevDepth = [never, 0, 1, 2, 3, 4, 5];
 
 type ArrayKey = `${number}`;
 // Array segments accept a concrete index or one of MongoDB's positional tokens:
-// `$` (first element matched by the query) and `$[]` (every element).
-type PositionalArrayKey = ArrayKey | "$" | "$[]";
+// `$` (first element matched by the query), `$[]` (every element), and
+// `$[<identifier>]` (every element matched by the corresponding arrayFilter).
+// The `` `$[${string}]` `` template covers both `$[]` and `$[<identifier>]`.
+type PositionalArrayKey = ArrayKey | "$" | `$[${string}]`;
 
 type Join<K extends string, P extends string> = `${K}.${P}`;
 

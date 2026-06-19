@@ -1,3 +1,5 @@
+import { match } from "ts-pattern";
+
 import { getValueAtPath, splitPath } from "./path";
 import { isEqual, isObject } from "./util";
 
@@ -17,44 +19,30 @@ export type Query<T = unknown> = {
 } & Record<string, unknown>;
 
 function applyQueryOperator(value: unknown, operator: string, operand: unknown): boolean {
-  switch (operator) {
-    case "$eq": {
-      return isEqual(value, operand);
-    }
-    case "$ne": {
-      return !isEqual(value, operand);
-    }
-    case "$gt": {
-      return (value as any) > (operand as any);
-    }
-    case "$gte": {
-      return (value as any) >= (operand as any);
-    }
-    case "$lt": {
-      return (value as any) < (operand as any);
-    }
-    case "$lte": {
-      return (value as any) <= (operand as any);
-    }
-    case "$in": {
-      return Array.isArray(operand) && operand.some((candidate) => isEqual(value, candidate));
-    }
-    case "$nin": {
-      return Array.isArray(operand) && !operand.some((candidate) => isEqual(value, candidate));
-    }
-    case "$exists": {
-      return (value !== undefined) === Boolean(operand);
-    }
-    case "$not": {
-      return !matchesCondition(value, operand);
-    }
-    case "$elemMatch": {
-      return Array.isArray(value) && value.some((element) => matchesQuery(element, operand));
-    }
-    default: {
+  return match(operator)
+    .with("$eq", () => isEqual(value, operand))
+    .with("$ne", () => !isEqual(value, operand))
+    .with("$gt", () => (value as any) > (operand as any))
+    .with("$gte", () => (value as any) >= (operand as any))
+    .with("$lt", () => (value as any) < (operand as any))
+    .with("$lte", () => (value as any) <= (operand as any))
+    .with(
+      "$in",
+      () => Array.isArray(operand) && operand.some((candidate) => isEqual(value, candidate)),
+    )
+    .with(
+      "$nin",
+      () => Array.isArray(operand) && !operand.some((candidate) => isEqual(value, candidate)),
+    )
+    .with("$exists", () => (value !== undefined) === Boolean(operand))
+    .with("$not", () => !matchesCondition(value, operand))
+    .with(
+      "$elemMatch",
+      () => Array.isArray(value) && value.some((element) => matchesQuery(element, operand)),
+    )
+    .otherwise(() => {
       throw new Error(`Unsupported query operator "${operator}".`);
-    }
-  }
+    });
 }
 
 /**
@@ -132,40 +120,108 @@ function conditionForArray(arrayPath: string, query: Query): unknown {
 }
 
 // The index the positional `$` resolves to: the first element matching the
-// query's condition for this array, or — when the query says nothing about the
-// array — the first element. Returns -1 when there is no match.
+// query's condition for this array. Per MongoDB, the array field must appear in
+// the query for `$` to resolve — when the query says nothing about the array we
+// return -1 so the caller raises the "did not find the match" error. Returns -1
+// when there is no match.
 function matchPositionalIndex(array: Array<unknown>, arrayPath: string, query: Query): number {
   const condition = conditionForArray(arrayPath, query);
   if (condition === undefined) {
-    return array.length > 0 ? 0 : -1;
+    return -1;
   }
   return array.findIndex((element) => matchesQuery(element, condition));
 }
 
-function requirePositionalMatch(index: number, arrayPath: string, path: string): number {
+function requirePositionalMatch(index: number, path: string): number {
   if (index === -1) {
     throw new Error(
-      `The positional operator "$" found no element of "${arrayPath}" matching the query for path "${path}".`,
+      `The positional operator did not find the match needed from the query for path "${path}".`,
     );
   }
   return index;
 }
 
+/** A single MongoDB arrayFilter document, e.g. `{ "elem.grade": { $gte: 85 } }`. */
+export type ArrayFilter = Record<string, unknown>;
+
+/**
+ * The identifier an arrayFilter targets — the first segment shared by all of its
+ * keys. `{ "elem.grade": ... }` and `{ elem: ... }` both target `elem`.
+ */
+export function arrayFilterIdentifier(filter: ArrayFilter): string {
+  const [firstKey] = Object.keys(filter);
+  if (firstKey === undefined) {
+    return "";
+  }
+  const [identifier] = firstKey.split(".");
+  return identifier!;
+}
+
+function isFilteredToken(part: string): boolean {
+  return part.startsWith("$[") && part.endsWith("]") && part.length > 3;
+}
+
+function isPositionalToken(part: string): boolean {
+  return part === "$" || part === "$[]" || isFilteredToken(part);
+}
+
+// Build the per-element predicate for `$[<identifier>]` from the matching
+// arrayFilter. Mirrors Mongo: each filter key targets a field of the element
+// (`elem.grade` → the element's `grade`; a bare `elem` → the element itself), and
+// an element qualifies when every key's condition matches.
+function filteredPositionalPredicate(
+  identifier: string,
+  arrayFilters: ReadonlyArray<ArrayFilter>,
+  path: string,
+): (element: unknown) => boolean {
+  const matching = arrayFilters.filter((filter) => arrayFilterIdentifier(filter) === identifier);
+  if (matching.length === 0) {
+    throw new Error(`No array filter found for identifier "${identifier}" in path "${path}".`);
+  }
+  if (matching.length > 1) {
+    throw new Error(
+      `Found multiple array filters with the same top-level field name "${identifier}".`,
+    );
+  }
+
+  const filter = matching[0]!;
+  const prefix = `${identifier}.`;
+  return (element) =>
+    Object.keys(filter).every((key) => {
+      const fieldValue =
+        key === identifier ? element : fieldValueOf(element, key.slice(prefix.length));
+      return matchesCondition(fieldValue, filter[key]);
+    });
+}
+
+/** The query + arrayFilters context positional resolution runs against. */
+export interface PathResolution {
+  query: Query;
+  arrayFilters: ReadonlyArray<ArrayFilter>;
+}
+
 /**
  * Resolve an update path that may contain positional tokens against the
- * document and query, returning the concrete dotted path(s) it expands to:
- *   - `$`   — the first array element matching the query (one path).
- *   - `$[]` — every array element (zero or more paths).
+ * document and resolution context, returning the concrete dotted path(s) it
+ * expands to:
+ *   - `$`              — the first array element matching the query (one path).
+ *   - `$[]`            — every array element.
+ *   - `$[<identifier>]`— every element matching the corresponding arrayFilter.
  * A path with no positional token resolves to itself. Multiple positional
  * tokens are resolved left to right.
  */
-export function resolvePaths(doc: unknown, query: Query, path: string): Array<string> {
+export function resolvePaths(
+  doc: unknown,
+  path: string,
+  resolution: PathResolution,
+): Array<string> {
   const parts = splitPath(path);
-  const tokenIndex = parts.findIndex((part) => part === "$" || part === "$[]");
+  const tokenIndex = parts.findIndex(isPositionalToken);
   if (tokenIndex === -1) {
     return [path];
   }
 
+  const token = parts[tokenIndex]!;
   const prefixParts = parts.slice(0, tokenIndex);
   const suffixParts = parts.slice(tokenIndex + 1);
   const arrayPath = prefixParts.join(".");
@@ -173,20 +229,29 @@ export function resolvePaths(doc: unknown, query: Query, path: string): Array<st
 
   if (!Array.isArray(array)) {
     throw new TypeError(
-      `Positional path "${path}" requires an array at "${arrayPath}" to resolve "${parts[tokenIndex]}".`,
+      `Positional path "${path}" requires an array at "${arrayPath}" to resolve "${token}".`,
     );
   }
 
-  const indices =
-    parts[tokenIndex] === "$[]"
-      ? array.map((_, index) => index)
-      : [requirePositionalMatch(matchPositionalIndex(array, arrayPath, query), arrayPath, path)];
+  const indices = match(token)
+    .with("$[]", () => array.map((_, index) => index))
+    .with("$", () => [
+      requirePositionalMatch(matchPositionalIndex(array, arrayPath, resolution.query), path),
+    ])
+    .otherwise((filteredToken) => {
+      const predicate = filteredPositionalPredicate(
+        filteredToken.slice(2, -1),
+        resolution.arrayFilters,
+        path,
+      );
+      return array.map((_, index) => index).filter((index) => predicate(array[index]));
+    });
 
   const resolved: Array<string> = [];
   for (const index of indices) {
     const concrete = [...prefixParts, String(index), ...suffixParts].join(".");
     // Recurse to resolve any further positional tokens in the suffix.
-    resolved.push(...resolvePaths(doc, query, concrete));
+    resolved.push(...resolvePaths(doc, concrete, resolution));
   }
   return resolved;
 }

@@ -1,5 +1,6 @@
 import { createReactive, unwrap } from "@supergrain/kernel";
 import fc from "fast-check";
+import { match } from "ts-pattern";
 import { describe, expect, it } from "vitest";
 
 import { update } from "../src";
@@ -74,133 +75,77 @@ function addUnique(target: number[], values: number[]): void {
 }
 
 function applyMillModelOperation(state: MillState, operation: MillOperation): void {
-  switch (operation.type) {
-    case "setCount": {
-      state.count = operation.value;
-      return;
-    }
-    case "setScore": {
-      state.nested.score = operation.value;
-      return;
-    }
-    case "unsetCount": {
+  match(operation)
+    .with({ type: "setCount" }, (op) => {
+      state.count = op.value;
+    })
+    .with({ type: "setScore" }, (op) => {
+      state.nested.score = op.value;
+    })
+    .with({ type: "unsetCount" }, () => {
       delete state.count;
-      return;
-    }
-    case "unsetScore": {
+    })
+    .with({ type: "unsetScore" }, () => {
       delete state.nested.score;
-      return;
-    }
-    case "incCount": {
-      state.count = incrementValue(state.count, operation.value);
-      return;
-    }
-    case "incScore": {
-      state.nested.score = incrementValue(state.nested.score, operation.value);
-      return;
-    }
-    case "minCount": {
-      state.count = minValue(state.count, operation.value);
-      return;
-    }
-    case "minScore": {
-      state.nested.score = minValue(state.nested.score, operation.value);
-      return;
-    }
-    case "maxCount": {
-      state.count = maxValue(state.count, operation.value);
-      return;
-    }
-    case "maxScore": {
-      state.nested.score = maxValue(state.nested.score, operation.value);
-      return;
-    }
-    case "pushTag": {
-      state.tags.push(operation.value);
-      return;
-    }
-    case "pushManyTags": {
-      state.tags.push(...operation.values);
-      return;
-    }
-    case "pullTag": {
-      state.tags = state.tags.filter((value) => value !== operation.value);
-      return;
-    }
-    case "addToSetTag": {
-      addUnique(state.tags, [operation.value]);
-      return;
-    }
-    case "addManyToSetTags": {
-      addUnique(state.tags, operation.values);
-      return;
-    }
-  }
+    })
+    .with({ type: "incCount" }, (op) => {
+      state.count = incrementValue(state.count, op.value);
+    })
+    .with({ type: "incScore" }, (op) => {
+      state.nested.score = incrementValue(state.nested.score, op.value);
+    })
+    .with({ type: "minCount" }, (op) => {
+      state.count = minValue(state.count, op.value);
+    })
+    .with({ type: "minScore" }, (op) => {
+      state.nested.score = minValue(state.nested.score, op.value);
+    })
+    .with({ type: "maxCount" }, (op) => {
+      state.count = maxValue(state.count, op.value);
+    })
+    .with({ type: "maxScore" }, (op) => {
+      state.nested.score = maxValue(state.nested.score, op.value);
+    })
+    .with({ type: "pushTag" }, (op) => {
+      state.tags.push(op.value);
+    })
+    .with({ type: "pushManyTags" }, (op) => {
+      state.tags.push(...op.values);
+    })
+    .with({ type: "pullTag" }, (op) => {
+      state.tags = state.tags.filter((value) => value !== op.value);
+    })
+    .with({ type: "addToSetTag" }, (op) => {
+      addUnique(state.tags, [op.value]);
+    })
+    .with({ type: "addManyToSetTags" }, (op) => {
+      addUnique(state.tags, op.values);
+    })
+    .exhaustive();
 }
 
 function applyMillReactiveOperation(state: MillState, operation: MillOperation): void {
-  switch (operation.type) {
-    case "setCount": {
-      update(state, {}, { $set: { count: operation.value } });
-      return;
-    }
-    case "setScore": {
-      update(state, {}, { $set: { "nested.score": operation.value } });
-      return;
-    }
-    case "unsetCount": {
-      update(state, {}, { $unset: { count: 1 } });
-      return;
-    }
-    case "unsetScore": {
-      update(state, {}, { $unset: { "nested.score": 1 } });
-      return;
-    }
-    case "incCount": {
-      update(state, {}, { $inc: { count: operation.value } });
-      return;
-    }
-    case "incScore": {
-      update(state, {}, { $inc: { "nested.score": operation.value } });
-      return;
-    }
-    case "minCount": {
-      update(state, {}, { $min: { count: operation.value } });
-      return;
-    }
-    case "minScore": {
-      update(state, {}, { $min: { "nested.score": operation.value } });
-      return;
-    }
-    case "maxCount": {
-      update(state, {}, { $max: { count: operation.value } });
-      return;
-    }
-    case "maxScore": {
-      update(state, {}, { $max: { "nested.score": operation.value } });
-      return;
-    }
-    case "pushTag": {
-      update(state, {}, { $push: { tags: operation.value } });
-      return;
-    }
-    case "pushManyTags": {
-      update(state, {}, { $push: { tags: { $each: operation.values } } });
-      return;
-    }
-    case "pullTag": {
-      update(state, {}, { $pull: { tags: operation.value } });
-      return;
-    }
-    case "addToSetTag": {
-      update(state, {}, { $addToSet: { tags: operation.value } });
-      return;
-    }
-    case "addManyToSetTags": {
-      update(state, {}, { $addToSet: { tags: { $each: operation.values } } });
-      return;
-    }
-  }
+  match(operation)
+    .with({ type: "setCount" }, (op) => update(state, {}, { $set: { count: op.value } }))
+    .with({ type: "setScore" }, (op) => update(state, {}, { $set: { "nested.score": op.value } }))
+    .with({ type: "unsetCount" }, () => update(state, {}, { $unset: { count: 1 } }))
+    .with({ type: "unsetScore" }, () => update(state, {}, { $unset: { "nested.score": 1 } }))
+    .with({ type: "incCount" }, (op) => update(state, {}, { $inc: { count: op.value } }))
+    .with({ type: "incScore" }, (op) => update(state, {}, { $inc: { "nested.score": op.value } }))
+    .with({ type: "minCount" }, (op) => update(state, {}, { $min: { count: op.value } }))
+    .with({ type: "minScore" }, (op) => update(state, {}, { $min: { "nested.score": op.value } }))
+    .with({ type: "maxCount" }, (op) => update(state, {}, { $max: { count: op.value } }))
+    .with({ type: "maxScore" }, (op) => update(state, {}, { $max: { "nested.score": op.value } }))
+    .with({ type: "pushTag" }, (op) => update(state, {}, { $push: { tags: op.value } }))
+    .with({ type: "pushManyTags" }, (op) =>
+      update(state, {}, { $push: { tags: { $each: op.values } } }),
+    )
+    .with({ type: "pullTag" }, (op) => update(state, {}, { $pull: { tags: op.value } }))
+    .with({ type: "addToSetTag" }, (op) => update(state, {}, { $addToSet: { tags: op.value } }))
+    .with({ type: "addManyToSetTags" }, (op) =>
+      update(state, {}, { $addToSet: { tags: { $each: op.values } } }),
+    )
+    .exhaustive();
 }
 
 describe("property-based update operators", () => {
@@ -322,37 +267,34 @@ const renameOpArbitrary: fc.Arbitrary<RenameOp> = fc.oneof(
 );
 
 function applyRenameModel(state: RenameState, op: RenameOp): { threw: boolean } {
-  switch (op.type) {
-    case "set":
-      state[op.field] = op.value;
+  return match(op)
+    .with({ type: "set" }, (o) => {
+      state[o.field] = o.value;
       return { threw: false };
-    case "unset":
-      delete state[op.field];
+    })
+    .with({ type: "unset" }, (o) => {
+      delete state[o.field];
       return { threw: false };
-    case "rename": {
-      if (op.from === op.to) return { threw: false };
-      if (!(op.from in state)) return { threw: false };
-      if (op.to in state) return { threw: true };
-      state[op.to] = state[op.from];
-      delete state[op.from];
+    })
+    .with({ type: "rename" }, (o) => {
+      if (o.from === o.to) return { threw: false };
+      if (!(o.from in state)) return { threw: false };
+      if (o.to in state) return { threw: true };
+      state[o.to] = state[o.from];
+      delete state[o.from];
       return { threw: false };
-    }
-  }
+    })
+    .exhaustive();
 }
 
 function applyRenameReactive(state: RenameState, op: RenameOp): { threw: boolean } {
   try {
-    switch (op.type) {
-      case "set":
-        update(state, {}, { $set: { [op.field]: op.value } } as never);
-        return { threw: false };
-      case "unset":
-        update(state, {}, { $unset: { [op.field]: 1 } } as never);
-        return { threw: false };
-      case "rename":
-        update(state, {}, { $rename: { [op.from]: op.to } } as never);
-        return { threw: false };
-    }
+    match(op)
+      .with({ type: "set" }, (o) => update(state, {}, { $set: { [o.field]: o.value } } as never))
+      .with({ type: "unset" }, (o) => update(state, {}, { $unset: { [o.field]: 1 } } as never))
+      .with({ type: "rename" }, (o) => update(state, {}, { $rename: { [o.from]: o.to } } as never))
+      .exhaustive();
+    return { threw: false };
   } catch {
     return { threw: true };
   }
@@ -364,38 +306,23 @@ function applyRenameReactive(state: RenameState, op: RenameOp): { threw: boolean
 // returned `undo` to the post-update document restores the exact prior state.
 
 function operationToOps(operation: MillOperation): Record<string, unknown> {
-  switch (operation.type) {
-    case "setCount":
-      return { $set: { count: operation.value } };
-    case "setScore":
-      return { $set: { "nested.score": operation.value } };
-    case "unsetCount":
-      return { $unset: { count: 1 } };
-    case "unsetScore":
-      return { $unset: { "nested.score": 1 } };
-    case "incCount":
-      return { $inc: { count: operation.value } };
-    case "incScore":
-      return { $inc: { "nested.score": operation.value } };
-    case "minCount":
-      return { $min: { count: operation.value } };
-    case "minScore":
-      return { $min: { "nested.score": operation.value } };
-    case "maxCount":
-      return { $max: { count: operation.value } };
-    case "maxScore":
-      return { $max: { "nested.score": operation.value } };
-    case "pushTag":
-      return { $push: { tags: operation.value } };
-    case "pushManyTags":
-      return { $push: { tags: { $each: operation.values } } };
-    case "pullTag":
-      return { $pull: { tags: operation.value } };
-    case "addToSetTag":
-      return { $addToSet: { tags: operation.value } };
-    case "addManyToSetTags":
-      return { $addToSet: { tags: { $each: operation.values } } };
-  }
+  return match(operation)
+    .with({ type: "setCount" }, (op) => ({ $set: { count: op.value } }))
+    .with({ type: "setScore" }, (op) => ({ $set: { "nested.score": op.value } }))
+    .with({ type: "unsetCount" }, () => ({ $unset: { count: 1 } }))
+    .with({ type: "unsetScore" }, () => ({ $unset: { "nested.score": 1 } }))
+    .with({ type: "incCount" }, (op) => ({ $inc: { count: op.value } }))
+    .with({ type: "incScore" }, (op) => ({ $inc: { "nested.score": op.value } }))
+    .with({ type: "minCount" }, (op) => ({ $min: { count: op.value } }))
+    .with({ type: "minScore" }, (op) => ({ $min: { "nested.score": op.value } }))
+    .with({ type: "maxCount" }, (op) => ({ $max: { count: op.value } }))
+    .with({ type: "maxScore" }, (op) => ({ $max: { "nested.score": op.value } }))
+    .with({ type: "pushTag" }, (op) => ({ $push: { tags: op.value } }))
+    .with({ type: "pushManyTags" }, (op) => ({ $push: { tags: { $each: op.values } } }))
+    .with({ type: "pullTag" }, (op) => ({ $pull: { tags: op.value } }))
+    .with({ type: "addToSetTag" }, (op) => ({ $addToSet: { tags: op.value } }))
+    .with({ type: "addManyToSetTags" }, (op) => ({ $addToSet: { tags: { $each: op.values } } }))
+    .exhaustive();
 }
 
 describe("property-based undo round-trip", () => {

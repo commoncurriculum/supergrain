@@ -50,7 +50,8 @@
   },
   "dependencies": {
     "@supergrain/kernel": "workspace:*",
-    "alien-signals": "^3.2.1"
+    "alien-signals": "^3.2.1",
+    "ts-pattern": "^5.9.0"
   },
   "devDependencies": {
     "vitest": "4.1.0"

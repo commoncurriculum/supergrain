@@ -1,7 +1,8 @@
-import { createReactive } from "@supergrain/kernel";
+import { createReactive, unwrap } from "@supergrain/kernel";
 import { describe, expect, it } from "vitest";
 
 import { update } from "../src";
+import { applyWithUndo } from "./helpers";
 
 // =============================================================================
 // Positional updates
@@ -34,7 +35,7 @@ describe("positional $ — $elemMatch query", () => {
   it("resolves $ to the matched element and updates it", () => {
     const store = createReactive(board());
 
-    update(
+    const { rewind } = applyWithUndo(
       store,
       { cards: { $elemMatch: { id: "card-2" } } },
       { $set: { "cards.$.title": "Two!" } },
@@ -42,6 +43,7 @@ describe("positional $ — $elemMatch query", () => {
 
     expect(store.cards[1]!.title).toBe("Two!");
     expect(store.cards[0]!.title).toBe("One");
+    rewind();
   });
 
   it("works with $inc and produces an undo that reverses it", () => {
@@ -61,7 +63,7 @@ describe("positional $ — $elemMatch query", () => {
   it("matches by an operator condition inside $elemMatch", () => {
     const store = createReactive(board());
 
-    update(
+    const { rewind } = applyWithUndo(
       store,
       { cards: { $elemMatch: { votes: { $gte: 5 } } } },
       { $set: { "cards.$.done": true } },
@@ -69,6 +71,7 @@ describe("positional $ — $elemMatch query", () => {
 
     // card-3 is the first with votes >= 5.
     expect(store.cards.map((c) => c.done)).toEqual([false, false, true]);
+    rewind();
   });
 });
 
@@ -76,9 +79,14 @@ describe("positional $ — dotted-field query", () => {
   it("resolves $ from a dotted equality condition", () => {
     const store = createReactive(board());
 
-    update(store, { "cards.id": "card-2" }, { $set: { "cards.$.done": true } });
+    const { rewind } = applyWithUndo(
+      store,
+      { "cards.id": "card-2" },
+      { $set: { "cards.$.done": true } },
+    );
 
     expect(store.cards.map((c) => c.done)).toEqual([false, true, false]);
+    rewind();
   });
 });
 
@@ -86,22 +94,78 @@ describe("positional $ — array of primitives", () => {
   it("resolves $ from a whole-element equality condition", () => {
     const store = createReactive({ nums: [1, 2, 3] });
 
-    update(store, { nums: 2 }, { $set: { "nums.$": 20 } });
+    const { rewind } = applyWithUndo(store, { nums: 2 }, { $set: { "nums.$": 20 } });
 
     expect(store.nums).toEqual([1, 20, 3]);
+    rewind();
   });
 
-  it("falls back to the first element when the query says nothing about the array", () => {
+  it("throws when the query says nothing about the array (Mongo requires it)", () => {
     const store = createReactive({ nums: [1, 2, 3] });
-
-    update(store, {}, { $inc: { "nums.$": 100 } });
-
-    expect(store.nums).toEqual([101, 2, 3]);
+    expect(() => update(store, {}, { $inc: { "nums.$": 100 } })).toThrow(
+      /did not find the match needed from the query/i,
+    );
   });
 
-  it("throws when $ targets an empty array with no matching element", () => {
-    const store = createReactive({ nums: [] as Array<number> });
-    expect(() => update(store, {}, { $set: { "nums.$": 1 } })).toThrow(/positional operator/i);
+  it("throws when no element matches the query condition", () => {
+    const store = createReactive({ nums: [1, 2, 3] });
+    expect(() => update(store, { nums: 99 }, { $set: { "nums.$": 1 } })).toThrow(
+      /did not find the match needed from the query/i,
+    );
+  });
+});
+
+describe("positional $ — Mongo semantics", () => {
+  it("updates only the first matching element", () => {
+    const store = createReactive({ nums: [5, 1, 5, 1] });
+    const { rewind } = applyWithUndo(store, { nums: 5 }, { $set: { "nums.$": 99 } });
+    // Only the first 5 (index 0) is updated, not index 2.
+    expect(store.nums).toEqual([99, 1, 5, 1]);
+    rewind();
+  });
+
+  it("selects by one field and updates another (the grades example)", () => {
+    const store = createReactive({
+      _id: 4,
+      grades: [
+        { grade: 80, mean: 75, std: 8 },
+        { grade: 85, mean: 90, std: 5 },
+        { grade: 90, mean: 85, std: 3 },
+      ],
+    });
+    // db.students.updateOne({ _id: 4, "grades.grade": 85 }, { $set: { "grades.$.std": 6 } })
+    const { rewind } = applyWithUndo(
+      store,
+      { _id: 4, "grades.grade": 85 },
+      { $set: { "grades.$.std": 6 } },
+    );
+    expect(store.grades[1]!.std).toBe(6);
+    expect(store.grades.map((g) => g.std)).toEqual([8, 6, 3]);
+    rewind();
+  });
+
+  it("ignores query fields unrelated to the array when resolving $", () => {
+    const store = createReactive({ owner: "ada", items: [{ id: "a" }, { id: "b" }] });
+    const { rewind } = applyWithUndo(
+      store,
+      { owner: "ada", "items.id": "b" },
+      { $set: { "items.$.id": "B" } },
+    );
+    expect(store.items.map((i) => i.id)).toEqual(["a", "B"]);
+    rewind();
+  });
+
+  it("removes the matched element's field with $unset", () => {
+    const store = createReactive({
+      items: [
+        { id: "a", tmp: 1 },
+        { id: "b", tmp: 2 },
+      ],
+    });
+    const { rewind } = applyWithUndo(store, { "items.id": "b" }, { $unset: { "items.$.tmp": "" } });
+    expect("tmp" in store.items[1]!).toBe(false);
+    expect(store.items[0]!.tmp).toBe(1);
+    rewind();
   });
 });
 
@@ -109,9 +173,10 @@ describe("positional $[] — all elements", () => {
   it("updates a field on every element", () => {
     const store = createReactive(board());
 
-    update(store, {}, { $set: { "cards.$[].done": true } });
+    const { rewind } = applyWithUndo(store, {}, { $set: { "cards.$[].done": true } });
 
     expect(store.cards.every((c) => c.done)).toBe(true);
+    rewind();
   });
 
   it("produces an undo that restores every element", () => {
@@ -122,6 +187,127 @@ describe("positional $[] — all elements", () => {
 
     update(store, {}, undo);
     expect(store.cards.map((c) => c.votes)).toEqual([0, 3, 7]);
+  });
+});
+
+// =============================================================================
+// Filtered positional $[<identifier>] — driven by the 4th `arrayFilters` option
+// (MongoDB-style options object).
+// =============================================================================
+
+describe("positional $[<identifier>] — arrayFilters", () => {
+  it("updates every element matching the filter", () => {
+    const store = createReactive({
+      grades: [
+        { grade: 80, mean: 75 },
+        { grade: 95, mean: 88 },
+        { grade: 92, mean: 90 },
+      ],
+    });
+
+    const { rewind } = applyWithUndo(
+      store,
+      {},
+      { $set: { "grades.$[high].mean": 100 } },
+      { arrayFilters: [{ "high.grade": { $gte: 90 } }] },
+    );
+
+    expect(store.grades.map((g) => g.mean)).toEqual([75, 100, 100]);
+    rewind();
+  });
+
+  it("matches a scalar array with a bare-identifier filter", () => {
+    const store = createReactive({ nums: [1, 9, 3, 12] });
+
+    const { rewind } = applyWithUndo(
+      store,
+      {},
+      { $inc: { "nums.$[big]": 100 } },
+      { arrayFilters: [{ big: { $gte: 9 } }] },
+    );
+
+    expect(store.nums).toEqual([1, 109, 3, 112]);
+    rewind();
+  });
+
+  it("supports multiple identifiers in one update", () => {
+    const store = createReactive({ scores: [1, 5, 10, 50] });
+
+    const { rewind } = applyWithUndo(
+      store,
+      {},
+      { $set: { "scores.$[lo]": 0 }, $inc: { "scores.$[hi]": 1000 } },
+      { arrayFilters: [{ lo: { $lt: 5 } }, { hi: { $gte: 10 } }] },
+    );
+
+    expect(store.scores).toEqual([0, 5, 1010, 1050]);
+    rewind();
+  });
+
+  it("produces an undo that reverses a filtered update exactly", () => {
+    const store = createReactive({
+      items: [
+        { id: "a", done: false },
+        { id: "b", done: false },
+        { id: "c", done: false },
+      ],
+    });
+
+    const { undo } = update(
+      store,
+      {},
+      { $set: { "items.$[pending].done": true } },
+      { arrayFilters: [{ "pending.done": false }] },
+    );
+    expect(store.items.map((i) => i.done)).toEqual([true, true, true]);
+
+    update(store, {}, undo);
+    expect(store.items.map((i) => i.done)).toEqual([false, false, false]);
+  });
+
+  it("throws when an identifier has no matching arrayFilter", () => {
+    const store = createReactive({ nums: [1, 2, 3] });
+    expect(() =>
+      update(store, {}, { $set: { "nums.$[x]": 0 } }, { arrayFilters: [{ y: { $gt: 0 } }] }),
+    ).toThrow(/no array filter found for identifier "x"/i);
+  });
+
+  it("throws when a supplied arrayFilter is never used", () => {
+    const store = createReactive({ nums: [1, 2, 3] });
+    expect(() =>
+      update(
+        store,
+        {},
+        { $set: { "nums.$[a]": 0 } },
+        { arrayFilters: [{ a: { $gt: 0 } }, { unused: { $lt: 0 } }] },
+      ),
+    ).toThrow(/array filter for identifier "unused" was not used/i);
+  });
+
+  it("throws when $[identifier] is used with no arrayFilters supplied", () => {
+    const store = createReactive({ nums: [1, 2, 3] });
+    expect(() => update(store, {}, { $set: { "nums.$[x]": 0 } })).toThrow(
+      /no array filter found for identifier "x"/i,
+    );
+  });
+
+  it("treats an empty arrayFilter as an unused filter", () => {
+    const store = createReactive({ nums: [1, 2, 3] });
+    expect(() =>
+      update(store, {}, { $set: { "nums.$[a]": 0 } }, { arrayFilters: [{ a: { $gt: 0 } }, {}] }),
+    ).toThrow(/array filter for identifier "" was not used/i);
+  });
+
+  it("throws when two arrayFilters share the same identifier", () => {
+    const store = createReactive({ nums: [1, 2, 3] });
+    expect(() =>
+      update(
+        store,
+        {},
+        { $set: { "nums.$[a]": 0 } },
+        { arrayFilters: [{ a: { $gt: 0 } }, { a: { $lt: 2 } }] },
+      ),
+    ).toThrow(/multiple array filters with the same top-level field name "a"/i);
   });
 });
 
@@ -165,11 +351,16 @@ function items(): Items {
 }
 
 // Marks the element that `$` resolved to and returns its index as a string, so
-// each query operator can be pinned to the element it selects.
+// each query operator can be pinned to the element it selects. Also verifies the
+// undo round-trips the store back to its initial state.
 function firstMatchedName(query: any): string {
-  const store = createReactive(items());
-  update(store, query, { $set: { "items.$.name": "MATCHED" } });
-  return String(store.items.findIndex((i) => i.name === "MATCHED"));
+  const initial = items();
+  const store = createReactive(structuredClone(initial));
+  const { undo } = update(store, query, { $set: { "items.$.name": "MATCHED" } });
+  const index = store.items.findIndex((i) => i.name === "MATCHED");
+  update(store, {}, undo);
+  expect(unwrap(store)).toEqual(initial);
+  return String(index);
 }
 
 describe("query operators", () => {
@@ -223,28 +414,35 @@ describe("query operators", () => {
     const store = createReactive({
       items: [{ meta: { k: 1 } }, { meta: { k: 2 } }],
     });
-    update(
+    const { rewind } = applyWithUndo(
       store,
       { items: { $elemMatch: { meta: { k: 2 } } } },
       { $set: { "items.$.meta.k": 99 } },
     );
     expect(store.items.map((i) => i.meta.k)).toEqual([1, 99]);
+    rewind();
   });
 
   it("resolves $ from a deeply dotted field query", () => {
     const store = createReactive({
       items: [{ meta: { k: 1 } }, { meta: { k: 2 } }],
     });
-    update(store, { "items.meta.k": 2 }, { $set: { "items.$.meta.k": 99 } });
+    const { rewind } = applyWithUndo(
+      store,
+      { "items.meta.k": 2 },
+      { $set: { "items.$.meta.k": 99 } },
+    );
     expect(store.items.map((i) => i.meta.k)).toEqual([1, 99]);
+    rewind();
   });
 });
 
 describe("positional $ at the document root (array document)", () => {
-  it("resolves $ against the document itself when it is an array", () => {
+  it("throws for $ on a root array — a root array can't appear in a query", () => {
     const doc: Array<number> = [1, 2, 3];
-    update(doc, {}, { $set: { $: 9 } });
-    expect(doc).toEqual([9, 2, 3]);
+    expect(() => update(doc, {}, { $set: { $: 9 } })).toThrow(
+      /did not find the match needed from the query/i,
+    );
   });
 
   it("throws on an unsupported operator", () => {
