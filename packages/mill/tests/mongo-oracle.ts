@@ -21,8 +21,9 @@ export interface RecordedUpdate {
 
 const recorded: Array<RecordedUpdate> = [];
 
-// One connection + one collection per worker/file (isolated module state), so
-// concurrent test files never clobber each other's single document.
+// One connection + one collection per worker/file (isolated module state) so
+// files never share a collection; within a file, each call inserts under its
+// own _id (see runMongoUpdate), so cases never clobber one another.
 const collectionName = `docs_${crypto.randomUUID().replace(/-/gu, "")}`;
 let connection: Promise<{ client: MongoClient; collection: Collection }> | undefined;
 
