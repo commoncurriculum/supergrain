@@ -46,13 +46,14 @@
     "lint": "oxlint -c ../../.oxlintrc.json src/",
     "size": "size-limit",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@supergrain/kernel": "workspace:*",
     "alien-signals": "^3.2.1"
   },
   "devDependencies": {
+    "@microsoft/api-extractor": "^7.52.13",
     "vitest": "4.1.0"
   },
   "size-limit": [
