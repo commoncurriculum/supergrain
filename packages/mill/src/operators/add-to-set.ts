@@ -1,31 +1,42 @@
-import { assertArrayTarget, pushToArray } from "../array-ops";
-import { resolveParentPath } from "../path";
-import { undoTruncate } from "../undo";
+import { pushToArray, resolveArrayTarget } from "../array-ops";
+import { setValueAtPath } from "../path";
+import { capturePathUndo, undoTruncate } from "../undo";
 import { isEqual, isObject } from "../util";
 import { eachPath, type OperatorContext } from "./shared";
 
+function uniqueAdditions(existing: ReadonlyArray<unknown>, candidates: Array<unknown>): Array<any> {
+  const additions: Array<any> = [];
+  for (const item of candidates) {
+    const present =
+      existing.some((value) => isEqual(value, item)) ||
+      additions.some((value) => isEqual(value, item));
+    if (!present) {
+      additions.push(item);
+    }
+  }
+  return additions;
+}
+
 export function $addToSet(context: OperatorContext, operations: Record<string, any>): void {
   eachPath(context, operations, (path, spec) => {
-    const arr = assertArrayTarget("$addToSet", path, resolveParentPath(context.raw, path));
+    const target = resolveArrayTarget("$addToSet", context.raw, path);
     const candidates =
       isObject(spec) && "$each" in spec && Array.isArray(spec["$each"]) ? spec["$each"] : [spec];
 
-    const newItems: Array<any> = [];
-    for (const item of candidates) {
-      const present =
-        arr.some((existing) => isEqual(existing, item)) ||
-        newItems.some((existing) => isEqual(existing, item));
-      if (!present) {
-        newItems.push(item);
-      }
+    if (target.arr === undefined) {
+      // Absent field — Mongo creates the array with the de-duplicated values.
+      capturePathUndo(context.undo, context.raw, path);
+      setValueAtPath(context.raw, path, uniqueAdditions([], candidates));
+      return;
     }
 
+    const newItems = uniqueAdditions(target.arr, candidates);
     if (newItems.length === 0) {
       return; // no-op
     }
 
-    const previousLength = arr.length;
-    pushToArray(arr, newItems);
+    const previousLength = target.arr.length;
+    pushToArray(target.arr, newItems);
     undoTruncate(context.undo, path, { length: previousLength, count: newItems.length });
   });
 }

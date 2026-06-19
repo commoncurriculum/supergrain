@@ -1,6 +1,6 @@
 import { deleteProperty, setProperty } from "@supergrain/kernel/internal";
 
-import { getValueAtPath } from "./path";
+import { getValueAtPath, resolveParentPath } from "./path";
 import { describeValue, isObject } from "./util";
 
 // ─── array primitives (fine-grained, in place) ──────────────────────────────
@@ -9,23 +9,36 @@ import { describeValue, isObject } from "./util";
 // write primitives directly so a reactive document wakes only the indices that
 // actually change.
 
-export function assertArrayTarget(
-  operator: string,
-  path: string,
-  result: { parent: any; key: string } | null,
-): Array<any> {
+/**
+ * Resolve the array a `$push`/`$pull`/… targets, distinguishing the three cases
+ * MongoDB treats differently:
+ *   - `arr` is the array          → operate on it.
+ *   - `arr` is `undefined`        → the field is absent. Mongo creates it for
+ *                                   `$push`/`$addToSet` and no-ops for
+ *                                   `$pull`/`$pullAll`/`$pop`; the caller decides.
+ *   - throws                      → the path can't resolve (a scalar sits in the
+ *                                   way) or the field exists but isn't an array.
+ */
+export interface ArrayTarget {
+  arr: Array<any> | undefined;
+  parent: any;
+  key: string;
+}
+
+export function resolveArrayTarget(operator: string, raw: object, path: string): ArrayTarget {
+  const result = resolveParentPath(raw, path);
   if (!result) {
-    throw new Error(`${operator} path "${path}" must resolve to an existing array.`);
+    throw new Error(`${operator} path "${path}" must resolve to an existing object or array.`);
   }
 
   const value = result.parent[result.key];
-  if (!Array.isArray(value)) {
+  if (value !== undefined && !Array.isArray(value)) {
     throw new TypeError(
       `${operator} path "${path}" must point to an array, received ${describeValue(value)}.`,
     );
   }
 
-  return value;
+  return { arr: value as Array<any> | undefined, parent: result.parent, key: result.key };
 }
 
 export function pushToArray(arr: Array<any>, itemsToAdd: Array<any>): void {

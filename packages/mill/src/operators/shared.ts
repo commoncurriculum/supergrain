@@ -1,5 +1,5 @@
-import { assertArrayTarget, isContiguousAscending, removeIndices } from "../array-ops";
-import { getValueAtPath, hasValueAtPath, resolveParentPath, setValueAtPath } from "../path";
+import { isContiguousAscending, removeIndices, resolveArrayTarget } from "../array-ops";
+import { getValueAtPath, hasValueAtPath, setValueAtPath } from "../path";
 import { type ArrayFilter, type Query, resolvePaths } from "../query";
 import { capturePathUndo, type MutableUndo, undoPushSpec, undoSet } from "../undo";
 import { cloneValue, describeValue, isEqual } from "../util";
@@ -69,7 +69,10 @@ export function removeByPredicate(
   path: string,
   op: { operator: string; matches: (element: unknown) => boolean },
 ): void {
-  const arr = assertArrayTarget(op.operator, path, resolveParentPath(context.raw, path));
+  const { arr } = resolveArrayTarget(op.operator, context.raw, path);
+  if (arr === undefined) {
+    return; // absent field — Mongo no-ops $pull / $pullAll
+  }
 
   const removedIndices: Array<number> = [];
   const removedValues: Array<unknown> = [];

@@ -54,6 +54,8 @@
     "ts-pattern": "^5.9.0"
   },
   "devDependencies": {
+    "mongodb": "^7.3.0",
+    "mongodb-memory-server": "^11.2.0",
     "vitest": "4.1.0"
   },
   "size-limit": [
