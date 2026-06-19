@@ -698,9 +698,6 @@ function referencedArrayFilterIdentifiers(operations: UpdateOperations<any>): Se
  *                   `$[<identifier>]` filtered positional operator.
  * @returns          `{ doc, undo }` — `undo` reverses the actual changes made.
  */
-// The 4-arg shape mirrors the MongoDB driver's update(filter, update, options),
-// with the document split out as the first argument.
-// eslint-disable-next-line max-params
 export function update<T extends object>(
   doc: T,
   query: Query<T>,

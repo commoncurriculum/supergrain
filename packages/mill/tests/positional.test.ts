@@ -35,7 +35,7 @@ describe("positional $ — $elemMatch query", () => {
   it("resolves $ to the matched element and updates it", () => {
     const store = createReactive(board());
 
-    const { rewind } = applyWithUndo(
+    const { rewindAndAssertRestored } = applyWithUndo(
       store,
       { cards: { $elemMatch: { id: "card-2" } } },
       { $set: { "cards.$.title": "Two!" } },
@@ -43,7 +43,7 @@ describe("positional $ — $elemMatch query", () => {
 
     expect(store.cards[1]!.title).toBe("Two!");
     expect(store.cards[0]!.title).toBe("One");
-    rewind();
+    rewindAndAssertRestored();
   });
 
   it("works with $inc and produces an undo that reverses it", () => {
@@ -63,7 +63,7 @@ describe("positional $ — $elemMatch query", () => {
   it("matches by an operator condition inside $elemMatch", () => {
     const store = createReactive(board());
 
-    const { rewind } = applyWithUndo(
+    const { rewindAndAssertRestored } = applyWithUndo(
       store,
       { cards: { $elemMatch: { votes: { $gte: 5 } } } },
       { $set: { "cards.$.done": true } },
@@ -71,7 +71,7 @@ describe("positional $ — $elemMatch query", () => {
 
     // card-3 is the first with votes >= 5.
     expect(store.cards.map((c) => c.done)).toEqual([false, false, true]);
-    rewind();
+    rewindAndAssertRestored();
   });
 });
 
@@ -79,14 +79,14 @@ describe("positional $ — dotted-field query", () => {
   it("resolves $ from a dotted equality condition", () => {
     const store = createReactive(board());
 
-    const { rewind } = applyWithUndo(
+    const { rewindAndAssertRestored } = applyWithUndo(
       store,
       { "cards.id": "card-2" },
       { $set: { "cards.$.done": true } },
     );
 
     expect(store.cards.map((c) => c.done)).toEqual([false, true, false]);
-    rewind();
+    rewindAndAssertRestored();
   });
 });
 
@@ -94,10 +94,14 @@ describe("positional $ — array of primitives", () => {
   it("resolves $ from a whole-element equality condition", () => {
     const store = createReactive({ nums: [1, 2, 3] });
 
-    const { rewind } = applyWithUndo(store, { nums: 2 }, { $set: { "nums.$": 20 } });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      { nums: 2 },
+      { $set: { "nums.$": 20 } },
+    );
 
     expect(store.nums).toEqual([1, 20, 3]);
-    rewind();
+    rewindAndAssertRestored();
   });
 
   it("throws when the query says nothing about the array (Mongo requires it)", () => {
@@ -118,10 +122,14 @@ describe("positional $ — array of primitives", () => {
 describe("positional $ — Mongo semantics", () => {
   it("updates only the first matching element", () => {
     const store = createReactive({ nums: [5, 1, 5, 1] });
-    const { rewind } = applyWithUndo(store, { nums: 5 }, { $set: { "nums.$": 99 } });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      { nums: 5 },
+      { $set: { "nums.$": 99 } },
+    );
     // Only the first 5 (index 0) is updated, not index 2.
     expect(store.nums).toEqual([99, 1, 5, 1]);
-    rewind();
+    rewindAndAssertRestored();
   });
 
   it("selects by one field and updates another (the grades example)", () => {
@@ -134,25 +142,25 @@ describe("positional $ — Mongo semantics", () => {
       ],
     });
     // db.students.updateOne({ _id: 4, "grades.grade": 85 }, { $set: { "grades.$.std": 6 } })
-    const { rewind } = applyWithUndo(
+    const { rewindAndAssertRestored } = applyWithUndo(
       store,
       { _id: 4, "grades.grade": 85 },
       { $set: { "grades.$.std": 6 } },
     );
     expect(store.grades[1]!.std).toBe(6);
     expect(store.grades.map((g) => g.std)).toEqual([8, 6, 3]);
-    rewind();
+    rewindAndAssertRestored();
   });
 
   it("ignores query fields unrelated to the array when resolving $", () => {
     const store = createReactive({ owner: "ada", items: [{ id: "a" }, { id: "b" }] });
-    const { rewind } = applyWithUndo(
+    const { rewindAndAssertRestored } = applyWithUndo(
       store,
       { owner: "ada", "items.id": "b" },
       { $set: { "items.$.id": "B" } },
     );
     expect(store.items.map((i) => i.id)).toEqual(["a", "B"]);
-    rewind();
+    rewindAndAssertRestored();
   });
 
   it("removes the matched element's field with $unset", () => {
@@ -162,10 +170,14 @@ describe("positional $ — Mongo semantics", () => {
         { id: "b", tmp: 2 },
       ],
     });
-    const { rewind } = applyWithUndo(store, { "items.id": "b" }, { $unset: { "items.$.tmp": "" } });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      { "items.id": "b" },
+      { $unset: { "items.$.tmp": "" } },
+    );
     expect("tmp" in store.items[1]!).toBe(false);
     expect(store.items[0]!.tmp).toBe(1);
-    rewind();
+    rewindAndAssertRestored();
   });
 });
 
@@ -173,10 +185,14 @@ describe("positional $[] — all elements", () => {
   it("updates a field on every element", () => {
     const store = createReactive(board());
 
-    const { rewind } = applyWithUndo(store, {}, { $set: { "cards.$[].done": true } });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $set: { "cards.$[].done": true } },
+    );
 
     expect(store.cards.every((c) => c.done)).toBe(true);
-    rewind();
+    rewindAndAssertRestored();
   });
 
   it("produces an undo that restores every element", () => {
@@ -205,7 +221,7 @@ describe("positional $[<identifier>] — arrayFilters", () => {
       ],
     });
 
-    const { rewind } = applyWithUndo(
+    const { rewindAndAssertRestored } = applyWithUndo(
       store,
       {},
       { $set: { "grades.$[high].mean": 100 } },
@@ -213,13 +229,13 @@ describe("positional $[<identifier>] — arrayFilters", () => {
     );
 
     expect(store.grades.map((g) => g.mean)).toEqual([75, 100, 100]);
-    rewind();
+    rewindAndAssertRestored();
   });
 
   it("matches a scalar array with a bare-identifier filter", () => {
     const store = createReactive({ nums: [1, 9, 3, 12] });
 
-    const { rewind } = applyWithUndo(
+    const { rewindAndAssertRestored } = applyWithUndo(
       store,
       {},
       { $inc: { "nums.$[big]": 100 } },
@@ -227,13 +243,13 @@ describe("positional $[<identifier>] — arrayFilters", () => {
     );
 
     expect(store.nums).toEqual([1, 109, 3, 112]);
-    rewind();
+    rewindAndAssertRestored();
   });
 
   it("supports multiple identifiers in one update", () => {
     const store = createReactive({ scores: [1, 5, 10, 50] });
 
-    const { rewind } = applyWithUndo(
+    const { rewindAndAssertRestored } = applyWithUndo(
       store,
       {},
       { $set: { "scores.$[lo]": 0 }, $inc: { "scores.$[hi]": 1000 } },
@@ -241,7 +257,7 @@ describe("positional $[<identifier>] — arrayFilters", () => {
     );
 
     expect(store.scores).toEqual([0, 5, 1010, 1050]);
-    rewind();
+    rewindAndAssertRestored();
   });
 
   it("produces an undo that reverses a filtered update exactly", () => {
@@ -414,26 +430,26 @@ describe("query operators", () => {
     const store = createReactive({
       items: [{ meta: { k: 1 } }, { meta: { k: 2 } }],
     });
-    const { rewind } = applyWithUndo(
+    const { rewindAndAssertRestored } = applyWithUndo(
       store,
       { items: { $elemMatch: { meta: { k: 2 } } } },
       { $set: { "items.$.meta.k": 99 } },
     );
     expect(store.items.map((i) => i.meta.k)).toEqual([1, 99]);
-    rewind();
+    rewindAndAssertRestored();
   });
 
   it("resolves $ from a deeply dotted field query", () => {
     const store = createReactive({
       items: [{ meta: { k: 1 } }, { meta: { k: 2 } }],
     });
-    const { rewind } = applyWithUndo(
+    const { rewindAndAssertRestored } = applyWithUndo(
       store,
       { "items.meta.k": 2 },
       { $set: { "items.$.meta.k": 99 } },
     );
     expect(store.items.map((i) => i.meta.k)).toEqual([1, 99]);
-    rewind();
+    rewindAndAssertRestored();
   });
 });
 

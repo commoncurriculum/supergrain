@@ -11,6 +11,7 @@
     "unicorn/no-null": "off",
     "no-magic-numbers": "off",
     "no-ternary": "off",
+    "max-params": "off",
     "sort-keys": "off",
     "sort-imports": "off",
     "func-style": "off",
