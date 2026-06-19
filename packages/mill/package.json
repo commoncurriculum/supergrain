@@ -50,10 +50,13 @@
   },
   "dependencies": {
     "@supergrain/kernel": "workspace:*",
-    "alien-signals": "^3.2.1"
+    "alien-signals": "^3.2.1",
+    "ts-pattern": "^5.9.0"
   },
   "devDependencies": {
     "@microsoft/api-extractor": "^7.52.13",
+    "mongodb": "^7.3.0",
+    "mongodb-memory-server": "^11.2.0",
     "vitest": "4.1.0"
   },
   "size-limit": [

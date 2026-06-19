@@ -50,14 +50,10 @@ export default defineConfig({
         resolve,
         ssr,
       },
-      {
-        test: {
-          include: ["packages/mill/**/*.test.{ts,tsx}"],
-          environment: "node",
-        },
-        resolve,
-        ssr,
-      },
+      // mill runs under its own config (node env + the real-mongod oracle:
+      // globalSetup/setupFiles/hookTimeout). Referencing the file keeps that
+      // setup in one place instead of duplicating it here.
+      "./packages/mill/vitest.config.ts",
       {
         test: {
           include: ["packages/silo/tests/**/*.test.{ts,tsx}"],

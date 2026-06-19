@@ -1,362 +1,89 @@
 import { batch, unwrap } from "@supergrain/kernel";
-import { setProperty, deleteProperty } from "@supergrain/kernel/internal";
 
+import { $addToSet } from "./operators/add-to-set";
+import { $inc } from "./operators/inc";
+import { $max } from "./operators/max";
+import { $min } from "./operators/min";
+import { $mul } from "./operators/mul";
+import { $pop } from "./operators/pop";
+import { $pull } from "./operators/pull";
+import { $pullAll } from "./operators/pull-all";
+import { $push } from "./operators/push";
+import { $rename } from "./operators/rename";
+import { $set } from "./operators/set";
+import { type OperatorContext } from "./operators/shared";
+import { $unset } from "./operators/unset";
 import {
+  type ArrayPopOperations,
   type ArrayPullAllOperations,
   type ArrayPullOperations,
+  type ArrayPushOperations,
   type ArrayWriteOperations,
-  deleteValueAtPath,
   type NumericPathOperations,
-  resolveParentPath,
   type SetPathOperations,
-  setValueAtPath,
   type UnsetPathOperations,
 } from "./path";
+import { type ArrayFilter, arrayFilterIdentifier, type Query } from "./query";
+import { type MutableUndo } from "./undo";
 
 /**
- * MongoDB-style operators for updating reactive stores.
+ * MongoDB-style update engine for in-memory documents.
  *
- * Mutations are applied to the raw (unwrapped) target using the kernel's own
- * write primitives — `setProperty` and `deleteProperty` — which emit the
- * fine-grained signal updates the proxy would. Operating on the raw object
- * avoids redundant proxy-navigation reads, and routing every write through the
- * kernel primitives means this module keeps no manual signal bookkeeping of
- * its own. The whole `update()` runs inside a single `batch()`.
+ * `update(doc, query, operations, options)` applies a standard Mongo update
+ * document to `doc`, in place, and returns both the (same) document reference
+ * and an `undo` — itself a standard Mongo update document — that reverses the
+ * exact changes made. There is no mill-specific syntax.
+ *
+ * The implementation is split by concern: `undo.ts` (inverse accumulation),
+ * `array-ops.ts` (in-place array primitives), `query.ts` (positional resolution
+ * + matching), `path.ts` (path navigation + typing), and one file per operator
+ * under `operators/` over a small shared `operators/shared.ts`. This module just
+ * wires them into the dispatch table and the public `update()` entry point.
  */
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function describeValue(value: unknown): string {
-  if (value === null) {
-    return "null";
-  }
-  if (Array.isArray(value)) {
-    return "array";
-  }
-  return typeof value;
-}
-
-function assertArrayTarget(
-  operator: "$push" | "$pull" | "$pullAll" | "$addToSet",
-  path: string,
-  result: { parent: any; key: string } | null,
-): Array<any> {
-  if (!result) {
-    throw new Error(`${operator} path "${path}" must resolve to an existing array.`);
-  }
-
-  const value = result.parent[result.key];
-  if (!Array.isArray(value)) {
-    throw new TypeError(
-      `${operator} path "${path}" must point to an array, received ${describeValue(value)}.`,
-    );
-  }
-
-  return value;
-}
-
-function assertNumericTarget(
-  operator: "$inc" | "$min" | "$max",
-  path: string,
-  currentValue: unknown,
-): void {
-  if (currentValue !== undefined && currentValue !== null && typeof currentValue !== "number") {
-    throw new Error(
-      `${operator} path "${path}" must point to a number, received ${describeValue(currentValue)}.`,
-    );
-  }
-}
-
-export function isEqual(a: unknown, b: unknown): boolean {
-  if (a === b) {
-    return true;
-  }
-  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
-    return false;
-  }
-
-  const keysA = Object.keys(a as Record<string, unknown>);
-  const keysB = Object.keys(b as Record<string, unknown>);
-
-  if (keysA.length !== keysB.length) {
-    return false;
-  }
-
-  // Use Set for keysB to avoid quadratic time complexity, but only for large objects
-  // Benchmark testing shows Set becomes faster than array.includes() at around 50 keys
-  const keysBSet = keysB.length >= 50 ? new Set(keysB) : null;
-
-  for (const key of keysA) {
-    const valA = (a as Record<string, unknown>)[key];
-    const valB = (b as Record<string, unknown>)[key];
-    const hasKey = keysBSet ? keysBSet.has(key) : keysB.includes(key);
-    if (!hasKey || !isEqual(valA, valB)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function isObjectMatch(obj: any, condition: any): boolean {
-  if (!isObject(obj) || !isObject(condition)) {
-    return isEqual(obj, condition);
-  }
-
-  for (const key of Object.keys(condition)) {
-    if (!Object.hasOwn(obj, key) || !isEqual(obj[key], condition[key])) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-// Increment a numeric value via setProperty. assertNumericTarget guarantees the
-// current value is a number, null, or undefined; a missing/nullish value starts
-// from 0.
-function incrementValue(parent: any, key: string, increment: number): void {
-  const current = parent[key];
-  setProperty(parent, key, (typeof current === "number" ? current : 0) + increment);
-}
-
-interface CompareAndSetOpts {
-  parent: any;
-  key: string;
-  newValue: number;
-  isMin: boolean;
-}
-
-function compareAndSetValue({ parent, key, newValue, isMin }: CompareAndSetOpts): void {
-  const currentValue = parent[key];
-  if (typeof currentValue === "number") {
-    const shouldUpdate = isMin ? newValue < currentValue : newValue > currentValue;
-    if (shouldUpdate) {
-      setProperty(parent, key, newValue);
-    }
-  } else if (currentValue === undefined) {
-    setProperty(parent, key, newValue);
-  }
-}
-
-function pushToArray(arr: Array<any>, itemsToAdd: Array<any>): void {
-  const startIndex = arr.length;
-  for (let i = 0; i < itemsToAdd.length; i++) {
-    setProperty(arr, startIndex + i, itemsToAdd[i]);
-  }
-}
-
-// Removes every element for which `shouldRemove` returns true, in place, using
-// the kernel's write primitives. Survivors are shifted down with setProperty
-// (notifying their per-index signals) and the vacated tail is removed with
-// deleteProperty + a length write, so every affected signal — index, length,
-// ownKeys, version — is driven by the kernel rather than re-implemented here.
-function compactArray(arr: Array<any>, shouldRemove: (value: any) => boolean): void {
-  const originalLength = arr.length;
-  let writeIndex = 0;
-
-  for (let readIndex = 0; readIndex < originalLength; readIndex++) {
-    const value = arr[readIndex];
-    if (!shouldRemove(value)) {
-      if (writeIndex !== readIndex) {
-        setProperty(arr, writeIndex, value);
-      }
-      writeIndex++;
-    }
-  }
-
-  if (writeIndex === originalLength) {
-    return; // Nothing removed — leave the array (and its signals) untouched.
-  }
-
-  for (let i = originalLength - 1; i >= writeIndex; i--) {
-    deleteProperty(arr, i);
-  }
-  setProperty(arr, "length", writeIndex);
-}
-
-function addUniqueToArray(arr: Array<any>, itemsToAdd: Array<any>): void {
-  const newItems: Array<any> = [];
-
-  for (const item of itemsToAdd) {
-    const existsInArray = arr.some((existing) => isEqual(existing, item));
-    const existsInNewItems = newItems.some((existing) => isEqual(existing, item));
-
-    if (!existsInArray && !existsInNewItems) {
-      newItems.push(item);
-    }
-  }
-
-  if (newItems.length > 0) {
-    pushToArray(arr, newItems);
-  }
-}
-
-function $set(target: object, operations: Record<string, unknown>): void {
-  for (const path of Object.keys(operations)) {
-    setValueAtPath(target, path, operations[path]);
-  }
-}
-
-function $unset(target: object, operations: Record<string, unknown>): void {
-  for (const path of Object.keys(operations)) {
-    deleteValueAtPath(target, path);
-  }
-}
-
-function $inc(target: object, operations: Record<string, number>): void {
-  for (const path of Object.keys(operations)) {
-    const result = resolveParentPath(target, path);
-    if (result) {
-      assertNumericTarget("$inc", path, result.parent[result.key]);
-      incrementValue(result.parent, result.key, operations[path]!);
-    } else {
-      // Path doesn't exist, create it
-      setValueAtPath(target, path, operations[path]!);
-    }
-  }
-}
-
-function $push(target: object, operations: Record<string, any>): void {
-  for (const path of Object.keys(operations)) {
-    const result = resolveParentPath(target, path);
-    const arr = assertArrayTarget("$push", path, result);
-    const value = operations[path];
-    const itemsToAdd =
-      isObject(value) && "$each" in value && Array.isArray(value["$each"])
-        ? value["$each"]
-        : [value];
-
-    pushToArray(arr, itemsToAdd);
-  }
-}
-
-function $pull(target: object, operations: Record<string, any>): void {
-  for (const path of Object.keys(operations)) {
-    const result = resolveParentPath(target, path);
-    const arr = assertArrayTarget("$pull", path, result);
-    const condition = operations[path];
-    // Object conditions match by partial deep equality (isObjectMatch).
-    compactArray(arr, (value) => isObjectMatch(value, condition));
-  }
-}
-
-function $pullAll(target: object, operations: Record<string, any>): void {
-  for (const path of Object.keys(operations)) {
-    const result = resolveParentPath(target, path);
-    const arr = assertArrayTarget("$pullAll", path, result);
-    const valuesToRemove = operations[path];
-    if (!Array.isArray(valuesToRemove)) {
-      throw new TypeError(
-        `$pullAll path "${path}" requires an array of values to remove, received ${describeValue(valuesToRemove)}.`,
-      );
-    }
-    // Unlike $pull, matching is exact (full deep equality) — partial object
-    // conditions never match.
-    compactArray(arr, (value) => valuesToRemove.some((candidate) => isEqual(value, candidate)));
-  }
-}
-
-function $addToSet(target: object, operations: Record<string, any>): void {
-  for (const path of Object.keys(operations)) {
-    const result = resolveParentPath(target, path);
-    const arr = assertArrayTarget("$addToSet", path, result);
-    const value = operations[path];
-    const itemsToAdd =
-      isObject(value) && "$each" in value && Array.isArray(value["$each"])
-        ? value["$each"]
-        : [value];
-
-    addUniqueToArray(arr, itemsToAdd);
-  }
-}
-
-function $rename(target: object, operations: Record<string, string>): void {
-  const renames: Array<{ oldPath: string; newPath: string; value: any }> = [];
-
-  for (const oldPath of Object.keys(operations)) {
-    const newPath = operations[oldPath]!;
-    const oldResult = resolveParentPath(target, oldPath);
-    if (oldResult && Object.hasOwn(oldResult.parent, oldResult.key)) {
-      const newResult = resolveParentPath(target, newPath);
-      if (oldPath !== newPath && newResult && Object.hasOwn(newResult.parent, newResult.key)) {
-        throw new Error(
-          `$rename destination "${newPath}" already exists. Rename conflicts must be resolved explicitly.`,
-        );
-      }
-      renames.push({ oldPath, newPath, value: oldResult.parent[oldResult.key] });
-    }
-  }
-
-  for (const { oldPath, newPath, value } of renames) {
-    deleteValueAtPath(target, oldPath);
-    setValueAtPath(target, newPath, value);
-  }
-}
-
-function $min(target: object, operations: Record<string, number>): void {
-  for (const path of Object.keys(operations)) {
-    const result = resolveParentPath(target, path);
-    if (result) {
-      assertNumericTarget("$min", path, result.parent[result.key]);
-      const newValue = operations[path]!;
-      compareAndSetValue({ parent: result.parent, key: result.key, newValue, isMin: true });
-    } else {
-      // Path doesn't exist, create it
-      setValueAtPath(target, path, operations[path]!);
-    }
-  }
-}
-
-function $max(target: object, operations: Record<string, number>): void {
-  for (const path of Object.keys(operations)) {
-    const result = resolveParentPath(target, path);
-    if (result) {
-      assertNumericTarget("$max", path, result.parent[result.key]);
-      const newValue = operations[path]!;
-      compareAndSetValue({ parent: result.parent, key: result.key, newValue, isMin: false });
-    } else {
-      // Path doesn't exist, create it
-      setValueAtPath(target, path, operations[path]!);
-    }
-  }
-}
-
+// Forward-application order. Mongo forbids two operators touching the same path
+// in one update, so across operators every path is disjoint and this order only
+// has to be internally consistent.
 const operatorList = [
   "$set",
   "$unset",
   "$rename",
+  "$mul",
   "$inc",
   "$min",
   "$max",
-  "$push",
+  "$pop",
   "$pull",
   "$pullAll",
+  "$push",
   "$addToSet",
-];
+] as const;
 
-const operators: Record<string, (target: object, operations: any) => void> = {
+const operators: Record<string, (context: OperatorContext, operations: any) => void> = {
   $set,
   $unset,
-  $inc,
-  $push,
-  $pull,
-  $pullAll,
-  $addToSet,
   $rename,
+  $mul,
+  $inc,
   $min,
   $max,
+  $pop,
+  $pull,
+  $pullAll,
+  $push,
+  $addToSet,
 };
+
+// ─── public types ───────────────────────────────────────────────────────────
 
 /**
  * Strict, type-aware update operations for a target shape `T`.
  *
  * Each operator's value type is derived from `T`:
- *   - `$set` / `$unset` accept any path within `T` (see `Path<T>`).
- *   - `$inc` / `$min` / `$max` accept numeric paths only.
- *   - `$push` / `$pull` / `$pullAll` / `$addToSet` accept array paths only.
+ *   - `$set` / `$unset` accept any path within `T` (see `Path<T>`), including
+ *     positional `cards.$.title` / `cards.$[].title` forms.
+ *   - `$inc` / `$mul` / `$min` / `$max` accept numeric paths only.
+ *   - `$push` / `$pop` / `$pull` / `$pullAll` / `$addToSet` accept array paths.
  *
  * Per-path value typing is enforced: `$set: { "user.name": 42 }` is rejected
  * when `user.name` is typed as `string`.
@@ -364,14 +91,16 @@ const operators: Record<string, (target: object, operations: any) => void> = {
 export type StrictUpdateOperations<T extends object> = Partial<{
   $set: SetPathOperations<T>;
   $unset: UnsetPathOperations<T>;
+  $rename: Record<string, string>;
   $inc: NumericPathOperations<T>;
-  $push: ArrayWriteOperations<T>;
+  $mul: NumericPathOperations<T>;
+  $min: NumericPathOperations<T>;
+  $max: NumericPathOperations<T>;
+  $push: ArrayPushOperations<T>;
+  $pop: ArrayPopOperations<T>;
   $pull: ArrayPullOperations<T>;
   $pullAll: ArrayPullAllOperations<T>;
   $addToSet: ArrayWriteOperations<T>;
-  $rename: Record<string, string>;
-  $min: NumericPathOperations<T>;
-  $max: NumericPathOperations<T>;
 }>;
 
 /**
@@ -382,16 +111,150 @@ export type StrictUpdateOperations<T extends object> = Partial<{
  */
 export type UpdateOperations<T extends object = Record<string, any>> = StrictUpdateOperations<T>;
 
-export function update<T extends object>(target: T, operations: UpdateOperations<T>): void {
-  const raw = unwrap(target) as object;
+/**
+ * The result of an `update()` call: the same `doc` reference back, plus an
+ * `undo` — a standard Mongo update document that, applied to the post-update
+ * `doc`, reverses the exact changes that were made.
+ */
+export interface UpdateResult<T extends object> {
+  doc: T;
+  undo: UpdateOperations<T>;
+}
+
+/**
+ * Options for `update()`. Mirrors the MongoDB driver's update options object.
+ */
+export interface UpdateOptions {
+  /**
+   * Filter documents for the `$[<identifier>]` filtered positional operator —
+   * each targets one identifier and an element qualifies when its conditions
+   * match. Every `$[<identifier>]` in the update needs a matching filter, and
+   * every supplied filter must be used.
+   */
+  arrayFilters?: Array<ArrayFilter>;
+}
+
+// Collect the `$[<identifier>]` identifiers referenced in an update document's
+// paths, so we can flag supplied arrayFilters that go unused. Only path keys are
+// scanned — Mongo's positional operators aren't valid in `$rename` values, and
+// every operator's payload is a path-keyed object.
+function referencedArrayFilterIdentifiers(operations: UpdateOperations<any>): Set<string> {
+  const used = new Set<string>();
+  for (const payload of Object.values(operations)) {
+    for (const key of Object.keys(payload as Record<string, unknown>)) {
+      for (const segment of key.split(".")) {
+        if (segment.startsWith("$[") && segment.endsWith("]") && segment.length > 3) {
+          used.add(segment.slice(2, -1));
+        }
+      }
+    }
+  }
+  return used;
+}
+
+// Two update paths conflict when they're equal or one is a prefix of the other
+// (compared segment by segment) — MongoDB rejects such an update rather than
+// applying both. e.g. "a" conflicts with "a" and "a.b"; "a.b" and "a.c" don't.
+function pathsConflict(a: string, b: string): boolean {
+  if (a === b) {
+    return true;
+  }
+  const aSegments = a.split(".");
+  const bSegments = b.split(".");
+  const shared = Math.min(aSegments.length, bSegments.length);
+  for (let i = 0; i < shared; i++) {
+    if (aSegments[i] !== bSegments[i]) {
+      return false;
+    }
+  }
+  return true; // one path is a prefix of the other
+}
+
+// Reject an update whose operators (or keys) write the same path, or a
+// parent/child of it — the conflict MongoDB refuses. $rename also occupies its
+// destination path, so that is checked too.
+function assertNoPathConflicts(operations: UpdateOperations<any>): void {
+  const paths: Array<string> = [];
+  for (const [operator, payload] of Object.entries(operations)) {
+    for (const key of Object.keys(payload as Record<string, unknown>)) {
+      paths.push(key);
+      // $rename also writes its destination path. A same-field rename
+      // (`{ a: "a" }`) is left to $rename's own "must differ" check.
+      if (operator === "$rename") {
+        const destination = (payload as Record<string, string>)[key]!;
+        if (destination !== key) {
+          paths.push(destination);
+        }
+      }
+    }
+  }
+  for (let i = 0; i < paths.length; i++) {
+    for (let j = i + 1; j < paths.length; j++) {
+      if (pathsConflict(paths[i]!, paths[j]!)) {
+        throw new Error(
+          `Update would create a conflict between paths "${paths[i]}" and "${paths[j]}".`,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Apply a MongoDB update document to `doc` in place.
+ *
+ * @param doc        The document to mutate (a reactive store or a plain object).
+ *                   The same reference is returned in `result.doc`.
+ * @param query      A Mongo query used only to resolve positional paths
+ *                   (`items.$.name`). Pass `{}` when the update has none.
+ * @param operations A standard Mongo update document.
+ * @param options    Optional Mongo update options — `arrayFilters` for the
+ *                   `$[<identifier>]` filtered positional operator.
+ * @returns          `{ doc, undo }` — `undo` reverses the actual changes made.
+ */
+export function update<T extends object>(
+  doc: T,
+  query: Query<T>,
+  operations: UpdateOperations<T>,
+  options?: UpdateOptions,
+): UpdateResult<T> {
+  const raw = unwrap(doc) as object;
+  const undo: MutableUndo = {};
+  const arrayFilters = options?.arrayFilters ?? [];
+
+  assertNoPathConflicts(operations);
+
+  // When arrayFilters are supplied, enforce Mongo's two consistency rules (in
+  // its order): every referenced identifier must have a filter, then every
+  // supplied filter must be used. When none are supplied, a stray `$[id]` is
+  // still caught at resolution time, so the common path pays nothing here.
+  if (arrayFilters.length > 0) {
+    const referenced = referencedArrayFilterIdentifiers(operations);
+    const provided = new Set(arrayFilters.map(arrayFilterIdentifier));
+    for (const identifier of referenced) {
+      if (!provided.has(identifier)) {
+        throw new Error(`No array filter found for identifier "${identifier}".`);
+      }
+    }
+    for (const filter of arrayFilters) {
+      const identifier = arrayFilterIdentifier(filter);
+      if (!referenced.has(identifier)) {
+        throw new Error(
+          `The array filter for identifier "${identifier}" was not used in the update.`,
+        );
+      }
+    }
+  }
+
+  const context: OperatorContext = { raw, undo, query: query as Query, arrayFilters };
+
   // Coalesce every write in this call into a single notification.
   batch(() => {
-    for (const op of operatorList) {
-      if (op in operations) {
-        const operator = operators[op];
-        const opArgs = (operations as any)[op];
-        operator?.(raw, opArgs);
+    for (const operator of operatorList) {
+      if (operator in operations) {
+        operators[operator]!(context, (operations as any)[operator]);
       }
     }
   });
+
+  return { doc, undo: undo as UpdateOperations<T> };
 }

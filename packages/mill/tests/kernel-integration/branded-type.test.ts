@@ -5,10 +5,10 @@
  * at all nesting levels. No runtime assertions -- if it compiles, it passes.
  */
 
-import { update } from "@supergrain/mill";
+import { createReactive, $BRAND, type Branded } from "@supergrain/kernel";
 import { describe, it, expect } from "vitest";
 
-import { createReactive, $BRAND, type Branded } from "../../src";
+import { recordedUpdate } from "../helpers";
 
 // ---------------------------------------------------------------------------
 // Type assertion helpers
@@ -90,14 +90,14 @@ describe("Branded type - runtime behavior unchanged", () => {
     const state = createReactive({ count: 0, nested: { value: "hello" } });
     expect(state.count).toBe(0);
     expect(state.nested.value).toBe("hello");
-    update(state, { $set: { count: 5 } });
+    recordedUpdate(state, {}, { $set: { count: 5 } });
     expect(state.count).toBe(5);
   });
 
   it("arrays still work at runtime", () => {
     const state = createReactive({ items: [{ id: "1" }] });
     expect(state.items[0]?.id).toBe("1");
-    update(state, { $push: { items: { id: "2" } } });
+    recordedUpdate(state, {}, { $push: { items: { id: "2" } } });
     expect(state.items.length).toBe(2);
   });
 });

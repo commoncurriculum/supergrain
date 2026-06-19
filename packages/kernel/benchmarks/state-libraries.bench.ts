@@ -3,7 +3,6 @@ import {
   effect as preactEffect,
   batch as preactBatch,
 } from "@preact/signals-core";
-import { update } from "@supergrain/mill";
 import { effect } from "alien-signals";
 import { createStore as createJotaiStore, atom } from "jotai/vanilla";
 import { observable, autorun, runInAction } from "mobx";
@@ -135,7 +134,7 @@ describe("Non-reactive Updates: 1000 updates", () => {
   bench("@supergrain/kernel", () => {
     const store = createReactive({ count: 0 });
     for (let i = 0; i < 1000; i++) {
-      update(store, { $set: { count: i } });
+      store.count = i;
     }
   });
 
@@ -191,7 +190,7 @@ describe("Reactive Updates: subscribe + 1000 updates", () => {
       store.count;
     });
     for (let i = 0; i < 1000; i++) {
-      update(store, { $set: { count: i } });
+      store.count = i;
     }
     await new Promise<void>((r) => queueMicrotask(r));
     dispose();
@@ -272,7 +271,16 @@ describe("Batch Update: 10 properties at once", () => {
     const dispose = effect(() => {
       for (const k of keys) store[k];
     });
-    update(store, { $set: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10 } });
+    store.a = 1;
+    store.b = 2;
+    store.c = 3;
+    store.d = 4;
+    store.e = 5;
+    store.f = 6;
+    store.g = 7;
+    store.h = 8;
+    store.i = 9;
+    store.j = 10;
     await new Promise<void>((r) => queueMicrotask(r));
     dispose();
   });
@@ -375,7 +383,7 @@ describe("Deep Updates: 100 nested property updates", () => {
       store.l1.l2.l3.value;
     });
     for (let i = 0; i < 100; i++) {
-      update(store, { $set: { "l1.l2.l3.value": i } });
+      store.l1.l2.l3.value = i;
     }
     await new Promise<void>((r) => queueMicrotask(r));
     dispose();
@@ -452,7 +460,7 @@ describe("Array Operations: 100 pushes with reactive subscriber", () => {
       store.items.length;
     });
     for (let i = 0; i < 100; i++) {
-      update(store, { $push: { items: i } });
+      store.items.push(i);
     }
     await new Promise<void>((r) => queueMicrotask(r));
     dispose();
@@ -535,7 +543,7 @@ describe("Granular Reactivity: update 1 of 10 independently observed props", () 
         }),
       );
     }
-    update(store, { $set: { p5: 999 } });
+    store["p5"] = 999;
     await new Promise<void>((r) => queueMicrotask(r));
     disposers.forEach((d) => d());
   });

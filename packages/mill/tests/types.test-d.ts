@@ -15,7 +15,7 @@
 // =============================================================================
 import { describe, it } from "vitest";
 
-import { update } from "../src/operators";
+import { type UpdateOperations, update } from "../src/operators";
 
 interface Address {
   street: string;
@@ -37,30 +37,30 @@ describe("update — $set", () => {
   const state = {} as User;
 
   it("accepts a known path with a matching value", () => {
-    update(state, { $set: { name: "x" } });
-    update(state, { $set: { age: 30 } });
-    update(state, { $set: { "address.city": "Boston" } });
-    update(state, { $set: { "address.zip": 12345 } });
+    update(state, {}, { $set: { name: "x" } });
+    update(state, {}, { $set: { age: 30 } });
+    update(state, {}, { $set: { "address.city": "Boston" } });
+    update(state, {}, { $set: { "address.zip": 12345 } });
   });
 
   it("rejects an unknown top-level path", () => {
     // @ts-expect-error -- "unknown" is not a key of User
-    update(state, { $set: { unknown: "x" } });
+    update(state, {}, { $set: { unknown: "x" } });
   });
 
   it("rejects an unknown nested path", () => {
     // @ts-expect-error -- "address.country" is not a path on User
-    update(state, { $set: { "address.country": "USA" } });
+    update(state, {}, { $set: { "address.country": "USA" } });
   });
 
   it("rejects a wrong value type at a known path", () => {
     // @ts-expect-error -- name is a string
-    update(state, { $set: { name: 123 } });
+    update(state, {}, { $set: { name: 123 } });
   });
 
   it("rejects a wrong nested value type", () => {
     // @ts-expect-error -- zip is a number
-    update(state, { $set: { "address.zip": "12345" } });
+    update(state, {}, { $set: { "address.zip": "12345" } });
   });
 });
 
@@ -68,28 +68,28 @@ describe("update — $inc / $min / $max (numeric-only)", () => {
   const state = {} as User;
 
   it("accepts numeric paths", () => {
-    update(state, { $inc: { age: 1 } });
-    update(state, { $inc: { followers: 10 } });
-    update(state, { $inc: { "address.zip": 1 } });
-    update(state, { $min: { age: 0 } });
-    update(state, { $max: { age: 120 } });
+    update(state, {}, { $inc: { age: 1 } });
+    update(state, {}, { $inc: { followers: 10 } });
+    update(state, {}, { $inc: { "address.zip": 1 } });
+    update(state, {}, { $min: { age: 0 } });
+    update(state, {}, { $max: { age: 120 } });
   });
 
   it("rejects a string path under $inc", () => {
     // @ts-expect-error -- name is not a numeric path
-    update(state, { $inc: { name: 1 } });
+    update(state, {}, { $inc: { name: 1 } });
   });
 
   it("rejects a string path under $min/$max", () => {
     // @ts-expect-error -- name is not a numeric path
-    update(state, { $min: { name: 1 } });
+    update(state, {}, { $min: { name: 1 } });
     // @ts-expect-error -- name is not a numeric path
-    update(state, { $max: { name: 1 } });
+    update(state, {}, { $max: { name: 1 } });
   });
 
   it("rejects a non-number value at a numeric path", () => {
     // @ts-expect-error -- $inc requires a number
-    update(state, { $inc: { age: "1" } });
+    update(state, {}, { $inc: { age: "1" } });
   });
 });
 
@@ -97,19 +97,19 @@ describe("update — $push / $addToSet (array-only)", () => {
   const state = {} as User;
 
   it("accepts array paths with matching element types", () => {
-    update(state, { $push: { tags: "javascript" } });
-    update(state, { $push: { scores: 100 } });
-    update(state, { $addToSet: { tags: "rust" } });
+    update(state, {}, { $push: { tags: "javascript" } });
+    update(state, {}, { $push: { scores: 100 } });
+    update(state, {}, { $addToSet: { tags: "rust" } });
   });
 
   it("rejects a non-array path", () => {
     // @ts-expect-error -- name is not an array path
-    update(state, { $push: { name: "x" } });
+    update(state, {}, { $push: { name: "x" } });
   });
 
   it("rejects a wrong element type", () => {
     // @ts-expect-error -- scores holds numbers
-    update(state, { $push: { scores: "100" } });
+    update(state, {}, { $push: { scores: "100" } });
   });
 });
 
@@ -117,23 +117,23 @@ describe("update — $pullAll (array-only)", () => {
   const state = {} as User;
 
   it("accepts array paths with an array of the element type", () => {
-    update(state, { $pullAll: { tags: ["javascript", "rust"] } });
-    update(state, { $pullAll: { scores: [1, 2, 3] } });
+    update(state, {}, { $pullAll: { tags: ["javascript", "rust"] } });
+    update(state, {}, { $pullAll: { scores: [1, 2, 3] } });
   });
 
   it("rejects a non-array path", () => {
     // @ts-expect-error -- name is not an array path
-    update(state, { $pullAll: { name: ["x"] } });
+    update(state, {}, { $pullAll: { name: ["x"] } });
   });
 
   it("rejects a wrong element type", () => {
     // @ts-expect-error -- scores holds numbers
-    update(state, { $pullAll: { scores: ["100"] } });
+    update(state, {}, { $pullAll: { scores: ["100"] } });
   });
 
   it("rejects a single value instead of an array", () => {
     // @ts-expect-error -- $pullAll requires an array of values
-    update(state, { $pullAll: { scores: 100 } });
+    update(state, {}, { $pullAll: { scores: 100 } });
   });
 });
 
@@ -141,13 +141,13 @@ describe("update — $unset", () => {
   const state = {} as User;
 
   it("accepts known paths", () => {
-    update(state, { $unset: { name: 1 } });
-    update(state, { $unset: { "address.city": 1 } });
+    update(state, {}, { $unset: { name: 1 } });
+    update(state, {}, { $unset: { "address.city": 1 } });
   });
 
   it("rejects unknown paths", () => {
     // @ts-expect-error -- "ghost" is not a key
-    update(state, { $unset: { ghost: 1 } });
+    update(state, {}, { $unset: { ghost: 1 } });
   });
 });
 
@@ -155,18 +155,81 @@ describe("update — operator combinations", () => {
   const state = {} as User;
 
   it("accepts multiple operators in one call with consistent typing", () => {
-    update(state, {
-      $set: { name: "x" },
-      $inc: { age: 1 },
-      $push: { tags: "ts" },
-    });
+    update(
+      state,
+      {},
+      {
+        $set: { name: "x" },
+        $inc: { age: 1 },
+        $push: { tags: "ts" },
+      },
+    );
   });
 
   it("rejects when one operator has a wrong type even if others are valid", () => {
-    update(state, {
-      $set: { name: "x" },
-      // @ts-expect-error -- age must be a number under $inc
-      $inc: { age: "1" },
-    });
+    update(
+      state,
+      {},
+      {
+        $set: { name: "x" },
+        // @ts-expect-error -- age must be a number under $inc
+        $inc: { age: "1" },
+      },
+    );
+  });
+});
+
+describe("update — $mul / $pop (new operators)", () => {
+  const state = {} as User;
+
+  it("accepts $mul on numeric paths", () => {
+    update(state, {}, { $mul: { age: 2 } });
+  });
+
+  it("rejects $mul on a non-numeric path", () => {
+    // @ts-expect-error -- name is not a numeric path
+    update(state, {}, { $mul: { name: 2 } });
+  });
+
+  it("accepts $pop with 1 or -1 on array paths", () => {
+    update(state, {}, { $pop: { tags: 1 } });
+    update(state, {}, { $pop: { scores: -1 } });
+  });
+
+  it("rejects $pop on a non-array path", () => {
+    // @ts-expect-error -- name is not an array path
+    update(state, {}, { $pop: { name: 1 } });
+  });
+});
+
+describe("update — $push modifiers", () => {
+  const state = {} as User;
+
+  it("accepts $each / $position / $slice / $sort", () => {
+    update(state, {}, { $push: { tags: { $each: ["a", "b"], $position: 0 } } });
+    update(state, {}, { $push: { scores: { $each: [1], $slice: 3 } } });
+    update(state, {}, { $push: { scores: { $each: [1], $sort: -1 } } });
+  });
+});
+
+describe("update — positional paths", () => {
+  const state = {} as User;
+
+  it("accepts $ and $[] tokens on array segments", () => {
+    update(state, { tags: { $elemMatch: { $eq: "x" } } }, { $set: { "tags.$": "y" } });
+    update(state, {}, { $set: { "tags.$[]": "z" } });
+    update(state, {}, { $inc: { "scores.$[]": 1 } });
+  });
+});
+
+describe("update — return type", () => {
+  const state = {} as User;
+
+  it("returns the document and a typed undo", () => {
+    const result = update(state, {}, { $set: { name: "x" } });
+    const sameDoc: User = result.doc;
+    const undo: UpdateOperations<User> = result.undo;
+    // Round-tripping the undo through update typechecks.
+    update(sameDoc, {}, undo);
   });
 });
