@@ -73,4 +73,19 @@ describe("MongoDB Style Operators", () => {
     expect(minStore.a).toBe(42);
     expect(maxStore.a).toBe(42);
   });
+
+  it("$inc produces a float result", () => {
+    const store = createReactive<any>({ n: 1 });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $inc: { n: 0.5 } });
+    expect(store.n).toBe(1.5);
+    rewindAndAssertRestored();
+  });
+
+  it("$inc creates a chain of missing intermediate objects", () => {
+    const store = createReactive<any>({ keep: 1 });
+    const { undo, rewindAndAssertRestored } = applyWithUndo(store, {}, { $inc: { "a.b.c": 3 } });
+    expect(store.a).toEqual({ b: { c: 3 } });
+    expect(undo).toEqual({ $unset: { a: "" } });
+    rewindAndAssertRestored();
+  });
 });

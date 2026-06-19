@@ -21,6 +21,14 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
+  it("$unset removes a whole nested object", () => {
+    const store = createReactive<any>({ a: { b: { c: 1 } }, keep: 2 });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $unset: { "a.b": "" } });
+    expect((store.a as any).b).toBeUndefined();
+    expect(store.keep).toBe(2);
+    rewindAndAssertRestored();
+  });
+
   it("$unset removes a missing path as a no-op", () => {
     const store = createReactive<any>({ a: 1 });
     const { undo, rewindAndAssertRestored } = applyWithUndo(store, {}, { $unset: { "x.y.z": "" } });

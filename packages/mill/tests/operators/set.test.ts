@@ -54,6 +54,34 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
+  it("$set replaces an object with a scalar (undo restores the object)", () => {
+    const store = createReactive<any>({ a: { b: 1, c: 2 } });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $set: { a: 5 } });
+    expect(store.a).toBe(5);
+    rewindAndAssertRestored();
+  });
+
+  it("$set can set a field to null", () => {
+    const store = createReactive<any>({ a: 1 });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $set: { a: null } });
+    expect(store.a).toBe(null);
+    rewindAndAssertRestored();
+  });
+
+  it("$set replaces a whole array", () => {
+    const store = createReactive<any>({ items: [1, 2, 3] });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $set: { items: [9] } });
+    expect(store.items).toEqual([9]);
+    rewindAndAssertRestored();
+  });
+
+  it("$set an existing in-bounds array index", () => {
+    const store = createReactive<any>({ items: [1, 2, 3] });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $set: { "items.1": 20 } });
+    expect(store.items).toEqual([1, 20, 3]);
+    rewindAndAssertRestored();
+  });
+
   it("$set fires effects subscribed to the written path and not to siblings", () => {
     const store = createReactive({ a: 1, b: 2 });
     const aFn = vi.fn(() => void store.a);

@@ -169,6 +169,35 @@ describe("$pull with query conditions", () => {
     rewindAndAssertRestored();
   });
 
+  it("removes elements matching $in", () => {
+    const store = createReactive({ nums: [1, 2, 3, 4] });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $pull: { nums: { $in: [2, 4] } } },
+    );
+    expect(store.nums).toEqual([1, 3]);
+    rewindAndAssertRestored();
+  });
+
+  it("removes elements not in $nin", () => {
+    const store = createReactive({ nums: [1, 2, 3, 4] });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $pull: { nums: { $nin: [2, 4] } } },
+    );
+    expect(store.nums).toEqual([2, 4]);
+    rewindAndAssertRestored();
+  });
+
+  it("$pull can empty an array", () => {
+    const store = createReactive({ nums: [2, 2, 2] });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $pull: { nums: 2 } });
+    expect(store.nums).toEqual([]);
+    rewindAndAssertRestored();
+  });
+
   it("removes documents matching a field-with-operator condition", () => {
     const store = createReactive({
       tasks: [

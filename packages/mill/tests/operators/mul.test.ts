@@ -23,6 +23,20 @@ describe("$mul", () => {
     rewindAndAssertRestored();
   });
 
+  it("$mul by a float", () => {
+    const store = createReactive<any>({ n: 4 });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $mul: { n: 1.5 } });
+    expect(store.n).toBe(6);
+    rewindAndAssertRestored();
+  });
+
+  it("$mul by zero", () => {
+    const store = createReactive<any>({ n: 7 });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $mul: { n: 0 } });
+    expect(store.n).toBe(0);
+    rewindAndAssertRestored();
+  });
+
   it("rejects a non-number target", () => {
     const store = createReactive<any>({ price: "ten" });
     expect(() => update(store, {}, { $mul: { price: 2 } })).toThrow(/number/i);

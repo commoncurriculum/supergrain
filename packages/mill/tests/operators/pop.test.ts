@@ -44,6 +44,13 @@ describe("$pop", () => {
     expect(() => update(store, {}, { $pop: { items: 1 } })).toThrow(/array/i);
   });
 
+  it("$pop: 1 empties a single-element array", () => {
+    const store = createReactive<any>({ a: [1] });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $pop: { a: 1 } });
+    expect(store.a).toEqual([]);
+    rewindAndAssertRestored();
+  });
+
   it("rejects a direction other than 1 or -1, like MongoDB", () => {
     const store = createReactive<any>({ items: ["a", "b"] });
     expect(() => update(store, {}, { $pop: { items: 0 } as any })).toThrow(/expects 1 or -1/i);

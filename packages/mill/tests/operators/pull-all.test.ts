@@ -112,4 +112,11 @@ describe("MongoDB Style Operators", () => {
     expect(lengthFn).toHaveBeenCalledTimes(2);
     rec.rewindAndAssertRestored();
   });
+
+  it("$pullAll removes every listed value, emptying when all match", () => {
+    const store = createReactive<any>({ nums: [1, 2, 1, 2] });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $pullAll: { nums: [1, 2] } });
+    expect(store.nums).toEqual([]);
+    rewindAndAssertRestored();
+  });
 });

@@ -202,6 +202,50 @@ describe("$push modifiers", () => {
     rewindAndAssertRestored();
   });
 
+  it("$slice: 0 empties the array after appending", () => {
+    const store = createReactive<any>({ a: [1, 2] });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $push: { a: { $each: [3], $slice: 0 } } },
+    );
+    expect(store.a).toEqual([]);
+    rewindAndAssertRestored();
+  });
+
+  it("an empty $each with $slice truncates without adding", () => {
+    const store = createReactive<any>({ a: [1, 2, 3, 4] });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $push: { a: { $each: [], $slice: 2 } } },
+    );
+    expect(store.a).toEqual([1, 2]);
+    rewindAndAssertRestored();
+  });
+
+  it("$position: 0 prepends", () => {
+    const store = createReactive<any>({ a: [3, 4] });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $push: { a: { $each: [1, 2], $position: 0 } } },
+    );
+    expect(store.a).toEqual([1, 2, 3, 4]);
+    rewindAndAssertRestored();
+  });
+
+  it("$sort and $slice combined keep the top N", () => {
+    const store = createReactive<any>({ a: [3, 1, 2] });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $push: { a: { $each: [5, 4], $sort: 1, $slice: 3 } } },
+    );
+    expect(store.a).toEqual([1, 2, 3]);
+    rewindAndAssertRestored();
+  });
+
   it("$sort orders document elements by a field", () => {
     const store = createReactive({
       players: [

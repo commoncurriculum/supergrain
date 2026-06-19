@@ -64,6 +64,14 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
+  it("$rename moves a value to a new nested destination, creating the branch", () => {
+    const store = createReactive<any>({ a: 1 });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $rename: { a: "x.y" } });
+    expect(store.x).toEqual({ y: 1 });
+    expect((store as any).a).toBeUndefined();
+    rewindAndAssertRestored();
+  });
+
   it("rejects renaming a field to itself, like MongoDB", () => {
     const store = createReactive<any>({ a: 1 });
     expect(() => update(store, {}, { $rename: { a: "a" } })).toThrow(/must differ/i);

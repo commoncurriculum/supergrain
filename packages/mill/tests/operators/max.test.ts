@@ -44,4 +44,11 @@ describe("MongoDB Style Operators", () => {
     expect(fn).toHaveBeenCalledTimes(2);
     rec.rewindAndAssertRestored();
   });
+
+  it("$max with an equal value is a no-op", () => {
+    const store = createReactive<any>({ score: 5 });
+    const { undo, rewindAndAssertRestored } = applyWithUndo(store, {}, { $max: { score: 5 } });
+    expect(undo).toEqual({});
+    rewindAndAssertRestored();
+  });
 });
