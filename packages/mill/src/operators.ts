@@ -152,6 +152,53 @@ function referencedArrayFilterIdentifiers(operations: UpdateOperations<any>): Se
   return used;
 }
 
+// Two update paths conflict when they're equal or one is a prefix of the other
+// (compared segment by segment) — MongoDB rejects such an update rather than
+// applying both. e.g. "a" conflicts with "a" and "a.b"; "a.b" and "a.c" don't.
+function pathsConflict(a: string, b: string): boolean {
+  if (a === b) {
+    return true;
+  }
+  const aSegments = a.split(".");
+  const bSegments = b.split(".");
+  const shared = Math.min(aSegments.length, bSegments.length);
+  for (let i = 0; i < shared; i++) {
+    if (aSegments[i] !== bSegments[i]) {
+      return false;
+    }
+  }
+  return true; // one path is a prefix of the other
+}
+
+// Reject an update whose operators (or keys) write the same path, or a
+// parent/child of it — the conflict MongoDB refuses. $rename also occupies its
+// destination path, so that is checked too.
+function assertNoPathConflicts(operations: UpdateOperations<any>): void {
+  const paths: Array<string> = [];
+  for (const [operator, payload] of Object.entries(operations)) {
+    for (const key of Object.keys(payload as Record<string, unknown>)) {
+      paths.push(key);
+      // $rename also writes its destination path. A same-field rename
+      // (`{ a: "a" }`) is left to $rename's own "must differ" check.
+      if (operator === "$rename") {
+        const destination = (payload as Record<string, string>)[key]!;
+        if (destination !== key) {
+          paths.push(destination);
+        }
+      }
+    }
+  }
+  for (let i = 0; i < paths.length; i++) {
+    for (let j = i + 1; j < paths.length; j++) {
+      if (pathsConflict(paths[i]!, paths[j]!)) {
+        throw new Error(
+          `Update would create a conflict between paths "${paths[i]}" and "${paths[j]}".`,
+        );
+      }
+    }
+  }
+}
+
 /**
  * Apply a MongoDB update document to `doc` in place.
  *
@@ -173,6 +220,8 @@ export function update<T extends object>(
   const raw = unwrap(doc) as object;
   const undo: MutableUndo = {};
   const arrayFilters = options?.arrayFilters ?? [];
+
+  assertNoPathConflicts(operations);
 
   // When arrayFilters are supplied, enforce Mongo's two consistency rules (in
   // its order): every referenced identifier must have a filter, then every

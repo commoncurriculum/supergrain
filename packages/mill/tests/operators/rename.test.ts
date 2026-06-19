@@ -19,16 +19,19 @@ describe("MongoDB Style Operators", () => {
     rec.rewindAndAssertRestored();
   });
 
-  it("should reject conflicting rename destinations", () => {
-    const state = createReactive({
+  it("$rename overwrites an existing nested destination, like MongoDB", () => {
+    const state = createReactive<any>({
       user: { firstName: "John", fullName: "John Doe" },
     });
 
-    expect(() => update(state, {}, { $rename: { "user.firstName": "user.fullName" } })).toThrow(
-      /already exists/i,
+    const { rewindAndAssertRestored } = applyWithUndo(
+      state,
+      {},
+      { $rename: { "user.firstName": "user.fullName" } },
     );
-    expect(state.user.firstName).toBe("John");
-    expect(state.user.fullName).toBe("John Doe");
+    expect(state.user.fullName).toBe("John");
+    expect((state.user as any).firstName).toBeUndefined();
+    rewindAndAssertRestored();
   });
 
   it("rejects $rename through an array element, like MongoDB", () => {
@@ -51,6 +54,14 @@ describe("MongoDB Style Operators", () => {
       update(store, {}, { $rename: { "user.name.first.deep": "user.renamed" } }),
     ).toThrow(/cannot traverse/i);
     expect(store.user).toEqual({ name: "John" });
+  });
+
+  it("$rename overwrites an existing destination, like MongoDB", () => {
+    const store = createReactive<any>({ a: 1, b: 2 });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $rename: { a: "b" } });
+    expect(store.b).toBe(1);
+    expect((store as any).a).toBeUndefined();
+    rewindAndAssertRestored();
   });
 
   it("rejects renaming a field to itself, like MongoDB", () => {

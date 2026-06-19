@@ -1,4 +1,4 @@
-import { deleteValueAtPath, hasValueAtPath } from "../path";
+import { hasValueAtPath, unsetValueAtPath } from "../path";
 import { capturePathUndo } from "../undo";
 import { eachPath, type OperatorContext } from "./shared";
 
@@ -8,6 +8,6 @@ export function $unset(context: OperatorContext, operations: Record<string, unkn
       return; // no-op
     }
     capturePathUndo(context.undo, context.raw, path);
-    deleteValueAtPath(context.raw, path);
+    unsetValueAtPath(context.raw, path);
   });
 }

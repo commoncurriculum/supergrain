@@ -57,12 +57,8 @@ function planRename(context: OperatorContext, rawFrom: string, rawTo: string): R
   if (!Object.hasOwn(source.parent, source.key)) {
     return null; // missing leaf under a real object — Mongo treats this as a no-op
   }
-  const destination = resolveParentPath(context.raw, to);
-  if (destination && Object.hasOwn(destination.parent, destination.key)) {
-    throw new Error(
-      `$rename destination "${to}" already exists. Rename conflicts must be resolved explicitly.`,
-    );
-  }
+  // An existing destination is overwritten (Mongo removes it and renames the
+  // source onto it); the undo restores it via capturePathUndo below.
   return { from, to, value: source.parent[source.key] };
 }
 

@@ -14,6 +14,20 @@ describe("MongoDB Style Operators", () => {
     rewindAndAssertRestored();
   });
 
+  it("$unset on an array element nulls it and keeps the length, like MongoDB", () => {
+    const store = createReactive<any>({ arr: [1, 2, 3] });
+    const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $unset: { "arr.1": "" } });
+    expect(store.arr).toEqual([1, null, 3]);
+    rewindAndAssertRestored();
+  });
+
+  it("$unset removes a missing path as a no-op", () => {
+    const store = createReactive<any>({ a: 1 });
+    const { undo, rewindAndAssertRestored } = applyWithUndo(store, {}, { $unset: { "x.y.z": "" } });
+    expect(undo).toEqual({});
+    rewindAndAssertRestored();
+  });
+
   it("$unset fires effects observing the removed property and ownKeys watchers", () => {
     const store = createReactive<{ a: number; b?: number }>({ a: 1, b: 2 });
     let observedB: number | undefined = -1;

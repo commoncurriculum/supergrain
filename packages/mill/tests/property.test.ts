@@ -292,8 +292,7 @@ function applyRenameModel(state: RenameState, op: RenameOp): { threw: boolean } 
     .with({ type: "rename" }, (o) => {
       if (o.from === o.to) return { threw: true }; // Mongo rejects same-field rename
       if (!(o.from in state)) return { threw: false };
-      if (o.to in state) return { threw: true };
-      state[o.to] = state[o.from];
+      state[o.to] = state[o.from]; // overwrites an existing destination, like Mongo
       delete state[o.from];
       return { threw: false };
     })

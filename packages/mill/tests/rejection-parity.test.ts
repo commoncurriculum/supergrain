@@ -31,6 +31,20 @@ const cases: Array<RejectionCase> = [
   { name: "$pull through a scalar", doc: { a: 5 }, ops: { $pull: { "a.b": 1 } } },
   { name: "$pullAll through a scalar", doc: { a: 5 }, ops: { $pullAll: { "a.b": [1] } } },
   { name: "$pop through a scalar", doc: { a: 5 }, ops: { $pop: { "a.b": 1 } } },
+
+  // Two operators (or two keys) writing the same path, or a parent/child of it,
+  // is a conflict MongoDB rejects rather than applying both.
+  { name: "$set and $inc the same path", doc: { a: 1 }, ops: { $set: { a: 2 }, $inc: { a: 1 } } },
+  {
+    name: "$set a parent and its child",
+    doc: { a: { b: 1 } },
+    ops: { $set: { a: 5, "a.b": 2 } },
+  },
+  {
+    name: "$rename onto a path another operator writes",
+    doc: { a: 1, c: 3 },
+    ops: { $rename: { a: "b" }, $set: { b: 9 } },
+  },
 ];
 
 describe("rejection parity (mill vs real mongod)", () => {

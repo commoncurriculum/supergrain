@@ -179,6 +179,20 @@ export function deleteValueAtPath(target: object, path: string): void {
 }
 
 /**
+ * `$unset` semantics: removing an *array element* leaves a `null` in its place
+ * (Mongo keeps the array length); removing an *object property* deletes the key.
+ * The caller ($unset) guarantees the path exists (via `hasValueAtPath`).
+ */
+export function unsetValueAtPath(target: object, path: string): void {
+  const { parent, key } = resolveParentPath(target, path)!;
+  if (Array.isArray(parent) && isArrayIndex(key)) {
+    setProperty(parent, key, null);
+  } else {
+    deleteProperty(parent, key);
+  }
+}
+
+/**
  * Read the value at a dotted path, returning `undefined` if any segment along
  * the way is missing or not a container. Never throws on a missing path (it
  * does validate path *syntax* via `splitPath`).
