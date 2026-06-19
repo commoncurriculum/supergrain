@@ -60,6 +60,18 @@ export function capturePathUndo(undo: MutableUndo, raw: object, path: string): v
 
   for (let i = 0; i < parts.length - 1; i++) {
     const segment = parts[i]!;
+    // Growing a (nested) array through an out-of-bounds *intermediate* index
+    // pads it with null; like the leaf case below, the only exact inverse is to
+    // restore the whole prior array rather than $unset a single grown index.
+    if (
+      i > 0 &&
+      Array.isArray(current) &&
+      /^\d+$/u.test(segment) &&
+      Number(segment) >= current.length
+    ) {
+      undoSet(undo, parts.slice(0, i).join("."), cloneValue(current));
+      return;
+    }
     if (
       !isContainer(current) ||
       !Object.hasOwn(current, segment) ||

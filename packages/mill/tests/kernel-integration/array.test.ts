@@ -8,7 +8,7 @@ import {
 } from "@supergrain/kernel";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-import { update } from "../../src";
+import { recordedUpdate } from "../helpers";
 
 describe("Array Support", () => {
   let store: any;
@@ -38,7 +38,7 @@ describe("Array Support", () => {
     expect(postTitle).toBe("Post 1");
     expect(titleEffect).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $set: { "posts.all.items.0.title": "Updated Post 1" } });
+    recordedUpdate(store, {}, { $set: { "posts.all.items.0.title": "Updated Post 1" } });
     expect(postTitle).toBe("Updated Post 1");
     expect(titleEffect).toHaveBeenCalledTimes(2);
 
@@ -60,7 +60,7 @@ describe("Array Support", () => {
     expect(postsLength).toBe(2);
     expect(lengthEffect).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $push: { "posts.all.items": { id: 3, title: "Post 3" } } });
+    recordedUpdate(store, {}, { $push: { "posts.all.items": { id: 3, title: "Post 3" } } });
 
     expect(postsLength).toBe(3);
     expect(lengthEffect).toHaveBeenCalledTimes(2);
@@ -83,7 +83,7 @@ describe("Array Support", () => {
     expect(postsLength).toBe(2);
     expect(lengthEffect).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $pull: { "posts.all.items": { id: 1 } } });
+    recordedUpdate(store, {}, { $pull: { "posts.all.items": { id: 1 } } });
 
     expect(postsLength).toBe(1);
     expect(store.posts.all.items[0].id).toBe(2);
@@ -109,7 +109,7 @@ describe("Array Support", () => {
     expect(titleLengthSum).toBe(12); // "Post 1" + "Post 2"
     expect(effectFn).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $set: { "posts.all.items.0.title": "A" } });
+    recordedUpdate(store, {}, { $set: { "posts.all.items.0.title": "A" } });
 
     expect(titleLengthSum).toBe(7); // "A" + "Post 2"
     expect(effectFn).toHaveBeenCalledTimes(2);
@@ -138,11 +138,11 @@ describe("Array Support", () => {
     expect(filtered[0].title).toBe("Post 1");
     expect(effectFn).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $set: { "posts.all.items.1.title": "Post 1 Again" } });
+    recordedUpdate(store, {}, { $set: { "posts.all.items.1.title": "Post 1 Again" } });
     expect(filtered).toHaveLength(2);
     expect(effectFn).toHaveBeenCalledTimes(2);
 
-    update(store, {}, { $set: { "posts.all.items.0.title": "Post X" } });
+    recordedUpdate(store, {}, { $set: { "posts.all.items.0.title": "Post X" } });
     expect(filtered).toHaveLength(1);
     expect(filtered[0].title).toBe("Post 1 Again");
     expect(effectFn).toHaveBeenCalledTimes(3);
@@ -168,7 +168,7 @@ describe("Array Support", () => {
     expect(titles).toEqual(["Post 1", "Post 2"]);
     expect(effectFn).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $set: { "posts.all.items.0.title": "Updated Post" } });
+    recordedUpdate(store, {}, { $set: { "posts.all.items.0.title": "Updated Post" } });
     expect(titles).toEqual(["Updated Post", "Post 2"]);
     expect(effectFn).toHaveBeenCalledTimes(2);
 
@@ -188,7 +188,7 @@ describe("Array Support", () => {
     effect(titleEffect);
     expect(titleEffect).toHaveBeenCalledTimes(1);
 
-    update(store, {}, { $push: { "posts.all.items": { id: 3, title: "Post 3" } } });
+    recordedUpdate(store, {}, { $push: { "posts.all.items": { id: 3, title: "Post 3" } } });
 
     expect(postTitle).toBe("Post 1");
     expect(titleEffect).toHaveBeenCalledTimes(1);
@@ -215,7 +215,7 @@ describe("Array Support", () => {
     expect(effectFn).toHaveBeenCalledTimes(1);
 
     const newItems = [{ id: 3, title: "New Post 1" }];
-    update(store, {}, { $set: { "posts.all.items": newItems } });
+    recordedUpdate(store, {}, { $set: { "posts.all.items": newItems } });
 
     expect(accessCount).toBe(1);
     expect(effectFn).toHaveBeenCalledTimes(2);

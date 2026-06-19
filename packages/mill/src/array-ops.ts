@@ -1,4 +1,5 @@
-import { deleteProperty, setProperty } from "@supergrain/kernel/internal";
+import { setProperty, deleteProperty } from "@supergrain/kernel/internal";
+import { match } from "ts-pattern";
 
 import { getValueAtPath, resolveParentPath, splitPath } from "./path";
 import { describeValue, isContainer, isObject } from "./util";
@@ -107,20 +108,45 @@ export function isContiguousAscending(indices: Array<number>): boolean {
   return true;
 }
 
-function defaultCompare(a: any, b: any): number {
+function compareScalar(a: any, b: any): number {
   if (a < b) return -1;
   if (a > b) return 1;
   return 0;
 }
 
+// MongoDB's canonical BSON type ordering (the subset that appears in plain
+// update documents): null/missing < numbers < strings < objects < arrays <
+// booleans. $sort uses this, not raw JS `<`/`>`, so mixed types and a missing
+// sort key order exactly the way Mongo orders them.
+function bsonTypeRank(value: unknown): number {
+  if (value === null || value === undefined) return 1;
+  if (typeof value === "number") return 2;
+  if (typeof value === "string") return 3;
+  if (Array.isArray(value)) return 5;
+  if (typeof value === "boolean") return 6;
+  return 4; // object
+}
+
+function bsonCompare(a: unknown, b: unknown): number {
+  const rankA = bsonTypeRank(a);
+  const rankB = bsonTypeRank(b);
+  if (rankA !== rankB) {
+    return rankA < rankB ? -1 : 1;
+  }
+  return match(rankA)
+    .with(2, 3, () => compareScalar(a, b))
+    .with(6, () => compareScalar(a ? 1 : 0, b ? 1 : 0))
+    .otherwise(() => 0); // null/missing, and objects/arrays (kept stable)
+}
+
 function sortArray(arr: Array<any>, sort: 1 | -1 | Record<string, 1 | -1>): Array<any> {
   if (sort === 1 || sort === -1) {
-    return [...arr].sort((a, b) => sort * defaultCompare(a, b));
+    return [...arr].sort((a, b) => sort * bsonCompare(a, b));
   }
   const entries = Object.entries(sort);
   return [...arr].sort((a, b) => {
     for (const [key, direction] of entries) {
-      const comparison = defaultCompare(getValueAtPath(a, key), getValueAtPath(b, key));
+      const comparison = bsonCompare(getValueAtPath(a, key), getValueAtPath(b, key));
       if (comparison !== 0) {
         return direction * comparison;
       }

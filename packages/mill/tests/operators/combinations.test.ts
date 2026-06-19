@@ -4,6 +4,15 @@ import { describe, it, expect, vi } from "vitest";
 import { applyWithUndo, undoRecorder } from "../helpers";
 
 describe("MongoDB Style Operators", () => {
+  it("pads with null when an out-of-bounds index is an intermediate path segment", () => {
+    const state = createReactive<any>({ a: [{ b: 1 }] });
+    const { undo, rewindAndAssertRestored } = applyWithUndo(state, {}, { $set: { "a.5.c": 2 } });
+    expect(state.a).toEqual([{ b: 1 }, null, null, null, null, { c: 2 }]);
+    // Growing the array can only be inverted by restoring the whole prior array.
+    expect(undo).toEqual({ $set: { a: [{ b: 1 }] } });
+    rewindAndAssertRestored();
+  });
+
   it("fills gaps with null on an out-of-bounds write, then pulls consistently", () => {
     const state = createReactive<{ scores: Array<number | null> }>({ scores: [1] });
     const rec = undoRecorder(state);

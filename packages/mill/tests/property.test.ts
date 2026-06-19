@@ -4,6 +4,7 @@ import { match } from "ts-pattern";
 import { describe, expect, it } from "vitest";
 
 import { update } from "../src";
+import { recordedUpdate } from "./helpers";
 
 interface MillState {
   count?: number;
@@ -126,24 +127,36 @@ function applyMillModelOperation(state: MillState, operation: MillOperation): vo
 
 function applyMillReactiveOperation(state: MillState, operation: MillOperation): void {
   match(operation)
-    .with({ type: "setCount" }, (op) => update(state, {}, { $set: { count: op.value } }))
-    .with({ type: "setScore" }, (op) => update(state, {}, { $set: { "nested.score": op.value } }))
-    .with({ type: "unsetCount" }, () => update(state, {}, { $unset: { count: 1 } }))
-    .with({ type: "unsetScore" }, () => update(state, {}, { $unset: { "nested.score": 1 } }))
-    .with({ type: "incCount" }, (op) => update(state, {}, { $inc: { count: op.value } }))
-    .with({ type: "incScore" }, (op) => update(state, {}, { $inc: { "nested.score": op.value } }))
-    .with({ type: "minCount" }, (op) => update(state, {}, { $min: { count: op.value } }))
-    .with({ type: "minScore" }, (op) => update(state, {}, { $min: { "nested.score": op.value } }))
-    .with({ type: "maxCount" }, (op) => update(state, {}, { $max: { count: op.value } }))
-    .with({ type: "maxScore" }, (op) => update(state, {}, { $max: { "nested.score": op.value } }))
-    .with({ type: "pushTag" }, (op) => update(state, {}, { $push: { tags: op.value } }))
-    .with({ type: "pushManyTags" }, (op) =>
-      update(state, {}, { $push: { tags: { $each: op.values } } }),
+    .with({ type: "setCount" }, (op) => recordedUpdate(state, {}, { $set: { count: op.value } }))
+    .with({ type: "setScore" }, (op) =>
+      recordedUpdate(state, {}, { $set: { "nested.score": op.value } }),
     )
-    .with({ type: "pullTag" }, (op) => update(state, {}, { $pull: { tags: op.value } }))
-    .with({ type: "addToSetTag" }, (op) => update(state, {}, { $addToSet: { tags: op.value } }))
+    .with({ type: "unsetCount" }, () => recordedUpdate(state, {}, { $unset: { count: 1 } }))
+    .with({ type: "unsetScore" }, () =>
+      recordedUpdate(state, {}, { $unset: { "nested.score": 1 } }),
+    )
+    .with({ type: "incCount" }, (op) => recordedUpdate(state, {}, { $inc: { count: op.value } }))
+    .with({ type: "incScore" }, (op) =>
+      recordedUpdate(state, {}, { $inc: { "nested.score": op.value } }),
+    )
+    .with({ type: "minCount" }, (op) => recordedUpdate(state, {}, { $min: { count: op.value } }))
+    .with({ type: "minScore" }, (op) =>
+      recordedUpdate(state, {}, { $min: { "nested.score": op.value } }),
+    )
+    .with({ type: "maxCount" }, (op) => recordedUpdate(state, {}, { $max: { count: op.value } }))
+    .with({ type: "maxScore" }, (op) =>
+      recordedUpdate(state, {}, { $max: { "nested.score": op.value } }),
+    )
+    .with({ type: "pushTag" }, (op) => recordedUpdate(state, {}, { $push: { tags: op.value } }))
+    .with({ type: "pushManyTags" }, (op) =>
+      recordedUpdate(state, {}, { $push: { tags: { $each: op.values } } }),
+    )
+    .with({ type: "pullTag" }, (op) => recordedUpdate(state, {}, { $pull: { tags: op.value } }))
+    .with({ type: "addToSetTag" }, (op) =>
+      recordedUpdate(state, {}, { $addToSet: { tags: op.value } }),
+    )
     .with({ type: "addManyToSetTags" }, (op) =>
-      update(state, {}, { $addToSet: { tags: { $each: op.values } } }),
+      recordedUpdate(state, {}, { $addToSet: { tags: { $each: op.values } } }),
     )
     .exhaustive();
 }
@@ -218,7 +231,7 @@ describe("property-based $pull with object queries", () => {
 
           for (const query of queries) {
             expected.items = expected.items.filter((item) => !modelMatches(item, query));
-            update(store, {}, { $pull: { items: query } });
+            recordedUpdate(store, {}, { $pull: { items: query } });
             expect(unwrap(store).items).toEqual(expected.items);
           }
         },
@@ -277,7 +290,7 @@ function applyRenameModel(state: RenameState, op: RenameOp): { threw: boolean } 
       return { threw: false };
     })
     .with({ type: "rename" }, (o) => {
-      if (o.from === o.to) return { threw: false };
+      if (o.from === o.to) return { threw: true }; // Mongo rejects same-field rename
       if (!(o.from in state)) return { threw: false };
       if (o.to in state) return { threw: true };
       state[o.to] = state[o.from];
@@ -290,9 +303,15 @@ function applyRenameModel(state: RenameState, op: RenameOp): { threw: boolean } 
 function applyRenameReactive(state: RenameState, op: RenameOp): { threw: boolean } {
   try {
     match(op)
-      .with({ type: "set" }, (o) => update(state, {}, { $set: { [o.field]: o.value } } as never))
-      .with({ type: "unset" }, (o) => update(state, {}, { $unset: { [o.field]: 1 } } as never))
-      .with({ type: "rename" }, (o) => update(state, {}, { $rename: { [o.from]: o.to } } as never))
+      .with({ type: "set" }, (o) =>
+        recordedUpdate(state, {}, { $set: { [o.field]: o.value } } as never),
+      )
+      .with({ type: "unset" }, (o) =>
+        recordedUpdate(state, {}, { $unset: { [o.field]: 1 } } as never),
+      )
+      .with({ type: "rename" }, (o) =>
+        recordedUpdate(state, {}, { $rename: { [o.from]: o.to } } as never),
+      )
       .exhaustive();
     return { threw: false };
   } catch {
@@ -334,11 +353,12 @@ describe("property-based undo round-trip", () => {
         for (const operation of operations) {
           const ops = operationToOps(operation);
           const before = structuredClone(unwrap(store));
-          const { undo } = update(store, {}, ops as never);
+          const { undo } = recordedUpdate(store, {}, ops as never);
           update(store, {}, undo);
           expect(unwrap(store)).toEqual(before);
 
-          // Advance to the post-operation state for the next step in the chain.
+          // Advance to the post-operation state for the next step in the chain
+          // (raw update — the forward op was already recorded above).
           update(store, {}, ops as never);
         }
       }),

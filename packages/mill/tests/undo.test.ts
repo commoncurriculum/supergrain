@@ -2,6 +2,7 @@ import { createReactive, unwrap } from "@supergrain/kernel";
 import { describe, expect, it } from "vitest";
 
 import { update } from "../src";
+import { recordedUpdate } from "./helpers";
 
 // The defining invariant of the data-first undo: applying `undo` to the
 // post-update document reverses the exact changes, restoring the original
@@ -11,7 +12,8 @@ import { update } from "../src";
 function roundTrip<T extends object>(initial: T, ops: any, query: any = {}) {
   const before = structuredClone(initial);
   const store = createReactive<T>(structuredClone(initial));
-  const { undo } = update(store, query, ops);
+  // Forward op goes through the oracle recorder; the undo application stays raw.
+  const { undo } = recordedUpdate(store, query, ops);
   const afterUpdate = structuredClone(unwrap(store));
   update(store, {}, undo);
   expect(unwrap(store)).toEqual(before);

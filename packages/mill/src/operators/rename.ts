@@ -35,7 +35,8 @@ function planRename(context: OperatorContext, rawFrom: string, rawTo: string): R
   const from = resolvePaths(context.raw, rawFrom, context)[0]!;
   const to = resolvePaths(context.raw, rawTo, context)[0]!;
   if (from === to) {
-    return null;
+    // MongoDB rejects renaming a field to itself rather than no-op'ing.
+    throw new Error(`$rename source and destination must differ, but both are "${from}".`);
   }
   for (const path of [from, to]) {
     if (pathRunsThroughArray(context.raw, path)) {

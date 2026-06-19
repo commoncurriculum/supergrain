@@ -2,7 +2,7 @@ import { createReactive, unwrap } from "@supergrain/kernel";
 import { describe, expect, it } from "vitest";
 
 import { update } from "../src";
-import { applyWithUndo } from "./helpers";
+import { applyWithUndo, recordedUpdate } from "./helpers";
 
 // =============================================================================
 // Positional updates
@@ -49,7 +49,7 @@ describe("positional $ — $elemMatch query", () => {
   it("works with $inc and produces an undo that reverses it", () => {
     const store = createReactive(board());
 
-    const { undo } = update(
+    const { undo } = recordedUpdate(
       store,
       { cards: { $elemMatch: { id: "card-3" } } },
       { $inc: { "cards.$.votes": 5 } },
@@ -198,7 +198,7 @@ describe("positional $[] — all elements", () => {
   it("produces an undo that restores every element", () => {
     const store = createReactive(board());
 
-    const { undo } = update(store, {}, { $inc: { "cards.$[].votes": 10 } });
+    const { undo } = recordedUpdate(store, {}, { $inc: { "cards.$[].votes": 10 } });
     expect(store.cards.map((c) => c.votes)).toEqual([10, 13, 17]);
 
     update(store, {}, undo);
@@ -269,7 +269,7 @@ describe("positional $[<identifier>] — arrayFilters", () => {
       ],
     });
 
-    const { undo } = update(
+    const { undo } = recordedUpdate(
       store,
       {},
       { $set: { "items.$[pending].done": true } },

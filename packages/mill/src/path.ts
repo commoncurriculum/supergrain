@@ -135,6 +135,13 @@ export function ensureParentPath(target: object, path: string): { parent: any; k
     const existing = (current as any)[part];
     if (existing === undefined) {
       // Absent intermediate — Mongo creates the missing branch as an object.
+      // Growing an array through an out-of-bounds index pads the gap with null
+      // (Mongo's behavior) rather than leaving sparse holes.
+      if (Array.isArray(current) && ARRAY_INDEX.test(part)) {
+        for (let j = current.length; j < Number(part); j++) {
+          setProperty(current, String(j), null);
+        }
+      }
       setProperty(current, part, {});
     } else if (!isContainer(existing)) {
       // A scalar (number/string/boolean/null) can't gain a subfield: Mongo

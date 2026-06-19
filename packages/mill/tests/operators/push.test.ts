@@ -131,6 +131,63 @@ describe("$push modifiers", () => {
     rewindAndAssertRestored();
   });
 
+  it("$sort orders mixed types by MongoDB's BSON type ordering (numbers before strings)", () => {
+    const store = createReactive<any>({ a: [3, "x", 1] });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $push: { a: { $each: [], $sort: 1 } } },
+    );
+    expect(store.a).toEqual([1, 3, "x"]);
+    rewindAndAssertRestored();
+  });
+
+  it("$sort places a document missing the sort key first (missing sorts as null)", () => {
+    const store = createReactive<any>({
+      players: [{ score: 5 }, { name: "no-score" }],
+    });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $push: { players: { $each: [], $sort: { score: 1 } } } },
+    );
+    expect(store.players).toEqual([{ name: "no-score" }, { score: 5 }]);
+    rewindAndAssertRestored();
+  });
+
+  it("$sort orders across BSON types (number < string < object < array < boolean)", () => {
+    const store = createReactive<any>({ a: [true, [1], { x: 1 }, "s", 5] });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $push: { a: { $each: [], $sort: 1 } } },
+    );
+    expect(store.a).toEqual([5, "s", { x: 1 }, [1], true]);
+    rewindAndAssertRestored();
+  });
+
+  it("$sort orders booleans false before true", () => {
+    const store = createReactive<any>({ a: [true, false, true] });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $push: { a: { $each: [], $sort: 1 } } },
+    );
+    expect(store.a).toEqual([false, true, true]);
+    rewindAndAssertRestored();
+  });
+
+  it("$sort keeps elements that both lack the sort key stable", () => {
+    const store = createReactive<any>({ players: [{ name: "a" }, { name: "b" }] });
+    const { rewindAndAssertRestored } = applyWithUndo(
+      store,
+      {},
+      { $push: { players: { $each: [], $sort: { score: 1 } } } },
+    );
+    expect(store.players).toEqual([{ name: "a" }, { name: "b" }]);
+    rewindAndAssertRestored();
+  });
+
   it("$sort orders document elements by a field", () => {
     const store = createReactive({
       players: [

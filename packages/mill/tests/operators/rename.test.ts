@@ -53,6 +53,12 @@ describe("MongoDB Style Operators", () => {
     expect(store.user).toEqual({ name: "John" });
   });
 
+  it("rejects renaming a field to itself, like MongoDB", () => {
+    const store = createReactive<any>({ a: 1 });
+    expect(() => update(store, {}, { $rename: { a: "a" } })).toThrow(/must differ/i);
+    expect(store.a).toBe(1);
+  });
+
   it("$rename ignores missing source paths", () => {
     const store = createReactive<any>({ user: { name: "Jane" } });
     const { undo, rewindAndAssertRestored } = applyWithUndo(
