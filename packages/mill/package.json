@@ -46,7 +46,7 @@
     "lint": "oxlint -c ../../.oxlintrc.json src/",
     "size": "size-limit",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@supergrain/kernel": "workspace:*",
@@ -54,6 +54,7 @@
     "ts-pattern": "^5.9.0"
   },
   "devDependencies": {
+    "@microsoft/api-extractor": "^7.52.13",
     "mongodb": "^7.3.0",
     "mongodb-memory-server": "^11.2.0",
     "vitest": "4.1.0"
