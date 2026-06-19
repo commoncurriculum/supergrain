@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/devtools",
-  "version": "6.3.0",
+  "version": "7.0.0",
   "description": "Devtools for Supergrain: a floating panel to inspect the silo document store (and more, eventually).",
   "keywords": [
     "devtools",
