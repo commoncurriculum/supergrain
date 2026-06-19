@@ -10,28 +10,22 @@ interface RenameMove {
   value: unknown;
 }
 
-// MongoDB forbids $rename when the source or destination lives inside an array
-// element ("The source field cannot be an array element ... has an array field
-// called ..."). Reject any path whose traversal passes through an array.
-function assertNotArrayElement(raw: object, path: string): void {
+// Whether `path` traverses an array on the way to its leaf. MongoDB forbids
+// $rename through array elements ("The source field cannot be an array element
+// ... has an array field called ...").
+function pathRunsThroughArray(raw: object, path: string): boolean {
   const parts = splitPath(path);
-  let current: unknown = raw;
+  let node: unknown = raw;
   for (let i = 0; i < parts.length - 1; i++) {
-    if (Array.isArray(current)) {
-      throw new TypeError(
-        `$rename cannot operate on "${path}": MongoDB forbids $rename through array elements.`,
-      );
+    if (Array.isArray(node)) {
+      return true;
     }
-    if (!isContainer(current)) {
-      return; // a missing/scalar ancestor is handled by the normal no-op/throw paths
+    if (!isContainer(node)) {
+      return false; // a scalar/missing ancestor can't contain an array
     }
-    current = (current as Record<string, unknown>)[parts[i]!];
+    node = (node as Record<string, unknown>)[parts[i]!];
   }
-  if (Array.isArray(current)) {
-    throw new TypeError(
-      `$rename cannot operate on "${path}": MongoDB forbids $rename through array elements.`,
-    );
-  }
+  return Array.isArray(node);
 }
 
 // Returns the move to perform, or null when the rename is a no-op (source and
@@ -43,8 +37,13 @@ function planRename(context: OperatorContext, rawFrom: string, rawTo: string): R
   if (from === to) {
     return null;
   }
-  assertNotArrayElement(context.raw, from);
-  assertNotArrayElement(context.raw, to);
+  for (const path of [from, to]) {
+    if (pathRunsThroughArray(context.raw, path)) {
+      throw new TypeError(
+        `$rename cannot operate on "${path}": MongoDB forbids $rename through array elements.`,
+      );
+    }
+  }
   const source = resolveParentPath(context.raw, from);
   if (!source) {
     // A non-object intermediate blocks traversal — Mongo rejects this ("cannot

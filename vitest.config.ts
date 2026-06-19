@@ -50,19 +50,10 @@ export default defineConfig({
         resolve,
         ssr,
       },
-      {
-        test: {
-          include: ["packages/mill/**/*.test.{ts,tsx}"],
-          environment: "node",
-          // mill validates every mutating test against a real mongod; boot it
-          // once and replay after each test (mirrors packages/mill/vitest.config.ts).
-          globalSetup: ["./packages/mill/tests/global-setup.ts"],
-          setupFiles: ["./packages/mill/tests/setup.ts"],
-          hookTimeout: 240_000,
-        },
-        resolve,
-        ssr,
-      },
+      // mill runs under its own config (node env + the real-mongod oracle:
+      // globalSetup/setupFiles/hookTimeout). Referencing the file keeps that
+      // setup in one place instead of duplicating it here.
+      "./packages/mill/vitest.config.ts",
       {
         test: {
           include: ["packages/silo/tests/**/*.test.{ts,tsx}"],
