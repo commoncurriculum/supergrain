@@ -5,7 +5,7 @@
     "correctness": "error",
     "suspicious": "error",
     "pedantic": "error",
-    "style": "error"
+    "style": "error",
   },
   "rules": {
     "unicorn/no-null": "off",
@@ -19,6 +19,8 @@
     "max-lines": "off",
     "max-lines-per-function": "off",
     "curly": "off",
-    "typescript/array-type": ["error", { "default": "generic" }]
-  }
+    "no-nested-ternary": "off",
+    "unicorn/no-nested-ternary": "off",
+    "typescript/array-type": ["error", { "default": "generic" }],
+  },
 }
