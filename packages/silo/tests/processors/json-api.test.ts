@@ -1,6 +1,6 @@
 import type { DocumentStore } from "../../src";
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { jsonApiProcessor } from "../../src/processors/json-api";
 import { makePost, makeUser, type TypeToModel } from "../example-app";
@@ -160,6 +160,16 @@ describe("jsonApiProcessor", () => {
       { type: "user", doc: u2 },
       { type: "user", doc: u3 },
     ]);
+  });
+
+  it("accepts a single object (non-array) for `data` and inserts it", () => {
+    // JSON-API allows `data` to be a single resource object when fetching by id.
+    const { store, inserts } = makeFakeStore();
+    const userWithType = { ...makeUser("1"), type: "user" as const };
+
+    jsonApiProcessor({ data: userWithType }, { store, type: "user", ids: [] });
+
+    expect(inserts).toEqual([{ type: "user", doc: userWithType }]);
   });
 
   it("handles an empty envelope ({}) without throwing or inserting anything", () => {
