@@ -81,7 +81,7 @@ export interface JsonApiDocument<
  * Each resource object carries its own `type` and `id` per the JSON-API spec.
  */
 interface JsonApiEnvelope {
-  data?: ReadonlyArray<{ id: string; type: string }>;
+  data?: { id: string; type: string } | ReadonlyArray<{ id: string; type: string }>;
   included?: ReadonlyArray<{ id: string; type: string }>;
 }
 
@@ -115,7 +115,11 @@ export function jsonApiProcessor<M extends DocumentTypes>(
   { store }: ProcessorContext<M>,
 ): void {
   const envelope = response as JsonApiEnvelope;
-  const data = envelope.data ?? [];
+  const data = envelope.data
+    ? Array.isArray(envelope.data)
+      ? envelope.data
+      : [envelope.data]
+    : [];
   const included = envelope.included ?? [];
   for (const doc of data) {
     store.insertDocument(doc.type as keyof M & string, doc as unknown as M[keyof M & string]);
