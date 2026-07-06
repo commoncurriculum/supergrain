@@ -96,6 +96,17 @@ describe("undo snapshots preserve prototype flavor", () => {
     const raw = unwrap(store) as Record<string, any>;
     expect(raw.items[0]).toBe(raw.items[1]);
   });
+
+  it("preserves shared Date references within one snapshot", () => {
+    const shared = new Date("2026-01-02T03:04:05Z");
+    const store = createReactive({ dates: [shared, shared] });
+
+    const { undo } = update(store, {}, { $set: { dates: [] } } as never);
+    update(store, {}, undo);
+
+    const raw = unwrap(store) as Record<string, any>;
+    expect(raw.dates[0]).toBe(raw.dates[1]);
+  });
 });
 
 describe("fabricated intermediate branches match the document's flavor", () => {
