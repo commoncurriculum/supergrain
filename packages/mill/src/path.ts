@@ -131,6 +131,9 @@ export function resolveParentPath(
 
 export function ensureParentPath(target: object, path: string): { parent: any; key: string } {
   const parts = splitPath(path);
+  // Fabricated branches match the document's flavor: a null-prototype document
+  // grows null-prototype branches, a plain-object document grows plain ones.
+  const branchPrototype = Object.getPrototypeOf(target) === null ? null : Object.prototype;
   let current: any = target;
 
   for (let i = 0; i < parts.length - 1; i++) {
@@ -145,7 +148,7 @@ export function ensureParentPath(target: object, path: string): { parent: any; k
           setProperty(current, String(j), null);
         }
       }
-      setProperty(current, part, {});
+      setProperty(current, part, Object.create(branchPrototype));
     } else if (!isContainer(existing)) {
       // A scalar (number/string/boolean/null) can't gain a subfield: Mongo
       // rejects rather than silently overwriting it. e.g. {a: 42} + "a.b".
