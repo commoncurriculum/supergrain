@@ -119,7 +119,12 @@ export function cloneValue<V>(value: V, seen = new WeakMap<object, unknown>()): 
   const copy: Record<string, unknown> = Object.create(Object.getPrototypeOf(source));
   seen.set(value, copy);
   for (const key of Object.keys(source)) {
-    copy[key] = cloneValue(source[key], seen);
+    Object.defineProperty(copy, key, {
+      value: cloneValue(source[key], seen),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return copy as V;
 }
