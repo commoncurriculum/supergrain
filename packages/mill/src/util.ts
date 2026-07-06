@@ -103,7 +103,9 @@ export function cloneValue<V>(value: V, seen = new WeakMap<object, unknown>()): 
     return already as V;
   }
   if (value instanceof Date) {
-    return new Date(value) as V;
+    const dateCopy = new Date(value);
+    seen.set(value, dateCopy);
+    return dateCopy as V;
   }
   if (Array.isArray(value)) {
     const copy: Array<unknown> = [];
