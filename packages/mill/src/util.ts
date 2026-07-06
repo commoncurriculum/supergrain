@@ -82,10 +82,42 @@ export function isEqual(a: unknown, b: unknown): boolean {
  * Snapshot a value so a captured undo fragment can't be corrupted by later
  * in-place mutation of the live document. Primitives pass through untouched;
  * containers are deep-cloned.
+ *
+ * The clone is prototype-faithful: each object is recreated with its own
+ * prototype, so a null-prototype object snapshots (and therefore restores) as
+ * null-prototype and a plain object as plain. `structuredClone` is unsuitable
+ * here — it silently normalizes every object to `Object.prototype`, so
+ * replaying an undo would corrupt a null-prototype document's flavor. Shared
+ * references (and cycles) within one snapshot are preserved via `seen`.
+ *
+ * The supported domain matches `isEqual`'s: primitives, `Date`s, arrays, and
+ * structural objects. Exotic containers with internal slots (`Map`, `Set`) are
+ * not valid mill document values and won't survive the clone.
  */
-export function cloneValue<V>(value: V): V {
+export function cloneValue<V>(value: V, seen = new WeakMap<object, unknown>()): V {
   if (value === null || typeof value !== "object") {
     return value;
   }
-  return structuredClone(value);
+  const already = seen.get(value);
+  if (already !== undefined) {
+    return already as V;
+  }
+  if (value instanceof Date) {
+    return new Date(value) as V;
+  }
+  if (Array.isArray(value)) {
+    const copy: Array<unknown> = [];
+    seen.set(value, copy);
+    for (const item of value) {
+      copy.push(cloneValue(item, seen));
+    }
+    return copy as V;
+  }
+  const source = value as Record<string, unknown>;
+  const copy: Record<string, unknown> = Object.create(Object.getPrototypeOf(source));
+  seen.set(value, copy);
+  for (const key of Object.keys(source)) {
+    copy[key] = cloneValue(source[key], seen);
+  }
+  return copy as V;
 }
