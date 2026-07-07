@@ -1,4 +1,4 @@
-import { setProperty, deleteProperty } from "@supergrain/kernel/internal";
+import { deleteProperty, setProperty } from "@supergrain/kernel/internal";
 import { match } from "ts-pattern";
 
 import { getValueAtPath, type PathWriteOptions, resolveParentPath, splitPath } from "./path";
@@ -53,9 +53,9 @@ export function resolveArrayTarget(
   operator: string,
   raw: object,
   path: string,
-  options: PathWriteOptions = {},
+  options: PathWriteOptions,
 ): ArrayTarget {
-  const allowNull = options.allowNullIntermediates ?? false;
+  const allowNull = options.allowNullIntermediates;
   const result = resolveParentPath(raw, path);
   if (!result) {
     // The parent path isn't fully present. A scalar in the way is always an

@@ -140,13 +140,13 @@ export interface PathWriteOptions {
    * stays faithful to MongoDB (which throws "Cannot create field ... in element
    * {x: null}"); opt in via `update(..., { allowNullIntermediates: true })`.
    */
-  allowNullIntermediates?: boolean;
+  allowNullIntermediates: boolean;
 }
 
 export function ensureParentPath(
   target: object,
   path: string,
-  options: PathWriteOptions = {},
+  options: PathWriteOptions,
 ): { parent: any; key: string } {
   const parts = splitPath(path);
   // Fabricated branches match the document's flavor: a null-prototype document
@@ -188,7 +188,7 @@ export function setValueAtPath(
   target: object,
   path: string,
   value: unknown,
-  options: PathWriteOptions = {},
+  options: PathWriteOptions,
 ): void {
   const { parent, key } = ensureParentPath(target, path, options);
   if (Array.isArray(parent) && isArrayIndex(key)) {
