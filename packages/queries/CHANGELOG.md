@@ -1,5 +1,12 @@
 # @supergrain/queries
 
+## 7.1.0
+
+### Patch Changes
+
+- @supergrain/kernel@7.1.0
+- @supergrain/silo@7.1.0
+
 ## 7.0.1
 
 ### Patch Changes
