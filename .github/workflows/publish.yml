@@ -64,13 +64,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No NPM_TOKEN: authentication uses npm trusted publishing (OIDC).
           # The job's `id-token: write` permission lets npm mint a short-lived,
-          # repo-scoped credential, so no long-lived token is needed. Each
-          # published package (@supergrain/kernel, @supergrain/mill,
-          # @supergrain/silo) must have a Trusted Publisher configured at
-          # npmjs.com pointing at commoncurriculum/supergrain + publish.yml.
+          # repo-scoped credential, so no long-lived token is needed. Every
+          # published @supergrain package (kernel, mill, silo, husk, queries,
+          # devtools) must have a Trusted Publisher configured at npmjs.com
+          # pointing at commoncurriculum/supergrain + publish.yml.
           # Provenance attestations are generated automatically on OIDC
           # publishes; set it explicitly so intent is clear and verifiable.
           NPM_CONFIG_PROVENANCE: "true"
+
+      # Rename the "Release: Version Packages" PR to the version it releases, so
+      # the squash-merge commit on main reads e.g. "7.1.0 (#127)" instead of a
+      # generic title. The action's `title`/`commit` inputs are evaluated before
+      # `changeset version` runs, so the version isn't known yet there — we set
+      # it here after the bump. All @supergrain/* share one version (fixed
+      # group), so read it from any grouped package. Runs only on the version-PR
+      # path (pending changesets), not the publish path.
+      - name: Name the Release PR after its version
+        if: steps.changesets.outputs.hasChangesets == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./packages/kernel/package.json').version")
+          PR=$(gh pr list --head changeset-release/main --state open --json number --jq '.[0].number')
+          if [ -n "$PR" ]; then
+            gh pr edit "$PR" --title "$VERSION"
+            echo "Renamed release PR #$PR to $VERSION"
+          else
+            echo "No open release PR found for changeset-release/main"
+          fi
 
       # `pnpm -r publish` (required for correct `workspace:*` rewriting) does not
       # emit the `New tag:` output that changesets/action parses, so the action
