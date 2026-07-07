@@ -71,6 +71,9 @@ Don't retry these. Each doc explains what was tried and why it failed.
 [React Performance Attempts](failed-approaches/react-performance-optimization-attempts.md) |
 [JS Framework Benchmark Attempts](failed-approaches/js-framework-benchmark-optimization-attempts.md)
 
+**Mill (update operators):**
+[Why not mingo](failed-approaches/mingo-for-mill-operators.md)
+
 **Store internals:**
 [Context Switching](failed-approaches/context-switching-optimization.md) |
 [Inline Primitive Checks](failed-approaches/inline-primitive-checks-optimization.md) |

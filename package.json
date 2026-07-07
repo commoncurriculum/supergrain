@@ -31,6 +31,8 @@
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
+    "@typescript/native-preview": "7.0.0-dev.20260618.1",
+    "@vitejs/plugin-react": "^6.0.2",
     "@vitest/browser": "^4.1.0",
     "@vitest/browser-playwright": "^4.1.0",
     "@vitest/coverage-v8": "4.1.0",
@@ -44,8 +46,8 @@
     "size-limit": "^12.1.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.9.2",
-    "vite": "^7.1.5",
-    "vite-plugin-dts": "^4.5.4",
+    "vite": "^8.0.16",
+    "vite-plugin-dts": "^5.0.2",
     "vitest": "^4.1.0"
   },
   "packageManager": "pnpm@10.6.3"

@@ -11,6 +11,7 @@
     "unicorn/no-null": "off",
     "no-magic-numbers": "off",
     "no-ternary": "off",
+    "max-params": "off",
     "sort-keys": "off",
     "sort-imports": "off",
     "func-style": "off",
@@ -18,6 +19,8 @@
     "max-lines": "off",
     "max-lines-per-function": "off",
     "curly": "off",
+    "no-nested-ternary": "off",
+    "unicorn/no-nested-ternary": "off",
     "typescript/array-type": ["error", { "default": "generic" }]
   }
 }

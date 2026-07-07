@@ -1,17 +1,17 @@
 {
   "name": "js-framework-benchmark-react-supergrain-main",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "private": true,
   "scripts": {
     "dev": "vite",
     "build-prod": "vite build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/dist.test.ts",
     "test:perf": "pnpm build-prod && vitest run --config vitest.dist.config.ts src/perf.test.ts --reporter=verbose 2>&1 | tee perf-results.txt",
     "perf:stats": "node perf-stats.ts"
   },
   "dependencies": {
-    "@supergrain/kernel": "6.2.0",
+    "@supergrain/kernel": "workspace:*",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
@@ -21,13 +21,13 @@
     "@types/ramda": "^0.31.1",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-react": "^6.0.2",
     "@vitest/browser": "4.1.0",
     "playwright": "^1.55.0",
     "ramda": "^0.32.0",
     "typescript": "^5.9.2",
-    "vite": "^7.1.5",
-    "vite-plugin-dts": "^4.5.4",
+    "vite": "^8.0.16",
+    "vite-plugin-dts": "^5.0.2",
     "vitest": "4.1.0"
   },
   "js-framework-benchmark": {

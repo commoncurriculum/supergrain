@@ -1,6 +1,5 @@
 import { createReactive, computed } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
-import { update } from "@supergrain/mill";
 import { render, act, cleanup } from "@testing-library/react";
 import { describe, it, expect, beforeEach } from "vitest";
 
@@ -85,7 +84,7 @@ describe("Deep Nesting Operations in React Components", () => {
         ],
       },
     });
-    return { state, update };
+    return { state };
   };
 
   // React components for testing deep nesting display - all wrapped in tracked()
@@ -218,18 +217,13 @@ describe("Deep Nesting Operations in React Components", () => {
   });
 
   it("should update React components when deeply nested fields change", async () => {
-    const { state, update } = createComplexStore();
+    const { state } = createComplexStore();
 
     const { container } = render(<OrganizationComponent store={state} />);
 
     // Update a deeply nested task title (path past Path<T> default depth — cast to bypass)
     await act(async () => {
-      update(state, {
-        $set: {
-          "organization.departments.0.teams.0.members.0.projects.0.tasks.0.title":
-            "Database Refactoring",
-        },
-      } as any);
+      getTask(state, 0, 0, 0, 0, 0).title = "Database Refactoring";
       await flushMicrotasks();
     });
 
@@ -239,21 +233,17 @@ describe("Deep Nesting Operations in React Components", () => {
   });
 
   it("should update React components when nested objects are created", async () => {
-    const { state, update } = createComplexStore();
+    const { state } = createComplexStore();
 
     const { container } = render(<OrganizationComponent store={state} />);
 
     // Add a new task to existing project (path past Path<T> default depth — cast to bypass)
     await act(async () => {
-      update(state, {
-        $push: {
-          "organization.departments.0.teams.0.members.0.projects.0.tasks": {
-            id: "task-3",
-            title: "Performance Testing",
-            completed: false,
-          },
-        },
-      } as any);
+      getProject(state, 0, 0, 0, 0).tasks.push({
+        id: "task-3",
+        title: "Performance Testing",
+        completed: false,
+      });
       await flushMicrotasks();
     });
 
@@ -266,21 +256,17 @@ describe("Deep Nesting Operations in React Components", () => {
   });
 
   it("should update React components when nested arrays are reordered", async () => {
-    const { state, update } = createComplexStore();
+    const { state } = createComplexStore();
 
     const { container } = render(<OrganizationComponent store={state} />);
 
     // First add another task so we have something to reorder (path past depth limit)
     await act(async () => {
-      update(state, {
-        $push: {
-          "organization.departments.0.teams.0.members.0.projects.0.tasks": {
-            id: "task-3",
-            title: "Performance Testing",
-            completed: false,
-          },
-        },
-      } as any);
+      getProject(state, 0, 0, 0, 0).tasks.push({
+        id: "task-3",
+        title: "Performance Testing",
+        completed: false,
+      });
       await flushMicrotasks();
     });
 
@@ -288,11 +274,7 @@ describe("Deep Nesting Operations in React Components", () => {
     await act(async () => {
       const currentTasks = getProject(state, 0, 0, 0, 0).tasks;
       const reorderedTasks = [currentTasks[2], currentTasks[0], currentTasks[1]];
-      update(state, {
-        $set: {
-          "organization.departments.0.teams.0.members.0.projects.0.tasks": reorderedTasks,
-        },
-      } as any);
+      getProject(state, 0, 0, 0, 0).tasks = reorderedTasks;
       await flushMicrotasks();
     });
 
@@ -304,17 +286,13 @@ describe("Deep Nesting Operations in React Components", () => {
   });
 
   it("should update React components when deeply nested metrics change", async () => {
-    const { state, update } = createComplexStore();
+    const { state } = createComplexStore();
 
     const { container } = render(<OrganizationComponent store={state} />);
 
     // Update project progress (path past depth limit)
     await act(async () => {
-      update(state, {
-        $set: {
-          "organization.departments.0.teams.0.members.0.projects.0.metrics.progress": 0.85,
-        },
-      } as any);
+      getProject(state, 0, 0, 0, 0).metrics.progress = 0.85;
       await flushMicrotasks();
     });
 
@@ -324,35 +302,31 @@ describe("Deep Nesting Operations in React Components", () => {
   });
 
   it("should handle adding new departments and teams in React", async () => {
-    const { state, update } = createComplexStore();
+    const { state } = createComplexStore();
 
     const { container } = render(<OrganizationComponent store={state} />);
 
     // Add a new department
     await act(async () => {
-      update(state, {
-        $push: {
-          "organization.departments": {
-            id: "dept-2",
-            name: "Marketing",
-            budget: 200000,
-            teams: [
+      state.organization.departments.push({
+        id: "dept-2",
+        name: "Marketing",
+        budget: 200000,
+        teams: [
+          {
+            id: "team-2",
+            name: "Digital Marketing",
+            members: [
               {
-                id: "team-2",
-                name: "Digital Marketing",
-                members: [
-                  {
-                    id: "emp-2",
-                    name: "Bob Smith",
-                    role: "Marketing Manager",
-                    skills: ["SEO", "Analytics"],
-                    projects: [],
-                  },
-                ],
+                id: "emp-2",
+                name: "Bob Smith",
+                role: "Marketing Manager",
+                skills: ["SEO", "Analytics"],
+                projects: [],
               },
             ],
           },
-        },
+        ],
       });
       await flushMicrotasks();
     });
@@ -369,7 +343,7 @@ describe("Deep Nesting Operations in React Components", () => {
   });
 
   it("should update React components with computed values based on deep nesting", async () => {
-    const { state, update } = createComplexStore();
+    const { state } = createComplexStore();
     let computedValue = 0;
 
     const ComputedComponent = tracked(() => {
@@ -390,15 +364,11 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Add a new department with budget
     await act(async () => {
-      update(state, {
-        $push: {
-          "organization.departments": {
-            id: "dept-2",
-            name: "HR",
-            budget: 150000,
-            teams: [],
-          },
-        },
+      state.organization.departments.push({
+        id: "dept-2",
+        name: "HR",
+        budget: 150000,
+        teams: [],
       });
       await flushMicrotasks();
     });
@@ -407,7 +377,7 @@ describe("Deep Nesting Operations in React Components", () => {
   });
 
   it("should track fine-grained updates in React without over-rendering", async () => {
-    const { state, update } = createComplexStore();
+    const { state } = createComplexStore();
     let renderCount = 0;
 
     const TaskOnlyComponent = tracked(() => {
@@ -421,11 +391,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Update unrelated data - should not re-render
     await act(async () => {
-      update(state, {
-        $set: {
-          "organization.name": "TechCorp Updated",
-        },
-      });
+      state.organization.name = "TechCorp Updated";
       await flushMicrotasks();
     });
 
@@ -433,11 +399,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Update the accessed task - should re-render (path past depth limit)
     await act(async () => {
-      update(state, {
-        $set: {
-          "organization.departments.0.teams.0.members.0.projects.0.tasks.0.title": "Updated Task",
-        },
-      } as any);
+      getTask(state, 0, 0, 0, 0, 0).title = "Updated Task";
       await flushMicrotasks();
     });
 
@@ -446,7 +408,7 @@ describe("Deep Nesting Operations in React Components", () => {
   });
 
   it("should work correctly with tracked components and deep nesting", async () => {
-    const { state, update } = createComplexStore();
+    const { state } = createComplexStore();
     let orgRenderCount = 0;
     let deptRenderCount = 0;
     let teamRenderCount = 0;
@@ -583,11 +545,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Update a deep nested task property — path past depth limit
     await act(async () => {
-      update(state, {
-        $set: {
-          "organization.departments.0.teams.0.members.0.projects.0.tasks.0.completed": true,
-        },
-      } as any);
+      getTask(state, 0, 0, 0, 0, 0).completed = true;
       await flushMicrotasks();
     });
 
@@ -606,11 +564,7 @@ describe("Deep Nesting Operations in React Components", () => {
 
     // Update organization name - should re-render org but not nested components
     await act(async () => {
-      update(state, {
-        $set: {
-          "organization.name": "TechCorp Renamed",
-        },
-      });
+      state.organization.name = "TechCorp Renamed";
       await flushMicrotasks();
     });
 

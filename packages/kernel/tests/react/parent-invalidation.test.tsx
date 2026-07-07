@@ -5,7 +5,6 @@ import {
   resetProfiler,
 } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
-import { update } from "@supergrain/mill";
 import { render, act, cleanup } from "@testing-library/react";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
@@ -134,11 +133,7 @@ describe("Parent Invalidation Depth Tests", () => {
 
     // Test 1: Update deeply nested object property (path past Path<T> default depth)
     await act(async () => {
-      update(store, {
-        $set: {
-          "level0.level1.level2.level3.level4.value": "updated-deep",
-        },
-      } as any);
+      store.level0.level1.level2.level3.level4.value = "updated-deep";
       await flushMicrotasks();
     });
 
@@ -158,11 +153,7 @@ describe("Parent Invalidation Depth Tests", () => {
     const arrayBefore = arrayRenderCount;
     const arrayItemBefore = arrayItemRenderCount;
     await act(async () => {
-      update(store, {
-        $set: {
-          "array.0.nested.deep.value": "updated-array-deep",
-        },
-      });
+      store.array[0]!.nested.deep.value = "updated-array-deep";
       await flushMicrotasks();
     });
     expect(rootRenderCount).toBe(1); // still untouched
@@ -173,11 +164,7 @@ describe("Parent Invalidation Depth Tests", () => {
     // Test 3: Update intermediate level directly — replaces level2 object with a different shape
     const level2Before = level2RenderCount;
     await act(async () => {
-      update(store, {
-        $set: {
-          "level0.level1.level2": { newProp: "direct-update" },
-        },
-      } as any);
+      (store.level0.level1 as any).level2 = { newProp: "direct-update" };
       await flushMicrotasks();
     });
     // level2 accessed level2 which was replaced → should re-render exactly once
@@ -244,11 +231,7 @@ describe("Parent Invalidation Depth Tests", () => {
 
     // Update deeply nested property in array item
     await act(async () => {
-      update(store, {
-        $set: {
-          "items.0.details.meta.tag": "UPDATED",
-        },
-      });
+      store.items[0]!.details.meta.tag = "UPDATED";
       await flushMicrotasks();
     });
 

@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "jsx": "react-jsx",
+    "types": ["node"],
     "esModuleInterop": true,
     "moduleResolution": "bundler",
     "composite": true

@@ -109,60 +109,56 @@ describe("README Core Examples", () => {
 
   describe("Update Operators", () => {
     it("#DOC_TEST_46", () => {
-      const state = createReactive({
+      const store = createReactive({
         count: 0,
         user: { name: "John", age: 30, middleName: "M" },
         items: ["a", "b", "c"],
         tags: ["react"],
-        lowestScore: 100,
-        highestScore: 50,
+        cards: [
+          { id: "card-1", title: "One", done: false },
+          { id: "card-2", title: "Two", done: false },
+        ],
       });
 
-      // $set
-      update(state, { $set: { count: 10, "user.name": "Alice" } });
-      expect(state.count).toBe(10);
-      expect(state.user.name).toBe("Alice");
+      // Apply a standard Mongo update. The second argument is a query used only
+      // to resolve positional paths — pass {} when the update has none.
+      const result = update(
+        store,
+        {},
+        {
+          $set: { count: 10, "user.name": "Alice" },
+          $unset: { "user.middleName": "" },
+          $inc: { "user.age": 1 },
+          $push: { items: { $each: ["d", "e"] } },
+          $addToSet: { tags: "vue" },
+        },
+      );
 
-      // $unset
-      update(state, { $unset: { "user.middleName": 1 } });
-      expect("middleName" in state.user).toBe(false);
+      expect(result.doc).toBe(store);
+      expect(store.count).toBe(10);
+      expect(store.user.name).toBe("Alice");
+      expect("middleName" in store.user).toBe(false);
+      expect(store.user.age).toBe(31);
+      expect(store.items).toEqual(["a", "b", "c", "d", "e"]);
+      expect(store.tags).toEqual(["react", "vue"]);
 
-      // $inc
-      update(state, { $inc: { count: 1 } });
-      expect(state.count).toBe(11);
-      update(state, { $inc: { count: -5 } });
-      expect(state.count).toBe(6);
+      // `result.undo` is a Mongo update document that reverses the exact changes.
+      update(store, {}, result.undo);
+      expect(store.count).toBe(0);
+      expect(store.user.name).toBe("John");
+      expect(store.user.middleName).toBe("M");
+      expect(store.user.age).toBe(30);
+      expect(store.items).toEqual(["a", "b", "c"]);
+      expect(store.tags).toEqual(["react"]);
 
-      // $push
-      update(state, { $push: { items: "d" } });
-      expect(state.items).toContain("d");
-      update(state, { $push: { items: { $each: ["e", "f"] } } });
-      expect(state.items).toContain("e");
-      expect(state.items).toContain("f");
-
-      // $pull
-      update(state, { $pull: { items: "b" } });
-      expect(state.items).not.toContain("b");
-
-      // $addToSet
-      update(state, { $addToSet: { tags: "vue" } });
-      expect(state.tags).toContain("vue");
-
-      // $min / $max
-      update(state, { $min: { lowestScore: 50 } });
-      expect(state.lowestScore).toBe(50);
-      update(state, { $max: { highestScore: 100 } });
-      expect(state.highestScore).toBe(100);
-
-      // Batching
-      update(state, {
-        $set: { "user.name": "Bob" },
-        $inc: { count: 2 },
-        $push: { items: "g" },
-      });
-      expect(state.user.name).toBe("Bob");
-      expect(state.count).toBe(8);
-      expect(state.items).toContain("g");
+      // Positional `$`: the query selects the array element, `$` resolves to it.
+      update(
+        store,
+        { cards: { $elemMatch: { id: "card-2" } } },
+        { $set: { "cards.$.title": "Two!" } },
+      );
+      expect(store.cards[1].title).toBe("Two!");
+      expect(store.cards[0].title).toBe("One");
     });
   });
 });

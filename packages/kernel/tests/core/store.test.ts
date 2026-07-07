@@ -1,4 +1,3 @@
-import { update } from "@supergrain/mill";
 import { describe, it, expect, vi } from "vitest";
 
 import { createReactive, effect, unwrap, batch } from "../../src";
@@ -13,9 +12,9 @@ describe("Store", () => {
 
     it("should update state with the update function", () => {
       const state = createReactive({ count: 0 });
-      update(state, { $set: { count: 5 } });
+      state.count = 5;
       expect(state.count).toBe(5);
-      update(state, { $inc: { count: 1 } });
+      state.count += 1;
       expect(state.count).toBe(6);
     });
 
@@ -32,7 +31,7 @@ describe("Store", () => {
       expect(city).toBe("New York");
       expect(effectFn).toHaveBeenCalledTimes(1);
 
-      update(state, { $set: { "user.address.city": "Boston" } });
+      state.user.address.city = "Boston";
       expect(city).toBe("Boston");
       expect(effectFn).toHaveBeenCalledTimes(2);
     });
@@ -51,12 +50,12 @@ describe("Store", () => {
       expect(sum).toBe(6);
       expect(effectFn).toHaveBeenCalledTimes(1);
 
-      update(state, { $set: { "items.1": 5 } });
+      state.items[1] = 5;
       expect(state.items).toEqual([1, 5, 3]);
       expect(sum).toBe(9);
       expect(effectFn).toHaveBeenCalledTimes(2);
 
-      update(state, { $set: { items: [10, 20] } });
+      state.items = [10, 20];
       expect(sum).toBe(30);
       expect(effectFn).toHaveBeenCalledTimes(3);
     });
@@ -72,9 +71,9 @@ describe("Store", () => {
       expect(sum).toBe(3);
       expect(effectFn).toHaveBeenCalledTimes(1);
 
-      update(state, {
-        $set: { a: 10 },
-        $inc: { b: 18 },
+      batch(() => {
+        state.a = 10;
+        state.b += 18;
       });
 
       expect(sum).toBe(30);
@@ -154,10 +153,10 @@ describe("Store", () => {
       expect(nullValue).toBe(null);
       expect(undefValue).toBe(undefined);
 
-      update(state, { $set: { nullable: "value" } });
+      state.nullable = "value";
       expect(nullValue).toBe("value");
 
-      update(state, { $set: { undef: "value" } });
+      state.undef = "value";
       expect(undefValue).toBe("value");
     });
 
@@ -175,7 +174,7 @@ describe("Store", () => {
       });
 
       expect(bobTasks).toEqual(["task3"]);
-      update(state, { $push: { "users.1.tasks": "task4" } });
+      state.users[1].tasks.push("task4");
       expect(bobTasks).toEqual(["task3", "task4"]);
     });
 
@@ -187,7 +186,7 @@ describe("Store", () => {
       });
 
       expect(keys).toEqual(["initial"]);
-      update(state, { $set: { newProp: "value" } });
+      state.newProp = "value";
       expect(state.newProp).toBe("value");
       expect(keys.sort()).toEqual(["initial", "newProp"]);
     });
@@ -200,7 +199,7 @@ describe("Store", () => {
       });
       expect(keys.sort()).toEqual(["a", "b"]);
 
-      update(state, { $unset: { b: 1 } });
+      delete state.b;
       expect(keys.sort()).toEqual(["a"]);
       expect(state.b).toBeUndefined();
     });
@@ -281,7 +280,7 @@ describe("Store", () => {
       });
       expect(value).toBe(1);
 
-      update(state, { $unset: { a: 1 } });
+      delete state.a;
       expect(value).toBeUndefined();
     });
 

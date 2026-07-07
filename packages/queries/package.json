@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/queries",
-  "version": "6.2.0",
+  "version": "7.0.1",
   "description": "Pagination + live-subscription query primitive for @supergrain/silo",
   "keywords": [
     "query",
@@ -46,13 +46,14 @@
     "lint": "oxlint -c ../../.oxlintrc.json src/",
     "test": "vitest run --config vitest.browser.config.ts",
     "test:watch": "vitest --config vitest.browser.config.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@supergrain/kernel": "workspace:*",
     "@supergrain/silo": "workspace:*"
   },
   "devDependencies": {
+    "@microsoft/api-extractor": "^7.52.13",
     "@vitest/browser": "4.1.0",
     "@vitest/browser-playwright": "4.1.0",
     "effect": "^3.21.2",
