@@ -1,4 +1,7 @@
-# @supergrain/kernel
+---
+title: Kernel
+description: A fast, ergonomic reactive store for React.
+---
 
 A fast, ergonomic reactive store for React.
 
@@ -155,7 +158,7 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
 
   > Coalesces signal writes inside `fn` into a single notification. Throws if `fn` returns a Promise (must be sync).
 
-> Side-effect primitives (`resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`) and the `modifier` DOM helper live in [`@supergrain/husk`](../husk/README.md) — a thin layer built on top of this package.
+> Side-effect primitives (`resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`) and the `modifier` DOM helper live in [`@supergrain/husk`](/docs/husk) — a thin layer built on top of this package.
 
 ### React
 
@@ -184,9 +187,9 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
 - `<For each={array} parent={ref?}>{item => ...}</For>`
   > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
 
-> React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](../husk/README.md).
+> React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](/docs/husk).
 
-See how Supergrain compares to useState, Zustand, Redux, and MobX in the [comparison guide](https://commoncurriculum.github.io/supergrain/docs/comparison).
+See how Supergrain compares to useState, Zustand, Redux, and MobX in the [comparison guide](/docs/comparison).
 
 ## Features
 
@@ -412,7 +415,7 @@ Path autocompletion and type checking work up to 5 levels of nesting. Beyond tha
 <details>
 <summary><strong>How does this compare to other signal-based React libraries?</strong></summary>
 
-See the [Comparison Guide](https://commoncurriculum.github.io/supergrain/docs/comparison). Briefly: most signal libraries (Preact Signals, MobX, Jotai) require you to wrap individual values in signal/atom containers. Supergrain wraps a _whole object tree_ in a Proxy, so you write plain `store.user.name = "x"` and reads/writes are tracked automatically. Internally we use alien-signals for propagation, and `tracked()` gives per-component subscription scoping — closer in spirit to Solid's reactive components than to React Compiler's auto-memoization.
+See the [Comparison Guide](/docs/comparison). Briefly: most signal libraries (Preact Signals, MobX, Jotai) require you to wrap individual values in signal/atom containers. Supergrain wraps a _whole object tree_ in a Proxy, so you write plain `store.user.name = "x"` and reads/writes are tracked automatically. Internally we use alien-signals for propagation, and `tracked()` gives per-component subscription scoping — closer in spirit to Solid's reactive components than to React Compiler's auto-memoization.
 
 </details>
 
