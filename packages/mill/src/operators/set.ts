@@ -1,7 +1,7 @@
 import { getValueAtPath, hasValueAtPath, setValueAtPath } from "../path";
 import { capturePathUndo } from "../undo";
 import { isEqual } from "../util";
-import { eachPath, type OperatorContext } from "./shared";
+import { eachPath, type OperatorContext, pathWriteOptions } from "./shared";
 
 export function $set(context: OperatorContext, operations: Record<string, unknown>): void {
   eachPath(context, operations, (path, value) => {
@@ -9,6 +9,6 @@ export function $set(context: OperatorContext, operations: Record<string, unknow
       return; // no-op
     }
     capturePathUndo(context.undo, context.raw, path);
-    setValueAtPath(context.raw, path, value);
+    setValueAtPath(context.raw, path, value, pathWriteOptions(context));
   });
 }

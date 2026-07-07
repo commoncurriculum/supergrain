@@ -1,7 +1,7 @@
 import { setProperty, deleteProperty } from "@supergrain/kernel/internal";
 import { match } from "ts-pattern";
 
-import { getValueAtPath, resolveParentPath, splitPath } from "./path";
+import { getValueAtPath, type PathWriteOptions, resolveParentPath, splitPath } from "./path";
 import { describeValue, isContainer, isObject } from "./util";
 
 // ─── array primitives (fine-grained, in place) ──────────────────────────────
@@ -30,28 +30,38 @@ export interface ArrayTarget {
 // traversal), as opposed to merely absent. A scalar in the way is an error for
 // every array operator; a merely-absent ancestor means the field doesn't exist
 // yet (Mongo creates it for $push/$addToSet, no-ops for $pull/$pullAll/$pop).
-function pathBlockedByScalar(raw: object, path: string): boolean {
+// With `allowNullIntermediates`, a `null` ancestor counts as absent (creatable)
+// too rather than a blocker.
+function pathBlockedByScalar(raw: object, path: string, allowNull: boolean): boolean {
   const parts = splitPath(path);
   let current: unknown = raw;
+  const creatable = (value: unknown): boolean =>
+    value === undefined || (allowNull && value === null);
   for (let i = 0; i < parts.length - 1; i++) {
-    if (current === undefined) {
-      return false; // an absent ancestor — creatable, not blocked
+    if (creatable(current)) {
+      return false; // an absent (or null, when allowed) ancestor — creatable, not blocked
     }
     if (!isContainer(current)) {
       return true; // a scalar ancestor blocks the path
     }
     current = (current as Record<string, unknown>)[parts[i]!];
   }
-  return current !== undefined && !isContainer(current); // a scalar leaf-parent blocks too
+  return !creatable(current) && !isContainer(current); // a scalar leaf-parent blocks too
 }
 
-export function resolveArrayTarget(operator: string, raw: object, path: string): ArrayTarget {
+export function resolveArrayTarget(
+  operator: string,
+  raw: object,
+  path: string,
+  options: PathWriteOptions = {},
+): ArrayTarget {
+  const allowNull = options.allowNullIntermediates ?? false;
   const result = resolveParentPath(raw, path);
   if (!result) {
     // The parent path isn't fully present. A scalar in the way is always an
     // error; a merely-missing intermediate means the field is absent and the
     // caller decides (create vs no-op), exactly like a missing leaf.
-    if (pathBlockedByScalar(raw, path)) {
+    if (pathBlockedByScalar(raw, path, allowNull)) {
       throw new TypeError(
         `${operator} path "${path}" must point to an array — a non-object value blocks the path.`,
       );
@@ -60,13 +70,21 @@ export function resolveArrayTarget(operator: string, raw: object, path: string):
   }
 
   const value = result.parent[result.key];
-  if (value !== undefined && !Array.isArray(value)) {
+  // A `null` target is normally an error; with `allowNullIntermediates` it's
+  // treated as absent so $push/$addToSet create the array and $pull/$pullAll/$pop
+  // no-op (exactly as they do for a missing field).
+  const absent = value === undefined || (allowNull && value === null);
+  if (!absent && !Array.isArray(value)) {
     throw new TypeError(
       `${operator} path "${path}" must point to an array, received ${describeValue(value)}.`,
     );
   }
 
-  return { arr: value as Array<any> | undefined, parent: result.parent, key: result.key };
+  return {
+    arr: absent ? undefined : (value as Array<any>),
+    parent: result.parent,
+    key: result.key,
+  };
 }
 
 export function pushToArray(arr: Array<any>, itemsToAdd: Array<any>): void {

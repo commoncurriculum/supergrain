@@ -2,7 +2,7 @@ import { pushToArray, resolveArrayTarget } from "../array-ops";
 import { setValueAtPath } from "../path";
 import { capturePathUndo, undoTruncate } from "../undo";
 import { isEqual, isObject } from "../util";
-import { eachPath, type OperatorContext } from "./shared";
+import { eachPath, type OperatorContext, pathWriteOptions } from "./shared";
 
 function uniqueAdditions(existing: ReadonlyArray<unknown>, candidates: Array<unknown>): Array<any> {
   const additions: Array<any> = [];
@@ -19,14 +19,14 @@ function uniqueAdditions(existing: ReadonlyArray<unknown>, candidates: Array<unk
 
 export function $addToSet(context: OperatorContext, operations: Record<string, any>): void {
   eachPath(context, operations, (path, spec) => {
-    const target = resolveArrayTarget("$addToSet", context.raw, path);
+    const target = resolveArrayTarget("$addToSet", context.raw, path, pathWriteOptions(context));
     const candidates =
       isObject(spec) && "$each" in spec && Array.isArray(spec["$each"]) ? spec["$each"] : [spec];
 
     if (target.arr === undefined) {
       // Absent field — Mongo creates the array with the de-duplicated values.
       capturePathUndo(context.undo, context.raw, path);
-      setValueAtPath(context.raw, path, uniqueAdditions([], candidates));
+      setValueAtPath(context.raw, path, uniqueAdditions([], candidates), pathWriteOptions(context));
       return;
     }
 

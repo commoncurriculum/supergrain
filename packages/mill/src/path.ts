@@ -129,7 +129,25 @@ export function resolveParentPath(
   return { parent: current, key: parts[parts.length - 1]! };
 }
 
-export function ensureParentPath(target: object, path: string): { parent: any; key: string } {
+/**
+ * Options shared by the path-*writing* helpers (`ensureParentPath`,
+ * `setValueAtPath`).
+ */
+export interface PathWriteOptions {
+  /**
+   * Treat a `null` intermediate the way an *absent* one is treated: overwrite it
+   * with a freshly-created branch rather than rejecting. Off by default so mill
+   * stays faithful to MongoDB (which throws "Cannot create field ... in element
+   * {x: null}"); opt in via `update(..., { allowNullIntermediates: true })`.
+   */
+  allowNullIntermediates?: boolean;
+}
+
+export function ensureParentPath(
+  target: object,
+  path: string,
+  options: PathWriteOptions = {},
+): { parent: any; key: string } {
   const parts = splitPath(path);
   // Fabricated branches match the document's flavor: a null-prototype document
   // grows null-prototype branches, a plain-object document grows plain ones.
@@ -139,7 +157,11 @@ export function ensureParentPath(target: object, path: string): { parent: any; k
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i]!;
     const existing = (current as any)[part];
-    if (existing === undefined) {
+    // A `null` intermediate is normally a hard error (Mongo can't create a
+    // field inside null); with `allowNullIntermediates` it's treated as absent
+    // and overwritten by the created branch.
+    const absent = existing === undefined || (options.allowNullIntermediates && existing === null);
+    if (absent) {
       // Absent intermediate — Mongo creates the missing branch as an object.
       // Growing an array through an out-of-bounds index pads the gap with null
       // (Mongo's behavior) rather than leaving sparse holes.
@@ -162,8 +184,13 @@ export function ensureParentPath(target: object, path: string): { parent: any; k
   return { parent: current, key: parts[parts.length - 1]! };
 }
 
-export function setValueAtPath(target: object, path: string, value: unknown): void {
-  const { parent, key } = ensureParentPath(target, path);
+export function setValueAtPath(
+  target: object,
+  path: string,
+  value: unknown,
+  options: PathWriteOptions = {},
+): void {
+  const { parent, key } = ensureParentPath(target, path, options);
   if (Array.isArray(parent) && isArrayIndex(key)) {
     // Writing past the end grows the array; Mongo pads the gap with null rather
     // than leaving holes. e.g. [1] + "scores.3" -> [1, null, null, 4].

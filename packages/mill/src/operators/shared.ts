@@ -13,6 +13,17 @@ export interface OperatorContext {
   undo: MutableUndo;
   query: Query;
   arrayFilters: ReadonlyArray<ArrayFilter>;
+  // When set, `null` intermediates/targets are treated as absent — created for
+  // writing operators ($set/$push/$addToSet/…), no-op'd for removals. Off by
+  // default so mill stays faithful to MongoDB.
+  allowNullIntermediates: boolean;
+}
+
+// The subset of an OperatorContext the path-writing helpers care about.
+export function pathWriteOptions(context: OperatorContext): {
+  allowNullIntermediates: boolean;
+} {
+  return { allowNullIntermediates: context.allowNullIntermediates };
 }
 
 // Resolve every path in `operations` (expanding positional `$` / `$[]` /
@@ -68,7 +79,7 @@ export function writeNumeric(context: OperatorContext, path: string, write: Nume
     return; // no-op
   }
   capturePathUndo(context.undo, context.raw, path);
-  setValueAtPath(context.raw, path, next);
+  setValueAtPath(context.raw, path, next, pathWriteOptions(context));
 }
 
 // ─── array removal ($pull / $pullAll) ───────────────────────────────────────
@@ -81,7 +92,7 @@ export function removeByPredicate(
   path: string,
   op: { operator: string; matches: (element: unknown) => boolean },
 ): void {
-  const { arr } = resolveArrayTarget(op.operator, context.raw, path);
+  const { arr } = resolveArrayTarget(op.operator, context.raw, path, pathWriteOptions(context));
   if (arr === undefined) {
     return; // absent field — Mongo no-ops $pull / $pullAll
   }

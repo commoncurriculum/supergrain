@@ -4,11 +4,11 @@ import { applyPushModifiers, parsePushSpec, pushToArray, resolveArrayTarget } fr
 import { setValueAtPath } from "../path";
 import { capturePathUndo, undoSet, undoTruncate } from "../undo";
 import { cloneValue, isEqual } from "../util";
-import { eachPath, type OperatorContext } from "./shared";
+import { eachPath, type OperatorContext, pathWriteOptions } from "./shared";
 
 export function $push(context: OperatorContext, operations: Record<string, any>): void {
   eachPath(context, operations, (path, spec) => {
-    const target = resolveArrayTarget("$push", context.raw, path);
+    const target = resolveArrayTarget("$push", context.raw, path, pathWriteOptions(context));
     const { items, position, slice, sort } = parsePushSpec(spec);
 
     if (target.arr === undefined) {
@@ -16,7 +16,7 @@ export function $push(context: OperatorContext, operations: Record<string, any>)
       // inverse is to remove the field it created.
       const created = applyPushModifiers([], items, { position, slice, sort });
       capturePathUndo(context.undo, context.raw, path);
-      setValueAtPath(context.raw, path, created);
+      setValueAtPath(context.raw, path, created, pathWriteOptions(context));
       return;
     }
     const { arr } = target;

@@ -2,7 +2,7 @@ import { deleteValueAtPath, resolveParentPath, setValueAtPath, splitPath } from 
 import { resolvePaths } from "../query";
 import { capturePathUndo, undoSet } from "../undo";
 import { cloneValue, isContainer } from "../util";
-import { type OperatorContext } from "./shared";
+import { type OperatorContext, pathWriteOptions } from "./shared";
 
 interface RenameMove {
   from: string;
@@ -79,6 +79,6 @@ export function $rename(context: OperatorContext, operations: Record<string, str
     capturePathUndo(context.undo, context.raw, to);
     undoSet(context.undo, from, cloneValue(value));
     deleteValueAtPath(context.raw, from);
-    setValueAtPath(context.raw, to, value);
+    setValueAtPath(context.raw, to, value, pathWriteOptions(context));
   }
 }
