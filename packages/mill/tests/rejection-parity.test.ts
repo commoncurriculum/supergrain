@@ -17,12 +17,15 @@ interface RejectionCase {
 const cases: Array<RejectionCase> = [
   { name: "$push onto a number", doc: { a: 5 }, ops: { $push: { a: 1 } } },
   { name: "$push onto a string", doc: { a: "x" }, ops: { $push: { a: 1 } } },
+  { name: "$push onto null", doc: { a: null }, ops: { $push: { a: 1 } } },
+  { name: "$push within null", doc: { a: null }, ops: { $push: { "a.b": 1 } } },
   { name: "$inc on a string", doc: { a: "x" }, ops: { $inc: { a: 1 } } },
   { name: "$mul on a string", doc: { a: "x" }, ops: { $mul: { a: 2 } } },
   { name: "$pop on a number", doc: { a: 5 }, ops: { $pop: { a: 1 } } },
   { name: "$addToSet onto a number", doc: { a: 5 }, ops: { $addToSet: { a: 1 } } },
   { name: "$pull on a number", doc: { a: 5 }, ops: { $pull: { a: 1 } } },
   { name: "$pullAll on a number", doc: { a: 5 }, ops: { $pullAll: { a: [1] } } },
+  { name: "$set within null", doc: { a: null }, ops: { $set: { "a.b": "foo" } } },
 
   // Array operators whose path runs *through* a scalar intermediate: there is no
   // array to operate on and Mongo can't traverse the scalar.

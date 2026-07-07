@@ -132,6 +132,24 @@ export interface UpdateOptions {
    * every supplied filter must be used.
    */
   arrayFilters?: Array<ArrayFilter>;
+
+  /**
+   * Treat a `null` intermediate or target as if the field were *absent* rather
+   * than rejecting it. This is a deliberate **departure from MongoDB**, which
+   * throws in these cases (`Cannot create field 'b' in element {a: null}`, or
+   * `The field 'a' must be an array but is of type null`). When enabled:
+   *
+   *   - `$set` / `$inc` / `$mul` / `$min` / `$max` / `$rename` build objects
+   *     over `null` intermediates instead of throwing.
+   *   - `$push` / `$addToSet` create the array when the target (or an
+   *     intermediate) is `null`.
+   *   - `$pull` / `$pullAll` / `$pop` no-op on a `null` target (exactly as they
+   *     already do for a missing field).
+   *
+   * The generated `undo` restores the prior `null` exactly. Off by default so
+   * mill stays faithful to MongoDB.
+   */
+  allowNullIntermediates?: boolean;
 }
 
 // Collect the `$[<identifier>]` identifiers referenced in an update document's
@@ -207,8 +225,10 @@ function assertNoPathConflicts(operations: UpdateOperations<any>): void {
  * @param query      A Mongo query used only to resolve positional paths
  *                   (`items.$.name`). Pass `{}` when the update has none.
  * @param operations A standard Mongo update document.
- * @param options    Optional Mongo update options — `arrayFilters` for the
- *                   `$[<identifier>]` filtered positional operator.
+ * @param options    Optional update options — `arrayFilters` for the
+ *                   `$[<identifier>]` filtered positional operator, and
+ *                   `allowNullIntermediates` to treat `null` intermediates as
+ *                   absent (a deliberate departure from MongoDB).
  * @returns          `{ doc, undo }` — `undo` reverses the actual changes made.
  */
 export function update<T extends object>(
@@ -245,7 +265,13 @@ export function update<T extends object>(
     }
   }
 
-  const context: OperatorContext = { raw, undo, query: query as Query, arrayFilters };
+  const context: OperatorContext = {
+    raw,
+    undo,
+    query: query as Query,
+    arrayFilters,
+    allowNullIntermediates: options?.allowNullIntermediates ?? false,
+  };
 
   // Coalesce every write in this call into a single notification.
   batch(() => {

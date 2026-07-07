@@ -65,13 +65,42 @@ function update<T extends object>(
   doc: T,
   query: Query<T>,
   operations: UpdateOperations<T>,
+  options?: UpdateOptions,
 ): { doc: T; undo: UpdateOperations<T> };
+
+interface UpdateOptions {
+  arrayFilters?: Array<ArrayFilter>;
+  allowNullIntermediates?: boolean;
+}
 ```
 
 - **`doc`** — the document to mutate, in place. A reactive store gets fine-grained signal updates; a plain object is mutated just the same. The same reference is returned as `result.doc`.
 - **`query`** — a Mongo query, used **only** to resolve positional paths (`items.$.name`). It doesn't need to identify the document — that's already selected. Pass `{}` when there are no positional paths.
 - **`operations`** — a standard Mongo update document.
+- **`options`** — optional. `arrayFilters` supplies the filters for the `$[<identifier>]` filtered positional operator. `allowNullIntermediates` is described below.
 - **returns** `{ doc, undo }` — `undo` is a Mongo update document that, applied to the post-update `doc`, restores the exact prior state.
+
+### `allowNullIntermediates`
+
+By default mill is faithful to MongoDB, which **rejects** writing through a `null`. `$set`-ing `"a.b"` when `a` is `null` throws `Cannot create field 'b' in element {a: null}`, and `$push`-ing onto a `null` field throws `The field 'a' must be an array but is of type null`. (A merely _absent_ intermediate is always fine — Mongo, and mill, create the branch.)
+
+Pass `allowNullIntermediates: true` to instead treat a `null` intermediate or target as if the field were **absent** — a deliberate departure from MongoDB:
+
+```ts
+// { attributes: { clipboard: null } }
+update(doc, {}, { $set: { "attributes.clipboard.card": "c1" } }, { allowNullIntermediates: true });
+// → { attributes: { clipboard: { card: "c1" } } }
+
+// { attributes: { cards: null } }
+update(doc, {}, { $push: { "attributes.cards": { id: "x" } } }, { allowNullIntermediates: true });
+// → { attributes: { cards: [{ id: "x" }] } }
+```
+
+- `$set` / `$inc` / `$mul` / `$min` / `$max` / `$rename` build objects over `null` intermediates.
+- `$push` / `$addToSet` create the array when the target (or an intermediate) is `null`.
+- `$pull` / `$pullAll` / `$pop` no-op on a `null` target, exactly as they do for a missing field.
+
+A present _scalar_ (e.g. `42`) in the way is still an error — only `null` is treated as absent. The generated `undo` restores the prior `null` exactly.
 
 ## Operators
 

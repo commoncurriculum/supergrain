@@ -82,13 +82,15 @@ describe("deleteValueAtPath", () => {
 describe("setValueAtPath", () => {
   it("creates intermediate objects as needed", () => {
     const target: Record<string, unknown> = {};
-    setValueAtPath(target, "a.b.c", 1);
+    setValueAtPath(target, "a.b.c", 1, { allowNullIntermediates: false });
     expect(target).toEqual({ a: { b: { c: 1 } } });
   });
 
   it("rejects creating a field inside a non-container intermediate", () => {
     const target: Record<string, unknown> = { a: 5 };
-    expect(() => setValueAtPath(target, "a.b", 1)).toThrow(/cannot create field/i);
+    expect(() => setValueAtPath(target, "a.b", 1, { allowNullIntermediates: false })).toThrow(
+      /cannot create field/i,
+    );
     expect(target).toEqual({ a: 5 });
   });
 });
