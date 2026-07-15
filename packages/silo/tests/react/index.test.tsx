@@ -1,7 +1,7 @@
 import { tracked } from "@supergrain/kernel/react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Effect, Schedule } from "effect";
-import { type ReactNode, StrictMode } from "react";
+import { type ReactNode, StrictMode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -75,7 +75,7 @@ afterEach(() => {
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-const { Provider, useDocument, useDocumentStore, useQuery } =
+const { Provider, useDocument, useDocuments, useDocumentStore, useQuery } =
   createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
 
 const userAdapter: DocumentAdapter = {
@@ -166,6 +166,32 @@ const UserList = tracked(function UserList({ ids }: { ids: ReadonlyArray<string>
           <li key={handle.value.id}>{handle.value.attributes.firstName}</li>
         ) : null,
       )}
+    </ul>
+  );
+});
+
+// Renders the useDocuments aggregate. Mirrors a real roster: an idle state for
+// no ids, a loading state while pending, an error banner when strict, and the
+// list of successful values otherwise.
+const UserRoster = tracked(function UserRoster({
+  ids,
+}: {
+  ids: ReadonlyArray<string> | null;
+}) {
+  const { handles, values, status, statusStrict } = useDocuments(
+    "user",
+    ids == null ? null : [...ids],
+  );
+
+  if (handles.length === 0) return <span>no roster</span>;
+  if (statusStrict === "error") return <span>error</span>;
+  if (status === "pending") return <span>loading</span>;
+
+  return (
+    <ul>
+      {values.map((user) => (
+        <li key={user.id}>{user.attributes.firstName}</li>
+      ))}
     </ul>
   );
 });
@@ -282,6 +308,133 @@ describe("useDocumentStore + find composition", () => {
     // a per-attempt `Retrying` notification before the terminal `error`, so poll
     // for the end state instead of racing a single tick.
     expect(await screen.findByText("error")).toBeDefined();
+  });
+});
+
+// =============================================================================
+// useDocuments — the batched, multi-id hook. Like useDocument it reads
+// reactively and re-triggers fetches every render, but it also layers a stable
+// aggregate identity on top of store.findAll (which is fresh each call) so
+// React's use()/memoization see a stable object while the ids are unchanged.
+// =============================================================================
+
+describe("useDocuments", () => {
+  it("returns an idle aggregate when ids is null", () => {
+    render(
+      <Wrap>
+        <UserRoster ids={null} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("no roster")).toBeDefined();
+  });
+
+  it("returns an idle aggregate for an empty ids array", () => {
+    render(
+      <Wrap>
+        <UserRoster ids={[]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("no roster")).toBeDefined();
+  });
+
+  it("renders loading, then the roster of values in id order", async () => {
+    render(
+      <Wrap>
+        <UserRoster ids={["1", "2", "3"]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("loading")).toBeDefined();
+
+    // One batched fetch commits all three — poll for the first, the rest are
+    // then synchronously present.
+    expect(await screen.findByText("User1", undefined, { timeout: 5000 })).toBeDefined();
+    expect(screen.getByText("User2")).toBeDefined();
+    expect(screen.getByText("User3")).toBeDefined();
+  });
+
+  it("renders cached values immediately with no loading state", () => {
+    render(
+      <Wrap>
+        <SeedUser user={makeUser("1", { firstName: "Ada" })} />
+        <SeedUser user={makeUser("2", { firstName: "Grace" })} />
+        <UserRoster ids={["1", "2"]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("Ada")).toBeDefined();
+    expect(screen.getByText("Grace")).toBeDefined();
+    expect(screen.queryByText("loading")).toBeNull();
+  });
+
+  it("surfaces a batch failure as the strict error state", async () => {
+    usersShouldFail = true;
+
+    render(
+      <Wrap>
+        <UserRoster ids={["1", "2"]} />
+      </Wrap>,
+    );
+
+    expect(await screen.findByText("error")).toBeDefined();
+  });
+
+  it("keeps a stable aggregate identity across re-renders while ids are unchanged", () => {
+    // The aggregate from store.findAll is fresh every call; useDocuments holds
+    // the previous one in a ref and only swaps when the handle set changes. So
+    // an unrelated re-render (a local state bump) must hand back the SAME object
+    // — that stability is what lets React's use() avoid re-suspending.
+    const seen: Array<unknown> = [];
+
+    const Probe = tracked(function Probe() {
+      const [, force] = useState(0);
+      const handles = useDocuments("user", ["1", "2"]);
+      seen.push(handles);
+      return (
+        <button type="button" onClick={() => force((n) => n + 1)}>
+          rerender
+        </button>
+      );
+    });
+
+    render(
+      <Wrap>
+        <Probe />
+      </Wrap>,
+    );
+
+    fireEvent.click(screen.getByText("rerender"));
+
+    // Every captured aggregate is the identical object despite the extra render.
+    expect(seen.length).toBeGreaterThan(1);
+    expect(seen.every((h) => h === seen[0])).toBe(true);
+  });
+
+  it("hands back a fresh aggregate when the ids change", () => {
+    const seen: Array<unknown> = [];
+
+    const Probe = tracked(function Probe({ ids }: { ids: Array<string> }) {
+      const handles = useDocuments("user", ids);
+      seen.push(handles);
+      return null;
+    });
+
+    const { rerender } = render(
+      <Wrap>
+        <Probe ids={["1", "2"]} />
+      </Wrap>,
+    );
+
+    rerender(
+      <Wrap>
+        <Probe ids={["1", "2", "3"]} />
+      </Wrap>,
+    );
+
+    // A changed handle set breaks the ref's equality check → a new aggregate.
+    expect(seen[0]).not.toBe(seen.at(-1));
   });
 });
 
