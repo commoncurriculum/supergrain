@@ -591,7 +591,7 @@ export interface StoreAdapterRunOptions extends AdapterOptionOverrides {
   readonly onFailure?: (error: AdapterError, info: AdapterFailureInfo) => void;
 }
 
-const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
+const IDLE_DOCUMENT_HANDLE: DocumentHandle<unknown> = Object.freeze({
   value: undefined,
   error: undefined,
   isFetching: false,
@@ -602,7 +602,7 @@ const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   promise: undefined,
 });
 
-const IDLE_HANDLES: DocumentsHandle<unknown> = Object.freeze({
+const IDLE_DOCUMENTS_HANDLE: DocumentsHandle<unknown> = Object.freeze({
   handles: Object.freeze([]) as Array<never>,
   values: Object.freeze([]) as Array<never>,
   status: "pending" as const,
@@ -711,7 +711,7 @@ export function createDocumentStore<
 
   const store: DocumentStore<M, Q> = {
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
-      if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
+      if (id === null || id === undefined) return IDLE_DOCUMENT_HANDLE as DocumentHandle<M[K]>;
       const handle = getOrCreateHandle(ensureBucket(state.documents, type), id);
       if (needsFetch(handle)) {
         // Validate only when a fetch must be enqueued — an unconfigured type
@@ -735,7 +735,7 @@ export function createDocumentStore<
       ids: string[] | null | undefined,
     ): DocumentsHandle<M[K]> {
       if (ids === null || ids === undefined) {
-        return IDLE_HANDLES as DocumentsHandle<M[K]>;
+        return IDLE_DOCUMENTS_HANDLE as DocumentsHandle<M[K]>;
       }
       // `find` is stable + idempotent: same reactive handle per id, and it only
       // enqueues a fetch when one is needed — so mapping over ids both triggers
@@ -816,7 +816,7 @@ export function createDocumentStore<
       // working even while the type is absent from config (e.g. feature-flagged
       // out).
       if (params === null || params === undefined)
-        return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
+        return IDLE_DOCUMENT_HANDLE as QueryHandle<Q[K]["result"]>;
 
       const paramsKey = stableStringify(params);
       const handle = getOrCreateHandle(ensureBucket(state.queries, type), paramsKey);
