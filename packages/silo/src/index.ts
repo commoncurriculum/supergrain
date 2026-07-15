@@ -11,6 +11,7 @@ export { createDocumentStore } from "./store";
 export type {
   DocumentAdapter,
   DocumentHandle,
+  DocumentHandles,
   DocumentStore,
   DocumentStoreConfig,
   DocumentTypes,

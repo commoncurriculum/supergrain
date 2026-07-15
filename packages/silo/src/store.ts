@@ -17,6 +17,7 @@ import {
 } from "./resolve";
 import { type AdapterFailureInfo, runAdapter } from "./run-adapter";
 import { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./transitions";
+import { arrayEqual } from "./util";
 
 interface InternalState {
   documents: Map<string, Map<string, InternalHandle>>;
@@ -168,25 +169,27 @@ export type DocumentHandle<T, E = SiloError> =
     };
 
 /**
- * Reactive handle for an array of documents queried by ids.
- * All documents have the same type.
+ * Reactive handle for an array of documents queried by ids (for the same type).
+ * Wraps the individual `DocumentHandle<T>` objects and provides aggregates over them.
  *
- * This object wraps the individual `DocumentHandle<T>` objects and provides aggregates over them.
- * It is stable across `useDocuments` calls.
+ * The "strict" aggregates treat an error in any value as an overall error.
+ * The other aggregates filter out errored values while respecting the original id order.
  *
- * The "strict" aggregates treat any value error as an aggregate error.
- * The non-strict aggregates filter out errored values (respecting the original id order).
+ * This object is **not** stable across calls to `store.findAll` with the same arguments.
+ * However, it is stable across calls to `useDocuments` with the same arguments;
+ * reads to individual fields trigger reactive reads of the corresponding fields on
+ * the individual handles. Changing the input ids always results in a fresh object.
  */
-export type DocumentHandles<T, E = SiloError> = {
+export interface DocumentHandles<T, E = SiloError> {
   /** Handles for each value, in the same order as the queried ids. */
-  readonly handles: DocumentHandle<T, E>[];
+  readonly handles: Array<DocumentHandle<T, E>>;
   /**
    * All current successful values, in the same order as the queried
    * ids but omitting pending/errored values.
    *
    * Empty if no ids were provided.
    */
-  readonly values: T[];
+  readonly values: Array<T>;
   /**
    * The aggregate status of the non-errored values: "success" if they all succeeded,
    * "pending" if some are still pending.
@@ -202,14 +205,106 @@ export type DocumentHandles<T, E = SiloError> = {
    *
    * Resolves once no values are pending, containing only the values that succeeded.
    */
-  readonly promise: HandlePromise<T[]>;
+  readonly promise: HandlePromise<Array<T>>;
   /**
    * The combination of the handle promises.
    *
    * Resolves with all values, or rejects if any value errors.
    */
-  readonly promiseStrict: HandlePromise<T[]>;
-};
+  readonly promiseStrict: HandlePromise<Array<T>>;
+}
+
+class DocumentHandlesImpl<T, E = SiloError> implements DocumentHandles<T, E> {
+  constructor(readonly handles: Array<DocumentHandle<T, E>>) {}
+
+  // Use getters so that reads are reactive via the handles.
+  // Cache aggregates so that we can return stable references when the
+  // aggregated content hasn't changed.
+
+  _cachedValues: Array<T> = [];
+  get values() {
+    const values = this.handles
+      .filter((handle) => handle.status === "success")
+      .map((handle) => handle.value);
+
+    if (arrayEqual(values, this._cachedValues)) {
+      // The values themselves did not change.
+      // Return the same array.
+      return this._cachedValues;
+    }
+    this._cachedValues = values;
+    return values;
+  }
+
+  get status() {
+    return this.handles.some((handle) => handle.status === "pending") ? "pending" : "success";
+  }
+
+  get statusStrict(): "pending" | "success" | "error" {
+    // Promise.all semantics: an error is terminal (short-circuits even while
+    // others are still pending), so it wins over pending, which wins over
+    // success. Reading `handle.status` (not `handle.error`) means a stale
+    // success whose refetch errored still counts as success — its first-load
+    // promise already resolved, so `promiseStrict` won't reject on it.
+    let hasPending = false;
+    for (const handle of this.handles) {
+      if (handle.status === "error") return "error";
+      if (handle.status === "pending") hasPending = true;
+    }
+    return hasPending ? "pending" : "success";
+  }
+
+  // The combined promises are cached against the array of underlying
+  // `handle.promise` references. Reading each `handle.promise` subscribes the
+  // caller reactively, and a refetch/insert that swaps a handle's promise
+  // rebuilds the combination — otherwise the same identity is returned so
+  // React's `use()` doesn't re-suspend every render. Empty (or all-idle)
+  // handles have no in-flight work, so there is no promise to hand out yet.
+
+  _cachedPromiseInputs: Array<Promise<T> | undefined> = [];
+  _cachedPromise: HandlePromise<Array<T>> = undefined;
+  get promise(): HandlePromise<Array<T>> {
+    const inputs = this.handles.map((handle) => handle.promise);
+    if (inputs.length > 0 && inputs.every((promise) => promise === undefined)) return undefined;
+    if (this._cachedPromise !== undefined && arrayEqual(inputs, this._cachedPromiseInputs)) {
+      return this._cachedPromise;
+    }
+    this._cachedPromiseInputs = inputs;
+    // Wait for every handle to settle (allSettled never rejects), then snapshot
+    // the values that ended up successful — read at settle time so an in-place
+    // or wholesale update after the promise resolved isn't served stale.
+    this._cachedPromise = Promise.allSettled(
+      inputs.map((promise) => promise ?? Promise.resolve()),
+    ).then(() =>
+      this.handles.filter((handle) => handle.status === "success").map((handle) => handle.value),
+    );
+    return this._cachedPromise;
+  }
+
+  _cachedPromiseStrictInputs: Array<Promise<T> | undefined> = [];
+  _cachedPromiseStrict: HandlePromise<Array<T>> = undefined;
+  get promiseStrict(): HandlePromise<Array<T>> {
+    const inputs = this.handles.map((handle) => handle.promise);
+    if (inputs.length > 0 && inputs.every((promise) => promise === undefined)) return undefined;
+    if (
+      this._cachedPromiseStrict !== undefined &&
+      arrayEqual(inputs, this._cachedPromiseStrictInputs)
+    ) {
+      return this._cachedPromiseStrict;
+    }
+    this._cachedPromiseStrictInputs = inputs;
+    // Promise.all rejects as soon as any handle errors (even while others are
+    // pending); once it fulfils every handle is a success, so snapshot them all.
+    const promise = Promise.all(inputs.map((promise) => promise ?? Promise.resolve())).then(() =>
+      this.handles.map((handle) => handle.value as T),
+    );
+    // Suppress unhandled-rejection warnings at the source; consumers still
+    // observe the rejection by awaiting the promise (or via `use()`).
+    promise.catch(() => {});
+    this._cachedPromiseStrict = promise;
+    return promise;
+  }
+}
 
 // =============================================================================
 // DocumentAdapter — consumer-owned transport (Effect-based)
@@ -427,6 +522,18 @@ export interface DocumentStore<
   Q extends QueryTypes = Record<string, never>,
 > {
   find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]>;
+  /**
+   * Find many documents of one type by id, returning a {@link DocumentHandles}
+   * aggregate over the individual (stable, reactive) handles — each fetched via
+   * `find`, in id order. A `null` / `undefined` `ids` yields an idle
+   * aggregate; empty `ids` returns a successful aggregate with no values.
+   * The returned object is **not** stable across calls; the handles
+   * inside it are (`find` is idempotent). `useDocuments` layers stability on top.
+   */
+  findAll<K extends keyof M & string>(
+    type: K,
+    ids: string[] | null | undefined,
+  ): DocumentHandles<M[K]>;
   findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined;
   insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void;
   findQuery<K extends keyof Q & string>(
@@ -621,6 +728,21 @@ export function createDocumentStore<
         finder.queueDocument(type, id);
       }
       return handle as unknown as DocumentHandle<M[K]>;
+    },
+
+    findAll<K extends keyof M & string>(
+      type: K,
+      ids: string[] | null | undefined,
+    ): DocumentHandles<M[K]> {
+      if (ids === null || ids === undefined) {
+        return IDLE_HANDLES as DocumentHandles<M[K]>;
+      }
+      // `find` is stable + idempotent: same reactive handle per id, and it only
+      // enqueues a fetch when one is needed — so mapping over ids both triggers
+      // the loads and collects the handles in id order.
+      // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
+      const handles = ids.map((id) => store.find(type, id));
+      return new DocumentHandlesImpl<M[K]>(handles);
     },
 
     findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined {

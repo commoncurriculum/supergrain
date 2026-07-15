@@ -1,15 +1,17 @@
 import type { QueryHandle, QueryTypes, RegisteredQueries } from "../queries";
 
-import { createContext, createElement, useContext, useState, type ReactNode } from "react";
+import { createContext, createElement, useContext, useRef, useState, type ReactNode } from "react";
 
 import {
   createDocumentStore,
   type DocumentHandle,
+  type DocumentHandles,
   type DocumentStore,
   type DocumentStoreConfig,
   type DocumentTypes,
   type RegisteredTypes,
 } from "../store";
+import { arrayEqual } from "../util";
 import { DocumentStoreContext } from "./context";
 
 /**
@@ -148,6 +150,10 @@ export function createDocumentStoreContext<
     type: K,
     id: string | null | undefined,
   ) => DocumentHandle<ModelsOf<S>[K]>;
+  useDocuments: <K extends keyof ModelsOf<S> & string>(
+    type: K,
+    ids: string[] | null | undefined,
+  ) => DocumentHandles<ModelsOf<S>[K]>;
   useQuery: <K extends keyof QueriesOf<S> & string>(
     type: K,
     params: QueriesOf<S>[K]["params"] | null | undefined,
@@ -220,6 +226,25 @@ export function createDocumentStoreContext<
     return store.find(type, id);
   }
 
+  function useDocuments<K extends keyof M & string>(
+    type: K,
+    ids: string[] | null | undefined,
+  ): DocumentHandles<M[K]> {
+    // Like useDocument, this reads reactively and re-triggers fetches every
+    // render (findAll → find per id). findAll returns a fresh aggregate each
+    // call, so we hold the previous one in a ref and only swap it in when the
+    // underlying handle set actually changed — the aggregate's field getters
+    // read the live handles, so a stable wrapper stays correct while giving
+    // React's use() a stable promise identity across renders.
+    const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
+    const next = store.findAll(type, ids);
+    const ref = useRef(next);
+    if (!arrayEqual(ref.current.handles, next.handles)) {
+      ref.current = next;
+    }
+    return ref.current;
+  }
+
   function useQuery<K extends keyof Q & string>(
     type: K,
     params: Q[K]["params"] | null | undefined,
@@ -229,5 +254,5 @@ export function createDocumentStoreContext<
     return store.findQuery(type, params);
   }
 
-  return { Provider, useDocumentStore, useDocument, useQuery };
+  return { Provider, useDocumentStore, useDocument, useDocuments, useQuery };
 }
