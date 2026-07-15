@@ -740,8 +740,9 @@ export function createDocumentStore<
       // `find` is stable + idempotent: same reactive handle per id, and it only
       // enqueues a fetch when one is needed — so mapping over ids both triggers
       // the loads and collects the handles in id order.
+      // Batch to combine find's internal batch calls.
       // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
-      const handles = ids.map((id) => store.find(type, id));
+      const handles = batch(() => ids.map((id) => store.find(type, id)));
       return new DocumentHandlesImpl<M[K]>(handles);
     },
 
