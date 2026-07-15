@@ -167,6 +167,50 @@ export type DocumentHandle<T, E = SiloError> =
       readonly promise: HandlePromise<T>;
     };
 
+/**
+ * Reactive handle for an array of documents queried by ids.
+ * All documents have the same type.
+ *
+ * This object wraps the individual `DocumentHandle<T>` objects and provides aggregates over them.
+ * It is stable across `useDocuments` calls.
+ *
+ * The "strict" aggregates treat any value error as an aggregate error.
+ * The non-strict aggregates filter out errored values (respecting the original id order).
+ */
+export type DocumentHandles<T, E = SiloError> = {
+  /** Handles for each value, in the same order as the queried ids. */
+  readonly handles: DocumentHandle<T, E>[];
+  /**
+   * All current successful values, in the same order as the queried
+   * ids but omitting pending/errored values.
+   *
+   * Empty if no ids were provided.
+   */
+  readonly values: T[];
+  /**
+   * The aggregate status of the non-errored values: "success" if they all succeeded,
+   * "pending" if some are still pending.
+   */
+  readonly status: "pending" | "success";
+  /**
+   * The aggregate status: "success" if they all succeeded, "pending" if some
+   * are still pending, "error" if there are any errors.
+   */
+  readonly statusStrict: "pending" | "success" | "error";
+  /**
+   * The combination of the handle promises.
+   *
+   * Resolves once no values are pending, containing only the values that succeeded.
+   */
+  readonly promise: HandlePromise<T[]>;
+  /**
+   * The combination of the handle promises.
+   *
+   * Resolves with all values, or rejects if any value errors.
+   */
+  readonly promiseStrict: HandlePromise<T[]>;
+};
+
 // =============================================================================
 // DocumentAdapter — consumer-owned transport (Effect-based)
 // =============================================================================
@@ -449,6 +493,15 @@ const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   lastError: undefined,
   status: "pending" as const,
   promise: undefined,
+});
+
+const IDLE_HANDLES: DocumentHandles<unknown> = Object.freeze({
+  handles: [],
+  values: [],
+  status: "pending" as const,
+  statusStrict: "pending" as const,
+  promise: undefined,
+  promiseStrict: undefined,
 });
 
 /**
