@@ -5,7 +5,7 @@ import { createContext, createElement, useContext, useRef, useState, type ReactN
 import {
   createDocumentStore,
   type DocumentHandle,
-  type DocumentHandles,
+  type DocumentsHandle,
   type DocumentStore,
   type DocumentStoreConfig,
   type DocumentTypes,
@@ -153,7 +153,7 @@ export function createDocumentStoreContext<
   useDocuments: <K extends keyof ModelsOf<S> & string>(
     type: K,
     ids: string[] | null | undefined,
-  ) => DocumentHandles<ModelsOf<S>[K]>;
+  ) => DocumentsHandle<ModelsOf<S>[K]>;
   useQuery: <K extends keyof QueriesOf<S> & string>(
     type: K,
     params: QueriesOf<S>[K]["params"] | null | undefined,
@@ -229,7 +229,7 @@ export function createDocumentStoreContext<
   function useDocuments<K extends keyof M & string>(
     type: K,
     ids: string[] | null | undefined,
-  ): DocumentHandles<M[K]> {
+  ): DocumentsHandle<M[K]> {
     // Like useDocument, this reads reactively and re-triggers fetches every
     // render (findAll → find per id). findAll returns a fresh aggregate each
     // call, so we hold the previous one in a ref and only swap it in when the

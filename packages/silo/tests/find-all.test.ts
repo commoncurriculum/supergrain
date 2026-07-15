@@ -18,7 +18,7 @@ import { setupFakeTimers } from "./setup/timers";
 // store.findAll — the batched, multi-id aggregate over store.find.
 //
 // findAll(type, ids) maps each id through store.find (stable + idempotent) and
-// wraps the resulting handles in a DocumentHandles aggregate. These tests cover
+// wraps the resulting handles in a DocumentsHandle aggregate. These tests cover
 // the aggregate's fields (handles / values / status / statusStrict / promise /
 // promiseStrict) across the pending → success/error transitions, plus the
 // idle/empty edges and the reactive read contract.

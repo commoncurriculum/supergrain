@@ -175,12 +175,12 @@ export type DocumentHandle<T, E = SiloError> =
  * The "strict" aggregates treat an error in any value as an overall error.
  * The other aggregates filter out errored values while respecting the original id order.
  *
- * This object is **not** stable across calls to `store.findAll` with the same arguments.
+ * The handle is **not** stable across calls to `store.findAll` with the same arguments.
  * However, it is stable across calls to `useDocuments` with the same arguments;
  * reads to individual fields trigger reactive reads of the corresponding fields on
  * the individual handles. Changing the input ids always results in a fresh object.
  */
-export interface DocumentHandles<T, E = SiloError> {
+export interface DocumentsHandle<T, E = SiloError> {
   /** Handles for each value, in the same order as the queried ids. */
   readonly handles: Array<DocumentHandle<T, E>>;
   /**
@@ -214,7 +214,7 @@ export interface DocumentHandles<T, E = SiloError> {
   readonly promiseStrict: HandlePromise<Array<T>>;
 }
 
-class DocumentHandlesImpl<T, E = SiloError> implements DocumentHandles<T, E> {
+class DocumentsHandleImpl<T, E = SiloError> implements DocumentsHandle<T, E> {
   constructor(readonly handles: Array<DocumentHandle<T, E>>) {}
 
   // Use getters so that reads are reactive via the handles.
@@ -523,7 +523,7 @@ export interface DocumentStore<
 > {
   find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]>;
   /**
-   * Find many documents of one type by id, returning a {@link DocumentHandles}
+   * Find many documents of one type by id, returning a {@link DocumentsHandle}
    * aggregate over the individual (stable, reactive) handles — each fetched via
    * `find`, in id order. A `null` / `undefined` `ids` yields an idle
    * aggregate; empty `ids` returns a successful aggregate with no values.
@@ -533,7 +533,7 @@ export interface DocumentStore<
   findAll<K extends keyof M & string>(
     type: K,
     ids: string[] | null | undefined,
-  ): DocumentHandles<M[K]>;
+  ): DocumentsHandle<M[K]>;
   findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined;
   insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void;
   findQuery<K extends keyof Q & string>(
@@ -602,7 +602,7 @@ const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   promise: undefined,
 });
 
-const IDLE_HANDLES: DocumentHandles<unknown> = Object.freeze({
+const IDLE_HANDLES: DocumentsHandle<unknown> = Object.freeze({
   handles: Object.freeze([]) as Array<never>,
   values: Object.freeze([]) as Array<never>,
   status: "pending" as const,
@@ -733,9 +733,9 @@ export function createDocumentStore<
     findAll<K extends keyof M & string>(
       type: K,
       ids: string[] | null | undefined,
-    ): DocumentHandles<M[K]> {
+    ): DocumentsHandle<M[K]> {
       if (ids === null || ids === undefined) {
-        return IDLE_HANDLES as DocumentHandles<M[K]>;
+        return IDLE_HANDLES as DocumentsHandle<M[K]>;
       }
       // `find` is stable + idempotent: same reactive handle per id, and it only
       // enqueues a fetch when one is needed — so mapping over ids both triggers
@@ -743,7 +743,7 @@ export function createDocumentStore<
       // Batch to combine find's internal batch calls.
       // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
       const handles = batch(() => ids.map((id) => store.find(type, id)));
-      return new DocumentHandlesImpl<M[K]>(handles);
+      return new DocumentsHandleImpl<M[K]>(handles);
     },
 
     findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined {
