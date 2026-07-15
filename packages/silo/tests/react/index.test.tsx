@@ -173,11 +173,7 @@ const UserList = tracked(function UserList({ ids }: { ids: ReadonlyArray<string>
 // Renders the useDocuments aggregate. Mirrors a real roster: an idle state for
 // no ids, a loading state while pending, an error banner when strict, and the
 // list of successful values otherwise.
-const UserRoster = tracked(function UserRoster({
-  ids,
-}: {
-  ids: ReadonlyArray<string> | null;
-}) {
+const UserRoster = tracked(function UserRoster({ ids }: { ids: ReadonlyArray<string> | null }) {
   const { handles, values, status, statusStrict } = useDocuments(
     "user",
     ids == null ? null : [...ids],
