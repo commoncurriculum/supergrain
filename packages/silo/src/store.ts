@@ -258,7 +258,7 @@ class DocumentHandlesImpl<T, E = SiloError> implements DocumentHandles<T, E> {
   // `handle.promise` references. Reading each `handle.promise` subscribes the
   // caller reactively, and a refetch/insert that swaps a handle's promise
   // rebuilds the combination — otherwise the same identity is returned so
-  // React's `use()` doesn't re-suspend every render. Empty (or all-idle)
+  // React's `use()` doesn't re-suspend every render. All-idle
   // handles have no in-flight work, so there is no promise to hand out yet.
 
   _cachedPromiseInputs: Array<Promise<T> | undefined> = [];
@@ -603,8 +603,8 @@ const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
 });
 
 const IDLE_HANDLES: DocumentHandles<unknown> = Object.freeze({
-  handles: [],
-  values: [],
+  handles: Object.freeze([]) as Array<never>,
+  values: Object.freeze([]) as Array<never>,
   status: "pending" as const,
   statusStrict: "pending" as const,
   promise: undefined,
