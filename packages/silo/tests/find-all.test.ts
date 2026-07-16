@@ -270,6 +270,74 @@ describe("store.findAll — promiseStrict", () => {
 });
 
 // =============================================================================
+// Aggregate cache edges — value churn + the all-idle / partially-idle inputs
+// that arise when memory is cleared out from under a captured aggregate.
+// =============================================================================
+
+describe("store.findAll — values cache invalidation", () => {
+  it("returns a fresh values array when a value is wholesale-replaced (same length)", () => {
+    store.insertDocument("user", makeUser("1"));
+    store.insertDocument("user", makeUser("2"));
+
+    const handles = store.findAll("user", ["1", "2"]);
+    const first = handles.values;
+    expect(first.map((u) => u.id)).toEqual(["1", "2"]);
+
+    // Wholesale-replace id "1" with a NEW object: the successes array is still
+    // length 2, but its first element's reference changed. arrayEqual must walk
+    // the elements and detect the difference, so a fresh array is handed back.
+    store.insertDocument("user", makeUser("1", { firstName: "Ada" }));
+
+    const second = handles.values;
+    expect(second).not.toBe(first);
+    expect(second[0].attributes.firstName).toBe("Ada");
+    expect(second.map((u) => u.id)).toEqual(["1", "2"]);
+  });
+});
+
+describe("store.findAll — promise inputs after clearMemory", () => {
+  it("promise / promiseStrict fall back to undefined when every handle goes idle", async () => {
+    const handles = store.findAll("user", ["1", "2"]);
+    await flushCoalescer();
+
+    // Loaded: each handle carries a resolved promise, so the aggregates exist.
+    expect(handles.promise).toBeInstanceOf(Promise);
+    expect(handles.promiseStrict).toBeInstanceOf(Promise);
+
+    // Reset drops each (non-fetching) handle's promise, so every input is
+    // undefined — the aggregate has no in-flight work to hand out.
+    store.clearMemory();
+
+    expect(handles.promise).toBeUndefined();
+    expect(handles.promiseStrict).toBeUndefined();
+  });
+
+  it("combines a partially-idle aggregate after a selective refetch", async () => {
+    const handles = store.findAll("user", ["1", "2"]);
+    await flushCoalescer();
+    store.clearMemory(); // both handles idle, promises undefined
+
+    // Re-request only id "1": its handle gets a fresh in-flight promise while id
+    // "2" stays idle (undefined promise). The combined promises must fill the
+    // idle input with `Promise.resolve()` rather than skipping it.
+    store.find("user", "1");
+
+    const lenient = handles.promise;
+    const strict = handles.promiseStrict;
+    expect(lenient).toBeInstanceOf(Promise);
+    expect(strict).toBeInstanceOf(Promise);
+
+    await flushCoalescer();
+
+    // Lenient snapshot: only the reloaded id-1 succeeded (id-2 was never
+    // re-fetched, so it never resolves to a value).
+    await expect(lenient).resolves.toEqual([expect.objectContaining({ id: "1" })]);
+    // Strict resolves once every (padded) input settles — one value per handle.
+    await expect(strict).resolves.toHaveLength(2);
+  });
+});
+
+// =============================================================================
 // Reactivity — the aggregate's getters read the live handles, so a subscriber
 // re-fires when a fetch settles (findAll itself is not wrapped in effect()).
 // =============================================================================
