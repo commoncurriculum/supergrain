@@ -17,11 +17,20 @@ export default defineConfig({
       formats: ["es", "cjs"],
     },
     rollupOptions: {
-      // `effect` is a peer dependency — never bundle it into the dist.
-      external: ["@supergrain/kernel", "effect", "react", "react/jsx-runtime"],
+      // `effect` is a peer dependency — never bundle it into the dist. The
+      // `/internal` subpath is externalized separately: rolldown matches
+      // externals exactly, so "@supergrain/kernel" alone does not cover it.
+      external: [
+        "@supergrain/kernel",
+        "@supergrain/kernel/internal",
+        "effect",
+        "react",
+        "react/jsx-runtime",
+      ],
       output: {
         globals: {
           "@supergrain/kernel": "SupergrainCore",
+          "@supergrain/kernel/internal": "SupergrainCoreInternal",
           react: "React",
         },
       },
