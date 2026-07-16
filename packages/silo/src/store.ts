@@ -2,8 +2,7 @@ import type { StoreHooks } from "./hooks";
 import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
 import type { Effect } from "effect";
 
-import { batch, computed, createReactive, effect, unwrap } from "@supergrain/kernel";
-import { setActiveSub } from "@supergrain/kernel/internal";
+import { batch, computed, createReactive, unwrap } from "@supergrain/kernel";
 
 import { attachSiloDevtools } from "./devtools";
 import { type AdapterError, ProcessorError, type SiloError } from "./errors";
@@ -223,66 +222,51 @@ export interface DocumentsHandle<T, E = SiloError> {
 }
 
 class DocumentsHandleImpl<T, E = SiloError> implements DocumentsHandle<T, E> {
-  readonly handles: Array<DocumentHandle<T, E>>;
+  constructor(readonly handles: Array<DocumentHandle<T, E>>) {}
 
-  // `values` is a LIVE kernel reactive array, not a per-read snapshot. A
-  // detached effect subscribes to the handles and reconciles the array IN
-  // PLACE, so the kernel's own per-index write diffing does the memoization
-  // the old `arrayEqual` swap did by hand — `write.ts` fires a slot's signal
-  // only when `unwrap(old) !== unwrap(new)`, so an unchanged element stays
-  // quiet and the array identity never churns. This is the same in-place
-  // reactive-array pattern the kernel is built around (the benchmark's
-  // `store.data`, covered by kernel `array-mutation` tests): fine-grained,
-  // a reader of one slot re-renders only when THAT slot changes.
+  // Every aggregate is a kernel `computed` over the underlying handles: reading
+  // one subscribes the caller to the computed's result, and the `!==` cut-off
+  // stops propagation when a handle change leaves the result unchanged — e.g.
+  // one of three pending handles resolving keeps `status` "pending", so its
+  // subscribers don't re-run. All aggregates share these because `findAll`
+  // caches the DocumentsHandle per (type, ids). Everything is lazy: nothing runs
+  // until a field is read, so an unobserved aggregate does no work.
+
+  // `values` is a single reactive array that is BOTH fixed (its identity never
+  // changes) AND reactive (per-index signals). The computed reconciles that
+  // same array IN PLACE from the handles and returns it — it does NOT hand back
+  // a fresh array — so:
+  //   - the stable return makes the computed a firewall: a handle change that
+  //     leaves the successful values unchanged doesn't propagate;
+  //   - the reconcile drives the array's OWN per-index signals, so it stays
+  //     fine-grained — `write.ts` fires a slot only when `unwrap(old) !==
+  //     unwrap(new)`, and a reader of one row re-renders only when that row
+  //     changes. This is the in-place reactive-array pattern the kernel is
+  //     built around (the benchmark's `store.data`, covered by kernel
+  //     `array-mutation` tests), with no standing effect to drive it.
   // Cast the brand away (as `createDocumentStore` does for its state) so the
   // slot reads/writes as a plain `Array<T>`.
-  private readonly _values = createReactive<Array<T>>([]) as Array<T>;
-
-  // The remaining aggregates are scalars / promises, where a kernel `computed`
-  // is the right firewall (the same primitive `useComputed` wraps): reading one
-  // subscribes the caller to the computed's result, and the `!==` cut-off stops
-  // propagation when a handle change leaves the result unchanged — e.g. one of
-  // three pending handles resolving keeps `status` "pending", so its
-  // subscribers don't re-run. All aggregates share these because `findAll`
-  // caches the DocumentsHandle per (type, ids).
-
-  constructor(handles: Array<DocumentHandle<T, E>>) {
-    this.handles = handles;
-    // Detach from any active subscriber before creating the sync effect:
-    // `findAll` runs inside a tracked render, and a nested effect would be
-    // torn down when that component re-renders — but this aggregate is cached
-    // and outlives any single render. `<For>` detaches its long-lived swap
-    // effect the same way.
-    const prevSub = setActiveSub(undefined);
-    try {
-      effect(() => this.reconcileValues());
-    } finally {
-      setActiveSub(prevSub);
-    }
-  }
-
-  // Sync `_values` to the successful handle values, in id order. Reads handle
-  // fields (subscribing this effect to them) and writes `_values` with
-  // `set`-only operations — index assignment and a `length` truncation, never a
-  // proxy `get` — so the effect never subscribes to `_values` and can't
-  // re-trigger itself.
-  private reconcileValues(): void {
+  private readonly _valuesArray = createReactive<Array<T>>([]) as Array<T>;
+  private readonly _values = computed<Array<T>>(() => {
     const next: Array<T> = [];
     for (const handle of this.handles) {
       if (handle.status === "success") next.push(handle.value);
     }
-    const values = this._values;
+    // Reconcile in place with `set`-only writes (index assignment + a `length`
+    // truncation), never a proxy `get`, so this computed depends only on the
+    // handles — not on `_valuesArray` — and can't form a cycle with its own
+    // writes. The unchanged-slot guard keeps a no-op read from touching the
+    // proxy (write.ts would suppress the notification anyway).
+    const values = this._valuesArray;
     const raw = unwrap(values) as Array<T>;
     for (let i = 0; i < next.length; i++) {
-      // A no-op assignment is suppressed by write.ts's own unwrap-equality, but
-      // guard here too so unchanged slots never touch the proxy at all.
       if (unwrap(raw[i]) !== unwrap(next[i])) values[i] = next[i];
     }
     if (raw.length > next.length) values.length = next.length;
-  }
-
+    return values;
+  });
   get values(): Array<T> {
-    return this._values;
+    return this._values();
   }
 
   private readonly _status = computed(() =>
