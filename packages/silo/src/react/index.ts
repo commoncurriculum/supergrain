@@ -1,6 +1,6 @@
 import type { QueryHandle, QueryTypes, RegisteredQueries } from "../queries";
 
-import { createContext, createElement, useContext, useRef, useState, type ReactNode } from "react";
+import { createContext, createElement, useContext, useState, type ReactNode } from "react";
 
 import {
   createDocumentStore,
@@ -11,7 +11,6 @@ import {
   type DocumentTypes,
   type RegisteredTypes,
 } from "../store";
-import { arrayEqual } from "../util";
 import { DocumentStoreContext } from "./context";
 
 /**
@@ -230,19 +229,14 @@ export function createDocumentStoreContext<
     type: K,
     ids: string[] | null | undefined,
   ): DocumentsHandle<M[K]> {
-    // Like useDocument, this reads reactively and re-triggers fetches every
-    // render (findAll → find per id). findAll returns a fresh aggregate each
-    // call, so we hold the previous one in a ref and only swap it in when the
-    // underlying handle set actually changed — the aggregate's field getters
-    // read the live handles, so a stable wrapper stays correct while giving
-    // React's use() a stable promise identity across renders.
+    // A pure reactive read, like useDocument: findAll re-triggers fetches
+    // every render (findAll → find per id) and returns a stable aggregate —
+    // the store caches it per (type, ids), its `values` is a live reactive
+    // array and its scalar/promise fields are kernel computeds — so React's
+    // use() sees stable object and promise identities across renders with no
+    // hook-level bookkeeping.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
-    const next = store.findAll(type, ids);
-    const ref = useRef(next);
-    if (!arrayEqual(ref.current.handles, next.handles)) {
-      ref.current = next;
-    }
-    return ref.current;
+    return store.findAll(type, ids);
   }
 
   function useQuery<K extends keyof Q & string>(

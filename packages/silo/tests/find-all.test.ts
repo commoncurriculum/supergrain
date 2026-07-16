@@ -115,15 +115,25 @@ describe("store.findAll — handles", () => {
     expect(handles.handles[2]).toBe(store.find("user", "3"));
   });
 
-  it("returns a fresh aggregate each call, but the same inner handles", () => {
+  it("returns the same aggregate for equal ids, with the same inner handles", () => {
+    // Fresh array instances with equal contents hit the same cache slot: the
+    // aggregate (and the kernel computeds inside it) is shared by all readers.
     const a = store.findAll("user", ["1", "2"]);
     const b = store.findAll("user", ["1", "2"]);
 
-    // The wrapper is intentionally not stable (useDocuments layers that on top).
-    expect(a).not.toBe(b);
+    expect(a).toBe(b);
     // The handles inside are stable — find is idempotent.
-    expect(a.handles[0]).toBe(b.handles[0]);
-    expect(a.handles[1]).toBe(b.handles[1]);
+    expect(a.handles[0]).toBe(store.find("user", "1"));
+    expect(a.handles[1]).toBe(store.find("user", "2"));
+  });
+
+  it("returns a different aggregate when the ids differ (order matters)", () => {
+    const a = store.findAll("user", ["1", "2"]);
+    const b = store.findAll("user", ["1", "2", "3"]);
+    const c = store.findAll("user", ["2", "1"]);
+
+    expect(b).not.toBe(a);
+    expect(c).not.toBe(a);
   });
 
   it("triggers a single batched fetch for all ids", async () => {
@@ -170,13 +180,16 @@ describe("store.findAll — values and status while loading", () => {
     await expect(handles.promiseStrict).resolves.toHaveLength(2);
   });
 
-  it("caches the values array — same reference when the content is unchanged", async () => {
+  it("exposes a stable, live reactive array — identity never changes", async () => {
     const handles = store.findAll("user", ["1", "2"]);
+    const first = handles.values;
+
     await flushCoalescer();
 
-    const first = handles.values;
-    // A second read with no underlying change returns the identical array.
+    // The array is reconciled in place as the fetch settles: same identity
+    // before and after, now populated with the loaded values.
     expect(handles.values).toBe(first);
+    expect(handles.values.map((u) => u.id)).toEqual(["1", "2"]);
   });
 });
 
@@ -274,24 +287,55 @@ describe("store.findAll — promiseStrict", () => {
 // that arise when memory is cleared out from under a captured aggregate.
 // =============================================================================
 
-describe("store.findAll — values cache invalidation", () => {
-  it("returns a fresh values array when a value is wholesale-replaced (same length)", () => {
+describe("store.findAll — values reconciled in place", () => {
+  it("updates a wholesale-replaced slot in place, firing only that index's subscriber", () => {
     store.insertDocument("user", makeUser("1"));
     store.insertDocument("user", makeUser("2"));
 
     const handles = store.findAll("user", ["1", "2"]);
-    const first = handles.values;
-    expect(first.map((u) => u.id)).toEqual(["1", "2"]);
+    const values = handles.values;
+    expect(values.map((u) => u.id)).toEqual(["1", "2"]);
 
-    // Wholesale-replace id "1" with a NEW object: the successes array is still
-    // length 2, but its first element's reference changed. arrayEqual must walk
-    // the elements and detect the difference, so a fresh array is handed back.
+    // Per-slot subscribers: index 0 is replaced, index 1 is untouched.
+    const seen0: Array<string> = [];
+    const seen1: Array<string> = [];
+    effect(() => {
+      seen0.push(values[0].attributes.firstName);
+    });
+    effect(() => {
+      seen1.push(values[1].attributes.firstName);
+    });
+
+    // Wholesale-replace id "1" with a NEW object. The reactive array is
+    // reconciled in place — same array identity, slot 0 swapped — so the
+    // kernel fires only index 0's signal.
     store.insertDocument("user", makeUser("1", { firstName: "Ada" }));
 
-    const second = handles.values;
-    expect(second).not.toBe(first);
-    expect(second[0].attributes.firstName).toBe("Ada");
-    expect(second.map((u) => u.id)).toEqual(["1", "2"]);
+    // Same live array, updated in place.
+    expect(handles.values).toBe(values);
+    expect(values[0].attributes.firstName).toBe("Ada");
+    expect(values.map((u) => u.id)).toEqual(["1", "2"]);
+
+    // Fine-grained: only the changed slot's subscriber re-ran.
+    expect(seen0.at(-1)).toBe("Ada");
+    expect(seen1).toHaveLength(1);
+  });
+
+  it("shrinks in place when a value drops out (e.g. clearMemory of one id)", async () => {
+    const handles = store.findAll("user", ["1", "2"]);
+    await flushCoalescer();
+
+    const values = handles.values;
+    expect(values.map((u) => u.id)).toEqual(["1", "2"]);
+
+    // Drop id "1" from cache: its handle goes idle, so it leaves `values`. The
+    // array shrinks in place (same identity) and keeps id order.
+    store.clearMemory();
+    store.find("user", "2"); // re-request only id 2 so it stays a success
+    await flushCoalescer();
+
+    expect(handles.values).toBe(values);
+    expect(values.map((u) => u.id)).toEqual(["2"]);
   });
 });
 
@@ -338,8 +382,10 @@ describe("store.findAll — promise inputs after clearMemory", () => {
 });
 
 // =============================================================================
-// Reactivity — the aggregate's getters read the live handles, so a subscriber
-// re-fires when a fetch settles (findAll itself is not wrapped in effect()).
+// Reactivity — every aggregate field is a kernel computed over the live
+// handles: a subscriber re-fires when a fetch settles, and does NOT re-fire
+// when a handle change leaves the aggregate value unchanged (the computed's
+// equality cut-off).
 // =============================================================================
 
 describe("store.findAll — reactive reads", () => {
@@ -371,5 +417,47 @@ describe("store.findAll — reactive reads", () => {
     await flushCoalescer();
 
     expect(seen.at(-1)).toBe("success");
+  });
+
+  it("does NOT re-run a `status` subscriber when one handle resolves but the aggregate stays pending", async () => {
+    const handles = store.findAll("user", ["1", "2"]);
+
+    const seen: Array<string> = [];
+    effect(() => {
+      seen.push(handles.status);
+    });
+    expect(seen).toEqual(["pending"]);
+
+    // Commit id 1 while id 2 is still in flight: the underlying handle flips
+    // to success, but the aggregate is still "pending" — the computed's
+    // equality cut-off stops propagation, so the subscriber never re-fires.
+    store.insertDocument("user", makeUser("1"));
+    expect(seen).toEqual(["pending"]);
+
+    await flushCoalescer();
+
+    // Only the real transition reaches the subscriber.
+    expect(seen).toEqual(["pending", "success"]);
+  });
+
+  it("does NOT re-run a `values` subscriber when a handle errors without changing the successes", async () => {
+    omitUserIds("2"); // id 2 → NotFoundError; id 1 is served from cache below
+    store.insertDocument("user", makeUser("1"));
+
+    const handles = store.findAll("user", ["1", "2"]);
+
+    const seen: Array<Array<string>> = [];
+    effect(() => {
+      seen.push(handles.values.map((u) => u.id));
+    });
+    expect(seen).toEqual([["1"]]);
+
+    await flushCoalescer();
+
+    // Handle 2 transitioned pending → error, but the successful values are
+    // unchanged — the computed hands back the same array and the subscriber
+    // stays quiet.
+    expect(handles.handles[1].error).toBeInstanceOf(NotFoundError);
+    expect(seen).toEqual([["1"]]);
   });
 });

@@ -308,10 +308,10 @@ describe("useDocumentStore + find composition", () => {
 });
 
 // =============================================================================
-// useDocuments — the batched, multi-id hook. Like useDocument it reads
-// reactively and re-triggers fetches every render, but it also layers a stable
-// aggregate identity on top of store.findAll (which is fresh each call) so
-// React's use()/memoization see a stable object while the ids are unchanged.
+// useDocuments — the batched, multi-id hook. Like useDocument it is a pure
+// reactive read that re-triggers fetches every render: store.findAll returns
+// a stable, computed-backed aggregate per (type, ids), so React's
+// use()/memoization see a stable object while the ids are unchanged.
 // =============================================================================
 
 describe("useDocuments", () => {
@@ -378,10 +378,9 @@ describe("useDocuments", () => {
   });
 
   it("keeps a stable aggregate identity across re-renders while ids are unchanged", () => {
-    // The aggregate from store.findAll is fresh every call; useDocuments holds
-    // the previous one in a ref and only swaps when the handle set changes. So
-    // an unrelated re-render (a local state bump) must hand back the SAME object
-    // — that stability is what lets React's use() avoid re-suspending.
+    // store.findAll caches the aggregate per (type, ids), so an unrelated
+    // re-render (a local state bump) hands back the SAME object — that
+    // stability is what lets React's use() avoid re-suspending.
     const seen: Array<unknown> = [];
 
     const Probe = tracked(function Probe() {
@@ -429,7 +428,7 @@ describe("useDocuments", () => {
       </Wrap>,
     );
 
-    // A changed handle set breaks the ref's equality check → a new aggregate.
+    // Changed ids map to a different cache slot → a new aggregate.
     expect(seen[0]).not.toBe(seen.at(-1));
   });
 });
