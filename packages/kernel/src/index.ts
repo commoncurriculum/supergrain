@@ -14,6 +14,10 @@ export { getNodesIfExist, $TRACK } from "./core";
 // "cleanup is not a function" on its next run. Read for subscription with a
 // statement body or `void`: `effect(() => void store.count)`.
 export { effect, signal, computed } from "alien-signals";
+// `stableComputed` is a kernel-grown sibling of `computed` for derived arrays:
+// one persistent reactive array, reconciled in place, so the reference is
+// stable across recomputes. See ./stable-computed.
+export { stableComputed } from "./stable-computed";
 export { batch } from "./batch";
 export {
   enableProfiling,

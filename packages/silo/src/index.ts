@@ -23,6 +23,7 @@ export type {
   StoreHooks,
   TypeRegistry,
 } from "./store";
+export type { DocumentsTogetherHandle } from "./together";
 
 export { AdapterError, NotFoundError, ProcessorError } from "./errors";
 export type { AdapterErrorReason, SiloError } from "./errors";

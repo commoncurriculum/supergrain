@@ -96,7 +96,7 @@
     "@vitest/browser": "4.1.0",
     "effect": "^3.21.2",
     "msw": "^2.13.4",
-    "playwright": "^1.55.0",
+    "playwright": "^1.61.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "vitest": "4.1.0"
