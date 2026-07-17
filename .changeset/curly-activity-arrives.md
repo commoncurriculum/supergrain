@@ -1,5 +1,5 @@
 ---
-"@supergrain/activity": minor
+"@supergrain/activity": major
 ---
 
 Add `@supergrain/activity`: user-activity / presence tracking as a verified
