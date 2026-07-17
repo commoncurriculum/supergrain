@@ -217,9 +217,10 @@ const UserRosterTogether = tracked(function UserRosterTogether({
   if (docs.status === "error") return <span>error</span>;
   if (docs.status === "pending") return <span>loading</span>;
 
+  // `status === "success"` narrowed `docs.value` to the array — no `!` needed.
   return (
     <ul>
-      {docs.value!.map((user) => (
+      {docs.value.map((user) => (
         <li key={user.id}>{user.attributes.firstName}</li>
       ))}
     </ul>

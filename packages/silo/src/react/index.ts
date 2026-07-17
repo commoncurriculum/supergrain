@@ -3,6 +3,7 @@ import type { QueryHandle, QueryTypes, RegisteredQueries } from "../queries";
 import { createContext, createElement, useContext, useRef, useState, type ReactNode } from "react";
 
 import {
+  combineDocumentsTogether,
   createDocumentStore,
   type DocumentHandle,
   type DocumentsTogetherHandle,
@@ -249,11 +250,13 @@ export function createDocumentStoreContext<
     type: K,
     ids: string[] | null | undefined,
   ): DocumentsTogetherHandle<M[K]> {
-    // The all-or-nothing batch handle. Its underlying handles are stable, but
-    // the handle wrapper (and its promise computed) must stay stable across
-    // renders for use()/memoization — so rebuild it only when the handle set
-    // changes. `idle` distinguishes `null` ids (an idle handle) from empty ids
-    // (immediately success), which share an empty handle set.
+    // Fetch the per-id handles ONCE (this re-triggers loads every render, like
+    // useDocument), then wrap them into the batch handle. The wrapper (and its
+    // promise computed) must stay stable across renders for use()/memoization —
+    // so rebuild it only when the handle set changes. `idle` distinguishes
+    // `null` ids (an idle handle) from empty ids (immediately success), which
+    // share an empty handle set. `combineDocumentsTogether` wraps the handles we
+    // already have, so there's no second fetch.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
     const handles = store.findAllIndividually(type, ids);
     const idle = ids === null || ids === undefined;
@@ -267,7 +270,7 @@ export function createDocumentStoreContext<
       ref.current.idle !== idle ||
       !arrayEqual(ref.current.handles, handles)
     ) {
-      ref.current = { idle, handles, together: store.findAllTogether(type, ids) };
+      ref.current = { idle, handles, together: combineDocumentsTogether(handles, idle) };
     }
     return ref.current.together;
   }
