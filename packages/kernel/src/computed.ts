@@ -22,10 +22,9 @@ export interface ComputedOptions {
    * - the computed still **firewalls** — because it returns the same reference,
    *   a re-run that produces an equal list doesn't propagate to subscribers.
    *
-   * The getter must return an array. (Reconcile is index-based, which is
-   * correct and minimal for order-preserving transforms like `map` / `filter`;
-   * a reordering transform such as `sort` would need keyed move-detection,
-   * which is not yet supported.)
+   * The getter must return an array whose transform preserves order (`map` /
+   * `filter`): the in-place reconcile is index-based, so a reordering transform
+   * like `sort` rewrites every shifted slot rather than moving it.
    */
   returnStableReference?: boolean;
 }
@@ -75,11 +74,10 @@ export function computed<T>(getter: (previousValue?: T) => T, options?: Computed
  * signal only when `unwrap(old) !== unwrap(new)`, so unchanged slots stay
  * quiet; the pre-check here just avoids touching the proxy for a no-op.
  *
- * Index-based, so it is correct and minimal for order-preserving producers
- * (`map` / `filter`): the set of slots it writes is exactly `{ i : old[i] !==
- * next[i] }`, which for two same-ordered arrays is the true diff. A reordering
- * producer (`sort`) would rewrite every shifted slot; keyed move-detection
- * would be the extension for that case.
+ * Index-based, so correct and minimal for order-preserving producers (`map` /
+ * `filter`): the slots it writes are exactly `{ i : old[i] !== next[i] }`, the
+ * true diff for two same-ordered arrays. A reordering producer (`sort`) rewrites
+ * every shifted slot.
  */
 function syncArray(target: Array<unknown>, next: ReadonlyArray<unknown>): void {
   const raw = unwrap(target) as Array<unknown>;
