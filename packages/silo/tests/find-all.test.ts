@@ -212,6 +212,7 @@ describe("store.findAllTogether — all-or-nothing loading", () => {
 
     expect(together.status).toBe("success");
     expect(together.value?.map((u) => u.attributes.firstName)).toEqual(["Ada", "Grace"]);
+    expect(together.error).toBeUndefined(); // no failing handle → no error
     await expect(together.promise).resolves.toHaveLength(2);
   });
 
@@ -279,6 +280,23 @@ describe("store.findAllTogether — promise", () => {
   it("returns a stable promise identity across reads while inputs are unchanged", () => {
     const together = store.findAllTogether("user", ["1", "2"]);
     expect(together.promise).toBe(together.promise);
+  });
+
+  it("pads an idle handle with a resolved promise after a selective refetch", async () => {
+    const together = store.findAllTogether("user", ["1", "2"]);
+    await flushCoalescer();
+    store.clearMemory(); // both idle, promises undefined
+
+    // Re-request only id 1: its handle gets a fresh in-flight promise while id 2
+    // stays idle (undefined promise). The combined promise must fill the idle
+    // input with `Promise.resolve()` rather than skip it.
+    store.find("user", "1");
+
+    const promise = together.promise;
+    expect(promise).toBeInstanceOf(Promise);
+
+    await flushCoalescer();
+    await expect(promise).resolves.toHaveLength(2);
   });
 
   it("falls back to undefined promise when every handle goes idle (clearMemory)", async () => {

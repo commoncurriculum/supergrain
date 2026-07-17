@@ -417,7 +417,9 @@ describe("useDocumentsIndividually", () => {
     expect(seen.every((h) => h === seen[0])).toBe(true);
   });
 
-  it("hands back a fresh array when the ids change", () => {
+  it("hands back a fresh array when the ids change to a same-length, different set", () => {
+    // Same length (2 → 2), all different handles — so the stability check has to
+    // compare elements, not just length.
     const seen: Array<unknown> = [];
 
     const Probe = tracked(function Probe({ ids }: { ids: Array<string> }) {
@@ -432,7 +434,7 @@ describe("useDocumentsIndividually", () => {
     );
     rerender(
       <Wrap>
-        <Probe ids={["1", "2", "3"]} />
+        <Probe ids={["3", "4"]} />
       </Wrap>,
     );
 
