@@ -12,7 +12,7 @@ test suite.
 The chart is **fully wrapped** — no actor or XState types leak out. Its
 transitions are exposed two ways: `tracker.state`, an ordinary
 `@supergrain/kernel` reactive object you read inside `effect` / `computed`,
-and `tracker.on(event, cb)`, the same transitions as one-shot events for
+and `tracker.on(toState, cb)`, the same transitions as one-shot events for
 fire-and-forget consumers like analytics.
 
 After `idleAfterMs` (default 15 s) with no input, `status` becomes `idle`; a
@@ -39,9 +39,13 @@ effect(() => {
   console.log(activity.state.status); // "active" | "idle" | "hidden"
 });
 
-// The same transitions are also one-shot events (the push form of state):
-activity.on("idle", () => track("went_idle"));
-activity.on("returned", (e) => track("session_resumed", { awayMs: e.awayMs }));
+// The same transitions are also one-shot events, keyed by destination state:
+activity.on("idle", (e) => track("went_idle", { after: e.durationMs }));
+
+// "came back after a long absence" = active, from hidden, for a while:
+activity.on("active", (e) => {
+  if (e.fromState === "hidden" && e.durationMs > 120_000) track("session_resumed");
+});
 
 // later
 activity.destroy();
@@ -54,12 +58,13 @@ call site:
 
 - **`tracker.state`** — a reactive object; _what's true now_. Read it in an
   `effect` / `computed` (or React's `useSignalEffect`) to render or react.
-- **`tracker.on(event, cb)`** — the same transitions as _one-shot events_.
-  The push form, for fire-and-forget consumers like analytics.
+- **`tracker.on(toState, cb)`** — the same transitions as _one-shot events_,
+  keyed by the state entered. The push form, for fire-and-forget consumers
+  like analytics.
 
 State is deduped (only changes on a real transition); events are the raw
-per-transition stream. `returned` is the one event that also carries data no
-lasting state holds (`awayMs`).
+per-transition stream, each carrying where the user came from and how long
+they were there.
 
 ## `tracker.state`
 
@@ -69,27 +74,32 @@ A reactive `@supergrain/kernel` object with one field:
 | -------- | -------------------------------- | ----------------------------------------------------------- |
 | `status` | `"active" \| "idle" \| "hidden"` | Coarse activity. Chart substates collapse into these three. |
 
-## `tracker.on(event, cb)`
+## `tracker.on(toState, cb)`
 
-Subscribe to an event; returns an unsubscribe function. **Every event carries
-`from`** (the prior `status`) **and `at`** (`Date.now()` at the transition):
+Subscribe to transitions **into** a state; returns an unsubscribe function.
+`toState` is one of `"active" | "idle" | "hidden"` — the same values as
+`state.status`. Every event is the same flat shape:
 
 ```ts
-activity.on("idle", (e) => track("went_idle", { from: e.from, at: e.at }));
-// e: { type: "idle", from: "active", at: 1723... }
+activity.on("active", (e) => …);
+// e: { fromState: "hidden", toState: "active", at: 1723…, durationMs: 45000 }
 ```
 
-| Event      | Extra payload        | Fires when                                              |
-| ---------- | -------------------- | ------------------------------------------------------- |
-| `active`   | —                    | Became active. Re-fires on continued input (throttled). |
-| `idle`     | —                    | No input for `idleAfterMs`.                             |
-| `hidden`   | —                    | Tab blurred / backgrounded.                             |
-| `returned` | `{ awayMs: number }` | Came back to the tab after being hidden ≥ `longBlurMs`. |
+| Field        | Type                             | Meaning                                |
+| ------------ | -------------------------------- | -------------------------------------- |
+| `fromState`  | `"active" \| "idle" \| "hidden"` | The status before this transition.     |
+| `toState`    | `"active" \| "idle" \| "hidden"` | The status entered (the `on` key).     |
+| `at`         | `number`                         | `Date.now()` at the transition.        |
+| `durationMs` | `number`                         | How long the chart was in `fromState`. |
+
+`active` re-fires on continued input (throttled), where `fromState` is
+`"active"`. There's no dedicated "returned" event — a return from a long
+absence is simply `active` with `fromState: "hidden"` and a large `durationMs`,
+so the consumer picks the threshold.
 
 ## Constructor options
 
-`idleAfterMs`, `longBlurMs`, `inputThrottleMs` — all optional, all with
-sensible defaults.
+`idleAfterMs`, `inputThrottleMs` — both optional, both with sensible defaults.
 
 ## Lifecycle
 

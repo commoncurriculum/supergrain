@@ -16,7 +16,6 @@
 export {
   ActivityTracker,
   type ActivityEvent,
-  type ActivityEventMeta,
   type ActivityState,
   type ActivityStatus,
   type ActivityTrackerOptions,

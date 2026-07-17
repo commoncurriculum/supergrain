@@ -7,15 +7,9 @@ import { spawnTestActor } from "./helpers";
 // transitions don't leak across the fake↔real timer toggle.
 const spawned: Array<{ stop: () => void }> = [];
 
-function spawn(
-  input: {
-    idleAfterMs?: number;
-    longBlurMs?: number;
-  } = {},
-) {
+function spawn(input: { idleAfterMs?: number } = {}) {
   const handle = spawnTestActor<typeof activityMachine, ActivityEmitted>(activityMachine, {
     idleAfterMs: 15_000,
-    longBlurMs: 120_000,
     ...input,
   });
   spawned.push(handle.actor);
@@ -103,42 +97,13 @@ describe("ActivityMachine — hidden region", () => {
     expect(actor.getSnapshot().matches("hidden")).toBe(true);
   });
 
-  it("hidden → active on FOCUS within longBlurMs (no longBlurReturn)", () => {
-    const { actor, emitted } = spawn({ longBlurMs: 120_000 });
+  it("hidden → active on FOCUS", () => {
+    const { actor, emitted } = spawn();
     actor.send({ type: "BLUR" });
     vi.advanceTimersByTime(60_000);
     actor.send({ type: "FOCUS" });
     expect(actor.getSnapshot().value).toBe("active");
-    expect(emitted.find((e) => e.type === "longBlurReturn")).toBeUndefined();
-  });
-
-  it("emits longBlurReturn when FOCUS arrives after longBlurMs", () => {
-    const { actor, emitted } = spawn({ longBlurMs: 120_000 });
-    actor.send({ type: "BLUR" });
-    vi.advanceTimersByTime(120_001);
-    actor.send({ type: "FOCUS" });
-    expect(actor.getSnapshot().value).toBe("active");
-    const longBlur = emitted.find((e) => e.type === "longBlurReturn");
-    expect(longBlur).toBeDefined();
-    expect((longBlur as { blurDurationMs: number }).blurDurationMs).toBeGreaterThanOrEqual(120_000);
-  });
-
-  it("hidden region transitions recent → long after longBlurMs", () => {
-    const { actor } = spawn({ longBlurMs: 120_000 });
-    actor.send({ type: "BLUR" });
-    expect(actor.getSnapshot().matches({ hidden: "recent" })).toBe(true);
-    vi.advanceTimersByTime(120_001);
-    expect(actor.getSnapshot().matches({ hidden: "long" })).toBe(true);
-  });
-
-  it("re-entering hidden resets the long-blur timer", () => {
-    const { actor } = spawn({ longBlurMs: 120_000 });
-    actor.send({ type: "BLUR" });
-    vi.advanceTimersByTime(60_000);
-    actor.send({ type: "FOCUS" });
-    actor.send({ type: "BLUR" });
-    vi.advanceTimersByTime(60_000);
-    expect(actor.getSnapshot().matches({ hidden: "recent" })).toBe(true);
+    expect(emitted.map((e) => e.type)).toEqual(["active", "hidden", "active"]);
   });
 
   it("USER_INPUT while hidden is ignored", () => {
@@ -151,21 +116,12 @@ describe("ActivityMachine — hidden region", () => {
 
 describe("ActivityMachine — emission ordering", () => {
   it("emits state events in the order entered", () => {
-    const { actor, emitted } = spawn({ idleAfterMs: 1_000, longBlurMs: 60_000 });
+    const { actor, emitted } = spawn({ idleAfterMs: 1_000 });
 
     vi.advanceTimersByTime(1_001); // active → idle
     actor.send({ type: "BLUR" }); // idle → hidden
-    vi.advanceTimersByTime(60_001); // hidden.recent → hidden.long (no emit)
-    actor.send({ type: "FOCUS" }); // hidden.long → active + longBlurReturn
+    actor.send({ type: "FOCUS" }); // hidden → active
 
-    // Per XState/SCXML ordering, transition actions run before target entry,
-    // so longBlurReturn fires before the active entry emit.
-    expect(emitted.map((e) => e.type)).toEqual([
-      "active",
-      "idle",
-      "hidden",
-      "longBlurReturn",
-      "active",
-    ]);
+    expect(emitted.map((e) => e.type)).toEqual(["active", "idle", "hidden", "active"]);
   });
 });

@@ -1,4 +1,4 @@
-import { setup, assign, emit } from "xstate";
+import { setup, emit } from "xstate";
 
 /**
  * ActivityMachine — tracks whether the user is active, idle, or away.
@@ -8,45 +8,34 @@ import { setup, assign, emit } from "xstate";
  * inputs this machine accepts.
  *
  *   idleAfterMs (15s) — no input this long → `idle` (a presence signal).
- *   longBlurMs (2m)   — a hidden period this long is a "real" absence, so
- *                       returning from it emits `longBlurReturn`.
  *
  * States
- *   active           — user has produced input recently
- *   idle             — visible/focused but no input for `idleAfterMs`
- *   hidden           — page is blurred or backgrounded
- *     hidden.recent  — under `longBlurMs`
- *     hidden.long    — over `longBlurMs`; FOCUS from here emits longBlurReturn
+ *   active — user has produced input recently
+ *   idle   — visible/focused but no input for `idleAfterMs`
+ *   hidden — page is blurred or backgrounded
  *
  * Inputs (events sent to the machine)
  *   USER_INPUT — any user input event (keydown, mousemove, scroll, ...)
  *   FOCUS      — pageshow / focus / resume / visibilitychange→visible
  *   BLUR       — pagehide / blur / freeze / visibilitychange→hidden
  *
- * Outputs (events emitted to subscribers)
- *   active         — entered active state
- *   idle           — entered idle state
- *   hidden         — entered hidden state
- *   longBlurReturn — returned from a hidden period >= longBlurMs
+ * Outputs (events emitted on entering each state)
+ *   active / idle / hidden
+ *
+ * "How long was the user away / idle" is not modelled here — the wrapper
+ * times each state and reports it as `durationMs` on the transition event.
  */
 
 export interface ActivityContext {
-  enteredHiddenAt: number | null;
   idleAfterMs: number;
-  longBlurMs: number;
 }
 
 export type ActivityMachineEvent = { type: "USER_INPUT" } | { type: "FOCUS" } | { type: "BLUR" };
 
-export type ActivityEmitted =
-  | { type: "active" }
-  | { type: "idle" }
-  | { type: "hidden" }
-  | { type: "longBlurReturn"; blurDurationMs: number };
+export type ActivityEmitted = { type: "active" } | { type: "idle" } | { type: "hidden" };
 
 export interface ActivityInput {
   idleAfterMs?: number | undefined;
-  longBlurMs?: number | undefined;
 }
 
 export const activityMachine = setup({
@@ -58,25 +47,12 @@ export const activityMachine = setup({
   },
   delays: {
     IDLE_AFTER: ({ context }) => context.idleAfterMs,
-    LONG_BLUR_AFTER: ({ context }) => context.longBlurMs,
-  },
-  actions: {
-    recordEnteredHidden: assign({
-      enteredHiddenAt: () => Date.now(),
-    }),
-    emitLongBlurReturn: emit(({ context }) => ({
-      type: "longBlurReturn" as const,
-      /* c8 ignore next -- enteredHiddenAt is set on entering `hidden`, always before a FOCUS can emit this */
-      blurDurationMs: Date.now() - (context.enteredHiddenAt ?? Date.now()),
-    })),
   },
 }).createMachine({
   id: "activity",
   initial: "active",
   context: ({ input }) => ({
-    enteredHiddenAt: null,
     idleAfterMs: input.idleAfterMs ?? 15_000,
-    longBlurMs: input.longBlurMs ?? 120_000,
   }),
   states: {
     active: {
@@ -98,25 +74,9 @@ export const activityMachine = setup({
       },
     },
     hidden: {
-      entry: ["recordEnteredHidden", emit({ type: "hidden" })],
-      initial: "recent",
-      states: {
-        recent: {
-          after: {
-            LONG_BLUR_AFTER: { target: "long" },
-          },
-          on: {
-            FOCUS: { target: "#activity.active" },
-          },
-        },
-        long: {
-          on: {
-            FOCUS: {
-              target: "#activity.active",
-              actions: "emitLongBlurReturn",
-            },
-          },
-        },
+      entry: emit({ type: "hidden" }),
+      on: {
+        FOCUS: { target: "active" },
       },
     },
   },

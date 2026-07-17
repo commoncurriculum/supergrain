@@ -218,27 +218,30 @@ describe("ActivityTracker.on — events", () => {
     tracker.destroy();
   });
 
-  it("emits `returned` with awayMs after a long absence, and unsubscribes", () => {
-    const tracker = new ActivityTracker({ longBlurMs: 1_000 });
+  it("reports a return from hidden as active with fromState + durationMs", () => {
+    const tracker = new ActivityTracker();
     const fake = new FakeDocument();
     tracker.attachDOM(asDocument(fake));
 
-    const returns: number[] = [];
-    const off = tracker.on("returned", (e) => returns.push(e.awayMs));
+    // "came back after a long absence" = active with fromState "hidden".
+    const returns: ActivityEvent[] = [];
+    const off = tracker.on("active", (e) => {
+      if (e.fromState === "hidden") returns.push(e);
+    });
 
     fake.hidden = true;
-    fake.dispatch("visibilitychange");
+    fake.dispatch("visibilitychange"); // → hidden
     vi.advanceTimersByTime(5_000);
     fake.hidden = false;
-    fake.dispatch("visibilitychange");
+    fake.dispatch("visibilitychange"); // hidden → active
 
     expect(returns).toHaveLength(1);
-    expect(returns[0]).toBeGreaterThanOrEqual(5_000);
+    expect(returns[0]).toMatchObject({ fromState: "hidden", toState: "active" });
+    expect(returns[0]?.durationMs).toBe(5_000);
 
     off();
     fake.hidden = true;
     fake.dispatch("visibilitychange");
-    vi.advanceTimersByTime(5_000);
     fake.hidden = false;
     fake.dispatch("visibilitychange");
     expect(returns).toHaveLength(1); // no more after unsubscribe
@@ -246,7 +249,7 @@ describe("ActivityTracker.on — events", () => {
     tracker.destroy();
   });
 
-  it("carries the prior status (from) and a timestamp (at)", () => {
+  it("carries fromState, toState, at, and durationMs", () => {
     const tracker = new ActivityTracker({ idleAfterMs: 1_000 });
     const fake = new FakeDocument();
     tracker.attachDOM(asDocument(fake));
@@ -255,12 +258,12 @@ describe("ActivityTracker.on — events", () => {
     tracker.on("idle", (e) => events.push(e));
     tracker.on("active", (e) => events.push(e));
 
-    vi.advanceTimersByTime(1_000); // active → idle
+    vi.advanceTimersByTime(1_000); // active → idle (active lasted ~1000ms)
     fake.dispatch("keydown"); // idle → active
 
-    expect(events[0]).toMatchObject({ type: "idle", from: "active" });
-    expect(events[1]).toMatchObject({ type: "active", from: "idle" });
+    expect(events[0]).toMatchObject({ fromState: "active", toState: "idle", durationMs: 1_000 });
     expect(typeof events[0]?.at).toBe("number");
+    expect(events[1]).toMatchObject({ fromState: "idle", toState: "active" });
 
     tracker.destroy();
   });
