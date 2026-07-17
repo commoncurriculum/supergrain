@@ -97,6 +97,18 @@ activity.on("active", (e) => …);
 absence is simply `active` with `fromState: "hidden"` and a large `durationMs`,
 so the consumer picks the threshold.
 
+## `tracker.currentDurationMs()`
+
+How long the chart has been in its **current** `status`, computed on demand
+(no ticking timer) — the live counterpart to the event `durationMs`, which
+reports the state just left. While `active`, continued input re-enters the
+state, so this is time since the last input; while `idle` / `hidden` it's the
+full time in that state.
+
+```ts
+if (activity.state.status === "idle" && activity.currentDurationMs() > 60_000) …
+```
+
 ## Constructor options
 
 `idleAfterMs`, `inputThrottleMs` — both optional, both with sensible defaults.

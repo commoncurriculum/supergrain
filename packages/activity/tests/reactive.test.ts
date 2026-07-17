@@ -40,4 +40,18 @@ describe("ActivityTracker.state", () => {
     dispose();
     tracker.destroy();
   });
+
+  it("currentDurationMs reports time in the current state", () => {
+    const tracker = new ActivityTracker({ idleAfterMs: 1000 });
+
+    vi.advanceTimersByTime(500); // still active
+    expect(tracker.currentDurationMs()).toBe(500);
+
+    vi.advanceTimersByTime(500); // → idle at 1000ms
+    vi.advanceTimersByTime(300); // 300ms into idle
+    expect(tracker.state.status).toBe("idle");
+    expect(tracker.currentDurationMs()).toBe(300);
+
+    tracker.destroy();
+  });
 });

@@ -113,6 +113,15 @@ export class ActivityTracker {
     for (const handler of set) handler(event);
   }
 
+  /** How long the chart has been in its current `status`, in ms — computed on
+   *  demand (no ticking timer). The live counterpart to the `durationMs` on
+   *  events, which reports the state just *left*. Note continued input
+   *  re-enters `active`, so while active this measures time since the last
+   *  input; while `idle` / `hidden` it's the full time in that state. */
+  currentDurationMs(): number {
+    return Date.now() - this.enteredAt;
+  }
+
   /** Subscribe to transitions *into* `toState` (see {@link ActivityEvent}) —
    *  the push counterpart to `state`. Fires once per transition; use it for
    *  fire-and-forget consumers like analytics. Returns an unsubscribe fn. */
