@@ -1,5 +1,12 @@
 # @supergrain/mill
 
+## 7.2.0
+
+### Patch Changes
+
+- Updated dependencies [9dffca6]
+  - @supergrain/kernel@7.2.0
+
 ## 7.1.0
 
 ### Minor Changes
