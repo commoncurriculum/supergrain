@@ -13,11 +13,12 @@ export interface AttachActivityOptions {
  * Attach DOM listeners to an ActivityMachine actor. Returns a cleanup
  * function that removes every listener.
  *
- * The mapping mirrors what frontend/app/services/socket.ts:96-129 does:
- *   - 10 user-input events (keydown, mousemove, scroll, …) → USER_INPUT
- *   - pageshow / focus / resume → FOCUS
- *   - pagehide / blur / freeze → BLUR
- *   - visibilitychange → FOCUS or BLUR depending on document.hidden
+ * Listeners bind to the target the browser actually dispatches on:
+ *   - 10 user-input events (keydown, mousemove, …) → USER_INPUT, on document
+ *   - `visibilitychange` → FOCUS/BLUR by `document.hidden`, on document
+ *   - page-lifecycle `resume` / `freeze` → FOCUS / BLUR, on document
+ *   - window `focus` / `pageshow` → FOCUS and `blur` / `pagehide` → BLUR, on
+ *     `document.defaultView` (the window) when present
  *
  * USER_INPUT is throttled (leading edge): the machine's idle timeout is
  * 15s, so a 1s notification floor delays idle detection by at most 1s
@@ -25,7 +26,7 @@ export interface AttachActivityOptions {
  */
 export function attachActivityListeners(
   actor: ActorRefFromLogic<typeof activityMachine>,
-  target: Document = document,
+  target: Document,
   opts: AttachActivityOptions = {},
 ): () => void {
   const userEvents = [
@@ -40,33 +41,40 @@ export function attachActivityListeners(
     "touchmove",
     "touchstart",
   ];
-  const focusEvents = ["pageshow", "resume", "focus"];
-  const blurEvents = ["pagehide", "freeze", "blur"];
 
   const inputThrottleMs = opts.inputThrottleMs ?? 1000;
   let lastInputSentAt = -Infinity;
-  const onInput = () => {
+  const onInput: EventListener = () => {
     const now = Date.now();
     if (now - lastInputSentAt < inputThrottleMs) return;
     lastInputSentAt = now;
     actor.send({ type: "USER_INPUT" });
   };
-  const onFocus = () => actor.send({ type: "FOCUS" });
-  const onBlur = () => actor.send({ type: "BLUR" });
-  const onVisibility = () => {
-    if (target.hidden) actor.send({ type: "BLUR" });
-    else actor.send({ type: "FOCUS" });
-  };
+  const onFocus: EventListener = () => actor.send({ type: "FOCUS" });
+  const onBlur: EventListener = () => actor.send({ type: "BLUR" });
+  const onVisibility: EventListener = () => actor.send({ type: target.hidden ? "BLUR" : "FOCUS" });
 
-  for (const e of userEvents) target.addEventListener(e, onInput);
-  for (const e of focusEvents) target.addEventListener(e, onFocus);
-  for (const e of blurEvents) target.addEventListener(e, onBlur);
-  target.addEventListener("visibilitychange", onVisibility);
+  // (eventTarget, eventName, handler) triples — one list drives both attach
+  // and detach, so they can't drift.
+  const bindings: Array<[EventTarget, string, EventListener]> = [];
+  for (const e of userEvents) bindings.push([target, e, onInput]);
+  bindings.push(
+    [target, "visibilitychange", onVisibility],
+    [target, "resume", onFocus],
+    [target, "freeze", onBlur],
+  );
+  const win = target.defaultView;
+  if (win) {
+    bindings.push(
+      [win, "focus", onFocus],
+      [win, "pageshow", onFocus],
+      [win, "blur", onBlur],
+      [win, "pagehide", onBlur],
+    );
+  }
 
+  for (const [t, e, h] of bindings) t.addEventListener(e, h);
   return () => {
-    for (const e of userEvents) target.removeEventListener(e, onInput);
-    for (const e of focusEvents) target.removeEventListener(e, onFocus);
-    for (const e of blurEvents) target.removeEventListener(e, onBlur);
-    target.removeEventListener("visibilitychange", onVisibility);
+    for (const [t, e, h] of bindings) t.removeEventListener(e, h);
   };
 }

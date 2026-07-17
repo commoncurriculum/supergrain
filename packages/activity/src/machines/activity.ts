@@ -13,9 +13,9 @@ import { setup, assign, emit } from "xstate";
  *
  *   idleAfterMs (15s)      — "the user stopped interacting"; a signal
  *                            for presence/analytics, NOT for teardown
- *   longIdleAfterMs (15m)  — "the user is gone"; emits longIdle, which
- *                            ActivityTracker.attachTo forwards to
- *                            Connection.notifyIdle to pause the socket
+ *   longIdleAfterMs (15m)  — "the user is gone"; emits longIdle. The wrapper
+ *                            surfaces this as `state.longIdle` — the safe
+ *                            trigger for idle-disconnect.
  *
  * States
  *   active         — user has produced input recently

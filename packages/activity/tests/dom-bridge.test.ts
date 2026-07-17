@@ -7,15 +7,15 @@ import { ActivityTracker } from "../src/activity-tracker";
 import { attachActivityListeners } from "../src/dom-bridge";
 
 /**
- * Minimal stand-in for Document: addEventListener / removeEventListener /
- * hidden, plus a dispatch helper. Enough for the bridge, which only uses
- * those three members.
+ * In-memory EventTarget stand-ins. The bridge only uses addEventListener /
+ * removeEventListener / (document) `hidden` / `defaultView`, so these model
+ * exactly that, with a `dispatch` helper. Window-level events (focus/blur/
+ * pageshow/pagehide) go on `defaultView`; the rest on the document.
  */
-class FakeDocument {
-  hidden = false;
-  private handlers = new Map<string, Set<() => void>>();
+class FakeEventTarget {
+  private handlers = new Map<string, Set<EventListener>>();
 
-  addEventListener(event: string, handler: () => void): void {
+  addEventListener(event: string, handler: EventListener): void {
     let set = this.handlers.get(event);
     if (!set) {
       set = new Set();
@@ -24,12 +24,12 @@ class FakeDocument {
     set.add(handler);
   }
 
-  removeEventListener(event: string, handler: () => void): void {
+  removeEventListener(event: string, handler: EventListener): void {
     this.handlers.get(event)?.delete(handler);
   }
 
   dispatch(event: string): void {
-    for (const handler of [...(this.handlers.get(event) ?? [])]) handler();
+    for (const handler of [...(this.handlers.get(event) ?? [])]) handler({ type: event } as Event);
   }
 
   handlerCount(): number {
@@ -39,7 +39,20 @@ class FakeDocument {
   }
 }
 
+class FakeWindow extends FakeEventTarget {}
+
+class FakeDocument extends FakeEventTarget {
+  hidden = false;
+  defaultView: FakeWindow | null;
+
+  constructor(win: FakeWindow | null = new FakeWindow()) {
+    super();
+    this.defaultView = win;
+  }
+}
+
 const asDocument = (fake: FakeDocument) => fake as unknown as Document;
+const windowOf = (fake: FakeDocument) => fake.defaultView as FakeWindow;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -58,16 +71,29 @@ describe("attachActivityListeners — event mapping", () => {
     };
   }
 
-  it("maps user-input, focus, and blur events to machine events", () => {
+  it("maps each event to a machine input on the target the browser uses", () => {
     const { actor, send } = spyActor();
     const fake = new FakeDocument();
+    const win = windowOf(fake);
     attachActivityListeners(actor, asDocument(fake));
 
     fake.dispatch("keydown");
     expect(send).toHaveBeenLastCalledWith({ type: "USER_INPUT" });
-    fake.dispatch("focus");
+
+    // Window-level focus/blur + page show/hide
+    win.dispatch("focus");
     expect(send).toHaveBeenLastCalledWith({ type: "FOCUS" });
-    fake.dispatch("blur");
+    win.dispatch("pageshow");
+    expect(send).toHaveBeenLastCalledWith({ type: "FOCUS" });
+    win.dispatch("blur");
+    expect(send).toHaveBeenLastCalledWith({ type: "BLUR" });
+    win.dispatch("pagehide");
+    expect(send).toHaveBeenLastCalledWith({ type: "BLUR" });
+
+    // Document-level page-lifecycle freeze/resume
+    fake.dispatch("resume");
+    expect(send).toHaveBeenLastCalledWith({ type: "FOCUS" });
+    fake.dispatch("freeze");
     expect(send).toHaveBeenLastCalledWith({ type: "BLUR" });
   });
 
@@ -84,84 +110,73 @@ describe("attachActivityListeners — event mapping", () => {
     expect(send).toHaveBeenLastCalledWith({ type: "FOCUS" });
   });
 
+  it("skips window listeners when the document has no defaultView", () => {
+    const { actor, send } = spyActor();
+    const fake = new FakeDocument(null); // detached document — no window
+    const detach = attachActivityListeners(actor, asDocument(fake));
+
+    fake.dispatch("keydown"); // document-level still works
+    expect(send).toHaveBeenLastCalledWith({ type: "USER_INPUT" });
+    fake.dispatch("resume");
+    expect(send).toHaveBeenLastCalledWith({ type: "FOCUS" });
+
+    detach();
+    expect(fake.handlerCount()).toBe(0);
+  });
+
   it("throttles USER_INPUT to one machine event per inputThrottleMs", () => {
     const { actor, send } = spyActor();
     const fake = new FakeDocument();
-    attachActivityListeners(actor, asDocument(fake), {
-      inputThrottleMs: 1_000,
-    });
+    attachActivityListeners(actor, asDocument(fake), { inputThrottleMs: 1_000 });
 
-    // A burst of high-frequency input → exactly one USER_INPUT
     for (let i = 0; i < 50; i++) fake.dispatch("mousemove");
     expect(send).toHaveBeenCalledTimes(1);
 
-    // Still inside the window → nothing new
     vi.advanceTimersByTime(999);
     fake.dispatch("mousemove");
     expect(send).toHaveBeenCalledTimes(1);
 
-    // Window elapsed → next input goes through
     vi.advanceTimersByTime(1);
     fake.dispatch("mousemove");
     expect(send).toHaveBeenCalledTimes(2);
   });
 
-  it("does not throttle FOCUS/BLUR", () => {
+  it("cleanup removes every listener, on document and window", () => {
     const { actor, send } = spyActor();
     const fake = new FakeDocument();
-    attachActivityListeners(actor, asDocument(fake), {
-      inputThrottleMs: 1_000,
-    });
-    fake.dispatch("blur");
-    fake.dispatch("focus");
-    fake.dispatch("blur");
-    expect(send).toHaveBeenCalledTimes(3);
-  });
-
-  it("attachDOM is idempotent — repeated calls reuse the first detach", () => {
-    const tracker = new ActivityTracker();
-    const fake = new FakeDocument();
-    const first = tracker.attachDOM(asDocument(fake));
-    const listeners = fake.handlerCount();
-    const second = tracker.attachDOM(asDocument(fake));
-    expect(second).toBe(first); // same detach fn, no second registration
-    expect(fake.handlerCount()).toBe(listeners);
-    tracker.destroy();
-  });
-
-  it("cleanup removes every listener", () => {
-    const { actor, send } = spyActor();
-    const fake = new FakeDocument();
+    const win = windowOf(fake);
     const detach = attachActivityListeners(actor, asDocument(fake));
+
     expect(fake.handlerCount()).toBeGreaterThan(0);
+    expect(win.handlerCount()).toBeGreaterThan(0);
+
     detach();
     expect(fake.handlerCount()).toBe(0);
+    expect(win.handlerCount()).toBe(0);
+
     fake.dispatch("keydown");
+    win.dispatch("focus");
     expect(send).not.toHaveBeenCalled();
   });
 });
 
 describe("ActivityTracker — DOM-driven state", () => {
   it("reflects input / idle transitions in state.status", () => {
-    const tracker = new ActivityTracker({
-      idleAfterMs: 15_000,
-      inputThrottleMs: 1_000,
-    });
+    const tracker = new ActivityTracker({ idleAfterMs: 15_000, inputThrottleMs: 1_000 });
     const fake = new FakeDocument();
     tracker.attachDOM(asDocument(fake));
     expect(tracker.state.status).toBe("active");
 
-    // Repeated input keeps resetting the idle timer → stays active
     for (let i = 0; i < 5; i++) {
       vi.advanceTimersByTime(2_000);
       fake.dispatch("keydown");
     }
     expect(tracker.state.status).toBe("active");
 
-    vi.advanceTimersByTime(15_000); // no input → idle
+    vi.advanceTimersByTime(15_000);
     expect(tracker.state.status).toBe("idle");
 
-    fake.dispatch("keydown"); // → active again
+    fake.dispatch("keydown");
     expect(tracker.state.status).toBe("active");
 
     tracker.destroy();
@@ -176,51 +191,16 @@ describe("ActivityTracker — DOM-driven state", () => {
     const fake = new FakeDocument();
     tracker.attachDOM(asDocument(fake));
 
-    // Short idle: observable status, NOT the long signal
     vi.advanceTimersByTime(1_000);
     expect(tracker.state.status).toBe("idle");
     expect(tracker.state.longIdle).toBe(false);
 
-    // Long idle: the disconnect-safe signal flips
     vi.advanceTimersByTime(3_000);
     expect(tracker.state.longIdle).toBe(true);
 
-    // Input clears it
     fake.dispatch("keydown");
     expect(tracker.state.status).toBe("active");
     expect(tracker.state.longIdle).toBe(false);
-
-    tracker.destroy();
-  });
-
-  it("emits a `returned` event with awayMs after a long absence", () => {
-    const tracker = new ActivityTracker({ longBlurMs: 1_000 });
-    const fake = new FakeDocument();
-    tracker.attachDOM(asDocument(fake));
-
-    const returns: number[] = [];
-    const off = tracker.on("returned", (e) => returns.push(e.awayMs));
-
-    // Hidden for longer than longBlurMs, then come back → one `returned`
-    fake.hidden = true;
-    fake.dispatch("visibilitychange");
-    vi.advanceTimersByTime(5_000);
-    fake.hidden = false;
-    fake.dispatch("visibilitychange");
-
-    expect(returns).toHaveLength(1);
-    expect(returns[0]).toBeGreaterThanOrEqual(5_000);
-
-    // A short hide does NOT emit `returned`
-    off();
-    let more = 0;
-    tracker.on("returned", () => (more += 1));
-    fake.hidden = true;
-    fake.dispatch("visibilitychange");
-    vi.advanceTimersByTime(200);
-    fake.hidden = false;
-    fake.dispatch("visibilitychange");
-    expect(more).toBe(0);
 
     tracker.destroy();
   });
@@ -231,14 +211,87 @@ describe("ActivityTracker — DOM-driven state", () => {
     tracker.attachDOM(asDocument(fake));
 
     fake.hidden = true;
-    fake.dispatch("visibilitychange"); // → hidden
+    fake.dispatch("visibilitychange");
     expect(tracker.state.status).toBe("hidden");
     expect(tracker.state.longIdle).toBe(false);
 
-    vi.advanceTimersByTime(3_000); // → hidden.dormant
+    vi.advanceTimersByTime(3_000);
     expect(tracker.state.status).toBe("hidden");
     expect(tracker.state.longIdle).toBe(true);
 
+    tracker.destroy();
+  });
+});
+
+describe("ActivityTracker.on — events", () => {
+  it("delivers active / idle / longIdle / hidden as one-shot events", () => {
+    const tracker = new ActivityTracker({
+      idleAfterMs: 1_000,
+      longIdleAfterMs: 3_000,
+      inputThrottleMs: 100,
+    });
+    const fake = new FakeDocument();
+    tracker.attachDOM(asDocument(fake));
+
+    const log: string[] = [];
+    tracker.on("active", () => log.push("active"));
+    tracker.on("idle", () => log.push("idle"));
+    tracker.on("longIdle", () => log.push("longIdle"));
+    tracker.on("hidden", () => log.push("hidden"));
+
+    vi.advanceTimersByTime(1_000); // → idle
+    vi.advanceTimersByTime(3_000); // → longIdle
+    fake.dispatch("keydown"); // idle.long → active
+    windowOf(fake).dispatch("blur"); // active → hidden
+    expect(log).toEqual(["idle", "longIdle", "active", "hidden"]);
+
+    tracker.destroy();
+  });
+
+  it("emits `returned` with awayMs after a long absence, and unsubscribes", () => {
+    const tracker = new ActivityTracker({ longBlurMs: 1_000 });
+    const fake = new FakeDocument();
+    tracker.attachDOM(asDocument(fake));
+
+    const returns: number[] = [];
+    const off = tracker.on("returned", (e) => returns.push(e.awayMs));
+
+    fake.hidden = true;
+    fake.dispatch("visibilitychange");
+    vi.advanceTimersByTime(5_000);
+    fake.hidden = false;
+    fake.dispatch("visibilitychange");
+
+    expect(returns).toHaveLength(1);
+    expect(returns[0]).toBeGreaterThanOrEqual(5_000);
+
+    off();
+    fake.hidden = true;
+    fake.dispatch("visibilitychange");
+    vi.advanceTimersByTime(5_000);
+    fake.hidden = false;
+    fake.dispatch("visibilitychange");
+    expect(returns).toHaveLength(1); // no more after unsubscribe
+
+    tracker.destroy();
+  });
+});
+
+describe("ActivityTracker.attachDOM", () => {
+  it("is idempotent — repeated calls reuse the first detach", () => {
+    const tracker = new ActivityTracker();
+    const fake = new FakeDocument();
+    const first = tracker.attachDOM(asDocument(fake));
+    const listeners = fake.handlerCount();
+    const second = tracker.attachDOM(asDocument(fake));
+    expect(second).toBe(first);
+    expect(fake.handlerCount()).toBe(listeners);
+    tracker.destroy();
+  });
+
+  it("throws a clear error when no document is available", () => {
+    const tracker = new ActivityTracker();
+    expect(() => tracker.attachDOM()).toThrow(/no document available/);
     tracker.destroy();
   });
 });

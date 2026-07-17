@@ -2,21 +2,21 @@ import { batch, createReactive } from "@supergrain/kernel";
 import { createActor, type ActorRefFromLogic } from "xstate";
 
 import { attachActivityListeners } from "./dom-bridge";
-import { activityMachine } from "./machines/activity";
+import { activityMachine, type ActivityEmitted } from "./machines/activity";
 
 /**
- * ActivityTracker — wraps the ActivityMachine state chart and exposes it as
- * a single reactive @supergrain/kernel object at `tracker.state`.
+ * ActivityTracker — wraps the ActivityMachine state chart and exposes it two
+ * orthogonal ways: `state` (reactive) and `on` (events).
  *
  * The chart stays fully internal: XState owns the verified transitions (the
  * debounce, focus/visibility, and double-fire edge cases live as chart
- * states, not hand-rolled timers). No actor is exposed. There are two
- * orthogonal read surfaces:
+ * states, not hand-rolled timers). No actor is exposed.
  *
  *   state — a reactive @supergrain/kernel object; what's true *now*. Read its
  *           fields inside an `effect` / `computed` like any Supergrain state.
- *   on    — discrete transient events (see ActivityEvent); moments that
- *           aren't expressible as state, delivered as one-shot callbacks.
+ *   on    — the same transitions as one-shot events; the imperative
+ *           counterpart to `state`, for fire-and-forget consumers like
+ *           analytics. `returned` additionally carries the away-duration.
  *
  *   const activity = new ActivityTracker();
  *   activity.attachDOM();
@@ -43,23 +43,42 @@ export interface ActivityState {
 }
 
 /**
- * Discrete activity events — the moments that aren't expressible as state.
- * Orthogonal to `state`: `state` is what's true now (read/observe it), an
- * event is a one-shot notification with a payload (subscribe via `on`).
+ * Activity events — the chart's transitions as discrete, one-shot
+ * notifications. The same information `state` carries reactively, in push
+ * form: use `state` to render "what's true now", `on` to log "this just
+ * happened" (analytics, side effects).
  *
- *   returned — the user came back to the tab after a long absence (hidden for
- *              ≥ `longBlurMs`). `awayMs` is how long they were gone. There is
- *              no "just returned" *state*, so this can only be an event.
+ *   active   — became active. Re-fires on continued input (throttled by the
+ *              DOM bridge); `state.status` is the deduped view if you only
+ *              want the transition.
+ *   idle     — no input for `idleAfterMs`.
+ *   longIdle — gone (idle or hidden) for `longIdleAfterMs`.
+ *   hidden   — tab blurred / backgrounded.
+ *   returned — came back to the tab after being hidden ≥ `longBlurMs`;
+ *              `awayMs` is the elapsed hidden time (no lasting state holds it).
  */
-export interface ActivityEvent {
-  type: "returned";
-  awayMs: number;
-}
+export type ActivityEvent =
+  | { type: "active" }
+  | { type: "idle" }
+  | { type: "longIdle" }
+  | { type: "hidden" }
+  | { type: "returned"; awayMs: number };
 
-/** Public event type → the chart's internal emitted event. */
-const MACHINE_EMIT: Record<ActivityEvent["type"], "longBlurReturn"> = {
+/** Public event name → the chart's internal emitted event name. Identity for
+ *  all but `returned`, whose payload field is renamed too (see toPublicEvent). */
+const EMIT_NAME: Record<ActivityEvent["type"], ActivityEmitted["type"]> = {
+  active: "active",
+  idle: "idle",
+  longIdle: "longIdle",
+  hidden: "hidden",
   returned: "longBlurReturn",
 };
+
+function toPublicEvent(e: ActivityEmitted): ActivityEvent {
+  return e.type === "longBlurReturn"
+    ? { type: "returned", awayMs: e.blurDurationMs }
+    : { type: e.type };
+}
 
 export interface ActivityTrackerOptions {
   /** No input for this long → `idle` (a presence signal, never a teardown).
@@ -119,13 +138,17 @@ export class ActivityTracker {
     this.actor.start();
   }
 
-  /** Subscribe to a discrete activity event (see {@link ActivityEvent}).
-   *  Unlike `state`, these are transient one-shot notifications carrying a
-   *  payload — use them for analytics ("session resumed after N ms away"),
-   *  not for tracking current state. Returns an unsubscribe function. */
-  on(type: ActivityEvent["type"], handler: (event: ActivityEvent) => void): () => void {
-    const sub = this.actor.on(MACHINE_EMIT[type], (e) => {
-      handler({ type: "returned", awayMs: e.blurDurationMs });
+  /** Subscribe to an activity event (see {@link ActivityEvent}) — the push
+   *  counterpart to `state`. Fires once per chart transition; use it for
+   *  fire-and-forget consumers like analytics. Returns an unsubscribe fn. */
+  on<T extends ActivityEvent["type"]>(
+    type: T,
+    handler: (event: Extract<ActivityEvent, { type: T }>) => void,
+  ): () => void {
+    // EMIT_NAME[type] yields only the machine event `type` maps to, so the
+    // projected public event is always the requested variant.
+    const sub = this.actor.on(EMIT_NAME[type], (e) => {
+      handler(toPublicEvent(e) as Extract<ActivityEvent, { type: T }>);
     });
     const detach = () => sub.unsubscribe();
     this.detachers.push(detach);
@@ -133,10 +156,18 @@ export class ActivityTracker {
   }
 
   /** Attach DOM listeners (focus / blur / visibilitychange / 10 user events)
-   *  that feed the chart. Idempotent; returns a detach function. */
-  attachDOM(target: Document = document): () => void {
+   *  that feed the chart. Idempotent; returns a detach function. Pass a
+   *  `target` in non-DOM environments — it throws rather than dereferencing a
+   *  missing global `document`. */
+  attachDOM(target?: Document): () => void {
     if (this.domDetach) return this.domDetach;
-    this.domDetach = attachActivityListeners(this.actor, target, {
+    const doc: Document | undefined = target ?? globalThis.document;
+    if (!doc) {
+      throw new Error(
+        "ActivityTracker.attachDOM: no document available — pass one explicitly outside the browser.",
+      );
+    }
+    this.domDetach = attachActivityListeners(this.actor, doc, {
       inputThrottleMs: this.inputThrottleMs,
     });
     return this.domDetach;

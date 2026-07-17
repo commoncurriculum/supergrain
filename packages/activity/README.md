@@ -9,10 +9,11 @@ timers is safety: the debounce, focus/visibility, and double-fire edge cases
 that plague ad-hoc presence code live here as declarative transitions with a
 test suite.
 
-The chart is **fully wrapped**. The only interface is `tracker.state` — an
-ordinary `@supergrain/kernel` reactive object. There is no event API, no
-subscribe, no actor: you read fields inside `effect` / `computed`, exactly
-like any other Supergrain state.
+The chart is **fully wrapped** — no actor or XState types leak out. Its
+transitions are exposed two ways: `tracker.state`, an ordinary
+`@supergrain/kernel` reactive object you read inside `effect` / `computed`,
+and `tracker.on(event, cb)`, the same transitions as one-shot events for
+fire-and-forget consumers like analytics.
 
 Two idle thresholds, deliberately kept apart:
 
@@ -46,22 +47,27 @@ effect(() => {
   else socket.resume();
 });
 
-// Discrete events (orthogonal to state) are one-shot callbacks with a payload:
+// The same transitions are also one-shot events (the push form of state):
+activity.on("idle", () => track("went_idle"));
 activity.on("returned", (e) => track("session_resumed", { awayMs: e.awayMs }));
 
 // later
 activity.destroy();
 ```
 
-## Two surfaces: state vs events
+## Two surfaces: state and events
 
-- **`tracker.state`** — a reactive object; _what's true now_. Observe it.
-- **`tracker.on(event, cb)`** — _moments that happened_, with a payload.
+The chart's transitions are available two ways — pick whichever fits the
+call site:
 
-The split matters: continuous state (`status`, `longIdle`) is reactive, so
-you never subscribe to it — you read it in an `effect`/`computed` (or React's
-`useSignalEffect`). Only genuine transients — a moment with no lasting state,
-like returning after a long absence — are events.
+- **`tracker.state`** — a reactive object; _what's true now_. Read it in an
+  `effect` / `computed` (or React's `useSignalEffect`) to render or react.
+- **`tracker.on(event, cb)`** — the same transitions as _one-shot events_.
+  The push form, for fire-and-forget consumers like analytics.
+
+State is deduped (only changes on a real transition); events are the raw
+per-transition stream. `returned` is the one event that also carries data no
+lasting state holds (`awayMs`).
 
 ## `tracker.state`
 
@@ -74,11 +80,15 @@ A reactive `@supergrain/kernel` object with two fields:
 
 ## `tracker.on(event, cb)`
 
-Subscribe to a discrete event; returns an unsubscribe function.
+Subscribe to an event; returns an unsubscribe function.
 
-| Event      | Payload              | Fires when                                                    |
-| ---------- | -------------------- | ------------------------------------------------------------- |
-| `returned` | `{ awayMs: number }` | User comes back to the tab after being hidden ≥ `longBlurMs`. |
+| Event      | Payload              | Fires when                                              |
+| ---------- | -------------------- | ------------------------------------------------------- |
+| `active`   | —                    | Became active. Re-fires on continued input (throttled). |
+| `idle`     | —                    | No input for `idleAfterMs`.                             |
+| `longIdle` | —                    | Gone (idle or hidden) for `longIdleAfterMs`.            |
+| `hidden`   | —                    | Tab blurred / backgrounded.                             |
+| `returned` | `{ awayMs: number }` | Came back to the tab after being hidden ≥ `longBlurMs`. |
 
 ## Constructor options
 
@@ -87,6 +97,8 @@ optional, all with sensible defaults.
 
 ## Lifecycle
 
-- `attachDOM(target = document)` — attach the DOM listeners that feed the
-  chart. Idempotent; returns a detach function.
+- `attachDOM(target?)` — attach the DOM listeners that feed the chart
+  (defaults to the global `document`; pass one outside the browser, where it
+  throws rather than dereferencing a missing global). Idempotent; returns a
+  detach function.
 - `destroy()` — detach everything and stop the chart.

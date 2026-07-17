@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activityMachine, type ActivityEmitted } from "../src/machines/activity";
 import { spawnTestActor } from "./helpers";
 
+// Spawned actors are stopped in afterEach so their pending delayed
+// transitions don't leak across the fake↔real timer toggle.
+const spawned: Array<{ stop: () => void }> = [];
+
 function spawn(
   input: {
     idleAfterMs?: number;
@@ -10,12 +14,14 @@ function spawn(
     longBlurMs?: number;
   } = {},
 ) {
-  return spawnTestActor<typeof activityMachine, ActivityEmitted>(activityMachine, {
+  const handle = spawnTestActor<typeof activityMachine, ActivityEmitted>(activityMachine, {
     idleAfterMs: 15_000,
     longIdleAfterMs: 900_000,
     longBlurMs: 120_000,
     ...input,
   });
+  spawned.push(handle.actor);
+  return handle;
 }
 
 beforeEach(() => {
@@ -24,6 +30,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const actor of spawned.splice(0)) actor.stop();
   vi.useRealTimers();
 });
 
