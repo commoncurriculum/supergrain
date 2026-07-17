@@ -15,12 +15,9 @@ transitions are exposed two ways: `tracker.state`, an ordinary
 and `tracker.on(event, cb)`, the same transitions as one-shot events for
 fire-and-forget consumers like analytics.
 
-Two idle thresholds, deliberately kept apart:
-
-- **`idleAfterMs`** (default 15 s) — "the user stopped interacting"; sets
-  `status: "idle"`. A presence signal, **never** a teardown trigger.
-- **`longIdleAfterMs`** (default 15 min) — "the user is gone"; sets
-  `longIdle: true`. Safe to act on for idle-disconnect.
+After `idleAfterMs` (default 15 s) with no input, `status` becomes `idle`; a
+`BLUR`/`visibilitychange` makes it `hidden`; any input or focus returns it to
+`active`.
 
 ## Install
 
@@ -37,14 +34,9 @@ import { ActivityTracker } from "@supergrain/activity";
 const activity = new ActivityTracker();
 activity.attachDOM(); // wire focus/blur/visibility + user-input events
 
+// Reactive: re-runs on every transition.
 effect(() => {
   console.log(activity.state.status); // "active" | "idle" | "hidden"
-});
-
-// Idle-disconnect is just an effect on the reactive field — no callbacks:
-effect(() => {
-  if (activity.state.longIdle) socket.pause();
-  else socket.resume();
 });
 
 // The same transitions are also one-shot events (the push form of state):
@@ -71,12 +63,11 @@ lasting state holds (`awayMs`).
 
 ## `tracker.state`
 
-A reactive `@supergrain/kernel` object with two fields:
+A reactive `@supergrain/kernel` object with one field:
 
-| Field      | Type                             | Meaning                                                                  |
-| ---------- | -------------------------------- | ------------------------------------------------------------------------ |
-| `status`   | `"active" \| "idle" \| "hidden"` | Coarse activity. Chart substates collapse into these three.              |
-| `longIdle` | `boolean`                        | User gone ≥ `longIdleAfterMs` (chart in `idle.long` / `hidden.dormant`). |
+| Field    | Type                             | Meaning                                                     |
+| -------- | -------------------------------- | ----------------------------------------------------------- |
+| `status` | `"active" \| "idle" \| "hidden"` | Coarse activity. Chart substates collapse into these three. |
 
 ## `tracker.on(event, cb)`
 
@@ -86,14 +77,13 @@ Subscribe to an event; returns an unsubscribe function.
 | ---------- | -------------------- | ------------------------------------------------------- |
 | `active`   | —                    | Became active. Re-fires on continued input (throttled). |
 | `idle`     | —                    | No input for `idleAfterMs`.                             |
-| `longIdle` | —                    | Gone (idle or hidden) for `longIdleAfterMs`.            |
 | `hidden`   | —                    | Tab blurred / backgrounded.                             |
 | `returned` | `{ awayMs: number }` | Came back to the tab after being hidden ≥ `longBlurMs`. |
 
 ## Constructor options
 
-`idleAfterMs`, `longIdleAfterMs`, `longBlurMs`, `inputThrottleMs` — all
-optional, all with sensible defaults.
+`idleAfterMs`, `longBlurMs`, `inputThrottleMs` — all optional, all with
+sensible defaults.
 
 ## Lifecycle
 

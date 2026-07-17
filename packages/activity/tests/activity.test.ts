@@ -10,13 +10,11 @@ const spawned: Array<{ stop: () => void }> = [];
 function spawn(
   input: {
     idleAfterMs?: number;
-    longIdleAfterMs?: number;
     longBlurMs?: number;
   } = {},
 ) {
   const handle = spawnTestActor<typeof activityMachine, ActivityEmitted>(activityMachine, {
     idleAfterMs: 15_000,
-    longIdleAfterMs: 900_000,
     longBlurMs: 120_000,
     ...input,
   });
@@ -148,70 +146,6 @@ describe("ActivityMachine — hidden region", () => {
     actor.send({ type: "BLUR" });
     actor.send({ type: "USER_INPUT" });
     expect(actor.getSnapshot().matches("hidden")).toBe(true);
-  });
-});
-
-describe("ActivityMachine — long idle (the idle-disconnect threshold)", () => {
-  it("idle → idle.long after longIdleAfterMs, emitting longIdle", () => {
-    const { actor, emitted } = spawn({
-      idleAfterMs: 1_000,
-      longIdleAfterMs: 5_000,
-    });
-    vi.advanceTimersByTime(1_000);
-    expect(actor.getSnapshot().matches({ idle: "recent" })).toBe(true);
-    expect(emitted.find((e) => e.type === "longIdle")).toBeUndefined();
-
-    vi.advanceTimersByTime(5_000);
-    expect(actor.getSnapshot().matches({ idle: "long" })).toBe(true);
-    expect(emitted.filter((e) => e.type === "longIdle")).toHaveLength(1);
-  });
-
-  it("short idle alone NEVER emits longIdle", () => {
-    const { actor, emitted } = spawn({
-      idleAfterMs: 1_000,
-      longIdleAfterMs: 5_000,
-    });
-    vi.advanceTimersByTime(1_000); // → idle
-    vi.advanceTimersByTime(4_999); // just under the long-idle threshold
-    actor.send({ type: "USER_INPUT" });
-    expect(actor.getSnapshot().value).toBe("active");
-    expect(emitted.find((e) => e.type === "longIdle")).toBeUndefined();
-  });
-
-  it("USER_INPUT from idle.long returns to active", () => {
-    const { actor } = spawn({ idleAfterMs: 1_000, longIdleAfterMs: 2_000 });
-    vi.advanceTimersByTime(3_000);
-    expect(actor.getSnapshot().matches({ idle: "long" })).toBe(true);
-    actor.send({ type: "USER_INPUT" });
-    expect(actor.getSnapshot().value).toBe("active");
-  });
-
-  it("hidden → hidden.dormant after longIdleAfterMs, emitting longIdle", () => {
-    const { actor, emitted } = spawn({
-      longBlurMs: 2_000,
-      longIdleAfterMs: 5_000,
-    });
-    actor.send({ type: "BLUR" });
-    vi.advanceTimersByTime(2_000);
-    expect(actor.getSnapshot().matches({ hidden: "long" })).toBe(true);
-    expect(emitted.find((e) => e.type === "longIdle")).toBeUndefined();
-
-    vi.advanceTimersByTime(3_000); // 5s total hidden
-    expect(actor.getSnapshot().matches({ hidden: "dormant" })).toBe(true);
-    expect(emitted.filter((e) => e.type === "longIdle")).toHaveLength(1);
-  });
-
-  it("FOCUS from hidden.dormant returns to active with longBlurReturn", () => {
-    const { actor, emitted } = spawn({
-      longBlurMs: 2_000,
-      longIdleAfterMs: 5_000,
-    });
-    actor.send({ type: "BLUR" });
-    vi.advanceTimersByTime(5_000);
-    actor.send({ type: "FOCUS" });
-    expect(actor.getSnapshot().value).toBe("active");
-    const ret = emitted.find((e) => e.type === "longBlurReturn");
-    expect((ret as { blurDurationMs: number }).blurDurationMs).toBeGreaterThanOrEqual(5_000);
   });
 });
 

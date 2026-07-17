@@ -1,4 +1,4 @@
-import { batch, createReactive } from "@supergrain/kernel";
+import { createReactive } from "@supergrain/kernel";
 import { createActor, type ActorRefFromLogic } from "xstate";
 
 import { attachActivityListeners } from "./dom-bridge";
@@ -20,26 +20,17 @@ import { activityMachine, type ActivityEmitted } from "./machines/activity";
  *
  *   const activity = new ActivityTracker();
  *   activity.attachDOM();
- *   effect(() => {
- *     console.log(activity.state.status);          // "active" | "idle" | "hidden"
- *     if (activity.state.longIdle) socket.pause();  // idle-disconnect, reactively
- *   });
+ *   effect(() => console.log(activity.state.status)); // "active" | "idle" | "hidden"
  *   activity.on("returned", (e) => track("resumed", { awayMs: e.awayMs }));
  */
 
 export type ActivityStatus = "active" | "idle" | "hidden";
 
-/** Reactive projection of the activity state chart. Read these fields inside
- *  an `effect` / `computed`; they update as the chart transitions. */
+/** Reactive projection of the activity state chart. Read `status` inside an
+ *  `effect` / `computed`; it updates as the chart transitions. */
 export interface ActivityState {
-  /** Coarse activity. The chart's substates (idle.recent/long, hidden.*)
-   *  collapse into these three — read `longIdle` for the long-threshold
-   *  signal that `status` alone can't express. */
+  /** Coarse activity. The chart's hidden substates collapse into these three. */
   status: ActivityStatus;
-  /** True once the user has been gone for `longIdleAfterMs` (the chart is in
-   *  `idle.long` or `hidden.dormant`) — the safe trigger for idle-disconnect,
-   *  distinct from the short `idle` status. */
-  longIdle: boolean;
 }
 
 /**
@@ -52,7 +43,6 @@ export interface ActivityState {
  *              DOM bridge); `state.status` is the deduped view if you only
  *              want the transition.
  *   idle     — no input for `idleAfterMs`.
- *   longIdle — gone (idle or hidden) for `longIdleAfterMs`.
  *   hidden   — tab blurred / backgrounded.
  *   returned — came back to the tab after being hidden ≥ `longBlurMs`;
  *              `awayMs` is the elapsed hidden time (no lasting state holds it).
@@ -60,7 +50,6 @@ export interface ActivityState {
 export type ActivityEvent =
   | { type: "active" }
   | { type: "idle" }
-  | { type: "longIdle" }
   | { type: "hidden" }
   | { type: "returned"; awayMs: number };
 
@@ -69,7 +58,6 @@ export type ActivityEvent =
 const EMIT_NAME: Record<ActivityEvent["type"], ActivityEmitted["type"]> = {
   active: "active",
   idle: "idle",
-  longIdle: "longIdle",
   hidden: "hidden",
   returned: "longBlurReturn",
 };
@@ -81,11 +69,10 @@ function toPublicEvent(e: ActivityEmitted): ActivityEvent {
 }
 
 export interface ActivityTrackerOptions {
-  /** No input for this long → `idle` (a presence signal, never a teardown).
-   *  Default 15_000 (15 s). */
+  /** No input for this long → `idle` (a presence signal). Default 15_000 (15 s). */
   idleAfterMs?: number | undefined;
-  /** Idle/hidden for this long → `longIdle` flips true. Default 900_000 (15 min). */
-  longIdleAfterMs?: number | undefined;
+  /** A hidden period this long counts as a real absence, so returning emits
+   *  `returned`. Default 120_000 (2 min). */
   longBlurMs?: number | undefined;
   /** Min ms between USER_INPUT events forwarded from the DOM bridge.
    *  Default 1000. */
@@ -93,8 +80,8 @@ export interface ActivityTrackerOptions {
 }
 
 export class ActivityTracker {
-  /** The tracker's entire read surface: a reactive @supergrain/kernel object.
-   *  Observe `state.status` / `state.longIdle` inside `effect` / `computed`. */
+  /** The tracker's reactive read surface: a @supergrain/kernel object.
+   *  Observe `state.status` inside `effect` / `computed`. */
   readonly state: ActivityState;
 
   private actor: ActorRefFromLogic<typeof activityMachine>;
@@ -107,29 +94,21 @@ export class ActivityTracker {
     this.actor = createActor(activityMachine, {
       input: {
         idleAfterMs: opts.idleAfterMs,
-        longIdleAfterMs: opts.longIdleAfterMs,
         longBlurMs: opts.longBlurMs,
       },
     });
 
     // The chart starts in `active` (see machine `initial`).
-    this.state = createReactive<ActivityState>({ status: "active", longIdle: false });
+    this.state = createReactive<ActivityState>({ status: "active" });
 
-    // Project the chart's typed emitted events into the reactive fields. The
-    // three status events also clear `longIdle` (you can't be long-idle while
-    // active/just-idle/just-hidden); the `longIdle` event only raises it.
-    const enter = (status: ActivityStatus) =>
-      batch(() => {
-        this.state.status = status;
-        this.state.longIdle = false;
-      });
+    // Project the chart's typed status emits into the reactive field.
+    const setStatus = (status: ActivityStatus) => {
+      this.state.status = status;
+    };
     const subs = [
-      this.actor.on("active", () => enter("active")),
-      this.actor.on("idle", () => enter("idle")),
-      this.actor.on("hidden", () => enter("hidden")),
-      this.actor.on("longIdle", () => {
-        this.state.longIdle = true;
-      }),
+      this.actor.on("active", () => setStatus("active")),
+      this.actor.on("idle", () => setStatus("idle")),
+      this.actor.on("hidden", () => setStatus("hidden")),
     ];
     this.detachers.push(() => {
       for (const s of subs) s.unsubscribe();

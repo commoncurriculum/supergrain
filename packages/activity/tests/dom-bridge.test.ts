@@ -182,68 +182,38 @@ describe("ActivityTracker — DOM-driven state", () => {
     tracker.destroy();
   });
 
-  it("longIdle flips only at the LONG threshold — a short idle never does", () => {
-    const tracker = new ActivityTracker({
-      idleAfterMs: 1_000,
-      longIdleAfterMs: 3_000,
-      inputThrottleMs: 100,
-    });
-    const fake = new FakeDocument();
-    tracker.attachDOM(asDocument(fake));
-
-    vi.advanceTimersByTime(1_000);
-    expect(tracker.state.status).toBe("idle");
-    expect(tracker.state.longIdle).toBe(false);
-
-    vi.advanceTimersByTime(3_000);
-    expect(tracker.state.longIdle).toBe(true);
-
-    fake.dispatch("keydown");
-    expect(tracker.state.status).toBe("active");
-    expect(tracker.state.longIdle).toBe(false);
-
-    tracker.destroy();
-  });
-
-  it("a hidden tab going dormant sets status hidden and longIdle", () => {
-    const tracker = new ActivityTracker({ longBlurMs: 1_000, longIdleAfterMs: 3_000 });
+  it("reflects hidden and return in state.status", () => {
+    const tracker = new ActivityTracker();
     const fake = new FakeDocument();
     tracker.attachDOM(asDocument(fake));
 
     fake.hidden = true;
     fake.dispatch("visibilitychange");
     expect(tracker.state.status).toBe("hidden");
-    expect(tracker.state.longIdle).toBe(false);
 
-    vi.advanceTimersByTime(3_000);
-    expect(tracker.state.status).toBe("hidden");
-    expect(tracker.state.longIdle).toBe(true);
+    fake.hidden = false;
+    fake.dispatch("visibilitychange");
+    expect(tracker.state.status).toBe("active");
 
     tracker.destroy();
   });
 });
 
 describe("ActivityTracker.on — events", () => {
-  it("delivers active / idle / longIdle / hidden as one-shot events", () => {
-    const tracker = new ActivityTracker({
-      idleAfterMs: 1_000,
-      longIdleAfterMs: 3_000,
-      inputThrottleMs: 100,
-    });
+  it("delivers active / idle / hidden as one-shot events", () => {
+    const tracker = new ActivityTracker({ idleAfterMs: 1_000, inputThrottleMs: 100 });
     const fake = new FakeDocument();
     tracker.attachDOM(asDocument(fake));
 
     const log: string[] = [];
     tracker.on("active", () => log.push("active"));
     tracker.on("idle", () => log.push("idle"));
-    tracker.on("longIdle", () => log.push("longIdle"));
     tracker.on("hidden", () => log.push("hidden"));
 
     vi.advanceTimersByTime(1_000); // → idle
-    vi.advanceTimersByTime(3_000); // → longIdle
-    fake.dispatch("keydown"); // idle.long → active
+    fake.dispatch("keydown"); // idle → active
     windowOf(fake).dispatch("blur"); // active → hidden
-    expect(log).toEqual(["idle", "longIdle", "active", "hidden"]);
+    expect(log).toEqual(["idle", "active", "hidden"]);
 
     tracker.destroy();
   });

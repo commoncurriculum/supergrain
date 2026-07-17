@@ -20,10 +20,9 @@ afterEach(() => {
 });
 
 describe("ActivityTracker.state", () => {
-  it("starts active and not long-idle", () => {
+  it("starts active", () => {
     const tracker = new ActivityTracker();
     expect(tracker.state.status).toBe("active");
-    expect(tracker.state.longIdle).toBe(false);
     tracker.destroy();
   });
 
@@ -37,26 +36,6 @@ describe("ActivityTracker.state", () => {
     expect(seen).toEqual(["active"]); // effect runs once immediately
     vi.advanceTimersByTime(1001); // active → idle
     expect(seen).toEqual(["active", "idle"]);
-
-    dispose();
-    tracker.destroy();
-  });
-
-  it("flips longIdle at the long threshold without changing status", () => {
-    const tracker = new ActivityTracker({ idleAfterMs: 1000, longIdleAfterMs: 5000 });
-    const longIdleSeen: boolean[] = [];
-    const dispose = effect(() => {
-      longIdleSeen.push(tracker.state.longIdle);
-    });
-
-    vi.advanceTimersByTime(1001); // → idle.recent: status "idle", longIdle still false
-    expect(tracker.state.status).toBe("idle");
-    expect(tracker.state.longIdle).toBe(false);
-
-    vi.advanceTimersByTime(5000); // → idle.long
-    expect(tracker.state.status).toBe("idle"); // coarse status unchanged
-    expect(tracker.state.longIdle).toBe(true); // long signal flipped
-    expect(longIdleSeen).toEqual([false, true]); // effect saw exactly one change
 
     dispose();
     tracker.destroy();
