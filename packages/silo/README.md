@@ -348,7 +348,7 @@ interface DocumentsTogetherHandle<T, E = SiloError> {
 }
 ```
 
-`status` is `"pending"` until every requested id has loaded, then `"success"` (with `value` = all documents in id order), or `"error"` the moment any id fails — terminal, like `Promise.all`. `promise` is present once every id has started a fetch — while any handle is idle (no fetch started; `null` ids, or after `clearMemory`) it stays `undefined`, since an idle slot has nothing to resolve with. `value` is the same array reference across in-place updates (it's reconciled, not swapped), so `<For each={docs.value}>` and `use(docs.promise)` stay stable. For the per-document view — one handle each, settling independently — use `findDocumentsIndividually` / `useDocumentsIndividually` and branch each handle's own `status`.
+`status` is `"pending"` until every requested id has loaded, then `"success"` (with `value` = all documents in id order), or `"error"` the moment any id fails — terminal, like `Promise.all`. `promise` is present once every id's handle carries its own first-load promise (created when its fetch starts, or by an `insertDocument`) — while any handle is idle (`null` ids, or after `clearMemory`) it stays `undefined`, since an idle slot has nothing to resolve with. `value` is the same array reference across in-place updates (it's reconciled, not swapped), so `<For each={docs.value}>` and `use(docs.promise)` stay stable. For the per-document view — one handle each, settling independently — use `findDocumentsIndividually` / `useDocumentsIndividually` and branch each handle's own `status`.
 
 ### React hooks
 

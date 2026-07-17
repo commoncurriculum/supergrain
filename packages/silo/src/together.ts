@@ -30,15 +30,19 @@ import { computed, stableComputed } from "@supergrain/kernel";
  * render-stability on top.
  *
  * `promise` is the combined promise for React 19's `use()`: present once
- * **every** handle has started a fetch — while any handle is idle (no fetch
- * started; `null` ids, or after `clearMemory`) it stays `undefined`, because
- * there is nothing an idle slot could resolve with. It resolves with all
- * documents once they've all loaded (immediately, with `[]`, for an empty
- * batch) and rejects as soon as one fails.
+ * **every** handle carries its own first-load promise (created when its fetch
+ * starts, or by an `insertDocument`) — while any handle is idle (`null` ids,
+ * or after `clearMemory`) it stays `undefined`, because there is nothing an
+ * idle slot could resolve with. It resolves with all documents once they've
+ * all loaded (immediately, with `[]`, for an empty batch) and rejects as soon
+ * as one fails.
  */
 export type DocumentsTogetherHandle<T, E = SiloError> =
   | {
-      /** Some document is still in flight; none has failed yet. */
+      /**
+       * Some document has no value yet; none has failed. Not necessarily
+       * fetching — an idle handle (e.g. after `clearMemory`) is pending too.
+       */
       readonly status: "pending";
       readonly value: undefined;
       readonly error: undefined;
