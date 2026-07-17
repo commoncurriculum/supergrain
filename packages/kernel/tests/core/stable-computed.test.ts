@@ -1,21 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { computed, createReactive, effect } from "../../src";
+import { createReactive, effect, stableComputed } from "../../src";
 
 // =============================================================================
-// computed(getter, { returnStableReference: true })
+// stableComputed(getter)
 //
 // A plain computed returning `xs.filter().map()` hands back a fresh array on
-// every re-run. With `returnStableReference`, the computed keeps ONE reactive
-// array, reconciled in place, so: the reference is stable across recomputes,
-// reads are fine-grained (only changed slots notify), and the computed still
-// firewalls (an equal re-run doesn't propagate). These tests pin all three.
+// every re-run. `stableComputed` keeps ONE reactive array, reconciled in
+// place, so: the reference is stable across recomputes, reads are fine-grained
+// (only changed slots notify), and it still firewalls (an equal re-run doesn't
+// propagate). These tests pin all three.
 // =============================================================================
 
-describe("computed — returnStableReference", () => {
+describe("stableComputed", () => {
   it("returns the same array reference across recomputes (membership changes)", () => {
     const src = createReactive<{ items: Array<{ id: number }> }>({ items: [{ id: 1 }] });
-    const evens = computed(() => src.items.map((i) => i), { returnStableReference: true });
+    const evens = stableComputed(() => src.items.map((i) => i));
 
     const first = evens();
     expect(first.map((i) => i.id)).toEqual([1]);
@@ -37,7 +37,7 @@ describe("computed — returnStableReference", () => {
         { id: 2, label: "b" },
       ],
     });
-    const view = computed(() => src.items.map((i) => i), { returnStableReference: true });
+    const view = stableComputed(() => src.items.map((i) => i));
 
     let seen0 = "";
     let seen1 = "";
@@ -72,13 +72,10 @@ describe("computed — returnStableReference", () => {
       items: [1, 2],
       flag: false,
     });
-    const view = computed(
-      () => {
-        void src.flag; // create a dependency that doesn't change the output
-        return src.items.map((n) => n);
-      },
-      { returnStableReference: true },
-    );
+    const view = stableComputed(() => {
+      void src.flag; // create a dependency that doesn't change the output
+      return src.items.map((n) => n);
+    });
 
     const seen: Array<Array<number>> = [];
     effect(() => {
@@ -93,7 +90,7 @@ describe("computed — returnStableReference", () => {
 
   it("re-runs an iterating subscriber when membership actually changes", () => {
     const src = createReactive<{ items: Array<number> }>({ items: [1, 2] });
-    const view = computed(() => src.items.map((n) => n), { returnStableReference: true });
+    const view = stableComputed(() => src.items.map((n) => n));
 
     const seen: Array<Array<number>> = [];
     effect(() => {
@@ -106,18 +103,40 @@ describe("computed — returnStableReference", () => {
     expect(seen.at(-1)).toEqual([1, 2, 3]);
   });
 
-  it("no options behaves exactly like a plain computed (fresh value each change)", () => {
-    const src = createReactive<{ n: number }>({ n: 1 });
-    const doubled = computed(() => src.n * 2);
-    expect(doubled()).toBe(2);
-    src.n = 5;
-    expect(doubled()).toBe(10);
+  it("reconciles trailing `undefined` elements as own slots, not a shorter array", () => {
+    // A projection to an optional field can legitimately END in `undefined`.
+    // Those slots compare equal to the shorter target's out-of-bounds reads, so
+    // the reconcile must assign them anyway (extending `length` with own slots,
+    // never holes — `map`/`forEach` skip holes).
+    const src = createReactive<{ items: Array<{ nickname?: string }> }>({
+      items: [{ nickname: "ada" }, {}],
+    });
+    const nicknames = stableComputed(() => src.items.map((i) => i.nickname));
+
+    const value = nicknames();
+    expect(value.length).toBe(2);
+    expect([...value]).toEqual(["ada", undefined]);
+    // Own slot, not a hole: iteration must visit it.
+    expect(value.map((n) => n ?? "-")).toEqual(["ada", "-"]);
   });
 
-  it("throws if a stable-reference getter returns a non-array", () => {
+  it("regrows from a truncated result back to one with a trailing `undefined`", () => {
+    const src = createReactive<{ items: Array<number | undefined> }>({ items: [1, undefined] });
+    const view = stableComputed(() => src.items.map((n) => n));
+    expect([...view()]).toEqual([1, undefined]);
+
+    src.items.length = 1; // shrink: [1]
+    expect([...view()]).toEqual([1]);
+
+    src.items.push(undefined); // regrow: [1, undefined]
+    expect(view().length).toBe(2);
+    expect([...view()]).toEqual([1, undefined]);
+  });
+
+  it("throws if the getter returns a non-array", () => {
     const src = createReactive<{ n: number }>({ n: 1 });
-    // @ts-expect-error — the overload requires an array-returning getter
-    const bad = computed(() => src.n, { returnStableReference: true });
+    // @ts-expect-error — the signature requires an array-returning getter
+    const bad = stableComputed(() => src.n);
     expect(() => bad()).toThrow(/requires the getter to return an array/);
   });
 });

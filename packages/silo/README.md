@@ -223,8 +223,8 @@ The built-in default retry (`defaultRetry`) is **jittered** fibonacci (1s base, 
 Methods:
 
 - `find(type, id)` → `DocumentHandle<T>`
-- `findAllIndividually(type, ids)` → `DocumentHandle<T>[]` — one independent handle per id (each settles on its own)
-- `findAllTogether(type, ids)` → `DocumentsTogetherHandle<T>` — an all-or-nothing batch handle (settles once every id has loaded, or as soon as one fails)
+- `findDocumentsIndividually(type, ids)` → `DocumentHandle<T>[]` — one independent handle per id (each settles on its own)
+- `findDocumentsTogether(type, ids)` → `DocumentsTogetherHandle<T>` — an all-or-nothing batch handle (settles once every id has loaded, or as soon as one fails)
 - `findInMemory(type, id)` → `T | undefined`
 - `insertDocument(type, doc)` → `void`
 - `clearMemory()` → `void`
@@ -336,7 +336,7 @@ Narrowing on `status` (or on `value !== undefined`) refines `value` to `T`. The 
 
 ### `DocumentsTogetherHandle<T, E = SiloError>`
 
-The all-or-nothing handle returned by `findAllTogether` / `useDocumentsTogether` — a whole batch of documents treated as one unit.
+The all-or-nothing handle returned by `findDocumentsTogether` / `useDocumentsTogether` — a whole batch of documents treated as one unit.
 
 ```ts
 interface DocumentsTogetherHandle<T, E = SiloError> {
@@ -348,7 +348,7 @@ interface DocumentsTogetherHandle<T, E = SiloError> {
 }
 ```
 
-`status` is `"pending"` until every requested id has loaded, then `"success"` (with `value` = all documents in id order), or `"error"` the moment any id fails — terminal, like `Promise.all`. `value` is the same array reference across in-place updates (it's reconciled, not swapped), so `<For each={docs.value}>` and `use(docs.promise)` stay stable. For the per-document view — one handle each, settling independently — use `findAllIndividually` / `useDocumentsIndividually` and branch each handle's own `status`.
+`status` is `"pending"` until every requested id has loaded, then `"success"` (with `value` = all documents in id order), or `"error"` the moment any id fails — terminal, like `Promise.all`. `promise` is present once every id has started a fetch — while any handle is idle (no fetch started; `null` ids, or after `clearMemory`) it stays `undefined`, since an idle slot has nothing to resolve with. `value` is the same array reference across in-place updates (it's reconciled, not swapped), so `<For each={docs.value}>` and `use(docs.promise)` stay stable. For the per-document view — one handle each, settling independently — use `findDocumentsIndividually` / `useDocumentsIndividually` and branch each handle's own `status`.
 
 ### React hooks
 

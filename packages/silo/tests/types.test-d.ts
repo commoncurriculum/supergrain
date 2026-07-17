@@ -167,27 +167,27 @@ describe("DocumentStore.find / findInMemory — `type` narrows doc shape", () =>
   });
 });
 
-describe("DocumentStore.findAllIndividually / findAllTogether — `type` narrows doc shape", () => {
+describe("DocumentStore.findDocumentsIndividually / findDocumentsTogether — `type` narrows doc shape", () => {
   const store = {} as DocumentStore<Models, Queries>;
 
-  it("findAllIndividually returns an array of DocumentHandle<T>", () => {
-    expectTypeOf(store.findAllIndividually("user", ["1"])).toEqualTypeOf<
+  it("findDocumentsIndividually returns an array of DocumentHandle<T>", () => {
+    expectTypeOf(store.findDocumentsIndividually("user", ["1"])).toEqualTypeOf<
       Array<DocumentHandle<User>>
     >();
-    expectTypeOf(store.findAllIndividually("post", ["1"])).toEqualTypeOf<
+    expectTypeOf(store.findDocumentsIndividually("post", ["1"])).toEqualTypeOf<
       Array<DocumentHandle<Post>>
     >();
   });
 
-  it("findAllTogether returns DocumentsTogetherHandle<T>", () => {
-    const docs = store.findAllTogether("user", ["1"]);
+  it("findDocumentsTogether returns DocumentsTogetherHandle<T>", () => {
+    const docs = store.findDocumentsTogether("user", ["1"]);
     expectTypeOf(docs).toEqualTypeOf<DocumentsTogetherHandle<User>>();
     expectTypeOf(docs.value).toEqualTypeOf<Array<User> | undefined>();
     expectTypeOf(docs.promise).toEqualTypeOf<Promise<Array<User>> | undefined>();
   });
 
   it("narrowing on `status` refines `value` (discriminated union)", () => {
-    const docs = store.findAllTogether("user", ["1"]);
+    const docs = store.findDocumentsTogether("user", ["1"]);
     if (docs.status === "success") {
       expectTypeOf(docs.value).toEqualTypeOf<Array<User>>();
       expectTypeOf(docs.error).toEqualTypeOf<undefined>();
@@ -202,8 +202,8 @@ describe("DocumentStore.findAllIndividually / findAllTogether — `type` narrows
   });
 
   it("both accept null / undefined ids (lazy gate)", () => {
-    store.findAllIndividually("user", null);
-    store.findAllTogether("user", undefined);
+    store.findDocumentsIndividually("user", null);
+    store.findDocumentsTogether("user", undefined);
   });
 });
 
