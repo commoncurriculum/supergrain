@@ -141,37 +141,33 @@ describe("attachActivityListeners — event mapping", () => {
   });
 });
 
-describe("ActivityTracker — subscribe dedup", () => {
-  it("only notifies on actual state changes, not per input event", () => {
+describe("ActivityTracker — DOM-driven state", () => {
+  it("reflects input / idle transitions in state.status", () => {
     const tracker = new ActivityTracker({
       idleAfterMs: 15_000,
       inputThrottleMs: 1_000,
     });
     const fake = new FakeDocument();
     tracker.attachDOM(asDocument(fake));
+    expect(tracker.state.status).toBe("active");
 
-    const states: string[] = [];
-    tracker.subscribe((s) => states.push(s));
-    expect(states).toEqual(["active"]); // immediate current state
-
-    // Repeated input while already active → re-entries are deduplicated
+    // Repeated input keeps resetting the idle timer → stays active
     for (let i = 0; i < 5; i++) {
       vi.advanceTimersByTime(2_000);
       fake.dispatch("keydown");
     }
-    expect(states).toEqual(["active"]);
-    expect(tracker.state).toBe("active");
+    expect(tracker.state.status).toBe("active");
 
     vi.advanceTimersByTime(15_000); // no input → idle
-    expect(states).toEqual(["active", "idle"]);
+    expect(tracker.state.status).toBe("idle");
 
-    fake.dispatch("keydown"); // → active again, exactly one notification
-    expect(states).toEqual(["active", "idle", "active"]);
+    fake.dispatch("keydown"); // → active again
+    expect(tracker.state.status).toBe("active");
 
     tracker.destroy();
   });
 
-  it("attachTo pauses on LONG idle only — a short pause never disconnects", () => {
+  it("longIdle flips only at the LONG threshold — a short idle never does", () => {
     const tracker = new ActivityTracker({
       idleAfterMs: 1_000,
       longIdleAfterMs: 3_000,
@@ -179,21 +175,37 @@ describe("ActivityTracker — subscribe dedup", () => {
     });
     const fake = new FakeDocument();
     tracker.attachDOM(asDocument(fake));
-    const sink = { notifyIdle: vi.fn(), notifyActive: vi.fn() };
-    tracker.attachTo(sink);
 
-    // Short idle (the 15s-equivalent threshold): observable, NOT a teardown
+    // Short idle: observable status, NOT the long signal
     vi.advanceTimersByTime(1_000);
-    expect(tracker.state).toBe("idle");
-    expect(sink.notifyIdle).not.toHaveBeenCalled();
+    expect(tracker.state.status).toBe("idle");
+    expect(tracker.state.longIdle).toBe(false);
 
-    // Long idle (the 15min-equivalent threshold): now pause the connection
+    // Long idle: the disconnect-safe signal flips
     vi.advanceTimersByTime(3_000);
-    expect(sink.notifyIdle).toHaveBeenCalledTimes(1);
+    expect(tracker.state.longIdle).toBe(true);
 
-    // Input wakes the sink back up
+    // Input clears it
     fake.dispatch("keydown");
-    expect(sink.notifyActive).toHaveBeenCalledTimes(1);
+    expect(tracker.state.status).toBe("active");
+    expect(tracker.state.longIdle).toBe(false);
+
+    tracker.destroy();
+  });
+
+  it("a hidden tab going dormant sets status hidden and longIdle", () => {
+    const tracker = new ActivityTracker({ longBlurMs: 1_000, longIdleAfterMs: 3_000 });
+    const fake = new FakeDocument();
+    tracker.attachDOM(asDocument(fake));
+
+    fake.hidden = true;
+    fake.dispatch("visibilitychange"); // → hidden
+    expect(tracker.state.status).toBe("hidden");
+    expect(tracker.state.longIdle).toBe(false);
+
+    vi.advanceTimersByTime(3_000); // → hidden.dormant
+    expect(tracker.state.status).toBe("hidden");
+    expect(tracker.state.longIdle).toBe(true);
 
     tracker.destroy();
   });

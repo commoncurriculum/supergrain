@@ -58,27 +58,6 @@ export type ActivityEmitted =
   | { type: "hidden" }
   | { type: "longBlurReturn"; blurDurationMs: number };
 
-/** Every emitted event name, for consumers (e.g. analytics) that want to
- *  subscribe to the whole stream. Kept exhaustive by the assertion below:
- *  add a new ActivityEmitted variant without listing it here and the file
- *  stops compiling. */
-export const ACTIVITY_EVENT_TYPES = [
-  "active",
-  "idle",
-  "longIdle",
-  "hidden",
-  "longBlurReturn",
-] as const satisfies ReadonlyArray<ActivityEmitted["type"]>;
-
-// Compile-time exhaustiveness: if a new ActivityEmitted variant is added
-// without listing it above, `Assert<false>` fails to resolve and this file
-// stops compiling. Type-only — no runtime footprint.
-type Assert<T extends true> = T;
-type _AllEventTypesListed = Assert<
-  ActivityEmitted["type"] extends (typeof ACTIVITY_EVENT_TYPES)[number] ? true : false
->;
-export type { _AllEventTypesListed };
-
 export interface ActivityInput {
   idleAfterMs?: number | undefined;
   longIdleAfterMs?: number | undefined;

@@ -1,21 +1,25 @@
 # @supergrain/activity
 
-User-activity / presence tracking as a **verified state chart**.
+User-activity / presence tracking as a **verified state chart**, exposed as a
+reactive object.
 
-A small, framework-free [XState](https://stately.ai/docs/xstate) machine that
-tracks whether the user is `active`, `idle`, or `hidden`. The point of doing
-this as a state chart rather than hand-rolled timers is safety: the debounce,
-focus/visibility, and double-fire edge cases that plague ad-hoc presence code
-live here as declarative transitions with a test suite, not scattered
-`setTimeout`s.
+A small [XState](https://stately.ai/docs/xstate) chart tracks whether the user
+is `active`, `idle`, or `hidden`. The point of a state chart over hand-rolled
+timers is safety: the debounce, focus/visibility, and double-fire edge cases
+that plague ad-hoc presence code live here as declarative transitions with a
+test suite.
+
+The chart is **fully wrapped**. The only interface is `tracker.state` — an
+ordinary `@supergrain/kernel` reactive object. There is no event API, no
+subscribe, no actor: you read fields inside `effect` / `computed`, exactly
+like any other Supergrain state.
 
 Two idle thresholds, deliberately kept apart:
 
-- **`idleAfterMs`** (default 15 s) — "the user stopped interacting". A signal
-  for presence / analytics. **Never** a teardown trigger.
-- **`longIdleAfterMs`** (default 15 min) — "the user is gone". Emits
-  `longIdle`, which `attachTo` can forward to something that pauses a
-  connection.
+- **`idleAfterMs`** (default 15 s) — "the user stopped interacting"; sets
+  `status: "idle"`. A presence signal, **never** a teardown trigger.
+- **`longIdleAfterMs`** (default 15 min) — "the user is gone"; sets
+  `longIdle: true`. Safe to act on for idle-disconnect.
 
 ## Install
 
@@ -25,10 +29,6 @@ pnpm add @supergrain/activity
 
 ## Usage
 
-The chart runs on XState internally; the app never touches it. The outward
-interface is `tracker.reactive` — an ordinary `@supergrain/kernel` reactive
-object you read inside `effect` / `computed`:
-
 ```ts
 import { effect } from "@supergrain/kernel";
 import { ActivityTracker } from "@supergrain/activity";
@@ -36,53 +36,36 @@ import { ActivityTracker } from "@supergrain/activity";
 const activity = new ActivityTracker();
 activity.attachDOM(); // wire focus/blur/visibility + user-input events
 
-// Reactive — re-runs whenever the chart transitions:
 effect(() => {
-  console.log("activity:", activity.reactive.state); // "active" | "idle" | "hidden"
-  if (activity.reactive.longIdle) console.log("user is gone");
+  console.log(activity.state.status); // "active" | "idle" | "hidden"
+});
+
+// Idle-disconnect is just an effect on the reactive field — no callbacks:
+effect(() => {
+  if (activity.state.longIdle) socket.pause();
+  else socket.resume();
 });
 
 // later
 activity.destroy();
 ```
 
-For analytics you can also tap the raw emitted stream — the long thresholds
-and blur duration that the coarse `reactive.state` collapses away:
+## `tracker.state`
 
-```ts
-activity.on("longIdle", () => track("session_idle"));
-activity.on("longBlurReturn", (e) => track("session_resumed", { awayMs: e.blurDurationMs }));
-activity.onEvent((e) => track(`activity_${e.type}`)); // whole stream
+A reactive `@supergrain/kernel` object with two fields:
 
-// Or a plain push subscription outside a reactive context:
-activity.subscribe((state) => console.log("activity:", state));
-```
+| Field      | Type                             | Meaning                                                                  |
+| ---------- | -------------------------------- | ------------------------------------------------------------------------ |
+| `status`   | `"active" \| "idle" \| "hidden"` | Coarse activity. Chart substates collapse into these three.              |
+| `longIdle` | `boolean`                        | User gone ≥ `longIdleAfterMs` (chart in `idle.long` / `hidden.dormant`). |
 
-### Idle-disconnect
+## Constructor options
 
-`attachTo` forwards the **long**-idle signal (not the 15 s one) to anything
-with `notifyIdle()` / `notifyActive()`:
+`idleAfterMs`, `longIdleAfterMs`, `longBlurMs`, `inputThrottleMs` — all
+optional, all with sensible defaults.
 
-```ts
-activity.attachTo({
-  notifyIdle: () => socket.pause(),
-  notifyActive: () => socket.resume(),
-});
-```
+## Lifecycle
 
-## API
-
-| Member                       | Description                                                                                      |
-| ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| `reactive`                   | Reactive `@supergrain/kernel` object: `{ state, longIdle }`. The intended interface to the app.  |
-| `new ActivityTracker(opts?)` | `idleAfterMs`, `longIdleAfterMs`, `longBlurMs`, `inputThrottleMs`                                |
-| `attachDOM(target?)`         | Attach focus/blur/visibility + throttled user-input listeners. Returns a detach fn.              |
-| `subscribe(cb)`              | Coarse state `active \| idle \| hidden`, fired immediately then on change (deduped).             |
-| `on(type, cb)`               | One emitted event by name (`active`/`idle`/`longIdle`/`hidden`/`longBlurReturn`), typed payload. |
-| `onEvent(cb)`                | The entire emitted stream.                                                                       |
-| `attachTo(sink)`             | Forward long-idle/active to a `notifyIdle`/`notifyActive` sink.                                  |
-| `state`                      | Current coarse state.                                                                            |
-| `destroy()`                  | Detach everything and stop the actor.                                                            |
-
-Advanced consumers can import the raw `activityMachine` (and its
-`ActivityContext` / `ActivityEvent` / `ActivityEmitted` types) directly.
+- `attachDOM(target = document)` — attach the DOM listeners that feed the
+  chart. Idempotent; returns a detach function.
+- `destroy()` — detach everything and stop the chart.

@@ -1,13 +1,13 @@
 import { effect } from "@supergrain/kernel";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ActivityTracker, type ActivityState } from "../src/activity-tracker";
+import { ActivityTracker, type ActivityStatus } from "../src/activity-tracker";
 
 /**
- * The reactive projection is the intended interface to the rest of the app:
- * `tracker.reactive` is an ordinary @supergrain/kernel reactive object, so
- * reading it inside `effect` re-runs on chart transitions. The XState chart
- * stays internal. Driven by fake timers (no DOM).
+ * `tracker.state` is the tracker's whole read surface: an ordinary
+ * @supergrain/kernel reactive object, so reading its fields inside `effect`
+ * re-runs on chart transitions. The XState chart stays internal. Driven by
+ * fake timers (no DOM).
  */
 
 beforeEach(() => {
@@ -19,19 +19,19 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("ActivityTracker — reactive projection", () => {
-  it("starts in active", () => {
+describe("ActivityTracker.state", () => {
+  it("starts active and not long-idle", () => {
     const tracker = new ActivityTracker();
-    expect(tracker.reactive.state).toBe("active");
-    expect(tracker.reactive.longIdle).toBe(false);
+    expect(tracker.state.status).toBe("active");
+    expect(tracker.state.longIdle).toBe(false);
     tracker.destroy();
   });
 
-  it("re-runs an effect when the coarse state transitions", () => {
+  it("re-runs an effect when status transitions", () => {
     const tracker = new ActivityTracker({ idleAfterMs: 1000 });
-    const seen: ActivityState[] = [];
+    const seen: ActivityStatus[] = [];
     const dispose = effect(() => {
-      seen.push(tracker.reactive.state);
+      seen.push(tracker.state.status);
     });
 
     expect(seen).toEqual(["active"]); // effect runs once immediately
@@ -42,31 +42,23 @@ describe("ActivityTracker — reactive projection", () => {
     tracker.destroy();
   });
 
-  it("flips reactive.longIdle at the long threshold, without a coarse-state change", () => {
+  it("flips longIdle at the long threshold without changing status", () => {
     const tracker = new ActivityTracker({ idleAfterMs: 1000, longIdleAfterMs: 5000 });
     const longIdleSeen: boolean[] = [];
     const dispose = effect(() => {
-      longIdleSeen.push(tracker.reactive.longIdle);
+      longIdleSeen.push(tracker.state.longIdle);
     });
 
-    vi.advanceTimersByTime(1001); // → idle.recent (state "idle", longIdle false)
-    expect(tracker.reactive.state).toBe("idle");
-    expect(tracker.reactive.longIdle).toBe(false);
+    vi.advanceTimersByTime(1001); // → idle.recent: status "idle", longIdle still false
+    expect(tracker.state.status).toBe("idle");
+    expect(tracker.state.longIdle).toBe(false);
 
     vi.advanceTimersByTime(5000); // → idle.long
-    expect(tracker.reactive.state).toBe("idle"); // coarse state unchanged
-    expect(tracker.reactive.longIdle).toBe(true); // but the long signal flipped
-    expect(longIdleSeen).toEqual([false, true]);
+    expect(tracker.state.status).toBe("idle"); // coarse status unchanged
+    expect(tracker.state.longIdle).toBe(true); // long signal flipped
+    expect(longIdleSeen).toEqual([false, true]); // effect saw exactly one change
 
     dispose();
-    tracker.destroy();
-  });
-
-  it("clears longIdle when the user returns to active", () => {
-    const tracker = new ActivityTracker({ idleAfterMs: 1000, longIdleAfterMs: 5000 });
-    vi.advanceTimersByTime(6001); // → idle.long
-    expect(tracker.reactive.longIdle).toBe(true);
-
     tracker.destroy();
   });
 });
