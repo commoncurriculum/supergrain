@@ -38,6 +38,7 @@ export default defineConfig({
         "packages/silo/src/queries.ts",
         "packages/devtools/src/index.ts",
         "packages/devtools/src/react/index.ts",
+        "packages/activity/src/index.ts",
       ],
       reportsDirectory: "./coverage",
     },
@@ -45,6 +46,14 @@ export default defineConfig({
       {
         test: {
           include: ["packages/kernel/tests/{core,read,write}/**/*.test.{ts,tsx}"],
+          environment: "node",
+        },
+        resolve,
+        ssr,
+      },
+      {
+        test: {
+          include: ["packages/activity/tests/**/*.test.{ts,tsx}"],
           environment: "node",
         },
         resolve,
