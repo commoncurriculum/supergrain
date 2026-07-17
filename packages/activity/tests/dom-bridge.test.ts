@@ -43,11 +43,16 @@ class FakeWindow extends FakeEventTarget {}
 
 class FakeDocument extends FakeEventTarget {
   hidden = false;
+  focused = true;
   defaultView: FakeWindow | null;
 
   constructor(win: FakeWindow | null = new FakeWindow()) {
     super();
     this.defaultView = win;
+  }
+
+  hasFocus(): boolean {
+    return this.focused;
   }
 }
 
@@ -321,6 +326,31 @@ describe("ActivityTracker.attachDOM", () => {
   it("throws a clear error when no document is available", () => {
     const tracker = new ActivityTracker();
     expect(() => tracker.attachDOM()).toThrow(/no document available/);
+    tracker.destroy();
+  });
+
+  it("seeds hidden when attached to a background tab", () => {
+    const tracker = new ActivityTracker();
+    const fake = new FakeDocument();
+    fake.hidden = true; // loaded in a background tab
+    tracker.attachDOM(asDocument(fake));
+    expect(tracker.state.status).toBe("hidden");
+    tracker.destroy();
+  });
+
+  it("seeds hidden when the window is not focused", () => {
+    const tracker = new ActivityTracker();
+    const fake = new FakeDocument();
+    fake.focused = false; // visible tab, but another window has focus
+    tracker.attachDOM(asDocument(fake));
+    expect(tracker.state.status).toBe("hidden");
+    tracker.destroy();
+  });
+
+  it("stays active when attached to a focused, visible tab", () => {
+    const tracker = new ActivityTracker();
+    tracker.attachDOM(asDocument(new FakeDocument()));
+    expect(tracker.state.status).toBe("active");
     tracker.destroy();
   });
 });

@@ -140,9 +140,10 @@ export class ActivityTracker {
   }
 
   /** Attach DOM listeners (focus / blur / visibilitychange / 10 user events)
-   *  that feed the chart. Idempotent; returns a detach function. Pass a
-   *  `target` in non-DOM environments — it throws rather than dereferencing a
-   *  missing global `document`. */
+   *  that feed the chart, and seed the state from the document: a hidden tab
+   *  or unfocused window starts `hidden`, not `active`. Idempotent; returns a
+   *  detach function. Pass a `target` in non-DOM environments — it throws
+   *  rather than dereferencing a missing global `document`. */
   attachDOM(target?: Document): () => void {
     if (this.domDetach) return this.domDetach;
     const doc: Document | undefined = target ?? globalThis.document;

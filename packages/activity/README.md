@@ -115,8 +115,10 @@ if (activity.state.status === "idle" && activity.currentDurationMs() > 60_000) �
 
 ## Lifecycle
 
-- `attachDOM(target?)` — attach the DOM listeners that feed the chart
-  (defaults to the global `document`; pass one outside the browser, where it
-  throws rather than dereferencing a missing global). Idempotent; returns a
+- `attachDOM(target?)` — attach the DOM listeners that feed the chart, and
+  seed the state from the document: a hidden tab or unfocused window starts
+  `hidden`, not `active` (so a background-tab load isn't counted as active).
+  Defaults to the global `document`; pass one outside the browser, where it
+  throws rather than dereferencing a missing global. Idempotent; returns a
   detach function.
 - `destroy()` — detach everything and stop the chart.

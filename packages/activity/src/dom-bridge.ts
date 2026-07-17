@@ -74,6 +74,11 @@ export function attachActivityListeners(
   }
 
   for (const [t, e, h] of bindings) t.addEventListener(e, h);
+
+  // Seed from the document's current state: a hidden tab or an unfocused
+  // window shouldn't start in `active` (the chart's initial state).
+  if (target.hidden || !target.hasFocus()) actor.send({ type: "BLUR" });
+
   return () => {
     for (const [t, e, h] of bindings) t.removeEventListener(e, h);
   };
