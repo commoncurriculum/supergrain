@@ -103,6 +103,7 @@ export const activityMachine = setup({
     }),
     emitLongBlurReturn: emit(({ context }) => ({
       type: "longBlurReturn" as const,
+      /* c8 ignore next -- enteredHiddenAt is set on entering `hidden`, always before a FOCUS can emit this */
       blurDurationMs: Date.now() - (context.enteredHiddenAt ?? Date.now()),
     })),
   },

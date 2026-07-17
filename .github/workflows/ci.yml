@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [kernel, husk, silo, mill, devtools]
+        package: [kernel, husk, silo, mill, devtools, activity]
 
     steps:
       - name: Checkout code
@@ -76,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [kernel, husk, silo, mill, devtools]
+        package: [kernel, husk, silo, mill, devtools, activity]
 
     steps:
       - name: Checkout code
@@ -105,7 +105,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [kernel, husk, silo, mill, devtools]
+        package: [kernel, husk, silo, mill, devtools, activity]
 
     steps:
       - name: Checkout code
@@ -134,7 +134,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [kernel, husk, silo, mill, devtools]
+        package: [kernel, husk, silo, mill, devtools, activity]
 
     steps:
       - name: Checkout code

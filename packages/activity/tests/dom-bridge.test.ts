@@ -118,6 +118,17 @@ describe("attachActivityListeners — event mapping", () => {
     expect(send).toHaveBeenCalledTimes(3);
   });
 
+  it("attachDOM is idempotent — repeated calls reuse the first detach", () => {
+    const tracker = new ActivityTracker();
+    const fake = new FakeDocument();
+    const first = tracker.attachDOM(asDocument(fake));
+    const listeners = fake.handlerCount();
+    const second = tracker.attachDOM(asDocument(fake));
+    expect(second).toBe(first); // same detach fn, no second registration
+    expect(fake.handlerCount()).toBe(listeners);
+    tracker.destroy();
+  });
+
   it("cleanup removes every listener", () => {
     const { actor, send } = spyActor();
     const fake = new FakeDocument();

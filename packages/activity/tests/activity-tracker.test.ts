@@ -2,7 +2,7 @@ import type { ActivityEmitted } from "../src/machines/activity";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ActivityTracker } from "../src/activity-tracker";
+import { ActivityTracker, type ActivityState } from "../src/activity-tracker";
 
 /**
  * ActivityTracker class-level tests, focused on the richer event API
@@ -18,6 +18,20 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe("ActivityTracker — subscribe", () => {
+  it("returns an unsubscribe that stops delivery", () => {
+    const tracker = new ActivityTracker({ idleAfterMs: 1000 });
+    const states: ActivityState[] = [];
+    const off = tracker.subscribe((s) => states.push(s));
+    expect(states).toEqual(["active"]); // immediate current state
+
+    off();
+    vi.advanceTimersByTime(1001); // would be "idle" if still subscribed
+    expect(states).toEqual(["active"]);
+    tracker.destroy();
+  });
 });
 
 describe("ActivityTracker — on() typed single-event subscription", () => {

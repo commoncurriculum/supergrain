@@ -59,6 +59,7 @@ export interface IdleSink {
 function toPublicState(value: unknown): ActivityState {
   if (typeof value === "string") return value as ActivityState;
   const [key] = Object.keys(value as Record<string, unknown>);
+  /* c8 ignore next -- a chart value is a string or a non-empty object, so key is always present */
   return (key ?? "active") as ActivityState;
 }
 
