@@ -168,96 +168,55 @@ export type DocumentHandle<T, E = SiloError> =
     };
 
 /**
- * Reactive handle for an array of documents queried by ids (for the same type).
- * Wraps the individual `DocumentHandle<T>` objects and provides aggregates over them.
+ * All-or-nothing handle for a batch of documents of one type, queried by id —
+ * what `findAllTogether` / `useDocumentsTogether` return. It settles as a unit:
+ * `pending` until every requested document has loaded, `success` (with `value`
+ * = all documents in id order) once they all have, `error` if any of them
+ * failed (terminal, like `Promise.all`).
  *
- * The "strict" aggregates treat an error in any value as an overall error.
- * The other aggregates filter out errored values while respecting the original id order.
+ * For the per-document view — one independent handle each, settling on its own —
+ * use `findAllIndividually` / `useDocumentsIndividually` instead.
  *
- * The handle **is** stable: `store.findAll` (and therefore `useDocuments`)
- * returns the same object for the same `(type, ids)`. `values` is a live kernel
- * reactive array reconciled in place; the scalar/promise aggregates are kernel
- * `computed`s over the underlying handles. Either way, reading one subscribes to
- * the aggregate value itself — a change on an individual handle that leaves the
- * aggregate unchanged (e.g. one of three pending handles resolving while
- * `status` stays `"pending"`, or an errored handle that doesn't alter the
- * successful `values`) does not re-fire subscribers. Changing the input ids
- * yields a different (also stable) aggregate.
+ * Reactive via getters (kernel `computed`s) over the underlying handles, so
+ * reading a field subscribes the caller to just that derived value; a handle
+ * change that leaves the field unchanged doesn't re-fire (e.g. one of three
+ * pending handles resolving keeps `status` `"pending"`). Not stable across
+ * `findAllTogether` calls on its own — `useDocumentsTogether` layers
+ * render-stability on top.
  */
-export interface DocumentsHandle<T, E = SiloError> {
-  /** Handles for each value, in the same order as the queried ids. */
-  readonly handles: Array<DocumentHandle<T, E>>;
+export interface DocumentsTogetherHandle<T, E = SiloError> {
   /**
-   * All current successful values, in the same order as the queried ids but
-   * omitting pending/errored values. Empty if no ids were provided.
-   *
-   * A **live, stable** kernel reactive array: its identity never changes, and
-   * it is reconciled in place as handles settle, so reads are fine-grained —
-   * iterating it (or reading a single slot) re-fires only when that slot, or
-   * the length, actually changes.
+   * `"success"` once every document has loaded, `"error"` if any failed
+   * (terminal — wins over pending), `"pending"` while any is still in flight.
    */
-  readonly values: Array<T>;
+  readonly status: "pending" | "success" | "error";
+  /** All documents, in id order — present only when `status` is `"success"`. */
+  readonly value: Array<T> | undefined;
+  /** The first failing document's error, when `status` is `"error"`. */
+  readonly error: E | undefined;
+  /** True while any document is fetching. */
+  readonly isFetching: boolean;
   /**
-   * The aggregate status of the non-errored values: "success" if they all succeeded,
-   * "pending" if some are still pending.
-   */
-  readonly status: "pending" | "success";
-  /**
-   * The aggregate status: "success" if they all succeeded, "pending" if some
-   * are still pending, "error" if there are any errors.
-   */
-  readonly statusStrict: "pending" | "success" | "error";
-  /**
-   * The combination of the handle promises.
-   *
-   * Resolves once no values are pending, containing only the values that succeeded.
+   * Combined promise for React 19's `use()`: resolves with all documents once
+   * they've all loaded, rejects as soon as one fails. Absent until a fetch is
+   * in flight.
    */
   readonly promise: HandlePromise<Array<T>>;
-  /**
-   * The combination of the handle promises.
-   *
-   * Resolves with all values, or rejects if any value errors.
-   */
-  readonly promiseStrict: HandlePromise<Array<T>>;
 }
 
-class DocumentsHandleImpl<T, E = SiloError> implements DocumentsHandle<T, E> {
+class DocumentsTogetherHandleImpl<T, E = SiloError> implements DocumentsTogetherHandle<T, E> {
   constructor(readonly handles: Array<DocumentHandle<T, E>>) {}
 
-  // Every aggregate is a kernel `computed` over the underlying handles: reading
-  // one subscribes the caller to the computed's result, and the `!==` cut-off
-  // stops propagation when a handle change leaves the result unchanged — e.g.
-  // one of three pending handles resolving keeps `status` "pending", so its
-  // subscribers don't re-run. All aggregates share these because `findAll`
-  // caches the DocumentsHandle per (type, ids). Everything is lazy: nothing runs
-  // until a field is read, so an unobserved aggregate does no work.
+  // Each field is a kernel `computed` over the underlying handles: reading one
+  // subscribes the caller to just that derived value, and the `!==` cut-off
+  // suppresses re-fires when a handle change doesn't change the field. Lazy:
+  // nothing runs until a field is read.
 
-  // `values` is the successful values in id order. `returnStableReference` keeps
-  // it a single stable reactive array — the kernel reconciles it in place as
-  // handles settle, so the reference never churns and reads stay fine-grained
-  // (only changed slots notify). The producer is an ordinary filter/map.
-  private readonly _values = computed<Array<T>>(
-    () =>
-      this.handles.filter((handle) => handle.status === "success").map((handle) => handle.value),
-    { returnStableReference: true },
-  );
-  get values(): Array<T> {
-    return this._values();
-  }
-
-  private readonly _status = computed(() =>
-    this.handles.some((handle) => handle.status === "pending") ? "pending" : "success",
-  );
-  get status() {
-    return this._status();
-  }
-
-  private readonly _statusStrict = computed((): "pending" | "success" | "error" => {
-    // Promise.all semantics: an error is terminal (short-circuits even while
-    // others are still pending), so it wins over pending, which wins over
-    // success. Reading `handle.status` (not `handle.error`) means a stale
-    // success whose refetch errored still counts as success — its first-load
-    // promise already resolved, so `promiseStrict` won't reject on it.
+  private readonly _status = computed((): "pending" | "success" | "error" => {
+    // Promise.all semantics: an error is terminal (wins over pending, which
+    // wins over success). Reading `handle.status` (not `handle.error`) means a
+    // stale success whose refetch errored still counts as success — its
+    // first-load promise already resolved, so `promise` won't reject on it.
     let hasPending = false;
     for (const handle of this.handles) {
       if (handle.status === "error") return "error";
@@ -265,33 +224,41 @@ class DocumentsHandleImpl<T, E = SiloError> implements DocumentsHandle<T, E> {
     }
     return hasPending ? "pending" : "success";
   });
-  get statusStrict(): "pending" | "success" | "error" {
-    return this._statusStrict();
+  get status(): "pending" | "success" | "error" {
+    return this._status();
   }
 
-  // The combined promises are computeds over the underlying `handle.promise`
-  // references (the only fields they read synchronously), so a refetch/insert
-  // that swaps a handle's promise rebuilds the combination — otherwise the
-  // cached identity is returned and React's `use()` doesn't re-suspend every
-  // render. All-idle handles have no in-flight work, so there is no promise
-  // to hand out yet.
+  // All documents in id order, as a stable reactive array reconciled in place
+  // (`returnStableReference`) — read only when `status === "success"`, at which
+  // point every handle carries a value.
+  private readonly _value = computed<Array<T>>(
+    () => this.handles.map((handle) => handle.value as T),
+    { returnStableReference: true },
+  );
+  get value(): Array<T> | undefined {
+    return this._status() === "success" ? this._value() : undefined;
+  }
 
-  private readonly _promise = computed<HandlePromise<Array<T>>>(() => {
-    const inputs = this.handles.map((handle) => handle.promise);
-    if (inputs.length > 0 && inputs.every((promise) => promise === undefined)) return;
-    // Wait for every handle to settle (allSettled never rejects), then snapshot
-    // the values that ended up successful — read at settle time (untracked, the
-    // computed has already returned) so an in-place or wholesale update after
-    // the promise resolved isn't served stale.
-    return Promise.allSettled(inputs.map((promise) => promise ?? Promise.resolve())).then(() =>
-      this.handles.filter((handle) => handle.status === "success").map((handle) => handle.value),
-    );
+  private readonly _error = computed<E | undefined>(() => {
+    for (const handle of this.handles) {
+      if (handle.status === "error") return handle.error;
+    }
+    return;
   });
-  get promise(): HandlePromise<Array<T>> {
-    return this._promise();
+  get error(): E | undefined {
+    return this._error();
   }
 
-  private readonly _promiseStrict = computed<HandlePromise<Array<T>>>(() => {
+  private readonly _isFetching = computed(() => this.handles.some((handle) => handle.isFetching));
+  get isFetching(): boolean {
+    return this._isFetching();
+  }
+
+  // Combined over the underlying `handle.promise` references, so a
+  // refetch/insert that swaps a handle's promise rebuilds it — otherwise the
+  // cached identity is returned and `use()` doesn't re-suspend every render.
+  // All-idle handles have no in-flight work, so there is no promise yet.
+  private readonly _promise = computed<HandlePromise<Array<T>>>(() => {
     const inputs = this.handles.map((handle) => handle.promise);
     if (inputs.length > 0 && inputs.every((promise) => promise === undefined)) return;
     // Promise.all rejects as soon as any handle errors (even while others are
@@ -304,8 +271,8 @@ class DocumentsHandleImpl<T, E = SiloError> implements DocumentsHandle<T, E> {
     promise.catch(() => {});
     return promise;
   });
-  get promiseStrict(): HandlePromise<Array<T>> {
-    return this._promiseStrict();
+  get promise(): HandlePromise<Array<T>> {
+    return this._promise();
   }
 }
 
@@ -526,18 +493,26 @@ export interface DocumentStore<
 > {
   find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]>;
   /**
-   * Find many documents of one type by id, returning a {@link DocumentsHandle}
-   * aggregate over the individual (stable, reactive) handles — each fetched via
-   * `find`, in id order. A `null` / `undefined` `ids` yields an idle
-   * aggregate; empty `ids` returns a successful aggregate with no values.
-   * The returned aggregate is stable — the same `(type, ids)` returns the
-   * same object, whose fields are kernel computeds shared by every reader —
-   * and the handles inside it are too (`find` is idempotent).
+   * Find many documents of one type by id, returning one **independent**
+   * {@link DocumentHandle} per id (each fetched via `find`), in id order — every
+   * handle settles on its own. A `null` / `undefined` `ids` yields an empty
+   * array. A fresh array each call; the handles inside are stable (`find` is
+   * idempotent), so `useDocumentsIndividually` layers render-stability on top.
    */
-  findAll<K extends keyof M & string>(
+  findAllIndividually<K extends keyof M & string>(
     type: K,
     ids: string[] | null | undefined,
-  ): DocumentsHandle<M[K]>;
+  ): Array<DocumentHandle<M[K]>>;
+  /**
+   * Find many documents of one type by id as an **all-or-nothing** batch,
+   * returning a single {@link DocumentsTogetherHandle} that settles once every
+   * document has loaded (or as soon as one fails). A `null` / `undefined` `ids`
+   * yields an idle handle; empty `ids` is immediately `success` with `value: []`.
+   */
+  findAllTogether<K extends keyof M & string>(
+    type: K,
+    ids: string[] | null | undefined,
+  ): DocumentsTogetherHandle<M[K]>;
   findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined;
   insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void;
   findQuery<K extends keyof Q & string>(
@@ -606,13 +581,12 @@ const IDLE_DOCUMENT_HANDLE: DocumentHandle<unknown> = Object.freeze({
   promise: undefined,
 });
 
-const IDLE_DOCUMENTS_HANDLE: DocumentsHandle<unknown> = Object.freeze({
-  handles: Object.freeze([]) as Array<never>,
-  values: Object.freeze([]) as Array<never>,
+const IDLE_DOCUMENTS_TOGETHER_HANDLE: DocumentsTogetherHandle<unknown> = Object.freeze({
   status: "pending" as const,
-  statusStrict: "pending" as const,
+  value: undefined,
+  error: undefined,
+  isFetching: false,
   promise: undefined,
-  promiseStrict: undefined,
 });
 
 /**
@@ -713,14 +687,6 @@ export function createDocumentStore<
   }) as InternalState;
   const finder = new Finder<M, Q>(config, state);
 
-  // findAll aggregates, cached per (type, ids) so equal calls hand out the
-  // SAME aggregate and all readers share its kernel computeds. A plain Map,
-  // not reactive state: the aggregate is derived — the reactivity lives in
-  // the handles it wraps and the computeds it exposes. Entries stay valid
-  // forever because the inner handles are stable (`clearMemory` resets a
-  // handle's state but keeps the object).
-  const documentsHandles = new Map<string, Map<string, DocumentsHandle<unknown>>>();
-
   const store: DocumentStore<M, Q> = {
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
       if (id === null || id === undefined) return IDLE_DOCUMENT_HANDLE as DocumentHandle<M[K]>;
@@ -742,28 +708,29 @@ export function createDocumentStore<
       return handle as unknown as DocumentHandle<M[K]>;
     },
 
-    findAll<K extends keyof M & string>(
+    findAllIndividually<K extends keyof M & string>(
       type: K,
       ids: string[] | null | undefined,
-    ): DocumentsHandle<M[K]> {
-      if (ids === null || ids === undefined) {
-        return IDLE_DOCUMENTS_HANDLE as DocumentsHandle<M[K]>;
-      }
+    ): Array<DocumentHandle<M[K]>> {
+      if (ids === null || ids === undefined) return [];
       // `find` is stable + idempotent: same reactive handle per id, and it only
       // enqueues a fetch when one is needed — so mapping over ids both triggers
-      // the loads and collects the handles in id order. This runs on every
-      // call, cache hit or not, so idle handles (e.g. after `clearMemory`)
-      // are re-fetched. Batch to combine find's internal batch calls.
+      // the loads and collects the handles in id order. Batch to combine find's
+      // internal batch calls.
+      // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
+      return batch(() => ids.map((id) => store.find(type, id)));
+    },
+
+    findAllTogether<K extends keyof M & string>(
+      type: K,
+      ids: string[] | null | undefined,
+    ): DocumentsTogetherHandle<M[K]> {
+      if (ids === null || ids === undefined) {
+        return IDLE_DOCUMENTS_TOGETHER_HANDLE as DocumentsTogetherHandle<M[K]>;
+      }
       // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
       const handles = batch(() => ids.map((id) => store.find(type, id)));
-      const bucket = ensureBucket(documentsHandles, type);
-      const key = JSON.stringify(ids);
-      let aggregate = bucket.get(key);
-      if (aggregate === undefined) {
-        aggregate = new DocumentsHandleImpl<M[K]>(handles) as DocumentsHandle<unknown>;
-        bucket.set(key, aggregate);
-      }
-      return aggregate as DocumentsHandle<M[K]>;
+      return new DocumentsTogetherHandleImpl<M[K]>(handles);
     },
 
     findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined {

@@ -223,6 +223,8 @@ The built-in default retry (`defaultRetry`) is **jittered** fibonacci (1s base, 
 Methods:
 
 - `find(type, id)` → `DocumentHandle<T>`
+- `findAllIndividually(type, ids)` → `DocumentHandle<T>[]` — one independent handle per id (each settles on its own)
+- `findAllTogether(type, ids)` → `DocumentsTogetherHandle<T>` — an all-or-nothing batch handle (settles once every id has loaded, or as soon as one fails)
 - `findInMemory(type, id)` → `T | undefined`
 - `insertDocument(type, doc)` → `void`
 - `clearMemory()` → `void`
@@ -272,8 +274,14 @@ The React context wrapper. Mirrors `createStoreContext<T>()` from `@supergrain/k
 ```ts
 type DocStore = DocumentStore<TypeToModel, TypeToQuery>;
 
-const { Provider, useDocumentStore, useDocument, useQuery } =
-  createDocumentStoreContext<DocStore>();
+const {
+  Provider,
+  useDocumentStore,
+  useDocument,
+  useDocumentsIndividually,
+  useDocumentsTogether,
+  useQuery,
+} = createDocumentStoreContext<DocStore>();
 
 <Provider config={{ models, queries }} onMount={(store) => seed(store)}>
   <App />
@@ -326,6 +334,22 @@ Narrowing on `status` (or on `value !== undefined`) refines `value` to `T`. The 
 
 `clearMemory()` clears `value`/`error`/`fetchedAt` (an in-flight fetch survives and repopulates). Errors are typed: `AdapterError` (adapter failed), `NotFoundError` (key absent after fetch), `ProcessorError` (processor threw) — union `SiloError`.
 
+### `DocumentsTogetherHandle<T, E = SiloError>`
+
+The all-or-nothing handle returned by `findAllTogether` / `useDocumentsTogether` — a whole batch of documents treated as one unit.
+
+```ts
+interface DocumentsTogetherHandle<T, E = SiloError> {
+  status: "pending" | "success" | "error";
+  value: T[] | undefined; // all documents, in id order — present only on "success"
+  error: E | undefined; // the first failing document's error, on "error"
+  isFetching: boolean; // any document is fetching
+  promise: Promise<T[]> | undefined; // resolves with all docs, or rejects on the first failure
+}
+```
+
+`status` is `"pending"` until every requested id has loaded, then `"success"` (with `value` = all documents in id order), or `"error"` the moment any id fails — terminal, like `Promise.all`. `value` is the same array reference across in-place updates (it's reconciled, not swapped), so `<For each={docs.value}>` and `use(docs.promise)` stay stable. For the per-document view — one handle each, settling independently — use `findAllIndividually` / `useDocumentsIndividually` and branch each handle's own `status`.
+
 ### React hooks
 
 From `@supergrain/silo/react`:
@@ -334,9 +358,12 @@ All returned from `createDocumentStoreContext<S>()`; destructure and re-export f
 
 - `Provider({ config?, store?, initial?, onMount?, children })` — provide exactly one of `config` (wrapped in `createDocumentStore()` exactly once per mount) or `store` (an existing store instance, adopted as-is — to share one store across multiple React roots or drive it from non-React code); supplying neither, or both, throws. Optional `initial` seeds documents/query results before the first render; optional `onMount` runs synchronously after seeding for imperative setup. Both run regardless of which source supplied the store.
 - `useDocument(type, id | null | undefined)` → `DocumentHandle<T>`. `null`/`undefined` id returns an idle handle (useful for conditional fetching — `useDocument("user", isLoggedIn ? myId : null)`). "Idle" isn't a separate `status`: the handle reads `status: "pending"` with `isFetching: false` (detect it as `status === "pending" && !isFetching` if you need to). There's no `"IDLE"` status — it folded onto the orthogonal `isFetching` axis.
+- `useDocumentsIndividually(type, ids | null | undefined)` → `DocumentHandle<T>[]`. One **independent** handle per id, in id order — each settles on its own, so you can render each document as it arrives (a per-row spinner/error). `null`/`undefined`/empty ids → `[]`. The array identity stays stable across renders while the ids are unchanged.
+- `useDocumentsTogether(type, ids | null | undefined)` → `DocumentsTogetherHandle<T>`. The **all-or-nothing** batch: `pending` until every id has loaded, `success` with `value` = all documents in id order once they all have, `error` if any fails; a combined `promise` (for `use()`) resolves with all documents or rejects on the first failure. `null`/`undefined` ids → an idle handle; empty ids → immediately `success` with `value: []`. The handle (and its promise) stays stable across renders while the ids are unchanged.
 - `useDocumentStore()` → store API. Escape hatch for imperative ops (`insertDocument`, `clearMemory`, query methods).
 - `useQuery(type, params | null | undefined)` → `QueryHandle<Result>`. Same null-handling as `useDocument`.
-- For lists, call `useDocumentStore().find(type, id)` for each id. Batching still happens under the hood; the public primitive stays one resource → one handle.
+
+Both list hooks batch under the hood — N ids collapse into one `adapter.find(ids)` call, same as N sibling `useDocument` calls.
 
 ### Factory for isolated stores
 

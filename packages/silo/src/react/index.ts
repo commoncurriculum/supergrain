@@ -1,16 +1,17 @@
 import type { QueryHandle, QueryTypes, RegisteredQueries } from "../queries";
 
-import { createContext, createElement, useContext, useState, type ReactNode } from "react";
+import { createContext, createElement, useContext, useRef, useState, type ReactNode } from "react";
 
 import {
   createDocumentStore,
   type DocumentHandle,
-  type DocumentsHandle,
+  type DocumentsTogetherHandle,
   type DocumentStore,
   type DocumentStoreConfig,
   type DocumentTypes,
   type RegisteredTypes,
 } from "../store";
+import { arrayEqual } from "../util";
 import { DocumentStoreContext } from "./context";
 
 /**
@@ -149,10 +150,14 @@ export function createDocumentStoreContext<
     type: K,
     id: string | null | undefined,
   ) => DocumentHandle<ModelsOf<S>[K]>;
-  useDocuments: <K extends keyof ModelsOf<S> & string>(
+  useDocumentsIndividually: <K extends keyof ModelsOf<S> & string>(
     type: K,
     ids: string[] | null | undefined,
-  ) => DocumentsHandle<ModelsOf<S>[K]>;
+  ) => Array<DocumentHandle<ModelsOf<S>[K]>>;
+  useDocumentsTogether: <K extends keyof ModelsOf<S> & string>(
+    type: K,
+    ids: string[] | null | undefined,
+  ) => DocumentsTogetherHandle<ModelsOf<S>[K]>;
   useQuery: <K extends keyof QueriesOf<S> & string>(
     type: K,
     params: QueriesOf<S>[K]["params"] | null | undefined,
@@ -225,18 +230,46 @@ export function createDocumentStoreContext<
     return store.find(type, id);
   }
 
-  function useDocuments<K extends keyof M & string>(
+  function useDocumentsIndividually<K extends keyof M & string>(
     type: K,
     ids: string[] | null | undefined,
-  ): DocumentsHandle<M[K]> {
-    // A pure reactive read, like useDocument: findAll re-triggers fetches
-    // every render (findAll → find per id) and returns a stable aggregate —
-    // the store caches it per (type, ids), its `values` is a live reactive
-    // array and its scalar/promise fields are kernel computeds — so React's
-    // use() sees stable object and promise identities across renders with no
-    // hook-level bookkeeping.
+  ): Array<DocumentHandle<M[K]>> {
+    // Pure reactive read: `findAllIndividually` maps ids → stable per-id handles
+    // (re-triggering fetches each render) and returns a FRESH array each call.
+    // Hold the previous one and swap only when the handle set actually changes,
+    // so React sees a stable array identity while the ids are unchanged.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
-    return store.findAll(type, ids);
+    const next = store.findAllIndividually(type, ids);
+    const ref = useRef(next);
+    if (!arrayEqual(ref.current, next)) ref.current = next;
+    return ref.current;
+  }
+
+  function useDocumentsTogether<K extends keyof M & string>(
+    type: K,
+    ids: string[] | null | undefined,
+  ): DocumentsTogetherHandle<M[K]> {
+    // The all-or-nothing batch handle. Its underlying handles are stable, but
+    // the handle wrapper (and its promise computed) must stay stable across
+    // renders for use()/memoization — so rebuild it only when the handle set
+    // changes. `idle` distinguishes `null` ids (an idle handle) from empty ids
+    // (immediately success), which share an empty handle set.
+    const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
+    const handles = store.findAllIndividually(type, ids);
+    const idle = ids === null || ids === undefined;
+    const ref = useRef<{
+      idle: boolean;
+      handles: Array<DocumentHandle<M[K]>>;
+      together: DocumentsTogetherHandle<M[K]>;
+    } | null>(null);
+    if (
+      ref.current === null ||
+      ref.current.idle !== idle ||
+      !arrayEqual(ref.current.handles, handles)
+    ) {
+      ref.current = { idle, handles, together: store.findAllTogether(type, ids) };
+    }
+    return ref.current.together;
   }
 
   function useQuery<K extends keyof Q & string>(
@@ -248,5 +281,12 @@ export function createDocumentStoreContext<
     return store.findQuery(type, params);
   }
 
-  return { Provider, useDocumentStore, useDocument, useDocuments, useQuery };
+  return {
+    Provider,
+    useDocumentStore,
+    useDocument,
+    useDocumentsIndividually,
+    useDocumentsTogether,
+    useQuery,
+  };
 }

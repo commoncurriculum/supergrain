@@ -15,13 +15,14 @@ import {
 import { setupFakeTimers } from "./setup/timers";
 
 // =============================================================================
-// store.findAll — the batched, multi-id aggregate over store.find.
+// store.findAllIndividually / store.findAllTogether — the two multi-id reads,
+// both batched over store.find (stable + idempotent, one handle per id).
 //
-// findAll(type, ids) maps each id through store.find (stable + idempotent) and
-// wraps the resulting handles in a DocumentsHandle aggregate. These tests cover
-// the aggregate's fields (handles / values / status / statusStrict / promise /
-// promiseStrict) across the pending → success/error transitions, plus the
-// idle/empty edges and the reactive read contract.
+// - findAllIndividually(type, ids) → Array<DocumentHandle>: one independent
+//   handle per id, in id order; each settles on its own.
+// - findAllTogether(type, ids) → DocumentsTogetherHandle: an all-or-nothing
+//   batch handle — pending until every id loads, success (value = all docs in
+//   id order) once they do, error if any fails.
 // =============================================================================
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -52,92 +53,50 @@ function omitUserIds(...omit: Array<string>): void {
 }
 
 // =============================================================================
-// Idle + empty edges
+// findAllIndividually
 // =============================================================================
 
-describe("store.findAll — idle (no ids)", () => {
-  it("returns an idle aggregate for null ids, touching no network", async () => {
-    const handles = store.findAll("user", null);
-
-    expect(handles.handles).toEqual([]);
-    expect(handles.values).toEqual([]);
-    expect(handles.status).toBe("pending");
-    expect(handles.statusStrict).toBe("pending");
-    expect(handles.promise).toBeUndefined();
-    expect(handles.promiseStrict).toBeUndefined();
+describe("store.findAllIndividually — idle + empty edges", () => {
+  it("returns an empty array for null / undefined ids, touching no network", async () => {
+    expect(store.findAllIndividually("user", null)).toEqual([]);
+    expect(store.findAllIndividually("user", undefined)).toEqual([]);
 
     await flushCoalescer();
     expect(requests()).toEqual([]);
   });
 
-  it("returns an idle aggregate for undefined ids", () => {
-    const handles = store.findAll("user", undefined);
-
-    expect(handles.handles).toEqual([]);
-    expect(handles.status).toBe("pending");
-    expect(handles.statusStrict).toBe("pending");
-  });
-});
-
-describe("store.findAll — empty ids array", () => {
-  it("is a successful aggregate with no values and no fetch", async () => {
-    const handles = store.findAll("user", []);
-
-    expect(handles.handles).toEqual([]);
-    expect(handles.values).toEqual([]);
-    expect(handles.status).toBe("success");
-    expect(handles.statusStrict).toBe("success");
+  it("returns an empty array for empty ids, touching no network", async () => {
+    expect(store.findAllIndividually("user", [])).toEqual([]);
 
     await flushCoalescer();
     expect(requests()).toEqual([]);
   });
-
-  it("its promise resolves to an empty array", async () => {
-    const handles = store.findAll("user", []);
-
-    await expect(handles.promise).resolves.toEqual([]);
-    await expect(handles.promiseStrict).resolves.toEqual([]);
-  });
 });
 
-// =============================================================================
-// handles — order + stability
-// =============================================================================
-
-describe("store.findAll — handles", () => {
+describe("store.findAllIndividually — handles", () => {
   it("collects one handle per id, in id order, each === store.find(id)", () => {
-    const handles = store.findAll("user", ["1", "2", "3"]);
+    const handles = store.findAllIndividually("user", ["1", "2", "3"]);
 
-    expect(handles.handles).toHaveLength(3);
-    // Idempotent: findAll's handles are the very objects store.find hands out.
-    expect(handles.handles[0]).toBe(store.find("user", "1"));
-    expect(handles.handles[1]).toBe(store.find("user", "2"));
-    expect(handles.handles[2]).toBe(store.find("user", "3"));
+    expect(handles).toHaveLength(3);
+    // Idempotent: the handles are the very objects store.find hands out.
+    expect(handles[0]).toBe(store.find("user", "1"));
+    expect(handles[1]).toBe(store.find("user", "2"));
+    expect(handles[2]).toBe(store.find("user", "3"));
   });
 
-  it("returns the same aggregate for equal ids, with the same inner handles", () => {
-    // Fresh array instances with equal contents hit the same cache slot: the
-    // aggregate (and the kernel computeds inside it) is shared by all readers.
-    const a = store.findAll("user", ["1", "2"]);
-    const b = store.findAll("user", ["1", "2"]);
+  it("returns a fresh array each call, but the same inner handles", () => {
+    const a = store.findAllIndividually("user", ["1", "2"]);
+    const b = store.findAllIndividually("user", ["1", "2"]);
 
-    expect(a).toBe(b);
-    // The handles inside are stable — find is idempotent.
-    expect(a.handles[0]).toBe(store.find("user", "1"));
-    expect(a.handles[1]).toBe(store.find("user", "2"));
-  });
-
-  it("returns a different aggregate when the ids differ (order matters)", () => {
-    const a = store.findAll("user", ["1", "2"]);
-    const b = store.findAll("user", ["1", "2", "3"]);
-    const c = store.findAll("user", ["2", "1"]);
-
-    expect(b).not.toBe(a);
-    expect(c).not.toBe(a);
+    // The array is intentionally not stable (useDocumentsIndividually layers
+    // that on top); the handles inside are stable — find is idempotent.
+    expect(a).not.toBe(b);
+    expect(a[0]).toBe(b[0]);
+    expect(a[1]).toBe(b[1]);
   });
 
   it("triggers a single batched fetch for all ids", async () => {
-    store.findAll("user", ["1", "2", "3"]);
+    store.findAllIndividually("user", ["1", "2", "3"]);
 
     await flushCoalescer();
 
@@ -145,116 +104,158 @@ describe("store.findAll — handles", () => {
     expect(userReqs).toHaveLength(1);
     expect(userReqs[0].url.searchParams.getAll("id")).toEqual(["1", "2", "3"]);
   });
-});
 
-// =============================================================================
-// values + status — pending → success
-// =============================================================================
-
-describe("store.findAll — values and status while loading", () => {
-  it("starts pending with no values, then resolves to values in id order", async () => {
-    const handles = store.findAll("user", ["1", "2", "3"]);
-
-    expect(handles.status).toBe("pending");
-    expect(handles.statusStrict).toBe("pending");
-    expect(handles.values).toEqual([]);
+  it("each handle settles to its value independently, in id order", async () => {
+    const handles = store.findAllIndividually("user", ["1", "2", "3"]);
+    expect(handles.every((h) => h.status === "pending")).toBe(true);
 
     await flushCoalescer();
 
-    expect(handles.status).toBe("success");
-    expect(handles.statusStrict).toBe("success");
-    expect(handles.values.map((u) => u.id)).toEqual(["1", "2", "3"]);
+    expect(handles.map((h) => h.status)).toEqual(["success", "success", "success"]);
+    expect(handles.map((h) => h.value?.id)).toEqual(["1", "2", "3"]);
   });
 
-  it("reads successful values from cache with no loading state", async () => {
+  it("keeps an errored handle in place (in id order) alongside its successful siblings", async () => {
+    omitUserIds("2"); // id 2 → NotFoundError, 1 and 3 succeed
+
+    const handles = store.findAllIndividually("user", ["1", "2", "3"]);
+    await flushCoalescer();
+
+    expect(handles[0].status).toBe("success");
+    expect(handles[1].status).toBe("error");
+    expect(handles[1].error).toBeInstanceOf(NotFoundError);
+    expect(handles[2].status).toBe("success");
+  });
+
+  it("re-runs a subscriber when one of its handles settles", async () => {
+    const handles = store.findAllIndividually("user", ["1", "2"]);
+
+    const seen: Array<Array<string>> = [];
+    effect(() => {
+      seen.push(handles.filter((h) => h.status === "success").map((h) => h.value!.id));
+    });
+    expect(seen).toEqual([[]]);
+
+    await flushCoalescer();
+
+    expect(seen.at(-1)).toEqual(["1", "2"]);
+  });
+});
+
+// =============================================================================
+// findAllTogether — idle + empty edges
+// =============================================================================
+
+describe("store.findAllTogether — idle (no ids)", () => {
+  it("returns an idle handle for null ids, touching no network", async () => {
+    const together = store.findAllTogether("user", null);
+
+    expect(together.status).toBe("pending");
+    expect(together.value).toBeUndefined();
+    expect(together.error).toBeUndefined();
+    expect(together.isFetching).toBe(false);
+    expect(together.promise).toBeUndefined();
+
+    await flushCoalescer();
+    expect(requests()).toEqual([]);
+  });
+
+  it("returns an idle handle for undefined ids", () => {
+    const together = store.findAllTogether("user", undefined);
+    expect(together.status).toBe("pending");
+    expect(together.value).toBeUndefined();
+  });
+});
+
+describe("store.findAllTogether — empty ids array", () => {
+  it("is immediately success with an empty value and no fetch", async () => {
+    const together = store.findAllTogether("user", []);
+
+    expect(together.status).toBe("success");
+    expect(together.value).toEqual([]);
+    expect(together.isFetching).toBe(false);
+
+    await flushCoalescer();
+    expect(requests()).toEqual([]);
+  });
+
+  it("its promise resolves to an empty array", async () => {
+    const together = store.findAllTogether("user", []);
+    await expect(together.promise).resolves.toEqual([]);
+  });
+});
+
+// =============================================================================
+// findAllTogether — pending → success (all-or-nothing)
+// =============================================================================
+
+describe("store.findAllTogether — all-or-nothing loading", () => {
+  it("stays pending with no value until every id has loaded, then exposes all in id order", async () => {
+    const together = store.findAllTogether("user", ["1", "2", "3"]);
+
+    expect(together.status).toBe("pending");
+    expect(together.value).toBeUndefined();
+    expect(together.isFetching).toBe(true);
+
+    await flushCoalescer();
+
+    expect(together.status).toBe("success");
+    expect(together.value?.map((u) => u.id)).toEqual(["1", "2", "3"]);
+    expect(together.isFetching).toBe(false);
+  });
+
+  it("reads a fully-cached batch as success with no loading state", async () => {
     store.insertDocument("user", makeUser("1", { firstName: "Ada" }));
     store.insertDocument("user", makeUser("2", { firstName: "Grace" }));
 
-    const handles = store.findAll("user", ["1", "2"]);
+    const together = store.findAllTogether("user", ["1", "2"]);
 
-    expect(handles.status).toBe("success");
-    expect(handles.values.map((u) => u.attributes.firstName)).toEqual(["Ada", "Grace"]);
-    // Each cached handle carries a resolved promise, so the combined promise is
-    // already fulfilled with the values (React 19 `use()` reads them synchronously).
-    await expect(handles.promise).resolves.toHaveLength(2);
-    await expect(handles.promiseStrict).resolves.toHaveLength(2);
+    expect(together.status).toBe("success");
+    expect(together.value?.map((u) => u.attributes.firstName)).toEqual(["Ada", "Grace"]);
+    await expect(together.promise).resolves.toHaveLength(2);
   });
 
-  it("exposes a stable, live reactive array — identity never changes", async () => {
-    const handles = store.findAll("user", ["1", "2"]);
-    const first = handles.values;
-
+  it("exposes a stable value array reconciled in place across a wholesale replace", async () => {
+    const together = store.findAllTogether("user", ["1", "2"]);
     await flushCoalescer();
 
-    // The array is reconciled in place as the fetch settles: same identity
-    // before and after, now populated with the loaded values.
-    expect(handles.values).toBe(first);
-    expect(handles.values.map((u) => u.id)).toEqual(["1", "2"]);
+    const value = together.value;
+    expect(value?.map((u) => u.id)).toEqual(["1", "2"]);
+
+    // Wholesale-replace id 1: same all-or-nothing success, same array identity,
+    // slot 0 updated in place.
+    store.insertDocument("user", makeUser("1", { firstName: "Ada" }));
+
+    expect(together.value).toBe(value);
+    expect(together.value?.[0].attributes.firstName).toBe("Ada");
   });
 });
 
 // =============================================================================
-// Mixed success/error — the "strict" vs lenient aggregates diverge
+// findAllTogether — a failure is terminal
 // =============================================================================
 
-describe("store.findAll — a partial failure", () => {
-  it("omits the errored value from `values` but keeps id order", async () => {
-    omitUserIds("2"); // id 2 → NotFoundError, 1 and 3 succeed
+describe("store.findAllTogether — a partial failure", () => {
+  it("goes to error with no value and surfaces the failing error", async () => {
+    omitUserIds("2"); // id 2 → NotFoundError
 
-    const handles = store.findAll("user", ["1", "2", "3"]);
+    const together = store.findAllTogether("user", ["1", "2", "3"]);
     await flushCoalescer();
 
-    expect(handles.values.map((u) => u.id)).toEqual(["1", "3"]);
-    // The errored handle is still present in `handles`, in position.
-    expect(handles.handles[1].error).toBeInstanceOf(NotFoundError);
-  });
-
-  it("status stays `success` (lenient) while statusStrict is `error`", async () => {
-    omitUserIds("2");
-
-    const handles = store.findAll("user", ["1", "2", "3"]);
-    await flushCoalescer();
-
-    // Lenient status ignores the error — the non-errored values all succeeded.
-    expect(handles.status).toBe("success");
-    // Strict status treats any error as terminal.
-    expect(handles.statusStrict).toBe("error");
+    expect(together.status).toBe("error");
+    expect(together.value).toBeUndefined();
+    expect(together.error).toBeInstanceOf(NotFoundError);
   });
 });
 
 // =============================================================================
-// promise / promiseStrict
+// findAllTogether — promise
 // =============================================================================
 
-describe("store.findAll — promise (lenient)", () => {
-  it("resolves with only the successful values once nothing is pending", async () => {
-    omitUserIds("2");
-
-    const handles = store.findAll("user", ["1", "2", "3"]);
-    const promise = handles.promise;
-    expect(promise).toBeInstanceOf(Promise);
-
-    await flushCoalescer();
-
-    // allSettled semantics: never rejects, snapshots the successes in order.
-    await expect(promise).resolves.toEqual([
-      expect.objectContaining({ id: "1" }),
-      expect.objectContaining({ id: "3" }),
-    ]);
-  });
-
-  it("returns a stable promise identity across reads while inputs are unchanged", () => {
-    const handles = store.findAll("user", ["1", "2"]);
-
-    // Same underlying handle.promise references → same combined promise.
-    expect(handles.promise).toBe(handles.promise);
-  });
-});
-
-describe("store.findAll — promiseStrict", () => {
-  it("resolves with every value when all ids succeed", async () => {
-    const handles = store.findAll("user", ["1", "2"]);
-    const promise = handles.promiseStrict;
+describe("store.findAllTogether — promise", () => {
+  it("resolves with every value once they all succeed", async () => {
+    const together = store.findAllTogether("user", ["1", "2"]);
+    const promise = together.promise;
 
     await flushCoalescer();
 
@@ -264,11 +265,11 @@ describe("store.findAll — promiseStrict", () => {
     ]);
   });
 
-  it("rejects when any id errors", async () => {
+  it("rejects as soon as any id errors", async () => {
     omitUserIds("2");
 
-    const handles = store.findAll("user", ["1", "2", "3"]);
-    const promise = handles.promiseStrict;
+    const together = store.findAllTogether("user", ["1", "2", "3"]);
+    const promise = together.promise;
 
     await flushCoalescer();
 
@@ -276,141 +277,32 @@ describe("store.findAll — promiseStrict", () => {
   });
 
   it("returns a stable promise identity across reads while inputs are unchanged", () => {
-    const handles = store.findAll("user", ["1", "2"]);
-
-    expect(handles.promiseStrict).toBe(handles.promiseStrict);
-  });
-});
-
-// =============================================================================
-// Aggregate cache edges — value churn + the all-idle / partially-idle inputs
-// that arise when memory is cleared out from under a captured aggregate.
-// =============================================================================
-
-describe("store.findAll — values reconciled in place", () => {
-  it("updates a wholesale-replaced slot in place, firing only that index's subscriber", () => {
-    store.insertDocument("user", makeUser("1"));
-    store.insertDocument("user", makeUser("2"));
-
-    const handles = store.findAll("user", ["1", "2"]);
-    const values = handles.values;
-    expect(values.map((u) => u.id)).toEqual(["1", "2"]);
-
-    // Per-slot subscribers: index 0 is replaced, index 1 is untouched.
-    const seen0: Array<string> = [];
-    const seen1: Array<string> = [];
-    effect(() => {
-      seen0.push(values[0].attributes.firstName);
-    });
-    effect(() => {
-      seen1.push(values[1].attributes.firstName);
-    });
-
-    // Wholesale-replace id "1" with a NEW object. The reactive array is
-    // reconciled in place — same array identity, slot 0 swapped — so the
-    // kernel fires only index 0's signal.
-    store.insertDocument("user", makeUser("1", { firstName: "Ada" }));
-
-    // Same live array, updated in place.
-    expect(handles.values).toBe(values);
-    expect(values[0].attributes.firstName).toBe("Ada");
-    expect(values.map((u) => u.id)).toEqual(["1", "2"]);
-
-    // Fine-grained: only the changed slot's subscriber re-ran.
-    expect(seen0.at(-1)).toBe("Ada");
-    expect(seen1).toHaveLength(1);
+    const together = store.findAllTogether("user", ["1", "2"]);
+    expect(together.promise).toBe(together.promise);
   });
 
-  it("shrinks in place when a value drops out (e.g. clearMemory of one id)", async () => {
-    const handles = store.findAll("user", ["1", "2"]);
+  it("falls back to undefined promise when every handle goes idle (clearMemory)", async () => {
+    const together = store.findAllTogether("user", ["1", "2"]);
     await flushCoalescer();
+    expect(together.promise).toBeInstanceOf(Promise);
 
-    const values = handles.values;
-    expect(values.map((u) => u.id)).toEqual(["1", "2"]);
-
-    // Drop id "1" from cache: its handle goes idle, so it leaves `values`. The
-    // array shrinks in place (same identity) and keeps id order.
-    store.clearMemory();
-    store.find("user", "2"); // re-request only id 2 so it stays a success
-    await flushCoalescer();
-
-    expect(handles.values).toBe(values);
-    expect(values.map((u) => u.id)).toEqual(["2"]);
-  });
-});
-
-describe("store.findAll — promise inputs after clearMemory", () => {
-  it("promise / promiseStrict fall back to undefined when every handle goes idle", async () => {
-    const handles = store.findAll("user", ["1", "2"]);
-    await flushCoalescer();
-
-    // Loaded: each handle carries a resolved promise, so the aggregates exist.
-    expect(handles.promise).toBeInstanceOf(Promise);
-    expect(handles.promiseStrict).toBeInstanceOf(Promise);
-
-    // Reset drops each (non-fetching) handle's promise, so every input is
-    // undefined — the aggregate has no in-flight work to hand out.
-    store.clearMemory();
-
-    expect(handles.promise).toBeUndefined();
-    expect(handles.promiseStrict).toBeUndefined();
-  });
-
-  it("combines a partially-idle aggregate after a selective refetch", async () => {
-    const handles = store.findAll("user", ["1", "2"]);
-    await flushCoalescer();
     store.clearMemory(); // both handles idle, promises undefined
 
-    // Re-request only id "1": its handle gets a fresh in-flight promise while id
-    // "2" stays idle (undefined promise). The combined promises must fill the
-    // idle input with `Promise.resolve()` rather than skipping it.
-    store.find("user", "1");
-
-    const lenient = handles.promise;
-    const strict = handles.promiseStrict;
-    expect(lenient).toBeInstanceOf(Promise);
-    expect(strict).toBeInstanceOf(Promise);
-
-    await flushCoalescer();
-
-    // Lenient snapshot: only the reloaded id-1 succeeded (id-2 was never
-    // re-fetched, so it never resolves to a value).
-    await expect(lenient).resolves.toEqual([expect.objectContaining({ id: "1" })]);
-    // Strict resolves once every (padded) input settles — one value per handle.
-    await expect(strict).resolves.toHaveLength(2);
+    expect(together.promise).toBeUndefined();
   });
 });
 
 // =============================================================================
-// Reactivity — every aggregate field is a kernel computed over the live
-// handles: a subscriber re-fires when a fetch settles, and does NOT re-fire
-// when a handle change leaves the aggregate value unchanged (the computed's
-// equality cut-off).
+// findAllTogether — reactivity
 // =============================================================================
 
-describe("store.findAll — reactive reads", () => {
-  it("re-runs a `values` subscriber when the fetch resolves", async () => {
-    const handles = store.findAll("user", ["1", "2"]);
-
-    const seen: Array<Array<string>> = [];
-    effect(() => {
-      seen.push(handles.values.map((u) => u.id));
-    });
-    // First run: still pending, no values.
-    expect(seen).toEqual([[]]);
-
-    await flushCoalescer();
-
-    // The effect re-ran once the underlying handles committed their values.
-    expect(seen.at(-1)).toEqual(["1", "2"]);
-  });
-
-  it("re-runs a `status` subscriber when the fetch resolves", async () => {
-    const handles = store.findAll("user", ["1", "2"]);
+describe("store.findAllTogether — reactive reads", () => {
+  it("re-runs a `status` subscriber when the batch finishes loading", async () => {
+    const together = store.findAllTogether("user", ["1", "2"]);
 
     const seen: Array<string> = [];
     effect(() => {
-      seen.push(handles.status);
+      seen.push(together.status);
     });
     expect(seen).toEqual(["pending"]);
 
@@ -419,45 +311,18 @@ describe("store.findAll — reactive reads", () => {
     expect(seen.at(-1)).toBe("success");
   });
 
-  it("does NOT re-run a `status` subscriber when one handle resolves but the aggregate stays pending", async () => {
-    const handles = store.findAll("user", ["1", "2"]);
+  it("does NOT re-run a `status` subscriber when one id loads but others are still pending", () => {
+    const together = store.findAllTogether("user", ["1", "2"]);
 
     const seen: Array<string> = [];
     effect(() => {
-      seen.push(handles.status);
+      seen.push(together.status);
     });
     expect(seen).toEqual(["pending"]);
 
-    // Commit id 1 while id 2 is still in flight: the underlying handle flips
-    // to success, but the aggregate is still "pending" — the computed's
-    // equality cut-off stops propagation, so the subscriber never re-fires.
+    // Commit id 1 while id 2 is still in flight: the batch is still "pending",
+    // so the computed's cut-off keeps the subscriber quiet.
     store.insertDocument("user", makeUser("1"));
     expect(seen).toEqual(["pending"]);
-
-    await flushCoalescer();
-
-    // Only the real transition reaches the subscriber.
-    expect(seen).toEqual(["pending", "success"]);
-  });
-
-  it("does NOT re-run a `values` subscriber when a handle errors without changing the successes", async () => {
-    omitUserIds("2"); // id 2 → NotFoundError; id 1 is served from cache below
-    store.insertDocument("user", makeUser("1"));
-
-    const handles = store.findAll("user", ["1", "2"]);
-
-    const seen: Array<Array<string>> = [];
-    effect(() => {
-      seen.push(handles.values.map((u) => u.id));
-    });
-    expect(seen).toEqual([["1"]]);
-
-    await flushCoalescer();
-
-    // Handle 2 transitioned pending → error, but the successful values are
-    // unchanged — the computed hands back the same array and the subscriber
-    // stays quiet.
-    expect(handles.handles[1].error).toBeInstanceOf(NotFoundError);
-    expect(seen).toEqual([["1"]]);
   });
 });

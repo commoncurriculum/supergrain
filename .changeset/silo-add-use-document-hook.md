@@ -2,10 +2,15 @@
 "@supergrain/silo": minor
 ---
 
-Add useDocuments React hook and store.findAll method. findAll returns a stable
-DocumentsHandle per (type, ids). Its `values` is a live kernel reactive array
-reconciled in place as handles settle — so reads are fine-grained (a reader of
-one slot re-renders only when that slot changes) with a never-churning array
-identity — and its scalar/promise aggregates (status, statusStrict, promise,
-promiseStrict) are kernel computeds, re-firing subscribers only when the
-aggregate value itself changes.
+Add multi-document reads in two shapes:
+
+- `store.findAllIndividually(type, ids)` / `useDocumentsIndividually(type, ids)`
+  return one **independent** `DocumentHandle` per id (in id order); each settles
+  on its own, so you can render each document as it arrives.
+- `store.findAllTogether(type, ids)` / `useDocumentsTogether(type, ids)` return a
+  single **all-or-nothing** `DocumentsTogetherHandle`: `pending` until every
+  document has loaded, `success` with `value` = all documents in id order once
+  they have, `error` if any fails (with a combined `promise` for `use()`).
+
+Both batch their fetches through `store.find`, so N ids collapse into one
+`adapter.find(ids)` call.

@@ -75,8 +75,14 @@ afterEach(() => {
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-const { Provider, useDocument, useDocuments, useDocumentStore, useQuery } =
-  createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
+const {
+  Provider,
+  useDocument,
+  useDocumentsIndividually,
+  useDocumentsTogether,
+  useDocumentStore,
+  useQuery,
+} = createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
 
 const userAdapter: DocumentAdapter = {
   find: (ids) =>
@@ -170,22 +176,47 @@ const UserList = tracked(function UserList({ ids }: { ids: ReadonlyArray<string>
   );
 });
 
-// Renders the useDocuments aggregate. Mirrors a real roster: an idle state for
-// no ids, a loading state while pending, an error banner when strict, and the
-// list of successful values otherwise.
-const UserRoster = tracked(function UserRoster({ ids }: { ids: ReadonlyArray<string> | null }) {
-  const { handles, values, status, statusStrict } = useDocuments(
-    "user",
-    ids == null ? null : [...ids],
-  );
+// Individually: one handle per id, each rendering its own loading/error/value.
+const UserRosterIndividually = tracked(function UserRosterIndividually({
+  ids,
+}: {
+  ids: ReadonlyArray<string> | null;
+}) {
+  const handles = useDocumentsIndividually("user", ids == null ? null : [...ids]);
 
   if (handles.length === 0) return <span>no roster</span>;
-  if (statusStrict === "error") return <span>error</span>;
-  if (status === "pending") return <span>loading</span>;
 
   return (
     <ul>
-      {values.map((user) => (
+      {handles.map((handle, i) => (
+        <li key={i}>
+          {handle.status === "pending"
+            ? "loading"
+            : handle.status === "error"
+              ? "error"
+              : handle.value.attributes.firstName}
+        </li>
+      ))}
+    </ul>
+  );
+});
+
+// Together: the all-or-nothing batch — idle for no ids, loading until every id
+// is in, an error banner if any fails, else the full list.
+const UserRosterTogether = tracked(function UserRosterTogether({
+  ids,
+}: {
+  ids: ReadonlyArray<string> | null;
+}) {
+  const docs = useDocumentsTogether("user", ids == null ? null : [...ids]);
+
+  if (ids == null || ids.length === 0) return <span>no roster</span>;
+  if (docs.status === "error") return <span>error</span>;
+  if (docs.status === "pending") return <span>loading</span>;
+
+  return (
+    <ul>
+      {docs.value!.map((user) => (
         <li key={user.id}>{user.attributes.firstName}</li>
       ))}
     </ul>
@@ -308,55 +339,50 @@ describe("useDocumentStore + find composition", () => {
 });
 
 // =============================================================================
-// useDocuments — the batched, multi-id hook. Like useDocument it is a pure
-// reactive read that re-triggers fetches every render: store.findAll returns
-// a stable, computed-backed aggregate per (type, ids), so React's
-// use()/memoization see a stable object while the ids are unchanged.
+// useDocumentsIndividually — one handle per id, each settling on its own. A
+// pure reactive read; the returned array is held stable across renders (ref)
+// while the ids are unchanged.
 // =============================================================================
 
-describe("useDocuments", () => {
-  it("returns an idle aggregate when ids is null", () => {
+describe("useDocumentsIndividually", () => {
+  it("renders 'no roster' when ids is null", () => {
     render(
       <Wrap>
-        <UserRoster ids={null} />
+        <UserRosterIndividually ids={null} />
       </Wrap>,
     );
-
     expect(screen.getByText("no roster")).toBeDefined();
   });
 
-  it("returns an idle aggregate for an empty ids array", () => {
+  it("renders 'no roster' for an empty ids array", () => {
     render(
       <Wrap>
-        <UserRoster ids={[]} />
+        <UserRosterIndividually ids={[]} />
       </Wrap>,
     );
-
     expect(screen.getByText("no roster")).toBeDefined();
   });
 
-  it("renders loading, then the roster of values in id order", async () => {
+  it("renders each row loading, then each value as its handle settles", async () => {
     render(
       <Wrap>
-        <UserRoster ids={["1", "2", "3"]} />
+        <UserRosterIndividually ids={["1", "2", "3"]} />
       </Wrap>,
     );
 
-    expect(screen.getByText("loading")).toBeDefined();
+    expect(screen.getAllByText("loading")).toHaveLength(3);
 
-    // One batched fetch commits all three — poll for the first, the rest are
-    // then synchronously present.
     expect(await screen.findByText("User1", undefined, { timeout: 5000 })).toBeDefined();
     expect(screen.getByText("User2")).toBeDefined();
     expect(screen.getByText("User3")).toBeDefined();
   });
 
-  it("renders cached values immediately with no loading state", () => {
+  it("renders cached values immediately with no loading rows", () => {
     render(
       <Wrap>
         <SeedUser user={makeUser("1", { firstName: "Ada" })} />
         <SeedUser user={makeUser("2", { firstName: "Grace" })} />
-        <UserRoster ids={["1", "2"]} />
+        <UserRosterIndividually ids={["1", "2"]} />
       </Wrap>,
     );
 
@@ -365,27 +391,12 @@ describe("useDocuments", () => {
     expect(screen.queryByText("loading")).toBeNull();
   });
 
-  it("surfaces a batch failure as the strict error state", async () => {
-    usersShouldFail = true;
-
-    render(
-      <Wrap>
-        <UserRoster ids={["1", "2"]} />
-      </Wrap>,
-    );
-
-    expect(await screen.findByText("error")).toBeDefined();
-  });
-
-  it("keeps a stable aggregate identity across re-renders while ids are unchanged", () => {
-    // store.findAll caches the aggregate per (type, ids), so an unrelated
-    // re-render (a local state bump) hands back the SAME object — that
-    // stability is what lets React's use() avoid re-suspending.
+  it("keeps a stable array identity across re-renders while ids are unchanged", () => {
     const seen: Array<unknown> = [];
 
     const Probe = tracked(function Probe() {
       const [, force] = useState(0);
-      const handles = useDocuments("user", ["1", "2"]);
+      const handles = useDocumentsIndividually("user", ["1", "2"]);
       seen.push(handles);
       return (
         <button type="button" onClick={() => force((n) => n + 1)}>
@@ -402,17 +413,15 @@ describe("useDocuments", () => {
 
     fireEvent.click(screen.getByText("rerender"));
 
-    // Every captured aggregate is the identical object despite the extra render.
     expect(seen.length).toBeGreaterThan(1);
     expect(seen.every((h) => h === seen[0])).toBe(true);
   });
 
-  it("hands back a fresh aggregate when the ids change", () => {
+  it("hands back a fresh array when the ids change", () => {
     const seen: Array<unknown> = [];
 
     const Probe = tracked(function Probe({ ids }: { ids: Array<string> }) {
-      const handles = useDocuments("user", ids);
-      seen.push(handles);
+      seen.push(useDocumentsIndividually("user", ids));
       return null;
     });
 
@@ -421,14 +430,125 @@ describe("useDocuments", () => {
         <Probe ids={["1", "2"]} />
       </Wrap>,
     );
-
     rerender(
       <Wrap>
         <Probe ids={["1", "2", "3"]} />
       </Wrap>,
     );
 
-    // Changed ids map to a different cache slot → a new aggregate.
+    expect(seen[0]).not.toBe(seen.at(-1));
+  });
+});
+
+// =============================================================================
+// useDocumentsTogether — the all-or-nothing batch hook. Pure reactive read; the
+// returned handle is held stable across renders (ref) while the ids are
+// unchanged, so use()/memoization see a stable object + promise.
+// =============================================================================
+
+describe("useDocumentsTogether", () => {
+  it("renders 'no roster' when ids is null", () => {
+    render(
+      <Wrap>
+        <UserRosterTogether ids={null} />
+      </Wrap>,
+    );
+    expect(screen.getByText("no roster")).toBeDefined();
+  });
+
+  it("renders 'no roster' for an empty ids array", () => {
+    render(
+      <Wrap>
+        <UserRosterTogether ids={[]} />
+      </Wrap>,
+    );
+    expect(screen.getByText("no roster")).toBeDefined();
+  });
+
+  it("renders loading until every id is in, then the full roster in id order", async () => {
+    render(
+      <Wrap>
+        <UserRosterTogether ids={["1", "2", "3"]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("loading")).toBeDefined();
+
+    expect(await screen.findByText("User1", undefined, { timeout: 5000 })).toBeDefined();
+    expect(screen.getByText("User2")).toBeDefined();
+    expect(screen.getByText("User3")).toBeDefined();
+  });
+
+  it("renders a fully-cached batch immediately with no loading state", () => {
+    render(
+      <Wrap>
+        <SeedUser user={makeUser("1", { firstName: "Ada" })} />
+        <SeedUser user={makeUser("2", { firstName: "Grace" })} />
+        <UserRosterTogether ids={["1", "2"]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("Ada")).toBeDefined();
+    expect(screen.getByText("Grace")).toBeDefined();
+    expect(screen.queryByText("loading")).toBeNull();
+  });
+
+  it("surfaces a failing id as the batch error state", async () => {
+    usersShouldFail = true;
+
+    render(
+      <Wrap>
+        <UserRosterTogether ids={["1", "2"]} />
+      </Wrap>,
+    );
+
+    expect(await screen.findByText("error")).toBeDefined();
+  });
+
+  it("keeps a stable handle identity across re-renders while ids are unchanged", () => {
+    const seen: Array<unknown> = [];
+
+    const Probe = tracked(function Probe() {
+      const [, force] = useState(0);
+      seen.push(useDocumentsTogether("user", ["1", "2"]));
+      return (
+        <button type="button" onClick={() => force((n) => n + 1)}>
+          rerender
+        </button>
+      );
+    });
+
+    render(
+      <Wrap>
+        <Probe />
+      </Wrap>,
+    );
+
+    fireEvent.click(screen.getByText("rerender"));
+
+    expect(seen.length).toBeGreaterThan(1);
+    expect(seen.every((h) => h === seen[0])).toBe(true);
+  });
+
+  it("hands back a fresh handle when the ids change", () => {
+    const seen: Array<unknown> = [];
+
+    const Probe = tracked(function Probe({ ids }: { ids: Array<string> }) {
+      seen.push(useDocumentsTogether("user", ids));
+      return null;
+    });
+
+    const { rerender } = render(
+      <Wrap>
+        <Probe ids={["1", "2"]} />
+      </Wrap>,
+    );
+    rerender(
+      <Wrap>
+        <Probe ids={["1", "2", "3"]} />
+      </Wrap>,
+    );
+
     expect(seen[0]).not.toBe(seen.at(-1));
   });
 });
