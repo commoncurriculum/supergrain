@@ -16,6 +16,7 @@ import { describe, expectTypeOf, it } from "vitest";
 import {
   createDocumentStore,
   type DocumentHandle,
+  type DocumentsTogetherHandle,
   type DocumentStore,
   type DocumentStoreConfig,
   type HandleStatus,
@@ -163,6 +164,46 @@ describe("DocumentStore.find / findInMemory — `type` narrows doc shape", () =>
     expectTypeOf(h.fetchedAt).toEqualTypeOf<Date | undefined>();
     expectTypeOf(h.status).toEqualTypeOf<HandleStatus>();
     expectTypeOf(h.promise).toEqualTypeOf<Promise<User> | undefined>();
+  });
+});
+
+describe("DocumentStore.findDocumentsIndividually / findDocumentsTogether — `type` narrows doc shape", () => {
+  const store = {} as DocumentStore<Models, Queries>;
+
+  it("findDocumentsIndividually returns an array of DocumentHandle<T>", () => {
+    expectTypeOf(store.findDocumentsIndividually("user", ["1"])).toEqualTypeOf<
+      Array<DocumentHandle<User>>
+    >();
+    expectTypeOf(store.findDocumentsIndividually("post", ["1"])).toEqualTypeOf<
+      Array<DocumentHandle<Post>>
+    >();
+  });
+
+  it("findDocumentsTogether returns DocumentsTogetherHandle<T>", () => {
+    const docs = store.findDocumentsTogether("user", ["1"]);
+    expectTypeOf(docs).toEqualTypeOf<DocumentsTogetherHandle<User>>();
+    expectTypeOf(docs.value).toEqualTypeOf<Array<User> | undefined>();
+    expectTypeOf(docs.promise).toEqualTypeOf<Promise<Array<User>> | undefined>();
+  });
+
+  it("narrowing on `status` refines `value` (discriminated union)", () => {
+    const docs = store.findDocumentsTogether("user", ["1"]);
+    if (docs.status === "success") {
+      expectTypeOf(docs.value).toEqualTypeOf<Array<User>>();
+      expectTypeOf(docs.error).toEqualTypeOf<undefined>();
+    }
+    if (docs.status === "error") {
+      expectTypeOf(docs.value).toEqualTypeOf<undefined>();
+      expectTypeOf(docs.error).toEqualTypeOf<SiloError>();
+    }
+    if (docs.status === "pending") {
+      expectTypeOf(docs.value).toEqualTypeOf<undefined>();
+    }
+  });
+
+  it("both accept null / undefined ids (lazy gate)", () => {
+    store.findDocumentsIndividually("user", null);
+    store.findDocumentsTogether("user", undefined);
   });
 });
 

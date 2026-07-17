@@ -1,7 +1,7 @@
 /**
- * Shallow array equality
+ * Shallow array equality (by element identity).
  */
-export function arrayEqual<T>(a: Array<T>, b: Array<T>): boolean {
+export function arrayEqual<T>(a: ReadonlyArray<T>, b: ReadonlyArray<T>): boolean {
   if (a.length !== b.length) return false;
 
   for (let i = 0; i < a.length; i++) {
