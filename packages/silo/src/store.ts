@@ -198,8 +198,9 @@ export interface DocumentsTogetherHandle<T, E = SiloError> {
   readonly isFetching: boolean;
   /**
    * Combined promise for React 19's `use()`: resolves with all documents once
-   * they've all loaded, rejects as soon as one fails. Absent until a fetch is
-   * in flight.
+   * they've all loaded (immediately, with `[]`, for an empty batch) and rejects
+   * as soon as one fails. `undefined` only while every handle is idle — no fetch
+   * has started (e.g. `null` ids, or after `clearMemory`).
    */
   readonly promise: HandlePromise<Array<T>>;
 }

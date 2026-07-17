@@ -182,14 +182,17 @@ const UserRosterIndividually = tracked(function UserRosterIndividually({
 }: {
   ids: ReadonlyArray<string> | null;
 }) {
-  const handles = useDocumentsIndividually("user", ids == null ? null : [...ids]);
+  const idList = ids == null ? [] : [...ids];
+  const handles = useDocumentsIndividually("user", ids == null ? null : idList);
 
   if (handles.length === 0) return <span>no roster</span>;
 
   return (
     <ul>
       {handles.map((handle, i) => (
-        <li key={i}>
+        // Key by the requested id (handles are in id order) so a row stays with
+        // its document across reorder/insert/remove — never the array index.
+        <li key={idList[i]}>
           {handle.status === "pending"
             ? "loading"
             : handle.status === "error"

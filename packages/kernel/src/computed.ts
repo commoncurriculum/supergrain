@@ -36,8 +36,12 @@ export interface ComputedOptions {
  * {@link ComputedOptions.returnStableReference}).
  */
 export function computed<T>(getter: (previousValue?: T) => T): () => T;
+// The stable-reference getter takes no `previousValue`: the computed returns the
+// persistent reconcile target, so a `previousValue` would BE that target —
+// reading it inside the getter would subscribe the computed to the array it is
+// about to reconcile (a self-cycle). So the value is produced fresh each run.
 export function computed<T extends ReadonlyArray<unknown>>(
-  getter: (previousValue?: T) => T,
+  getter: () => T,
   options: ComputedOptions,
 ): () => T;
 export function computed<T>(getter: (previousValue?: T) => T, options?: ComputedOptions): () => T {
