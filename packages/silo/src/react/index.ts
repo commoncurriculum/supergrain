@@ -3,15 +3,18 @@ import type { QueryHandle, QueryTypes, RegisteredQueries } from "../queries";
 import { createContext, createElement, useContext, useRef, useState, type ReactNode } from "react";
 
 import {
-  combineDocumentsTogether,
   createDocumentStore,
   type DocumentHandle,
-  type DocumentsTogetherHandle,
   type DocumentStore,
   type DocumentStoreConfig,
   type DocumentTypes,
   type RegisteredTypes,
 } from "../store";
+import {
+  combineDocumentsTogether,
+  type DocumentsTogetherHandle,
+  IDLE_DOCUMENTS_TOGETHER_HANDLE,
+} from "../together";
 import { arrayEqual } from "../util";
 import { DocumentStoreContext } from "./context";
 
@@ -235,12 +238,12 @@ export function createDocumentStoreContext<
     type: K,
     ids: string[] | null | undefined,
   ): Array<DocumentHandle<M[K]>> {
-    // Pure reactive read: `findAllIndividually` maps ids → stable per-id handles
-    // (re-triggering fetches each render) and returns a FRESH array each call.
-    // Hold the previous one and swap only when the handle set actually changes,
-    // so React sees a stable array identity while the ids are unchanged.
+    // Pure reactive read: `findDocumentsIndividually` maps ids → stable per-id
+    // handles (re-triggering fetches each render) and returns a FRESH array each
+    // call. Hold the previous one and swap only when the handle set actually
+    // changes, so React sees a stable array identity while the ids are unchanged.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
-    const next = store.findAllIndividually(type, ids);
+    const next = store.findDocumentsIndividually(type, ids);
     const ref = useRef(next);
     if (!arrayEqual(ref.current, next)) ref.current = next;
     return ref.current;
@@ -250,27 +253,25 @@ export function createDocumentStoreContext<
     type: K,
     ids: string[] | null | undefined,
   ): DocumentsTogetherHandle<M[K]> {
-    // Fetch the per-id handles ONCE (this re-triggers loads every render, like
-    // useDocument), then wrap them into the batch handle. The wrapper (and its
-    // promise computed) must stay stable across renders for use()/memoization —
-    // so rebuild it only when the handle set changes. `idle` distinguishes
-    // `null` ids (an idle handle) from empty ids (immediately success), which
-    // share an empty handle set. `combineDocumentsTogether` wraps the handles we
-    // already have, so there's no second fetch.
-    const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
-    const handles = store.findAllIndividually(type, ids);
+    // Built on the sibling hook: it fetches the per-id handles (re-triggering
+    // loads every render, like useDocument) AND keeps the array identity stable
+    // while the ids are unchanged — so the batch wrapper (whose promise computed
+    // must stay stable for use()/memoization) rebuilds on a plain identity
+    // check. `idle` distinguishes `null` ids (an idle handle) from empty ids
+    // (immediately success), which share the one stable empty handle array.
+    const handles = useDocumentsIndividually(type, ids);
     const idle = ids === null || ids === undefined;
     const ref = useRef<{
       idle: boolean;
       handles: Array<DocumentHandle<M[K]>>;
       together: DocumentsTogetherHandle<M[K]>;
     } | null>(null);
-    if (
-      ref.current === null ||
-      ref.current.idle !== idle ||
-      !arrayEqual(ref.current.handles, handles)
-    ) {
-      ref.current = { idle, handles, together: combineDocumentsTogether(handles, idle) };
+    if (ref.current === null || ref.current.idle !== idle || ref.current.handles !== handles) {
+      ref.current = {
+        idle,
+        handles,
+        together: idle ? IDLE_DOCUMENTS_TOGETHER_HANDLE : combineDocumentsTogether(handles),
+      };
     }
     return ref.current.together;
   }

@@ -15,12 +15,12 @@ import {
 import { setupFakeTimers } from "./setup/timers";
 
 // =============================================================================
-// store.findAllIndividually / store.findAllTogether — the two multi-id reads,
+// store.findDocumentsIndividually / store.findDocumentsTogether — the two multi-id reads,
 // both batched over store.find (stable + idempotent, one handle per id).
 //
-// - findAllIndividually(type, ids) → Array<DocumentHandle>: one independent
+// - findDocumentsIndividually(type, ids) → Array<DocumentHandle>: one independent
 //   handle per id, in id order; each settles on its own.
-// - findAllTogether(type, ids) → DocumentsTogetherHandle: an all-or-nothing
+// - findDocumentsTogether(type, ids) → DocumentsTogetherHandle: an all-or-nothing
 //   batch handle — pending until every id loads, success (value = all docs in
 //   id order) once they do, error if any fails.
 // =============================================================================
@@ -53,29 +53,29 @@ function omitUserIds(...omit: Array<string>): void {
 }
 
 // =============================================================================
-// findAllIndividually
+// findDocumentsIndividually
 // =============================================================================
 
-describe("store.findAllIndividually — idle + empty edges", () => {
+describe("store.findDocumentsIndividually — idle + empty edges", () => {
   it("returns an empty array for null / undefined ids, touching no network", async () => {
-    expect(store.findAllIndividually("user", null)).toEqual([]);
-    expect(store.findAllIndividually("user", undefined)).toEqual([]);
+    expect(store.findDocumentsIndividually("user", null)).toEqual([]);
+    expect(store.findDocumentsIndividually("user", undefined)).toEqual([]);
 
     await flushCoalescer();
     expect(requests()).toEqual([]);
   });
 
   it("returns an empty array for empty ids, touching no network", async () => {
-    expect(store.findAllIndividually("user", [])).toEqual([]);
+    expect(store.findDocumentsIndividually("user", [])).toEqual([]);
 
     await flushCoalescer();
     expect(requests()).toEqual([]);
   });
 });
 
-describe("store.findAllIndividually — handles", () => {
+describe("store.findDocumentsIndividually — handles", () => {
   it("collects one handle per id, in id order, each === store.find(id)", () => {
-    const handles = store.findAllIndividually("user", ["1", "2", "3"]);
+    const handles = store.findDocumentsIndividually("user", ["1", "2", "3"]);
 
     expect(handles).toHaveLength(3);
     // Idempotent: the handles are the very objects store.find hands out.
@@ -85,8 +85,8 @@ describe("store.findAllIndividually — handles", () => {
   });
 
   it("returns a fresh array each call, but the same inner handles", () => {
-    const a = store.findAllIndividually("user", ["1", "2"]);
-    const b = store.findAllIndividually("user", ["1", "2"]);
+    const a = store.findDocumentsIndividually("user", ["1", "2"]);
+    const b = store.findDocumentsIndividually("user", ["1", "2"]);
 
     // The array is intentionally not stable (useDocumentsIndividually layers
     // that on top); the handles inside are stable — find is idempotent.
@@ -96,7 +96,7 @@ describe("store.findAllIndividually — handles", () => {
   });
 
   it("triggers a single batched fetch for all ids", async () => {
-    store.findAllIndividually("user", ["1", "2", "3"]);
+    store.findDocumentsIndividually("user", ["1", "2", "3"]);
 
     await flushCoalescer();
 
@@ -106,7 +106,7 @@ describe("store.findAllIndividually — handles", () => {
   });
 
   it("each handle settles to its value independently, in id order", async () => {
-    const handles = store.findAllIndividually("user", ["1", "2", "3"]);
+    const handles = store.findDocumentsIndividually("user", ["1", "2", "3"]);
     expect(handles.every((h) => h.status === "pending")).toBe(true);
 
     await flushCoalescer();
@@ -118,7 +118,7 @@ describe("store.findAllIndividually — handles", () => {
   it("keeps an errored handle in place (in id order) alongside its successful siblings", async () => {
     omitUserIds("2"); // id 2 → NotFoundError, 1 and 3 succeed
 
-    const handles = store.findAllIndividually("user", ["1", "2", "3"]);
+    const handles = store.findDocumentsIndividually("user", ["1", "2", "3"]);
     await flushCoalescer();
 
     expect(handles[0].status).toBe("success");
@@ -128,7 +128,7 @@ describe("store.findAllIndividually — handles", () => {
   });
 
   it("re-runs a subscriber when one of its handles settles", async () => {
-    const handles = store.findAllIndividually("user", ["1", "2"]);
+    const handles = store.findDocumentsIndividually("user", ["1", "2"]);
 
     const seen: Array<Array<string>> = [];
     effect(() => {
@@ -143,12 +143,12 @@ describe("store.findAllIndividually — handles", () => {
 });
 
 // =============================================================================
-// findAllTogether — idle + empty edges
+// findDocumentsTogether — idle + empty edges
 // =============================================================================
 
-describe("store.findAllTogether — idle (no ids)", () => {
+describe("store.findDocumentsTogether — idle (no ids)", () => {
   it("returns an idle handle for null ids, touching no network", async () => {
-    const together = store.findAllTogether("user", null);
+    const together = store.findDocumentsTogether("user", null);
 
     expect(together.status).toBe("pending");
     expect(together.value).toBeUndefined();
@@ -161,15 +161,15 @@ describe("store.findAllTogether — idle (no ids)", () => {
   });
 
   it("returns an idle handle for undefined ids", () => {
-    const together = store.findAllTogether("user", undefined);
+    const together = store.findDocumentsTogether("user", undefined);
     expect(together.status).toBe("pending");
     expect(together.value).toBeUndefined();
   });
 });
 
-describe("store.findAllTogether — empty ids array", () => {
+describe("store.findDocumentsTogether — empty ids array", () => {
   it("is immediately success with an empty value and no fetch", async () => {
-    const together = store.findAllTogether("user", []);
+    const together = store.findDocumentsTogether("user", []);
 
     expect(together.status).toBe("success");
     expect(together.value).toEqual([]);
@@ -180,18 +180,18 @@ describe("store.findAllTogether — empty ids array", () => {
   });
 
   it("its promise resolves to an empty array", async () => {
-    const together = store.findAllTogether("user", []);
+    const together = store.findDocumentsTogether("user", []);
     await expect(together.promise).resolves.toEqual([]);
   });
 });
 
 // =============================================================================
-// findAllTogether — pending → success (all-or-nothing)
+// findDocumentsTogether — pending → success (all-or-nothing)
 // =============================================================================
 
-describe("store.findAllTogether — all-or-nothing loading", () => {
+describe("store.findDocumentsTogether — all-or-nothing loading", () => {
   it("stays pending with no value until every id has loaded, then exposes all in id order", async () => {
-    const together = store.findAllTogether("user", ["1", "2", "3"]);
+    const together = store.findDocumentsTogether("user", ["1", "2", "3"]);
 
     expect(together.status).toBe("pending");
     expect(together.value).toBeUndefined();
@@ -208,7 +208,7 @@ describe("store.findAllTogether — all-or-nothing loading", () => {
     store.insertDocument("user", makeUser("1", { firstName: "Ada" }));
     store.insertDocument("user", makeUser("2", { firstName: "Grace" }));
 
-    const together = store.findAllTogether("user", ["1", "2"]);
+    const together = store.findDocumentsTogether("user", ["1", "2"]);
 
     expect(together.status).toBe("success");
     expect(together.value?.map((u) => u.attributes.firstName)).toEqual(["Ada", "Grace"]);
@@ -217,7 +217,7 @@ describe("store.findAllTogether — all-or-nothing loading", () => {
   });
 
   it("exposes a stable value array reconciled in place across a wholesale replace", async () => {
-    const together = store.findAllTogether("user", ["1", "2"]);
+    const together = store.findDocumentsTogether("user", ["1", "2"]);
     await flushCoalescer();
 
     const value = together.value;
@@ -233,14 +233,14 @@ describe("store.findAllTogether — all-or-nothing loading", () => {
 });
 
 // =============================================================================
-// findAllTogether — a failure is terminal
+// findDocumentsTogether — a failure is terminal
 // =============================================================================
 
-describe("store.findAllTogether — a partial failure", () => {
+describe("store.findDocumentsTogether — a partial failure", () => {
   it("goes to error with no value and surfaces the failing error", async () => {
     omitUserIds("2"); // id 2 → NotFoundError
 
-    const together = store.findAllTogether("user", ["1", "2", "3"]);
+    const together = store.findDocumentsTogether("user", ["1", "2", "3"]);
     await flushCoalescer();
 
     expect(together.status).toBe("error");
@@ -250,12 +250,12 @@ describe("store.findAllTogether — a partial failure", () => {
 });
 
 // =============================================================================
-// findAllTogether — promise
+// findDocumentsTogether — promise
 // =============================================================================
 
-describe("store.findAllTogether — promise", () => {
+describe("store.findDocumentsTogether — promise", () => {
   it("resolves with every value once they all succeed", async () => {
-    const together = store.findAllTogether("user", ["1", "2"]);
+    const together = store.findDocumentsTogether("user", ["1", "2"]);
     const promise = together.promise;
 
     await flushCoalescer();
@@ -269,7 +269,7 @@ describe("store.findAllTogether — promise", () => {
   it("rejects as soon as any id errors", async () => {
     omitUserIds("2");
 
-    const together = store.findAllTogether("user", ["1", "2", "3"]);
+    const together = store.findDocumentsTogether("user", ["1", "2", "3"]);
     const promise = together.promise;
 
     await flushCoalescer();
@@ -278,29 +278,36 @@ describe("store.findAllTogether — promise", () => {
   });
 
   it("returns a stable promise identity across reads while inputs are unchanged", () => {
-    const together = store.findAllTogether("user", ["1", "2"]);
+    const together = store.findDocumentsTogether("user", ["1", "2"]);
     expect(together.promise).toBe(together.promise);
   });
 
-  it("pads an idle handle with a resolved promise after a selective refetch", async () => {
-    const together = store.findAllTogether("user", ["1", "2"]);
+  it("stays undefined while any handle is idle, and returns once every id refetches", async () => {
+    const together = store.findDocumentsTogether("user", ["1", "2"]);
     await flushCoalescer();
     store.clearMemory(); // both idle, promises undefined
 
-    // Re-request only id 1: its handle gets a fresh in-flight promise while id 2
-    // stays idle (undefined promise). The combined promise must fill the idle
-    // input with `Promise.resolve()` rather than skip it.
+    // Re-request only id 1: id 2 is still idle (no fetch started), so there is
+    // nothing the combined promise could resolve id 2's slot with — it must
+    // stay undefined rather than fulfil with an `undefined` hole typed as T.
     store.find("user", "1");
+    expect(together.promise).toBeUndefined();
 
+    // Once every handle has a fetch again, the combined promise is back — and
+    // it resolves with a real document in every slot.
+    store.find("user", "2");
     const promise = together.promise;
     expect(promise).toBeInstanceOf(Promise);
 
     await flushCoalescer();
-    await expect(promise).resolves.toHaveLength(2);
+    await expect(promise).resolves.toEqual([
+      expect.objectContaining({ id: "1" }),
+      expect.objectContaining({ id: "2" }),
+    ]);
   });
 
   it("falls back to undefined promise when every handle goes idle (clearMemory)", async () => {
-    const together = store.findAllTogether("user", ["1", "2"]);
+    const together = store.findDocumentsTogether("user", ["1", "2"]);
     await flushCoalescer();
     expect(together.promise).toBeInstanceOf(Promise);
 
@@ -311,12 +318,12 @@ describe("store.findAllTogether — promise", () => {
 });
 
 // =============================================================================
-// findAllTogether — reactivity
+// findDocumentsTogether — reactivity
 // =============================================================================
 
-describe("store.findAllTogether — reactive reads", () => {
+describe("store.findDocumentsTogether — reactive reads", () => {
   it("re-runs a `status` subscriber when the batch finishes loading", async () => {
-    const together = store.findAllTogether("user", ["1", "2"]);
+    const together = store.findDocumentsTogether("user", ["1", "2"]);
 
     const seen: Array<string> = [];
     effect(() => {
@@ -330,7 +337,7 @@ describe("store.findAllTogether — reactive reads", () => {
   });
 
   it("does NOT re-run a `status` subscriber when one id loads but others are still pending", () => {
-    const together = store.findAllTogether("user", ["1", "2"]);
+    const together = store.findDocumentsTogether("user", ["1", "2"]);
 
     const seen: Array<string> = [];
     effect(() => {
