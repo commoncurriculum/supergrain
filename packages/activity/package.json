@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/activity",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "User-activity / presence tracking for Supergrain as a verified XState state chart: active / idle / hidden with short and long idle thresholds.",
   "keywords": [
     "activity",
