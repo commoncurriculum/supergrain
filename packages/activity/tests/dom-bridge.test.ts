@@ -193,6 +193,38 @@ describe("ActivityTracker — DOM-driven state", () => {
     tracker.destroy();
   });
 
+  it("emits a `returned` event with awayMs after a long absence", () => {
+    const tracker = new ActivityTracker({ longBlurMs: 1_000 });
+    const fake = new FakeDocument();
+    tracker.attachDOM(asDocument(fake));
+
+    const returns: number[] = [];
+    const off = tracker.on("returned", (e) => returns.push(e.awayMs));
+
+    // Hidden for longer than longBlurMs, then come back → one `returned`
+    fake.hidden = true;
+    fake.dispatch("visibilitychange");
+    vi.advanceTimersByTime(5_000);
+    fake.hidden = false;
+    fake.dispatch("visibilitychange");
+
+    expect(returns).toHaveLength(1);
+    expect(returns[0]).toBeGreaterThanOrEqual(5_000);
+
+    // A short hide does NOT emit `returned`
+    off();
+    let more = 0;
+    tracker.on("returned", () => (more += 1));
+    fake.hidden = true;
+    fake.dispatch("visibilitychange");
+    vi.advanceTimersByTime(200);
+    fake.hidden = false;
+    fake.dispatch("visibilitychange");
+    expect(more).toBe(0);
+
+    tracker.destroy();
+  });
+
   it("a hidden tab going dormant sets status hidden and longIdle", () => {
     const tracker = new ActivityTracker({ longBlurMs: 1_000, longIdleAfterMs: 3_000 });
     const fake = new FakeDocument();

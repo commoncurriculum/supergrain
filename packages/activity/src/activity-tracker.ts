@@ -10,10 +10,13 @@ import { activityMachine } from "./machines/activity";
  *
  * The chart stays fully internal: XState owns the verified transitions (the
  * debounce, focus/visibility, and double-fire edge cases live as chart
- * states, not hand-rolled timers). Nothing about XState — no actor, no
- * events, no subscriptions — is exposed. The rest of the app reads
- * `tracker.state` fields inside an `effect` / `computed`, exactly like any
- * other Supergrain state:
+ * states, not hand-rolled timers). No actor is exposed. There are two
+ * orthogonal read surfaces:
+ *
+ *   state — a reactive @supergrain/kernel object; what's true *now*. Read its
+ *           fields inside an `effect` / `computed` like any Supergrain state.
+ *   on    — discrete transient events (see ActivityEvent); moments that
+ *           aren't expressible as state, delivered as one-shot callbacks.
  *
  *   const activity = new ActivityTracker();
  *   activity.attachDOM();
@@ -21,6 +24,7 @@ import { activityMachine } from "./machines/activity";
  *     console.log(activity.state.status);          // "active" | "idle" | "hidden"
  *     if (activity.state.longIdle) socket.pause();  // idle-disconnect, reactively
  *   });
+ *   activity.on("returned", (e) => track("resumed", { awayMs: e.awayMs }));
  */
 
 export type ActivityStatus = "active" | "idle" | "hidden";
@@ -37,6 +41,25 @@ export interface ActivityState {
    *  distinct from the short `idle` status. */
   longIdle: boolean;
 }
+
+/**
+ * Discrete activity events — the moments that aren't expressible as state.
+ * Orthogonal to `state`: `state` is what's true now (read/observe it), an
+ * event is a one-shot notification with a payload (subscribe via `on`).
+ *
+ *   returned — the user came back to the tab after a long absence (hidden for
+ *              ≥ `longBlurMs`). `awayMs` is how long they were gone. There is
+ *              no "just returned" *state*, so this can only be an event.
+ */
+export interface ActivityEvent {
+  type: "returned";
+  awayMs: number;
+}
+
+/** Public event type → the chart's internal emitted event. */
+const MACHINE_EMIT: Record<ActivityEvent["type"], "longBlurReturn"> = {
+  returned: "longBlurReturn",
+};
 
 export interface ActivityTrackerOptions {
   /** No input for this long → `idle` (a presence signal, never a teardown).
@@ -105,6 +128,25 @@ export class ActivityTracker {
     this.detachers.push(() => sub.unsubscribe());
 
     this.actor.start();
+  }
+
+  /** Subscribe to a discrete activity event (see {@link ActivityEvent}).
+   *  Unlike `state`, these are transient one-shot notifications carrying a
+   *  payload — use them for analytics ("session resumed after N ms away"),
+   *  not for tracking current state. Returns an unsubscribe function. */
+  on<T extends ActivityEvent["type"]>(
+    type: T,
+    handler: (event: Extract<ActivityEvent, { type: T }>) => void,
+  ): () => void {
+    const sub = this.actor.on(MACHINE_EMIT[type], (e) => {
+      handler({ type: "returned", awayMs: e.blurDurationMs } as Extract<
+        ActivityEvent,
+        { type: T }
+      >);
+    });
+    const detach = () => sub.unsubscribe();
+    this.detachers.push(detach);
+    return detach;
   }
 
   /** Attach DOM listeners (focus / blur / visibilitychange / 10 user events)

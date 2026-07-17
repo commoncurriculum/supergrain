@@ -46,9 +46,22 @@ effect(() => {
   else socket.resume();
 });
 
+// Discrete events (orthogonal to state) are one-shot callbacks with a payload:
+activity.on("returned", (e) => track("session_resumed", { awayMs: e.awayMs }));
+
 // later
 activity.destroy();
 ```
+
+## Two surfaces: state vs events
+
+- **`tracker.state`** — a reactive object; _what's true now_. Observe it.
+- **`tracker.on(event, cb)`** — _moments that happened_, with a payload.
+
+The split matters: continuous state (`status`, `longIdle`) is reactive, so
+you never subscribe to it — you read it in an `effect`/`computed` (or React's
+`useSignalEffect`). Only genuine transients — a moment with no lasting state,
+like returning after a long absence — are events.
 
 ## `tracker.state`
 
@@ -58,6 +71,14 @@ A reactive `@supergrain/kernel` object with two fields:
 | ---------- | -------------------------------- | ------------------------------------------------------------------------ |
 | `status`   | `"active" \| "idle" \| "hidden"` | Coarse activity. Chart substates collapse into these three.              |
 | `longIdle` | `boolean`                        | User gone ≥ `longIdleAfterMs` (chart in `idle.long` / `hidden.dormant`). |
+
+## `tracker.on(event, cb)`
+
+Subscribe to a discrete event; returns an unsubscribe function.
+
+| Event      | Payload              | Fires when                                                    |
+| ---------- | -------------------- | ------------------------------------------------------------- |
+| `returned` | `{ awayMs: number }` | User comes back to the tab after being hidden ≥ `longBlurMs`. |
 
 ## Constructor options
 
