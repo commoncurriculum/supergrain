@@ -232,39 +232,15 @@ class DocumentsHandleImpl<T, E = SiloError> implements DocumentsHandle<T, E> {
   // caches the DocumentsHandle per (type, ids). Everything is lazy: nothing runs
   // until a field is read, so an unobserved aggregate does no work.
 
-  // `values` is a single reactive array that is BOTH fixed (its identity never
-  // changes) AND reactive (per-index signals). The computed reconciles that
-  // same array IN PLACE from the handles and returns it — it does NOT hand back
-  // a fresh array — so:
-  //   - the stable return makes the computed a firewall: a handle change that
-  //     leaves the successful values unchanged doesn't propagate;
-  //   - the reconcile drives the array's OWN per-index signals, so it stays
-  //     fine-grained — `write.ts` fires a slot only when `unwrap(old) !==
-  //     unwrap(new)`, and a reader of one row re-renders only when that row
-  //     changes. This is the in-place reactive-array pattern the kernel is
-  //     built around (the benchmark's `store.data`, covered by kernel
-  //     `array-mutation` tests), with no standing effect to drive it.
-  // Cast the brand away (as `createDocumentStore` does for its state) so the
-  // slot reads/writes as a plain `Array<T>`.
-  private readonly _valuesArray = createReactive<Array<T>>([]) as Array<T>;
-  private readonly _values = computed<Array<T>>(() => {
-    const next: Array<T> = [];
-    for (const handle of this.handles) {
-      if (handle.status === "success") next.push(handle.value);
-    }
-    // Reconcile in place with `set`-only writes (index assignment + a `length`
-    // truncation), never a proxy `get`, so this computed depends only on the
-    // handles — not on `_valuesArray` — and can't form a cycle with its own
-    // writes. The unchanged-slot guard keeps a no-op read from touching the
-    // proxy (write.ts would suppress the notification anyway).
-    const values = this._valuesArray;
-    const raw = unwrap(values) as Array<T>;
-    for (let i = 0; i < next.length; i++) {
-      if (unwrap(raw[i]) !== unwrap(next[i])) values[i] = next[i];
-    }
-    if (raw.length > next.length) values.length = next.length;
-    return values;
-  });
+  // `values` is the successful values in id order. `returnStableReference` keeps
+  // it a single stable reactive array — the kernel reconciles it in place as
+  // handles settle, so the reference never churns and reads stay fine-grained
+  // (only changed slots notify). The producer is an ordinary filter/map.
+  private readonly _values = computed<Array<T>>(
+    () =>
+      this.handles.filter((handle) => handle.status === "success").map((handle) => handle.value),
+    { returnStableReference: true },
+  );
   get values(): Array<T> {
     return this._values();
   }

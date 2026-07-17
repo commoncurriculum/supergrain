@@ -13,7 +13,11 @@ export { getNodesIfExist, $TRACK } from "./core";
 // returns a non-function value (e.g. `effect(() => store.count)`) will throw
 // "cleanup is not a function" on its next run. Read for subscription with a
 // statement body or `void`: `effect(() => void store.count)`.
-export { effect, signal, computed } from "alien-signals";
+export { effect, signal } from "alien-signals";
+// `computed` is the kernel's own wrapper over alien-signals' computed: identical
+// with no options, plus a `returnStableReference` option for stable-reference
+// arrays. See ./computed.
+export { computed, type ComputedOptions } from "./computed";
 export { batch } from "./batch";
 export {
   enableProfiling,
