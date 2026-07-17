@@ -12,7 +12,7 @@
     "test": "vitest",
     "coverage": "vitest run --coverage",
     "test:validate": "pnpm --filter @supergrain/doc-tests run test:validate",
-    "build": "pnpm --filter=\"@supergrain/kernel\" --filter=\"@supergrain/mill\" --filter=\"@supergrain/silo\" --filter=\"@supergrain/husk\" --filter=\"@supergrain/queries\" --filter=\"@supergrain/devtools\" --workspace-concurrency=1 run build",
+    "build": "pnpm --filter=\"@supergrain/kernel\" --filter=\"@supergrain/mill\" --filter=\"@supergrain/silo\" --filter=\"@supergrain/husk\" --filter=\"@supergrain/queries\" --filter=\"@supergrain/devtools\" --filter=\"@supergrain/activity\" --workspace-concurrency=1 run build",
     "bench:core": "vitest bench --root packages/kernel",
     "lint": "pnpm -r run lint",
     "size": "pnpm --filter=\"@supergrain/kernel\" run --sequential build && pnpm --filter=\"@supergrain/kernel\" run --sequential size",
