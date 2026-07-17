@@ -83,11 +83,14 @@ export class ActivityTracker {
     // The chart starts in `active` (see machine `initial`).
     this.state = createReactive<ActivityState>({ status: "active" });
 
-    // A single dispatch per chart emit: time the state we're leaving, update
-    // the reactive `status`, and fan the transition out as an event.
+    // A single dispatch per *genuine* transition: time the state we're
+    // leaving, update the reactive `status`, and fan it out as an event.
+    // The chart re-enters `active` on every input (to reset the idle timer);
+    // that is not a state change, so it must not reset the clock or emit.
     const advance = (toState: ActivityStatus) => {
-      const at = Date.now();
       const fromState = this.state.status;
+      if (toState === fromState) return;
+      const at = Date.now();
       const durationMs = at - this.enteredAt;
       this.state.status = toState;
       this.enteredAt = at;
@@ -113,11 +116,11 @@ export class ActivityTracker {
     for (const handler of set) handler(event);
   }
 
-  /** How long the chart has been in its current `status`, in ms — computed on
-   *  demand (no ticking timer). The live counterpart to the `durationMs` on
-   *  events, which reports the state just *left*. Note continued input
-   *  re-enters `active`, so while active this measures time since the last
-   *  input; while `idle` / `hidden` it's the full time in that state. */
+  /** How long the chart has been in its current `status`, in ms — measured
+   *  from when that state was entered, computed on demand (no ticking timer).
+   *  Continued input keeps `active` alive without restarting this. The live
+   *  counterpart to the `durationMs` on events, which reports the state just
+   *  *left*. */
   currentDurationMs(): number {
     return Date.now() - this.enteredAt;
   }

@@ -283,6 +283,27 @@ describe("ActivityTracker.on — events", () => {
 
     tracker.destroy();
   });
+
+  it("continued input keeps active without a new event or resetting the clock", () => {
+    const tracker = new ActivityTracker({ idleAfterMs: 10_000, inputThrottleMs: 100 });
+    const fake = new FakeDocument();
+    tracker.attachDOM(asDocument(fake));
+
+    let actives = 0;
+    tracker.on("active", () => (actives += 1));
+
+    vi.advanceTimersByTime(1_000);
+    fake.dispatch("keydown"); // re-enters active (resets idle timer) — not a transition
+    vi.advanceTimersByTime(1_000);
+    fake.dispatch("keydown");
+
+    expect(tracker.state.status).toBe("active");
+    expect(actives).toBe(0); // no `active` event on re-entry
+    // Clock runs from when active began, NOT from the last input:
+    expect(tracker.currentDurationMs()).toBe(2_000);
+
+    tracker.destroy();
+  });
 });
 
 describe("ActivityTracker.attachDOM", () => {
