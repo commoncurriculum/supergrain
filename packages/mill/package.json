@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/mill",
-  "version": "7.1.0",
+  "version": "7.2.0",
   "description": "MongoDB-style update operators ($set, $push, $pull, $inc, ...) for Supergrain reactive stores",
   "keywords": [
     "operators",
