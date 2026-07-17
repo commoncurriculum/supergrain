@@ -71,9 +71,15 @@ A reactive `@supergrain/kernel` object with one field:
 
 ## `tracker.on(event, cb)`
 
-Subscribe to an event; returns an unsubscribe function.
+Subscribe to an event; returns an unsubscribe function. **Every event carries
+`from`** (the prior `status`) **and `at`** (`Date.now()` at the transition):
 
-| Event      | Payload              | Fires when                                              |
+```ts
+activity.on("idle", (e) => track("went_idle", { from: e.from, at: e.at }));
+// e: { type: "idle", from: "active", at: 1723... }
+```
+
+| Event      | Extra payload        | Fires when                                              |
 | ---------- | -------------------- | ------------------------------------------------------- |
 | `active`   | —                    | Became active. Re-fires on continued input (throttled). |
 | `idle`     | —                    | No input for `idleAfterMs`.                             |

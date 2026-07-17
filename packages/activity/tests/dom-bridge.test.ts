@@ -3,7 +3,7 @@ import type { ActorRefFromLogic } from "xstate";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ActivityTracker } from "../src/activity-tracker";
+import { ActivityTracker, type ActivityEvent } from "../src/activity-tracker";
 import { attachActivityListeners } from "../src/dom-bridge";
 
 /**
@@ -242,6 +242,41 @@ describe("ActivityTracker.on — events", () => {
     fake.hidden = false;
     fake.dispatch("visibilitychange");
     expect(returns).toHaveLength(1); // no more after unsubscribe
+
+    tracker.destroy();
+  });
+
+  it("carries the prior status (from) and a timestamp (at)", () => {
+    const tracker = new ActivityTracker({ idleAfterMs: 1_000 });
+    const fake = new FakeDocument();
+    tracker.attachDOM(asDocument(fake));
+
+    const events: ActivityEvent[] = [];
+    tracker.on("idle", (e) => events.push(e));
+    tracker.on("active", (e) => events.push(e));
+
+    vi.advanceTimersByTime(1_000); // active → idle
+    fake.dispatch("keydown"); // idle → active
+
+    expect(events[0]).toMatchObject({ type: "idle", from: "active" });
+    expect(events[1]).toMatchObject({ type: "active", from: "idle" });
+    expect(typeof events[0]?.at).toBe("number");
+
+    tracker.destroy();
+  });
+
+  it("fans a transition out to every listener of that event", () => {
+    const tracker = new ActivityTracker({ idleAfterMs: 1_000 });
+    tracker.attachDOM(asDocument(new FakeDocument()));
+
+    const a: string[] = [];
+    const b: string[] = [];
+    tracker.on("idle", () => a.push("a"));
+    tracker.on("idle", () => b.push("b")); // second listener, same event
+
+    vi.advanceTimersByTime(1_000);
+    expect(a).toEqual(["a"]);
+    expect(b).toEqual(["b"]);
 
     tracker.destroy();
   });

@@ -2,7 +2,7 @@ import { createReactive } from "@supergrain/kernel";
 import { createActor, type ActorRefFromLogic } from "xstate";
 
 import { attachActivityListeners } from "./dom-bridge";
-import { activityMachine, type ActivityEmitted } from "./machines/activity";
+import { activityMachine } from "./machines/activity";
 
 /**
  * ActivityTracker — wraps the ActivityMachine state chart and exposes it two
@@ -16,12 +16,12 @@ import { activityMachine, type ActivityEmitted } from "./machines/activity";
  *           fields inside an `effect` / `computed` like any Supergrain state.
  *   on    — the same transitions as one-shot events; the imperative
  *           counterpart to `state`, for fire-and-forget consumers like
- *           analytics. `returned` additionally carries the away-duration.
+ *           analytics. Each event carries the prior status and a timestamp.
  *
  *   const activity = new ActivityTracker();
  *   activity.attachDOM();
  *   effect(() => console.log(activity.state.status)); // "active" | "idle" | "hidden"
- *   activity.on("returned", (e) => track("resumed", { awayMs: e.awayMs }));
+ *   activity.on("idle", (e) => track("went_idle", { from: e.from, at: e.at }));
  */
 
 export type ActivityStatus = "active" | "idle" | "hidden";
@@ -33,40 +33,35 @@ export interface ActivityState {
   status: ActivityStatus;
 }
 
+/** Fields carried by every activity event. */
+export interface ActivityEventMeta {
+  /** The status the chart was in immediately before this transition. */
+  from: ActivityStatus;
+  /** When the transition occurred, epoch ms (`Date.now()`). */
+  at: number;
+}
+
 /**
  * Activity events — the chart's transitions as discrete, one-shot
  * notifications. The same information `state` carries reactively, in push
  * form: use `state` to render "what's true now", `on` to log "this just
- * happened" (analytics, side effects).
+ * happened" (analytics, side effects). Every event includes `from` (prior
+ * status) and `at` (timestamp).
  *
  *   active   — became active. Re-fires on continued input (throttled by the
- *              DOM bridge); `state.status` is the deduped view if you only
- *              want the transition.
+ *              DOM bridge), where `from` is `"active"`.
  *   idle     — no input for `idleAfterMs`.
  *   hidden   — tab blurred / backgrounded.
  *   returned — came back to the tab after being hidden ≥ `longBlurMs`;
  *              `awayMs` is the elapsed hidden time (no lasting state holds it).
  */
 export type ActivityEvent =
-  | { type: "active" }
-  | { type: "idle" }
-  | { type: "hidden" }
-  | { type: "returned"; awayMs: number };
+  | ({ type: "active" } & ActivityEventMeta)
+  | ({ type: "idle" } & ActivityEventMeta)
+  | ({ type: "hidden" } & ActivityEventMeta)
+  | ({ type: "returned"; awayMs: number } & ActivityEventMeta);
 
-/** Public event name → the chart's internal emitted event name. Identity for
- *  all but `returned`, whose payload field is renamed too (see toPublicEvent). */
-const EMIT_NAME: Record<ActivityEvent["type"], ActivityEmitted["type"]> = {
-  active: "active",
-  idle: "idle",
-  hidden: "hidden",
-  returned: "longBlurReturn",
-};
-
-function toPublicEvent(e: ActivityEmitted): ActivityEvent {
-  return e.type === "longBlurReturn"
-    ? { type: "returned", awayMs: e.blurDurationMs }
-    : { type: e.type };
-}
+type ActivityEventHandler = (event: ActivityEvent) => void;
 
 export interface ActivityTrackerOptions {
   /** No input for this long → `idle` (a presence signal). Default 15_000 (15 s). */
@@ -88,6 +83,7 @@ export class ActivityTracker {
   private domDetach: (() => void) | null = null;
   private detachers: Array<() => void> = [];
   private inputThrottleMs: number;
+  private listeners = new Map<ActivityEvent["type"], Set<ActivityEventHandler>>();
 
   constructor(opts: ActivityTrackerOptions = {}) {
     this.inputThrottleMs = opts.inputThrottleMs ?? 1000;
@@ -101,20 +97,39 @@ export class ActivityTracker {
     // The chart starts in `active` (see machine `initial`).
     this.state = createReactive<ActivityState>({ status: "active" });
 
-    // Project the chart's typed status emits into the reactive field.
-    const setStatus = (status: ActivityStatus) => {
-      this.state.status = status;
+    // A single dispatch per chart emit: update the reactive `status` and fan
+    // the transition out as an event, capturing the prior status as `from`.
+    const advance = (to: ActivityStatus): ActivityEventMeta => {
+      const from = this.state.status;
+      this.state.status = to;
+      return { from, at: Date.now() };
     };
     const subs = [
-      this.actor.on("active", () => setStatus("active")),
-      this.actor.on("idle", () => setStatus("idle")),
-      this.actor.on("hidden", () => setStatus("hidden")),
+      this.actor.on("active", () => this.dispatch({ type: "active", ...advance("active") })),
+      this.actor.on("idle", () => this.dispatch({ type: "idle", ...advance("idle") })),
+      this.actor.on("hidden", () => this.dispatch({ type: "hidden", ...advance("hidden") })),
+      this.actor.on("longBlurReturn", (e) =>
+        this.dispatch({
+          type: "returned",
+          from: this.state.status,
+          at: Date.now(),
+          awayMs: e.blurDurationMs,
+        }),
+      ),
     ];
     this.detachers.push(() => {
       for (const s of subs) s.unsubscribe();
     });
 
     this.actor.start();
+  }
+
+  private dispatch(event: ActivityEvent): void {
+    const set = this.listeners.get(event.type);
+    if (!set) return;
+    // Deleting the current handler mid-iteration (self-unsubscribe) is safe
+    // per the Set iterator spec, so no snapshot is needed.
+    for (const handler of set) handler(event);
   }
 
   /** Subscribe to an activity event (see {@link ActivityEvent}) — the push
@@ -124,12 +139,12 @@ export class ActivityTracker {
     type: T,
     handler: (event: Extract<ActivityEvent, { type: T }>) => void,
   ): () => void {
-    // EMIT_NAME[type] yields only the machine event `type` maps to, so the
-    // projected public event is always the requested variant.
-    const sub = this.actor.on(EMIT_NAME[type], (e) => {
-      handler(toPublicEvent(e) as Extract<ActivityEvent, { type: T }>);
-    });
-    const detach = () => sub.unsubscribe();
+    const set = this.listeners.get(type) ?? new Set<ActivityEventHandler>();
+    this.listeners.set(type, set);
+    set.add(handler as ActivityEventHandler);
+    const detach = () => {
+      set.delete(handler as ActivityEventHandler);
+    };
     this.detachers.push(detach);
     return detach;
   }
