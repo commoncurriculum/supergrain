@@ -49,7 +49,7 @@ export interface ActivityContext {
   longBlurMs: number;
 }
 
-export type ActivityEvent = { type: "USER_INPUT" } | { type: "FOCUS" } | { type: "BLUR" };
+export type ActivityMachineEvent = { type: "USER_INPUT" } | { type: "FOCUS" } | { type: "BLUR" };
 
 export type ActivityEmitted =
   | { type: "active" }
@@ -67,7 +67,7 @@ export interface ActivityInput {
 export const activityMachine = setup({
   types: {
     context: {} as ActivityContext,
-    events: {} as ActivityEvent,
+    events: {} as ActivityMachineEvent,
     input: {} as ActivityInput,
     emitted: {} as ActivityEmitted,
   },

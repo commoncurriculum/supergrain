@@ -73,21 +73,6 @@ export interface ActivityTrackerOptions {
   inputThrottleMs?: number | undefined;
 }
 
-function toStatus(value: unknown): ActivityStatus {
-  if (typeof value === "string") return value as ActivityStatus;
-  const [key] = Object.keys(value as Record<string, unknown>);
-  /* c8 ignore next -- a chart value is a string or a non-empty object, so key is always present */
-  return (key ?? "active") as ActivityStatus;
-}
-
-/** The chart's two long-threshold substates, which `toStatus` collapses away:
- *  `idle.long` and `hidden.dormant`. */
-function isLongIdle(value: unknown): boolean {
-  if (typeof value === "string") return false;
-  const v = value as Record<string, string | undefined>;
-  return v["idle"] === "long" || v["hidden"] === "dormant";
-}
-
 export class ActivityTracker {
   /** The tracker's entire read surface: a reactive @supergrain/kernel object.
    *  Observe `state.status` / `state.longIdle` inside `effect` / `computed`. */
@@ -108,24 +93,28 @@ export class ActivityTracker {
       },
     });
 
-    const snapshot = this.actor.getSnapshot();
-    this.state = createReactive<ActivityState>({
-      status: toStatus(snapshot.value),
-      longIdle: isLongIdle(snapshot.value),
-    });
+    // The chart starts in `active` (see machine `initial`).
+    this.state = createReactive<ActivityState>({ status: "active", longIdle: false });
 
-    // The actor drives the reactive projection: every chart transition writes
-    // the derived fields into `state` (batched, and only on change so equal
-    // transitions don't churn observers).
-    const sub = this.actor.subscribe((snap) => {
-      const status = toStatus(snap.value);
-      const longIdle = isLongIdle(snap.value);
+    // Project the chart's typed emitted events into the reactive fields. The
+    // three status events also clear `longIdle` (you can't be long-idle while
+    // active/just-idle/just-hidden); the `longIdle` event only raises it.
+    const enter = (status: ActivityStatus) =>
       batch(() => {
-        if (this.state.status !== status) this.state.status = status;
-        if (this.state.longIdle !== longIdle) this.state.longIdle = longIdle;
+        this.state.status = status;
+        this.state.longIdle = false;
       });
+    const subs = [
+      this.actor.on("active", () => enter("active")),
+      this.actor.on("idle", () => enter("idle")),
+      this.actor.on("hidden", () => enter("hidden")),
+      this.actor.on("longIdle", () => {
+        this.state.longIdle = true;
+      }),
+    ];
+    this.detachers.push(() => {
+      for (const s of subs) s.unsubscribe();
     });
-    this.detachers.push(() => sub.unsubscribe());
 
     this.actor.start();
   }
@@ -134,15 +123,9 @@ export class ActivityTracker {
    *  Unlike `state`, these are transient one-shot notifications carrying a
    *  payload — use them for analytics ("session resumed after N ms away"),
    *  not for tracking current state. Returns an unsubscribe function. */
-  on<T extends ActivityEvent["type"]>(
-    type: T,
-    handler: (event: Extract<ActivityEvent, { type: T }>) => void,
-  ): () => void {
+  on(type: ActivityEvent["type"], handler: (event: ActivityEvent) => void): () => void {
     const sub = this.actor.on(MACHINE_EMIT[type], (e) => {
-      handler({ type: "returned", awayMs: e.blurDurationMs } as Extract<
-        ActivityEvent,
-        { type: T }
-      >);
+      handler({ type: "returned", awayMs: e.blurDurationMs });
     });
     const detach = () => sub.unsubscribe();
     this.detachers.push(detach);
