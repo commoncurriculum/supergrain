@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
-import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
+
+import { playwrightProvider } from "./vitest.playwright";
 
 // Routes every `@supergrain/*` import to source TypeScript. Matches
 // `customConditions` in tsconfig.json. Both `resolve.conditions` (main)
@@ -78,7 +79,7 @@ export default defineConfig({
           include: ["packages/silo/tests/react/**/*.test.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            provider: playwrightProvider(),
             headless: true,
             instances: [
               {
@@ -97,7 +98,7 @@ export default defineConfig({
           include: ["packages/queries/**/*.test.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            provider: playwrightProvider(),
             headless: true,
             instances: [
               {
@@ -125,7 +126,7 @@ export default defineConfig({
           include: ["packages/husk/tests/react/**/*.test.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            provider: playwrightProvider(),
             headless: true,
             instances: [
               {
@@ -145,7 +146,7 @@ export default defineConfig({
           include: ["packages/kernel/tests/react/**/*.test.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            provider: playwrightProvider(),
             headless: true,
             instances: [
               {
@@ -174,7 +175,7 @@ export default defineConfig({
           include: ["packages/devtools/tests/react/**/*.test.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            provider: playwrightProvider(),
             headless: true,
             instances: [
               {

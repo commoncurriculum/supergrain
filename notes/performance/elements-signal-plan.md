@@ -224,6 +224,50 @@ mode.
   swap advantage is worth more weighted score than any create gain here.
 - **H5:** partial update flat; watch remove (splice bumps, see above).
 
+### D1 verdict: ACCEPTED (2026-07-27, session VM) — with a measurement story worth reading
+
+Implemented exactly as designed (commit `6b69416`, lint fix `bfdbf3d`). All
+correctness gates pass: 151 kernel unit tests, 87 React browser tests
+(including every parent-mode swap/interleaving case in
+`for-component-magic.test.tsx` and StrictMode), 10 js-krauset dist tests
+(keyed swap/remove/select, `signalWrites === 100`, `rowRenderCount === 2`).
+
+**Script medians, full pre/change/post bracket (15 runs each):**
+
+| benchmark (script median) | pre    | d1     | post (reverted) | d1b (clean rerun) |
+| ------------------------- | ------ | ------ | --------------- | ----------------- |
+| create 10k                | 727.30 | 601.62 | 711.59          | 574.66            |
+| create 1k                 | 25.55  | 31.03  | 24.71           | 32.03             |
+| swap                      | 2.71   | 3.09   | 2.82            | 3.41              |
+| clear                     | 80.57  | 79.68  | 77.86           | 79.98             |
+
+**Interleaved A/B (12 pairs, alternating kernel dist within one time window
+— eliminates the 3-6%/hr VM drift):** create-10k **−20.8% median**; swap
+−8.7%; clear −5.1%; remove −5.2%; replace −4.4%; append −1.1%; partial
+update −4.4%; but create-1k **+36% median (10/12 pairs positive)**.
+
+**The create-1k anomaly is GC aliasing, not script cost.** Three lines of
+evidence: (1) replace-all — the same 1,000-row creation but starting with
+rows present — _improved_, so the per-row work didn't get slower; (2) the
+regression is bimodal, with script AND paint inflating together (a
+GC-pause fingerprint, not added work — D1 produces byte-identical DOM);
+(3) decisively, re-running the interleave with a forced full GC before each
+timed click (`PROFILE=1` calls `HeapProfiler.collectGarbage` pre-trace):
+base median 46.10 vs d1 44.84 (15 pairs, deltas centered on zero, 6/15
+positive — a coin flip; absolute numbers inflated by profiler overhead,
+symmetrically). Mechanism: D1 removes ~200KB of signal allocations per
+create cycle, which shifts when V8's scavenge threshold is crossed relative
+to the measured window — on this VM that lands a GC inside create-1k's
+window more often. H1 was right about the win but wrong about the size
+(−15-21%, not single-digit ms); H4 holds (swap improved); H2's create-1k
+prediction was neutral-not-better once the artifact is controlled.
+
+**Caveat for D5 (official submission):** validate create-1k on the official
+harness (bare metal, hardware rendering, different GC cadence) before
+publishing. If it regresses there too, it is still aliasing — but the
+scoreboard doesn't care; consider whether the 10k win justifies it (weighted
+total on this VM: −5.3%).
+
 ---
 
 ## D2 — Reuse the swap effect across same-array renders (`deps: [raw, parent]`) — composes with D1
