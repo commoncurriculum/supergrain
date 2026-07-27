@@ -39,14 +39,14 @@ Three facts frame the problem:
 
 ### Supergrain's per-row cost inventory at create (what a row buys today)
 
-For each of 10,000 rows, mount pays: one `memo(Tracked)` fiber + `useReducer`
-
-- `useEffect` (disposal) + one alien-signals effect (alloc + first run + 2
-  context switches) + one item proxy (+ `$PROXY` defineProperty + WeakMap set) +
-  one `$NODE` object + `$VERSION`/`label`/`selected` signals + links + one
-  per-index array signal + link from the `For` swap effect. react-hooks pays
-  none of this; react-rxjs pays a per-row subscription but is still 52ms
-  faster than supergrain at 10k. The designs below each remove a slice.
+For each of 10,000 rows, mount pays: one `memo(Tracked)` fiber, a
+`useReducer` and a `useEffect` (disposal) hook, one alien-signals effect
+(alloc, first run, 2 context switches), one item proxy (with `$PROXY`
+defineProperty and a WeakMap write), one `$NODE` object, the
+`$VERSION`/`label`/`selected` signals and their links, and one per-index
+array signal linked by the `For` swap effect. react-hooks pays none of this;
+react-rxjs pays a per-row subscription but is still 52ms faster than
+supergrain at 10k. The designs below each remove a slice.
 
 ### The biggest single slice: per-index subscriptions that exist for no reader
 
