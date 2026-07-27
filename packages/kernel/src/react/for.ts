@@ -1,10 +1,5 @@
 import { effect as alienEffect, unwrap, getNodesIfExist, $TRACK } from "@supergrain/kernel";
-import {
-  getActiveSub,
-  setActiveSub,
-  trackArrayElements,
-  type ReactiveTagged,
-} from "@supergrain/kernel/internal";
+import { getActiveSub, setActiveSub, type ReactiveTagged } from "@supergrain/kernel/internal";
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 /* c8 ignore start -- the React project runs in a browser; this branch is for SSR consumers */
@@ -104,11 +99,15 @@ export const For = tracked((props: ForProps<unknown>) => {
     prevRawRef.current = [...raw];
 
     const cleanup = alienEffect(() => {
-      // One array-level subscription covers in-place element replacement at
-      // every index — see trackArrayElements. Structural changes (push,
-      // splice, length, new array) re-render For via $TRACK/ownKeys, which
-      // re-creates this effect, so they don't need to be observed here.
-      trackArrayElements(raw);
+      const nodes = getNodesIfExist(raw);
+      for (let i = 0; i < raw.length; i++) {
+        const node = nodes?.[i];
+        if (node) {
+          node();
+        } else {
+          void each[i];
+        }
+      }
 
       const prev = prevRawRef.current;
       const container = parent.current;
