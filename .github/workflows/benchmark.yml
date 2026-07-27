@@ -1,0 +1,148 @@
+name: Benchmark
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Interleaved pairs to run (each pair = one base run + one PR run)"
+        required: false
+        default: "10"
+
+# A benchmark run takes tens of minutes. If someone pushes again while one is in
+# flight, the older run is measuring code nobody is looking at any more.
+concurrency:
+  group: benchmark-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  interleaved-ab:
+    name: Interleaved A/B
+    runs-on: ubuntu-latest
+    # Same image the coverage job uses, so the browser matches the rest of CI.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --user 1001
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history so the base branch is available to build the control arm.
+          fetch-depth: 0
+
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Both arms run the *same* js-krauset app source; only the kernel differs.
+      # That isolates the kernel change instead of measuring unrelated app edits.
+      - name: Build kernel (PR)
+        run: |
+          pnpm --filter @supergrain/kernel build
+          cp -R packages/kernel/dist /tmp/kernel-pr
+
+      - name: Build kernel (base)
+        run: |
+          # Replace src outright so files this PR *added* don't linger in the
+          # control build; the checkout then restores the rest of the package.
+          rm -rf packages/kernel/src
+          git checkout "origin/${{ github.base_ref || github.event.repository.default_branch }}" -- packages/kernel
+          pnpm --filter @supergrain/kernel build
+          cp -R packages/kernel/dist /tmp/kernel-base
+          rm -rf packages/kernel/src
+          git checkout HEAD -- packages/kernel
+
+      # Most PRs don't touch the kernel bundle at all. Comparing a build against
+      # an identical copy of itself would burn ~40 minutes to measure pure noise,
+      # so check first. If the build isn't byte-reproducible this reports
+      # "changed" and we simply benchmark as normal — the safe direction to fail.
+      - name: Detect whether the kernel bundle changed
+        id: kernel-diff
+        run: |
+          if diff -r /tmp/kernel-base /tmp/kernel-pr > /dev/null 2>&1; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Kernel build is identical to base — skipping the benchmark." \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run interleaved benchmark
+        if: steps.kernel-diff.outputs.changed == 'true'
+        working-directory: packages/js-krauset
+        run: >
+          node perf-ab.ts
+          --control /tmp/kernel-base
+          --experiment /tmp/kernel-pr
+          --runs ${{ github.event.inputs.runs || '10' }}
+          --out ${{ github.workspace }}/benchmark-report.md
+          --json ${{ github.workspace }}/benchmark-data.json
+          --label-control "base (${{ github.base_ref || 'default' }})"
+          --label-experiment "PR"
+
+      - name: Publish to job summary
+        if: always() && steps.kernel-diff.outputs.changed == 'true'
+        run: cat "$GITHUB_WORKSPACE/benchmark-report.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload raw paired data
+        if: always() && steps.kernel-diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            benchmark-report.md
+            benchmark-data.json
+          if-no-files-found: warn
+
+      # Fork PRs get a read-only token, so commenting would fail. Those runs still
+      # publish everything to the job summary and the uploaded artifact.
+      - name: Comment results on the PR
+        if: >
+          steps.kernel-diff.outputs.changed == 'true'
+          && github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- supergrain-benchmark -->';
+            const body = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/benchmark-report.md`, 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            // Update the existing comment rather than stacking a new one per push.
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(
+              (c) => c.user.type === 'Bot' && c.body.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body,
+              });
+            }
