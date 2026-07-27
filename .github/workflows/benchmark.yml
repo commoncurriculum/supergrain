@@ -94,8 +94,8 @@ jobs:
           --control /tmp/kernel-base
           --experiment /tmp/kernel-pr
           --runs ${{ github.event.inputs.runs || '10' }}
-          --out ${{ github.workspace }}/benchmark-report.md
-          --json ${{ github.workspace }}/benchmark-data.json
+          --out "$GITHUB_WORKSPACE/benchmark-report.md"
+          --json "$GITHUB_WORKSPACE/benchmark-data.json"
           --label-control "base (${{ github.base_ref || 'default' }})"
           --label-experiment "PR"
 
