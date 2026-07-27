@@ -165,13 +165,16 @@ export const swapRows = () => {
 export const remove = (id: number) => {
   const index = store.data.findIndex((item) => item.id === id);
   if (index !== -1) {
+    if (selectedRow && selectedRow.id === id) {
+      selectedRow = null;
+    }
     store.data.splice(index, 1);
   }
 };
 
 export const select = (itemOrId: RowData | number) => {
   const item = typeof itemOrId === "number" ? store.data.find((d) => d.id === itemOrId) : itemOrId;
-  if (!item) {
+  if (!item || (selectedRow && selectedRow.id === item.id)) {
     return;
   }
   flushSync(() => {

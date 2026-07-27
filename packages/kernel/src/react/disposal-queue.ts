@@ -23,8 +23,24 @@ function flush(): void {
   scheduled = false;
   const disposers = queue;
   queue = [];
+  let firstError: unknown;
+  let hasError = false;
   for (const dispose of disposers) {
-    dispose();
+    try {
+      dispose();
+    } catch (error) {
+      // Keep draining — "every queued disposer runs" must hold even when one
+      // throws, or the remaining effects would leak their subscriptions.
+      if (!hasError) {
+        hasError = true;
+        firstError = error;
+      }
+    }
+  }
+  if (hasError) {
+    // Surface the first failure after the queue is drained (as an uncaught
+    // error in the scheduling macrotask) instead of swallowing it.
+    throw firstError;
   }
 }
 

@@ -1,9 +1,12 @@
-# O(1) swap subscription (`$ELEMENTS` signal) — problem statement and plan
+# create-10k optimization plan — problem statement and design candidates
 
 Status: **PLANNED — not yet implemented.** Written 2026-07-27 as a handoff for
 the next optimization agent. Read `OPTIMIZATION-AGENT.md` and
 `notes/failed-approaches/` before starting; the methodology rules there apply
-in full.
+in full. This doc contains one problem statement and **six design candidates
+(D0–D5)** — each is its own experiment under the one-change-per-experiment
+rule. D1 is the primary bet; D0 should run first because it is evidence, not
+code.
 
 ## The problem
 
@@ -19,7 +22,7 @@ totals in ms with slowdown factor vs vanillajs):
 | react-rxjs                      | 25.6 (1.29) | **361.4 (1.74)** | 17.7 (2.24) | 84.8 (7.78)     |
 | react-supergrain (kernel 2.0.1) | 25.5 (1.28) | 413.7 (1.99)     | 16.9 (2.14) | **12.4 (1.14)** |
 
-Two facts frame the problem:
+Three facts frame the problem:
 
 1. At 1k rows, create is paint/layout-bound (browser work ≈ 19.8ms of
    supergrain's 25.5) — the addressable script gap is a couple of ms. At **10k
@@ -28,10 +31,24 @@ Two facts frame the problem:
    are ~50ms of script on the table at 10k.
 2. Supergrain's swap advantage (12.4 vs ~85 for other React implementations)
    comes from `For`'s parent-mode swap effect doing direct DOM moves. That
-   advantage is currently **paid for at create time**, which is the subject of
-   this plan.
+   advantage is currently **paid for at create/append time** (per-index
+   subscriptions) and at clear time (their teardown).
+3. The official 413.7 was measured on kernel 2.0.1 with the old app (per-row
+   `useComputed`). PR #135 already removed the per-row computed and deferred
+   `tracked()` teardown — the published numbers are stale (see D5).
 
-### Where the waste is: per-index subscriptions that exist for no reader
+### Supergrain's per-row cost inventory at create (what a row buys today)
+
+For each of 10,000 rows, mount pays: one `memo(Tracked)` fiber + `useReducer`
+
+- `useEffect` (disposal) + one alien-signals effect (alloc + first run + 2
+  context switches) + one item proxy (+ `$PROXY` defineProperty + WeakMap set) +
+  one `$NODE` object + `$VERSION`/`label`/`selected` signals + links + one
+  per-index array signal + link from the `For` swap effect. react-hooks pays
+  none of this; react-rxjs pays a per-row subscription but is still 52ms
+  faster than supergrain at 10k. The designs below each remove a slice.
+
+### The biggest single slice: per-index subscriptions that exist for no reader
 
 `packages/kernel/src/react/for.ts`, parent mode. On every `For` render, a
 layout effect creates an alien-signals effect whose body starts with:
@@ -49,10 +66,10 @@ for (let i = 0; i < raw.length; i++) {
 ```
 
 On create-10k this loop runs inside the commit and performs **10,000 signal
-creations + 10,000 dependency links** (on a fresh array no index signals exist,
-so every iteration takes the `void each[i]` path: proxy get trap → `getNodes`
-→ `getNode` alloc → link). On clear/replace, tearing the effect down unlinks
-those 10,000 edges.
+creations + 10,000 dependency links** (fresh array → every iteration takes the
+`void each[i]` path: proxy get trap → `getNodes` → `getNode` alloc → link).
+On clear/replace, teardown unlinks those 10,000 edges. On append, the
+dep-less effect re-creation unsubscribes 1,000 and resubscribes 2,000.
 
 The key structural observation: **in parent mode, nothing else ever subscribes
 to per-index array signals.**
@@ -75,7 +92,28 @@ diffs `raw` against its `prevRawRef` snapshot linearly.
 Fine-grained subscriptions whose only consumer does a coarse-grained diff are
 pure overhead. One signal suffices.
 
-## The proposal
+---
+
+## D0 — Attribution study: where do react-rxjs's 52ms come from? (run FIRST)
+
+**Hypothesis:** the 50ms gap decomposes into a few nameable slices (hook
+count, alien effect creation, proxy+signal allocation, per-index
+subscriptions, GC), and knowing the split ranks D1–D4 by expected value
+instead of guessing.
+
+**Method:** no code changes. (1) Read react-rxjs's implementation in the
+js-framework-benchmark repo — what does it allocate per row? does it use one
+subscription per row or per list? memo? how many hooks? (2) Run
+`pnpm perf:profile` / `pnpm perf:analyze create-10k` on the current branch and
+attribute self-time to: React mount (`completeUnitOfWork`, `beginWork`,
+hooks), kernel (`get`, `getNodes`, `getNode`, `link`, `effect`), and GC.
+(3) Write the split into this doc before choosing the next experiment.
+
+**Verdict criteria:** none — this is evidence gathering. Budget ~30 min.
+
+---
+
+## D1 — `$ELEMENTS`: one array-level signal instead of N per-index subscriptions (primary bet)
 
 Add a per-array **`$ELEMENTS` signal**: "some element of this array was
 replaced in place." Bump it from the write path; have the swap effect
@@ -105,16 +143,16 @@ if (didChange) {
 Bump ONLY if the signal already exists (i.e., someone subscribed) — arrays
 without a parent-mode `For` never allocate it and pay only the
 `nodes?.[$ELEMENTS]` load. `$ELEMENTS` is a new symbol in `core.ts`
-(`Symbol.for("supergrain:elements")`), exported through `internal.ts` (or via
-a small `trackArrayElements(raw)` helper — see below). Do NOT touch the proxy
-`get` trap; the fast-push lesson (`notes/failed-approaches/fast-push-bypass-proxy.md`)
-says the get handler's shape is untouchable, but `setProperty` is ordinary
-code — still, measure every benchmark, not just the targets.
+(`Symbol.for("supergrain:elements")`). Do NOT touch the proxy `get` trap
+(`notes/failed-approaches/fast-push-bypass-proxy.md`); `setProperty` is
+ordinary code — still, measure every benchmark, not just the targets. The
+bump must NOT call `profileSignalWrite()` (mirror `bumpVersion`) or
+js-krauset's `signalWrites === 100` assertion breaks.
 
 ### Kernel react: `for.ts`
 
 Replace the subscription loop in the swap effect body with a single tracked
-read:
+read via a new kernel export mirroring the `trackArrayVersion` pattern:
 
 ```ts
 const cleanup = alienEffect(() => {
@@ -123,94 +161,196 @@ const cleanup = alienEffect(() => {
 });
 ```
 
-`for.ts` currently imports from `@supergrain/kernel` and
-`@supergrain/kernel/internal`; the cleanest seam is a `trackArrayElements`
-export from the kernel (mirroring the existing `trackArrayVersion` pattern in
-`read.ts`) rather than exporting `getNode`/`getNodes` more broadly.
-
 Non-parent mode (`ForItem`) keeps per-index signals — it genuinely needs
-per-index granularity for keyed reconciliation, and its reads create signals
-lazily as today. The per-index write path in `setProperty`
-(`nodes[key]` signal write) also stays — it's a no-op when no index signals
-exist, which after this change is the common case in parent mode.
+per-index granularity for keyed reconciliation. The per-index write in
+`setProperty` (`nodes[key]` signal write) also stays — it's a no-op when no
+index signals exist, which after this change is the common case in parent
+mode.
 
 ### Semantics and edge cases
 
-- **Swap:** `swapRows` writes indices 1 and 998 inside `batch()` → two
-  `$ELEMENTS` bumps coalesce into one effect run (alien-signals batching) →
-  same diff, same 2 DOM moves. Behavior identical to today.
-- **Structural changes** (push/splice/length/new array): handled exactly as
-  today via `$TRACK`/ownKeys → `For` re-renders → new effect. `$ELEMENTS`
-  fires only on the replace-in-place path, which is precisely the path that
-  does NOT re-render `For`.
-- **>2 elements replaced:** effect wakes once (batched), diff finds >2
-  changes, refreshes the snapshot without DOM fixes — the documented existing
-  semantics (swap-only repair), unchanged.
-- **Teardown:** effect has 1 dep instead of N — cleanup is O(1). Helps clear
-  and replace marginally.
-- **Snapshot cost unchanged:** `prevRawRef.current = [...raw]` still runs per
-  effect creation; that's an O(n) array copy but no allocations-per-element.
+- **Swap:** two writes inside `batch()` → bumps coalesce → one effect run →
+  same diff, same 2 DOM moves. Identical behavior.
+- **Structural changes** (push/splice/length/new array): handled as today via
+  `$TRACK`/ownKeys → `For` re-renders → new effect. `$ELEMENTS` fires only on
+  the replace-in-place path, which is precisely the path that does NOT
+  re-render `For`.
+- **>2 elements replaced:** effect wakes once, diff finds >2 changes,
+  refreshes the snapshot without DOM fixes — existing documented semantics.
+- **Teardown:** 1 dep instead of N — O(1) cleanup.
+- **Splice caution:** splice's internal element shifts ARE same-length
+  replaces mid-loop and will bump `$ELEMENTS` (batched by the ARRAY_MUTATORS
+  wrapper). Today those same writes wake the effect through per-index
+  signals, so net wake count is unchanged — but verify remove doesn't move.
 
-## Hypotheses
+### Hypotheses
 
-- **H1 (primary):** create-10k script drops measurably — 10,000
-  `getNode`-alloc+link operations leave the commit. From
-  `notes/benchmarks/allocation-analysis-benchmark.md` (signal ≈ 18× a plain
-  object alloc, ~200 bytes each) expect **single-digit-ms unthrottled, i.e. a
-  few % of create-10k script** — this does NOT close the 50ms gap to
-  react-rxjs alone; it's the first slice. Also ~2MB less garbage per 10k
-  create → less GC inside the window.
-- **H2:** create-1k script improves ~1-3% (1,000 fewer alloc+links).
-- **H3:** clear/replace improve slightly (O(1) effect teardown instead of
-  1,000 unlinks — note this portion overlaps with what PR #135's deferred
-  disposal already moved off-path for `tracked()`, but the swap effect's
-  teardown is still synchronous in the layout-effect cleanup).
-- **H4:** swap stays flat (same wake, same diff, same DOM ops). **If swap
-  regresses, the change is dead** — the swap advantage (12.4 vs 85) is worth
-  more weighted score than any create gain here.
-- **H5:** partial update and remove stay flat (label signals and
-  splice/ownKeys paths don't touch `$ELEMENTS`; the new `setProperty` branch
-  only executes on element replacement, and remove's splice does hit it for
-  shifted elements — watch remove for a regression from 996 `nodes?.[$ELEMENTS]`
-  loads + bumps... actually splice shifts ARE element replaces at same length
-  during the internal loop. **Check this carefully**: if remove regresses,
-  gate the bump on `getNodesIfExist` cheaply or accept one wake of the swap
-  effect per splice, which already happens today via per-index signals — net
-  should still be neutral-or-better since today splice wakes the effect
-  through those same writes.)
+- **H1:** create-10k script drops — 10,000 `getNode`-alloc+link ops leave the
+  commit. From `notes/benchmarks/allocation-analysis-benchmark.md` (signal ≈
+  18× a plain-object alloc, ~200 bytes) expect **single-digit ms unthrottled
+  (a few % of create-10k script)** plus ~2MB less garbage per create → less
+  GC in-window. This is the first slice, not the whole 50ms.
+- **H2:** create-1k script improves 1-3%.
+- **H3:** clear/replace improve slightly (O(1) teardown).
+- **H4:** swap stays flat. **If swap regresses, the change is dead** — the
+  swap advantage is worth more weighted score than any create gain here.
+- **H5:** partial update flat; watch remove (splice bumps, see above).
 
-## Correctness gates
+---
+
+## D2 — Reuse the swap effect across same-array renders (`deps: [raw, parent]`) — composes with D1
+
+**Problem slice:** the swap effect is deliberately dep-less ("must re-create
+… so it captures the latest `raw`", for.ts:85-87), so **every** `For`
+re-render tears down and re-creates it. On append that's 1,000 unsubscribes +
+2,000 resubscribes inside the commit (the bulk of the +3.7ms append gap vs
+react-hooks measured in `notes/optimization-brainstorm-results.md`); on
+remove it's ~2,000 graph ops for a 1-row change.
+
+**Design:** give the effect a deps array `[raw, parent]` so it is re-created
+only when the array **reference** changes (create/replace/clear), not when the
+same array mutates structurally (append/remove).
+
+**Why this is only safe after D1:** today the effect's subscriptions are
+per-index snapshots of `raw.length` at creation time — after an append,
+indices ≥ old length would have no subscription and a swap touching them
+would be missed. With D1 the subscription is array-level, so one `$ELEMENTS`
+link covers all future indices; the effect body already reads `raw.length`
+dynamically.
+
+**Required detail:** when `For` re-renders without re-creating the effect
+(append/remove), `prevRawRef` must still be refreshed to the new contents —
+otherwise the next wake sees a length mismatch mid-swap and skips the DOM
+fix. Refresh the snapshot in the render path (or effect-body length guard +
+snapshot, as today — but then a swap immediately after an append is missed;
+prefer the render-path refresh and test exactly this interleaving:
+append → swap → assert DOM).
+
+**Hypotheses:** append script improves measurably (the whole re-subscription
+churn disappears); remove improves slightly; create/clear unchanged; swap
+unchanged. Risk: React runs dep-less cleanup differently from deps-mismatch
+cleanup — StrictMode double-invoke behavior must be re-tested
+(`tracked-strict-mode.test.tsx`, `for-component-magic.test.tsx`).
+
+---
+
+## D3 — Kill the per-row passive unmount effect (ref-cleanup disposal)
+
+**Problem slice:** every `tracked()` component carries a `useEffect` whose
+only job is teardown scheduling. On clear, React's passive-unmount machinery
+(`commitPassiveUnmountEffectsInsideOfDeletedTree`,
+`recursivelyTraversePassiveUnmountEffects`) traverses 10k+ fibers because
+those effect flags exist — profiled at ~27ms + ~3ms across the 6 clears of a
+profile session on the session VM, and the 1.5ms supergrain-vs-react-hooks
+clear delta in `notes/optimization-brainstorm-results.md` is exactly this.
+With PR #135 the _work inside_ each destroy is already a cheap enqueue; the
+remaining cost is the traversal + hook bookkeeping itself.
+
+**Design:** React 19 supports **cleanup functions returned from host refs**.
+A ref callback on the component's host element can register the alien-effect
+disposal: attach = no-op, detach cleanup = `scheduleDisposal(...)`. Ref
+cleanups run during the mutation phase (sync) but the body is one queue push.
+This removes the `useEffect` from `tracked()` entirely → one hook per row
+(`useReducer`) and no passive-effect flags on row fibers → the passive
+deletion traversal exits early at the subtree-flag check.
+
+**Two integration options, in order of preference:**
+
+1. **Library-level, opt-in:** `tracked(Component, { refDisposal: true })` or a
+   `useTrackedRef()` hook the component spreads onto its host root
+   (`<tr ref={trackedRef}>`). Generic `tracked()` can't assume a host root
+   exists, so this cannot be the unconditional default.
+2. **App-level:** js-krauset's `Row` wires it manually.
+
+**Hypotheses:** clear script improves (traversal shrinks); create improves
+(one fewer hook mount × 10k — the hook-reduction history in
+`notes/performance/implement-hook-reduction.md` measured −14% clear / −4%
+create from removing 2 hooks, so removing 1 more is plausibly half that).
+Risks: StrictMode ref double-invoke semantics; refs detach on every
+re-parenting; dev-mode `useDisposeOnUnmount` timer dance must be preserved or
+replicated. This is the most invasive design — do it after D1/D2 prove out.
+
+---
+
+## D4 — Allocation diet in `tracked()` (GC pressure at 10k)
+
+**Problem slice:** create-10k allocates per row: the `TrackedState` wrapper
+object (`{cleanup, effectNode}`), the alien effect node + its closure, the
+`capturedNode` dance closure, plus kernel-side `$NODE` object and 2-3
+signals. The session VM showed ~15ms GC on create-1k profiles; at 10k GC
+lands inside the measured window.
+
+**Design (measure as one experiment, it's all mount-path):**
+
+- Store `cleanup`/`effectNode` as two flat properties on the dispatch
+  function instead of one wrapper object (saves 1 alloc + 1 indirection per
+  row).
+- Have the tracked effect's first-run closure capture nothing but the node
+  (drop the `firstRun` boolean by using `alienEffect`'s return-order
+  guarantees, if possible without changing behavior).
+- In js-krauset `Row`, hoist the two `onClick` arrow closures into
+  memoized-per-item handlers only if profiling shows them (they may be
+  jit-cheap; don't fight React idiom blindly).
+
+**Hypotheses:** create-10k script/GC improves 1-3%; everything else flat.
+Watch for the `tracked-state-reduce-closures.md` trap: this exact family
+measured as pure thermal noise once before — bracket with pre/post baselines
+(protocol below) and reject anything inside the bracket.
+
+---
+
+## D5 — Refresh the official submission (mechanical, guaranteed)
+
+The official table's 413.7/16.9/6.1 for supergrain is kernel **2.0.1** with
+per-row `useComputed` selection. PR #135's app + kernel changes measured
+(session VM, script medians vs adjacent baseline): select −42%, create-1k
+−10%, clear −9.5%, partial update −7.7%. Publish the kernel, bump the
+benchmark repo's `add-supergrain` branch per the CLAUDE.md submission
+checklist (published versions, no vite alias, `customURL`), and re-run their
+harness locally to confirm before submitting. This is the only design with a
+guaranteed payoff and it compounds with everything above.
+
+---
+
+## Already rejected — do not re-tread (see `notes/failed-approaches/`)
+
+- **Passive swap effect / deferring work into React's passive phase** — React
+  flushes passive effects pre-paint; nothing leaves the measured window
+  (`for-passive-swap-effect.md`). Post-paint deferral works ONLY via
+  rAF→setTimeout (that's what the disposal queue does).
+- **Lazy `$VERSION` + WeakMap-write skip** — no create win, partial-update
+  regression from write-path polymorphism
+  (`lazy-version-signal-and-weakmap-skip.md`).
+- Everything in the OPTIMIZATION-AGENT.md failed-approaches digest: get-trap
+  shape changes, readSignal compilation, eager signal preallocation, signal
+  pooling, WeakMap node storage, USSE-as-tried, direct-DOM (no SSR).
+
+## Correctness gates (every design)
 
 - `packages/kernel`: `pnpm test` + `pnpm test:react` — especially
-  `tests/react/for-component-magic.test.tsx` (swap moves DOM, unmount counts).
+  `tests/react/for-component-magic.test.tsx` (swap moves DOM, unmount counts)
+  and `tracked-strict-mode.test.tsx`.
 - `packages/js-krauset`: `pnpm test` — keyed swap/remove/select tests and the
-  profiling-count assertions (partial update: `signalWrites === 100` — the
-  `$ELEMENTS` bump must NOT run `profileSignalWrite()`, or this test breaks;
-  mirror `bumpVersion`, which is unprofiled).
+  profiling-count assertions (partial update `signalWrites === 100`, select
+  `rowRenderCount === 2`).
 - Full workspace: all five CLAUDE.md commands.
 
 ## Measurement protocol (non-negotiable)
 
 The 2026-07-27 session measured **3-6%/hour drift on identical code** on cloud
-VMs (see `notes/failed-approaches/for-passive-swap-effect.md`). Therefore:
+VMs (see `notes/failed-approaches/for-passive-swap-effect.md`). Therefore, per
+experiment:
 
 1. `pnpm perf:stats pre 15` on the unchanged branch immediately before.
-2. Apply the change, `pnpm perf:stats elements 15` immediately after.
+2. Apply ONE design, `pnpm perf:stats <design> 15` immediately after.
 3. `pnpm perf:stats post 15` with the change reverted, to bracket drift.
-4. Judge on **script medians** (totals are paint-noise on software rendering);
-   accept per OPTIMIZATION-AGENT.md thresholds; reject if swap or any
-   high-weight benchmark regresses beyond the drift bracket.
+4. Judge on **script medians** (totals are paint-noise on software
+   rendering); accept per OPTIMIZATION-AGENT.md thresholds; reject anything
+   inside the drift bracket; combine accepted designs and re-measure the
+   combination.
 
-## Context: what's already done / rejected
+## Context: current branch state
 
-- PR #135 (branch `claude/krauset-row-performance-ys6c4d`): keyed-tbody clear,
-  per-item selection (no per-row `computed`), deferred `tracked()` disposal
-  queue (`disposal-queue.ts` — reusable here if teardown deferral is wanted).
-- Rejected with data: passive swap effect (React passive effects run pre-paint;
-  `notes/failed-approaches/for-passive-swap-effect.md`), lazy `$VERSION` +
-  WeakMap skip (`notes/failed-approaches/lazy-version-signal-and-weakmap-skip.md`).
-- After this experiment, the remaining create-10k levers in rough order of
-  expected value: per-Row hook reduction (get `tracked()` to one hook),
-  allocation/GC-pressure reduction per row, and refreshing the official
-  benchmark submission with the current kernel (the 413.7 was measured on
-  kernel 2.0.1 with per-row `useComputed`).
+PR #135 (branch `claude/krauset-row-performance-ys6c4d`): keyed-tbody clear,
+per-item selection (no per-row `computed`), deferred `tracked()` disposal
+queue (`packages/kernel/src/react/disposal-queue.ts` — reusable by D2/D3).
