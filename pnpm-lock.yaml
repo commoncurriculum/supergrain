@@ -327,6 +327,9 @@ importers:
       '@vitest/browser':
         specifier: 4.1.0
         version: 4.1.0(msw@2.13.4(@types/node@22.18.3)(typescript@5.9.2))(vite@8.0.16(@types/node@22.18.3)(esbuild@0.28.0)(jiti@2.7.0))(vitest@4.1.0)
+      bootstrap:
+        specifier: 3.3.6
+        version: 3.3.6
       playwright:
         specifier: ^1.61.1
         version: 1.61.1
@@ -2452,6 +2455,11 @@ packages:
 
   birpc@2.6.1:
     resolution: {integrity: sha512-LPnFhlDpdSH6FJhJyn4M0kFO7vtQ5iPw24FnG0y21q09xC7e8+1LeR31S1MAIrDAHp4m7aas4bEkTDTvMAtebQ==}
+
+  bootstrap@3.3.6:
+    resolution: {integrity: sha512-XC+LTYJoVYHIalmjNcznwlZHY+YLhMJ9NPs8M2aEweugK7wMrto3h79POn7O5Vj/woDU/tjzmjyUbAd1HzSXIw==}
+    engines: {node: '>=0.10.1'}
+    deprecated: This version of Bootstrap is no longer supported. Please upgrade to the latest version.
 
   braces@3.0.3:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
@@ -5886,6 +5894,8 @@ snapshots:
       is-windows: 1.0.2
 
   birpc@2.6.1: {}
+
+  bootstrap@3.3.6: {}
 
   braces@3.0.3:
     dependencies:

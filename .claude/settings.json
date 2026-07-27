@@ -1,0 +1,31 @@
+{
+  "enabledPlugins": {
+    "ts-surgeon@commoncurriculum": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/scottamesmessinger/.cache/ts-surgeon/guard-1.4.0\"",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/scottamesmessinger/.cache/ts-surgeon/guard-1.4.0\" --post",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
