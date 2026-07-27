@@ -10,7 +10,13 @@ export default defineConfig({
     include: ["tests/react/**/*.test.{ts,tsx}"],
     browser: {
       enabled: true,
-      provider: playwright(),
+      // CHROMIUM_EXECUTABLE_PATH lets environments with a pre-installed
+      // browser run without `playwright install`.
+      provider: playwright(
+        process.env.CHROMIUM_EXECUTABLE_PATH
+          ? { launchOptions: { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH } }
+          : undefined,
+      ),
       headless: true,
       instances: [
         {

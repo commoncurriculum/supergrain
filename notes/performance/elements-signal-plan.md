@@ -111,6 +111,34 @@ hooks), kernel (`get`, `getNodes`, `getNode`, `link`, `effect`), and GC.
 
 **Verdict criteria:** none — this is evidence gathering. Budget ~30 min.
 
+### D0 findings (2026-07-27, session VM)
+
+**react-rxjs's per-row cost is zero.** Its row is a plain `React.memo`
+component with no hooks and no per-row subscription; the entire app holds two
+list-level `useStateObservable` subscriptions (rows array + selected id) in
+one `RowList` component. All mutations produce new arrays (`slice()` +
+in-place edit), so rows are plain objects with no proxies or signals. Its
+create-10k therefore pays only: 10k memo fibers + DOM. Everything supergrain
+adds on top of that (per-row `useReducer` + disposal `useEffect`, alien
+effect alloc + 2 context switches, item proxy + `$NODE` + `$PROXY`
+defineProperty + WeakMap write, `label`/`selected`/`$VERSION` signals,
+per-index signal + link from the swap effect) IS the 52ms gap — there is no
+single hot function to attribute it to.
+
+**Profile attribution (create-10k, `pnpm perf:analyze`, profiling overhead
+included — do not read as timings):** of 3726ms profiled, ~900ms is
+Playwright's selector engine (`matches`/`query` — measurement harness, not
+app), ~50% is unattributed `(program)`. App-side, React DOM commit dominates:
+`getHostSibling` 255ms (6.9% — React's sibling walk when placing 10k new
+rows into an existing tbody), `appendChild` 70ms, `setProp`/`setTextContent`
+~52ms, fiber creation + completeWork ~39ms. Kernel functions are nearly
+invisible in self-time: proxy `get` 10.5ms, `signal` 7.4ms, `useReducer`
+4.9ms. GC: 93ms in-window. Conclusion: the kernel's per-row cost hides in
+allocation volume/GC and in unattributed inlined code, not in a nameable hot
+function — consistent with D1 (remove 10k signal allocs + links) and D4
+(allocation diet) being the right levers, and with D3 attacking the React
+commit/passive-unmount side.
+
 ---
 
 ## D1 — `$ELEMENTS`: one array-level signal instead of N per-index subscriptions (primary bet)

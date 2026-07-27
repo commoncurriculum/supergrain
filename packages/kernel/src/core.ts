@@ -27,6 +27,7 @@ export const $PROXY = Symbol.for("supergrain:proxy");
 export const $TRACK = Symbol.for("supergrain:track");
 export const $RAW = Symbol.for("supergrain:raw");
 export const $VERSION = Symbol.for("supergrain:version");
+export const $ELEMENTS = Symbol.for("supergrain:elements");
 export const $OWN_KEYS = Symbol.for("ownKeys");
 
 // Well-known symbol properties attached to reactive proxy targets and proxies.
@@ -88,6 +89,19 @@ export function getNodes(target: object): DataNodes {
     nodes[$VERSION] = signal(0) as Signal<unknown>;
   }
   return nodes;
+}
+
+/**
+ * Subscribe the active subscriber to the array's coarse `$ELEMENTS` signal —
+ * "some element of this array was replaced in place" — creating the signal on
+ * demand. One dependency link covers every index, present and future, so a
+ * subscriber that diffs the whole array on wake (parent-mode `For`'s swap
+ * effect) doesn't need N per-index subscriptions. Structural changes (push,
+ * splice, length, new array) are NOT reported here; they bump the version /
+ * ownKeys signals instead.
+ */
+export function trackArrayElements(target: object): void {
+  getNode(getNodes(target), $ELEMENTS, 0)();
 }
 
 export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown): Signal<unknown> {
