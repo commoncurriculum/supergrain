@@ -72,7 +72,28 @@ pnpm perf:profile
 # Analyze CPU profiles (top functions by self time)
 pnpm perf:analyze           # all benchmarks
 pnpm perf:analyze create-1k # specific benchmark
+
+# Interleaved A/B between two prebuilt kernel dists (drift-proof; see below)
+pnpm perf:ab --control <dist-dir> --experiment <dist-dir> --runs 10
 ```
+
+### Interleaved A/B vs. block-mode stats
+
+`perf:stats` runs one build N times, then the other N times. That confounds "the
+code changed" with "the machine changed" — on a busy machine the drift between
+the two blocks can exceed the effect you are measuring.
+
+`perf:ab` alternates the two builds within one time window, flipping the order
+each pair, and compares within pairs so drift cancels. Use it whenever the
+expected effect is smaller than the machine's hour-to-hour variation, and read
+the paired median delta and win count rather than absolute milliseconds.
+
+The `Benchmark` GitHub Actions workflow (`.github/workflows/benchmark.yml`) runs
+this automatically on every PR commit: it builds the kernel at the PR head and at
+the base branch, runs 10 interleaved pairs, and posts the table as a sticky PR
+comment. It skips itself when the two kernel builds are identical. CI runners are
+noisy, so treat that job as a regression tripwire — a borderline result there
+means "measure it properly on a quiet machine", not "no effect".
 
 ## Workflow for Each Optimization
 

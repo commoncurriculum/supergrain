@@ -7,6 +7,10 @@ perf-results.json
 perf-results-*.json
 perf-stats.json
 perf-stats-*.json
+perf-ab-report.md
+perf-ab-data.json
+benchmark-report.md
+benchmark-data.json
 *.cpuprofile
 *-trace.json
 npm-debug.log*
