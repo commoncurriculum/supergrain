@@ -65,9 +65,7 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
     // Version bump would unnecessarily notify parent components that
     // only care about structural changes (length, add, remove).
     const isArrayElementReplace = Array.isArray(target) && hadKey && target.length === prevLen;
-    if (!isArrayElementReplace) {
-      bumpVersion(target);
-    } else {
+    if (isArrayElementReplace) {
       // Coarse "some element was replaced in place" notification. Subscribers
       // that want to observe replacement at any index without N per-index
       // subscriptions (parent-mode `For`'s swap effect, via
@@ -78,6 +76,8 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
       if (elements) {
         elements(++BUMP);
       }
+    } else {
+      bumpVersion(target);
     }
   }
 
