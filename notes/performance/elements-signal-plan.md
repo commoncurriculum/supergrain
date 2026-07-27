@@ -304,6 +304,19 @@ unchanged. Risk: React runs dep-less cleanup differently from deps-mismatch
 cleanup — StrictMode double-invoke behavior must be re-tested
 (`tracked-strict-mode.test.tsx`, `for-component-magic.test.tsx`).
 
+### D2 verdict: REJECTED — obsoleted by D1 (2026-07-27)
+
+Implemented (deps `[raw, parent, isEmpty]` + render-path snapshot refresh)
+and measured interleaved vs D1: append +0.3% median (5/12 pairs positive),
+remove flat, everything else noise. The hypothesis above was priced against
+the per-index baseline; after D1 the effect has ONE dependency, so the
+re-creation D2 avoids costs ~2 graph ops — there is nothing left to save.
+The emptiness transition also has to be its own dep (js-krauset's `add()`
+pushes onto the initially-empty array; without it the swap effect is never
+created — a real bug caught by the dist swap test). Reverted; the
+interleaving tests it motivated were kept. Full writeup:
+`notes/failed-approaches/for-swap-effect-deps.md`.
+
 ---
 
 ## D3 — Kill the per-row passive unmount effect (ref-cleanup disposal)
