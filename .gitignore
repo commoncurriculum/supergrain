@@ -206,3 +206,6 @@ es/
 # Claude Code
 .claude/settings.local.json
 .claude/worktrees/
+
+# Local Claude Code settings (machine-specific hook paths)
+.claude/settings.json
