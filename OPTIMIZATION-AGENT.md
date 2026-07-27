@@ -216,7 +216,8 @@ Note: The build is unminified (`minify: false` in vite.config.ts) so `pnpm perf:
 ## Rules
 
 - **NEVER write custom benchmark scripts.** Use `perf.test.ts` and the pnpm commands above.
-- **NEVER dismiss consistent results as noise.** If it's consistently higher across 15 runs, it's real.
+- **NEVER dismiss consistent results as noise.** If it's consistently higher across 15 runs, it's real — but "real in the harness" is not the same as "added script cost": see the GC-aliasing rule below.
+- **BEWARE GC aliasing when a change alters allocation volume.** Reducing allocations can produce a reproducible, interleave-surviving "regression" on churn-heavy benchmarks (create-1k, partial update): less garbage per cycle shifts where V8's scavenge lands relative to the measured window. Proven on 2026-07-27 (`notes/performance/elements-signal-plan.md`, D1 verdict): a change that strictly removed work showed create-1k +18-36% free-running, and exactly 0% with a forced pre-trace GC. Disambiguation protocol: (1) interleave the two builds (alternate kernel `dist/` within one time window — block-mode brackets can't separate drift from code); (2) if a churn benchmark regresses, rerun the interleave for that benchmark with `PROFILE=1` (which forces `HeapProfiler.collectGarbage` before tracing) via `vitest run --config vitest.dist.config.ts src/perf.test.ts -t "<name>"`; profiler overhead is symmetric. If the regression vanishes under forced GC, it is aliasing — judge it on the weighted total and say so in the writeup, since the official harness may or may not reproduce it.
 - **NEVER skip the 15-run statistical comparison.** Single runs are meaningless for decision-making.
 - **NEVER stack changes.** Each experiment is measured independently against baseline.
 - **SSR must always work.** Never assume client-only.

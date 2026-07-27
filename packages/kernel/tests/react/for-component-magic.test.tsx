@@ -887,6 +887,166 @@ describe("For Component Magic Tests", () => {
       expect(getIds(container)).toEqual(["5", "2", "3", "4", "1", "6", "7"]);
     });
 
+    it("push onto an initially-empty array then swap (js-krauset add→swap path)", async () => {
+      const store = createReactive<{ data: RowData[] }>({ data: [] });
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+      expect(container.querySelectorAll("tr")).toHaveLength(0);
+
+      // Grow the SAME array in place — raw's identity never changes, so the
+      // swap effect must be created via the emptiness transition, not the
+      // array-reference dep.
+      await act(async () => {
+        store.data.push(
+          { id: 1, label: "Item 1" },
+          { id: 2, label: "Item 2" },
+          { id: 3, label: "Item 3" },
+          { id: 4, label: "Item 4" },
+          { id: 5, label: "Item 5" },
+        );
+      });
+      expect(getIds(container)).toEqual(["1", "2", "3", "4", "5"]);
+
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[1]!;
+        store.data[1] = store.data[3]!;
+        store.data[3] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["1", "4", "3", "2", "5"]);
+    });
+
+    it("splice an array to empty in place, refill it, then swap", async () => {
+      const store = createTestStore(3);
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+
+      await act(async () => {
+        store.data.splice(0, store.data.length);
+      });
+      expect(container.querySelectorAll("tr")).toHaveLength(0);
+
+      await act(async () => {
+        store.data.push(
+          { id: 6, label: "Item 6" },
+          { id: 7, label: "Item 7" },
+          { id: 8, label: "Item 8" },
+        );
+      });
+      expect(getIds(container)).toEqual(["6", "7", "8"]);
+
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[0]!;
+        store.data[0] = store.data[2]!;
+        store.data[2] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["8", "7", "6"]);
+    });
+
+    it("add items then swap — including an appended index", async () => {
+      const store = createTestStore(3);
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+
+      await act(async () => {
+        store.data.push({ id: 4, label: "Item 4" }, { id: 5, label: "Item 5" });
+      });
+
+      expect(getIds(container)).toEqual(["1", "2", "3", "4", "5"]);
+
+      // Swap an original index with an appended one. The swap subscription
+      // must cover indices that did not exist when the effect was created,
+      // and the diff snapshot must reflect the appended contents.
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[0]!;
+        store.data[0] = store.data[4]!;
+        store.data[4] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["5", "2", "3", "4", "1"]);
+    });
+
+    it("remove item then swap", async () => {
+      const store = createTestStore(5);
+
+      const App = tracked(() => {
+        const tbodyRef = React.useRef<HTMLTableSectionElement>(null);
+        return (
+          <table>
+            <tbody ref={tbodyRef}>
+              <For each={store.data} parent={tbodyRef}>
+                {(item: RowData) => <StressRow key={item.id} item={item} />}
+              </For>
+            </tbody>
+          </table>
+        );
+      });
+
+      const { container } = render(<App />);
+
+      await act(async () => {
+        store.data.splice(1, 1); // remove id 2
+      });
+
+      expect(getIds(container)).toEqual(["1", "3", "4", "5"]);
+
+      await act(async () => {
+        startBatch();
+        const tmp = store.data[0]!;
+        store.data[0] = store.data[3]!;
+        store.data[3] = tmp;
+        endBatch();
+      });
+
+      expect(getIds(container)).toEqual(["5", "3", "4", "1"]);
+    });
+
     it("adjacent swap takes the nextSibling-is-nodeB fast path", async () => {
       const store = createTestStore(5);
 

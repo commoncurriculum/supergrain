@@ -48,3 +48,28 @@ the hot read/write paths perturbs V8 more than the saved allocations are
 worth.
 
 Reverted in full.
+
+## Addendum (2026-07-27, later the same day): verdict suspect — likely GC aliasing
+
+The D1 `$ELEMENTS` experiment (`notes/performance/elements-signal-plan.md`,
+"D1 verdict") demonstrated on this same VM that **allocation-reducing changes
+produce phantom regressions in free-running benchmark mode**: removing
+~200KB of per-cycle signal allocations made create-1k appear +18-36% slower
+(reproduced, interleaved), yet the regression vanished completely when a full
+GC was forced before each timed click. Mechanism: less garbage per cycle
+shifts where V8's scavenge threshold is crossed relative to the measured
+window.
+
+This experiment fits that fingerprint exactly: it reduced allocations
+(lazy `$VERSION`, skipped WeakMap writes), expected a create win, and was
+rejected on partial-update +17.3% mean / +11.5% median and create-10k
++5.1% mean / +19% median — churn-heavy benchmarks judged in free-running
+mode against a block (non-interleaved) reference. The V8-polymorphism
+explanation is also weakened: D1 added a symbol-key `getNode` call site and
+restructured the same write-path branch, and showed no such cost under
+controlled GC.
+
+**If retested, use the newer protocol:** interleave the two builds
+(alternate kernel dist within one window) and disambiguate any regression
+with the forced-GC variant (`PROFILE=1` + `-t <benchmark>`). The original
+verdict here should not be treated as final.

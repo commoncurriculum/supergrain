@@ -87,14 +87,23 @@ export const For = tracked((props: ForProps<unknown>) => {
   const raw = unwrap(each);
 
   // O(1) swap effect — only when parent ref is provided.
-  // No deps array: must re-create the alien-signals effect on every For render
-  // so it captures the latest `raw` array reference after structural changes.
+  // Deps: the effect is re-created only when the array REFERENCE changes
+  // (create/replace/clear), not when the same array mutates structurally
+  // (append/remove). The $ELEMENTS subscription is array-level, so one link
+  // covers indices that don't exist yet, and the effect body reads
+  // raw.length dynamically. Same-array structural renders refresh the diff
+  // snapshot in the render path below instead. `isEmpty` must be a dep of
+  // its own: an array that starts empty skips effect creation, so growing
+  // it in place (push on the initial []) has to trigger this hook even
+  // though `raw`'s identity is unchanged — and shrinking it to empty in
+  // place has to run the cleanup branch below.
+  const isEmpty = !raw || raw.length === 0;
   useIsomorphicLayoutEffect(() => {
     if (!parent) {
       return;
     }
 
-    if (!raw || raw.length === 0) {
+    if (isEmpty) {
       swapCleanupRef.current?.();
       swapCleanupRef.current = null;
       return;
@@ -155,7 +164,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       cleanup();
       swapCleanupRef.current = null;
     };
-  });
+  }, [raw, parent, isEmpty]);
 
   const elementCacheRef = useRef(new Map<unknown, React.ReactNode>());
 
@@ -165,6 +174,14 @@ export const For = tracked((props: ForProps<unknown>) => {
   const slots: Array<React.ReactNode> = Array.from({ length: raw.length });
 
   if (parent) {
+    // Same-array structural mutations (push/splice) re-render For without
+    // re-running the [raw, parent] layout effect, so the swap-diff snapshot
+    // must be refreshed here — otherwise the next swap wake would compare
+    // against a stale length/contents and skip the DOM fix. Ref writes during
+    // render are safe here for the same reason elementCacheRef's are: For's
+    // output is a pure function of the store, and a re-render recomputes both.
+    prevRawRef.current = [...raw];
+
     // Parent path (O(1) swap): call children directly with untracked array reads.
     // No wrapper component needed — children (e.g., tracked Row) handle their own
     // subscriptions. After a swap, For doesn't re-render, so children keep their
