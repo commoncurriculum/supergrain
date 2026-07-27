@@ -51,4 +51,15 @@ describe("scheduleDisposal", () => {
     expect(() => vi.runAllTimers()).toThrow("first boom");
     expect(ran).toEqual(["after-first", "last"]);
   });
+
+  it("wraps non-Error throwables before surfacing them", () => {
+    const after = vi.fn();
+    scheduleDisposal(() => {
+      throw "plain string failure"; // eslint-disable-line no-throw-literal -- exercising the non-Error path
+    });
+    scheduleDisposal(after);
+
+    expect(() => vi.runAllTimers()).toThrow("plain string failure");
+    expect(after).toHaveBeenCalledTimes(1);
+  });
 });
