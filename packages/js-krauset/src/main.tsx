@@ -5,7 +5,7 @@ import {
   resetProfiler,
   getProfile,
 } from "@supergrain/kernel";
-import { tracked, For, useComputed } from "@supergrain/kernel/react";
+import { tracked, For } from "@supergrain/kernel/react";
 import { Profiler, useCallback, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
@@ -97,16 +97,16 @@ export function buildData(count: number): RowData[] {
 export interface RowData {
   id: number;
   label: string;
+  selected?: boolean;
 }
 
 export interface AppState {
   data: RowData[];
-  selected: number | null;
 }
 
 export interface RowProps {
   item: RowData;
-  onSelect: (id: number) => void;
+  onSelect: (item: RowData) => void;
   onRemove: (id: number) => void;
 }
 
@@ -114,12 +114,21 @@ export interface RowProps {
 
 const store = createReactive<AppState>({
   data: [],
-  selected: null,
 });
+
+// Selection lives on the row itself (item.selected). Each Row subscribes only
+// to its own item's signal, so selecting writes exactly two signals (deselect
+// old, select new) instead of re-evaluating a derived value per row.
+let selectedRow: RowData | null = null;
+
+// Bumped on clear so the <tbody> remounts via a key change. React then detaches
+// the old tbody with a single removeChild instead of removing 1,000 rows one by
+// one during the deletion commit.
+let clearEpoch = 0;
 
 export const run = (count: number) => {
   store.data = buildData(count);
-  store.selected = null;
+  selectedRow = null;
 };
 
 export const add = () => {
@@ -135,9 +144,10 @@ export const update = () => {
 };
 
 export const clear = () => {
+  clearEpoch++;
   batch(() => {
     store.data = [];
-    store.selected = null;
+    selectedRow = null;
   });
 };
 
@@ -159,9 +169,19 @@ export const remove = (id: number) => {
   }
 };
 
-export const select = (id: number) => {
+export const select = (itemOrId: RowData | number) => {
+  const item = typeof itemOrId === "number" ? store.data.find((d) => d.id === itemOrId) : itemOrId;
+  if (!item) {
+    return;
+  }
   flushSync(() => {
-    store.selected = id;
+    batch(() => {
+      if (selectedRow) {
+        selectedRow.selected = false;
+      }
+      item.selected = true;
+      selectedRow = item;
+    });
   });
 };
 
@@ -222,13 +242,11 @@ const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }
 
 export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
   rowRenderCount++;
-  const id = item.id;
-  const isSelected = useComputed(() => store.selected === id);
   return (
-    <tr className={isSelected ? "danger" : ""}>
+    <tr className={item.selected ? "danger" : ""}>
       <td className="col-md-1">{item.id}</td>
       <td className="col-md-4">
-        <a onClick={() => onSelect(item.id)}>{item.label}</a>
+        <a onClick={() => onSelect(item)}>{item.label}</a>
       </td>
       <td className="col-md-1">
         <a onClick={() => onRemove(item.id)}>
@@ -243,7 +261,7 @@ export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
 export const App = tracked(() => {
   appRenderCount++;
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
-  const handleSelect = useCallback((id: number) => select(id), []);
+  const handleSelect = useCallback((item: RowData) => select(item), []);
   const handleRemove = useCallback((id: number) => remove(id), []);
 
   return (
@@ -267,7 +285,7 @@ export const App = tracked(() => {
           </div>
         </div>
         <table className="table table-hover table-striped test-data">
-          <tbody ref={tbodyRef}>
+          <tbody key={clearEpoch} ref={tbodyRef}>
             <For each={store.data} parent={tbodyRef}>
               {(item: RowData) => (
                 <Row key={item.id} item={item} onSelect={handleSelect} onRemove={handleRemove} />
