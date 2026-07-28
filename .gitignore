@@ -203,6 +203,9 @@ es/
 .DS_Store
 .vitest-attachments/
 
-# Claude Code
+# Claude Code. Note: .claude/settings.json is deliberately NOT ignored — it is
+# for shared, project-wide settings. Machine-specific config (absolute hook
+# paths, personal tooling) belongs in .claude/settings.local.json below, which
+# is loaded the same way and stays out of the repo.
 .claude/settings.local.json
 .claude/worktrees/

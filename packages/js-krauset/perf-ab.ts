@@ -115,6 +115,7 @@ if (hadExistingDist) {
 }
 
 let restored = false;
+let runCompleted = false;
 function restoreDist(): void {
   if (restored) return;
   restored = true;
@@ -123,7 +124,11 @@ function restoreDist(): void {
     cpSync(backupDir, armTarget, { recursive: true });
     rmSync(backupDir, { recursive: true, force: true });
   }
-  console.log(`Restored ${armTarget} to its pre-run state.`);
+  // On a clean run restoration is expected — stay quiet so the report path
+  // stays the last thing on screen. Speak up only when we bailed early.
+  if (!runCompleted) {
+    console.error(`Interrupted — restored ${armTarget} to its pre-run state.`);
+  }
 }
 
 process.on("exit", restoreDist);
@@ -359,6 +364,7 @@ writeFileSync(
   ) + "\n",
 );
 
+runCompleted = true;
 console.log(`\n${report}`);
 console.log(`Report written to ${outPath}`);
 console.log(`Raw paired data written to ${jsonPath}`);
