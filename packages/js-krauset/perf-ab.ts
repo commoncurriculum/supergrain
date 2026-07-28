@@ -19,8 +19,13 @@
  *
  * Usage:
  *   node perf-ab.ts --control <dist-dir> --experiment <dist-dir> [--runs 10]
- *                   [--out report.md] [--json data.json]
+ *                   [--mode kernel|app] [--out report.md] [--json data.json]
  *                   [--label-control <text>] [--label-experiment <text>]
+ *
+ * --mode kernel (default): arms are prebuilt `packages/kernel/dist` dirs; the
+ *   app is rebuilt from the current source every run. Isolates a kernel change.
+ * --mode app: arms are prebuilt `packages/js-krauset/dist` bundles served
+ *   as-is. Measures two complete builds against each other (used by PR CI).
  */
 import { execSync } from "child_process";
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "fs";
@@ -56,6 +61,16 @@ function arg(name: string, fallback?: string): string {
 
 const controlDir = resolve(arg("control"));
 const experimentDir = resolve(arg("experiment"));
+// "kernel": arms are prebuilt kernel dists; the app is rebuilt from the current
+// source for every run (isolates a kernel change — the local-experiment tool).
+// "app": arms are prebuilt js-krauset dist bundles served as-is, no rebuild
+// (measures two complete builds against each other — what PR CI wants, since a
+// PR's win can live in the app as easily as in the kernel).
+const mode = arg("mode", "kernel");
+if (mode !== "kernel" && mode !== "app") {
+  console.error(`--mode must be "kernel" or "app", got "${mode}"`);
+  process.exit(1);
+}
 const runs = parseInt(arg("runs", "10"), 10);
 const outPath = arg("out", resolve(dir, "perf-ab-report.md"));
 const jsonPath = arg("json", resolve(dir, "perf-ab-data.json"));
@@ -77,10 +92,13 @@ if (!Number.isInteger(runs) || runs < 1) {
   process.exit(1);
 }
 
-/** Swap in one arm's prebuilt kernel. The app bundle is rebuilt by `test:perf`. */
-function useKernel(from: string): void {
-  rmSync(kernelDist, { recursive: true, force: true });
-  cpSync(from, kernelDist, { recursive: true });
+const appDist = resolve(dir, "dist");
+
+/** Swap in one arm: prebuilt kernel dist (kernel mode) or app bundle (app mode). */
+function useArm(from: string): void {
+  const target = mode === "kernel" ? kernelDist : appDist;
+  rmSync(target, { recursive: true, force: true });
+  cpSync(from, target, { recursive: true });
 }
 
 /**
@@ -93,7 +111,13 @@ function useKernel(from: string): void {
  */
 let lastTimestamp = "";
 function runOnce(): RunJson {
-  execSync("pnpm test:perf", { cwd: dir, stdio: "inherit", timeout: 20 * 60_000 });
+  // App mode serves the prebuilt bundle as-is; rebuilding would overwrite the
+  // arm we just swapped in.
+  const command =
+    mode === "kernel"
+      ? "pnpm test:perf"
+      : "npx vitest run --config vitest.dist.config.ts src/perf.test.ts";
+  execSync(command, { cwd: dir, stdio: "inherit", timeout: 20 * 60_000 });
   if (!existsSync(latestJson)) throw new Error("perf-results.json was not written");
   const json: RunJson = JSON.parse(readFileSync(latestJson, "utf-8"));
   if (json.timestamp === lastTimestamp) {
@@ -123,7 +147,7 @@ for (let i = 0; i < runs; i++) {
   for (const armName of order) {
     console.log(`\n--- pair ${i + 1}: ${armName} ---\n`);
     const isControl = armName === "control";
-    useKernel(isControl ? controlDir : experimentDir);
+    useArm(isControl ? controlDir : experimentDir);
     const run = runOnce();
     if (isControl) pair.control = run;
     else pair.experiment = run;
@@ -260,7 +284,11 @@ ${rows.map((r) => `| ${renderRow(r)} |`).join("\n")}
 <details>
 <summary>How to read this</summary>
 
-Both arms are the **same** app source and the same commit of \`js-krauset\`; only \`packages/kernel/dist\` differs. The two builds alternate within one time window, with the order flipped each pair, so machine drift hits both arms equally and the paired delta cancels it.
+${
+  mode === "kernel"
+    ? "Both arms are the **same** app source and the same commit of `js-krauset`; only `packages/kernel/dist` differs — this comparison isolates the kernel change and is blind to app-side changes."
+    : "Each arm is a **complete prebuilt app bundle** (kernel + app), so this measures the full difference between the two builds — app-side and kernel-side changes alike."
+} The two builds alternate within one time window, with the order flipped each pair, so machine drift hits both arms equally and the paired delta cancels it.
 
 CI runners are shared and noisy, so **absolute milliseconds here are meaningless** — do not compare them against numbers from your laptop or against a previous run of this job. The paired delta and the win count are the signal.
 

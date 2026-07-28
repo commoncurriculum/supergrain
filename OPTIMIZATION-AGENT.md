@@ -88,12 +88,18 @@ each pair, and compares within pairs so drift cancels. Use it whenever the
 expected effect is smaller than the machine's hour-to-hour variation, and read
 the paired median delta and win count rather than absolute milliseconds.
 
+`perf:ab` has two modes: `--mode kernel` (default) swaps prebuilt kernel dists
+and rebuilds the app every run — isolates a kernel change, blind to app
+changes. `--mode app` swaps complete prebuilt `js-krauset/dist` bundles —
+measures the full difference between two builds.
+
 The `Benchmark` GitHub Actions workflow (`.github/workflows/benchmark.yml`) runs
-this automatically on every PR commit: it builds the kernel at the PR head and at
-the base branch, runs 10 interleaved pairs, and posts the table as a sticky PR
-comment. It skips itself when the two kernel builds are identical. CI runners are
-noisy, so treat that job as a regression tripwire — a borderline result there
-means "measure it properly on a quiet machine", not "no effect".
+`--mode app` automatically on every PR commit: it builds the complete app
+(kernel + benchmark app) at the PR head and at the base branch, runs 10
+interleaved pairs, and posts the table as a sticky PR comment (stamped with the
+measured head SHA). It skips itself when the two bundles are byte-identical. CI
+runners are noisy, so treat that job as a regression tripwire — a borderline
+result there means "measure it properly on a quiet machine", not "no effect".
 
 ## Workflow for Each Optimization
 
