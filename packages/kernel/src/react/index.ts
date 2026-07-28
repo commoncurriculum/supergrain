@@ -4,7 +4,7 @@
 export { For } from "./for";
 
 // Export tracked() component wrapper for per-component signal scoping
-export { tracked, type TrackedOptions, type TrackedRefProps } from "./tracked";
+export { tracked } from "./tracked";
 
 // Export useComputed hook for derived signal values with firewall behavior
 export { useComputed } from "./use-computed";

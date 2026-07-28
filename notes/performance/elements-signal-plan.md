@@ -355,6 +355,26 @@ Risks: StrictMode ref double-invoke semantics; refs detach on every
 re-parenting; dev-mode `useDisposeOnUnmount` timer dance must be preserved or
 replicated. This is the most invasive design — do it after D1/D2 prove out.
 
+### D3 verdict (2026-07-27, local quiet machine): REJECTED — implemented, measured flat, reverted
+
+Built as an opt-in `tracked(Component, { refDisposal: true })` (owner
+decision: any such API must be optional; default `tracked()` keeps its
+zero-requirements contract). Implementation complete and correct —
+StrictMode-safe detach cancellation, dev-mode never-attached leak guard, 5
+new kernel tests, all suites green with js-krauset's Row opted in
+(commit `c53e82b`, reverted in the following commit).
+
+Measurement, interleave protocol on quiet local hardware: 12 full-suite
+pairs showed nothing significant (clear −4.5% at 8/12 p=0.388, replace
+−4.5% at 9/12 p=0.146 were the best leans); a focused 16-pair interleave on
+exactly those two benchmarks came back flat (clear +0.7%, 6/15, p=0.607;
+replace −0.2%, 8/15, p=1.0). The hypothesized cost — per-row passive-effect
+creation and unmount traversal — is below measurement resolution even at
+10k rows; the deferred disposal queue had already removed the expensive
+part. An opt-in API whose contract can silently leak isn't worth zero
+measured benefit. Full writeup:
+`notes/failed-approaches/tracked-ref-disposal.md`.
+
 ---
 
 ## D4 — Allocation diet in `tracked()` (GC pressure at 10k)
