@@ -125,9 +125,18 @@ jobs:
           script: |
             const fs = require('fs');
             const marker = '<!-- supergrain-benchmark -->';
-            const body = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/benchmark-report.md`, 'utf8');
+            const report = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/benchmark-report.md`, 'utf8');
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
+
+            // This comment is edited in place (so it never bumps in the PR
+            // timeline) — stamp it with what was measured and when, or a fresh
+            // result is indistinguishable from a stale one.
+            const pr = context.payload.pull_request;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const stamp = `\n---\n*Measured head \`${pr.head.sha.slice(0, 7)}\` vs base \`${pr.base.ref}\` — ` +
+              `updated ${new Date().toISOString().replace('T', ' ').slice(0, 16)} UTC — [run](${runUrl})*\n`;
+            const body = report + stamp;
 
             // Update the existing comment rather than stacking a new one per push.
             const comments = await github.paginate(github.rest.issues.listComments, {
