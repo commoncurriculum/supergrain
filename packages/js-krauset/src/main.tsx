@@ -5,7 +5,7 @@ import {
   resetProfiler,
   getProfile,
 } from "@supergrain/kernel";
-import { tracked, For } from "@supergrain/kernel/react";
+import { tracked, For, type TrackedRefProps } from "@supergrain/kernel/react";
 import { Profiler, useCallback, useRef } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
@@ -104,7 +104,7 @@ export interface AppState {
   data: RowData[];
 }
 
-export interface RowProps {
+export interface RowProps extends TrackedRefProps {
   item: RowData;
   onSelect: (item: RowData) => void;
   onRemove: (id: number) => void;
@@ -243,23 +243,30 @@ const Button = ({ id, cb, title }: { id: string; cb: () => void; title: string }
   </div>
 );
 
-export const Row = tracked(({ item, onSelect, onRemove }: RowProps) => {
-  rowRenderCount++;
-  return (
-    <tr className={item.selected ? "danger" : ""}>
-      <td className="col-md-1">{item.id}</td>
-      <td className="col-md-4">
-        <a onClick={() => onSelect(item)}>{item.label}</a>
-      </td>
-      <td className="col-md-1">
-        <a onClick={() => onRemove(item.id)}>
-          <span className="glyphicon glyphicon-remove" aria-hidden="true"></span>
-        </a>
-      </td>
-      <td className="col-md-6"></td>
-    </tr>
-  );
-});
+// refDisposal: dispose each Row's reactive effect via a React 19 ref cleanup
+// instead of a per-row useEffect — removes one passive effect per row at mount
+// and the passive-unmount traversal on clear. Requires attaching `trackedRef`
+// to the row's root element (below); see TrackedOptions in the kernel.
+export const Row = tracked(
+  ({ item, onSelect, onRemove, trackedRef }: RowProps) => {
+    rowRenderCount++;
+    return (
+      <tr ref={trackedRef} className={item.selected ? "danger" : ""}>
+        <td className="col-md-1">{item.id}</td>
+        <td className="col-md-4">
+          <a onClick={() => onSelect(item)}>{item.label}</a>
+        </td>
+        <td className="col-md-1">
+          <a onClick={() => onRemove(item.id)}>
+            <span className="glyphicon glyphicon-remove" aria-hidden="true"></span>
+          </a>
+        </td>
+        <td className="col-md-6"></td>
+      </tr>
+    );
+  },
+  { refDisposal: true },
+);
 
 export const App = tracked(() => {
   appRenderCount++;
