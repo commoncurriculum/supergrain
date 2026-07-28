@@ -16,10 +16,21 @@
  * unmounted component is a no-op in React.
  */
 
+// How long to wait before flushing without a frame. Only reached when rAF
+// never fires (hidden document) or doesn't exist — see scheduleFlush.
+const BACKSTOP_MS = 100;
+
 let queue: Array<() => void> = [];
 let scheduled = false;
 
 function flush(): void {
+  // A round arms two timers (see scheduleFlush) and the loser fires later with
+  // nothing left to do. Returning *before* clearing `scheduled` is the point:
+  // clearing it here would strand the timers a subsequent round had already
+  // armed, and the next scheduleDisposal would arm a third set on top.
+  if (queue.length === 0) {
+    return;
+  }
   scheduled = false;
   const disposers = queue;
   queue = [];
@@ -40,24 +51,24 @@ function flush(): void {
   }
 }
 
-/* c8 ignore start -- rAF branch is browser-only; jsdom exercises the fallback */
 function scheduleFlush(): void {
   // requestAnimationFrame fires just before the frame is presented; the nested
   // setTimeout then lands in the first macrotask after it. The plain setTimeout
-  // is a backstop for environments without rAF (SSR/tests) and for hidden
-  // documents, where rAF callbacks are suspended indefinitely.
+  // is a backstop for environments without rAF (SSR/node tests) and for hidden
+  // documents, where rAF callbacks are suspended indefinitely. Both branches are
+  // exercised: tests/react covers the rAF path in a real browser,
+  // tests/core covers the fallback under node.
   if (typeof requestAnimationFrame === "function") {
     requestAnimationFrame(() => setTimeout(flush, 0));
-    setTimeout(flush, 100);
+    setTimeout(flush, BACKSTOP_MS);
   } else {
     setTimeout(flush, 0);
   }
 }
-/* c8 ignore stop */
 
 /**
  * Queue an effect disposer to run off the paint-critical path — normally in
- * the first macrotask after the next paint, but the 100ms backstop (hidden
+ * the first macrotask after the next paint, but the backstop (hidden
  * documents, environments without rAF) may fire without any paint occurring.
  * The guarantee is "deferred, always runs", not "a paint happened first".
  */

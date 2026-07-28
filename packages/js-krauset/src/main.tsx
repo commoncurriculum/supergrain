@@ -182,6 +182,11 @@ export const remove = (id: number) => {
 
 export const select = (itemOrId: RowData | number) => {
   const item = typeof itemOrId === "number" ? store.data.find((d) => d.id === itemOrId) : itemOrId;
+  // Re-selecting the current row writes nothing. (The old `store.selected = id`
+  // model no-op'd here too — `setProperty` skips unchanged writes — so this
+  // isn't new, just explicit.) It does mean a benchmark that times a click on
+  // an already-selected row measures nothing; perf.test.ts asserts the timed
+  // row isn't the warmed-up one to catch that.
   if (!item || (selectedRow && selectedRow.id === item.id)) {
     return;
   }

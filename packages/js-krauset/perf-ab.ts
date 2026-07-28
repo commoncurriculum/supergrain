@@ -29,6 +29,7 @@
  */
 import { execSync } from "child_process";
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { resolve } from "path";
 
 // Explicit .ts extension: these root-level scripts run through Node's type
@@ -53,7 +54,16 @@ interface RunJson {
 
 function arg(name: string, fallback?: string): string {
   const i = process.argv.indexOf(`--${name}`);
-  if (i !== -1 && process.argv[i + 1]) return process.argv[i + 1];
+  if (i !== -1) {
+    // A flag with a missing or flag-shaped value is a typo, not a request for
+    // the default — silently substituting one would benchmark the wrong thing.
+    const value = process.argv[i + 1];
+    if (value === undefined || value.startsWith("--")) {
+      console.error(`--${name} requires a value`);
+      process.exit(1);
+    }
+    return value;
+  }
   if (fallback !== undefined) return fallback;
   console.error(`Missing required argument --${name}`);
   process.exit(1);
@@ -93,12 +103,41 @@ if (!Number.isInteger(runs) || runs < 1) {
 }
 
 const appDist = resolve(dir, "dist");
+const armTarget = mode === "kernel" ? kernelDist : appDist;
+
+// Swapping arms overwrites a real build output. Without restoring it, whatever
+// ran last silently *becomes* your `dist` — so a later `pnpm test` or a manual
+// check would be reading a foreign build with no indication anything happened.
+const backupDir = resolve(tmpdir(), `supergrain-perf-ab-${process.pid}`);
+const hadExistingDist = existsSync(armTarget);
+if (hadExistingDist) {
+  cpSync(armTarget, backupDir, { recursive: true });
+}
+
+let restored = false;
+function restoreDist(): void {
+  if (restored) return;
+  restored = true;
+  rmSync(armTarget, { recursive: true, force: true });
+  if (hadExistingDist) {
+    cpSync(backupDir, armTarget, { recursive: true });
+    rmSync(backupDir, { recursive: true, force: true });
+  }
+  console.log(`Restored ${armTarget} to its pre-run state.`);
+}
+
+process.on("exit", restoreDist);
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    restoreDist();
+    process.exit(1);
+  });
+}
 
 /** Swap in one arm: prebuilt kernel dist (kernel mode) or app bundle (app mode). */
 function useArm(from: string): void {
-  const target = mode === "kernel" ? kernelDist : appDist;
-  rmSync(target, { recursive: true, force: true });
-  cpSync(from, target, { recursive: true });
+  rmSync(armTarget, { recursive: true, force: true });
+  cpSync(from, armTarget, { recursive: true });
 }
 
 /**
