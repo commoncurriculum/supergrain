@@ -268,6 +268,13 @@ describe("performance benchmarks", () => {
     await click(page, "#run");
     await waitFor(page, "tbody>tr:nth-of-type(1000)");
     await click(page, "tbody>tr:nth-of-type(5)>td:nth-of-type(2)>a");
+    // Selecting an already-selected row is a no-op, so timing one would report
+    // "0ms" for doing nothing. Assert the warmup left a *different* row
+    // selected, otherwise this benchmark silently stops measuring anything.
+    const warmupSelectedTimedRow = await page.evaluate(() =>
+      document.querySelector("tbody>tr:nth-of-type(2)")?.classList.contains("danger"),
+    );
+    expect(warmupSelectedTimedRow).toBe(false);
     const ms = await timeClick(page, "tbody>tr:nth-of-type(2)>td:nth-of-type(2)>a", {
       traceName: "select-row",
       cpuThrottle: 4,

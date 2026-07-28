@@ -63,8 +63,14 @@ jobs:
           cp -R packages/js-krauset/dist /tmp/app-pr
 
       - name: Build benchmark app (base)
+        # Interpolated through env rather than straight into the script: `${{ }}`
+        # is pasted in as shell source, so a value carrying shell syntax would be
+        # executed. Nothing here is attacker-controlled today (both inputs need
+        # write access), but the quoted-env form removes the class outright.
+        env:
+          BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
         run: |
-          BASE="origin/${{ github.base_ref || github.event.repository.default_branch }}"
+          BASE="origin/$BASE_REF"
           # Replace the build inputs outright so files this PR *added* don't
           # linger in the control build; the checkout restores the rest.
           rm -rf packages/kernel/src packages/js-krauset/src
@@ -103,15 +109,18 @@ jobs:
       - name: Run interleaved benchmark
         if: steps.kernel-diff.outputs.changed == 'true'
         working-directory: packages/js-krauset
+        env:
+          RUNS: ${{ github.event.inputs.runs || '10' }}
+          BASE_REF: ${{ github.base_ref || 'default' }}
         run: >
           node perf-ab.ts
           --mode app
           --control /tmp/app-base
           --experiment /tmp/app-pr
-          --runs ${{ github.event.inputs.runs || '10' }}
+          --runs "$RUNS"
           --out "$GITHUB_WORKSPACE/benchmark-report.md"
           --json "$GITHUB_WORKSPACE/benchmark-data.json"
-          --label-control "base (${{ github.base_ref || 'default' }})"
+          --label-control "base ($BASE_REF)"
           --label-experiment "PR"
 
       - name: Publish to job summary
