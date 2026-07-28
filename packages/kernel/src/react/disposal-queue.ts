@@ -24,10 +24,9 @@ let queue: Array<() => void> = [];
 let scheduled = false;
 
 function flush(): void {
-  // A round arms two timers (see scheduleFlush) and the loser fires later with
-  // nothing left to do. Returning *before* clearing `scheduled` is the point:
-  // clearing it here would strand the timers a subsequent round had already
-  // armed, and the next scheduleDisposal would arm a third set on top.
+  // A round arms two timers (see scheduleFlush); whichever fires second finds
+  // the queue already drained. Skip the no-op. (`scheduled` is always false by
+  // then — the draining timer cleared it — so there is nothing to reset.)
   if (queue.length === 0) {
     return;
   }

@@ -96,7 +96,7 @@ jobs:
       # byte-reproducible this reports "changed" and we simply benchmark as
       # normal — the safe direction to fail.
       - name: Detect whether the app bundle changed
-        id: kernel-diff
+        id: bundle-diff
         run: |
           if diff -r /tmp/app-base /tmp/app-pr > /dev/null 2>&1; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -107,7 +107,7 @@ jobs:
           fi
 
       - name: Run interleaved benchmark
-        if: steps.kernel-diff.outputs.changed == 'true'
+        if: steps.bundle-diff.outputs.changed == 'true'
         working-directory: packages/js-krauset
         env:
           RUNS: ${{ github.event.inputs.runs || '10' }}
@@ -124,11 +124,11 @@ jobs:
           --label-experiment "PR"
 
       - name: Publish to job summary
-        if: always() && steps.kernel-diff.outputs.changed == 'true'
+        if: always() && steps.bundle-diff.outputs.changed == 'true'
         run: cat "$GITHUB_WORKSPACE/benchmark-report.md" >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Upload raw paired data
-        if: always() && steps.kernel-diff.outputs.changed == 'true'
+        if: always() && steps.bundle-diff.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results
@@ -141,7 +141,7 @@ jobs:
       # publish everything to the job summary and the uploaded artifact.
       - name: Comment results on the PR
         if: >
-          steps.kernel-diff.outputs.changed == 'true'
+          steps.bundle-diff.outputs.changed == 'true'
           && github.event_name == 'pull_request'
           && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
