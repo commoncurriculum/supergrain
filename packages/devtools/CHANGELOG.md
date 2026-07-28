@@ -1,5 +1,13 @@
 # @supergrain/devtools
 
+## 7.3.0
+
+### Patch Changes
+
+- Updated dependencies [22c5b7c]
+  - @supergrain/kernel@7.3.0
+  - @supergrain/silo@7.3.0
+
 ## 7.2.0
 
 ### Patch Changes

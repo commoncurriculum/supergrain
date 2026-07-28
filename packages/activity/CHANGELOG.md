@@ -1,5 +1,12 @@
 # @supergrain/activity
 
+## 1.0.1
+
+### Patch Changes
+
+- Updated dependencies [22c5b7c]
+  - @supergrain/kernel@7.3.0
+
 ## 1.0.0
 
 ### Major Changes
