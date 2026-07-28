@@ -417,6 +417,42 @@ guaranteed payoff and it compounds with everything above.
 
 ---
 
+## P1 — tbody remount on run() (profile-driven, NOT from this plan): ACCEPTED
+
+**Origin (2026-07-27, local machine):** owner feedback that candidates were
+coming from this plan's attribution rather than fresh profiles. `pnpm
+perf:profile` + `perf:analyze` at current HEAD showed kernel functions
+absent from every benchmark's top self-time and GC ≤3%, invalidating D4's
+premise — but exposed React DOM's `getHostSibling` at **135ms / 15.8% of
+create-10k**, vs 1.3ms on replace-1k. 100× the cost for 10× the rows:
+placing N all-new children into an already-mounted parent makes each
+placement scan forward through its not-yet-mounted sibling fibers, O(n²).
+
+**Change (app-level, one line of mechanism):** `clearEpoch` became
+`tbodyEpoch`, bumped by `run()` as well as `clear()`. A wholesale create now
+remounts the `<tbody>`, so React mounts rows via the `appendAllChildren`
+fast path instead of per-row `getHostSibling`. `add()` still appends into
+the live tbody, preserving keyed append semantics; swap/remove/select
+untouched. All 10 keyed dist tests pass.
+
+**Result (12 interleaved app-dist pairs, free-running):**
+
+| Benchmark        | control | epoch     | Δ median   | pairs | p      |
+| ---------------- | ------- | --------- | ---------- | ----- | ------ |
+| create 10k       | 348.6   | **242.1** | **−30.4%** | 12/12 | <0.001 |
+| replace all rows | 37.0    | 36.0      | −3.3%      | 10/11 | 0.012  |
+| create 1k        | 33.3    | 32.5      | −2.2%      | 10/12 | 0.039  |
+| weighted total   | 305.0   | **244.0** | **−19.9%** | 12/12 | <0.001 |
+
+Everything else flat (append +1.6% at 3/12, p=0.146 — mechanically
+untouched; treated as noise, worth re-checking in CI). The measured save
+(106ms) matches the profiled `getHostSibling` cost. Largest single win of
+the effort, found in the first hour of profiling on quiet hardware —
+the lesson the owner insisted on: **profile on the machine you measure on,
+before designing.**
+
+---
+
 ## Already rejected — do not re-tread (see `notes/failed-approaches/`)
 
 - **Passive swap effect / deferring work into React's passive phase** — React

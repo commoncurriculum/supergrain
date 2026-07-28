@@ -121,12 +121,20 @@ const store = createReactive<AppState>({
 // old, select new) instead of re-evaluating a derived value per row.
 let selectedRow: RowData | null = null;
 
-// Bumped on clear so the <tbody> remounts via a key change. React then detaches
-// the old tbody with a single removeChild instead of removing 1,000 rows one by
-// one during the deletion commit.
-let clearEpoch = 0;
+// Bumped on any wholesale rebuild (clear AND run) so the <tbody> remounts via
+// a key change.
+//
+// - On clear: React detaches the old tbody with a single removeChild instead
+//   of removing 1,000 rows one by one during the deletion commit.
+// - On run: a freshly-mounted tbody receives its children through React's
+//   appendAllChildren fast path. Without the remount, placing N new rows into
+//   the already-mounted tbody calls getHostSibling per row, which scans
+//   forward through the not-yet-mounted sibling fibers — O(n²). Profiled on
+//   this app: 1.3ms at 1k rows vs 135ms (15.8% of total) at 10k.
+let tbodyEpoch = 0;
 
 export const run = (count: number) => {
+  tbodyEpoch++;
   store.data = buildData(count);
   selectedRow = null;
 };
@@ -144,7 +152,7 @@ export const update = () => {
 };
 
 export const clear = () => {
-  clearEpoch++;
+  tbodyEpoch++;
   batch(() => {
     store.data = [];
     selectedRow = null;
@@ -288,7 +296,7 @@ export const App = tracked(() => {
           </div>
         </div>
         <table className="table table-hover table-striped test-data">
-          <tbody key={clearEpoch} ref={tbodyRef}>
+          <tbody key={tbodyEpoch} ref={tbodyRef}>
             <For each={store.data} parent={tbodyRef}>
               {(item: RowData) => (
                 <Row key={item.id} item={item} onSelect={handleSelect} onRemove={handleRemove} />
