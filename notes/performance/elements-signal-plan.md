@@ -511,3 +511,13 @@ experiment:
 PR #135 (branch `claude/krauset-row-performance-ys6c4d`): keyed-tbody clear,
 per-item selection (no per-row `computed`), deferred `tracked()` disposal
 queue (`packages/kernel/src/react/disposal-queue.ts` — reusable by D2/D3).
+
+## P2-null — Profiler wrapper removal (measured flat, kept)
+
+The app wraps everything in `<Profiler id="app" onRender={...}>` — the only
+implementation in the comparison carrying one, and it ships in the submitted
+`main.tsx`. Hypothesis: per-commit overhead nobody else pays. Measured
+(10 app-mode interleaved pairs, HEAD vs Profiler removed): weighted total
++0.6%, 4/10, nothing near significance on any benchmark. React's production
+build strips profiling hooks — `onRender` never fires and the Profiler is a
+single pass-through fiber. Kept: it costs nothing and feeds dev tooling.
