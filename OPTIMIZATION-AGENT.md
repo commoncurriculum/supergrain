@@ -72,7 +72,34 @@ pnpm perf:profile
 # Analyze CPU profiles (top functions by self time)
 pnpm perf:analyze           # all benchmarks
 pnpm perf:analyze create-1k # specific benchmark
+
+# Interleaved A/B between two prebuilt kernel dists (drift-proof; see below)
+pnpm perf:ab --control <dist-dir> --experiment <dist-dir> --runs 10
 ```
+
+### Interleaved A/B vs. block-mode stats
+
+`perf:stats` runs one build N times, then the other N times. That confounds "the
+code changed" with "the machine changed" — on a busy machine the drift between
+the two blocks can exceed the effect you are measuring.
+
+`perf:ab` alternates the two builds within one time window, flipping the order
+each pair, and compares within pairs so drift cancels. Use it whenever the
+expected effect is smaller than the machine's hour-to-hour variation, and read
+the paired median delta and win count rather than absolute milliseconds.
+
+`perf:ab` has two modes: `--mode kernel` (default) swaps prebuilt kernel dists
+and rebuilds the app every run — isolates a kernel change, blind to app
+changes. `--mode app` swaps complete prebuilt `js-krauset/dist` bundles —
+measures the full difference between two builds.
+
+The `Benchmark` GitHub Actions workflow (`.github/workflows/benchmark.yml`) runs
+`--mode app` automatically on every PR commit: it builds the complete app
+(kernel + benchmark app) at the PR head and at the base branch, runs 10
+interleaved pairs, and posts the table as a sticky PR comment (stamped with the
+measured head SHA). It skips itself when the two bundles are byte-identical. CI
+runners are noisy, so treat that job as a regression tripwire — a borderline
+result there means "measure it properly on a quiet machine", not "no effect".
 
 ## Workflow for Each Optimization
 
@@ -216,7 +243,8 @@ Note: The build is unminified (`minify: false` in vite.config.ts) so `pnpm perf:
 ## Rules
 
 - **NEVER write custom benchmark scripts.** Use `perf.test.ts` and the pnpm commands above.
-- **NEVER dismiss consistent results as noise.** If it's consistently higher across 15 runs, it's real.
+- **NEVER dismiss consistent results as noise.** If it's consistently higher across 15 runs, it's real — but "real in the harness" is not the same as "added script cost": see the GC-aliasing rule below.
+- **BEWARE GC aliasing when a change alters allocation volume.** Reducing allocations can produce a reproducible, interleave-surviving "regression" on churn-heavy benchmarks (create-1k, partial update): less garbage per cycle shifts where V8's scavenge lands relative to the measured window. Proven on 2026-07-27 (`notes/performance/elements-signal-plan.md`, D1 verdict): a change that strictly removed work showed create-1k +18-36% free-running, and exactly 0% with a forced pre-trace GC. Disambiguation protocol: (1) interleave the two builds (alternate kernel `dist/` within one time window — block-mode brackets can't separate drift from code); (2) if a churn benchmark regresses, rerun the interleave for that benchmark with `PROFILE=1` (which forces `HeapProfiler.collectGarbage` before tracing) via `vitest run --config vitest.dist.config.ts src/perf.test.ts -t "<name>"`; profiler overhead is symmetric. If the regression vanishes under forced GC, it is aliasing — judge it on the weighted total and say so in the writeup, since the official harness may or may not reproduce it.
 - **NEVER skip the 15-run statistical comparison.** Single runs are meaningless for decision-making.
 - **NEVER stack changes.** Each experiment is measured independently against baseline.
 - **SSR must always work.** Never assume client-only.

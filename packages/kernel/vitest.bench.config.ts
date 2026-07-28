@@ -1,14 +1,15 @@
 import react from "@vitejs/plugin-react";
-import { playwright } from "@vitest/browser-playwright";
 import { resolve } from "path";
 import { defineConfig } from "vitest/config";
+
+import { playwrightProvider } from "../../vitest.playwright";
 
 export default defineConfig({
   plugins: [react()],
   test: {
     browser: {
       enabled: true,
-      provider: playwright(),
+      provider: playwrightProvider(),
       headless: true,
       instances: [
         {

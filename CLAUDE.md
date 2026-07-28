@@ -128,6 +128,19 @@ pnpm perf:stats optimized 15
 pnpm perf:compare baseline optimized
 ```
 
+**Interleaved A/B** (drift-proof — prefer this when the expected effect is small, or the machine is busy):
+
+```bash
+# Snapshot the two kernel builds you want to compare, then:
+pnpm perf:ab --control <dist-dir> --experiment <dist-dir> --runs 10
+```
+
+Alternates the two prebuilt `packages/kernel/dist` directories within a single time window (flipping the order each pair) and compares within pairs, so machine drift cancels instead of being attributed to the code. Reports a paired median delta, a win count, and an exact sign test. Read those, not the absolute milliseconds.
+
+`--mode app` swaps complete prebuilt `js-krauset/dist` bundles instead (no rebuild between runs) — use it to A/B app-level changes, or two full builds.
+
+This also runs in CI on every PR commit via `.github/workflows/benchmark.yml`, which builds the complete app (kernel + benchmark app) at the PR head and at the base branch and posts the table as a sticky PR comment, stamped with the measured head SHA. It skips itself when the two bundles come out byte-identical.
+
 **CPU profiling** (function-level flame graphs + heap tracking — adds overhead, do NOT use for timing):
 
 ```bash

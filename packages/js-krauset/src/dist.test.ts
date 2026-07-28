@@ -30,7 +30,12 @@ describe("dist validation (isKeyed mirror)", () => {
     const { server, baseUrl } = await startServer();
     ctx.server = server;
     ctx.baseUrl = baseUrl;
-    ctx.browser = await chromium.launch({ headless: true });
+    // CHROMIUM_EXECUTABLE_PATH lets environments with a pre-installed browser
+    // (e.g. remote CI sandboxes) run without `playwright install`.
+    ctx.browser = await chromium.launch({
+      headless: true,
+      executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
+    });
   }, 30000);
 
   afterAll(async () => {

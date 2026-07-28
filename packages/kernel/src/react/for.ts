@@ -1,5 +1,10 @@
 import { effect as alienEffect, unwrap, getNodesIfExist, $TRACK } from "@supergrain/kernel";
-import { getActiveSub, setActiveSub, type ReactiveTagged } from "@supergrain/kernel/internal";
+import {
+  getActiveSub,
+  setActiveSub,
+  trackArrayElements,
+  type ReactiveTagged,
+} from "@supergrain/kernel/internal";
 import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 /* c8 ignore start -- the React project runs in a browser; this branch is for SSR consumers */
@@ -84,6 +89,10 @@ export const For = tracked((props: ForProps<unknown>) => {
   // O(1) swap effect — only when parent ref is provided.
   // No deps array: must re-create the alien-signals effect on every For render
   // so it captures the latest `raw` array reference after structural changes.
+  // (A deps-based version was tried and rejected — post-$ELEMENTS the effect
+  // has ONE dependency, so re-creation costs ~2 graph ops and reuse measured
+  // flat while adding a render-phase snapshot write and an emptiness-
+  // transition dep. See notes/failed-approaches/for-swap-effect-deps.md.)
   useIsomorphicLayoutEffect(() => {
     if (!parent) {
       return;
@@ -99,15 +108,11 @@ export const For = tracked((props: ForProps<unknown>) => {
     prevRawRef.current = [...raw];
 
     const cleanup = alienEffect(() => {
-      const nodes = getNodesIfExist(raw);
-      for (let i = 0; i < raw.length; i++) {
-        const node = nodes?.[i];
-        if (node) {
-          node();
-        } else {
-          void each[i];
-        }
-      }
+      // One array-level subscription covers in-place element replacement at
+      // every index — see trackArrayElements. Structural changes (push,
+      // splice, length, new array) re-render For via $TRACK/ownKeys, which
+      // re-creates this effect, so they don't need to be observed here.
+      trackArrayElements(raw);
 
       const prev = prevRawRef.current;
       const container = parent.current;

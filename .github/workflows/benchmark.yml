@@ -1,0 +1,181 @@
+name: Benchmark
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Interleaved pairs to run (each pair = one base run + one PR run)"
+        required: false
+        default: "10"
+
+# A benchmark run takes tens of minutes. If someone pushes again while one is in
+# flight, the older run is measuring code nobody is looking at any more.
+concurrency:
+  group: benchmark-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  interleaved-ab:
+    name: Interleaved A/B
+    runs-on: ubuntu-latest
+    # Same image the coverage job uses, so the browser matches the rest of CI.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --user 1001
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history so the base branch is available to build the control arm.
+          fetch-depth: 0
+
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.3
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Each arm is a COMPLETE app bundle (kernel + benchmark app), so the
+      # comparison reflects the whole PR — a PR's win can live in the app as
+      # easily as in the kernel, and a kernel-only A/B is blind to the former.
+      - name: Build benchmark app (PR)
+        run: |
+          pnpm --filter @supergrain/kernel build
+          pnpm --filter js-framework-benchmark-react-supergrain build-prod
+          cp -R packages/js-krauset/dist /tmp/app-pr
+
+      - name: Build benchmark app (base)
+        # Interpolated through env rather than straight into the script: `${{ }}`
+        # is pasted in as shell source, so a value carrying shell syntax would be
+        # executed. Nothing here is attacker-controlled today (both inputs need
+        # write access), but the quoted-env form removes the class outright.
+        env:
+          BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
+        run: |
+          BASE="origin/$BASE_REF"
+          # Replace the build inputs outright so files this PR *added* don't
+          # linger in the control build; the checkout restores the rest.
+          rm -rf packages/kernel/src packages/js-krauset/src
+          git checkout "$BASE" -- packages/kernel packages/js-krauset
+          # Older base commits reference a gitignored bootstrap copy instead of
+          # the npm dependency this PR may have introduced; provide it.
+          if [ ! -f packages/js-krauset/css/bootstrap/dist/css/bootstrap.min.css ]; then
+            mkdir -p packages/js-krauset/css/bootstrap
+            cp -R "$(cd packages/js-krauset && node -e "console.log(require('path').dirname(require.resolve('bootstrap/package.json')))")/dist" \
+              packages/js-krauset/css/bootstrap/dist
+          fi
+          pnpm --filter @supergrain/kernel build
+          pnpm --filter js-framework-benchmark-react-supergrain build-prod
+          cp -R packages/js-krauset/dist /tmp/app-base
+          # Restore the PR's state (git clean removes base-only leftovers that
+          # would otherwise linger untracked; ignored dirs are untouched).
+          rm -rf packages/kernel/src packages/js-krauset/src
+          git checkout HEAD -- packages/kernel packages/js-krauset
+          git clean -fdq packages/kernel packages/js-krauset
+
+      # Comparing a build against an identical copy of itself would burn ~40
+      # minutes to measure pure noise, so check first. If the build isn't
+      # byte-reproducible this reports "changed" and we simply benchmark as
+      # normal — the safe direction to fail.
+      - name: Detect whether the app bundle changed
+        id: bundle-diff
+        run: |
+          if diff -r /tmp/app-base /tmp/app-pr > /dev/null 2>&1; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "App bundle is identical to base — skipping the benchmark." \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run interleaved benchmark
+        if: steps.bundle-diff.outputs.changed == 'true'
+        working-directory: packages/js-krauset
+        env:
+          RUNS: ${{ github.event.inputs.runs || '10' }}
+          BASE_REF: ${{ github.base_ref || 'default' }}
+        run: >
+          node perf-ab.ts
+          --mode app
+          --control /tmp/app-base
+          --experiment /tmp/app-pr
+          --runs "$RUNS"
+          --out "$GITHUB_WORKSPACE/benchmark-report.md"
+          --json "$GITHUB_WORKSPACE/benchmark-data.json"
+          --label-control "base ($BASE_REF)"
+          --label-experiment "PR"
+
+      - name: Publish to job summary
+        if: always() && steps.bundle-diff.outputs.changed == 'true'
+        run: cat "$GITHUB_WORKSPACE/benchmark-report.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload raw paired data
+        if: always() && steps.bundle-diff.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            benchmark-report.md
+            benchmark-data.json
+          if-no-files-found: warn
+
+      # Fork PRs get a read-only token, so commenting would fail. Those runs still
+      # publish everything to the job summary and the uploaded artifact.
+      - name: Comment results on the PR
+        if: >
+          steps.bundle-diff.outputs.changed == 'true'
+          && github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- supergrain-benchmark -->';
+            const report = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/benchmark-report.md`, 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            // This comment is edited in place (so it never bumps in the PR
+            // timeline) — stamp it with what was measured and when, or a fresh
+            // result is indistinguishable from a stale one.
+            const pr = context.payload.pull_request;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const stamp = `\n---\n*Measured head \`${pr.head.sha.slice(0, 7)}\` vs base \`${pr.base.ref}\` — ` +
+              `updated ${new Date().toISOString().replace('T', ' ').slice(0, 16)} UTC — [run](${runUrl})*\n`;
+            const body = report + stamp;
+
+            // Update the existing comment rather than stacking a new one per push.
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(
+              (c) => c.user.type === 'Bot' && c.body.includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number, body,
+              });
+            }
