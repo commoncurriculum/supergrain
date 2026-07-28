@@ -73,3 +73,37 @@ controlled GC.
 (alternate kernel dist within one window) and disambiguate any regression
 with the forced-GC variant (`PROFILE=1` + `-t <benchmark>`). The original
 verdict here should not be treated as final.
+
+## Retest (2026-07-27, local quiet machine): REJECTED again — but the original explanation was wrong
+
+Retested on real hardware (macOS arm64, not the drifting cloud VM) with the
+full protocol: 12 interleaved pairs via `perf-ab.ts`, then an 8-pair
+forced-GC interleave on the suspect benchmark.
+
+**Interleaved, free-running (12 pairs):**
+
+- partial update — the benchmark that drove the original rejection at
+  +17.3% mean — measured **−2.7% median, 8/12 pairs improved**. Flat. The
+  original rejection reason did not reproduce; the GC-aliasing suspicion in
+  the addendum above was justified.
+- create many rows (10k): **+13.8% median, 0/12 pairs improved, p<0.001.**
+  A new, unanimous regression that the original session never saw at this
+  size.
+
+**Forced-GC interleave on create-10k (8 pairs, `PROFILE=1` + `-t "create
+many rows"`):** the regression _reverses_ — the variant wins **7/8 pairs**
+(medians 390.4ms vs 412.3ms, ~5% faster). Textbook aliasing fingerprint:
+the variant allocates ~10k fewer signals per create cycle, which shifts
+where V8's scavenge lands relative to the measured window; under
+free-running timing that scheduling shift is charged to the variant.
+
+**Verdict: still rejected, for a corrected reason.** The variant genuinely
+does _less_ true work (forced-GC numbers prove it), but js-framework-benchmark
+measures free-running — GC scheduling included — and under that metric the
+variant loses 13.8% on the highest-weighted benchmark on this machine. The
+original "V8 polymorphism / monomorphic bumpVersion" explanation is
+overturned; the cost is purely GC timing, and it is machine-dependent (D1's
+free-running penalty on create-1k did not reproduce on GitHub CI runners).
+If free-running GC behavior ever changes (different V8 heap tuning,
+different machine class), this is worth one more look — the underlying work
+reduction is real.
