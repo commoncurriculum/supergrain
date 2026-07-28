@@ -402,6 +402,22 @@ Watch for the `tracked-state-reduce-closures.md` trap: this exact family
 measured as pure thermal noise once before — bracket with pre/post baselines
 (protocol below) and reject anything inside the bracket.
 
+### D4 verdict (2026-07-27, local quiet machine): CLOSED without implementation — premise contradicted by profiles
+
+`pnpm perf:profile` + `perf:analyze` at HEAD (both before and after P1): no
+supergrain function appears in any benchmark's top self-time, and GC is
+≤3% everywhere (1.6% of post-P1 create-10k). The section's premise — GC
+pressure from `tracked()` allocations material at 10k — is not what the
+profiler sees on real hardware; the session-VM "~15ms GC on create-1k"
+attribution did not survive re-measurement. Two further strikes:
+the lazy-version retest (`notes/failed-approaches/
+lazy-version-signal-and-weakmap-skip.md`) showed allocation _reduction_
+scoring **worse** under free-running timing via GC aliasing, and D3 — the
+adjacent mount-path trim — implemented cleanly and measured flat. A 1-3%
+hypothesis with its mechanism contradicted and its family 0-for-2 does not
+justify another implement-measure-revert cycle. Reopen only if a profile
+shows GC or a kernel function ≥5% of a benchmark's self-time.
+
 ---
 
 ## D5 — Refresh the official submission (mechanical, guaranteed)
