@@ -55,7 +55,12 @@ function scheduleFlush(): void {
 }
 /* c8 ignore stop */
 
-/** Queue an effect disposer to run after the next paint. */
+/**
+ * Queue an effect disposer to run off the paint-critical path — normally in
+ * the first macrotask after the next paint, but the 100ms backstop (hidden
+ * documents, environments without rAF) may fire without any paint occurring.
+ * The guarantee is "deferred, always runs", not "a paint happened first".
+ */
 export function scheduleDisposal(dispose: () => void): void {
   queue.push(dispose);
   if (!scheduled) {
