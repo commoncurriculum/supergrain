@@ -206,3 +206,66 @@ describe("undo — sibling writes under a created branch stay conflict-free", ()
     expect(unwrap(store)).toEqual(initial);
   });
 });
+
+// The covering entry doesn't always come first: an out-of-bounds index write
+// forces a whole-array restore that can arrive *after* granular entries under
+// the same array. The stale snapshot (earlier ops already wrote into it) must
+// absorb those entries, not conflict with them.
+describe("undo — whole-array snapshots arriving after granular entries", () => {
+  it("in-bounds write, then out-of-bounds growth of the same array", () => {
+    const { undo } = roundTrip({ arr: [10, 20, 30] } as Record<string, unknown>, {
+      $set: { "arr.2": 99, "arr.5": 77 },
+    });
+    expect(undo).toEqual({ $set: { arr: [10, 20, 30] } });
+  });
+
+  it("out-of-bounds growth, then in-bounds write (covering entry first)", () => {
+    const { undo } = roundTrip({ arr: [10, 20, 30] } as Record<string, unknown>, {
+      $set: { "arr.5": 77, "arr.2": 99 },
+    });
+    expect(undo).toEqual({ $set: { arr: [10, 20, 30] } });
+  });
+
+  it("two out-of-bounds writes collapse to one snapshot", () => {
+    const { undo } = roundTrip({ arr: [1] } as Record<string, unknown>, {
+      $set: { "arr.3": 7, "arr.6": 8 },
+    });
+    expect(undo).toEqual({ $set: { arr: [1] } });
+  });
+
+  it("absorbs a write nested inside an element", () => {
+    const { undo } = roundTrip({ arr: [{ t: [1, 2] }] } as Record<string, unknown>, {
+      $set: { "arr.0.t.1": 9, "arr.5": 3 },
+    });
+    expect(undo).toEqual({ $set: { arr: [{ t: [1, 2] }] } });
+  });
+
+  it("absorbs a granular array inverse inside an element", () => {
+    const { undo } = roundTrip({ arr: [{ t: [1, 2] }] } as Record<string, unknown>, {
+      $pull: { "arr.0.t": 2 },
+      $push: { "arr.3": 9 },
+    });
+    expect(undo).toEqual({ $set: { arr: [{ t: [1, 2] }] } });
+  });
+
+  it("growth through an out-of-bounds *intermediate* index absorbs too", () => {
+    const { undo } = roundTrip({ arr: [{ t: 1 }] } as Record<string, unknown>, {
+      $set: { "arr.0.t": 2, "arr.4.u": 3 },
+    });
+    expect(undo).toEqual({ $set: { arr: [{ t: 1 }] } });
+  });
+
+  it("a scattered $pull on a nested array restores the outer array", () => {
+    const { undo } = roundTrip({ arr: [{ t: [1, 2, 3] }] } as Record<string, unknown>, {
+      $pull: { "arr.0.t": { $in: [1, 3] } },
+    });
+    expect(undo).toEqual({ $set: { arr: [{ t: [1, 2, 3] }] } });
+  });
+
+  it("absorbs an $unset entry (a field the update created inside an element)", () => {
+    const { undo } = roundTrip({ arr: [{}] } as Record<string, unknown>, {
+      $set: { "arr.0.x": 1, "arr.5": 2 },
+    });
+    expect(undo).toEqual({ $set: { arr: [{}] } });
+  });
+});

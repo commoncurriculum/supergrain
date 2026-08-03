@@ -14,12 +14,12 @@ export function $pop(context: OperatorContext, operations: Record<string, 1 | -1
     }
     if (direction === -1) {
       const removed = cloneValue(arr[0]);
+      undoPushSpec(context.undo, context.raw, path, { $each: [removed], $position: 0 });
       removeIndices(arr, (index) => index === 0);
-      undoPushSpec(context.undo, path, { $each: [removed], $position: 0 });
     } else {
       const removed = cloneValue(arr[arr.length - 1]);
+      undoPushSpec(context.undo, context.raw, path, removed);
       removeIndices(arr, (index) => index === arr.length - 1);
-      undoPushSpec(context.undo, path, removed);
     }
   });
 }

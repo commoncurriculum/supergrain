@@ -2,7 +2,7 @@ import { setProperty } from "@supergrain/kernel/internal";
 
 import { applyPushModifiers, parsePushSpec, pushToArray, resolveArrayTarget } from "../array-ops";
 import { setValueAtPath } from "../path";
-import { capturePathUndo, undoSet, undoTruncate } from "../undo";
+import { capturePathUndo, undoSetArray, undoTruncate } from "../undo";
 import { cloneValue, isEqual } from "../util";
 import { eachPath, type OperatorContext, pathWriteOptions } from "./shared";
 
@@ -31,8 +31,11 @@ export function $push(context: OperatorContext, operations: Record<string, any>)
         return; // no-op
       }
       const previousLength = arr.length;
+      undoTruncate(context.undo, context.raw, path, {
+        length: previousLength,
+        count: items.length,
+      });
       pushToArray(arr, items);
-      undoTruncate(context.undo, path, { length: previousLength, count: items.length });
       return;
     }
 
@@ -44,7 +47,7 @@ export function $push(context: OperatorContext, operations: Record<string, any>)
     if (isEqual(next, previousArray)) {
       return; // no-op
     }
+    undoSetArray(context.undo, context.raw, path, previousArray);
     setProperty(target.parent, target.key, next);
-    undoSet(context.undo, path, previousArray);
   });
 }

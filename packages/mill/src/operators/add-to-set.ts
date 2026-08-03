@@ -36,7 +36,10 @@ export function $addToSet(context: OperatorContext, operations: Record<string, a
     }
 
     const previousLength = target.arr.length;
+    undoTruncate(context.undo, context.raw, path, {
+      length: previousLength,
+      count: newItems.length,
+    });
     pushToArray(target.arr, newItems);
-    undoTruncate(context.undo, path, { length: previousLength, count: newItems.length });
   });
 }

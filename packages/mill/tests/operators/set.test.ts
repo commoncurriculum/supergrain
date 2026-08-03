@@ -1,6 +1,7 @@
 import { createReactive, effect } from "@supergrain/kernel";
 import { describe, it, expect, vi } from "vitest";
 
+import { update } from "../../src";
 import { applyWithUndo } from "../helpers";
 
 describe("MongoDB Style Operators", () => {
@@ -80,6 +81,16 @@ describe("MongoDB Style Operators", () => {
     const { rewindAndAssertRestored } = applyWithUndo(store, {}, { $set: { "items.1": 20 } });
     expect(store.items).toEqual([1, 20, 3]);
     rewindAndAssertRestored();
+  });
+
+  it("$set rejects a non-index field on an array, like MongoDB", () => {
+    const store = createReactive<any>({ b: [1, 2] });
+    expect(() => update(store, {}, { $set: { "b.c": 3 } })).toThrow(
+      "Cannot create field 'c' in element {b: [1,2]}.",
+    );
+    expect(() => update(store, {}, { $set: { "b.c.d": 3 } })).toThrow(
+      "Cannot create field 'c' in element {b: [1,2]}.",
+    );
   });
 
   it("$set fires effects subscribed to the written path and not to siblings", () => {

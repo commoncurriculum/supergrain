@@ -182,6 +182,13 @@ export function ensureParentPath(
 
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i]!;
+    // An array only has index fields: Mongo rejects stepping into one via a
+    // non-index segment rather than creating a string key on the array.
+    if (Array.isArray(current) && !isArrayIndex(part)) {
+      throw new TypeError(
+        `Cannot create field '${part}' in element {${parts[i - 1]}: ${JSON.stringify(current)}}.`,
+      );
+    }
     const existing = (current as any)[part];
     // A `null` intermediate is normally a hard error (Mongo can't create a
     // field inside null); with `allowNullIntermediates` it's treated as absent
@@ -217,7 +224,14 @@ export function setValueAtPath(
   options: PathWriteOptions,
 ): void {
   const { parent, key } = ensureParentPath(target, path, options);
-  if (Array.isArray(parent) && isArrayIndex(key)) {
+  if (Array.isArray(parent)) {
+    // An array only has index fields — Mongo rejects a non-index leaf.
+    if (!isArrayIndex(key)) {
+      const parentSegment = splitPath(path).at(-2);
+      throw new TypeError(
+        `Cannot create field '${key}' in element {${parentSegment}: ${JSON.stringify(parent)}}.`,
+      );
+    }
     // Writing past the end grows the array; Mongo pads the gap with null rather
     // than leaving holes. e.g. [1] + "scores.3" -> [1, null, null, 4].
     for (let i = parent.length; i < Number(key); i++) {

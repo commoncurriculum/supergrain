@@ -1,4 +1,4 @@
-import { isArrayIndex, pathCovers, splitPath } from "./path";
+import { getValueAtPath, isArrayIndex, pathCovers, splitPath } from "./path";
 import { cloneValue, isContainer } from "./util";
 
 // ─── undo accumulation ──────────────────────────────────────────────────────
@@ -6,8 +6,27 @@ import { cloneValue, isContainer } from "./util";
 // The undo document only ever needs four operators to invert anything: `$set`
 // and `$unset` for scalar/whole-value restores, and `$push`/`$pop` for the
 // fine-grained array inverses. Array edits whose inverse can't be expressed by
-// a single granular operator (a scattered `$pull`, a `$sort`) fall back to
-// `$set`-ing the whole prior array.
+// a single granular operator (a scattered `$pull`, a `$sort`, any op on an
+// array nested inside another array) fall back to `$set`-ing the whole prior
+// array.
+//
+// The undo document must itself be a legal Mongo update, so no entry's path may
+// prefix another's. Recording happens before each op mutates, and two rules
+// keep the accumulated entries conflict-free:
+//
+//   - An entry covered by an existing entry at an ancestor path is skipped —
+//     that ancestor already restores the whole region.
+//   - A whole-array restore can also arrive *after* entries beneath it (an
+//     out-of-bounds index write following an in-bounds one). Its clone of the
+//     array is stale — earlier ops already wrote into it — but each such write
+//     left an entry holding the original value, so absorbing those entries
+//     into the clone reproduces the pristine array (and dropping them removes
+//     the conflict).
+//
+// Absorption only ever meets `$set`/`$unset` entries: a granular `$push`/`$pop`
+// inverse whose own path runs through an ancestor array is recorded as that
+// array's whole-array restore instead, so no granular entry can sit beneath an
+// array for a later restore to collide with.
 
 export interface MutableUndo {
   $set?: Record<string, unknown>;
@@ -16,10 +35,6 @@ export interface MutableUndo {
   $pop?: Record<string, 1 | -1>;
 }
 
-/**
- * Don't record undo ops for ops that will already be undone by an op at an
- * ancestor path. Otherwise we get a conflict.
- */
 function coveredByExistingEntry(undo: MutableUndo, path: string): boolean {
   for (const existingOps of Object.values(undo)) {
     for (const existingOpPath of Object.keys(existingOps as Record<string, unknown>)) {
@@ -41,28 +56,102 @@ export function undoUnset(undo: MutableUndo, path: string): void {
   (undo.$unset ??= {})[path] = "";
 }
 
-export function undoPushSpec(undo: MutableUndo, path: string, spec: unknown): void {
-  if (coveredByExistingEntry(undo, path)) return;
+/**
+ * Record a granular `$push` inverse. Falls back to restoring the outer array
+ * when `path` runs through one.
+ */
+export function undoPushSpec(undo: MutableUndo, raw: object, path: string, spec: unknown): void {
+  if (escalateThroughAncestorArray(undo, raw, path)) return;
   (undo.$push ??= {})[path] = spec;
 }
 
-export function undoPop(undo: MutableUndo, path: string, direction: 1 | -1): void {
-  if (coveredByExistingEntry(undo, path)) return;
-  (undo.$pop ??= {})[path] = direction;
+/**
+ * Record the inverse of replacing the whole array at `path` (edits no granular
+ * operator can invert). Falls back to restoring the outer array when `path`
+ * runs through one.
+ */
+export function undoSetArray(
+  undo: MutableUndo,
+  raw: object,
+  path: string,
+  previousArray: Array<unknown>,
+): void {
+  if (escalateThroughAncestorArray(undo, raw, path)) return;
+  undoSet(undo, path, previousArray);
 }
 
-// Undo of an append: truncate the array back to its prior length. A single
-// appended element pops cleanly; multiple use `$push` with an empty `$each` and
-// a `$slice` truncation — both standard Mongo.
+/**
+ * Record the inverse of an append: truncate back to the prior length — `$pop`
+ * for one element, `$push` with an empty `$each` and a `$slice` for several.
+ * Falls back to restoring the outer array when `path` runs through one.
+ */
 export function undoTruncate(
   undo: MutableUndo,
+  raw: object,
   path: string,
   append: { length: number; count: number },
 ): void {
+  if (escalateThroughAncestorArray(undo, raw, path)) return;
   if (append.count === 1) {
-    undoPop(undo, path, 1);
+    (undo.$pop ??= {})[path] = 1;
   } else {
-    undoPushSpec(undo, path, { $each: [], $slice: append.length });
+    (undo.$push ??= {})[path] = { $each: [], $slice: append.length };
+  }
+}
+
+// A granular inverse recorded beneath an array would conflict with — and could
+// not be absorbed into — a later whole-restore of that array, so record the
+// array's restore instead. False when `path` reaches its target through
+// objects only. Callers record against a resolved, existing array target, so
+// every ancestor is a container.
+function escalateThroughAncestorArray(undo: MutableUndo, raw: object, path: string): boolean {
+  const parts = splitPath(path);
+  let current: unknown = raw;
+  for (let i = 1; i < parts.length; i++) {
+    current = (current as Record<string, unknown>)[parts[i - 1]!];
+    if (Array.isArray(current)) {
+      undoArraySnapshot(undo, raw, parts.slice(0, i));
+      return true;
+    }
+  }
+  return false;
+}
+
+// Whole-array restore at `parts` (the array's own path), absorbing any entries
+// already recorded beneath it.
+function undoArraySnapshot(undo: MutableUndo, raw: object, parts: Array<string>): void {
+  const path = parts.join(".");
+  if (coveredByExistingEntry(undo, path)) return;
+  const snapshot = cloneValue(getValueAtPath(raw, path)) as object;
+  absorbCoveredEntries(undo, path, snapshot);
+  (undo.$set ??= {})[path] = snapshot;
+}
+
+// Write the original values held by entries under `arrayPath` back into
+// `snapshot` (a clone of the array's current state), then drop the entries.
+function absorbCoveredEntries(undo: MutableUndo, arrayPath: string, snapshot: object): void {
+  for (const operator of ["$set", "$unset"] as const) {
+    const entries = undo[operator] ?? {};
+    for (const entryPath of Object.keys(entries)) {
+      if (pathCovers(arrayPath, entryPath)) {
+        const relative = splitPath(entryPath.slice(arrayPath.length + 1));
+        let parent: any = snapshot;
+        for (let i = 0; i < relative.length - 1; i++) {
+          parent = parent[relative[i]!];
+        }
+        const key = relative[relative.length - 1]!;
+        if (operator === "$set") {
+          parent[key] = entries[entryPath];
+        } else {
+          delete parent[key];
+        }
+        delete entries[entryPath];
+      }
+    }
+    // MongoDB rejects an update with an empty operator object.
+    if (Object.keys(entries).length === 0) {
+      delete undo[operator];
+    }
   }
 }
 
@@ -88,7 +177,7 @@ export function capturePathUndo(undo: MutableUndo, raw: object, path: string): v
       isArrayIndex(segment) &&
       Number(segment) >= current.length
     ) {
-      undoSet(undo, parts.slice(0, i).join("."), cloneValue(current));
+      undoArraySnapshot(undo, raw, parts.slice(0, i));
       return;
     }
     if (
@@ -119,7 +208,7 @@ export function capturePathUndo(undo: MutableUndo, raw: object, path: string): v
     Number(leafKey) >= current.length &&
     parts.length > 1
   ) {
-    undoSet(undo, parts.slice(0, -1).join("."), cloneValue(current));
+    undoArraySnapshot(undo, raw, parts.slice(0, -1));
     return;
   }
 

@@ -1,7 +1,7 @@
 import { isContiguousAscending, removeIndices, resolveArrayTarget } from "../array-ops";
 import { getValueAtPath, hasValueAtPath, setValueAtPath } from "../path";
 import { type ArrayFilter, type Query, resolvePaths } from "../query";
-import { capturePathUndo, type MutableUndo, undoPushSpec, undoSet } from "../undo";
+import { capturePathUndo, type MutableUndo, undoPushSpec, undoSetArray } from "../undo";
 import { cloneValue, describeValue, isEqual } from "../util";
 
 // Shared execution context + helpers used by every operator. Each operator
@@ -110,13 +110,15 @@ export function removeByPredicate(
     return; // no-op
   }
 
-  const previousArray = cloneValue(arr) as Array<any>;
+  if (isContiguousAscending(removedIndices)) {
+    undoPushSpec(context.undo, context.raw, path, {
+      $each: removedValues,
+      $position: removedIndices[0],
+    });
+  } else {
+    undoSetArray(context.undo, context.raw, path, cloneValue(arr) as Array<any>);
+  }
+
   const removedSet = new Set(removedIndices);
   removeIndices(arr, (index) => removedSet.has(index));
-
-  if (isContiguousAscending(removedIndices)) {
-    undoPushSpec(context.undo, path, { $each: removedValues, $position: removedIndices[0] });
-  } else {
-    undoSet(context.undo, path, previousArray);
-  }
 }
