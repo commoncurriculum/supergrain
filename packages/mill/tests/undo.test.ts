@@ -153,3 +153,56 @@ describe("undo — no-ops produce no undo", () => {
     expect(undo).toEqual({});
   });
 });
+
+// The undo document must itself be a legal update document. When several paths
+// share a branch the update has to create, the first one captures the whole
+// missing branch and the rest are redundant — emitting them anyway produced an
+// undo that `update()` refused to replay ("would create a conflict between
+// paths ...").
+describe("undo — sibling writes under a created branch stay conflict-free", () => {
+  it("collapses to the created branch for two $set siblings", () => {
+    const { undo } = roundTrip({} as Record<string, unknown>, {
+      $set: { "rel.course": { id: "c1" }, "rel.planbook": { id: "p1" } },
+    });
+    expect(undo).toEqual({ $unset: { rel: "" } });
+  });
+
+  it("collapses across a deeper shared branch", () => {
+    const { undo } = roundTrip({ a: {} } as Record<string, unknown>, {
+      $set: { "a.b.c": 1, "a.b.d": 2 },
+    });
+    expect(undo).toEqual({ $unset: { "a.b": "" } });
+  });
+
+  it("collapses across different operators", () => {
+    const { undo } = roundTrip({} as Record<string, unknown>, {
+      $set: { "rel.course": { id: "c1" } },
+      $inc: { "rel.count": 2 },
+      $push: { "rel.tags": "x" },
+    });
+    expect(undo).toEqual({ $unset: { rel: "" } });
+  });
+
+  it("keeps siblings that do not share a created branch", () => {
+    const { undo } = roundTrip({ rel: {} } as Record<string, unknown>, {
+      $set: { "rel.course": { id: "c1" }, "rel.planbook": { id: "p1" } },
+    });
+    expect(undo).toEqual({ $unset: { "rel.course": "", "rel.planbook": "" } });
+  });
+
+  it("collapses to a null intermediate under allowNullIntermediates", () => {
+    const initial = { rel: null } as Record<string, unknown>;
+    const store = createReactive(structuredClone(initial));
+
+    const { undo } = update(
+      store,
+      {},
+      { $set: { "rel.course": { id: "c1" }, "rel.planbook": { id: "p1" } } },
+      { allowNullIntermediates: true },
+    );
+    expect(undo).toEqual({ $set: { rel: null } });
+
+    update(store, {}, undo, { allowNullIntermediates: true });
+    expect(unwrap(store)).toEqual(initial);
+  });
+});

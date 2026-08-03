@@ -1,4 +1,4 @@
-import { isArrayIndex, splitPath } from "./path";
+import { isArrayIndex, pathCovers, splitPath } from "./path";
 import { cloneValue, isContainer } from "./util";
 
 // ─── undo accumulation ──────────────────────────────────────────────────────
@@ -16,19 +16,38 @@ export interface MutableUndo {
   $pop?: Record<string, 1 | -1>;
 }
 
+/**
+ * Don't record undo ops for ops that will already be undone by an op at an
+ * ancestor path. Otherwise we get a conflict.
+ */
+function coveredByExistingEntry(undo: MutableUndo, path: string): boolean {
+  for (const existingOps of Object.values(undo)) {
+    for (const existingOpPath of Object.keys(existingOps as Record<string, unknown>)) {
+      if (pathCovers(existingOpPath, path)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function undoSet(undo: MutableUndo, path: string, value: unknown): void {
+  if (coveredByExistingEntry(undo, path)) return;
   (undo.$set ??= {})[path] = value;
 }
 
 export function undoUnset(undo: MutableUndo, path: string): void {
+  if (coveredByExistingEntry(undo, path)) return;
   (undo.$unset ??= {})[path] = "";
 }
 
 export function undoPushSpec(undo: MutableUndo, path: string, spec: unknown): void {
+  if (coveredByExistingEntry(undo, path)) return;
   (undo.$push ??= {})[path] = spec;
 }
 
 export function undoPop(undo: MutableUndo, path: string, direction: 1 | -1): void {
+  if (coveredByExistingEntry(undo, path)) return;
   (undo.$pop ??= {})[path] = direction;
 }
 

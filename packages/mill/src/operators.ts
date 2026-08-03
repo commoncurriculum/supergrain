@@ -20,6 +20,7 @@ import {
   type ArrayPushOperations,
   type ArrayWriteOperations,
   type NumericPathOperations,
+  pathsConflict,
   type SetPathOperations,
   type UnsetPathOperations,
 } from "./path";
@@ -168,24 +169,6 @@ function referencedArrayFilterIdentifiers(operations: UpdateOperations<any>): Se
     }
   }
   return used;
-}
-
-// Two update paths conflict when they're equal or one is a prefix of the other
-// (compared segment by segment) — MongoDB rejects such an update rather than
-// applying both. e.g. "a" conflicts with "a" and "a.b"; "a.b" and "a.c" don't.
-function pathsConflict(a: string, b: string): boolean {
-  if (a === b) {
-    return true;
-  }
-  const aSegments = a.split(".");
-  const bSegments = b.split(".");
-  const shared = Math.min(aSegments.length, bSegments.length);
-  for (let i = 0; i < shared; i++) {
-    if (aSegments[i] !== bSegments[i]) {
-      return false;
-    }
-  }
-  return true; // one path is a prefix of the other
 }
 
 // Reject an update whose operators (or keys) write the same path, or a

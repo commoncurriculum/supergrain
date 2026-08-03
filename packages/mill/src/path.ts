@@ -107,6 +107,32 @@ export function splitPath(path: string): Array<PathSegment> {
   return parts;
 }
 
+/**
+ * Whether `ancestor` covers `path` — they're equal, or `ancestor` names a
+ * segment-wise prefix of `path`, so writing `ancestor` also writes everything
+ * `path` names. e.g. "a" covers "a" and "a.b"; "a.b" covers neither "a" nor
+ * "a.c". Directional: `pathCovers("a.b", "a")` is false.
+ */
+export function pathCovers(ancestor: string, path: string): boolean {
+  // A segment-wise prefix is exactly a string prefix that lands on a separator:
+  // `path` covered by `ancestor` means `path` is `ancestor` + "." + the rest, and
+  // splitting that always reproduces `ancestor`'s segments first. The boundary
+  // check is what keeps "a" from covering "ab". Done on the raw strings so this
+  // stays allocation-free — it runs against every recorded undo entry.
+  return (
+    path.startsWith(ancestor) && (path.length === ancestor.length || path[ancestor.length] === ".")
+  );
+}
+
+/**
+ * Two update paths conflict when either covers the other — MongoDB rejects such
+ * an update rather than applying both. e.g. "a" conflicts with "a" and "a.b";
+ * "a.b" and "a.c" don't.
+ */
+export function pathsConflict(a: string, b: string): boolean {
+  return pathCovers(a, b) || pathCovers(b, a);
+}
+
 export function resolveParentPath(
   target: object,
   path: string,
