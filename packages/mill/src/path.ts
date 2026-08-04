@@ -169,6 +169,12 @@ export interface PathWriteOptions {
   allowNullIntermediates: boolean;
 }
 
+// The `{field: value}` element label used in Mongo-style errors. When the
+// blocking value sits at the document root there is no field name to show.
+function describeElement(segment: string | undefined, value: unknown): string {
+  return segment === undefined ? JSON.stringify(value) : `{${segment}: ${JSON.stringify(value)}}`;
+}
+
 export function ensureParentPath(
   target: object,
   path: string,
@@ -186,7 +192,7 @@ export function ensureParentPath(
     // non-index segment rather than creating a string key on the array.
     if (Array.isArray(current) && !isArrayIndex(part)) {
       throw new TypeError(
-        `Cannot create field '${part}' in element {${parts[i - 1]}: ${JSON.stringify(current)}}.`,
+        `Cannot create field '${part}' in element ${describeElement(parts[i - 1], current)}.`,
       );
     }
     const existing = (current as any)[part];
@@ -227,9 +233,8 @@ export function setValueAtPath(
   if (Array.isArray(parent)) {
     // An array only has index fields — Mongo rejects a non-index leaf.
     if (!isArrayIndex(key)) {
-      const parentSegment = splitPath(path).at(-2);
       throw new TypeError(
-        `Cannot create field '${key}' in element {${parentSegment}: ${JSON.stringify(parent)}}.`,
+        `Cannot create field '${key}' in element ${describeElement(splitPath(path).at(-2), parent)}.`,
       );
     }
     // Writing past the end grows the array; Mongo pads the gap with null rather

@@ -93,6 +93,16 @@ describe("MongoDB Style Operators", () => {
     );
   });
 
+  it("$set rejects a non-index field when the document root is an array", () => {
+    const doc: any = [1, 2];
+    expect(() => update(doc, {}, { $set: { c: 3 } })).toThrow(
+      "Cannot create field 'c' in element [1,2].",
+    );
+    expect(() => update(doc, {}, { $set: { "c.d": 3 } })).toThrow(
+      "Cannot create field 'c' in element [1,2].",
+    );
+  });
+
   it("$set fires effects subscribed to the written path and not to siblings", () => {
     const store = createReactive({ a: 1, b: 2 });
     const aFn = vi.fn(() => void store.a);
