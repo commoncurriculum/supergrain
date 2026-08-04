@@ -269,15 +269,42 @@ describe("undo — whole-array snapshots arriving after granular entries", () =>
     expect(undo).toEqual({ $set: { arr: [{}] } });
   });
 
-  // Mongo paths can't name a key that is empty or contains a dot, so an object
-  // holding one can only be restored wholesale. Plain update() here — the
-  // mongod oracle's tolerance for dotted keys varies by server version.
-  it("an object holding a dotted key restores wholesale", () => {
-    const initial = { a: { "x.y": 1, b: 2 } } as Record<string, unknown>;
+  it("a positional write alongside an index write restores both", () => {
+    const initial = { items: [{ k: 1, x: 0, y: 0 }] } as Record<string, unknown>;
     const store = createReactive(structuredClone(initial));
-    const { undo } = update(store, {}, { $set: { "a.b": 3 } });
-    expect(undo).toEqual({ $set: { a: { "x.y": 1, b: 2 } } });
+    const { undo } = update(
+      store,
+      { "items.k": 1 } as never,
+      { $set: { "items.$.x": 5, "items.0.y": 6 } } as never,
+    );
     update(store, {}, undo);
     expect(unwrap(store)).toEqual(initial);
+  });
+
+  it("rejects a positional segment at the document root", () => {
+    const store = createReactive<Record<string, unknown>>({ a: 1 });
+    expect(() => update(store, {}, { $set: { "$.x": 1 } } as never)).toThrow();
+    expect(() => update(store, {}, { $set: { $: 1 } } as never)).toThrow();
+  });
+
+  // Mongo paths can't name a key that is empty or contains a dot. A write at a
+  // sibling path restores just itself; replacing the whole object restores it
+  // wholesale rather than descending into the unaddressable key. Plain
+  // update() here — the mongod oracle's tolerance for dotted keys varies by
+  // server version.
+  it("dotted keys: sibling writes restore precisely, replacements wholesale", () => {
+    const initial = { a: { "x.y": 1, b: 2 } } as Record<string, unknown>;
+
+    const sibling = createReactive(structuredClone(initial));
+    const { undo: siblingUndo } = update(sibling, {}, { $set: { "a.b": 3 } });
+    expect(siblingUndo).toEqual({ $set: { "a.b": 2 } });
+    update(sibling, {}, siblingUndo);
+    expect(unwrap(sibling)).toEqual(initial);
+
+    const replaced = createReactive(structuredClone(initial));
+    const { undo: replacedUndo } = update(replaced, {}, { $set: { a: { b: 9 } } });
+    expect(replacedUndo).toEqual({ $set: { a: { "x.y": 1, b: 2 } } });
+    update(replaced, {}, replacedUndo);
+    expect(unwrap(replaced)).toEqual(initial);
   });
 });

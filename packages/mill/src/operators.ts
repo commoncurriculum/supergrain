@@ -25,7 +25,7 @@ import {
   type UnsetPathOperations,
 } from "./path";
 import { type ArrayFilter, arrayFilterIdentifier, type Query } from "./query";
-import { buildUndo, captureOriginals } from "./undo";
+import { buildUndo, planUndo } from "./undo";
 
 /**
  * MongoDB-style update engine for in-memory documents.
@@ -247,7 +247,7 @@ export function update<T extends object>(
     }
   }
 
-  const originals = captureOriginals(raw, operations as Record<string, object>);
+  const plan = planUndo(raw, operations as Record<string, object>);
 
   const context: OperatorContext = {
     raw,
@@ -265,5 +265,5 @@ export function update<T extends object>(
     }
   });
 
-  return { doc, undo: buildUndo(raw, originals) as UpdateOperations<T> };
+  return { doc, undo: buildUndo(raw, plan) as UpdateOperations<T> };
 }
