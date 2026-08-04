@@ -1,6 +1,5 @@
 import { deleteValueAtPath, resolveParentPath, setValueAtPath, splitPath } from "../path";
 import { resolvePaths } from "../query";
-import { capturePathUndo } from "../undo";
 import { isContainer } from "../util";
 import { type OperatorContext, pathWriteOptions } from "./shared";
 
@@ -58,7 +57,7 @@ function planRename(context: OperatorContext, rawFrom: string, rawTo: string): R
     return null; // missing leaf under a real object — Mongo treats this as a no-op
   }
   // An existing destination is overwritten (Mongo removes it and renames the
-  // source onto it); the undo restores it via capturePathUndo below.
+  // source onto it).
   return { from, to, value: source.parent[source.key] };
 }
 
@@ -74,10 +73,6 @@ export function $rename(context: OperatorContext, operations: Record<string, str
   }
 
   for (const { from, to, value } of moves) {
-    // Undo: remove the destination (it didn't exist before) and restore the
-    // source. Capture the destination inverse before creating it.
-    capturePathUndo(context.undo, context.raw, to);
-    capturePathUndo(context.undo, context.raw, from);
     deleteValueAtPath(context.raw, from);
     setValueAtPath(context.raw, to, value, pathWriteOptions(context));
   }

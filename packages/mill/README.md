@@ -142,7 +142,7 @@ The query supports the standard Mongo query operators used to select an element:
 
 - A no-op operation contributes nothing to `undo`.
 - Previous state is restored exactly, including missing-vs-present: a field that was absent is `$unset`, a field that was present is `$set` back.
-- Array inverses use Mongo array operators where one suffices — an append undoes with `$pop`/`$slice`, a `$pop` with `$push`, a contiguous `$pull` with `$push` (`$each`/`$position`). An edit no single array operator can invert (a scattered `$pull`, or an op on an array nested inside another array) falls back to `$set`-ing the prior array.
+- Array inverses use Mongo array operators where one suffices — an append undoes with `$pop`/`$slice`, a `$pop` with `$push`, a contiguous `$pull` with `$push` (`$each`/`$position`). An edit no single array operator can invert (a scattered `$pull`) falls back to `$set`-ing the prior array.
 
 ```ts
 const { undo } = update(doc, {}, { $push: { items: "x" }, $inc: { count: 1 } });

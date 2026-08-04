@@ -226,11 +226,11 @@ describe("undo — whole-array snapshots arriving after granular entries", () =>
     expect(undo).toEqual({ $set: { arr: [10, 20, 30] } });
   });
 
-  it("two out-of-bounds writes collapse to one snapshot", () => {
+  it("two out-of-bounds writes undo with one truncation", () => {
     const { undo } = roundTrip({ arr: [1] } as Record<string, unknown>, {
       $set: { "arr.3": 7, "arr.6": 8 },
     });
-    expect(undo).toEqual({ $set: { arr: [1] } });
+    expect(undo).toEqual({ $push: { arr: { $each: [], $slice: 1 } } });
   });
 
   it("absorbs a write nested inside an element", () => {
@@ -255,17 +255,29 @@ describe("undo — whole-array snapshots arriving after granular entries", () =>
     expect(undo).toEqual({ $set: { arr: [{ t: 1 }] } });
   });
 
-  it("a scattered $pull on a nested array restores the outer array", () => {
+  it("a scattered $pull on a nested array restores that array precisely", () => {
     const { undo } = roundTrip({ arr: [{ t: [1, 2, 3] }] } as Record<string, unknown>, {
       $pull: { "arr.0.t": { $in: [1, 3] } },
     });
-    expect(undo).toEqual({ $set: { arr: [{ t: [1, 2, 3] }] } });
+    expect(undo).toEqual({ $set: { "arr.0.t": [1, 2, 3] } });
   });
 
-  it("absorbs an $unset entry (a field the update created inside an element)", () => {
+  it("a field created inside an element restores with the whole array", () => {
     const { undo } = roundTrip({ arr: [{}] } as Record<string, unknown>, {
       $set: { "arr.0.x": 1, "arr.5": 2 },
     });
     expect(undo).toEqual({ $set: { arr: [{}] } });
+  });
+
+  // Mongo paths can't name a key that is empty or contains a dot, so an object
+  // holding one can only be restored wholesale. Plain update() here — the
+  // mongod oracle's tolerance for dotted keys varies by server version.
+  it("an object holding a dotted key restores wholesale", () => {
+    const initial = { a: { "x.y": 1, b: 2 } } as Record<string, unknown>;
+    const store = createReactive(structuredClone(initial));
+    const { undo } = update(store, {}, { $set: { "a.b": 3 } });
+    expect(undo).toEqual({ $set: { a: { "x.y": 1, b: 2 } } });
+    update(store, {}, undo);
+    expect(unwrap(store)).toEqual(initial);
   });
 });

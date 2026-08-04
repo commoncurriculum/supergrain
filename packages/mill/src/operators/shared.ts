@@ -1,16 +1,15 @@
-import { isContiguousAscending, removeIndices, resolveArrayTarget } from "../array-ops";
+import { removeIndices, resolveArrayTarget } from "../array-ops";
 import { getValueAtPath, hasValueAtPath, setValueAtPath } from "../path";
 import { type ArrayFilter, type Query, resolvePaths } from "../query";
-import { capturePathUndo, recordInverse, type Undo } from "../undo";
-import { cloneValue, describeValue, isEqual } from "../util";
+import { describeValue, isEqual } from "../util";
 
 // Shared execution context + helpers used by every operator. Each operator
-// receives the unwrapped document, the undo accumulator, and the query +
-// arrayFilters needed to resolve positional paths.
+// receives the unwrapped document and the query + arrayFilters needed to
+// resolve positional paths. Undo is derived outside the operators (see
+// undo.ts), so they only mutate.
 
 export interface OperatorContext {
   raw: object;
-  undo: Undo;
   query: Query;
   arrayFilters: ReadonlyArray<ArrayFilter>;
   // When set, `null` intermediates/targets are treated as absent — created for
@@ -78,15 +77,12 @@ export function writeNumeric(context: OperatorContext, path: string, write: Nume
   if (hasValueAtPath(context.raw, path) && isEqual(previous, next)) {
     return; // no-op
   }
-  capturePathUndo(context.undo, context.raw, path);
   setValueAtPath(context.raw, path, next, pathWriteOptions(context));
 }
 
 // ─── array removal ($pull / $pullAll) ───────────────────────────────────────
 
-// Remove every element matching `op.matches`, recording the fine-grained
-// inverse: a contiguous run re-inserts as one `$push` at its original index; a
-// scattered removal falls back to `$set`-ing the whole prior array.
+// Remove every element matching `op.matches`.
 export function removeByPredicate(
   context: OperatorContext,
   path: string,
@@ -97,46 +93,14 @@ export function removeByPredicate(
     return; // absent field — Mongo no-ops $pull / $pullAll
   }
 
-  const removedIndices: Array<number> = [];
-  const removedValues: Array<unknown> = [];
+  const removedIndices = new Set<number>();
   for (let i = 0; i < arr.length; i++) {
     if (op.matches(arr[i])) {
-      removedIndices.push(i);
-      removedValues.push(cloneValue(arr[i]));
+      removedIndices.add(i);
     }
   }
-
-  if (removedIndices.length === 0) {
+  if (removedIndices.size === 0) {
     return; // no-op
   }
-
-  if (isContiguousAscending(removedIndices)) {
-    recordInverse(context.undo, context.raw, path, "$push", {
-      $each: removedValues,
-      $position: removedIndices[0],
-    });
-  } else {
-    recordInverse(context.undo, context.raw, path, "$set", cloneValue(arr));
-  }
-
-  const removedSet = new Set(removedIndices);
-  removeIndices(arr, (index) => removedSet.has(index));
-}
-
-// Undo of an append ($push / $addToSet): truncate the array back to its prior
-// length — `$pop` for a single appended element, `$push` with an empty `$each`
-// and a `$slice` for several. Both standard Mongo.
-export function recordTruncate(
-  context: OperatorContext,
-  path: string,
-  append: { length: number; count: number },
-): void {
-  if (append.count === 1) {
-    recordInverse(context.undo, context.raw, path, "$pop", 1);
-  } else {
-    recordInverse(context.undo, context.raw, path, "$push", {
-      $each: [],
-      $slice: append.length,
-    });
-  }
+  removeIndices(arr, (index) => removedIndices.has(index));
 }

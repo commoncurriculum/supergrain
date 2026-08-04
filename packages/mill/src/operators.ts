@@ -25,7 +25,7 @@ import {
   type UnsetPathOperations,
 } from "./path";
 import { type ArrayFilter, arrayFilterIdentifier, type Query } from "./query";
-import { buildUndoDocument, createUndo } from "./undo";
+import { buildUndo, captureOriginals } from "./undo";
 
 /**
  * MongoDB-style update engine for in-memory documents.
@@ -35,7 +35,7 @@ import { buildUndoDocument, createUndo } from "./undo";
  * and an `undo` — itself a standard Mongo update document — that reverses the
  * exact changes made. There is no mill-specific syntax.
  *
- * The implementation is split by concern: `undo.ts` (inverse accumulation),
+ * The implementation is split by concern: `undo.ts` (undo via snapshot + compare),
  * `array-ops.ts` (in-place array primitives), `query.ts` (positional resolution
  * + matching), `path.ts` (path navigation + typing), and one file per operator
  * under `operators/` over a small shared `operators/shared.ts`. This module just
@@ -221,7 +221,6 @@ export function update<T extends object>(
   options?: UpdateOptions,
 ): UpdateResult<T> {
   const raw = unwrap(doc) as object;
-  const undo = createUndo();
   const arrayFilters = options?.arrayFilters ?? [];
 
   assertNoPathConflicts(operations);
@@ -248,9 +247,10 @@ export function update<T extends object>(
     }
   }
 
+  const originals = captureOriginals(raw, operations as Record<string, object>);
+
   const context: OperatorContext = {
     raw,
-    undo,
     query: query as Query,
     arrayFilters,
     allowNullIntermediates: options?.allowNullIntermediates ?? false,
@@ -265,5 +265,5 @@ export function update<T extends object>(
     }
   });
 
-  return { doc, undo: buildUndoDocument(undo) as UpdateOperations<T> };
+  return { doc, undo: buildUndo(raw, originals) as UpdateOperations<T> };
 }

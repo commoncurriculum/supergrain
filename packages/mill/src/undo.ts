@@ -1,215 +1,186 @@
-import { isArrayIndex, splitPath } from "./path";
-import { cloneValue, isContainer } from "./util";
+import { cloneValue, isEqual } from "./util";
 
-// ─── undo accumulation ──────────────────────────────────────────────────────
+// ─── undo via copy-once, compare-once ───────────────────────────────────────
 //
-// Undo notes are collected in two structures:
-//
-// `shadow` — a tree mirroring the document that records original state: each
-// leaf says "this spot held this value" (emitted as `$set`) or "this spot
-// didn't exist" (emitted as `$unset`). Recording walks down the tree, and the
-// walk stopping at an existing leaf is what keeps the undo document legal
-// (Mongo rejects an update where one path contains another): nothing can be
-// recorded inside a region that is already being restored wholesale, because
-// there is no place in the tree to put it.
-//
-// `inverses` — granular array instructions (an append undoes with `$pop`, a
-// `$pop` with `$push`, ...) recorded by the operators. They are stored and
-// emitted verbatim; only the operator that recorded one knows what it means.
-// An instruction whose path passes through an ancestor array is not recorded —
-// the outer array is snapshotted into `shadow` instead (restoring it undoes
-// the inner edit too). That keeps instructions out of any region a whole-array
-// snapshot could cover, so the two structures never overlap; instructions
-// never overlap each other because update paths are disjoint (checked before
-// anything applies).
+// `update()` copies the top-level fields its paths touch before applying
+// anything, then compares the result against the copies and emits the edits
+// that turn it back. Because the undo document is derived from two settled
+// states in a single walk — which at every spot either descends or emits,
+// never both — its paths can never conflict, no matter what the operators did
+// in between. The operators contain no undo code at all.
 
-type ShadowNode =
-  | { kind: "branch"; children: ShadowChildren }
-  | { kind: "value"; value: unknown }
-  | { kind: "absent" };
-
-type ShadowChildren = Map<string, ShadowNode>;
-
-export interface Undo {
-  shadow: ShadowChildren;
-  inverses: Array<{ operator: string; path: string; operand: unknown }>;
+interface OriginalField {
+  present: boolean;
+  value?: unknown;
 }
 
-export function createUndo(): Undo {
-  return { shadow: new Map(), inverses: [] };
-}
+export type Originals = Map<string, OriginalField>;
 
-// Walk to the map that holds the leaf for `parts`, creating branches along the
-// way. Null when the walk runs into an existing leaf: the region is already
-// being restored wholesale, so there is nothing further to record.
-function childrenFor(shadow: ShadowChildren, parts: ReadonlyArray<string>): ShadowChildren | null {
-  let children = shadow;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const existing = children.get(parts[i]!);
-    if (existing === undefined) {
-      const branch = { kind: "branch", children: new Map<string, ShadowNode>() } as const;
-      children.set(parts[i]!, branch);
-      ({ children } = branch);
-    } else if (existing.kind === "branch") {
-      ({ children } = existing);
-    } else {
-      return null;
+/**
+ * Clone the original state of every top-level field the update can touch —
+ * the first segment of each operator path (and of each `$rename` destination).
+ * Must run before the update mutates the document.
+ */
+export function captureOriginals(raw: object, operations: Record<string, object>): Originals {
+  const originals: Originals = new Map();
+  for (const [operator, payload] of Object.entries(operations)) {
+    for (const [path, target] of Object.entries(payload as Record<string, unknown>)) {
+      captureRoot(originals, raw, path);
+      if (operator === "$rename") {
+        captureRoot(originals, raw, target as string);
+      }
     }
   }
-  return children;
+  return originals;
 }
 
-function recordValue(shadow: ShadowChildren, parts: ReadonlyArray<string>, value: unknown): void {
-  const children = childrenFor(shadow, parts);
-  if (children === null) {
+function captureRoot(originals: Originals, raw: object, path: string): void {
+  const root = path.split(".")[0]!;
+  if (!originals.has(root)) {
+    originals.set(
+      root,
+      Object.hasOwn(raw, root)
+        ? { present: true, value: cloneValue((raw as Record<string, unknown>)[root]) }
+        : { present: false },
+    );
+  }
+}
+
+type UndoDocument = Record<string, Record<string, unknown>>;
+
+/** Compare the mutated document against the originals and emit the undo. */
+export function buildUndo(raw: object, originals: Originals): UndoDocument {
+  const undo: UndoDocument = {};
+  for (const [root, original] of originals) {
+    const present = Object.hasOwn(raw, root);
+    if (!original.present) {
+      if (present) {
+        unset(undo, root);
+      }
+    } else if (present) {
+      restore(undo, root, original.value, (raw as Record<string, unknown>)[root]);
+    } else {
+      set(undo, root, original.value);
+    }
+  }
+  return undo;
+}
+
+function set(undo: UndoDocument, path: string, value: unknown): void {
+  (undo["$set"] ??= {})[path] = value;
+}
+
+function unset(undo: UndoDocument, path: string): void {
+  (undo["$unset"] ??= {})[path] = "";
+}
+
+// Emit the edits that turn `after` (live) back into `before` (a pristine
+// clone). Descend while both sides stay structural so the restore lands on the
+// smallest spots that changed; anything else restores wholesale.
+function restore(undo: UndoDocument, path: string, before: unknown, after: unknown): void {
+  if (Array.isArray(before) && Array.isArray(after)) {
+    restoreArray(undo, path, before, after);
+  } else if (
+    isPlainObject(before) &&
+    isPlainObject(after) &&
+    // A prototype-flavor change (null-prototype replaced by plain, or vice
+    // versa) can only be restored wholesale — patching inside the replacement
+    // would keep its flavor.
+    Object.getPrototypeOf(before) === Object.getPrototypeOf(after) &&
+    keysAddressable(before) &&
+    keysAddressable(after)
+  ) {
+    restoreObject(undo, path, before, after);
+  } else if (!isEqual(before, after)) {
+    set(undo, path, before);
+  }
+}
+
+// Dates, class instances, and null/scalars restore wholesale — only plain
+// (or null-prototype) objects are walked into.
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const proto: unknown = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+// A key that is empty or contains a dot can't be named by a Mongo path, so an
+// object holding one restores wholesale.
+function keysAddressable(value: Record<string, unknown>): boolean {
+  return Object.keys(value).every((key) => /^[^.]+$/u.test(key));
+}
+
+function restoreObject(
+  undo: UndoDocument,
+  path: string,
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): void {
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    const childPath = `${path}.${key}`;
+    if (!Object.hasOwn(before, key)) {
+      unset(undo, childPath);
+    } else if (Object.hasOwn(after, key)) {
+      restore(undo, childPath, before[key], after[key]);
+    } else {
+      set(undo, childPath, before[key]);
+    }
+  }
+}
+
+function restoreArray(
+  undo: UndoDocument,
+  path: string,
+  before: Array<unknown>,
+  after: Array<unknown>,
+): void {
+  if (before.length === after.length) {
+    for (let i = 0; i < before.length; i++) {
+      restore(undo, `${path}.${i}`, before[i], after[i]);
+    }
     return;
   }
-  const key = parts[parts.length - 1]!;
-  const existing = children.get(key);
-  if (existing !== undefined) {
-    if (existing.kind !== "branch") {
-      return; // this exact spot is already restored — the earlier note wins
-    }
-    // A whole-array snapshot arriving after notes about spots inside it (an
-    // out-of-bounds write following an in-bounds one). The snapshot copied the
-    // array *after* those spots were changed, but each note holds the original
-    // value, so writing the notes back into the snapshot reproduces the
-    // pristine array — and replacing the branch consumes them.
-    foldInto(value as object, existing.children);
-  }
-  children.set(key, { kind: "value", value });
-}
 
-function recordAbsent(shadow: ShadowChildren, parts: ReadonlyArray<string>): void {
-  const children = childrenFor(shadow, parts);
-  if (children !== null) {
-    children.set(parts[parts.length - 1]!, { kind: "absent" });
-  }
-}
-
-function foldInto(snapshot: object, children: ShadowChildren): void {
-  for (const [key, node] of children) {
-    if (node.kind === "branch") {
-      foldInto((snapshot as Record<string, object>)[key]!, node.children);
-    } else if (node.kind === "value") {
-      (snapshot as Record<string, unknown>)[key] = node.value;
+  // Elements were appended: truncate back — `$pop` for one, `$slice` for more.
+  if (after.length > before.length && prefixEqual(after, before, before.length)) {
+    if (after.length - before.length === 1) {
+      (undo["$pop"] ??= {})[path] = 1;
     } else {
-      delete (snapshot as Record<string, unknown>)[key];
+      (undo["$push"] ??= {})[path] = { $each: [], $slice: before.length };
     }
+    return;
   }
-}
 
-/**
- * Record a granular array instruction — emitted into the undo document as
- * `{ [operator]: { [path]: operand } }`, uninterpreted. Falls back to
- * snapshotting the outer array when `path` passes through one.
- */
-export function recordInverse(
-  undo: Undo,
-  raw: object,
-  path: string,
-  operator: string,
-  operand: unknown,
-): void {
-  const parts = splitPath(path);
-  let current: unknown = raw;
-  for (let i = 1; i < parts.length; i++) {
-    current = (current as Record<string, unknown>)[parts[i - 1]!];
-    if (Array.isArray(current)) {
-      recordValue(undo.shadow, parts.slice(0, i), cloneValue(current));
-      return;
+  // A contiguous run was removed: push it back where it was. A single element
+  // taken from the end re-appends as a plain `$push`.
+  if (before.length > after.length) {
+    const count = before.length - after.length;
+    let start = 0;
+    while (start < after.length && isEqual(before[start], after[start])) {
+      start++;
     }
-  }
-  undo.inverses.push({ operator, path, operand });
-}
-
-/**
- * Record the note needed to restore the value at `path` before a write.
- * Restores previous state *exactly*, including missing-vs-present: if the
- * write creates an absent branch, the undo `$unset`s the shallowest segment
- * that didn't exist; if it overwrites, the undo `$set`s the prior value back.
- * Must be called before the write is applied.
- */
-export function capturePathUndo(undo: Undo, raw: object, path: string): void {
-  const parts = splitPath(path);
-  let current: any = raw;
-
-  for (let i = 0; i < parts.length - 1; i++) {
-    const segment = parts[i]!;
-    // Growing a (nested) array through an out-of-bounds *intermediate* index
-    // pads it with null; like the leaf case below, the only exact inverse is to
-    // restore the whole prior array rather than $unset a single grown index.
-    if (
-      i > 0 &&
-      Array.isArray(current) &&
-      isArrayIndex(segment) &&
-      Number(segment) >= current.length
-    ) {
-      recordValue(undo.shadow, parts.slice(0, i), cloneValue(current));
-      return;
-    }
-    if (
-      !isContainer(current) ||
-      !Object.hasOwn(current, segment) ||
-      !isContainer((current as any)[segment])
-    ) {
-      const prefix = parts.slice(0, i + 1);
-      if (isContainer(current) && Object.hasOwn(current, segment)) {
-        // A non-container value (e.g. a number) is about to be overwritten by a
-        // freshly-created branch — snapshot it so undo restores it exactly.
-        recordValue(undo.shadow, prefix, cloneValue((current as any)[segment]));
+    if (prefixEqual(after.slice(start), before.slice(start + count), after.length - start)) {
+      const run = before.slice(start, start + count);
+      if (count === 1 && start === after.length) {
+        const [removed] = run;
+        (undo["$push"] ??= {})[path] = removed;
       } else {
-        recordAbsent(undo.shadow, prefix);
+        (undo["$push"] ??= {})[path] = { $each: run, $position: start };
       }
       return;
     }
-    current = (current as any)[segment];
   }
 
-  const leafKey = parts[parts.length - 1]!;
-
-  // Writing past the end of an array grows it (Mongo pads with null). The only
-  // exact, replayable inverse is to restore the whole prior array.
-  if (
-    Array.isArray(current) &&
-    isArrayIndex(leafKey) &&
-    Number(leafKey) >= current.length &&
-    parts.length > 1
-  ) {
-    recordValue(undo.shadow, parts.slice(0, -1), cloneValue(current));
-    return;
-  }
-
-  if (isContainer(current) && Object.hasOwn(current, leafKey)) {
-    recordValue(undo.shadow, parts, cloneValue((current as any)[leafKey]));
-  } else {
-    recordAbsent(undo.shadow, parts);
-  }
+  set(undo, path, before);
 }
 
-/** Emit the collected notes as a flat, conflict-free Mongo update document. */
-export function buildUndoDocument(undo: Undo): Record<string, Record<string, unknown>> {
-  const doc: Record<string, Record<string, unknown>> = {};
-  emit(undo.shadow, "", doc);
-  for (const { operator, path, operand } of undo.inverses) {
-    (doc[operator] ??= {})[path] = operand;
-  }
-  return doc;
-}
-
-function emit(
-  children: ShadowChildren,
-  prefix: string,
-  doc: Record<string, Record<string, unknown>>,
-): void {
-  for (const [key, node] of children) {
-    const path = prefix === "" ? key : `${prefix}.${key}`;
-    if (node.kind === "branch") {
-      emit(node.children, path, doc);
-    } else if (node.kind === "value") {
-      (doc["$set"] ??= {})[path] = node.value;
-    } else {
-      (doc["$unset"] ??= {})[path] = "";
+function prefixEqual(a: Array<unknown>, b: Array<unknown>, length: number): boolean {
+  for (let i = 0; i < length; i++) {
+    if (!isEqual(a[i], b[i])) {
+      return false;
     }
   }
+  return true;
 }
