@@ -142,9 +142,9 @@ export interface UpdateOptions {
    *
    *   - `$set` / `$inc` / `$mul` / `$min` / `$max` / `$rename` build objects
    *     over `null` intermediates instead of throwing.
-   *   - `$inc` / `$mul` / `$min` / `$max` treat a `null` *target* as a missing
-   *     field instead of a type error: `$inc` starts from 0, `$mul` yields 0,
-   *     `$min` / `$max` take the operand.
+   *   - `$inc` / `$mul` / `$min` / `$max` treat a `null` *target* as absent:
+   *     `$inc` starts from 0 and `$mul` yields 0 rather than throwing, while
+   *     `$min` / `$max` take the operand instead of sorting against the `null`.
    *   - `$push` / `$addToSet` create the array when the target (or an
    *     intermediate) is `null`.
    *   - `$pull` / `$pullAll` / `$pop` no-op on a `null` target (exactly as they

@@ -12,4 +12,4 @@ With `allowNullIntermediates: true`, a `null` target is now treated as a missing
 - `$mul` starts from 0, yielding `0`.
 - `$min` / `$max` take the operand instead of keeping the `null`.
 
-Default behavior is unchanged: with the option off, mill still rejects a `null` numeric target exactly as MongoDB does. The generated `undo` restores the prior `null`.
+Default behavior is unchanged: with the option off, `$inc` / `$mul` still reject a `null` target, and `$min` / `$max` still compare against it as a value sorting below every number — exactly as MongoDB does. The generated `undo` restores the prior `null`.
