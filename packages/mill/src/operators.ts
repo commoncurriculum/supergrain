@@ -25,7 +25,7 @@ import {
   type UnsetPathOperations,
 } from "./path";
 import { type ArrayFilter, arrayFilterIdentifier, type Query } from "./query";
-import { type MutableUndo } from "./undo";
+import { buildUndoDocument, createUndo } from "./undo";
 
 /**
  * MongoDB-style update engine for in-memory documents.
@@ -221,7 +221,7 @@ export function update<T extends object>(
   options?: UpdateOptions,
 ): UpdateResult<T> {
   const raw = unwrap(doc) as object;
-  const undo: MutableUndo = {};
+  const undo = createUndo();
   const arrayFilters = options?.arrayFilters ?? [];
 
   assertNoPathConflicts(operations);
@@ -265,5 +265,5 @@ export function update<T extends object>(
     }
   });
 
-  return { doc, undo: undo as UpdateOperations<T> };
+  return { doc, undo: buildUndoDocument(undo) as UpdateOperations<T> };
 }

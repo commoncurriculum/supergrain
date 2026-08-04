@@ -1,7 +1,7 @@
 import { deleteValueAtPath, resolveParentPath, setValueAtPath, splitPath } from "../path";
 import { resolvePaths } from "../query";
-import { capturePathUndo, undoSet } from "../undo";
-import { cloneValue, isContainer } from "../util";
+import { capturePathUndo } from "../undo";
+import { isContainer } from "../util";
 import { type OperatorContext, pathWriteOptions } from "./shared";
 
 interface RenameMove {
@@ -77,7 +77,7 @@ export function $rename(context: OperatorContext, operations: Record<string, str
     // Undo: remove the destination (it didn't exist before) and restore the
     // source. Capture the destination inverse before creating it.
     capturePathUndo(context.undo, context.raw, to);
-    undoSet(context.undo, from, cloneValue(value));
+    capturePathUndo(context.undo, context.raw, from);
     deleteValueAtPath(context.raw, from);
     setValueAtPath(context.raw, to, value, pathWriteOptions(context));
   }

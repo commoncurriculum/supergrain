@@ -1,7 +1,7 @@
 import { isContiguousAscending, removeIndices, resolveArrayTarget } from "../array-ops";
 import { getValueAtPath, hasValueAtPath, setValueAtPath } from "../path";
 import { type ArrayFilter, type Query, resolvePaths } from "../query";
-import { capturePathUndo, type MutableUndo, undoPushSpec, undoSetArray } from "../undo";
+import { capturePathUndo, recordInverse, type Undo } from "../undo";
 import { cloneValue, describeValue, isEqual } from "../util";
 
 // Shared execution context + helpers used by every operator. Each operator
@@ -10,7 +10,7 @@ import { cloneValue, describeValue, isEqual } from "../util";
 
 export interface OperatorContext {
   raw: object;
-  undo: MutableUndo;
+  undo: Undo;
   query: Query;
   arrayFilters: ReadonlyArray<ArrayFilter>;
   // When set, `null` intermediates/targets are treated as absent — created for
@@ -111,14 +111,32 @@ export function removeByPredicate(
   }
 
   if (isContiguousAscending(removedIndices)) {
-    undoPushSpec(context.undo, context.raw, path, {
+    recordInverse(context.undo, context.raw, path, "$push", {
       $each: removedValues,
       $position: removedIndices[0],
     });
   } else {
-    undoSetArray(context.undo, context.raw, path, cloneValue(arr) as Array<any>);
+    recordInverse(context.undo, context.raw, path, "$set", cloneValue(arr));
   }
 
   const removedSet = new Set(removedIndices);
   removeIndices(arr, (index) => removedSet.has(index));
+}
+
+// Undo of an append ($push / $addToSet): truncate the array back to its prior
+// length — `$pop` for a single appended element, `$push` with an empty `$each`
+// and a `$slice` for several. Both standard Mongo.
+export function recordTruncate(
+  context: OperatorContext,
+  path: string,
+  append: { length: number; count: number },
+): void {
+  if (append.count === 1) {
+    recordInverse(context.undo, context.raw, path, "$pop", 1);
+  } else {
+    recordInverse(context.undo, context.raw, path, "$push", {
+      $each: [],
+      $slice: append.length,
+    });
+  }
 }

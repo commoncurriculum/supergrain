@@ -1,8 +1,8 @@
 import { pushToArray, resolveArrayTarget } from "../array-ops";
 import { setValueAtPath } from "../path";
-import { capturePathUndo, undoTruncate } from "../undo";
+import { capturePathUndo } from "../undo";
 import { isEqual, isObject } from "../util";
-import { eachPath, type OperatorContext, pathWriteOptions } from "./shared";
+import { eachPath, type OperatorContext, pathWriteOptions, recordTruncate } from "./shared";
 
 function uniqueAdditions(existing: ReadonlyArray<unknown>, candidates: Array<unknown>): Array<any> {
   const additions: Array<any> = [];
@@ -36,10 +36,7 @@ export function $addToSet(context: OperatorContext, operations: Record<string, a
     }
 
     const previousLength = target.arr.length;
-    undoTruncate(context.undo, context.raw, path, {
-      length: previousLength,
-      count: newItems.length,
-    });
+    recordTruncate(context, path, { length: previousLength, count: newItems.length });
     pushToArray(target.arr, newItems);
   });
 }

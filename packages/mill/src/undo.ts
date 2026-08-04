@@ -1,168 +1,136 @@
-import { getValueAtPath, isArrayIndex, pathCovers, splitPath } from "./path";
+import { isArrayIndex, splitPath } from "./path";
 import { cloneValue, isContainer } from "./util";
 
 // ─── undo accumulation ──────────────────────────────────────────────────────
 //
-// The undo document only ever needs four operators to invert anything: `$set`
-// and `$unset` for scalar/whole-value restores, and `$push`/`$pop` for the
-// fine-grained array inverses. Array edits whose inverse can't be expressed by
-// a single granular operator (a scattered `$pull`, a `$sort`, any op on an
-// array nested inside another array) fall back to `$set`-ing the whole prior
-// array.
+// Undo notes are collected in two structures:
 //
-// The undo document must itself be a legal Mongo update, so no entry's path may
-// prefix another's. Recording happens before each op mutates, and two rules
-// keep the accumulated entries conflict-free:
+// `shadow` — a tree mirroring the document that records original state: each
+// leaf says "this spot held this value" (emitted as `$set`) or "this spot
+// didn't exist" (emitted as `$unset`). Recording walks down the tree, and the
+// walk stopping at an existing leaf is what keeps the undo document legal
+// (Mongo rejects an update where one path contains another): nothing can be
+// recorded inside a region that is already being restored wholesale, because
+// there is no place in the tree to put it.
 //
-//   - An entry covered by an existing entry at an ancestor path is skipped —
-//     that ancestor already restores the whole region.
-//   - A whole-array restore can also arrive *after* entries beneath it (an
-//     out-of-bounds index write following an in-bounds one). Its clone of the
-//     array is stale — earlier ops already wrote into it — but each such write
-//     left an entry holding the original value, so absorbing those entries
-//     into the clone reproduces the pristine array (and dropping them removes
-//     the conflict).
-//
-// Absorption only ever meets `$set`/`$unset` entries: a granular `$push`/`$pop`
-// inverse whose own path runs through an ancestor array is recorded as that
-// array's whole-array restore instead, so no granular entry can sit beneath an
-// array for a later restore to collide with.
+// `inverses` — granular array instructions (an append undoes with `$pop`, a
+// `$pop` with `$push`, ...) recorded by the operators. They are stored and
+// emitted verbatim; only the operator that recorded one knows what it means.
+// An instruction whose path passes through an ancestor array is not recorded —
+// the outer array is snapshotted into `shadow` instead (restoring it undoes
+// the inner edit too). That keeps instructions out of any region a whole-array
+// snapshot could cover, so the two structures never overlap; instructions
+// never overlap each other because update paths are disjoint (checked before
+// anything applies).
 
-export interface MutableUndo {
-  $set?: Record<string, unknown>;
-  $unset?: Record<string, "">;
-  $push?: Record<string, unknown>;
-  $pop?: Record<string, 1 | -1>;
+type ShadowNode =
+  | { kind: "branch"; children: ShadowChildren }
+  | { kind: "value"; value: unknown }
+  | { kind: "absent" };
+
+type ShadowChildren = Map<string, ShadowNode>;
+
+export interface Undo {
+  shadow: ShadowChildren;
+  inverses: Array<{ operator: string; path: string; operand: unknown }>;
 }
 
-function coveredByExistingEntry(undo: MutableUndo, path: string): boolean {
-  for (const existingOps of Object.values(undo)) {
-    for (const existingOpPath of Object.keys(existingOps as Record<string, unknown>)) {
-      if (pathCovers(existingOpPath, path)) {
-        return true;
-      }
+export function createUndo(): Undo {
+  return { shadow: new Map(), inverses: [] };
+}
+
+// Walk to the map that holds the leaf for `parts`, creating branches along the
+// way. Null when the walk runs into an existing leaf: the region is already
+// being restored wholesale, so there is nothing further to record.
+function childrenFor(shadow: ShadowChildren, parts: ReadonlyArray<string>): ShadowChildren | null {
+  let children = shadow;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const existing = children.get(parts[i]!);
+    if (existing === undefined) {
+      const branch = { kind: "branch", children: new Map<string, ShadowNode>() } as const;
+      children.set(parts[i]!, branch);
+      ({ children } = branch);
+    } else if (existing.kind === "branch") {
+      ({ children } = existing);
+    } else {
+      return null;
     }
   }
-  return false;
+  return children;
 }
 
-export function undoSet(undo: MutableUndo, path: string, value: unknown): void {
-  if (coveredByExistingEntry(undo, path)) return;
-  (undo.$set ??= {})[path] = value;
+function recordValue(shadow: ShadowChildren, parts: ReadonlyArray<string>, value: unknown): void {
+  const children = childrenFor(shadow, parts);
+  if (children === null) {
+    return;
+  }
+  const key = parts[parts.length - 1]!;
+  const existing = children.get(key);
+  if (existing !== undefined) {
+    if (existing.kind !== "branch") {
+      return; // this exact spot is already restored — the earlier note wins
+    }
+    // A whole-array snapshot arriving after notes about spots inside it (an
+    // out-of-bounds write following an in-bounds one). The snapshot copied the
+    // array *after* those spots were changed, but each note holds the original
+    // value, so writing the notes back into the snapshot reproduces the
+    // pristine array — and replacing the branch consumes them.
+    foldInto(value as object, existing.children);
+  }
+  children.set(key, { kind: "value", value });
 }
 
-export function undoUnset(undo: MutableUndo, path: string): void {
-  if (coveredByExistingEntry(undo, path)) return;
-  (undo.$unset ??= {})[path] = "";
-}
-
-/**
- * Record a granular `$push` inverse. Falls back to restoring the outer array
- * when `path` runs through one.
- */
-export function undoPushSpec(undo: MutableUndo, raw: object, path: string, spec: unknown): void {
-  if (escalateThroughAncestorArray(undo, raw, path)) return;
-  (undo.$push ??= {})[path] = spec;
-}
-
-/**
- * Record the inverse of replacing the whole array at `path` (edits no granular
- * operator can invert). Falls back to restoring the outer array when `path`
- * runs through one.
- */
-export function undoSetArray(
-  undo: MutableUndo,
-  raw: object,
-  path: string,
-  previousArray: Array<unknown>,
-): void {
-  if (escalateThroughAncestorArray(undo, raw, path)) return;
-  undoSet(undo, path, previousArray);
-}
-
-/**
- * Record the inverse of an append: truncate back to the prior length — `$pop`
- * for one element, `$push` with an empty `$each` and a `$slice` for several.
- * Falls back to restoring the outer array when `path` runs through one.
- */
-export function undoTruncate(
-  undo: MutableUndo,
-  raw: object,
-  path: string,
-  append: { length: number; count: number },
-): void {
-  if (escalateThroughAncestorArray(undo, raw, path)) return;
-  if (append.count === 1) {
-    (undo.$pop ??= {})[path] = 1;
-  } else {
-    (undo.$push ??= {})[path] = { $each: [], $slice: append.length };
+function recordAbsent(shadow: ShadowChildren, parts: ReadonlyArray<string>): void {
+  const children = childrenFor(shadow, parts);
+  if (children !== null) {
+    children.set(parts[parts.length - 1]!, { kind: "absent" });
   }
 }
 
-// A granular inverse recorded beneath an array would conflict with — and could
-// not be absorbed into — a later whole-restore of that array, so record the
-// array's restore instead. False when `path` reaches its target through
-// objects only. Callers record against a resolved, existing array target, so
-// every ancestor is a container.
-function escalateThroughAncestorArray(undo: MutableUndo, raw: object, path: string): boolean {
+function foldInto(snapshot: object, children: ShadowChildren): void {
+  for (const [key, node] of children) {
+    if (node.kind === "branch") {
+      foldInto((snapshot as Record<string, object>)[key]!, node.children);
+    } else if (node.kind === "value") {
+      (snapshot as Record<string, unknown>)[key] = node.value;
+    } else {
+      delete (snapshot as Record<string, unknown>)[key];
+    }
+  }
+}
+
+/**
+ * Record a granular array instruction — emitted into the undo document as
+ * `{ [operator]: { [path]: operand } }`, uninterpreted. Falls back to
+ * snapshotting the outer array when `path` passes through one.
+ */
+export function recordInverse(
+  undo: Undo,
+  raw: object,
+  path: string,
+  operator: string,
+  operand: unknown,
+): void {
   const parts = splitPath(path);
   let current: unknown = raw;
   for (let i = 1; i < parts.length; i++) {
     current = (current as Record<string, unknown>)[parts[i - 1]!];
     if (Array.isArray(current)) {
-      undoArraySnapshot(undo, raw, parts.slice(0, i));
-      return true;
+      recordValue(undo.shadow, parts.slice(0, i), cloneValue(current));
+      return;
     }
   }
-  return false;
-}
-
-// Whole-array restore at `parts` (the array's own path), absorbing any entries
-// already recorded beneath it.
-function undoArraySnapshot(undo: MutableUndo, raw: object, parts: Array<string>): void {
-  const path = parts.join(".");
-  if (coveredByExistingEntry(undo, path)) return;
-  const snapshot = cloneValue(getValueAtPath(raw, path)) as object;
-  absorbCoveredEntries(undo, path, snapshot);
-  (undo.$set ??= {})[path] = snapshot;
-}
-
-// Write the original values held by entries under `arrayPath` back into
-// `snapshot` (a clone of the array's current state), then drop the entries.
-function absorbCoveredEntries(undo: MutableUndo, arrayPath: string, snapshot: object): void {
-  for (const operator of ["$set", "$unset"] as const) {
-    const entries = undo[operator] ?? {};
-    for (const entryPath of Object.keys(entries)) {
-      if (pathCovers(arrayPath, entryPath)) {
-        const relative = splitPath(entryPath.slice(arrayPath.length + 1));
-        let parent: any = snapshot;
-        for (let i = 0; i < relative.length - 1; i++) {
-          parent = parent[relative[i]!];
-        }
-        const key = relative[relative.length - 1]!;
-        if (operator === "$set") {
-          parent[key] = entries[entryPath];
-        } else {
-          delete parent[key];
-        }
-        delete entries[entryPath];
-      }
-    }
-    // MongoDB rejects an update with an empty operator object.
-    if (Object.keys(entries).length === 0) {
-      delete undo[operator];
-    }
-  }
+  undo.inverses.push({ operator, path, operand });
 }
 
 /**
- * Record the inverse needed to restore the value at `path` before a scalar
- * write. Restores previous state *exactly*, including missing-vs-present: if the
- * write creates an absent branch, the undo `$unset`s the shallowest segment that
- * didn't exist; if it overwrites, the undo `$set`s the prior value back. Must be
- * called before the write is applied.
+ * Record the note needed to restore the value at `path` before a write.
+ * Restores previous state *exactly*, including missing-vs-present: if the
+ * write creates an absent branch, the undo `$unset`s the shallowest segment
+ * that didn't exist; if it overwrites, the undo `$set`s the prior value back.
+ * Must be called before the write is applied.
  */
-export function capturePathUndo(undo: MutableUndo, raw: object, path: string): void {
+export function capturePathUndo(undo: Undo, raw: object, path: string): void {
   const parts = splitPath(path);
   let current: any = raw;
 
@@ -177,7 +145,7 @@ export function capturePathUndo(undo: MutableUndo, raw: object, path: string): v
       isArrayIndex(segment) &&
       Number(segment) >= current.length
     ) {
-      undoArraySnapshot(undo, raw, parts.slice(0, i));
+      recordValue(undo.shadow, parts.slice(0, i), cloneValue(current));
       return;
     }
     if (
@@ -185,13 +153,13 @@ export function capturePathUndo(undo: MutableUndo, raw: object, path: string): v
       !Object.hasOwn(current, segment) ||
       !isContainer((current as any)[segment])
     ) {
-      const prefix = parts.slice(0, i + 1).join(".");
+      const prefix = parts.slice(0, i + 1);
       if (isContainer(current) && Object.hasOwn(current, segment)) {
         // A non-container value (e.g. a number) is about to be overwritten by a
         // freshly-created branch — snapshot it so undo restores it exactly.
-        undoSet(undo, prefix, cloneValue((current as any)[segment]));
+        recordValue(undo.shadow, prefix, cloneValue((current as any)[segment]));
       } else {
-        undoUnset(undo, prefix);
+        recordAbsent(undo.shadow, prefix);
       }
       return;
     }
@@ -208,13 +176,40 @@ export function capturePathUndo(undo: MutableUndo, raw: object, path: string): v
     Number(leafKey) >= current.length &&
     parts.length > 1
   ) {
-    undoArraySnapshot(undo, raw, parts.slice(0, -1));
+    recordValue(undo.shadow, parts.slice(0, -1), cloneValue(current));
     return;
   }
 
   if (isContainer(current) && Object.hasOwn(current, leafKey)) {
-    undoSet(undo, path, cloneValue((current as any)[leafKey]));
+    recordValue(undo.shadow, parts, cloneValue((current as any)[leafKey]));
   } else {
-    undoUnset(undo, path);
+    recordAbsent(undo.shadow, parts);
+  }
+}
+
+/** Emit the collected notes as a flat, conflict-free Mongo update document. */
+export function buildUndoDocument(undo: Undo): Record<string, Record<string, unknown>> {
+  const doc: Record<string, Record<string, unknown>> = {};
+  emit(undo.shadow, "", doc);
+  for (const { operator, path, operand } of undo.inverses) {
+    (doc[operator] ??= {})[path] = operand;
+  }
+  return doc;
+}
+
+function emit(
+  children: ShadowChildren,
+  prefix: string,
+  doc: Record<string, Record<string, unknown>>,
+): void {
+  for (const [key, node] of children) {
+    const path = prefix === "" ? key : `${prefix}.${key}`;
+    if (node.kind === "branch") {
+      emit(node.children, path, doc);
+    } else if (node.kind === "value") {
+      (doc["$set"] ??= {})[path] = node.value;
+    } else {
+      (doc["$unset"] ??= {})[path] = "";
+    }
   }
 }
