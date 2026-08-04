@@ -1,6 +1,5 @@
 import { pushToArray, resolveArrayTarget } from "../array-ops";
 import { setValueAtPath } from "../path";
-import { capturePathUndo, undoTruncate } from "../undo";
 import { isEqual, isObject } from "../util";
 import { eachPath, type OperatorContext, pathWriteOptions } from "./shared";
 
@@ -25,7 +24,6 @@ export function $addToSet(context: OperatorContext, operations: Record<string, a
 
     if (target.arr === undefined) {
       // Absent field — Mongo creates the array with the de-duplicated values.
-      capturePathUndo(context.undo, context.raw, path);
       setValueAtPath(context.raw, path, uniqueAdditions([], candidates), pathWriteOptions(context));
       return;
     }
@@ -35,8 +33,6 @@ export function $addToSet(context: OperatorContext, operations: Record<string, a
       return; // no-op
     }
 
-    const previousLength = target.arr.length;
     pushToArray(target.arr, newItems);
-    undoTruncate(context.undo, path, { length: previousLength, count: newItems.length });
   });
 }
