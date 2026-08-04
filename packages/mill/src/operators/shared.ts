@@ -50,6 +50,8 @@ function assertNumericTarget(
 ): void {
   // $min/$max compare against an existing null (it sorts below every number);
   // $inc/$mul reject it the way real MongoDB does ("non-numeric type null").
+  // Only reachable for a stored null — `allowNullIntermediates` normalizes those
+  // to `undefined` (absent) before we get here.
   if (currentValue === null && allowNull) {
     return;
   }
@@ -68,7 +70,13 @@ export interface NumericWrite {
 }
 
 export function writeNumeric(context: OperatorContext, path: string, write: NumericWrite): void {
-  const previous = getValueAtPath(context.raw, path) as number | null | undefined;
+  const stored = getValueAtPath(context.raw, path) as number | null | undefined;
+  // With `allowNullIntermediates`, a `null` *target* counts as absent just like a
+  // `null` intermediate does: $inc/$mul start from 0 instead of throwing, and
+  // $min/$max take the candidate value rather than keeping the null. Only the
+  // arithmetic treats it as absent — the undo plan snapshots the real stored
+  // `null` before we run, so a rewind restores it exactly.
+  const previous = context.allowNullIntermediates && stored === null ? undefined : stored;
   assertNumericTarget(write.operator, path, previous, write.allowNull);
   const next = write.compute(previous);
   if (next === undefined) {
