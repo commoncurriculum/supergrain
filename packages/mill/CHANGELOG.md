@@ -1,5 +1,45 @@
 # @supergrain/mill
 
+## 7.3.1
+
+### Patch Changes
+
+- c955f5c: Fix `allowNullIntermediates` so a `null` _target_ of a numeric operator counts as absent.
+
+  `allowNullIntermediates` is documented as treating a `null` intermediate **or target** as if the field were absent, but the numeric operators only honored that for intermediates: `$inc`-ing a `null` field still threw `$inc path "attributes._revision" must point to a number, received null.` even with the option on. That defeats the option's purpose — it exists so patches that work against MongoDB (where the field is genuinely absent) also work against documents where the absent field arrived as `null`.
+
+  With `allowNullIntermediates: true`, a `null` target is now treated as a missing field:
+
+  - `$inc` starts from 0, so `{ a: null }` + `$inc: { a: 1 }` yields `{ a: 1 }`.
+  - `$mul` starts from 0, yielding `0`.
+  - `$min` / `$max` take the operand instead of keeping the `null`.
+
+  Default behavior is unchanged: with the option off, `$inc` / `$mul` still reject a `null` target, and `$min` / `$max` still compare against it as a value sorting below every number — exactly as MongoDB does. The generated `undo` restores the prior `null`.
+
+- b231bf9: Fix `update()` generating an unreplayable `undo` when one path's inverse
+  covered another's — replaying it threw `Update would create a conflict between
+paths "…" and "…"`. This hit updates writing several paths under a branch the
+  update itself creates (`{ $set: { "rel.course": …, "rel.planbook": … } }` with
+  no `rel`) and index writes on one array both in and out of bounds.
+
+  Undo is no longer recorded op by op while the update runs. `update()` now
+  plans, from the update document and the untouched document, the cheapest saved
+  state that suffices per path — the value a write overwrites, an absence marker
+  for a created branch, or just an array's length for appends and past-the-end
+  growth — applies the update, and derives the undo by comparing each saved spot
+  against the result. All planning happens before any mutation, and spots are
+  kept non-nested, so conflicting undo paths cannot be produced. Appending to an
+  array of any size plans O(1) undo work, and some undo documents get finer
+  (growing an array now undoes with a truncation instead of restoring the whole
+  prior array; edits to arrays nested inside arrays restore precisely).
+
+  Also fixes a MongoDB divergence: `$set` through a non-index field on an array
+  (`{ $set: { "b.c": 1 } }` where `b` is an array) now throws
+  `Cannot create field 'c' in element {b: […]}.` like real MongoDB, instead of
+  setting a string key on the array.
+
+  - @supergrain/kernel@7.3.1
+
 ## 7.3.0
 
 ### Patch Changes

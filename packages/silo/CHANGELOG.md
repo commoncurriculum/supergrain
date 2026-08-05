@@ -1,5 +1,11 @@
 # @supergrain/silo
 
+## 7.3.1
+
+### Patch Changes
+
+- @supergrain/kernel@7.3.1
+
 ## 7.3.0
 
 ### Patch Changes

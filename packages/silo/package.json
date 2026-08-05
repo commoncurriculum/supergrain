@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/silo",
-  "version": "7.3.0",
+  "version": "7.3.1",
   "description": "Document-oriented store for Supergrain with TypeScript support",
   "keywords": [
     "document",

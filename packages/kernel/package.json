@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/kernel",
-  "version": "7.3.0",
+  "version": "7.3.1",
   "description": "Core reactive store implementation for Supergrain.",
   "keywords": [
     "kernel",
