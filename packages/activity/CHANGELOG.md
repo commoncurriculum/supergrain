@@ -1,5 +1,11 @@
 # @supergrain/activity
 
+## 1.0.2
+
+### Patch Changes
+
+- @supergrain/kernel@7.3.1
+
 ## 1.0.1
 
 ### Patch Changes

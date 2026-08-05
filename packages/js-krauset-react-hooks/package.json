@@ -1,6 +1,6 @@
 {
   "name": "js-framework-benchmark-react-hooks-comparison",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "private": true,
   "scripts": {
     "dev": "vite",

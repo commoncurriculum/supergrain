@@ -1,5 +1,11 @@
 # js-framework-benchmark-react-hooks-comparison
 
+## 1.0.15
+
+### Patch Changes
+
+- @supergrain/kernel@7.3.1
+
 ## 1.0.14
 
 ### Patch Changes
