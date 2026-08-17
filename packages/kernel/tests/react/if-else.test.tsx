@@ -483,4 +483,41 @@ describe("If/Else components", () => {
     );
     expect(container.textContent).toBe("");
   });
+
+  it("supports multiple children in an ElseIf branch", async () => {
+    const store = createReactive({ a: false });
+
+    const App = tracked(() => (
+      <If when={() => store.a}>
+        <p>first</p>
+        <ElseIf when={() => !store.a}>
+          <p>x</p>
+          <p>y</p>
+        </ElseIf>
+      </If>
+    ));
+
+    const { container } = render(<App />);
+    expect(container.textContent).toBe("xy");
+
+    await act(async () => {
+      store.a = true;
+      await flushMicrotasks();
+    });
+    expect(container.textContent).toBe("first");
+  });
+
+  it("passes plain function components through to the then branch", () => {
+    const Plain = () => <p>plain</p>;
+
+    const { container } = render(
+      <If when={true}>
+        <Plain />
+        <Else>
+          <p>off</p>
+        </Else>
+      </If>,
+    );
+    expect(container.textContent).toBe("plain");
+  });
 });
