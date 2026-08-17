@@ -1,6 +1,7 @@
 import { createReactive } from "@supergrain/kernel";
-import { tracked, If, ElseIf, Else } from "@supergrain/kernel/react";
+import { tracked, If, ElseIf, Else, createAnimatedIf } from "@supergrain/kernel/react";
 import { render, act, cleanup } from "@testing-library/react";
+import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";
 
 import { flushMicrotasks } from "./test-utils";
@@ -519,5 +520,160 @@ describe("If/Else components", () => {
       </If>,
     );
     expect(container.textContent).toBe("plain");
+  });
+});
+
+describe("createAnimatedIf", () => {
+  beforeEach(() => {
+    cleanup();
+  });
+
+  it("renders branches inside the wrapper and swaps them on flips", async () => {
+    const store = createReactive({ open: false });
+    const AnimatedIf = createAnimatedIf((children) => <div data-testid="presence">{children}</div>);
+
+    const App = tracked(() => (
+      <AnimatedIf when={() => store.open}>
+        <p>panel</p>
+        <Else>
+          <p>teaser</p>
+        </Else>
+      </AnimatedIf>
+    ));
+
+    const { container } = render(<App />);
+    const presence = () => container.querySelector("[data-testid=presence]");
+    expect(presence()?.textContent).toBe("teaser");
+
+    await act(async () => {
+      store.open = true;
+      await flushMicrotasks();
+    });
+    expect(presence()?.textContent).toBe("panel");
+  });
+
+  it("hands the wrapper branch-keyed content so it can tell branches apart", async () => {
+    const store = createReactive<{ status: "a" | "b" | "c" }>({ status: "a" });
+    const received: Array<React.ReactNode> = [];
+    const AnimatedIf = createAnimatedIf((children) => {
+      received.push(children);
+      return children;
+    });
+
+    const App = tracked(() => (
+      <AnimatedIf when={() => store.status === "a"}>
+        <p>then</p>
+        <ElseIf when={() => store.status === "b"}>
+          <p>chained</p>
+        </ElseIf>
+        <Else>
+          <p>otherwise</p>
+        </Else>
+      </AnimatedIf>
+    ));
+
+    render(<App />);
+    const lastKey = () => {
+      const node = received.at(-1);
+      return React.isValidElement(node) ? node.key : undefined;
+    };
+    expect(lastKey()).toBe("sg-then");
+
+    await act(async () => {
+      store.status = "b";
+      await flushMicrotasks();
+    });
+    expect(lastKey()).toBe("sg-elseif-0");
+
+    await act(async () => {
+      store.status = "c";
+      await flushMicrotasks();
+    });
+    expect(lastKey()).toBe("sg-else");
+  });
+
+  it("keeps the wrapper mounted with empty children when nothing matches", async () => {
+    const store = createReactive({ open: true });
+    const AnimatedIf = createAnimatedIf((children) => <div data-testid="presence">{children}</div>);
+
+    const App = tracked(() => (
+      <AnimatedIf when={() => store.open}>
+        <p>panel</p>
+      </AnimatedIf>
+    ));
+
+    const { container } = render(<App />);
+    const presence = () => container.querySelector("[data-testid=presence]");
+    expect(presence()?.textContent).toBe("panel");
+
+    // No Else: the branch goes away but the wrapper must stay mounted so a
+    // real presence component could animate the exit.
+    await act(async () => {
+      store.open = false;
+      await flushMicrotasks();
+    });
+    expect(presence()).not.toBeNull();
+    expect(presence()?.textContent).toBe("");
+  });
+
+  it("re-invokes the wrapper only when the active branch changes", async () => {
+    const store = createReactive({ count: 1 });
+    let wrapCalls = 0;
+    const AnimatedIf = createAnimatedIf((children) => {
+      wrapCalls++;
+      return children;
+    });
+
+    const App = tracked(() => (
+      <AnimatedIf when={() => store.count > 0}>
+        <p>non-empty</p>
+        <Else>
+          <p>empty</p>
+        </Else>
+      </AnimatedIf>
+    ));
+
+    const { container } = render(<App />);
+    expect(container.textContent).toBe("non-empty");
+    expect(wrapCalls).toBe(1);
+
+    // Input churn without a flip: firewalled, wrapper untouched.
+    await act(async () => {
+      store.count = 2;
+      await flushMicrotasks();
+    });
+    expect(wrapCalls).toBe(1);
+
+    await act(async () => {
+      store.count = 0;
+      await flushMicrotasks();
+    });
+    expect(container.textContent).toBe("empty");
+    expect(wrapCalls).toBe(2);
+  });
+
+  it("supports function children inside animated branches", async () => {
+    const store = createReactive<{ user: { name: string } | null }>({
+      user: null, // eslint-disable-line unicorn/no-null -- modeling a logged-out state
+    });
+    const AnimatedIf = createAnimatedIf((children) => <div data-testid="presence">{children}</div>);
+
+    const App = tracked(() => (
+      <AnimatedIf when={() => store.user}>
+        {(user) => <p>hello {user.name}</p>}
+        <Else>
+          <p>anonymous</p>
+        </Else>
+      </AnimatedIf>
+    ));
+
+    const { container } = render(<App />);
+    expect(container.textContent).toBe("anonymous");
+
+    await act(async () => {
+      store.user = { name: "Ada" };
+      await flushMicrotasks();
+    });
+    expect(container.textContent).toBe("hello Ada");
   });
 });

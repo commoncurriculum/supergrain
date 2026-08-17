@@ -190,7 +190,11 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
   > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
 
 - `<If when={() => cond}>then<ElseIf when={() => cond2}>chained</ElseIf><Else>otherwise</Else></If>`
+
   > Firewalled conditional (if/else if/else) rendering. Pass conditions as functions: `If` subscribes to **which branch is active**, so changes to the conditions' inputs re-render nothing until a different branch takes over — and the parent never subscribes at all. Chains short-circuit like real if/else if: later conditions aren't evaluated (or even subscribed to) while an earlier one holds. A function child `(value) => ...` receives its branch's non-null condition value.
+
+- `createAnimatedIf(wrap)`
+  > Returns an `<AnimatedIf>` — an `<If>` whose branch swaps run through a presence wrapper (e.g. Motion's `<AnimatePresence>`) so exits animate instead of unmounting instantly. Call once at module scope with your wrapper; the kernel has no dependency on any animation library. See [Animating between branches](#animating-between-branches).
 
 > React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](../husk/README.md).
 
@@ -395,6 +399,35 @@ For nullable values, a function child receives the type-narrowed value and is on
   </Else>
 </If>
 ```
+
+### Animating between branches
+
+Presence wrappers like Motion's `<AnimatePresence>` detect swaps by diffing their **direct children** across their **own re-renders**. Wrapping `<If>` in one from outside can never animate: the firewall means the wrapper's component doesn't re-render on a flip, and the swap happens below its diffing horizon. `createAnimatedIf` inverts the nesting — the returned component renders the wrapper itself, and since it's exactly the component that re-renders on branch changes, the wrapper sees every swap as a keyed direct-child change.
+
+```tsx
+// animated-if.ts — once in your app
+import { AnimatePresence } from "motion/react";
+import { createAnimatedIf } from "@supergrain/kernel/react";
+
+export const AnimatedIf = createAnimatedIf((children) => (
+  <AnimatePresence mode="wait">{children}</AnimatePresence>
+));
+```
+
+```tsx
+// anywhere — same API as <If>, branches animate in and out
+<AnimatedIf when={() => store.open}>
+  <motion.div exit={{ opacity: 0 }}>panel</motion.div>
+  <Else>
+    <motion.div exit={{ opacity: 0 }}>teaser</motion.div>
+  </Else>
+</AnimatedIf>
+```
+
+- Same firewall as `<If>`: re-renders (and re-invokes the wrapper) only when the active branch changes — exactly the moments you want animation
+- Branches are handed to the wrapper in fragments keyed per branch, so branch roots don't need keys of their own; `<ElseIf>` chains animate between all branches
+- The wrapper stays mounted when no branch matches (receiving empty children), so the last branch can still animate out
+- The kernel has no dependency on any animation library — pass whatever presence wrapper you use, with whatever props (`mode="wait"`, `popLayout`, …)
 
 ### Synchronous Writes and Batching
 
