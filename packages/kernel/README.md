@@ -189,8 +189,8 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
 
   > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
 
-- `<If when={() => cond}>then<Else>otherwise</Else></If>`
-  > Firewalled conditional (if/else) rendering. Pass the condition as a function: `If` subscribes to its **truthiness**, so changes to the condition's inputs re-render nothing until the result actually flips — and the parent never subscribes at all. Children wrapped in `<Else>` render while the condition is falsy. A function child `(value) => ...` receives the condition's non-null value.
+- `<If when={() => cond}>then<ElseIf when={() => cond2}>chained</ElseIf><Else>otherwise</Else></If>`
+  > Firewalled conditional (if/else if/else) rendering. Pass conditions as functions: `If` subscribes to **which branch is active**, so changes to the conditions' inputs re-render nothing until a different branch takes over — and the parent never subscribes at all. Chains short-circuit like real if/else if: later conditions aren't evaluated (or even subscribed to) while an earlier one holds. A function child `(value) => ...` receives its branch's non-null condition value.
 
 > React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](../husk/README.md).
 
@@ -369,7 +369,23 @@ const Inbox = tracked(() => {
 - `<Else>` marks the else branch; omit it to render nothing when falsy. It must sit directly under `<If>` (fragments and arrays in between are fine, other components are not)
 - Pass `when` as a function — a plain value is evaluated by the parent, which subscribes the parent to the condition's inputs
 
-For nullable values, a function child receives the type-narrowed value and is only called while the condition holds:
+Chain branches with `<ElseIf>` — first truthy condition wins, like `if / else if / else`:
+
+```tsx
+<If when={() => store.status === "loading"}>
+  <Spinner />
+  <ElseIf when={() => store.status === "error"}>
+    <ErrorPane />
+  </ElseIf>
+  <Else>
+    <Content />
+  </Else>
+</If>
+```
+
+Chains short-circuit the way real `if / else if` does: while an earlier condition holds, later conditions aren't evaluated — or even subscribed to. The whole chain still subscribes only to _which branch is active_, so input churn inside the active branch's condition (say, `errors` going 1 → 5 while `errors > 0` holds) re-renders nothing.
+
+For nullable values, a function child receives the type-narrowed value and is only called while its branch is active:
 
 ```tsx
 <If when={() => store.currentUser}>
