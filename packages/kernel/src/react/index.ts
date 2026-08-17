@@ -3,8 +3,8 @@
 // Export For component for optimized array rendering
 export { For } from "./for";
 
-// Export Show component for firewalled conditional (if/else) rendering
-export { Show } from "./show";
+// Export If/Else components for firewalled conditional rendering
+export { If, Else } from "./if-else";
 
 // Export tracked() component wrapper for per-component signal scoping
 export { tracked } from "./tracked";

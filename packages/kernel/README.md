@@ -189,8 +189,8 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
 
   > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
 
-- `<Show when={() => cond} fallback={else?}>{children}</Show>`
-  > Firewalled conditional (if/else) rendering. Pass the condition as a function: `Show` subscribes to its **truthiness**, so changes to the condition's inputs re-render nothing until the result actually flips — and the parent never subscribes at all. `fallback` is the else branch. Function children `(value) => ...` receive the condition's non-null value.
+- `<If when={() => cond}>then<Else>otherwise</Else></If>`
+  > Firewalled conditional (if/else) rendering. Pass the condition as a function: `If` subscribes to its **truthiness**, so changes to the condition's inputs re-render nothing until the result actually flips — and the parent never subscribes at all. Children wrapped in `<Else>` render while the condition is falsy. A function child `(value) => ...` receives the condition's non-null value.
 
 > React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](../husk/README.md).
 
@@ -347,31 +347,37 @@ const App = tracked(() => {
 
 ### Conditionals
 
-`<Show>` renders one branch or the other — like a ternary, but firewalled. A ternary in a tracked parent (`{store.todos.length > 0 ? <List /> : <Empty />}`) subscribes the parent to `length`, re-rendering it on every push and remove. `<Show>` evaluates the condition behind a computed and subscribes only to the boolean result.
+`<If>`/`<Else>` render one branch or the other — like a ternary, but firewalled. A ternary in a tracked parent (`{store.todos.length > 0 ? <List /> : <Empty />}`) subscribes the parent to `length`, re-rendering it on every push and remove. `<If>` evaluates the condition behind a computed and subscribes only to the boolean result.
 
 ```tsx
 const Inbox = tracked(() => {
   const store = Store.useStore();
 
   return (
-    <Show when={() => store.todos.length > 0} fallback={<EmptyState />}>
+    <If when={() => store.todos.length > 0}>
       <TodoList />
-    </Show>
+      <Else>
+        <EmptyState />
+      </Else>
+    </If>
   );
 });
 ```
 
 - Going from 3 todos → 4 re-renders nothing — the condition is still truthy
-- Only an empty ↔ non-empty flip swaps the branch, and only `Show` re-renders
-- `fallback` is the else branch; omit it to render nothing when falsy
+- Only an empty ↔ non-empty flip swaps the branch, and only `If` re-renders
+- `<Else>` marks the else branch; omit it to render nothing when falsy. It must sit directly under `<If>` (fragments and arrays in between are fine, other components are not)
 - Pass `when` as a function — a plain value is evaluated by the parent, which subscribes the parent to the condition's inputs
 
-For nullable values, function children receive the type-narrowed value and are only called while the condition holds:
+For nullable values, a function child receives the type-narrowed value and is only called while the condition holds:
 
 ```tsx
-<Show when={() => store.currentUser} fallback={<LoginButton />}>
+<If when={() => store.currentUser}>
   {(user) => <Avatar name={user.name} />}
-</Show>
+  <Else>
+    <LoginButton />
+  </Else>
+</If>
 ```
 
 ### Synchronous Writes and Batching
