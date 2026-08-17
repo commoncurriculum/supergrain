@@ -186,7 +186,11 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
   > Shorthand for `useEffect(() => effect(fn), [])`. Runs a signal-tracked side effect that re-runs when tracked signals change and cleans up on unmount. Does **not** cause the component to re-render.
 
 - `<For each={array} parent={ref?}>{item => ...}</For>`
+
   > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
+
+- `<Show when={() => cond} fallback={else?}>{children}</Show>`
+  > Firewalled conditional (if/else) rendering. Pass the condition as a function: `Show` subscribes to its **truthiness**, so changes to the condition's inputs re-render nothing until the result actually flips — and the parent never subscribes at all. `fallback` is the else branch. Function children `(value) => ...` receive the condition's non-null value.
 
 > React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](../husk/README.md).
 
@@ -340,6 +344,35 @@ const App = tracked(() => {
 - Tracks which items changed and only re-renders those
 - Optional `parent` ref enables O(1) direct DOM moves for swaps
 - Without `parent`, falls back to standard React reconciliation
+
+### Conditionals
+
+`<Show>` renders one branch or the other — like a ternary, but firewalled. A ternary in a tracked parent (`{store.todos.length > 0 ? <List /> : <Empty />}`) subscribes the parent to `length`, re-rendering it on every push and remove. `<Show>` evaluates the condition behind a computed and subscribes only to the boolean result.
+
+```tsx
+const Inbox = tracked(() => {
+  const store = Store.useStore();
+
+  return (
+    <Show when={() => store.todos.length > 0} fallback={<EmptyState />}>
+      <TodoList />
+    </Show>
+  );
+});
+```
+
+- Going from 3 todos → 4 re-renders nothing — the condition is still truthy
+- Only an empty ↔ non-empty flip swaps the branch, and only `Show` re-renders
+- `fallback` is the else branch; omit it to render nothing when falsy
+- Pass `when` as a function — a plain value is evaluated by the parent, which subscribes the parent to the condition's inputs
+
+For nullable values, function children receive the type-narrowed value and are only called while the condition holds:
+
+```tsx
+<Show when={() => store.currentUser} fallback={<LoginButton />}>
+  {(user) => <Avatar name={user.name} />}
+</Show>
+```
 
 ### Synchronous Writes and Batching
 
