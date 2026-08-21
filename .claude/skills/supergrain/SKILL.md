@@ -13,9 +13,11 @@ description: Write React state, derived values, and side effects with Supergrain
 - `@supergrain/husk/react` — `useResource`, `useReactivePromise`, `useReactiveTask`, `modifier`, `useModifier`
 - `@supergrain/silo/react` — `createDocumentStoreContext` **only**; it returns `useDocument` / `useQuery`
 
-## Wrap every component in `tracked()`
+## Reactivity comes from reading reactive state
 
-Untracked reads subscribe to nothing: the UI goes stale, silently.
+Wrap every component in `tracked()`; untracked, its reads subscribe to nothing and the UI goes stale silently.
+
+The same rule governs every re-run below: something re-runs when the **reactive state it read** changes. Props, plain variables, and a value already pulled out of a `useComputed` are not reactive state. To drive work off a prop, put it in reactive state first — `const sel = useReactive({ id }); if (sel.id !== id) sel.id = id;` — or key it through silo, whose `useDocument("book", id)` re-reads on each render.
 
 ## Replace `useState`
 
@@ -43,17 +45,17 @@ Drop `useCallback` for handlers that only mutate the store; keep it for closures
 
 ## Replace `useEffect`
 
-| The effect                           | Use                                                                                                          | Re-runs when                                                        |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| Async data                           | `useReactivePromise(async (signal) => ...)`                                                                  | reads **before the first `await`** change                           |
-| Async data, reused across call sites | `defineResource(() => initial, async (state, args, { abortSignal }) => ...)` + `useResource(fn, () => args)` | reads **inside** the args thunk change (a prop there is not a read) |
-| Subscription, socket, timer          | `useResource(initial, (state, { onCleanup }) => ...)`                                                        | reads in setup change                                               |
-| DOM element behavior                 | `modifier((el, ...args) => cleanupFn)` + `useModifier(m, ...args)` as `ref`                                  | signals in the body change — args do **not** re-attach              |
-| User-triggered work (save, submit)   | `useReactiveTask(async (...args) => ...)` + `task.run(...)`                                                  | only `run()`                                                        |
-| Push to an external sink             | `useSignalEffect(() => ...)`                                                                                 | reads inside change                                                 |
-| Domain entity                        | `useDocument` / `useQuery`                                                                                   | id or params change                                                 |
+| The effect                           | Use                                                                                                          | Re-runs when                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| Async data                           | `useReactivePromise(async (signal) => ...)`                                                                  | reactive reads **before the first `await`** change     |
+| Async data, reused across call sites | `defineResource(() => initial, async (state, args, { abortSignal }) => ...)` + `useResource(fn, () => args)` | reactive reads inside the args thunk change            |
+| Subscription, socket, timer          | `useResource(initial, (state, { onCleanup }) => ...)`                                                        | reactive reads in setup change                         |
+| DOM element behavior                 | `modifier((el, ...args) => cleanupFn)` + `useModifier(m, ...args)` as `ref`                                  | signals in the body change — args do **not** re-attach |
+| User-triggered work (save, submit)   | `useReactiveTask(async (...args) => ...)` + `task.run(...)`                                                  | only `run()`                                           |
+| Push to an external sink             | `useSignalEffect(() => ...)`                                                                                 | reactive reads inside change                           |
+| Domain entity                        | `useDocument` / `useQuery`                                                                                   | id or params change                                    |
 
-`useReactiveTask` takes your own args and receives no `AbortSignal`. Its envelope is still reactive — reading `task.isPending` in a `tracked` component drives the spinner.
+`useReactiveTask` takes your own args and receives no `AbortSignal`. Its envelope is reactive — reading `task.isPending` in a `tracked` component drives the spinner. Because it runs on demand rather than from reads, a prop read in its body is always current.
 
 ## Lists
 
@@ -69,8 +71,6 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 
 - Neither layer has `refetch`. husk exposes `.data` / `.error` / `.isPending` / `.isReady`, plus `.promise` on a `reactivePromise` but **not** on a task; silo handles expose `.value` / `.error` / `.isFetching` / `.status` / `.promise`. Re-fetch by changing the id or params silo is keyed on.
 - **Mutating in place is the point** — `store.org.teams[0].active = true`, `store.items.push(x)`, `store.m.set(k, v)` all notify. The one exception is values supergrain doesn't proxy: `Date`, `RegExp`, and class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date` instead.
-- Keying a fetch off a **prop**: a prop is not a signal, so neither `useReactivePromise` nor `useResource` re-runs — including when the prop is read in `useResource`'s args thunk, which is tracked the same way. Mirror it (`const sel = useReactive({ id }); if (sel.id !== id) sel.id = id;`) and read `sel.id` before the first `await`, or use silo. `useReactiveTask` is unaffected.
-- A `useSignalEffect` that closes over a `useComputed` **value** never re-runs — `useComputed` hands back a plain number, so the effect body has no signal to subscribe to. Read the store inside the effect.
 - Fresh inline objects, arrays, or closures as props re-render a `tracked` child regardless of signals.
 
 ## Still React's job
