@@ -30,12 +30,19 @@ Read and write as plain objects at any depth, synchronously: `store.org.teams[0]
 
 ## Props are not signals
 
-`useResource` and `useReactivePromise` build their instance once and capture the **first render's** closure, so a fetch keyed off a prop never re-runs and keeps using the original value. Silent staleness. Signal reads still drive re-runs normally — props are the blind spot.
+A prop read inside `useResource` / `useReactivePromise` is invisible to it: the fetch runs once and keeps serving the first value. Nothing throws.
 
-Mirror the prop into reactive state and read _that_ before the first `await`:
-`const sel = useReactive({ id }); if (sel.id !== id) sel.id = id;`
+```tsx
+// ❌ id goes a -> b, nothing refetches, the panel still shows a's data
+const d = useReactivePromise(async () => fetchBook(id));
 
-If it is a server entity and you already have a silo store, `useDocument("task", id)` re-reads on an id change and is the better fit.
+// ✅ mirror the prop into reactive state, read it before the first await
+const sel = useReactive({ id });
+if (sel.id !== id) sel.id = id;
+const d = useReactivePromise(async () => fetchBook(sel.id));
+```
+
+`useReactiveTask` is unaffected — it runs the latest render's closure. For a server entity, `useDocument("book", id)` re-reads on an id change and is the better fit.
 
 ## Replace `useMemo` and derived state
 

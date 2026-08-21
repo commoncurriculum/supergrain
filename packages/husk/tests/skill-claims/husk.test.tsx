@@ -96,6 +96,38 @@ describe('SKILL: "Props are not signals"', () => {
   });
 });
 
+describe('SKILL: "useReactiveTask is unaffected" by the props trap', () => {
+  it("a task always runs the LATEST render's closure, so a prop read in it is current", async () => {
+    const seen: string[] = [];
+
+    const Panel = tracked(({ projectId }: { projectId: string }) => {
+      const save = useReactiveTask(async () => {
+        seen.push(projectId); // prop read inside the task body
+        return projectId;
+      });
+      return (
+        <button data-testid="go" onClick={() => void save.run()}>
+          save
+        </button>
+      );
+    });
+
+    const { rerender } = render(<Panel projectId="a" />);
+    await act(async () => {
+      screen.getByTestId("go").click();
+    });
+    expect(seen).toEqual(["a"]);
+
+    // Change the prop, then run again. Unlike useReactivePromise, the task
+    // calls through a ref refreshed on every render, so it sees "b".
+    rerender(<Panel projectId="b" />);
+    await act(async () => {
+      screen.getByTestId("go").click();
+    });
+    expect(seen).toEqual(["a", "b"]);
+  });
+});
+
 describe('SKILL: "reads before the first await change"', () => {
   it("a signal read BEFORE the first await re-runs the promise", async () => {
     const store = createReactive({ id: 1 });
