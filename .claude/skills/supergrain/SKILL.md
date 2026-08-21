@@ -74,7 +74,7 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 ## Traps
 
 - Neither layer has `refetch`. husk exposes `.data` / `.error` / `.isPending` / `.isReady`, plus `.promise` on a `reactivePromise` but **not** on a task; silo handles expose `.value` / `.error` / `.isFetching` / `.status` / `.promise`. Re-fetch by changing the id or params silo is keyed on.
-- Plain objects, arrays, `Map`, `Set` proxy; `Date`, `RegExp`, class instances do not — replace wholesale, never mutate in place.
+- **Mutating in place is the point** — `store.org.teams[0].active = true`, `store.items.push(x)`, `store.m.set(k, v)` all notify. The one exception is values supergrain doesn't proxy: `Date`, `RegExp`, and class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date` instead.
 - Fresh inline objects, arrays, or closures as props re-render a `tracked` child regardless of signals.
 
 ## Still React's job
