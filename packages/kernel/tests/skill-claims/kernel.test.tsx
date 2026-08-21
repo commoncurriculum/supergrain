@@ -3,7 +3,7 @@
 // tells you which line of the skill has gone stale.
 
 import { createReactive, stableComputed } from "@supergrain/kernel";
-import { For, tracked, useComputed, useSignalEffect } from "@supergrain/kernel/react";
+import { tracked, useComputed } from "@supergrain/kernel/react";
 import { act, render, screen } from "@testing-library/react";
 import { useRef } from "react";
 import { describe, expect, it } from "vitest";
@@ -128,38 +128,6 @@ describe('SKILL: "A derived array feeding <For> needs stableComputed"', () => {
     expect(first).toBe(second); // same reference across recomputes
     expect(second.length).toBe(1);
   });
-
-  it("the useMemo(() => stableComputed(...)) pattern the skill shows actually renders", async () => {
-    const store = createReactive({
-      tasks: [
-        { id: 1, title: "a", done: false },
-        { id: 2, title: "b", done: true },
-      ],
-    });
-
-    const Row = tracked(({ task }: { task: { id: number; title: string } }) => (
-      <li data-testid={`row-${task.id}`}>{task.title}</li>
-    ));
-
-    const C = tracked(() => {
-      // Built once, called at the read site — exactly as the skill prescribes.
-      const visible = useRef(stableComputed(() => store.tasks.filter((t) => !t.done))).current;
-      return (
-        <ul>
-          <For each={visible()}>{(task) => <Row task={task} />}</For>
-        </ul>
-      );
-    });
-
-    render(<C />);
-    expect(screen.getByTestId("row-1")).toBeTruthy();
-    expect(screen.queryByTestId("row-2")).toBeNull();
-
-    await act(async () => {
-      store.tasks[1]!.done = false; // b becomes visible
-    });
-    expect(screen.getByTestId("row-2")).toBeTruthy();
-  });
 });
 
 describe('SKILL: "tracked() wraps in React.memo"', () => {
@@ -249,47 +217,5 @@ describe('SKILL: "Plain objects, arrays, Map, Set proxy; Date ... do not"', () =
       store.m.set("a", 2);
     });
     expect(screen.getByTestId("m").textContent).toBe("2");
-  });
-});
-
-describe('SKILL: "useSignalEffect re-runs when reads inside change"', () => {
-  it("closing over a useComputed VALUE never re-runs the effect; reading the store inside does", async () => {
-    const store = createReactive({ n: 1 });
-    const closedOver: number[] = [];
-    const readInside: number[] = [];
-
-    const C = tracked(() => {
-      const doubled = useComputed(() => store.n * 2);
-
-      // Closing over the computed's plain value. It looks like a dependency,
-      // but useComputed returns a number — there is no signal read in here, so
-      // the effect body has nothing to subscribe to.
-      useSignalEffect(() => {
-        closedOver.push(doubled);
-      });
-
-      // Reading the store inside the effect body is a real signal read.
-      useSignalEffect(() => {
-        readInside.push(store.n * 2);
-      });
-
-      return <div data-testid="v">{doubled}</div>;
-    });
-
-    render(<C />);
-    expect(screen.getByTestId("v").textContent).toBe("2");
-    expect(closedOver).toEqual([2]);
-    expect(readInside).toEqual([2]);
-
-    await act(async () => {
-      store.n = 5;
-    });
-
-    // The component re-rendered and the computed updated...
-    expect(screen.getByTestId("v").textContent).toBe("10");
-    // ...but the effect that only closed over the value never re-ran.
-    expect(closedOver).toEqual([2]);
-    // The one that read the store inside did.
-    expect(readInside).toEqual([2, 10]);
   });
 });

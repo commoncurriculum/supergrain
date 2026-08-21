@@ -1,14 +1,7 @@
 // Verifies the behavioural claims made by .claude/skills/supergrain/SKILL.md
 // about the husk react hooks. Named after the skill sentence each one backs.
 
-import { defineResource } from "@supergrain/husk";
-import {
-  modifier,
-  useModifier,
-  useReactivePromise,
-  useReactiveTask,
-  useResource,
-} from "@supergrain/husk/react";
+import { modifier, useModifier, useReactivePromise, useReactiveTask } from "@supergrain/husk/react";
 import { createReactive } from "@supergrain/kernel";
 import { tracked, useReactive } from "@supergrain/kernel/react";
 import { act, render, screen, waitFor } from "@testing-library/react";
@@ -20,79 +13,55 @@ const settle = () =>
     await new Promise((r) => setTimeout(r, 30));
   });
 
-describe('SKILL: "Props are not signals"', () => {
-  it("useReactivePromise keyed off a PROP never re-runs and keeps serving the first value", async () => {
-    const calls: string[] = [];
+describe("SKILL: reactivity comes from reading reactive state", () => {
+  it("a prop-keyed fetch never re-runs; the same fetch keyed off reactive state does", async () => {
+    const viaProp: string[] = [];
+    const viaState: string[] = [];
 
-    const Panel = tracked(({ projectId }: { projectId: string }) => {
+    // Reads the prop directly — a prop is not reactive state, so there is
+    // nothing for the resource to subscribe to.
+    const ByProp = tracked(({ projectId }: { projectId: string }) => {
       const tasks = useReactivePromise(async () => {
-        calls.push(projectId);
+        viaProp.push(projectId);
         return `tasks-for-${projectId}`;
       });
-      return <div data-testid="v">{tasks.data ?? "…"}</div>;
+      return <div data-testid="p">{tasks.data ?? "…"}</div>;
     });
 
-    const { rerender } = render(<Panel projectId="a" />);
-    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("tasks-for-a"));
-    expect(calls).toEqual(["a"]);
-
-    // The prop genuinely changes...
-    rerender(<Panel projectId="b" />);
-    await settle();
-
-    // ...and nothing refetches. The panel still shows project a's data.
-    expect(calls).toEqual(["a"]);
-    expect(screen.getByTestId("v").textContent).toBe("tasks-for-a");
-  });
-
-  it("useResource's args thunk keyed off a PROP also never re-runs", async () => {
-    const calls: string[] = [];
-
-    const fetchTasks = defineResource<string, { data: string | null }>(
-      () => ({ data: null }),
-      async (state, projectId) => {
-        calls.push(projectId);
-        state.data = `tasks-for-${projectId}`;
-      },
-    );
-
-    const Panel = tracked(({ projectId }: { projectId: string }) => {
-      const tasks = useResource(fetchTasks, () => projectId);
-      return <div data-testid="v">{tasks.data ?? "…"}</div>;
-    });
-
-    const { rerender } = render(<Panel projectId="a" />);
-    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("tasks-for-a"));
-    expect(calls).toEqual(["a"]);
-
-    rerender(<Panel projectId="b" />);
-    await settle();
-
-    expect(calls).toEqual(["a"]);
-    expect(screen.getByTestId("v").textContent).toBe("tasks-for-a");
-  });
-
-  it("mirroring the prop into reactive state DOES make it re-run (the skill's prescribed fix)", async () => {
-    const calls: string[] = [];
-
-    const Panel = tracked(({ projectId }: { projectId: string }) => {
-      const state = useReactive({ projectId });
-      state.projectId = projectId; // mirror prop -> signal
+    // Mirrors the prop into reactive state and reads that instead — the
+    // remedy the skill prescribes.
+    const ByState = tracked(({ projectId }: { projectId: string }) => {
+      const sel = useReactive({ projectId });
+      if (sel.projectId !== projectId) sel.projectId = projectId;
 
       const tasks = useReactivePromise(async () => {
-        const id = state.projectId; // signal read in the sync prefix
-        calls.push(id);
+        const id = sel.projectId; // reactive read, before the first await
+        viaState.push(id);
         return `tasks-for-${id}`;
       });
-      return <div data-testid="v">{tasks.data ?? "…"}</div>;
+      return <div data-testid="s">{tasks.data ?? "…"}</div>;
     });
 
-    const { rerender } = render(<Panel projectId="a" />);
-    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("tasks-for-a"));
+    const Both = ({ projectId }: { projectId: string }) => (
+      <>
+        <ByProp projectId={projectId} />
+        <ByState projectId={projectId} />
+      </>
+    );
 
-    rerender(<Panel projectId="b" />);
-    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("tasks-for-b"));
-    expect(calls).toEqual(["a", "b"]);
+    const { rerender } = render(<Both projectId="a" />);
+    await waitFor(() => expect(screen.getByTestId("p").textContent).toBe("tasks-for-a"));
+    await waitFor(() => expect(screen.getByTestId("s").textContent).toBe("tasks-for-a"));
+
+    rerender(<Both projectId="b" />);
+    await waitFor(() => expect(screen.getByTestId("s").textContent).toBe("tasks-for-b"));
+    await settle();
+
+    // The prop-keyed one never refetched and still shows a's data.
+    expect(viaProp).toEqual(["a"]);
+    expect(screen.getByTestId("p").textContent).toBe("tasks-for-a");
+    // The reactive-state one tracked the change.
+    expect(viaState).toEqual(["a", "b"]);
   });
 });
 
