@@ -73,10 +73,12 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 
 ## Traps
 
-- Neither layer has `refetch`. husk envelopes expose `.data` / `.error` / `.isPending` / `.isReady` / `.promise`; silo handles expose `.value` / `.error` / `.isFetching` / `.status` / `.promise`. Re-fetch by changing the id or params silo is keyed on.
+- Neither layer has `refetch`. husk exposes `.data` / `.error` / `.isPending` / `.isReady`, plus `.promise` on a `reactivePromise` but **not** on a task; silo handles expose `.value` / `.error` / `.isFetching` / `.status` / `.promise`. Re-fetch by changing the id or params silo is keyed on.
 - Plain objects, arrays, `Map`, `Set` proxy; `Date`, `RegExp`, class instances do not — replace wholesale, never mutate in place.
 - Fresh inline objects, arrays, or closures as props re-render a `tracked` child regardless of signals.
 
 ## Still React's job
 
-`use(handle.promise)` for Suspense, `useRef` for a raw DOM node, `useId` / `useTransition` / `useDeferredValue`, and `useMemo` to build a `computed` / `stableComputed` once or for expensive pure computation with no reactive reads.
+`use(handle.promise)` for Suspense (a `reactivePromise` or silo handle — a task has none), `useRef` for a raw DOM node, `useId` / `useTransition` / `useDeferredValue`, and `useMemo` to build a `computed` / `stableComputed` once or for expensive pure computation with no reactive reads.
+
+Every behavioural claim above is pinned by `packages/*/tests/skill-claims/*.test.tsx`.

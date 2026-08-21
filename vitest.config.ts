@@ -60,6 +60,22 @@ export default defineConfig({
         resolve,
         ssr,
       },
+      {
+        // Executable checks for the behavioural claims in
+        // .claude/skills/supergrain/SKILL.md — subscription scoping, the
+        // captured-closure semantics of the husk hooks, and which fields each
+        // envelope actually has. Run in jsdom because none of these assertions
+        // need a real engine, which also keeps them off the browser projects.
+        plugins: [react()],
+        test: {
+          name: "skill-claims",
+          include: ["packages/*/tests/skill-claims/**/*.test.{ts,tsx}"],
+          environment: "jsdom",
+          globals: true,
+        },
+        resolve,
+        ssr,
+      },
       // mill runs under its own config (node env + the real-mongod oracle:
       // globalSetup/setupFiles/hookTimeout). Referencing the file keeps that
       // setup in one place instead of duplicating it here.
@@ -67,7 +83,10 @@ export default defineConfig({
       {
         test: {
           include: ["packages/silo/tests/**/*.test.{ts,tsx}"],
-          exclude: ["packages/silo/tests/react/**/*.test.{ts,tsx}"],
+          exclude: [
+            "packages/silo/tests/react/**/*.test.{ts,tsx}",
+            "packages/silo/tests/skill-claims/**/*.test.{ts,tsx}",
+          ],
           environment: "node",
         },
         resolve,
