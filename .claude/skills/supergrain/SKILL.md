@@ -30,7 +30,7 @@ Read and write as plain objects at any depth, synchronously: `store.org.teams[0]
 
 ## Props are not signals
 
-`useResource` and `useReactivePromise` build their instance once and capture the **first render's** closure, so a fetch keyed off a prop never re-runs and keeps using the original value. Silent staleness.
+`useResource` and `useReactivePromise` build their instance once and capture the **first render's** closure, so a fetch keyed off a prop never re-runs and keeps using the original value. Silent staleness. Signal reads still drive re-runs normally — props are the blind spot.
 
 Key server data by id or params through silo instead — `useDocument("task", id)` re-reads when `id` changes. If you must drive a husk resource from a prop, mirror it into reactive state first and read that.
 
@@ -59,7 +59,7 @@ Drop `useCallback` for handlers that only mutate the store; keep it for closures
 | Push to an external sink             | `useSignalEffect(() => ...)`                                                                                 | reads inside change                                    |
 | Domain entity                        | `useDocument` / `useQuery`                                                                                   | id or params change                                    |
 
-`useReactiveTask` takes your own args and gets no signal.
+`useReactiveTask` takes your own args and receives no `AbortSignal`. Its envelope is still reactive — reading `task.isPending` in a `tracked` component drives the spinner.
 
 ## Lists
 
@@ -67,7 +67,7 @@ Drop `useCallback` for handlers that only mutate the store; keep it for closures
 
 ## Writes
 
-Wrap related writes in `batch(fn)`; sync only, throws on a returned Promise.
+Single writes are always safe. Wrap _multiple_ related writes in `batch(fn)`; sync only, throws on a returned Promise.
 
 For dot-path or operator writes, `update(doc, query, operations)` from `@supergrain/mill` — pass `{}` as `query` when no positional paths; batches internally, returns `{ doc, undo }`.
 
