@@ -69,7 +69,7 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 
 - Neither layer has `refetch`. husk exposes `.data` / `.error` / `.isPending` / `.isReady`, plus `.promise` on a `reactivePromise` but **not** on a task; silo handles expose `.value` / `.error` / `.isFetching` / `.status` / `.promise`. Re-fetch by changing the id or params silo is keyed on.
 - **Mutating in place is the point** — `store.org.teams[0].active = true`, `store.items.push(x)`, `store.m.set(k, v)` all notify. The one exception is values supergrain doesn't proxy: `Date`, `RegExp`, and class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date` instead.
-- Keying a fetch off a **prop**: neither `useReactivePromise` nor `useResource`'s args thunk re-runs — a prop is not a signal, and the thunk is not an escape hatch. Mirror it (`const sel = useReactive({ id }); if (sel.id !== id) sel.id = id;`) and read `sel.id` before the first `await`, or use silo. `useReactiveTask` is unaffected.
+- Keying a fetch off a **prop**: a prop is not a signal, so neither `useReactivePromise` nor `useResource` re-runs — including when the prop is read in `useResource`'s args thunk, which is tracked the same way. Mirror it (`const sel = useReactive({ id }); if (sel.id !== id) sel.id = id;`) and read `sel.id` before the first `await`, or use silo. `useReactiveTask` is unaffected.
 - A `useSignalEffect` that closes over a `useComputed` **value** never re-runs — `useComputed` hands back a plain number, so the effect body has no signal to subscribe to. Read the store inside the effect.
 - Fresh inline objects, arrays, or closures as props re-render a `tracked` child regardless of signals.
 
