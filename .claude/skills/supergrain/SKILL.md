@@ -1,100 +1,77 @@
 ---
 name: supergrain
-description: Write React state, derived values, and side effects with Supergrain (@supergrain/kernel, /husk, /silo, /mill, /queries) instead of useState, useEffect, useMemo, and useCallback. Use this whenever you add, edit, or review React code in a project that depends on @supergrain/* — any time you reach for component state, a shared store, a derived value, data fetching, a subscription, a timer, an observer, or DOM behavior. Also use it when reviewing a diff that introduces useState or useEffect, since those are almost always the wrong default here.
+description: Write React state, derived values, and side effects with Supergrain (@supergrain/kernel, /husk, /silo, /mill, /queries) instead of useState, useEffect, useMemo, and useCallback. Use this whenever you add, edit, or review React code in a project that depends on @supergrain/* — any time you reach for component state, a shared store, a derived value, data fetching, a subscription, a timer, an observer, or DOM behavior. Also use it when reviewing a diff that introduces useState or useEffect.
 ---
 
 # Supergrain
 
-In a Supergrain project, `useState` and `useEffect` are not the default — they are the fallback for the short list at the bottom of this file. Reaching for them usually means re-implementing, by hand and worse, something a Supergrain primitive already owns.
+`useState` and `useEffect` are the fallback here, not the default. Import from:
 
-Every component that reads reactive state must be wrapped in `tracked()`. Without it you still get correct values, but you lose the per-property re-render scoping that is the whole point of the library.
+- `@supergrain/kernel` — `createReactive`, `computed`, `stableComputed`, `effect`, `batch`
+- `@supergrain/kernel/react` — `tracked`, `useReactive`, `useComputed`, `useSignalEffect`, `createStoreContext`, `For`
+- `@supergrain/husk/react` — `useResource`, `useReactivePromise`, `useReactiveTask`, `modifier`, `useModifier`
+- `@supergrain/silo/react` — `createDocumentStoreContext` **only**; `useDocument` / `useQuery` are returned by it, not exported
 
-## State: replace `useState`
+## Wrap every component in `tracked()`
 
-| Situation | Use |
+Outside a tracked scope a proxy read creates no signal and subscribes to nothing. The component renders the right value once and then never updates. This fails silently — no warning, no error, just stale UI.
+
+## Replace `useState`
+
+| State | Use |
 | --- | --- |
-| State scoped to one component | `useReactive({ ... })` from `@supergrain/kernel/react` |
-| State shared across components | `createStoreContext<T>()` at module scope; mount `<Provider initial={...}>` once |
-| A server entity keyed by id or params | `useDocument("user", id)` / `useQuery("posts", params)` from `@supergrain/silo/react` |
-| A paginated or live-subscribed feed | `createQuery` from `@supergrain/queries` |
+| Local to one component | `useReactive({ ... })` |
+| Shared across components | `createStoreContext<T>()` at module scope → `{ Provider, useStore }`; mount `<Provider initial={...}>`; read via `useStore()` |
+| Server entity by id or params | `createDocumentStoreContext<DocumentStore<Models, Queries>>()` → `{ Provider, useDocument, useQuery }`; mount `<Provider config={{ models, queries }}>` |
+| Paginated or live feed | `createQuery({ store, adapter, type, id })` from `@supergrain/queries` — a plain function, not a hook; needs a configured silo store |
 
-Read and write reactive state as plain objects — `state.count++`, `store.org.teams[0].active = true`, `store.items.push(x)`. Deep mutation is tracked at any depth. Writes are synchronous, so you can read your own write on the next line. No spreading, no setters, no updater functions, no immer.
+Read and write as plain objects: `state.count++`, `store.org.teams[0].active = true`, `store.items.push(x)`. Tracked at any depth; writes are synchronous.
 
 ```tsx
-import { tracked, useReactive } from "@supergrain/kernel/react";
-
 const Counter = tracked(() => {
   const state = useReactive({ count: 0 });
   return <button onClick={() => state.count++}>{state.count}</button>;
 });
 ```
 
-## Derived values: replace `useMemo`
+## Replace `useMemo` and derived state
 
-Use `useComputed(() => ...)` for anything derived from reactive state. It re-evaluates when upstream signals change but only re-renders when the **result** changes, so 998 rows returning `false` stay put while the 2 that flip update.
+`useEffect(() => setX(f(y)), [y])` → `useComputed(() => f(store.y))`. Never derive state into state with an effect.
 
-Never derive state into state with an effect. `useEffect(() => setX(f(y)), [y])` is `useComputed(() => f(store.y))`.
+`useComputed` returns the value, not a wrapper, and only re-renders when the **result** changes. Feeding a derived array to `<For>` is the exception: use `stableComputed(() => xs.filter(...))`, which reconciles one persistent array in place. A plain `useComputed` returns a fresh array each run and defeats `For`'s per-item tracking.
 
-Handlers that just mutate the store need no `useCallback` — there is no dependency array to keep in sync. Keep `useCallback` only when the closure is passed as a prop into a `tracked` child, whose `React.memo` wrapper compares props by reference.
+Handlers that only mutate the store need no `useCallback` — there is no dependency array. Keep it when the closure is a prop to a `tracked` child, since `tracked()` wraps in `React.memo`.
 
-## Side effects: replace `useEffect`
+## Replace `useEffect`
 
-Pick by what the effect is actually doing. All of these are in `@supergrain/husk/react` except `useSignalEffect`, which is in `@supergrain/kernel/react`.
+| The effect | Use | Re-runs when |
+| --- | --- | --- |
+| Fetches async data | `useReactivePromise(async (signal) => ...)` | reads **before the first `await`** change |
+| Same, reused across call sites | `defineResource(...)` + `useResource(fn, () => args)` | the args thunk changes |
+| Subscribes, opens a socket, starts a timer | `useResource(initial, (state, { onCleanup }) => ...)` | reads inside setup change |
+| Attaches behavior to a DOM element | `useModifier(m, ...args)` as the element's `ref` | signals read in the modifier body change — args do **not** re-attach |
+| Runs user-triggered work (save, submit) | `useReactiveTask(async (...args) => ...)` + `task.run(...)` | never — only `run()` |
+| Pushes a value to an external sink | `useSignalEffect(() => ...)` | reads inside change |
+| Fetches a domain entity | `useDocument` / `useQuery` | the id or params change |
 
-| What the effect does | Use |
-| --- | --- |
-| Fetch async data from tracked inputs | `useReactivePromise(async (signal) => ...)` — gives `data`, `error`, `isPending`, `promise`, and aborts the previous run |
-| Same, but reusable across call sites | `defineResource(...)` once, then `useResource(fn, () => args)` |
-| Subscribe / open a socket / start a timer / attach a listener | `useResource(initial, (state, { onCleanup }) => ...)` |
-| Attach behavior to a DOM element (observers, focus traps, click-outside) | `useModifier(myModifier, ...args)` on the element's `ref` |
-| User-triggered async work (save, submit, delete) | `useReactiveTask(async (...) => ...)` then `task.run(...)` |
-| Push a reactive value somewhere external (`document.title`, localStorage, analytics) | `useSignalEffect(() => ...)` |
-| Fetch a domain entity from your API | Not an effect at all — `useDocument` / `useQuery` |
-
-These are not sugar. They package the six things a hand-rolled effect gets wrong: `AbortController` lifecycle, a generation counter so a stale response can't clobber fresh state, cleanup ordered before re-setup, `onCleanup` inside async setups, idempotent dispose, and the sync-vs-async cleanup shape. `useModifier` also does something `useEffect` structurally cannot: a signal read inside its setup re-attaches the behavior on the element **without re-rendering the component**.
-
-Effects re-run from the reactive reads inside them. There is no dependency array anywhere in this list.
-
-```tsx
-const Profile = tracked(() => {
-  const state = useReactive({ userId: 1 });
-  const user = useReactivePromise(async (signal) => {
-    const res = await fetch(`/users/${state.userId}`, { signal });
-    return res.json() as Promise<User>;
-  });
-  return (
-    <>
-      <button onClick={() => state.userId++}>Next</button>
-      {user.data && <UserCard user={user.data} />}
-    </>
-  );
-});
-```
+`useReactivePromise` gets an `AbortSignal` and aborts the prior run; `useReactiveTask` takes your own args and gets no signal.
 
 ## Lists
 
-Render arrays with `<For each={store.todos}>{(todo) => <Row todo={todo} />}</For>`, not `.map()`. `For` tracks per-item so only changed rows re-render. Pass a `parent` ref to get O(1) DOM moves on swaps.
+Use `<For each={store.todos}>{(todo) => <Row todo={todo} />}</For>`, not `.map()`. Passing a `parent` ref enables O(1) DOM moves on swaps, but then children **must** be `tracked()` components and **you** must pass `key` — `For` only supplies one on the non-`parent` path.
 
-## Batched and deep writes
+## Writes
 
-Single mutations are always safe. Wrap **multiple related writes** in `batch(fn)` from `@supergrain/kernel` so effects observe only the final state — without it, a computed reading two swapped slots sees the torn intermediate. `batch` is sync-only and throws on a returned Promise.
+Wrap multiple related writes in `batch(fn)` so effects see only the final state. Sync only — it throws on a returned Promise.
 
-For dot-path or operator-style writes (`$set`, `$inc`, `$push`, `$pull`, `$unset`), use `update` from `@supergrain/mill`. Plain assignment is still the usual path.
+For dot-path or operator writes, `update(doc, query, operations)` from `@supergrain/mill` takes three arguments; pass `{}` as `query` when no positional paths are involved. It already batches internally and returns `{ doc, undo }`.
 
 ## Traps
 
-- **Forgetting `tracked()`** — the code works but every render is coarse. This is the single most common mistake.
-- **Non-plain values are not reactive.** Plain objects, arrays, `Map`, and `Set` are proxied. Class instances, `Date`, `RegExp`, and functions pass through unchanged — mutating them fires nothing. Keep them out of the store.
-- **Fresh inline props still defeat memo.** `tracked()` wraps in `React.memo`; a new object, array, or closure literal in props re-renders the child anyway.
-- **No `await` inside `batch()`.**
-- **Subtree-wide subscription doesn't exist.** Subscriptions are per-property. To react to `a.b.c`, something must read `a.b.c` (or a computed over it) inside the effect.
+- **Envelope fields differ.** husk exposes `.data` / `.isPending`; silo handles expose `.value` / `.isFetching` / `.status` / `.promise` and have no `refetch`.
+- **Non-plain values.** Plain objects, arrays, `Map`, `Set` are proxied. `Date`, `RegExp`, and class instances are not — assign a replacement wholesale; never mutate one in place.
+- **Fresh inline objects, arrays, or closures as props** re-render a `tracked` child regardless of signals.
 
-## When React's own hooks are still correct
+## Still React's job
 
-- `use(handle.promise)` for Suspense on a silo document or a husk promise.
-- `useRef` for a raw DOM node a third-party library demands — though `modifier` is usually the better fit.
-- `useId`, `useTransition`, `useDeferredValue`, and other scheduling hooks.
-- Wrapping a third-party hook that owns its own state.
-- `useMemo` for expensive pure computation over props with no reactive reads.
-
-Everything else belongs to a Supergrain primitive.
+`use(handle.promise)` for Suspense, `useRef` for a DOM node a library demands, `useId` / `useTransition` / `useDeferredValue`, and `useMemo` for expensive pure computation with no reactive reads.
