@@ -28,22 +28,6 @@ Untracked reads subscribe to nothing: the UI goes stale, silently.
 
 Read and write as plain objects at any depth, synchronously: `store.org.teams[0].active = true`, `store.items.push(x)`.
 
-## Props are not signals
-
-A prop read inside `useResource` / `useReactivePromise` is invisible to it: the fetch runs once and keeps serving the first value. Nothing throws.
-
-```tsx
-// ❌ id goes a -> b, nothing refetches, the panel still shows a's data
-const d = useReactivePromise(async () => fetchBook(id));
-
-// ✅ mirror the prop into reactive state, read it before the first await
-const sel = useReactive({ id });
-if (sel.id !== id) sel.id = id;
-const d = useReactivePromise(async () => fetchBook(sel.id));
-```
-
-`useReactiveTask` is unaffected — it runs the latest render's closure. For a server entity, `useDocument("book", id)` re-reads on an id change and is the better fit.
-
 ## Replace `useMemo` and derived state
 
 `useEffect(() => setX(f(y)), [y])` → `useComputed(() => f(store.y))`, which returns the value, not a wrapper.
@@ -85,6 +69,7 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 
 - Neither layer has `refetch`. husk exposes `.data` / `.error` / `.isPending` / `.isReady`, plus `.promise` on a `reactivePromise` but **not** on a task; silo handles expose `.value` / `.error` / `.isFetching` / `.status` / `.promise`. Re-fetch by changing the id or params silo is keyed on.
 - **Mutating in place is the point** — `store.org.teams[0].active = true`, `store.items.push(x)`, `store.m.set(k, v)` all notify. The one exception is values supergrain doesn't proxy: `Date`, `RegExp`, and class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date` instead.
+- Keying a fetch off a **prop**: neither `useReactivePromise` nor `useResource`'s args thunk re-runs — a prop is not a signal, and the thunk is not an escape hatch. Mirror it (`const sel = useReactive({ id }); if (sel.id !== id) sel.id = id;`) and read `sel.id` before the first `await`, or use silo. `useReactiveTask` is unaffected.
 - A `useSignalEffect` that closes over a `useComputed` **value** never re-runs — `useComputed` hands back a plain number, so the effect body has no signal to subscribe to. Read the store inside the effect.
 - Fresh inline objects, arrays, or closures as props re-render a `tracked` child regardless of signals.
 
