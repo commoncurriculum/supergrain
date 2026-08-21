@@ -3,7 +3,7 @@
 // tells you which line of the skill has gone stale.
 
 import { createReactive, stableComputed } from "@supergrain/kernel";
-import { For, tracked, useComputed } from "@supergrain/kernel/react";
+import { For, tracked, useComputed, useSignalEffect } from "@supergrain/kernel/react";
 import { act, render, screen } from "@testing-library/react";
 import { useRef } from "react";
 import { describe, expect, it } from "vitest";
@@ -249,5 +249,47 @@ describe('SKILL: "Plain objects, arrays, Map, Set proxy; Date ... do not"', () =
       store.m.set("a", 2);
     });
     expect(screen.getByTestId("m").textContent).toBe("2");
+  });
+});
+
+describe('SKILL: "useSignalEffect re-runs when reads inside change"', () => {
+  it("closing over a useComputed VALUE never re-runs the effect; reading the store inside does", async () => {
+    const store = createReactive({ n: 1 });
+    const closedOver: number[] = [];
+    const readInside: number[] = [];
+
+    const C = tracked(() => {
+      const doubled = useComputed(() => store.n * 2);
+
+      // Closing over the computed's plain value. It looks like a dependency,
+      // but useComputed returns a number — there is no signal read in here, so
+      // the effect body has nothing to subscribe to.
+      useSignalEffect(() => {
+        closedOver.push(doubled);
+      });
+
+      // Reading the store inside the effect body is a real signal read.
+      useSignalEffect(() => {
+        readInside.push(store.n * 2);
+      });
+
+      return <div data-testid="v">{doubled}</div>;
+    });
+
+    render(<C />);
+    expect(screen.getByTestId("v").textContent).toBe("2");
+    expect(closedOver).toEqual([2]);
+    expect(readInside).toEqual([2]);
+
+    await act(async () => {
+      store.n = 5;
+    });
+
+    // The component re-rendered and the computed updated...
+    expect(screen.getByTestId("v").textContent).toBe("10");
+    // ...but the effect that only closed over the value never re-ran.
+    expect(closedOver).toEqual([2]);
+    // The one that read the store inside did.
+    expect(readInside).toEqual([2, 10]);
   });
 });

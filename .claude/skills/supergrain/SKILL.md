@@ -32,7 +32,10 @@ Read and write as plain objects at any depth, synchronously: `store.org.teams[0]
 
 `useResource` and `useReactivePromise` build their instance once and capture the **first render's** closure, so a fetch keyed off a prop never re-runs and keeps using the original value. Silent staleness. Signal reads still drive re-runs normally — props are the blind spot.
 
-Key server data by id or params through silo instead — `useDocument("task", id)` re-reads when `id` changes. If you must drive a husk resource from a prop, mirror it into reactive state first and read that.
+Mirror the prop into reactive state and read _that_ before the first `await`:
+`const sel = useReactive({ id }); if (sel.id !== id) sel.id = id;`
+
+If it is a server entity and you already have a silo store, `useDocument("task", id)` re-reads on an id change and is the better fit.
 
 ## Replace `useMemo` and derived state
 
@@ -49,15 +52,15 @@ Drop `useCallback` for handlers that only mutate the store; keep it for closures
 
 ## Replace `useEffect`
 
-| The effect                           | Use                                                                                                          | Re-runs when                                           |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| Async data                           | `useReactivePromise(async (signal) => ...)`                                                                  | reads **before the first `await`** change              |
-| Async data, reused across call sites | `defineResource(() => initial, async (state, args, { abortSignal }) => ...)` + `useResource(fn, () => args)` | args thunk changes                                     |
-| Subscription, socket, timer          | `useResource(initial, (state, { onCleanup }) => ...)`                                                        | reads in setup change                                  |
-| DOM element behavior                 | `useModifier(m, ...args)` as `ref`                                                                           | signals in the body change — args do **not** re-attach |
-| User-triggered work (save, submit)   | `useReactiveTask(async (...args) => ...)` + `task.run(...)`                                                  | only `run()`                                           |
-| Push to an external sink             | `useSignalEffect(() => ...)`                                                                                 | reads inside change                                    |
-| Domain entity                        | `useDocument` / `useQuery`                                                                                   | id or params change                                    |
+| The effect                           | Use                                                                                                          | Re-runs when                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Async data                           | `useReactivePromise(async (signal) => ...)`                                                                  | reads **before the first `await`** change                           |
+| Async data, reused across call sites | `defineResource(() => initial, async (state, args, { abortSignal }) => ...)` + `useResource(fn, () => args)` | reads **inside** the args thunk change (a prop there is not a read) |
+| Subscription, socket, timer          | `useResource(initial, (state, { onCleanup }) => ...)`                                                        | reads in setup change                                               |
+| DOM element behavior                 | `modifier((el, ...args) => cleanupFn)` + `useModifier(m, ...args)` as `ref`                                  | signals in the body change — args do **not** re-attach              |
+| User-triggered work (save, submit)   | `useReactiveTask(async (...args) => ...)` + `task.run(...)`                                                  | only `run()`                                                        |
+| Push to an external sink             | `useSignalEffect(() => ...)`                                                                                 | reads inside change                                                 |
+| Domain entity                        | `useDocument` / `useQuery`                                                                                   | id or params change                                                 |
 
 `useReactiveTask` takes your own args and receives no `AbortSignal`. Its envelope is still reactive — reading `task.isPending` in a `tracked` component drives the spinner.
 
@@ -75,6 +78,7 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 
 - Neither layer has `refetch`. husk exposes `.data` / `.error` / `.isPending` / `.isReady`, plus `.promise` on a `reactivePromise` but **not** on a task; silo handles expose `.value` / `.error` / `.isFetching` / `.status` / `.promise`. Re-fetch by changing the id or params silo is keyed on.
 - **Mutating in place is the point** — `store.org.teams[0].active = true`, `store.items.push(x)`, `store.m.set(k, v)` all notify. The one exception is values supergrain doesn't proxy: `Date`, `RegExp`, and class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date` instead.
+- A `useSignalEffect` that closes over a `useComputed` **value** never re-runs — `useComputed` hands back a plain number, so the effect body has no signal to subscribe to. Read the store inside the effect.
 - Fresh inline objects, arrays, or closures as props re-render a `tracked` child regardless of signals.
 
 ## Still React's job
