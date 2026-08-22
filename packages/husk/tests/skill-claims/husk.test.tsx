@@ -306,3 +306,27 @@ describe('SKILL: "signals in the body change — args do NOT re-attach"', () => 
     expect(seen).toEqual(["first"]);
   });
 });
+
+describe('SKILL: "`.data` (`null` until resolved)"', () => {
+  it("is null — not undefined — before the promise settles", async () => {
+    const seen: Array<{ data: unknown; isNull: boolean }> = [];
+
+    const C = tracked(() => {
+      const r = useReactivePromise(async () => {
+        await new Promise((res) => setTimeout(res, 5));
+        return { orderId: "o1" };
+      });
+      seen.push({ data: r.data, isNull: r.data === null });
+      return <div data-testid="v">{r.data?.orderId ?? "…"}</div>;
+    });
+
+    render(<C />);
+    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("o1"));
+
+    // The first observation is the unresolved one. `data !== undefined` would
+    // NOT narrow it — the guard has to be against null.
+    expect(seen[0]!.isNull).toBe(true);
+    expect(seen[0]!.data).not.toBe(undefined);
+    expect(seen.at(-1)!.data).toEqual({ orderId: "o1" });
+  });
+});
