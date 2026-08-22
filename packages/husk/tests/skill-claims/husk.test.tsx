@@ -330,3 +330,35 @@ describe('SKILL: "`.data` (`null` until resolved)"', () => {
     expect(seen.at(-1)!.data).toEqual({ orderId: "o1" });
   });
 });
+
+describe('SKILL: "the same, across call sites" shares the definition, not the state', () => {
+  it("each useResource call site gets its own instance, bound to its own args", async () => {
+    const seen: string[] = [];
+    const lookup = defineResource(
+      (): { name: string } => ({ name: "" }),
+      async (state, args: { id: string }) => {
+        seen.push(args.id);
+        state.name = `supplier-${args.id}`;
+      },
+    );
+
+    const Site = tracked(({ id }: { id: string }) => {
+      const mirror = useReactive({ id });
+      if (mirror.id !== id) mirror.id = id;
+      const s = useResource(lookup, () => ({ id: mirror.id }));
+      return <div data-testid={`s${id}`}>{s.name || "…"}</div>;
+    });
+
+    render(
+      <>
+        <Site id="a" />
+        <Site id="b" />
+      </>,
+    );
+
+    // Two call sites of ONE defineResource: separate state, separate args.
+    await waitFor(() => expect(screen.getByTestId("sa").textContent).toBe("supplier-a"));
+    await waitFor(() => expect(screen.getByTestId("sb").textContent).toBe("supplier-b"));
+    expect(seen.sort()).toEqual(["a", "b"]);
+  });
+});

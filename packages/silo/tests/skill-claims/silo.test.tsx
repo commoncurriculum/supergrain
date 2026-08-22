@@ -223,3 +223,43 @@ describe("SKILL: a `useComputed` id still re-keys `useDocument`", () => {
     expect(calls.flat()).toEqual(["a", "b"]);
   });
 });
+
+describe("SKILL: a loaded silo document is a mutable reactive object", () => {
+  it("writing a field on handle.value re-renders, so mill writes on it work", async () => {
+    const { Provider, useDocument } = createDocumentStoreContext<Store>();
+
+    const config = {
+      models: {
+        task: {
+          adapter: {
+            find: (ids: readonly string[]) =>
+              Promise.resolve(ids.map((id) => ({ id, title: `task-${id}` }))),
+          },
+        },
+      },
+    };
+
+    let doc: { id: string; title: string } | undefined;
+    const Panel = tracked(() => {
+      const task = useDocument("task", "a");
+      doc = task.value;
+      return <div data-testid="v">{task.value?.title ?? "…"}</div>;
+    });
+
+    render(
+      <Provider config={config as never}>
+        <Panel />
+      </Provider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("task-a"));
+
+    // Every silo cold build has assumed this: the loaded document is a
+    // reactive proxy, not a frozen snapshot, so an in-place field write
+    // notifies — which is what makes `update(doc, ...)` on it work.
+    await act(async () => {
+      doc!.title = "edited in place";
+    });
+
+    expect(screen.getByTestId("v").textContent).toBe("edited in place");
+  });
+});
