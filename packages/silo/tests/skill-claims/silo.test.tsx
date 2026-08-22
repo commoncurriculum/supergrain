@@ -5,7 +5,7 @@ import type { DocumentStore } from "@supergrain/silo";
 
 import { tracked } from "@supergrain/kernel/react";
 import { createDocumentStoreContext } from "@supergrain/silo/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 type Models = { task: { id: string; title: string } };
@@ -90,5 +90,90 @@ describe('SKILL: "useDocument(\\"task\\", id) re-reads when id changes"', () => 
     }
     expect(h["refetch"]).toBeUndefined();
     expect(h["data"]).toBeUndefined(); // silo uses .value, husk uses .data
+  });
+});
+
+describe('SKILL: "a document whose id never changes has no refresh lever"', () => {
+  it("insertDocument replaces the value a live handle is showing", async () => {
+    let fetches = 0;
+    const { Provider, useDocumentStore, useDocument } = createDocumentStoreContext<Store>();
+
+    const config = {
+      models: {
+        task: {
+          adapter: {
+            find: (ids: readonly string[]) => {
+              fetches += 1;
+              return Promise.resolve(ids.map((id) => ({ id, title: `task-${id}` })));
+            },
+          },
+        },
+      },
+    };
+
+    let store: ReturnType<typeof useDocumentStore> | undefined;
+    const Panel = tracked(() => {
+      store = useDocumentStore();
+      // The id is a constant, so nothing the handle tracks will ever change.
+      const task = useDocument("task", "a");
+      return <div data-testid="v">{task.value?.title ?? "…"}</div>;
+    });
+
+    render(
+      <Provider config={config as never}>
+        <Panel />
+      </Provider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("task-a"));
+    expect(fetches).toBe(1);
+
+    // The documented lever: write the fresh document straight into the store.
+    act(() => {
+      store!.insertDocument("task", { id: "a", title: "refreshed" });
+    });
+
+    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("refreshed"));
+    // No second find(): the handle updated because the store did, not by refetching.
+    expect(fetches).toBe(1);
+  });
+});
+
+describe('SKILL: "`.value` is `undefined` until it resolves"', () => {
+  it("a pending handle has status pending, no value, and a promise to suspend on", async () => {
+    const seen: Array<{ status: unknown; value: unknown; hasPromise: boolean }> = [];
+    const { Provider, useDocument } = createDocumentStoreContext<Store>();
+
+    const config = {
+      models: {
+        task: {
+          adapter: {
+            find: (ids: readonly string[]) =>
+              Promise.resolve(ids.map((id) => ({ id, title: `task-${id}` }))),
+          },
+        },
+      },
+    };
+
+    const Panel = tracked(() => {
+      const task = useDocument("task", "a");
+      seen.push({
+        status: task.status,
+        value: task.value,
+        hasPromise: task.promise !== undefined,
+      });
+      return <div data-testid="v">{task.value?.title ?? "…"}</div>;
+    });
+
+    render(
+      <Provider config={config as never}>
+        <Panel />
+      </Provider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("task-a"));
+
+    // First observation is the pending state the `use(handle.promise!)` line
+    // exists for: no value yet, but a promise to hand React.
+    expect(seen[0]).toEqual({ status: "pending", value: undefined, hasPromise: true });
+    expect(seen.at(-1)!.status).toBe("success");
   });
 });
