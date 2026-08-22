@@ -1,7 +1,14 @@
 // Verifies the behavioural claims made by .claude/skills/supergrain/SKILL.md
 // about the husk react hooks. Named after the skill sentence each one backs.
 
-import { modifier, useModifier, useReactivePromise, useReactiveTask } from "@supergrain/husk/react";
+import { defineResource } from "@supergrain/husk";
+import {
+  modifier,
+  useModifier,
+  useReactivePromise,
+  useReactiveTask,
+  useResource,
+} from "@supergrain/husk/react";
 import { createReactive } from "@supergrain/kernel";
 import { tracked, useReactive } from "@supergrain/kernel/react";
 import { act, render, screen, waitFor } from "@testing-library/react";
@@ -209,6 +216,36 @@ describe('SKILL: "Neither layer has refetch"', () => {
     expect(h["refetch"]).toBeUndefined();
     for (const f of ["data", "error", "isPending", "isReady", "promise"]) {
       expect(f in h).toBe(true);
+    }
+  });
+});
+
+describe('SKILL: "A resource has no envelope"', () => {
+  it("useResource hands back the state object itself, with no .data/.isPending wrapper", async () => {
+    const listing = defineResource(
+      (): { items: string[] } => ({ items: [] }),
+      async (state, args: { query: string }) => {
+        state.items = [`hit-for-${args.query}`];
+      },
+    );
+
+    let handle: unknown;
+    const C = tracked(() => {
+      const search = useReactive({ query: "a" });
+      const docs = useResource(listing, () => ({ query: search.query }));
+      handle = docs;
+      return <div data-testid="v">{docs.items[0] ?? "…"}</div>;
+    });
+
+    render(<C />);
+    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("hit-for-a"));
+
+    // The state object is what comes back — the envelope fields a
+    // reactivePromise carries are absent, so `.data` is not the way in.
+    const h = handle as Record<string, unknown>;
+    expect(h["items"]).toEqual(["hit-for-a"]);
+    for (const f of ["data", "error", "isPending", "isReady", "promise", "refetch"]) {
+      expect(h[f]).toBeUndefined();
     }
   });
 });
