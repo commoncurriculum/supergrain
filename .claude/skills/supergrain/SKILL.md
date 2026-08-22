@@ -49,7 +49,7 @@ Drop `useCallback` for handlers that only mutate the store; keep it for closures
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
 | Async data                           | `useReactivePromise(async (signal) => ...)`                                                                  | reactive reads **before the first `await`** change     |
 | Async data, reused across call sites | `defineResource(() => initial, async (state, args, { abortSignal }) => ...)` + `useResource(fn, () => args)` | reactive reads inside the args thunk change            |
-| Subscription, socket, timer          | `useResource(initial, (state, { onCleanup }) => ...)`                                                        | reactive reads in setup change                         |
+| Subscription, socket, timer          | `useResource(initial, (state, { onCleanup }) => ...)` — same hook, other overload                            | reactive reads in setup change                         |
 | DOM element behavior                 | `modifier((el, ...args) => cleanupFn)` + `useModifier(m, ...args)` as `ref`                                  | signals in the body change — args do **not** re-attach |
 | User-triggered work (save, submit)   | `useReactiveTask(async (...args) => ...)` + `task.run(...)`                                                  | only `run()`                                           |
 | Push to an external sink             | `useSignalEffect(() => ...)`                                                                                 | reactive reads inside change                           |
@@ -65,11 +65,11 @@ Drop `useCallback` for handlers that only mutate the store; keep it for closures
 
 Single writes are always safe. Wrap _multiple_ related writes in `batch(fn)`; sync only, throws on a returned Promise.
 
-For dot-path or operator writes, `update(doc, query, operations)` from `@supergrain/mill` — pass `{}` as `query` when no positional paths; batches internally, returns `{ doc, undo }`.
+For dot-path or operator writes, `update(doc, query, operations)` from `@supergrain/mill` — pass `{}` as `query` when no positional paths; batches internally, returns `{ doc, undo }`, where `doc` is the same object back and `undo` is an inverse Mongo update document — not a function. Replay it with `update(doc, {}, undo)`.
 
 ## Traps
 
-- Neither layer has `refetch`. husk exposes `.data` / `.error` / `.isPending` / `.isReady`, plus `.promise` on a `reactivePromise` but **not** on a task; silo handles expose `.value` / `.error` / `.isFetching` / `.status` / `.promise`. Re-fetch by changing the id or params silo is keyed on.
+- Neither layer has `refetch`. A `reactivePromise` / `reactiveTask` envelope exposes `.data` / `.error` / `.isPending` / `.isReady`, plus `.promise` on a promise but **not** on a task. A **resource has no envelope**: `useResource` hands back your own state object, so read `state.items`, never `.data`. silo handles expose `.value` / `.error` / `.isFetching` / `.status` / `.promise`. Re-fetch by changing what the tracked reads see — the args thunk for husk, the id or params for silo.
 - **Mutating in place is the point** — `store.org.teams[0].active = true`, `store.items.push(x)`, `store.m.set(k, v)` all notify. The one exception is values supergrain doesn't proxy: `Date`, `RegExp`, and class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date` instead.
 - Fresh inline objects, arrays, or closures as props re-render a `tracked` child regardless of signals.
 
