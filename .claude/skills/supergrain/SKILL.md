@@ -50,7 +50,7 @@ Every handle below is reactive: read a field in a `tracked` component and it dri
 | Server entity by id/params  | silo's `useDocument` / `useQuery` — see below                                                                | `.value` `.error` `.isFetching` `.promise`, on `.status` `"pending"`/`"success"`/`"error"`; `.value` is `undefined` until it resolves, then survives later refetches | the id or params change; for a fixed id, `store.insertDocument(type, doc)` |
 | Paginated feed              | `createQuery({ store, adapter, type, id })` — a plain function, not a hook                                   | `.results` `.nextOffset` `.isFetching` `.error`                                                                                                                      | `fetchNextPage()` `refetch()` `destroy()`                                  |
 
-Only `createQuery` has `refetch`. husk's `.error` is `unknown`, so narrow it: `{String(task.error)}`, not `{task.error && <p>{task.error}</p>}`. silo's is a `SiloError`.
+Only `createQuery` has `refetch`. On the two husk envelopes — not on a resource, which has none — `.error` is `unknown`, so narrow it: `{String(task.error)}`, not `{task.error && <p>{task.error}</p>}`. silo's is a `SiloError`.
 
 ```tsx
 type Models = { book: Book };                              // silo
@@ -69,7 +69,7 @@ useDocument("book", id); // `null` id skips the fetch
 
 Single writes are always safe. Wrap _multiple_ related writes in `batch(fn)`; sync only, throws on a returned Promise.
 
-For dot-path or operator writes, `update(doc, query, operations)` from `@supergrain/mill` — pass `{}` as `query` when no positional paths; batches internally, returns `{ doc, undo }`, where `doc` is the same object back and `undo` is an inverse Mongo update document, **not** a function. Replay it with `update(doc, {}, undo)`.
+For dot-path or operator writes, `update(doc, query, operations)` from `@supergrain/mill` — pass `{}` as `query` when no positional paths; batches internally, returns `{ doc, undo }`, where `doc` is the same object back and `undo` is an inverse Mongo update document, **not** a function — an `UpdateOperations<T>`, the type to annotate with if you keep an undo stack. Replay it with `update(doc, {}, undo)`.
 
 ## Traps
 
