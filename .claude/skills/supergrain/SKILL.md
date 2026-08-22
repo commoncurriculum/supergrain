@@ -9,8 +9,8 @@ description: Write React state, derived values, and side effects with Supergrain
 
 - `@supergrain/kernel` — `createReactive`, `computed`, `stableComputed`, `effect`, `batch`; `/react` — `tracked`, `useReactive`, `useComputed`, `useSignalEffect`, `createStoreContext`, `For`
 - `@supergrain/husk` — `defineResource`, `dispose`; `/react` — `useResource`, `useReactivePromise`, `useReactiveTask`, `modifier`, `useModifier`
-- `@supergrain/silo` — the `DocumentStore` type; `/react` — `createDocumentStoreContext` only
-- `@supergrain/queries` — `createQuery`; `@supergrain/mill` — `update`
+- `@supergrain/silo` — the `DocumentStore` and `SiloError` types; `/react` — `createDocumentStoreContext` only
+- `@supergrain/queries` — `createQuery`; `@supergrain/mill` — `update`, `UpdateOperations`
 
 ## Reactivity comes from reading reactive state
 

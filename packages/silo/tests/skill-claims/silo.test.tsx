@@ -3,7 +3,8 @@
 
 import type { DocumentStore } from "@supergrain/silo";
 
-import { tracked } from "@supergrain/kernel/react";
+import { createReactive } from "@supergrain/kernel";
+import { tracked, useComputed } from "@supergrain/kernel/react";
 import { createDocumentStoreContext } from "@supergrain/silo/react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -175,5 +176,50 @@ describe('SKILL: "`.value` is `undefined` until it resolves"', () => {
     // exists for: no value yet, but a promise to hand React.
     expect(seen[0]).toEqual({ status: "pending", value: undefined, hasPromise: true });
     expect(seen.at(-1)!.status).toBe("success");
+  });
+});
+
+describe("SKILL: a `useComputed` id still re-keys `useDocument`", () => {
+  it("re-reads when the derived id changes, even though a computed value is 'dead'", async () => {
+    const calls: string[][] = [];
+    const { Provider, useDocument } = createDocumentStoreContext<Store>();
+
+    const config = {
+      models: {
+        task: {
+          adapter: {
+            find: (ids: readonly string[]) => {
+              calls.push([...ids]);
+              return Promise.resolve(ids.map((id) => ({ id, title: `task-${id}` })));
+            },
+          },
+        },
+      },
+    };
+
+    const sel = createReactive({ pick: 1 });
+
+    // The id is a computed VALUE, not reactive state — the shape a cold build
+    // flagged as unclear. It works because the computed re-renders the
+    // component and `useDocument` re-reads its argument every render.
+    const Panel = tracked(() => {
+      const id = useComputed(() => (sel.pick === 1 ? "a" : "b"));
+      const task = useDocument("task", id);
+      return <div data-testid="v">{task.value?.title ?? "…"}</div>;
+    });
+
+    render(
+      <Provider config={config as never}>
+        <Panel />
+      </Provider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("task-a"));
+
+    await act(async () => {
+      sel.pick = 2;
+    });
+
+    await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("task-b"));
+    expect(calls.flat()).toEqual(["a", "b"]);
   });
 });
