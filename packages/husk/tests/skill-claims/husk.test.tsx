@@ -200,7 +200,7 @@ describe('SKILL: "useReactiveTask ... only run()"', () => {
   });
 });
 
-describe('SKILL: "Neither layer has refetch"', () => {
+describe('SKILL: "Only `createQuery` has `refetch`"', () => {
   it("a husk promise envelope has no refetch", async () => {
     let handle: unknown;
     const C = tracked(() => {

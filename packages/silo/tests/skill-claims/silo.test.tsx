@@ -93,7 +93,7 @@ describe('SKILL: "useDocument(\\"task\\", id) re-reads when id changes"', () => 
   });
 });
 
-describe('SKILL: "a document whose id never changes has no refresh lever"', () => {
+describe('SKILL: "for a fixed id, `store.insertDocument(type, doc)`"', () => {
   it("insertDocument replaces the value a live handle is showing", async () => {
     let fetches = 0;
     const { Provider, useDocumentStore, useDocument } = createDocumentStoreContext<Store>();
