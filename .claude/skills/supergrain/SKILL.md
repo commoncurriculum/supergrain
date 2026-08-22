@@ -11,7 +11,7 @@ description: Write React state, derived values, and side effects with Supergrain
 - `@supergrain/kernel/react` — `tracked`, `useReactive`, `useComputed`, `useSignalEffect`, `createStoreContext`, `For`
 - `@supergrain/husk` — `resource`, `defineResource`, `reactivePromise`, `reactiveTask`, `dispose`
 - `@supergrain/husk/react` — `useResource`, `useReactivePromise`, `useReactiveTask`, `modifier`, `useModifier`
-- `@supergrain/silo/react` — `createDocumentStoreContext` **only**; it returns `useDocument` / `useQuery`
+- `@supergrain/silo/react` — `createDocumentStoreContext` **only**; it returns `Provider` / `useDocumentStore` / `useDocument` / `useQuery`
 
 ## Reactivity comes from reading reactive state
 
@@ -21,12 +21,12 @@ The same rule governs every re-run below: something re-runs when the **reactive 
 
 ## Replace `useState`
 
-| State                         | Use                                                                                                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Component-local               | `useReactive({ ... })`                                                                                                                                  |
-| Shared                        | `createStoreContext<T>()` at module scope → `{ Provider, useStore }`; mount `<Provider initial={...}>`                                                  |
-| Server entity by id or params | `createDocumentStoreContext<DocumentStore<Models, Queries>>()` → `{ Provider, useDocument, useQuery }`; mount `<Provider config={{ models, queries }}>` |
-| Paginated or live feed        | `createQuery({ store, adapter, type, id })` from `@supergrain/queries` — plain function, not a hook; needs a silo store                                 |
+| State                         | Use                                                                                                                                                                                                                                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Component-local               | `useReactive({ ... })`                                                                                                                                                                                                                                                                                        |
+| Shared                        | `createStoreContext<T>()` at module scope → `{ Provider, useStore }`; mount `<Provider initial={...}>`                                                                                                                                                                                                        |
+| Server entity by id or params | `createDocumentStoreContext<DocumentStore<Models, Queries>>()` → `{ Provider, useDocument, useQuery }`; mount `<Provider config={{ models: { book: { adapter } }, queries }}>`                                                                                                                                |
+| Paginated or live feed        | `createQuery({ store, adapter, type, id })` from `@supergrain/queries` — plain function, not a hook; `store` comes from `useDocumentStore()` and is typed `DocumentStore<Models>`; each result row carries an `offset`. Exposes `.results` / `.nextOffset` / `.fetchNextPage()` / `.refetch()` / `.destroy()` |
 
 Read and write as plain objects at any depth, synchronously: `store.org.teams[0].active = true`, `store.items.push(x)`.
 
@@ -69,12 +69,13 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 
 ## Traps
 
-- Neither layer has `refetch`. A `reactivePromise` / `reactiveTask` envelope exposes `.data` / `.error` / `.isPending` / `.isReady`, plus `.promise` on a promise but **not** on a task. A **resource has no envelope**: `useResource` hands back your own state object, so read `state.items`, never `.data`. silo handles expose `.value` / `.error` / `.isFetching` / `.status` / `.promise`. Re-fetch by changing what the tracked reads see — the args thunk for husk, the id or params for silo.
+- Neither husk nor silo has `refetch` (a `createQuery` handle does). A `reactivePromise` / `reactiveTask` envelope exposes `.data` / `.error` / `.isPending` / `.isReady`, plus `.promise` on a promise but **not** on a task. A **resource has no envelope**: `useResource` hands back your own state object, so read `state.items`, never `.data`. silo handles expose `.value` / `.error` / `.isFetching` / `.status` / `.promise`, discriminated on `.status` — `.value` is `undefined` until it resolves. Re-fetch by changing what the tracked reads see — the args thunk for husk, the id or params for silo; a document whose id never changes has no refresh lever, so write the new one with `store.insertDocument(type, doc)`.
+- husk's `.error` is `unknown`, so it needs narrowing before render — `{String(task.error)}`, not `{task.error && <p>{task.error}</p>}`. silo's is a `SiloError`.
 - **Mutating in place is the point** — `store.org.teams[0].active = true`, `store.items.push(x)`, `store.m.set(k, v)` all notify. The one exception is values supergrain doesn't proxy: `Date`, `RegExp`, and class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date` instead.
 - Fresh inline objects, arrays, or closures as props re-render a `tracked` child regardless of signals.
 
 ## Still React's job
 
-`use(handle.promise)` for Suspense (a `reactivePromise` or silo handle — a task has none), `useRef` for a raw DOM node, `useId` / `useTransition` / `useDeferredValue`, and `useMemo` to build a `computed` / `stableComputed` once or for expensive pure computation with no reactive reads.
+`use(handle.promise!)` for Suspense (a `reactivePromise` or silo handle — a task has none; a silo handle's is `undefined` until a fetch is in flight, hence the `!`), `useRef` for a raw DOM node, `useId` / `useTransition` / `useDeferredValue`, and `useMemo` to build a `computed` / `stableComputed` once or for expensive pure computation with no reactive reads.
 
 Every behavioural claim above is pinned by `packages/*/tests/skill-claims/*.test.tsx`.
