@@ -219,3 +219,43 @@ describe('SKILL: "Plain objects, arrays, Map, Set proxy; Date ... do not"', () =
     expect(screen.getByTestId("m").textContent).toBe("2");
   });
 });
+
+describe('SKILL: "A prop that is a store object stays reactive"', () => {
+  it("a tracked child re-renders on a property change reached through a prop — and only that child", async () => {
+    const store = createReactive({
+      todos: [
+        { id: 1, text: "a", done: false },
+        { id: 2, text: "b", done: false },
+      ],
+    });
+    const renders: Record<number, number> = { 1: 0, 2: 0 };
+
+    // The prop is the reactive object itself, so `todo.done` inside the child
+    // is an ordinary tracked read — the thing four cold builds hesitated over.
+    const Row = tracked(({ todo }: { todo: { id: number; text: string; done: boolean } }) => {
+      renders[todo.id] = (renders[todo.id] ?? 0) + 1;
+      return <div data-testid={`r${todo.id}`}>{todo.done ? "done" : todo.text}</div>;
+    });
+
+    const List = tracked(() => (
+      <>
+        {store.todos.map((t) => (
+          <Row key={t.id} todo={t} />
+        ))}
+      </>
+    ));
+
+    render(<List />);
+    expect(screen.getByTestId("r1").textContent).toBe("a");
+    const before = { ...renders };
+
+    await act(async () => {
+      store.todos[0]!.done = true;
+    });
+
+    expect(screen.getByTestId("r1").textContent).toBe("done");
+    expect(renders[1]).toBeGreaterThan(before[1]!);
+    // The sibling read nothing that changed, so it never re-rendered.
+    expect(renders[2]).toBe(before[2]);
+  });
+});
