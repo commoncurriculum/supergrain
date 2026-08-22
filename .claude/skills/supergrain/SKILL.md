@@ -1,6 +1,6 @@
 ---
 name: supergrain
-description: Write React state, derived values, and side effects with Supergrain (@supergrain/kernel, /husk, /silo, /mill, /queries) instead of useState, useEffect, useMemo, and useCallback. Use this whenever you add, edit, or review React code in a project that depends on @supergrain/* — any time you reach for component state, a shared store, a derived value, data fetching, a subscription, a timer, an observer, or DOM behavior. Also use it when reviewing a diff that introduces useState or useEffect.
+description: Write React state, derived values, side effects, lists, and writes with Supergrain (@supergrain/kernel, /husk, /mill) instead of useState, useEffect, useMemo, and useCallback. Use this whenever you add, edit, or review React code in a project that depends on @supergrain/* — any time you reach for component state, a shared store, a derived value, an async fetch, a subscription, a timer, an observer, or DOM behavior. Also use it when reviewing a diff that introduces useState or useEffect. For server entities loaded by id and paginated feeds, use the supergrain-silo skill instead.
 ---
 
 # Supergrain
@@ -9,8 +9,9 @@ description: Write React state, derived values, and side effects with Supergrain
 
 - `@supergrain/kernel` — `createReactive`, `computed`, `stableComputed`, `effect`, `batch`; `/react` — `tracked`, `useReactive`, `useComputed`, `useSignalEffect`, `createStoreContext`, `For`
 - `@supergrain/husk` — `defineResource`, `dispose`; `/react` — `useResource`, `useReactivePromise`, `useReactiveTask`, `modifier`, `useModifier`
-- `@supergrain/silo` — the `DocumentStore` and `SiloError` types; `/react` — `createDocumentStoreContext` only
-- `@supergrain/queries` — `createQuery`; `@supergrain/mill` — `update`, `UpdateOperations`
+- `@supergrain/mill` — `update`, `UpdateOperations`
+
+Server entities fetched by id, and paginated feeds, are a different layer — see the **supergrain-silo** skill.
 
 ## Reactivity comes from reading reactive state
 
@@ -35,37 +36,20 @@ const visible = useMemo(() => stableComputed(() => store.tasks.filter((t) => !t.
 
 Drop `useCallback` for handlers that only mutate the store; keep it for closures passed as props to a `tracked` child.
 
-## Replace `useEffect` and data loading
+## Replace `useEffect`
 
 Every handle below is reactive: read a field in a `tracked` component and it drives the render.
 
-| The effect                                    | Use                                                                                                                                       | Read                                                                                                                                                                 | Re-runs when                                                               |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Async data                                    | `useReactivePromise(async (signal) => ...)` — `signal` aborts the superseded run                                                          | `.data` (**`null`** until resolved) `.error` `.isPending` `.isReady` `.promise`                                                                                      | reactive reads **before the first `await`** change                         |
-| The same, at many call sites (own state each) | `defineResource(() => initial, async (state, args, { abortSignal }) => ...)` + `useResource(fn, () => args)`                              | **your own state object** — `state.items`; no envelope, no `.data`                                                                                                   | reactive reads in the args thunk change                                    |
-| Subscription, socket, timer                   | `useResource(initial, (state, { onCleanup }) => ...)` — `initial` is a **value**, not a thunk                                             | same, your own state object                                                                                                                                          | reactive reads in setup change                                             |
-| User-triggered work                           | `useReactiveTask(async (...args) => ...)`                                                                                                 | as `useReactivePromise` but **no `.promise`**; gets no `AbortSignal`                                                                                                 | only `run(...)`, so a prop read in its body is current                     |
-| DOM element behavior                          | `modifier((el, ...args) => cleanupFn)` + `useModifier(m, ...args)` as `ref`                                                               | —                                                                                                                                                                    | signals in the body change — args do **not** re-attach                     |
-| Push to an external sink                      | `useSignalEffect(() => ...)`                                                                                                              | —                                                                                                                                                                    | reactive reads inside change                                               |
-| Server entity by id/params                    | silo's `useDocument` / `useQuery` — see below                                                                                             | `.value` `.error` `.isFetching` `.promise`, on `.status` `"pending"`/`"success"`/`"error"`; `.value` is `undefined` until it resolves, then survives later refetches | the id or params change; for a fixed id, `store.insertDocument(type, doc)` |
-| Paginated feed                                | `createQuery({ store, adapter, type, id })` — a plain function, not a hook; `type` is the model its rows become, `id` this feed's own key | `.results` `.nextOffset` `.isFetching` `.error`                                                                                                                      | `fetchNextPage()` `refetch()` `destroy()`                                  |
+| The effect                                    | Use                                                                                                          | Read                                                                            | Re-runs when                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Async data                                    | `useReactivePromise(async (signal) => ...)` — `signal` aborts the superseded run                             | `.data` (**`null`** until resolved) `.error` `.isPending` `.isReady` `.promise` | reactive reads **before the first `await`** change     |
+| The same, at many call sites (own state each) | `defineResource(() => initial, async (state, args, { abortSignal }) => ...)` + `useResource(fn, () => args)` | **your own state object** — `state.items`; no envelope, no `.data`              | reactive reads in the args thunk change                |
+| Subscription, socket, timer                   | `useResource(initial, (state, { onCleanup }) => ...)` — `initial` is a **value**, not a thunk                | same, your own state object                                                     | reactive reads in setup change                         |
+| User-triggered work                           | `useReactiveTask(async (...args) => ...)`                                                                    | as `useReactivePromise` but **no `.promise`**; gets no `AbortSignal`            | only `run(...)`, so a prop read in its body is current |
+| DOM element behavior                          | `modifier((el, ...args) => cleanupFn)` + `useModifier(m, ...args)` as `ref`                                  | —                                                                               | signals in the body change — args do **not** re-attach |
+| Push to an external sink                      | `useSignalEffect(() => ...)`                                                                                 | —                                                                               | reactive reads inside change                           |
 
-Only `createQuery` has `refetch`. On the two husk envelopes — not on a resource, which has none — `.error` is `unknown`, so narrow it: `{String(task.error)}`, not `{task.error && <p>{task.error}</p>}`. silo's is a `SiloError`.
-
-```tsx
-type Models = { book: Book };        // silo; every document needs an `id: string`
-type Queries = { shelf: { params: P; result: R } };
-// declare both with `type`: an `interface` has no index signature and fails the constraint
-const { Provider, useDocumentStore, useDocument, useQuery } =
-  createDocumentStoreContext<DocumentStore<Models, Queries>>();
-// adapter: `{ find(keys, ctx?) }` over batched keys — ids for a model,
-// params objects for a query — resolving the documents as an array
-<Provider config={{ models: { book: { adapter } }, queries: { shelf: { adapter } } }}>
-useDocument("book", id); // `null` id skips the fetch
-// a loaded `.value` is a mutable reactive object — assign fields or `update()` it in place
-```
-
-`createQuery` is the **alternative** to that `useQuery`, not a companion: its `store` must be typed `DocumentStore<Models>` with no query types, its adapter is `{ fetch(id, { offset, limit, signal }) }` resolving `{ data: { results }, meta?: { nextOffset } }`, each result row carries an `offset`, and it fetches nothing until you call `fetchNextPage()`.
+Neither has a `refetch` — change what the tracked reads see. On the two envelopes — not on a resource, which has none — `.error` is `unknown`, so narrow it: `{String(task.error)}`, not `{task.error && <p>{task.error}</p>}`.
 
 ## Writes
 
@@ -80,6 +64,6 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 
 ## Still React's job
 
-`use(handle.promise!)` for Suspense (a silo handle's is `undefined` between fetches, hence the `!`; guard on `.value === undefined` to suspend only on first load), `useRef` for a raw DOM node, `useId` / `useTransition` / `useDeferredValue`, and `useMemo` to build a `computed` / `stableComputed` once or for expensive pure computation with no reactive reads.
+`use(promise.promise)` for Suspense on a `reactivePromise` (a task has none), `useRef` for a raw DOM node, `useId` / `useTransition` / `useDeferredValue`, and `useMemo` to build a `computed` / `stableComputed` once or for expensive pure computation with no reactive reads.
 
 Every behavioural claim above is pinned by `packages/*/tests/skill-claims/*.test.tsx`.

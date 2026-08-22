@@ -1,5 +1,5 @@
-// Verifies the silo claim in .claude/skills/supergrain/SKILL.md — specifically
-// the fix it prescribes for the "props are not signals" trap.
+// Verifies the behavioural claims made by .claude/skills/supergrain-silo/SKILL.md.
+// Named after the skill sentence each one backs.
 
 import type { DocumentStore } from "@supergrain/silo";
 

@@ -62,7 +62,7 @@ export default defineConfig({
       },
       {
         // Executable checks for the behavioural claims in
-        // .claude/skills/supergrain/SKILL.md — subscription scoping, the
+        // .claude/skills/supergrain{,-silo}/SKILL.md — subscription scoping, the
         // captured-closure semantics of the husk hooks, and which fields each
         // envelope actually has. Run in jsdom because none of these assertions
         // need a real engine, which also keeps them off the browser projects.
