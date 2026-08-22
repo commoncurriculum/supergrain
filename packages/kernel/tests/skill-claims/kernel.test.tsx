@@ -259,3 +259,52 @@ describe('SKILL: "A prop that is a store object stays reactive"', () => {
     expect(renders[2]).toBe(before[2]);
   });
 });
+
+describe('SKILL: "any in-place mutation notifies"', () => {
+  it("splice, index assignment, and Set writes all notify; .length/.size/.has are tracked reads", async () => {
+    const store = createReactive({
+      rows: [{ id: 1 }, { id: 2 }, { id: 3 }],
+      picked: new Set<number>([1]),
+    });
+    let renders = 0;
+
+    const C = tracked(() => {
+      renders += 1;
+      // every read here is the kind cold builds were unsure counted
+      return (
+        <div data-testid="v">
+          {store.rows.length}:{store.rows[0]!.id}:{store.picked.size}:
+          {store.picked.has(2) ? "y" : "n"}
+        </div>
+      );
+    });
+
+    render(<C />);
+    expect(screen.getByTestId("v").textContent).toBe("3:1:1:n");
+
+    await act(async () => {
+      store.rows.splice(1, 1);
+    });
+    expect(screen.getByTestId("v").textContent).toBe("2:1:1:n");
+
+    // index assignment — the swap idiom, not just property-through-index
+    await act(async () => {
+      const a = store.rows[0]!;
+      store.rows[0] = store.rows[1]!;
+      store.rows[1] = a;
+    });
+    expect(screen.getByTestId("v").textContent).toBe("2:3:1:n");
+
+    await act(async () => {
+      store.picked.add(2);
+    });
+    expect(screen.getByTestId("v").textContent).toBe("2:3:2:y");
+
+    await act(async () => {
+      store.picked.delete(1);
+    });
+    expect(screen.getByTestId("v").textContent).toBe("2:3:1:y");
+
+    expect(renders).toBeGreaterThan(4);
+  });
+});

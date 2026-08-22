@@ -70,11 +70,11 @@ useDocument("book", id); // `null` id skips the fetch
 
 Single writes are always safe. Wrap _multiple_ related writes in `batch(fn)`; sync only, throws on a returned Promise.
 
-For dot-path or operator writes, `update(doc, query, operations)` from `@supergrain/mill` — pass `{}` as `query` when no positional paths; batches internally, returns `{ doc, undo }`, where `doc` is the same object back and `undo` is an inverse Mongo update document, **not** a function — an `UpdateOperations<T>`, the type to annotate with if you keep an undo stack. Replay it with `update(doc, {}, undo)`.
+For dot-path or operator writes, `update(doc, query, operations)` from `@supergrain/mill` — standard Mongo operators, e.g. `update(card, {}, { $set: { "estimate.points": 5 } })` — pass `{}` as `query` when no positional paths; batches internally, returns `{ doc, undo }`, where `doc` is the same object back and `undo` is an inverse Mongo update document, **not** a function — an `UpdateOperations<T>`, the type to annotate with if you keep an undo stack. Replay it with `update(doc, {}, undo)`.
 
 ## Traps
 
-- **Mutating in place is the point** — `store.org.teams[0].active = true`, `store.items.push(x)`, `store.m.set(k, v)` (`Map` and `Set` alike) all notify. The exception is what supergrain doesn't proxy: `Date`, `RegExp`, class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date`.
+- **Mutating in place is the point** — property assignment (`store.org.teams[0].active = true`), `push`, `splice`, index assignment (`rows[a] = rows[b]`), and `Map`/`Set` writes all notify; `.length`, `.size` and `.has()` are tracked reads. The exception is what supergrain doesn't proxy: `Date`, `RegExp`, class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date`.
 - Fresh inline objects, arrays, or closures as props re-render a `tracked` child regardless of signals.
 
 ## Still React's job
