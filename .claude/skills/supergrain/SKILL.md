@@ -26,7 +26,7 @@ That one rule governs every re-run below: something re-runs when the **reactive 
 
 `useEffect(() => setX(f(y)), [y])` → `useComputed(() => f(store.y))`, which returns the value, not a wrapper.
 
-`<For each={store.todos}>{(todo) => <Row todo={todo} />}</For>`, not `.map()`. A `parent` ref (O(1) swaps) requires `tracked()` children and your own `key`. A derived array feeding it needs `stableComputed` — a **getter you call**, with no hook, so build it once:
+`<For each={store.todos}>{(todo) => <Row todo={todo} />}</For>`, not `.map()`. A `parent` ref (O(1) swaps) requires `tracked()` children and your own `key`: `<tbody ref={ref}><For each={rows} parent={ref}>{(r) => <Row key={r.id} row={r} />}</For></tbody>`. A derived array feeding it needs `stableComputed` — a **getter you call**, with no hook, so build it once:
 
 ```tsx
 const visible = useMemo(() => stableComputed(() => store.tasks.filter((t) => !t.done)), []);
@@ -53,8 +53,9 @@ Every handle below is reactive: read a field in a `tracked` component and it dri
 Only `createQuery` has `refetch`. On the two husk envelopes — not on a resource, which has none — `.error` is `unknown`, so narrow it: `{String(task.error)}`, not `{task.error && <p>{task.error}</p>}`. silo's is a `SiloError`.
 
 ```tsx
-type Models = { book: Book };                              // silo
+type Models = { book: Book };        // silo; every document needs an `id: string`
 type Queries = { shelf: { params: P; result: R } };
+// declare both with `type`: an `interface` has no index signature and fails the constraint
 const { Provider, useDocumentStore, useDocument, useQuery } =
   createDocumentStoreContext<DocumentStore<Models, Queries>>();
 // adapter: `{ find(keys, ctx?) }` over batched keys — ids for a model,
@@ -73,7 +74,7 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 
 ## Traps
 
-- **Mutating in place is the point** — `store.org.teams[0].active = true`, `store.items.push(x)`, `store.m.set(k, v)` all notify. The exception is what supergrain doesn't proxy: `Date`, `RegExp`, class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date`.
+- **Mutating in place is the point** — `store.org.teams[0].active = true`, `store.items.push(x)`, `store.m.set(k, v)` (`Map` and `Set` alike) all notify. The exception is what supergrain doesn't proxy: `Date`, `RegExp`, class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date`.
 - Fresh inline objects, arrays, or closures as props re-render a `tracked` child regardless of signals.
 
 ## Still React's job
