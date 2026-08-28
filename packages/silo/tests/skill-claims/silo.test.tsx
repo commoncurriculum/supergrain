@@ -1,4 +1,4 @@
-// Verifies the behavioural claims made by .claude/skills/supergrain-silo/SKILL.md.
+// Verifies the behavioural claims made by skills/supergrain-silo/SKILL.md.
 // Named after the skill sentence each one backs.
 
 import type { DocumentStore } from "@supergrain/silo";

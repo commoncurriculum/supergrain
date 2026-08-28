@@ -1,4 +1,4 @@
-// Verifies the behavioural claims made by .claude/skills/supergrain/SKILL.md.
+// Verifies the behavioural claims made by skills/supergrain/SKILL.md.
 // Each test is named after the sentence in the skill it backs up, so a failure
 // tells you which line of the skill has gone stale.
 
