@@ -66,6 +66,5 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 
 `use(promise.promise)` for Suspense on a `reactivePromise` (a task has none), `useRef` for a raw DOM node, `useId` / `useTransition` / `useDeferredValue`, and `useMemo` to build a `computed` / `stableComputed` once or for expensive pure computation with no reactive reads.
 
-That list is the whole of it. `useState` and `useEffect` are deliberately absent and belong in none of these cases.
 
 Every behavioural claim above is pinned by `packages/*/tests/skill-claims/*.test.tsx`.
