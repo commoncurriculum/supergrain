@@ -1,4 +1,4 @@
-// Verifies the behavioural claims made by .claude/skills/supergrain/SKILL.md
+// Verifies the behavioural claims made by skills/supergrain/SKILL.md
 // about @supergrain/mill. Named after the skill sentence each one backs.
 
 import { createReactive } from "@supergrain/kernel";

@@ -5,7 +5,7 @@ description: Write React state, derived values, side effects, lists, and writes 
 
 # Supergrain
 
-`useState` and `useEffect` are the fallback here, not the default.
+Do not use `useState` or `useEffect`. They are not the default here and they are not a fallback — every case they cover has a primitive below, so reaching for one means you have not found the right primitive yet.
 
 - `@supergrain/kernel` — `createReactive`, `computed`, `stableComputed`, `effect`, `batch`; `/react` — `tracked`, `useReactive`, `useComputed`, `useSignalEffect`, `createStoreContext`, `For`
 - `@supergrain/husk` — `defineResource`, `dispose`; `/react` — `useResource`, `useReactivePromise`, `useReactiveTask`, `modifier`, `useModifier`
@@ -65,5 +65,6 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 ## Still React's job
 
 `use(promise.promise)` for Suspense on a `reactivePromise` (a task has none), `useRef` for a raw DOM node, `useId` / `useTransition` / `useDeferredValue`, and `useMemo` to build a `computed` / `stableComputed` once or for expensive pure computation with no reactive reads.
+
 
 Every behavioural claim above is pinned by `packages/*/tests/skill-claims/*.test.tsx`.
