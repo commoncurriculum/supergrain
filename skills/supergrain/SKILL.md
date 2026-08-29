@@ -17,7 +17,12 @@ Server entities fetched by id, and paginated feeds, are a different layer — se
 
 Wrap every component in `tracked()`; untracked, its reads subscribe to nothing and the UI goes stale silently.
 
-That one rule governs every re-run below: something re-runs when the **reactive state it read** changes. A prop that **is** a store object stays reactive — `<Row todo={todo} />`, then `todo.done` in a `tracked` child subscribes normally. A plain value copied out — a prop scalar, a `useComputed` result — is dead. To drive work off a scalar prop, mirror it: `const sel = useReactive({ id }); if (sel.id !== id) sel.id = id;`.
+That one rule governs every re-run below: something re-runs when the **reactive state it read** changes. For a prop, the whole question is whether it **is** reactive state or a value copied out of one. These two are opposite, so do not collapse them:
+
+- **A store object prop stays reactive.** `<Row todo={todo} />`, then `todo.done` in a `tracked` child subscribes normally — and keeps subscribing from inside a callback captured once, like `useReactivePromise`'s, because the closure holds the object and re-reads its fields.
+- **A copied-out value is dead.** A prop scalar, or a `useComputed` result, is a snapshot; nothing re-runs when the source changes. To drive work off a scalar prop, mirror it: `const sel = useReactive({ id }); if (sel.id !== id) sel.id = id;`.
+
+So "props are not signals" is false as stated. A scalar prop is not; a store object passed as a prop is exactly as reactive as it was in the store.
 
 ## Replace `useState`
 
@@ -65,6 +70,5 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 ## Still React's job
 
 `use(promise.promise)` for Suspense on a `reactivePromise` (a task has none), `useRef` for a raw DOM node, `useId` / `useTransition` / `useDeferredValue`, and `useMemo` to build a `computed` / `stableComputed` once or for expensive pure computation with no reactive reads.
-
 
 Every behavioural claim above is pinned by `packages/*/tests/skill-claims/*.test.tsx`.

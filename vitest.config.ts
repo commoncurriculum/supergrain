@@ -40,6 +40,11 @@ export default defineConfig({
         "packages/devtools/src/index.ts",
         "packages/devtools/src/react/index.ts",
         "packages/activity/src/index.ts",
+        // The oxlint plugin is developer tooling, not part of the reactive
+        // runtime this gate exists to protect — same category as doc-tests and
+        // js-krauset above. Its rules are covered by their own RuleTester suite
+        // plus an integration test that runs the real oxlint binary, both in CI.
+        "packages/oxlint-plugin/**",
       ],
       reportsDirectory: "./coverage",
     },
@@ -59,6 +64,16 @@ export default defineConfig({
         },
         resolve,
         ssr,
+      },
+      {
+        // The oxlint plugin's rules. Node env: these lint source text, so
+        // there's no DOM involved. The integration test shells out to the real
+        // oxlint binary and builds `dist` on demand if it's missing.
+        test: {
+          name: "oxlint-plugin",
+          include: ["packages/oxlint-plugin/tests/**/*.test.ts"],
+          environment: "node",
+        },
       },
       {
         // Executable checks for the behavioural claims in
