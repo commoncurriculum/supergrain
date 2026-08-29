@@ -1,14 +1,13 @@
-import { $ELEMENTS, $OWN_KEYS, $VERSION, unwrap, getNodes, getNodesIfExist } from "./core";
+import {
+  $ELEMENTS,
+  $OWN_KEYS,
+  $VERSION,
+  bumpSignal,
+  unwrap,
+  getNodes,
+  getNodesIfExist,
+} from "./core";
 import { profileSignalWrite } from "./profiler";
-
-// Monotonic counter feeding every counter-style signal write. The value only
-// needs to differ from the previous one so `Object.is` detects a change and
-// subscribers re-run; its specific number is not observed by anyone. Using a
-// module-local `++` avoids `signal(signal() + 1)` — the signal read there
-// would subscribe the active `currentSub` to the very signal we're about to
-// write, turning every proxy mutation inside a tracked render into a
-// self-triggering loop.
-let BUMP = 0;
 
 export function bumpVersion(target: object): void {
   let nodes = getNodesIfExist(target);
@@ -19,7 +18,7 @@ export function bumpVersion(target: object): void {
   const v = nodes[$VERSION];
   /* c8 ignore start -- callers that need notifications create the version signal before bumping */
   if (v) {
-    v(++BUMP);
+    bumpSignal(v);
   }
   /* c8 ignore stop */
 }
@@ -33,7 +32,7 @@ export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, an
   const ownKeysSignal = resolvedNodes[$OWN_KEYS];
   if (ownKeysSignal) {
     profileSignalWrite();
-    ownKeysSignal(++BUMP);
+    bumpSignal(ownKeysSignal);
   }
 }
 
@@ -74,7 +73,7 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
       // bumpVersion: version-style bookkeeping, not a value write.
       const elements = getNodesIfExist(target)?.[$ELEMENTS];
       if (elements) {
-        elements(++BUMP);
+        bumpSignal(elements);
       }
     } else {
       bumpVersion(target);
