@@ -87,3 +87,80 @@ describe("serialize()", () => {
     expect(node.entries.find(([k]) => k === "name")?.[1]).toEqual({ t: "string", value: "Ada" });
   });
 });
+
+describe("serialize() — values that throw on read", () => {
+  function withThrowingGetter(): Record<string, unknown> {
+    const target: Record<string, unknown> = { before: 1 };
+    Object.defineProperty(target, "boom", {
+      enumerable: true,
+      get() {
+        throw new Error("nope");
+      },
+    });
+    target["after"] = 2;
+    return target;
+  }
+
+  it("degrades a throwing getter to an `unreadable` node and keeps its siblings", () => {
+    const node = serialize(withThrowingGetter());
+    expect(node.t).toBe("object");
+    if (node.t !== "object") throw new Error("expected object");
+    expect(node.entries).toEqual([
+      ["before", { t: "number", value: 1, text: "1" }],
+      ["boom", { t: "unreadable", text: "Error: nope" }],
+      ["after", { t: "number", value: 2, text: "2" }],
+    ]);
+  });
+
+  it("degrades a revoked proxy rather than throwing", () => {
+    const { proxy, revoke } = Proxy.revocable({ a: 1 }, {});
+    revoke();
+    const node = serialize({ dead: proxy });
+    expect(node.t).toBe("object");
+    if (node.t !== "object") throw new Error("expected object");
+    expect(node.entries[0]?.[1].t).toBe("unreadable");
+  });
+
+  it("falls back to a placeholder when the thrown value can't describe itself", () => {
+    // Not an Error, and `String(thrown)` throws in turn — so even building the
+    // `unreadable` text fails and the last-resort branch has to hold.
+    const hostile = {
+      toString() {
+        throw new Error("cannot describe me");
+      },
+    };
+    const target = {};
+    Object.defineProperty(target, "boom", {
+      enumerable: true,
+      get() {
+        throw hostile;
+      },
+    });
+
+    const node = serialize(target);
+    expect(node.t).toBe("object");
+    if (node.t !== "object") throw new Error("expected object");
+    expect(node.entries[0]?.[1]).toEqual({
+      t: "unreadable",
+      text: "threw a value that could not be described",
+    });
+  });
+
+  it("treats an Error whose `cause` throws on read as having no cause", () => {
+    // `cause` is non-enumerable, so it's probed explicitly — and that probe is
+    // itself a read that can throw.
+    const error = new Error("outer");
+    Object.defineProperty(error, "cause", {
+      enumerable: false,
+      get() {
+        throw new Error("cause exploded");
+      },
+    });
+
+    const node = serialize(error);
+    expect(node.t).toBe("error");
+    if (node.t !== "error") throw new Error("expected error");
+    expect(node.message).toBe("outer");
+    expect(node.entries.map(([key]) => key)).not.toContain("cause");
+  });
+});

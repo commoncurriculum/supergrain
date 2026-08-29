@@ -11,7 +11,11 @@
 //     `circular` node (deduped by the *raw* target so a proxy and its raw form
 //     don't read as distinct), depth and breadth are capped, and exotic values
 //     (Date, bigint, Error, Map, Set, function, symbol) get their own node
-//     kinds instead of collapsing to `{}` or throwing.
+//     kinds instead of collapsing to `{}` or throwing. Reading a value can
+//     itself throw — an asserting getter, a revoked proxy, a native method
+//     handed a foreign receiver — so every read is guarded and degrades to an
+//     `unreadable` node. The panel shows the rest of the document instead of
+//     going blank.
 
 import { unwrap } from "@supergrain/kernel";
 
@@ -66,7 +70,9 @@ export type JsonNode =
       readonly truncated: number;
     }
   | { readonly t: "circular" }
-  | { readonly t: "max-depth" };
+  | { readonly t: "max-depth" }
+  /** Reading this value threw; `text` describes what was thrown. */
+  | { readonly t: "unreadable"; readonly text: string };
 
 /**
  * Serialize `value` into a {@link JsonNode}. Reads through reactive proxies (so
@@ -80,20 +86,43 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const seen = new WeakSet<object>();
 
+  // `walk` is total: nothing below is guaranteed safe on a hostile value —
+  // `instanceof` and `Array.isArray` trap through a proxy, `Object.keys` can
+  // throw, a Map/Set method rejects a foreign receiver — so the whole body is
+  // guarded and one bad value costs its own subtree and nothing more.
   function walk(input: unknown, depth: number): JsonNode {
-    const leaf = walkLeaf(input);
-    if (leaf) return leaf;
-
-    const raw = unwrap(input) as object;
-    if (seen.has(raw)) return { t: "circular" };
-    if (depth >= maxDepth) return { t: "max-depth" };
-    seen.add(raw);
     try {
-      return walkComposite(input, depth);
-    } finally {
-      // Drop after fully walking this node so sibling references to the same
-      // object (a DAG, not a cycle) aren't flagged as circular.
-      seen.delete(raw);
+      const leaf = walkLeaf(input);
+      if (leaf) return leaf;
+
+      const raw = unwrap(input) as object;
+      if (seen.has(raw)) return { t: "circular" };
+      if (depth >= maxDepth) return { t: "max-depth" };
+      seen.add(raw);
+      try {
+        return walkComposite(input, depth);
+      } finally {
+        // Drop after fully walking this node so sibling references to the same
+        // object (a DAG, not a cycle) aren't flagged as circular.
+        seen.delete(raw);
+      }
+    } catch (error) {
+      return unreadable(error);
+    }
+  }
+
+  /**
+   * Read one property, then walk it. Reading is what usually throws (an
+   * asserting getter, a revoked proxy), and it is guarded per property so a
+   * single bad field degrades to one `unreadable` leaf while its siblings still
+   * render — catching at the container level would lose them all.
+   */
+  function walkProperty(container: unknown, key: string, depth: number): JsonNode {
+    try {
+      return walk((container as Record<string, unknown>)[key], depth);
+    } catch (error) {
+      // Only the read reaches here — `walk` itself never throws.
+      return unreadable(error);
     }
   }
 
@@ -138,7 +167,7 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
       const { length } = input;
       const limit = Math.min(length, maxEntries);
       for (let i = 0; i < limit; i++) {
-        items.push(walk(input[i], depth + 1));
+        items.push(walkProperty(input, String(i), depth + 1));
       }
       return { t: "array", items, truncated: Math.max(0, length - limit) };
     }
@@ -153,7 +182,7 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
     const entries: Array<readonly [string, JsonNode]> = [];
     for (let i = 0; i < limit; i++) {
       const key = keys[i]!;
-      entries.push([key, walk(value_[key], depth + 1)]);
+      entries.push([key, walkProperty(value_, key, depth + 1)]);
     }
     return { t: "object", entries, truncated: Math.max(0, keys.length - limit) };
   }
@@ -196,14 +225,33 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
     // Surface `cause` explicitly when present — it usually holds the real
     // failure (e.g. `new Error(msg, { cause })`); Effect's tagged errors already
     // expose it enumerably, so guard against listing it twice.
-    if (own["cause"] !== undefined && !keys.includes("cause")) keys.push("cause");
+    let cause: unknown = undefined;
+    try {
+      ({ cause } = own);
+    } catch {
+      // A `cause` that throws on read is treated as absent.
+    }
+    if (cause !== undefined && !keys.includes("cause")) keys.push("cause");
     for (const key of keys.slice(0, maxEntries)) {
-      entries.push([key, walk(own[key], depth + 1)]);
+      entries.push([key, walkProperty(own, key, depth + 1)]);
     }
     return { t: "error", name, message: error.message, entries };
   }
 
   return walk(value, 0);
+}
+
+/** Describe a thrown value without trusting it to describe itself safely. */
+function unreadable(error: unknown): JsonNode {
+  try {
+    return {
+      t: "unreadable",
+      text: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+    };
+  } catch {
+    // The thrown value's own `name`/`message`/`toString` threw in turn.
+    return { t: "unreadable", text: "threw a value that could not be described" };
+  }
 }
 
 function numberText(value: number): string {

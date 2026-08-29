@@ -100,8 +100,28 @@ export function splitPath(path: string): Array<PathSegment> {
   }
 
   const parts = path.split(".");
-  if (parts.some((part) => part.length === 0)) {
-    throw new Error(`Invalid update path "${path}". Empty path segments are not allowed.`);
+  for (const part of parts) {
+    if (part.length === 0) {
+      throw new Error(`Invalid update path "${path}". Empty path segments are not allowed.`);
+    }
+    // `__proto__` is the only inherited property of a plain object or array
+    // that holds an *object*, so it is the only segment a document path can
+    // follow off the document and onto `Object.prototype` — every other
+    // inherited member is a function, which `isContainer` already rejects.
+    // Left alone, `$set: {"__proto__.x": 1}` writes to `Object.prototype` and
+    // corrupts every object in the process.
+    //
+    // Rejected here, at the one chokepoint every path operation already passes
+    // through, rather than by making each navigation step own-property-aware:
+    // that would put a `hasOwn` call in the read path the kernel deliberately
+    // stripped such checks out of (notes/architecture/proxy-optimization-trade-offs.md).
+    //
+    // Mongo would store a literal `__proto__` field instead of rejecting, but a
+    // document carrying one violates the kernel's "plain data, no prototype
+    // manipulation" contract, so mill has nowhere safe to put it.
+    if (part === "__proto__") {
+      throw new Error(`Invalid update path "${path}". "__proto__" is not a valid path segment.`);
+    }
   }
 
   return parts;
