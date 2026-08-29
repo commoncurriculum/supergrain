@@ -112,3 +112,34 @@ export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown
   nodes[property] = newSignal;
   return newSignal;
 }
+
+// ---------------------------------------------------------------------------
+// Change notification
+// ---------------------------------------------------------------------------
+
+/**
+ * The counter behind every "something here changed" signal write.
+ *
+ * Its value is never observed. All that matters is that each write differs
+ * from the one before it on the same signal, so `Object.is` inside the signal
+ * sees a change and subscribers re-run.
+ *
+ * It is a module-local `++` rather than `signal(signal() + 1)` because reading
+ * the signal would subscribe the active subscriber to the very signal about to
+ * be written, turning any proxy mutation inside a tracked render into a
+ * self-triggering loop.
+ *
+ * One counter for the whole kernel, deliberately. Two counters can drift to
+ * the same value, and any signal written by both would then swallow the second
+ * write: `Object.is` sees no change, no subscriber re-runs, and the UI goes
+ * quietly stale — the exact failure this library exists to make impossible.
+ * Today the write and collection paths happen to own disjoint targets, so
+ * nothing enforces that but coincidence. Sharing one counter makes the
+ * collision unrepresentable instead of merely unlikely.
+ */
+let BUMP = 0;
+
+/** Writes a value the signal does not currently hold, so subscribers re-run. */
+export function bumpSignal(node: Signal<unknown>): void {
+  node(++BUMP);
+}
