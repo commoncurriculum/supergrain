@@ -59,7 +59,7 @@ For dot-path or operator writes, `update(doc, query, operations)` from `@supergr
 
 ## Traps
 
-- **Mutating in place is the point** — property assignment (`store.org.teams[0].active = true`), `push`, `splice`, index assignment (`rows[a] = rows[b]`), and `Map`/`Set` writes all notify; `.length`, `.size` and `.has()` are tracked reads. The exception is what supergrain doesn't proxy: `Date`, `RegExp`, class instances. `store.when.setFullYear(2030)` notifies nothing; assign a fresh `Date`.
+- **Mutating in place is the point** — property assignment (`store.org.teams[0].active = true`), `push`, `splice`, index assignment (`rows[a] = rows[b]`), and `Map`/`Set` writes all notify; `.length`, `.size` and `.has()` are tracked reads. `Date` is proxied too, so `store.when.setFullYear(2030)` notifies. The exception is what supergrain doesn't proxy: `RegExp` and class instances — mutating those notifies nothing, so assign a fresh value.
 - Fresh inline objects, arrays, or closures as props re-render a `tracked` child regardless of signals.
 
 ## Still React's job

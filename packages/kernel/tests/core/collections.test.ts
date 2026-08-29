@@ -829,12 +829,13 @@ describe("createReactive idempotency", () => {
 });
 
 describe("wrap() discrimination — non-plain values pass through", () => {
-  it("Date values stored in a reactive Map are not proxied", () => {
+  it("Date values stored in a reactive Map are proxied", () => {
     const d = new Date(2026, 0, 1);
     const m = createReactive(new Map<string, Date>());
     m.set("when", d);
     const out = m.get("when")!;
-    expect(out).toBe(d); // not wrapped — same reference
+    expect(out).not.toBe(d); // wrapped, so in-place mutation notifies
+    expect(out instanceof Date).toBe(true);
     expect(out.getFullYear()).toBe(2026); // internal slot still works
   });
 
