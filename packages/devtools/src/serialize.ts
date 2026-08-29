@@ -227,7 +227,7 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
     // expose it enumerably, so guard against listing it twice.
     let cause: unknown = undefined;
     try {
-      cause = own["cause"];
+      ({ cause } = own);
     } catch {
       // A `cause` that throws on read is treated as absent.
     }
