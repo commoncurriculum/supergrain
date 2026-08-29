@@ -13,6 +13,7 @@ import {
   isWrappable,
   type ReactiveTagged,
 } from "./core";
+import { createReactiveDate } from "./date";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
 import { writeHandler } from "./write";
 
@@ -198,6 +199,9 @@ export function createReactiveProxy<T extends object>(target: T): T {
   }
   if (target instanceof Set) {
     return createReactiveSet(target as Set<unknown>) as unknown as T;
+  }
+  if (target instanceof Date) {
+    return createReactiveDate(target) as unknown as T;
   }
 
   const cached = (target as ReactiveTagged)[$PROXY];

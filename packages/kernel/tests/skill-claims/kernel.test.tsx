@@ -185,8 +185,8 @@ describe('SKILL: "tracked() wraps in React.memo"', () => {
   });
 });
 
-describe('SKILL: "Plain objects, arrays, Map, Set proxy; Date ... do not"', () => {
-  it("mutating a Date in place does not re-render; replacing it wholesale does", async () => {
+describe('SKILL: "Plain objects, arrays, Map, Set, Date proxy; RegExp ... do not"', () => {
+  it("mutating a Date in place re-renders, and so does replacing it wholesale", async () => {
     const store = createReactive({ when: new Date(2020, 0, 1) });
 
     const C = tracked(() => <div data-testid="t">{store.when.getFullYear()}</div>);
@@ -195,14 +195,14 @@ describe('SKILL: "Plain objects, arrays, Map, Set proxy; Date ... do not"', () =
     expect(screen.getByTestId("t").textContent).toBe("2020");
 
     await act(async () => {
-      store.when.setFullYear(2030); // in-place mutation of a non-proxied value
-    });
-    expect(screen.getByTestId("t").textContent).toBe("2020"); // stale, as documented
-
-    await act(async () => {
-      store.when = new Date(2030, 0, 1); // wholesale replacement
+      store.when.setFullYear(2030); // in-place mutation of a proxied Date
     });
     expect(screen.getByTestId("t").textContent).toBe("2030");
+
+    await act(async () => {
+      store.when = new Date(2040, 0, 1); // wholesale replacement
+    });
+    expect(screen.getByTestId("t").textContent).toBe("2040");
   });
 
   it("a Map IS tracked", async () => {

@@ -47,13 +47,18 @@ export function unwrap<T>(value: T): T {
 }
 
 // Single source of truth for what `createReactive` will proxy. Plain objects
-// (incl. null-prototype), arrays, Maps, and Sets only — everything else
-// (Date, RegExp, class instances, functions, primitives) passes through.
+// (incl. null-prototype), arrays, Maps, Sets, and Dates only — everything else
+// (RegExp, class instances, functions, primitives) passes through.
 export function isWrappable(value: unknown): value is object {
   if (value === null || typeof value !== "object") {
     return false;
   }
-  if (Array.isArray(value) || value instanceof Map || value instanceof Set) {
+  if (
+    Array.isArray(value) ||
+    value instanceof Map ||
+    value instanceof Set ||
+    value instanceof Date
+  ) {
     return true;
   }
   const prototype = Object.getPrototypeOf(value);
