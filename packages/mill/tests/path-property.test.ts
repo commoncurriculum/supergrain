@@ -7,8 +7,9 @@
 // set/get/has/delete agree with each other on every path they accept.
 
 import fc from "fast-check";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
+import { update } from "../src";
 import {
   deleteValueAtPath,
   getValueAtPath,
@@ -20,7 +21,6 @@ import {
   splitPath,
   unsetValueAtPath,
 } from "../src/path";
-import { recordedUpdate } from "./helpers";
 
 const WRITE = { allowNullIntermediates: false };
 
@@ -377,56 +377,73 @@ describe("array writes — padding and unset semantics", () => {
 
 // `Path<T>` keeps `__proto__` out of *typed* call sites, but mill's runtime
 // takes whatever string it is handed — and an update document that crossed a
-// network boundary is just data. These pin what mill does with the three
-// segments that have meaning to the JS object model. Each goes through
-// `recordedUpdate`, so real mongod decides what "correct" means here, not us.
+// network boundary is just data. These pin what mill does with the segments
+// that have meaning to the JS object model.
 describe("path segments with meaning to the JS object model", () => {
-  it("treats `__proto__` as an ordinary field, never as the prototype", () => {
+  const OBJECT_PROTOTYPE_KEYS = ["polluted", "pA", "pB"] as const;
+
+  afterEach(() => {
+    // A leak here would corrupt every later test in the process, so fail loudly
+    // rather than letting it ride.
+    for (const key of OBJECT_PROTOTYPE_KEYS) {
+      expect(({} as Record<string, unknown>)[key]).toBeUndefined();
+    }
+  });
+
+  it("rejects `__proto__` anywhere in a path rather than writing through it", () => {
     fc.assert(
-      fc.property(fc.integer({ min: 1, max: 1000 }), (value) => {
-        const polluted = {} as Record<string, unknown>;
-        const store: Record<string, unknown> = { a: 1 };
+      fc.property(
+        fc.array(segmentArbitrary, { maxLength: 2 }),
+        fc.array(segmentArbitrary, { maxLength: 2 }),
+        fc.integer({ min: 1, max: 1000 }),
+        (before, after, value) => {
+          const path = [...before, "__proto__", ...after].join(".");
+          const store: Record<string, unknown> = { a: 1 };
 
-        recordedUpdate(store, {}, { $set: { ["__proto__.polluted"]: value } } as never);
-
-        expect(polluted["polluted"]).toBeUndefined();
-        expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
-        expect(Object.getPrototypeOf(store)).toBe(Object.prototype);
-      }),
-      { numRuns: 20 },
+          expect(() => update(store, {}, { $set: { [path]: value } } as never)).toThrow(
+            /__proto__/u,
+          );
+          expect(Object.getPrototypeOf(store)).toBe(Object.prototype);
+        },
+      ),
+      { numRuns: 200 },
     );
   });
 
-  it("a bare `__proto__` leaf writes an own field and leaves the prototype alone", () => {
+  it("rejects `__proto__` for reads and deletes too, not just writes", () => {
     fc.assert(
-      fc.property(fc.integer({ min: 1, max: 1000 }), (value) => {
-        const store: Record<string, unknown> = { a: 1 };
+      fc.property(fc.array(segmentArbitrary, { maxLength: 2 }), (before) => {
+        const path = [...before, "__proto__"].join(".");
+        const target = { a: { b: 1 } };
 
-        recordedUpdate(store, {}, { $set: { ["__proto__"]: value } } as never);
-
-        expect(Object.getPrototypeOf(store)).toBe(Object.prototype);
-        expect(Object.hasOwn(store, "__proto__")).toBe(true);
+        expect(() => getValueAtPath(target, path)).toThrow(/__proto__/u);
+        expect(() => hasValueAtPath(target, path)).toThrow(/__proto__/u);
+        expect(() => deleteValueAtPath(target, path)).toThrow(/__proto__/u);
+        expect(() => setValueAtPath(target, path, 1, WRITE)).toThrow(/__proto__/u);
       }),
-      { numRuns: 20 },
+      { numRuns: 100 },
     );
   });
 
-  it("`constructor.prototype` cannot reach Object.prototype", () => {
+  it("stops at `constructor` and other inherited functions, which are not containers", () => {
+    // No special case needed for these: every inherited member other than
+    // `__proto__` is a function, and `isContainer` already refuses to step into
+    // one. This pins that the general guard keeps covering them.
     fc.assert(
-      fc.property(fc.integer({ min: 1, max: 1000 }), (value) => {
-        const store: Record<string, unknown> = { a: 1 };
+      fc.property(
+        fc.constantFrom("constructor", "toString", "valueOf", "hasOwnProperty"),
+        fc.integer({ min: 1, max: 1000 }),
+        (segment, value) => {
+          const store: Record<string, unknown> = { a: 1 };
 
-        try {
-          recordedUpdate(store, {}, {
-            $set: { ["constructor.prototype.polluted"]: value },
-          } as never);
-        } catch {
-          // Rejecting the write outright is also a correct outcome.
-        }
-
-        expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
-      }),
-      { numRuns: 20 },
+          expect(() => update(store, {}, { $set: { [`${segment}.pA`]: value } } as never)).toThrow(
+            TypeError,
+          );
+          expect(getValueAtPath(store, `${segment}.pA`)).toBeUndefined();
+          expect(hasValueAtPath(store, `${segment}.pA`)).toBe(false);
+        },
+      ),
+      { numRuns: 100 },
     );
   });
 });

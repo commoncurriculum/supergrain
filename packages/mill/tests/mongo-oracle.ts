@@ -60,14 +60,7 @@ function stripUndefined(value: unknown): unknown {
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
       if (item !== undefined) {
-        // defineProperty for the same reason as `deepUnwrap` in helpers.ts: a
-        // literal `__proto__` field must be copied, not applied as a prototype.
-        Object.defineProperty(out, key, {
-          value: stripUndefined(item),
-          enumerable: true,
-          writable: true,
-          configurable: true,
-        });
+        out[key] = stripUndefined(item);
       }
     }
     return out;

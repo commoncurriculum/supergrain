@@ -11,73 +11,13 @@ import fc from "fast-check";
 import { describe, expect, it, vi } from "vitest";
 
 import { batch, computed, createReactive, effect, stableComputed, unwrap } from "../../src";
+import { applyArrayOperation, arrayOperationArbitrary } from "../array-operations";
 
-type ArrayOp =
-  | { type: "push"; value: number }
-  | { type: "pop" }
-  | { type: "shift" }
-  | { type: "unshift"; value: number }
-  | { type: "set"; index: number; value: number }
-  | { type: "splice"; start: number; deleteCount: number; items: Array<number> }
-  | { type: "truncate"; length: number };
-
-const valueArbitrary = fc.integer({ min: -20, max: 20 });
-
-const arrayOpArbitrary: fc.Arbitrary<ArrayOp> = fc.oneof(
-  fc.record({ type: fc.constant<"push">("push"), value: valueArbitrary }),
-  fc.constant<ArrayOp>({ type: "pop" }),
-  fc.constant<ArrayOp>({ type: "shift" }),
-  fc.record({ type: fc.constant<"unshift">("unshift"), value: valueArbitrary }),
-  fc.record({
-    type: fc.constant<"set">("set"),
-    index: fc.integer({ min: 0, max: 12 }),
-    value: valueArbitrary,
-  }),
-  fc.record({
-    type: fc.constant<"splice">("splice"),
-    start: fc.integer({ min: 0, max: 12 }),
-    deleteCount: fc.integer({ min: 0, max: 4 }),
-    items: fc.array(valueArbitrary, { maxLength: 3 }),
-  }),
-  fc.record({ type: fc.constant<"truncate">("truncate"), length: fc.integer({ min: 0, max: 12 }) }),
-);
-
-function applyArrayOp(items: Array<number>, op: ArrayOp): void {
-  switch (op.type) {
-    case "push": {
-      items.push(op.value);
-      return;
-    }
-    case "pop": {
-      items.pop();
-      return;
-    }
-    case "shift": {
-      items.shift();
-      return;
-    }
-    case "unshift": {
-      items.unshift(op.value);
-      return;
-    }
-    case "set": {
-      // Normalized so the op is always meaningful for the current length,
-      // and never creates a hole past the end.
-      if (items.length > 0) items[op.index % items.length] = op.value;
-      return;
-    }
-    case "splice": {
-      items.splice(op.start % (items.length + 1), op.deleteCount, ...op.items);
-      return;
-    }
-    case "truncate": {
-      items.length = Math.min(op.length, items.length);
-      return;
-    }
-  }
-}
-
-/** The order-preserving transform `stableComputed` documents as its domain. */
+/**
+ * The order-preserving transform `stableComputed` documents as its domain. The
+ * shared operation alphabet also reorders the *source* (reverse/sort), which is
+ * the case its docs call out as the worst one for an index-based reconcile.
+ */
 const derive = (items: ReadonlyArray<number>): Array<number> =>
   items.filter((value) => value % 2 === 0).map((value) => value * 10);
 
@@ -185,8 +125,8 @@ describe("stableComputed — reconciles to exactly a fresh recompute", () => {
   it("contents match `.filter().map()` after any sequence of source mutations", () => {
     fc.assert(
       fc.property(
-        fc.array(valueArbitrary, { maxLength: 6 }),
-        fc.array(arrayOpArbitrary, { maxLength: 25 }),
+        fc.array(fc.integer({ min: -20, max: 20 }), { maxLength: 6 }),
+        fc.array(arrayOperationArbitrary, { maxLength: 25 }),
         (initial, ops) => {
           const model = [...initial];
           const store = createReactive({ items: [...initial] });
@@ -195,8 +135,8 @@ describe("stableComputed — reconciles to exactly a fresh recompute", () => {
           expect([...derived()]).toEqual(derive(model));
 
           for (const op of ops) {
-            applyArrayOp(model, op);
-            applyArrayOp(store.items, op);
+            applyArrayOperation(model, op);
+            applyArrayOperation(store.items, op);
             expect([...derived()]).toEqual(derive(model));
           }
         },
@@ -208,15 +148,15 @@ describe("stableComputed — reconciles to exactly a fresh recompute", () => {
   it("the returned reference never changes", () => {
     fc.assert(
       fc.property(
-        fc.array(valueArbitrary, { maxLength: 6 }),
-        fc.array(arrayOpArbitrary, { maxLength: 25 }),
+        fc.array(fc.integer({ min: -20, max: 20 }), { maxLength: 6 }),
+        fc.array(arrayOperationArbitrary, { maxLength: 25 }),
         (initial, ops) => {
           const store = createReactive({ items: [...initial] });
           const derived = stableComputed(() => derive(store.items));
           const first = derived();
 
           for (const op of ops) {
-            applyArrayOp(store.items, op);
+            applyArrayOperation(store.items, op);
             expect(derived()).toBe(first);
           }
         },
@@ -228,14 +168,14 @@ describe("stableComputed — reconciles to exactly a fresh recompute", () => {
   it("leaves no holes — every index below length is an own slot", () => {
     fc.assert(
       fc.property(
-        fc.array(valueArbitrary, { maxLength: 6 }),
-        fc.array(arrayOpArbitrary, { maxLength: 20 }),
+        fc.array(fc.integer({ min: -20, max: 20 }), { maxLength: 6 }),
+        fc.array(arrayOperationArbitrary, { maxLength: 20 }),
         (initial, ops) => {
           const store = createReactive({ items: [...initial] });
           const derived = stableComputed(() => derive(store.items));
 
           for (const op of ops) {
-            applyArrayOp(store.items, op);
+            applyArrayOperation(store.items, op);
             const raw = unwrap(derived()) as Array<number>;
             for (let i = 0; i < raw.length; i++) {
               expect(Object.hasOwn(raw, String(i))).toBe(true);
