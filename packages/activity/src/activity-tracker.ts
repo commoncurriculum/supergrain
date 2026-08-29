@@ -69,7 +69,8 @@ export class ActivityTracker {
 
   private actor: ActorRefFromLogic<typeof activityMachine>;
   private domDetach: (() => void) | null = null;
-  private detachers: Array<() => void> = [];
+  /** Unsubscribes this tracker's three chart subscriptions. Set in the ctor. */
+  private detachActor: () => void;
   private inputThrottleMs: number;
   private listeners = new Map<ActivityStatus, Set<ActivityEventHandler>>();
   private enteredAt = Date.now();
@@ -101,9 +102,9 @@ export class ActivityTracker {
       this.actor.on("idle", () => advance("idle")),
       this.actor.on("hidden", () => advance("hidden")),
     ];
-    this.detachers.push(() => {
+    this.detachActor = () => {
       for (const s of subs) s.unsubscribe();
-    });
+    };
 
     this.actor.start();
   }
@@ -132,11 +133,15 @@ export class ActivityTracker {
     const set = this.listeners.get(toState) ?? new Set<ActivityEventHandler>();
     this.listeners.set(toState, set);
     set.add(handler);
-    const detach = () => {
+    // The returned function is the only handle on this subscription. The
+    // tracker deliberately keeps no second reference to it: one per `on()` call
+    // would accumulate for the tracker's whole life, outliving the
+    // subscriptions themselves and pinning every handler (and whatever it
+    // closes over) even after the caller unsubscribed. `destroy()` drops all
+    // subscribers at once via `listeners`, so it never needed them.
+    return () => {
       set.delete(handler);
     };
-    this.detachers.push(detach);
-    return detach;
   }
 
   /** Attach DOM listeners (focus / blur / visibilitychange / 10 user events)
@@ -161,8 +166,11 @@ export class ActivityTracker {
   destroy(): void {
     this.domDetach?.();
     this.domDetach = null;
-    for (const d of this.detachers) d();
-    this.detachers = [];
+    this.detachActor();
+    // Drop every subscriber outright. A destroyed tracker emits nothing, so a
+    // retained handler is pure memory — and clearing beats unsubscribing them
+    // one at a time.
+    this.listeners.clear();
     this.actor.stop();
   }
 }
