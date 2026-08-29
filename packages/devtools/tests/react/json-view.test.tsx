@@ -27,6 +27,21 @@ describe("<JsonView />", () => {
     expect(screen.getByText(/named/)).toBeTruthy();
   });
 
+  it("renders an unreadable leaf with what was thrown", () => {
+    const target = { ok: 1 };
+    Object.defineProperty(target, "boom", {
+      enumerable: true,
+      get() {
+        throw new TypeError("getter exploded");
+      },
+    });
+
+    render(<JsonView node={serialize(target)} />);
+    expect(screen.getByText(/TypeError: getter exploded/)).toBeTruthy();
+    // The rest of the object still renders — the bad field costs only its row.
+    expect(screen.getByText("1")).toBeTruthy();
+  });
+
   it("renders array, map, set, and error composites with their children", () => {
     const { rerender } = render(<JsonView node={serialize([10, 20, 30])} />);
     expect(screen.getByText(/Array\(3\)/)).toBeTruthy();
