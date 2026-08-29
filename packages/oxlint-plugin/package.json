@@ -1,0 +1,58 @@
+{
+  "name": "@supergrain/oxlint-plugin",
+  "version": "0.1.0",
+  "description": "Oxlint rules that catch silently non-reactive Supergrain code",
+  "keywords": [
+    "eslint",
+    "lint",
+    "oxlint",
+    "reactive",
+    "supergrain",
+    "typescript"
+  ],
+  "homepage": "https://commoncurriculum.github.io/supergrain/",
+  "bugs": {
+    "url": "https://github.com/commoncurriculum/supergrain/issues"
+  },
+  "license": "MIT",
+  "author": "Scott Messinger",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/commoncurriculum/supergrain.git",
+    "directory": "packages/oxlint-plugin"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "@supergrain/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "test": "vite build && vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsgo --noEmit",
+    "lint": "oxlint -c ../../.oxlintrc.json src/"
+  },
+  "devDependencies": {
+    "@microsoft/api-extractor": "^7.52.13",
+    "@oxlint/plugins": "^1.80.0",
+    "@types/node": "^22.18.3",
+    "oxlint": "^1.80.0",
+    "vite": "^8.0.16",
+    "vite-plugin-dts": "^5.0.2",
+    "vitest": "4.1.0"
+  }
+}
