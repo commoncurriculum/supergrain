@@ -11,6 +11,43 @@ export function isArrayIndex(segment: string): boolean {
 
 export type PathSegment = string;
 
+/**
+ * Read one segment, seeing only *own* properties.
+ *
+ * MongoDB documents have no prototype chain: `constructor`, `toString` and
+ * friends are absent fields, not inherited members. Plain `container[segment]`
+ * disagrees — it walks the JS prototype chain, so `"constructor.prototype.x"`
+ * navigates all the way to `Object.prototype` and `$set` on such a path
+ * corrupts every object in the process. Restricting navigation to own
+ * properties both closes that hole and matches what Mongo actually stores.
+ */
+function readSegment(container: unknown, segment: string): unknown {
+  return Object.hasOwn(container as object, segment)
+    ? (container as Record<string, unknown>)[segment]
+    : undefined;
+}
+
+/**
+ * Make `key` writable as a plain field before `setProperty` assigns it.
+ *
+ * `__proto__` is an accessor inherited from `Object.prototype`, so a bare
+ * assignment would swap the object's prototype instead of writing a field.
+ * Mongo has no such notion — it stores a literal field named `__proto__` — so
+ * materialise an own data property first. The later assignment then finds that
+ * own property and shadows the accessor, leaving `setProperty`'s reactive
+ * bookkeeping untouched. Every other key is already an ordinary slot.
+ */
+function ensureOwnDataSlot(target: object, key: string): void {
+  if (key === "__proto__" && !Object.hasOwn(target, key)) {
+    Object.defineProperty(target, key, {
+      value: undefined,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+  }
+}
+
 type Primitive = string | number | boolean | bigint | symbol | null | undefined;
 type Depth = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 type PrevDepth = [never, 0, 1, 2, 3, 4, 5];
@@ -145,7 +182,7 @@ export function resolveParentPath(
     if (!isContainer(current)) {
       return null;
     }
-    current = (current as any)[part];
+    current = readSegment(current, part);
   }
 
   if (!isContainer(current)) {
@@ -195,7 +232,7 @@ export function ensureParentPath(
         `Cannot create field '${part}' in element ${describeElement(parts[i - 1], current)}.`,
       );
     }
-    const existing = (current as any)[part];
+    const existing = readSegment(current, part);
     // A `null` intermediate is normally a hard error (Mongo can't create a
     // field inside null); with `allowNullIntermediates` it's treated as absent
     // and overwritten by the created branch.
@@ -209,6 +246,7 @@ export function ensureParentPath(
           setProperty(current, String(j), null);
         }
       }
+      ensureOwnDataSlot(current, part);
       setProperty(current, part, Object.create(branchPrototype));
     } else if (!isContainer(existing)) {
       // A scalar (number/string/boolean/null) can't gain a subfield: Mongo
@@ -217,7 +255,7 @@ export function ensureParentPath(
         `Cannot create field '${parts[i + 1]}' in element {${part}: ${JSON.stringify(existing)}}.`,
       );
     }
-    current = (current as any)[part];
+    current = readSegment(current, part);
   }
 
   return { parent: current, key: parts[parts.length - 1]! };
@@ -243,6 +281,7 @@ export function setValueAtPath(
       setProperty(parent, String(i), null);
     }
   }
+  ensureOwnDataSlot(parent, key);
   setProperty(parent, key, value);
 }
 
@@ -280,7 +319,7 @@ export function getValueAtPath(target: unknown, path: string): unknown {
     if (!isContainer(current)) {
       return undefined;
     }
-    current = (current as any)[part];
+    current = readSegment(current, part);
   }
 
   return current;
@@ -295,7 +334,7 @@ export function hasValueAtPath(target: unknown, path: string): boolean {
     if (!isContainer(current)) {
       return false;
     }
-    current = (current as any)[parts[i]!];
+    current = readSegment(current, parts[i]!);
   }
 
   return isContainer(current) && Object.hasOwn(current, parts[parts.length - 1]!);

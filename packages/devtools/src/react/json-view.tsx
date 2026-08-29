@@ -92,6 +92,11 @@ function Leaf({ node }: { node: JsonNode }) {
     case "max-depth": {
       return <span className={META}>…</span>;
     }
+    case "unreadable": {
+      // The value threw on read. Say so where the value would have been — a
+      // blank row would read as "this field is empty", which it isn't.
+      return <span className="text-red-600 italic">⚠ {node.text}</span>;
+    }
     /* c8 ignore next 3 -- exhaustive over leaf kinds; composite kinds never reach Leaf */
     default: {
       return null;

@@ -28,7 +28,16 @@ function deepUnwrap(value: unknown): unknown {
   }
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(raw)) {
-    out[key] = deepUnwrap(item);
+    // defineProperty, not `out[key] = …`: a document may legitimately hold a
+    // field literally named `__proto__` (Mongo stores it like any other key),
+    // and assignment would reassign this object's prototype instead of copying
+    // the field — silently dropping it from every snapshot the oracle compares.
+    Object.defineProperty(out, key, {
+      value: deepUnwrap(item),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return out;
 }

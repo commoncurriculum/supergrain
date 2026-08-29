@@ -87,3 +87,37 @@ describe("serialize()", () => {
     expect(node.entries.find(([k]) => k === "name")?.[1]).toEqual({ t: "string", value: "Ada" });
   });
 });
+
+describe("serialize() — values that throw on read", () => {
+  function withThrowingGetter(): Record<string, unknown> {
+    const target: Record<string, unknown> = { before: 1 };
+    Object.defineProperty(target, "boom", {
+      enumerable: true,
+      get() {
+        throw new Error("nope");
+      },
+    });
+    target["after"] = 2;
+    return target;
+  }
+
+  it("degrades a throwing getter to an `unreadable` node and keeps its siblings", () => {
+    const node = serialize(withThrowingGetter());
+    expect(node.t).toBe("object");
+    if (node.t !== "object") throw new Error("expected object");
+    expect(node.entries).toEqual([
+      ["before", { t: "number", value: 1, text: "1" }],
+      ["boom", { t: "unreadable", text: "Error: nope" }],
+      ["after", { t: "number", value: 2, text: "2" }],
+    ]);
+  });
+
+  it("degrades a revoked proxy rather than throwing", () => {
+    const { proxy, revoke } = Proxy.revocable({ a: 1 }, {});
+    revoke();
+    const node = serialize({ dead: proxy });
+    expect(node.t).toBe("object");
+    if (node.t !== "object") throw new Error("expected object");
+    expect(node.entries[0]?.[1].t).toBe("unreadable");
+  });
+});

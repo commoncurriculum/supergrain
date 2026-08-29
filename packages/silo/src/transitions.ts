@@ -186,6 +186,15 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
     return;
   }
 
+  // `Retrying` means "an attempt failed and the fetch is still in flight". If
+  // this cycle already ended (Settled/Failed/Aborted), there is no in-flight
+  // fetch for it to describe, and applying it anyway would bump `failureCount`
+  // on a dead cycle and leave `lastError` pointing past the terminal `error`.
+  // The generation fence only orders events *across* cycles; this orders them
+  // within one. No emitter produces this today — it keeps the reducer's
+  // invariants total rather than dependent on emitter discipline.
+  if (event._tag === "Retrying" && !raw.isFetching) return;
+
   let { value, error, isFetching, fetchedAt, failureCount, lastError } = raw;
 
   switch (event._tag) {
