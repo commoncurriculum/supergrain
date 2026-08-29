@@ -26,7 +26,6 @@ import { calleeName, createImportTracker } from "../imports.js";
  */
 
 const COMPONENT_NAME = /^[A-Z]/u,
-  HOOK_NAME = /^use[A-Z]/u,
   /** Hooks whose presence proves the component touches reactive state. */
   REACTIVE_HOOKS = new Set([
     "useReactive",
@@ -42,13 +41,7 @@ const COMPONENT_NAME = /^[A-Z]/u,
 
 type FunctionNode = ESTree.Function | ESTree.ArrowFunctionExpression;
 
-/** Any node, reachable upwards. `Program` is the root and its parent is null. */
-interface Linked {
-  type: string;
-  parent: Linked | null;
-}
-
-function isFunction(node: Linked): boolean {
+function isFunction(node: ESTree.Node): node is FunctionNode {
   return (
     node.type === "FunctionDeclaration" ||
     node.type === "FunctionExpression" ||
@@ -57,42 +50,44 @@ function isFunction(node: Linked): boolean {
 }
 
 /** The function that renders this node, or undefined at module scope. */
-function enclosingFunction(node: Linked): FunctionNode | undefined {
-  for (let current = node.parent; current; current = current.parent) {
-    if (isFunction(current)) return current as unknown as FunctionNode;
+function enclosingFunction(node: ESTree.Node): FunctionNode | undefined {
+  for (let current: ESTree.Node | null = node.parent; current; current = current.parent) {
+    if (isFunction(current)) return current;
   }
   return undefined;
 }
 
 /**
- * True when a `tracked()` call wraps this function, at any wrapper depth.
+ * The name this function is bound to and whether a `tracked()` call wraps it.
  *
- * Walking stops at the first non-call ancestor, which is the binding. That is
- * what makes `memo(tracked(fn))` and `tracked(memo(fn))` both read as tracked
- * without either nesting order being special-cased.
+ * Both answers come from the same walk outwards through wrapper calls, because
+ * they are two readings of one chain: `memo(tracked(Row))` has to yield the
+ * name `Row` and "tracked" together. Walking stops at the first non-call
+ * ancestor — the binding — which is what makes `memo(tracked(fn))` and
+ * `tracked(memo(fn))` both read as tracked without either order being
+ * special-cased.
+ *
+ * A null `id` means there is no binding to name — a `<For>` child callback, an
+ * argument, a destructured target — which is exactly the set of functions that
+ * are not components.
  */
-function isTracked(fn: Linked, isTrackedCallee: (name: string) => boolean): boolean {
-  for (let at = fn.parent; at?.type === "CallExpression"; at = at.parent) {
-    const { callee } = at as unknown as ESTree.CallExpression;
-    if (callee.type === "Identifier" && isTrackedCallee(callee.name)) return true;
+function resolveComponent(
+  fn: FunctionNode,
+  isTrackedCallee: (name: string) => boolean,
+): { id: ESTree.BindingIdentifier | null; tracked: boolean } {
+  /* A function declaration carries its own name and cannot be wrapped in a
+     call, so the walk below has nothing to find. */
+  if (fn.type === "FunctionDeclaration") return { id: fn.id, tracked: false };
+
+  let at: ESTree.Node | null = fn.parent,
+    tracked = false;
+  for (; at?.type === "CallExpression"; at = at.parent) {
+    const { callee } = at;
+    if (callee.type === "Identifier" && isTrackedCallee(callee.name)) tracked = true;
   }
-  return false;
-}
 
-/**
- * The identifier this function is bound to, seen through any wrapper calls.
- *
- * Undefined when there is no such binding — a `<For>` child callback, an
- * argument, a destructured target — which is exactly the set of functions
- * that are not components.
- */
-function bindingIdOf(fn: Linked): ESTree.BindingIdentifier | undefined {
-  let at = fn.parent;
-  while (at?.type === "CallExpression") at = at.parent;
-  if (at?.type !== "VariableDeclarator") return undefined;
-
-  const { id } = at as unknown as ESTree.VariableDeclarator;
-  return id.type === "Identifier" ? id : undefined;
+  const id = at?.type === "VariableDeclarator" && at.id.type === "Identifier" ? at.id : null;
+  return { id, tracked };
 }
 
 export default defineRule({
@@ -145,28 +140,23 @@ export default defineRule({
       renders = new Set<FunctionNode>();
 
     function recordJsx(node: ESTree.JSXElement | ESTree.JSXFragment): void {
-      const fn = enclosingFunction(node as unknown as Linked);
+      const fn = enclosingFunction(node);
       if (fn) renders.add(fn);
     }
 
     function recordReactiveRead(node: ESTree.CallExpression): void {
-      const fn = enclosingFunction(node as unknown as Linked);
+      const fn = enclosingFunction(node);
       if (fn) readsReactiveState.add(fn);
     }
 
     function reportIfUntracked(fn: FunctionNode): void {
       if (onlyReactive && !readsReactiveState.has(fn)) return;
 
-      const id = fn.type === "FunctionDeclaration" ? fn.id : bindingIdOf(fn as unknown as Linked);
-      if (!id) return;
-      if (!COMPONENT_NAME.test(id.name) || HOOK_NAME.test(id.name)) return;
-      if (isTracked(fn as unknown as Linked, isTrackedCallee)) return;
+      const { id, tracked } = resolveComponent(fn, isTrackedCallee);
+      // A hook name cannot reach here: `useFoo` fails the component test.
+      if (!id || !COMPONENT_NAME.test(id.name) || tracked) return;
 
-      context.report({
-        node: id as unknown as ESTree.Node,
-        messageId: "untracked",
-        data: { name: id.name },
-      });
+      context.report({ node: id, messageId: "untracked", data: { name: id.name } });
     }
 
     return {
