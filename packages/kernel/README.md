@@ -186,7 +186,15 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
   > Shorthand for `useEffect(() => effect(fn), [])`. Runs a signal-tracked side effect that re-runs when tracked signals change and cleans up on unmount. Does **not** cause the component to re-render.
 
 - `<For each={array} parent={ref?}>{item => ...}</For>`
+
   > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
+
+- `<If when={() => cond}>then<ElseIf when={() => cond2}>chained</ElseIf><Else>otherwise</Else></If>`
+
+  > Firewalled conditional (if/else if/else) rendering. Pass conditions as functions: `If` subscribes to **which branch is active**, so changes to the conditions' inputs re-render nothing until a different branch takes over — and the parent never subscribes at all. Chains short-circuit like real if/else if: later conditions aren't evaluated (or even subscribed to) while an earlier one holds. A function child `(value) => ...` receives its branch's non-null condition value.
+
+- `createAnimatedIf(wrap)`
+  > Returns an `<AnimatedIf>` — an `<If>` whose branch swaps run through a presence wrapper (e.g. Motion's `<AnimatePresence>`) so exits animate instead of unmounting instantly. Call once at module scope with your wrapper; the kernel has no dependency on any animation library. See [Animating between branches](#animating-between-branches).
 
 > React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](../husk/README.md).
 
@@ -340,6 +348,86 @@ const App = tracked(() => {
 - Tracks which items changed and only re-renders those
 - Optional `parent` ref enables O(1) direct DOM moves for swaps
 - Without `parent`, falls back to standard React reconciliation
+
+### Conditionals
+
+`<If>`/`<Else>` render one branch or the other — like a ternary, but firewalled. A ternary in a tracked parent (`{store.todos.length > 0 ? <List /> : <Empty />}`) subscribes the parent to `length`, re-rendering it on every push and remove. `<If>` evaluates the condition behind a computed and subscribes only to the boolean result.
+
+```tsx
+const Inbox = tracked(() => {
+  const store = Store.useStore();
+
+  return (
+    <If when={() => store.todos.length > 0}>
+      <TodoList />
+      <Else>
+        <EmptyState />
+      </Else>
+    </If>
+  );
+});
+```
+
+- Going from 3 todos → 4 re-renders nothing — the condition is still truthy
+- Only an empty ↔ non-empty flip swaps the branch, and only `If` re-renders
+- `<Else>` marks the else branch; omit it to render nothing when falsy. It must sit directly under `<If>` (fragments and arrays in between are fine, other components are not)
+- Pass `when` as a function — a plain value is evaluated by the parent, which subscribes the parent to the condition's inputs
+
+Chain branches with `<ElseIf>` — first truthy condition wins, like `if / else if / else`:
+
+```tsx
+<If when={() => store.status === "loading"}>
+  <Spinner />
+  <ElseIf when={() => store.status === "error"}>
+    <ErrorPane />
+  </ElseIf>
+  <Else>
+    <Content />
+  </Else>
+</If>
+```
+
+Chains short-circuit the way real `if / else if` does: while an earlier condition holds, later conditions aren't evaluated — or even subscribed to. The whole chain still subscribes only to _which branch is active_, so input churn inside the active branch's condition (say, `errors` going 1 → 5 while `errors > 0` holds) re-renders nothing.
+
+For nullable values, a function child receives the type-narrowed value and is only called while its branch is active:
+
+```tsx
+<If when={() => store.currentUser}>
+  {(user) => <Avatar name={user.name} />}
+  <Else>
+    <LoginButton />
+  </Else>
+</If>
+```
+
+### Animating between branches
+
+Presence wrappers like Motion's `<AnimatePresence>` detect swaps by diffing their **direct children** across their **own re-renders**. Wrapping `<If>` in one from outside can never animate: the firewall means the wrapper's component doesn't re-render on a flip, and the swap happens below its diffing horizon. `createAnimatedIf` inverts the nesting — the returned component renders the wrapper itself, and since it's exactly the component that re-renders on branch changes, the wrapper sees every swap as a keyed direct-child change.
+
+```tsx
+// animated-if.ts — once in your app
+import { AnimatePresence } from "motion/react";
+import { createAnimatedIf } from "@supergrain/kernel/react";
+
+export const AnimatedIf = createAnimatedIf((children) => (
+  <AnimatePresence mode="wait">{children}</AnimatePresence>
+));
+```
+
+```tsx
+// anywhere — same API as <If>, branches animate in and out
+<AnimatedIf when={() => store.open}>
+  <motion.div exit={{ opacity: 0 }}>panel</motion.div>
+  <Else>
+    <motion.div exit={{ opacity: 0 }}>teaser</motion.div>
+  </Else>
+</AnimatedIf>
+```
+
+- Same firewall as `<If>`: re-renders (and re-invokes the wrapper) only when the active branch changes — exactly the moments you want animation
+- Branches are handed to the wrapper in fragments keyed per branch, so branch roots don't need keys of their own; `<ElseIf>` chains animate between all branches
+- The wrapper stays mounted when no branch matches (receiving empty children), so the last branch can still animate out
+- The kernel has no dependency on any animation library — pass whatever presence wrapper you use, with whatever props (`mode="wait"`, `popLayout`, …)
 
 ### Synchronous Writes and Batching
 

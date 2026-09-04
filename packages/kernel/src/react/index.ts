@@ -3,6 +3,10 @@
 // Export For component for optimized array rendering
 export { For } from "./for";
 
+// Export If/ElseIf/Else components for firewalled conditional rendering,
+// plus the createAnimatedIf factory for presence-animated branch swaps
+export { If, ElseIf, Else, createAnimatedIf } from "./if-else";
+
 // Export tracked() component wrapper for per-component signal scoping
 export { tracked } from "./tracked";
 
