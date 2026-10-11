@@ -1,5 +1,6 @@
-import { effect as alienEffect, unwrap, getNodesIfExist, $TRACK } from "@supergrain/kernel";
+import { unwrap, getNodesIfExist, $TRACK } from "@supergrain/kernel";
 import {
+  alienEffect,
   getActiveSub,
   setActiveSub,
   trackArrayElements,

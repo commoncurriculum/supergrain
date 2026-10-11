@@ -10,12 +10,14 @@
   The Proxy `set` / `deleteProperty` traps via the standalone `setProperty` / `deleteProperty` helpers. Bumps per-property signals only when the value actually changed, plus an array-length signal and a per-target version signal for structural subscribers.
 - `store.ts`
   The `createReactive(initial)` factory. Normalizes the root (must be a plain object or array) and wraps it via `createReactiveProxy`.
+- `effect.ts` / `disposable.ts`
+  Public `effect(fn)` — alien-signals' `effect` whose stop function also carries `[Symbol.dispose]` (a `Disposer`), so it works with `using`. `makeDisposable` attaches that method; the `SymbolDisposable` type resolves to `{}` when the consumer's TypeScript `lib` lacks `Symbol.dispose`.
 - `batch.ts`
   Public `batch(fn)` — wraps `startBatch`/`endBatch` in try/finally and rejects async callbacks so the depth counter never leaks.
 - `profiler.ts`
   Opt-in counters for signal reads, skips, and writes. Zero cost when disabled.
 - `internal.ts`
-  Subpath entrypoint for sibling Supergrain packages (mill, kernel/react). Exposes the raw write helpers and the un-wrapped `startBatch`/`endBatch`/`getActiveSub`/`setActiveSub` primitives that have footguns the public API hides.
+  Subpath entrypoint for sibling Supergrain packages (mill, husk, kernel/react). Exposes the raw write helpers, the un-wrapped `startBatch`/`endBatch`/`getActiveSub`/`setActiveSub` primitives that have footguns the public API hides, the undecorated alien-signals `effect` (as `alienEffect`), and `makeDisposable`.
 - `react/`
   The React subpath — `tracked`, `useReactive`, `createStoreContext`, `useComputed`, `useSignalEffect`, `<For>`. Reaches the kernel runtime via the public `@supergrain/kernel` and `@supergrain/kernel/internal` subpaths so the React bundle stays decoupled from kernel's internal layout.
 
@@ -30,14 +32,15 @@
 
 ## Signal layer
 
-Signal propagation is delegated to [`alien-signals`](https://github.com/stackblitz/alien-signals). The `signal` / `computed` / `effect` primitives are re-exported from `@supergrain/kernel` for direct use; the lower-level `startBatch` / `endBatch` / `getActiveSub` / `setActiveSub` primitives are deliberately not re-exported from the package root because they mutate global state and leak on exception. Use `batch(fn)` instead. Sibling Supergrain packages that need the raw primitives (e.g. for tracking-context manipulation in `tracked()`) import from `@supergrain/kernel/internal`.
+Signal propagation is delegated to [`alien-signals`](https://github.com/stackblitz/alien-signals). The `signal` / `computed` primitives are re-exported from `@supergrain/kernel` for direct use, and `effect` is re-exported with a `Disposable` stop function; the lower-level `startBatch` / `endBatch` / `getActiveSub` / `setActiveSub` primitives are deliberately not re-exported from the package root because they mutate global state and leak on exception. Use `batch(fn)` instead. Sibling Supergrain packages that need the raw primitives (e.g. for tracking-context manipulation in `tracked()`) import from `@supergrain/kernel/internal`, which also exposes the undecorated alien-signals effect as `alienEffect` for per-component and per-resource effects whose stop function never reaches user code.
 
 ## Public API
 
 The `@supergrain/kernel` root exports:
 
 - `createReactive`, `unwrap`, `$BRAND`, `Signal`, `Branded`
-- `signal`, `computed`, `effect` (re-exported from `alien-signals`)
+- `signal`, `computed` (re-exported from `alien-signals`)
+- `effect` (alien-signals' `effect` with a `Disposable` stop function), `Disposer`, `SymbolDisposable`
 - `batch`
 - `enableProfiling`, `disableProfiling`, `resetProfiler`, `getProfile`, `Profile`
 - `getNodesIfExist`, `$TRACK` (used by `tracked()` and other React-side machinery)

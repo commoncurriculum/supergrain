@@ -1,7 +1,6 @@
 import type { ReactiveNode } from "alien-signals/system";
 
-import { effect as alienEffect } from "@supergrain/kernel";
-import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
+import { alienEffect, getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
 import { type FC, memo, useReducer } from "react";
 
 import { scheduleDisposal } from "./disposal-queue";

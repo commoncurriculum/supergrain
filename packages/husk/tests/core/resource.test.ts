@@ -484,3 +484,65 @@ describe("dispose()", () => {
     dispose({ foo: 1 });
   });
 });
+
+describe("using — resources are Disposable", () => {
+  it("`using` disposes an inline resource at the end of the block", () => {
+    const input = signal(1);
+    const cleanup = vi.fn();
+    let seen = 0;
+
+    {
+      using r = resource({ value: 0 }, (state) => {
+        state.value = input();
+        return cleanup;
+      });
+      seen = r.value;
+    }
+    input(2);
+
+    expect(seen).toBe(1);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("`using` disposes a defineResource instance at the end of the block", () => {
+    const store = createReactive({ id: 1 });
+    const setup = vi.fn();
+    const cleanup = vi.fn();
+    const tracker = defineResource<number, { id: number }>(
+      () => ({ id: 0 }),
+      (state, id) => {
+        setup(id);
+        state.id = id;
+        return cleanup;
+      },
+    );
+
+    {
+      using t = tracker(() => store.id);
+      expect(t.id).toBe(1);
+    }
+    store.id = 2;
+
+    expect(setup).toHaveBeenCalledTimes(1);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("[Symbol.dispose] and dispose() share one idempotent teardown", () => {
+    const cleanup = vi.fn();
+    const r = resource({ value: 0 }, () => cleanup);
+
+    r[Symbol.dispose]();
+    dispose(r);
+    r[Symbol.dispose]();
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("[Symbol.dispose] is not an enumerable key of the state", () => {
+    const r = resource({ value: 0 }, () => {});
+
+    expect(Object.keys(r)).toEqual(["value"]);
+    expect({ ...r }).toEqual({ value: 0 });
+    dispose(r);
+  });
+});

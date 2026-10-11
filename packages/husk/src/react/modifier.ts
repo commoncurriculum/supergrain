@@ -1,4 +1,4 @@
-import { effect } from "@supergrain/kernel";
+import { alienEffect } from "@supergrain/kernel/internal";
 import { useCallback, useRef } from "react";
 
 /**
@@ -136,7 +136,7 @@ export function useModifier<E extends Element, A extends unknown[]>(
 
       teardown();
       elementRef.current = el;
-      stopEffectRef.current = effect(() => {
+      stopEffectRef.current = alienEffect(() => {
         runUserCleanup();
         const result = modifierRef.current(el, ...argsRef.current);
         if (typeof result === "function") userCleanupRef.current = result;

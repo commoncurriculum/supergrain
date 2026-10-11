@@ -249,6 +249,17 @@ const user = reactivePromise(async (signal) => fetch(url, { signal }).then((r) =
 dispose(user);
 ```
 
+Resources are also `Disposable`, so `using` disposes at the end of the enclosing block — handy in tests and scripts:
+
+```ts
+{
+  using user = reactivePromise(async (signal) => fetch(url, { signal }).then((r) => r.json()));
+  await user.promise;
+} // disposed here
+```
+
+Don't bind a hook result (`useResource`, `useReactivePromise`, …) with `using` — the hook already disposes on unmount, and `using` would dispose at the end of the render.
+
 ## Lives outside the component tree
 
 Resources aren't hooks. Define at module scope; read from event handlers, tests, workers — anywhere. Rules of Hooks doesn't apply.
