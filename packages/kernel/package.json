@@ -66,7 +66,7 @@
     "bench:additional": "vitest bench benchmarks/additional.bench.ts",
     "bench:libraries": "vitest bench benchmarks/state-libraries.bench.ts",
     "bench:react": "vitest bench --config vitest.bench.config.ts",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit && tsgo --noEmit -p tsconfig.no-disposable.json"
   },
   "dependencies": {
     "alien-signals": "^3.2.1"
