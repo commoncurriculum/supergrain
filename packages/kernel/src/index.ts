@@ -8,15 +8,6 @@ export { getNodesIfExist, $TRACK } from "./core";
 // `batch()` (below) instead. Internal consumers can still reach the raw
 // primitives via `@supergrain/kernel/internal`.
 export { signal, computed } from "alien-signals";
-
-// `effect` wraps alien-signals' `effect` so its stop function is also
-// `Disposable` (works with `using`). See ./effect.
-//
-// NOTE (alien-signals 3.x): `effect(fn)` treats `fn`'s return value as a
-// cleanup function — it runs before each re-run and on dispose. A callback that
-// returns a non-function value (e.g. `effect(() => store.count)`) will throw
-// "cleanup is not a function" on its next run. Read for subscription with a
-// statement body or `void`: `effect(() => void store.count)`.
 export { effect } from "./effect";
 export type { Disposer, SymbolDisposable } from "./disposable";
 // `stableComputed` is a kernel-grown sibling of `computed` for derived arrays:

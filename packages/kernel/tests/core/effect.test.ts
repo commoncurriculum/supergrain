@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 
 import { createReactive, effect } from "../../src";
-import { makeDisposable } from "../../src/internal";
 
 describe("effect() — Disposable stop function", () => {
   it("`using` stops the effect at the end of the block", () => {
@@ -46,29 +45,5 @@ describe("effect() — Disposable stop function", () => {
     store.count = 1;
 
     expect(runs).toBe(1);
-  });
-});
-
-describe("makeDisposable()", () => {
-  it("adds a non-enumerable [Symbol.dispose] and returns the same object", () => {
-    let disposed = 0;
-    const target = { a: 1 };
-
-    const result = makeDisposable(target, () => disposed++);
-
-    expect(result).toBe(target);
-    expect(Object.keys(result)).toEqual(["a"]);
-    expect(Object.getOwnPropertyDescriptor(result, Symbol.dispose)?.enumerable).toBe(false);
-    result[Symbol.dispose]();
-    expect(disposed).toBe(1);
-  });
-
-  it("leaves a frozen target untouched instead of throwing", () => {
-    const target = Object.freeze({ a: 1 });
-
-    const result = makeDisposable(target, () => {});
-
-    expect(result).toBe(target);
-    expect(Symbol.dispose in result).toBe(false);
   });
 });

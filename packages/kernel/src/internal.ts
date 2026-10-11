@@ -21,11 +21,9 @@ export { profileSignalWrite } from "./profiler";
 export { startBatch, endBatch, getActiveSub, setActiveSub } from "alien-signals";
 
 // The raw alien-signals `effect`: its stop function is a bare `() => void`,
-// without the `Symbol.dispose` property the public `effect` attaches. For
-// sibling-package callers that create an effect per component or resource and
-// never hand the stop function to user code (`tracked`, `<For>`,
-// `useSignalEffect`, husk) — keeps the per-effect `defineProperty` off those
-// paths.
+// without the `Symbol.dispose` the public `effect` attaches. Use it wherever
+// the stop function never reaches user code — the decoration is a public-API
+// concern, and skipping it keeps a `defineProperty` off per-component paths.
 export { effect as alienEffect } from "alien-signals";
 
 // Attaches a `[Symbol.dispose]` to an object so it works with `using`. Used by

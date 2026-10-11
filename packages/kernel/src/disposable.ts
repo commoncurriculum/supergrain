@@ -44,7 +44,9 @@ export function makeDisposable<T extends object>(
       writable: true,
     });
   } catch {
-    // Frozen / non-extensible target: no `using` support, the disposer still works.
+    // Frozen target — e.g. a husk resource built on a frozen `initial` object,
+    // which `createReactive` passes through unwrapped. No `using` support
+    // there; `dispose(x)` still works.
   }
   return target as T & SymbolDisposable;
 }
