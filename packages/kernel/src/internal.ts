@@ -20,12 +20,6 @@ export { profileSignalWrite } from "./profiler";
 // from `@supergrain/kernel` instead.
 export { startBatch, endBatch, getActiveSub, setActiveSub } from "alien-signals";
 
-// The raw alien-signals `effect`: its stop function is a bare `() => void`,
-// without the `Symbol.dispose` the public `effect` attaches. Use it wherever
-// the stop function never reaches user code — the decoration is a public-API
-// concern, and skipping it keeps a `defineProperty` off per-component paths.
-export { effect as alienEffect } from "alien-signals";
-
 // Attaches a `[Symbol.dispose]` to an object so it works with `using`. Used by
 // husk to make resources `Disposable`.
 export { makeDisposable } from "./disposable";

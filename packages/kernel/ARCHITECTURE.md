@@ -17,7 +17,7 @@
 - `profiler.ts`
   Opt-in counters for signal reads, skips, and writes. Zero cost when disabled.
 - `internal.ts`
-  Subpath entrypoint for sibling Supergrain packages (mill, husk, kernel/react). Exposes the raw write helpers, the un-wrapped `startBatch`/`endBatch`/`getActiveSub`/`setActiveSub` primitives that have footguns the public API hides, the undecorated alien-signals `effect` (as `alienEffect`), and `makeDisposable`.
+  Subpath entrypoint for sibling Supergrain packages (mill, husk, kernel/react). Exposes the raw write helpers, the un-wrapped `startBatch`/`endBatch`/`getActiveSub`/`setActiveSub` primitives that have footguns the public API hides, and `makeDisposable`.
 - `react/`
   The React subpath — `tracked`, `useReactive`, `createStoreContext`, `useComputed`, `useSignalEffect`, `<For>`. Reaches the kernel runtime via the public `@supergrain/kernel` and `@supergrain/kernel/internal` subpaths so the React bundle stays decoupled from kernel's internal layout.
 
@@ -32,7 +32,7 @@
 
 ## Signal layer
 
-Signal propagation is delegated to [`alien-signals`](https://github.com/stackblitz/alien-signals). The `signal` / `computed` primitives are re-exported from `@supergrain/kernel` for direct use, and `effect` is re-exported with a `Disposable` stop function; the lower-level `startBatch` / `endBatch` / `getActiveSub` / `setActiveSub` primitives are deliberately not re-exported from the package root because they mutate global state and leak on exception. Use `batch(fn)` instead. Sibling Supergrain packages that need the raw primitives (e.g. for tracking-context manipulation in `tracked()`) import from `@supergrain/kernel/internal` — including the undecorated `effect` (`alienEffect`) for effects whose stop function never reaches user code.
+Signal propagation is delegated to [`alien-signals`](https://github.com/stackblitz/alien-signals). The `signal` / `computed` primitives are re-exported from `@supergrain/kernel` for direct use, and `effect` is re-exported with a `Disposable` stop function; the lower-level `startBatch` / `endBatch` / `getActiveSub` / `setActiveSub` primitives are deliberately not re-exported from the package root because they mutate global state and leak on exception. Use `batch(fn)` instead. Sibling Supergrain packages that need the raw primitives (e.g. for tracking-context manipulation in `tracked()`) import from `@supergrain/kernel/internal`.
 
 ## Public API
 

@@ -1,10 +1,5 @@
-import { createReactive, type SymbolDisposable } from "@supergrain/kernel";
-import {
-  alienEffect,
-  getActiveSub,
-  makeDisposable,
-  setActiveSub,
-} from "@supergrain/kernel/internal";
+import { createReactive, effect, type SymbolDisposable } from "@supergrain/kernel";
+import { getActiveSub, makeDisposable, setActiveSub } from "@supergrain/kernel/internal";
 
 /**
  * A resource is a reactive function with cleanup logic — one of two
@@ -112,7 +107,7 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T & Symbol
   // this, a resource created inside a `tracked()` render (or another effect)
   // becomes nested and doesn't propagate its own deps independently.
   const stopEffect = withUntracked(() =>
-    alienEffect(() => {
+    effect(() => {
       const gen = ++generation;
       runCleanups();
       controller = new AbortController();

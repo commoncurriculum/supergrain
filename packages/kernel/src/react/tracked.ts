@@ -1,6 +1,7 @@
 import type { ReactiveNode } from "alien-signals/system";
 
-import { alienEffect, getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
+import { effect } from "@supergrain/kernel";
+import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
 import { type FC, memo, useReducer } from "react";
 
 import { scheduleDisposal } from "./disposal-queue";
@@ -60,8 +61,8 @@ export function tracked<P extends object>(Component: FC<P>) {
     const fu = forceUpdate as unknown as { __sg?: TrackedState };
     if (!fu.__sg) {
       let firstRun = true;
-      let capturedNode: ReactiveNode | undefined = null!; // eslint-disable-line unicorn/no-null -- set synchronously by alienEffect
-      const cleanup = alienEffect(() => {
+      let capturedNode: ReactiveNode | undefined = null!; // eslint-disable-line unicorn/no-null -- set synchronously by effect()
+      const cleanup = effect(() => {
         if (firstRun) {
           capturedNode = getActiveSub();
           firstRun = false;

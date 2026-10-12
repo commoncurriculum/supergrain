@@ -1,4 +1,4 @@
-import { alienEffect } from "@supergrain/kernel/internal";
+import { effect } from "@supergrain/kernel";
 import { useEffect } from "react";
 
 /**
@@ -42,7 +42,7 @@ import { useEffect } from "react";
  */
 export function useSignalEffect(fn: () => void | (() => void)): void {
   useEffect(() => {
-    const cleanup = alienEffect(fn);
+    const cleanup = effect(fn);
     return cleanup;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 }
