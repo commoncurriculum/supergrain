@@ -1,5 +1,6 @@
-import { getActiveSub, startBatch, endBatch } from "alien-signals";
+import { getActiveSub } from "alien-signals";
 
+import { ARRAY_METHODS, type NativeArrayMethod } from "./array-methods";
 import { createReactiveMap, createReactiveSet } from "./collections";
 import {
   $NODE,
@@ -11,180 +12,14 @@ import {
   getNode,
   getNodes,
   isWrappable,
-  trackArrayElements,
   type ReactiveTagged,
 } from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
-import { notifyArrayMutation, writeHandler } from "./write";
-
-// Array methods that mutate the array in place. Called through the proxy, the
-// native method would run with the proxy as `this`: V8 abandons its fast array
-// path and every element read and write goes through a trap (~280x slower than
-// on a plain array), each write firing its own notifications. Instead
-// `mutateArray` runs the native method on the raw target and fires the same
-// notifications once, in one batch — so synchronous effects (`useSignalEffect`,
-// raw `effect()`) never observe a partial state either.
-//
-// The list is enumerated rather than "wrap all array method calls" because
-// the proxy `get` handler is the hottest function in the library (every
-// property read goes through it), and V8 deoptimizes the entire handler when
-// its shape changes. See `notes/failed-approaches/fast-push-bypass-proxy.md`
-// for an attempt that regressed unrelated benchmarks 13-27% by adding a
-// single conditional branch here.
-//
-// Trade-off: any future ES mutator (e.g., a hypothetical
-// `Array.prototype.frobnicate`) runs through the proxy, unbatched, until added
-// here and to `firstChangedIndex`. Synchronous effects observing arrays mutated
-// via the new method would see partial states. React renderers via `tracked()`
-// are unaffected (React batches `forceUpdate` calls).
-const ARRAY_MUTATORS = new Set([
-  "push",
-  "pop",
-  "shift",
-  "unshift",
-  "splice",
-  "sort",
-  "reverse",
-  "fill",
-  "copyWithin",
-]);
-
-// Read-only array methods that always visit every element. Run through the
-// proxy they would do a trap-per-element read and subscribe to every index;
-// `iterateArray` runs them on the raw target with one subscription to the
-// array's `length` and `$ELEMENTS` signals, which change exactly when one of
-// those index signals would. Early-exit methods (`find`, `some`, `every`,
-// `findIndex`, …) are not listed: they only subscribe to the indices they
-// visit, and a whole-array subscription would wake them for changes they skip.
-const ARRAY_ITERATORS = new Set(["map", "forEach", "filter", "flatMap", "reduce", "reduceRight"]);
-
-// Every array method the get handler intercepts. One set so the handler keeps
-// a single membership check — see the note above about its shape.
-const ARRAY_METHODS = new Set([...ARRAY_MUTATORS, ...ARRAY_ITERATORS]);
-
-// The first index `method` can change, given its arguments — mirrors the
-// spec's relative-index clamping for start/target arguments.
-function firstChangedIndex(method: string, args: Array<unknown>, length: number): number {
-  switch (method) {
-    case "push": {
-      return length;
-    }
-    case "pop": {
-      return Math.max(length - 1, 0);
-    }
-    case "splice":
-    case "copyWithin": {
-      return relativeIndex(args[0], length);
-    }
-    case "fill": {
-      return relativeIndex(args[1], length);
-    }
-    default: {
-      // shift, unshift, sort, reverse
-      return 0;
-    }
-  }
-}
-
-function relativeIndex(value: unknown, length: number): number {
-  const n = Math.trunc(Number(value)) || 0;
-  return n < 0 ? Math.max(length + n, 0) : Math.min(n, length);
-}
-
-function mutateArray(
-  target: Array<unknown>,
-  receiver: unknown,
-  method: string,
-  native: (...a: Array<unknown>) => unknown,
-  args: Array<unknown>,
-): unknown {
-  const oldLength = target.length;
-  const from = firstChangedIndex(method, args, oldLength);
-  const before = target.slice(from);
-  if (method === "sort" && typeof args[0] === "function") {
-    // The comparator sees elements the way a read through the proxy would.
-    const compare = args[0] as (a: unknown, b: unknown) => number;
-    args = [(a: unknown, b: unknown) => compare(wrap(a), wrap(b))];
-  }
-  startBatch();
-  try {
-    const result = native.apply(target, args);
-    notifyArrayMutation(target, from, before, oldLength);
-    switch (method) {
-      case "pop":
-      case "shift": {
-        return wrap(result);
-      }
-      case "splice": {
-        const removed = result as Array<unknown>;
-        for (let i = 0; i < removed.length; i++) removed[i] = wrap(removed[i]);
-        return removed;
-      }
-      case "push":
-      case "unshift": {
-        return result;
-      }
-      default: {
-        // sort, reverse, fill, copyWithin return the array itself.
-        return receiver;
-      }
-    }
-  } finally {
-    endBatch();
-  }
-}
-
-function iterateArray(
-  target: Array<unknown>,
-  receiver: unknown,
-  method: string,
-  native: (...a: Array<unknown>) => unknown,
-  args: Array<unknown>,
-): unknown {
-  const [callback, thisArgOrInitial] = args;
-  const isReduce = method === "reduce" || method === "reduceRight";
-  if (typeof callback !== "function" || (isReduce && args.length < 2)) {
-    // Bad callback: let the native method throw. A reduce without an initial
-    // value seeds its accumulator from a raw element, so take the proxy route,
-    // which hands the callback a reactive one.
-    return native.apply(receiver, args);
-  }
-  if (getActiveSub()) {
-    getNode(getNodes(target), "length", target.length)();
-    trackArrayElements(target);
-  }
-  if (isReduce) {
-    return native.call(
-      target,
-      (acc: unknown, el: unknown, i: number) => callback(acc, wrap(el), i, receiver),
-      thisArgOrInitial,
-    );
-  }
-  const result = native.call(target, (el: unknown, i: number) =>
-    callback.call(thisArgOrInitial, wrap(el), i, receiver),
-  );
-  if (method === "filter") {
-    const kept = result as Array<unknown>;
-    for (let i = 0; i < kept.length; i++) kept[i] = wrap(kept[i]);
-  }
-  return result;
-}
-
-function callArrayMethod(
-  target: Array<unknown>,
-  receiver: unknown,
-  method: string,
-  native: (...a: Array<unknown>) => unknown,
-  args: Array<unknown>,
-): unknown {
-  return ARRAY_ITERATORS.has(method)
-    ? iterateArray(target, receiver, method, native, args)
-    : mutateArray(target, receiver, method, native, args);
-}
+import { writeHandler } from "./write";
 
 const proxyCache = new WeakMap<object, object>();
 
-function wrap<T>(value: T): T {
+export function wrap<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
     return value;
   }
@@ -265,15 +100,12 @@ const readHandler: Pick<
         if (getActiveSub()) {
           trackSelf(target);
         }
-        if (typeof prop === "string" && ARRAY_METHODS.has(prop)) {
+        // Keep this branch to one lookup and one closure: the handler's shape
+        // is load-bearing (notes/failed-approaches/fast-push-bypass-proxy.md).
+        const method = ARRAY_METHODS.get(prop);
+        if (method) {
           return (...args: Array<unknown>) =>
-            callArrayMethod(
-              target as Array<unknown>,
-              receiver,
-              prop,
-              value as (...a: Array<unknown>) => unknown,
-              args,
-            );
+            method(target, receiver, value as NativeArrayMethod, args);
         }
       }
       return value;

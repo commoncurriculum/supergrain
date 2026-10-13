@@ -76,9 +76,9 @@ This is the same root cause as the documented handler extraction failure (`js-fr
 
 ## What worked instead (October 2026)
 
-The idea was right; the placement was wrong. Running mutators on the raw target works when the get handler keeps its exact shape: the existing `ARRAY_MUTATORS` branch still returns a closure, and only that closure's body changed — it now calls a module-level `mutateArray(target, receiver, method, native, args)` instead of `native.apply(receiver, args)`. No new branch, no new early return in the handler.
+The idea was right; the placement was wrong. Running mutators on the raw target works when the get handler keeps its shape: no new branch and no new early return. The branch that used to check `ARRAY_MUTATORS.has(prop)` and return a batching closure now does one lookup in `ARRAY_METHODS` (`array-methods.ts`) and returns a closure that calls the method's raw-array implementation instead of `native.apply(receiver, args)`.
 
-`mutateArray` snapshots the slice of the array the method can change, runs the native method on the raw target, then `notifyArrayMutation` (write.ts) fires the signals that slice's changes touched, once, inside one batch. This covers all nine mutators, not just `push`.
+For a mutator, that implementation snapshots the slice of the array the method can change, runs the native method on the raw target, and then `notifyArrayMutation` (write.ts) fires the signals that slice's changes touched, once, inside one batch. This covers all nine mutators, not just `push`.
 
 Measured with `perf-ab.ts --mode kernel`, 25 interleaved pairs, against the kernel without the change: no operation regressed (every 95% interval for total time includes 1.0), and remove-row JS time dropped to 0.56x [0.49–0.65]. Engine-level, 100 pushes with a length subscriber went from 178 µs to 49 µs.
 

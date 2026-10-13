@@ -5,7 +5,9 @@
 - `core.ts`
   Symbols (`$NODE`, `$PROXY`, `$RAW`, `$VERSION`, `$OWN_KEYS`, `$TRACK`, `$BRAND`), brand types (`Branded<T>`, `Signal<T>`), per-target signal-node storage (`getNodes`, `getNodesIfExist`, `getNode`), and `unwrap`.
 - `read.ts`
-  The Proxy `get` / `ownKeys` / `has` / `getOwnPropertyDescriptor` traps. Lazy signal allocation per accessed property, ownKeys subscription via `$TRACK`, array-mutator batching, and the `proxyCache` that pins one proxy per raw target for stable identity. Frozen targets pass through unwrapped.
+  The Proxy `get` / `ownKeys` / `has` / `getOwnPropertyDescriptor` traps. Lazy signal allocation per accessed property, ownKeys subscription via `$TRACK`, and the `proxyCache` that pins one proxy per raw target for stable identity. Frozen targets pass through unwrapped. For array methods listed in `array-methods.ts`, `get` returns the raw-array implementation instead of the native method.
+- `array-methods.ts`
+  `ARRAY_METHODS`: raw-array implementations of the array mutators and whole-array iterators, one table row per method (see the runtime model below).
 - `write.ts`
   The Proxy `set` / `deleteProperty` traps via the standalone `setProperty` / `deleteProperty` helpers. Bumps per-property signals only when the value actually changed, plus an array-length signal and a per-target version signal for structural subscribers.
 - `store.ts`

@@ -1,4 +1,12 @@
-import { $ELEMENTS, $OWN_KEYS, $VERSION, unwrap, getNodes, getNodesIfExist } from "./core";
+import {
+  $ELEMENTS,
+  $OWN_KEYS,
+  $VERSION,
+  unwrap,
+  getNodes,
+  getNodesIfExist,
+  type DataNodes,
+} from "./core";
 import { profileSignalWrite } from "./profiler";
 
 // Monotonic counter feeding every counter-style signal write. The value only
@@ -37,6 +45,19 @@ export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, an
   }
 }
 
+// Coarse "some element was replaced in place" notification. Subscribers that
+// want to observe replacement at any index without N per-index subscriptions
+// (parent-mode `For`'s swap effect, via trackArrayElements) link to this one
+// signal; bump only if such a subscriber already created it. No
+// profileSignalWrite — this mirrors bumpVersion: version-style bookkeeping,
+// not a value write.
+function bumpElementsSignal(nodes: DataNodes | undefined): void {
+  const elements = nodes?.[$ELEMENTS];
+  if (elements) {
+    elements(++BUMP);
+  }
+}
+
 function bumpSignals(target: any, key: PropertyKey, prevLen: number): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) {
@@ -66,16 +87,7 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
     // only care about structural changes (length, add, remove).
     const isArrayElementReplace = Array.isArray(target) && hadKey && target.length === prevLen;
     if (isArrayElementReplace) {
-      // Coarse "some element was replaced in place" notification. Subscribers
-      // that want to observe replacement at any index without N per-index
-      // subscriptions (parent-mode `For`'s swap effect, via
-      // trackArrayElements) link to this one signal; bump only if such a
-      // subscriber already created it. No profileSignalWrite — this mirrors
-      // bumpVersion: version-style bookkeeping, not a value write.
-      const elements = getNodesIfExist(target)?.[$ELEMENTS];
-      if (elements) {
-        elements(++BUMP);
-      }
+      bumpElementsSignal(getNodesIfExist(target));
     } else {
       bumpVersion(target);
     }
@@ -146,14 +158,16 @@ export function notifyArrayMutation(
   before: ReadonlyArray<unknown>,
   oldLength: number,
 ): void {
+  // `bumpVersion` below may create the node table, but a fresh table holds
+  // only the version signal, so `nodes` stays accurate for every other one.
   const nodes = getNodesIfExist(target);
   const newLength = target.length;
   const end = Math.max(oldLength, newLength);
-  let changed = newLength !== oldLength;
+  let anyIndexChanged = false;
   for (let i = from; i < end; i++) {
     const next = target[i];
     if (unwrap(before[i - from]) !== unwrap(next)) {
-      changed = true;
+      anyIndexChanged = true;
       const node = nodes?.[i];
       if (node) {
         profileSignalWrite();
@@ -161,19 +175,17 @@ export function notifyArrayMutation(
       }
     }
   }
-  if (!changed) return;
-  if (newLength === oldLength) {
-    const elements = nodes?.[$ELEMENTS];
-    if (elements) elements(++BUMP);
-    return;
+  if (newLength !== oldLength) {
+    bumpVersion(target);
+    const lengthNode = nodes?.["length"];
+    if (lengthNode) {
+      profileSignalWrite();
+      lengthNode(newLength);
+    }
+    bumpOwnKeysSignal(target, nodes);
+  } else if (anyIndexChanged) {
+    bumpElementsSignal(nodes);
   }
-  bumpVersion(target);
-  const lengthNode = getNodesIfExist(target)?.["length"];
-  if (lengthNode) {
-    profileSignalWrite();
-    lengthNode(newLength);
-  }
-  bumpOwnKeysSignal(target);
 }
 
 // Local alias so the proxy trap (also named `deleteProperty`) can call the
