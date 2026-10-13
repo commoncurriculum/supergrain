@@ -430,6 +430,10 @@ describe("memory benchmarks", () => {
     memCtx.baseUrl = baseUrl;
     memCtx.browser = await chromium.launch({
       headless: true,
+      // The full Chromium build in new headless mode, as Krause runs it.
+      // Playwright's default headless shell has no
+      // `measureUserAgentSpecificMemory`.
+      channel: "chromium",
       executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
       args: [
         "--js-flags=--expose-gc",
