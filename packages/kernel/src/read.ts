@@ -14,15 +14,15 @@ import {
   type ReactiveTagged,
 } from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
-import { writeHandler } from "./write";
+import { notifyArrayMutation, writeHandler } from "./write";
 
-// Array methods that mutate the array internally do multiple proxy `set`
-// operations (e.g., `push` does `arr[len] = x; arr.length += 1`). Without
-// batching, each internal write fires its own propagate/drain cycle, and
-// synchronous effects (`useSignalEffect`, raw `effect()`) observe partial
-// states between sub-operations — for example, length updated before the
-// new element, or vice versa. Wrapping these methods in `startBatch` /
-// `endBatch` coalesces all internal writes into a single notification.
+// Array methods that mutate the array in place. Called through the proxy, the
+// native method would run with the proxy as `this`: V8 abandons its fast array
+// path and every element read and write goes through a trap (~280x slower than
+// on a plain array), each write firing its own notifications. Instead
+// `mutateArray` runs the native method on the raw target and fires the same
+// notifications once, in one batch — so synchronous effects (`useSignalEffect`,
+// raw `effect()`) never observe a partial state either.
 //
 // The list is enumerated rather than "wrap all array method calls" because
 // the proxy `get` handler is the hottest function in the library (every
@@ -32,10 +32,10 @@ import { writeHandler } from "./write";
 // single conditional branch here.
 //
 // Trade-off: any future ES mutator (e.g., a hypothetical
-// `Array.prototype.frobnicate`) won't be batched until added to this list.
-// Synchronous effects observing arrays mutated via the new method would see
-// partial states. React renderers via `tracked()` are unaffected (React
-// batches `forceUpdate` calls).
+// `Array.prototype.frobnicate`) runs through the proxy, unbatched, until added
+// here and to `firstChangedIndex`. Synchronous effects observing arrays mutated
+// via the new method would see partial states. React renderers via `tracked()`
+// are unaffected (React batches `forceUpdate` calls).
 const ARRAY_MUTATORS = new Set([
   "push",
   "pop",
@@ -47,6 +47,78 @@ const ARRAY_MUTATORS = new Set([
   "fill",
   "copyWithin",
 ]);
+
+// The first index `method` can change, given its arguments — mirrors the
+// spec's relative-index clamping for start/target arguments.
+function firstChangedIndex(method: string, args: Array<unknown>, length: number): number {
+  switch (method) {
+    case "push": {
+      return length;
+    }
+    case "pop": {
+      return Math.max(length - 1, 0);
+    }
+    case "splice":
+    case "copyWithin": {
+      return relativeIndex(args[0], length);
+    }
+    case "fill": {
+      return relativeIndex(args[1], length);
+    }
+    default: {
+      // shift, unshift, sort, reverse
+      return 0;
+    }
+  }
+}
+
+function relativeIndex(value: unknown, length: number): number {
+  const n = Math.trunc(Number(value)) || 0;
+  return n < 0 ? Math.max(length + n, 0) : Math.min(n, length);
+}
+
+function mutateArray(
+  target: Array<unknown>,
+  receiver: unknown,
+  method: string,
+  native: (...a: Array<unknown>) => unknown,
+  args: Array<unknown>,
+): unknown {
+  const oldLength = target.length;
+  const from = firstChangedIndex(method, args, oldLength);
+  const before = target.slice(from);
+  if (method === "sort" && typeof args[0] === "function") {
+    // The comparator sees elements the way a read through the proxy would.
+    const compare = args[0] as (a: unknown, b: unknown) => number;
+    args = [(a: unknown, b: unknown) => compare(wrap(a), wrap(b))];
+  }
+  startBatch();
+  try {
+    const result = native.apply(target, args);
+    notifyArrayMutation(target, from, before, oldLength);
+    switch (method) {
+      case "pop":
+      case "shift": {
+        return wrap(result);
+      }
+      case "splice": {
+        const removed = result as Array<unknown>;
+        for (let i = 0; i < removed.length; i++) removed[i] = wrap(removed[i]);
+        return removed;
+      }
+      case "push":
+      case "unshift": {
+        return result;
+      }
+      default: {
+        // sort, reverse, fill, copyWithin return the array itself.
+        return receiver;
+      }
+    }
+  } finally {
+    endBatch();
+  }
+}
 
 const proxyCache = new WeakMap<object, object>();
 
@@ -132,14 +204,14 @@ const readHandler: Pick<
           trackSelf(target);
         }
         if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
-          return (...args: Array<unknown>) => {
-            startBatch();
-            try {
-              return (value as (...a: Array<unknown>) => unknown).apply(receiver, args);
-            } finally {
-              endBatch();
-            }
-          };
+          return (...args: Array<unknown>) =>
+            mutateArray(
+              target as Array<unknown>,
+              receiver,
+              prop,
+              value as (...a: Array<unknown>) => unknown,
+              args,
+            );
         }
       }
       return value;

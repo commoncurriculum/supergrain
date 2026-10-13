@@ -73,3 +73,13 @@ The proxy get handler is the single hottest function in the library — every pr
 3. The deoptimization penalty applies to ALL property reads, not just `push` access
 
 This is the same root cause as the documented handler extraction failure (`js-framework-benchmark-optimization-attempts.md`, commit `091ce55`), which showed +18% regression from extracting the get handler into a named function. See also `inline-primitive-checks-optimization.md` — adding `typeof` checks to the handler also regressed. The lesson is absolute: the proxy get handler shape is untouchable.
+
+## What worked instead (October 2026)
+
+The idea was right; the placement was wrong. Running mutators on the raw target works when the get handler keeps its exact shape: the existing `ARRAY_MUTATORS` branch still returns a closure, and only that closure's body changed — it now calls a module-level `mutateArray(target, receiver, method, native, args)` instead of `native.apply(receiver, args)`. No new branch, no new early return in the handler.
+
+`mutateArray` snapshots the slice of the array the method can change, runs the native method on the raw target, then `notifyArrayMutation` (write.ts) fires the signals that slice's changes touched, once, inside one batch. This covers all nine mutators, not just `push`.
+
+Measured with `perf-ab.ts --mode kernel`, 25 interleaved pairs, against the kernel without the change: no operation regressed (every 95% interval for total time includes 1.0), and remove-row JS time dropped to 0.56x [0.49–0.65]. Engine-level, 100 pushes with a length subscriber went from 178 µs to 49 µs.
+
+Why the generic route was so slow: a native array method called with a Proxy as `this` loses V8's fast path and runs the spec's generic algorithm, so every element read and write is a trap call — 100 pushes through a do-nothing pass-through Proxy take ~180 µs vs ~0.65 µs on a plain array.

@@ -26,7 +26,7 @@
 - Reads with no active subscriber short-circuit past signal allocation and return the raw value (the `getActiveSub() == null` skip path).
 - Nested objects and arrays are wrapped on demand via `createReactiveProxy`, with `proxyCache` ensuring one proxy per raw target — handle identity stays stable across reads.
 - Frozen targets (e.g. `Object.freeze`d documents stored by `@supergrain/silo`) bypass the proxy and return as-is, preserving reference identity for inserted documents.
-- Array mutators (`push`, `pop`, `splice`, `sort`, `reverse`, `fill`, `copyWithin`, `shift`, `unshift`) are wrapped in `startBatch`/`endBatch` so their internal multi-step writes coalesce into a single notification — synchronous effects don't observe partial states.
+- Array mutators (`push`, `pop`, `splice`, `sort`, `reverse`, `fill`, `copyWithin`, `shift`, `unshift`) run natively on the raw array, not through the proxy, and then `notifyArrayMutation` fires the signals the change touched (changed indices, plus version/length/own-keys or `$ELEMENTS`) in one batch — synchronous effects don't observe partial states. Calling a native array method with the proxy as `this` would send every element read and write through a trap, which V8 runs roughly 280x slower than the same method on a plain array.
 
 ## Signal layer
 

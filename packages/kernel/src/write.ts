@@ -125,6 +125,57 @@ export function deleteProperty(target: any, key: PropertyKey): void {
   }
 }
 
+/**
+ * Notify subscribers of an array that a mutator (`push`, `splice`, `sort`, …)
+ * changed in place on the raw target. Fires, once, the signals that routing the
+ * same mutation through the proxy's per-element writes would have fired:
+ *
+ * - every per-index signal whose value changed (including indices past a
+ *   shrunken end, which now read `undefined`);
+ * - if the length changed: the version, `length`, and own-keys signals;
+ * - otherwise (an in-place reorder or overwrite): the `$ELEMENTS` signal,
+ *   exactly like a same-length index assignment in `setProperty`.
+ *
+ * `from` is the first index the mutator could have changed, `before` holds the
+ * old values from `from` on, and `oldLength` is the length before the call.
+ * The caller batches, so subscribers run once.
+ */
+export function notifyArrayMutation(
+  target: Array<unknown>,
+  from: number,
+  before: ReadonlyArray<unknown>,
+  oldLength: number,
+): void {
+  const nodes = getNodesIfExist(target);
+  const newLength = target.length;
+  const end = Math.max(oldLength, newLength);
+  let changed = newLength !== oldLength;
+  for (let i = from; i < end; i++) {
+    const next = target[i];
+    if (unwrap(before[i - from]) !== unwrap(next)) {
+      changed = true;
+      const node = nodes?.[i];
+      if (node) {
+        profileSignalWrite();
+        node(next);
+      }
+    }
+  }
+  if (!changed) return;
+  if (newLength === oldLength) {
+    const elements = nodes?.[$ELEMENTS];
+    if (elements) elements(++BUMP);
+    return;
+  }
+  bumpVersion(target);
+  const lengthNode = getNodesIfExist(target)?.["length"];
+  if (lengthNode) {
+    profileSignalWrite();
+    lengthNode(newLength);
+  }
+  bumpOwnKeysSignal(target);
+}
+
 // Local alias so the proxy trap (also named `deleteProperty`) can call the
 // standalone helper without colliding with the trap's own name.
 const deletePropertyAndBump = deleteProperty;
