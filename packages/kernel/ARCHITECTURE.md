@@ -5,7 +5,9 @@
 - `core.ts`
   Symbols (`$NODE`, `$PROXY`, `$RAW`, `$VERSION`, `$OWN_KEYS`, `$TRACK`, `$BRAND`), brand types (`Branded<T>`, `Signal<T>`), per-target signal-node storage (`getNodes`, `getNodesIfExist`, `getNode`), and `unwrap`.
 - `read.ts`
-  The Proxy `get` / `ownKeys` / `has` / `getOwnPropertyDescriptor` traps. Lazy signal allocation per accessed property, ownKeys subscription via `$TRACK`, array-mutator batching, and the `proxyCache` that pins one proxy per raw target for stable identity. Frozen targets pass through unwrapped.
+  The Proxy `get` / `ownKeys` / `has` / `getOwnPropertyDescriptor` traps. Lazy signal allocation per accessed property, ownKeys subscription via `$TRACK`, and the `proxyCache` that pins one proxy per raw target for stable identity. Frozen targets pass through unwrapped. For array methods listed in `array-methods.ts`, `get` returns the raw-array implementation instead of the native method.
+- `array-methods.ts`
+  `ARRAY_METHODS`: raw-array implementations of the array mutators and whole-array iterators, one table row per method (see the runtime model below).
 - `write.ts`
   The Proxy `set` / `deleteProperty` traps via the standalone `setProperty` / `deleteProperty` helpers. Bumps per-property signals only when the value actually changed, plus an array-length signal and a per-target version signal for structural subscribers.
 - `store.ts`
@@ -28,7 +30,8 @@
 - Reads with no active subscriber short-circuit past signal allocation and return the raw value (the `getActiveSub() == null` skip path).
 - Nested objects and arrays are wrapped on demand via `createReactiveProxy`, with `proxyCache` ensuring one proxy per raw target — handle identity stays stable across reads.
 - Frozen targets (e.g. `Object.freeze`d documents stored by `@supergrain/silo`) bypass the proxy and return as-is, preserving reference identity for inserted documents.
-- Array mutators (`push`, `pop`, `splice`, `sort`, `reverse`, `fill`, `copyWithin`, `shift`, `unshift`) are wrapped in `startBatch`/`endBatch` so their internal multi-step writes coalesce into a single notification — synchronous effects don't observe partial states.
+- Array mutators (`push`, `pop`, `splice`, `sort`, `reverse`, `fill`, `copyWithin`, `shift`, `unshift`) run natively on the raw array, not through the proxy, and then `notifyArrayMutation` fires the signals the change touched (changed indices, plus version/length/own-keys or `$ELEMENTS`) in one batch — synchronous effects don't observe partial states. Calling a native array method with the proxy as `this` would send every element read and write through a trap, which V8 runs roughly 280x slower than the same method on a plain array.
+- Whole-array iteration methods (`map`, `forEach`, `filter`, `flatMap`, `reduce`, `reduceRight`) also run on the raw array, handing callbacks reactive elements. A subscriber that iterates subscribes to the array's `length` and `$ELEMENTS` signals once, instead of to every index — those two change exactly when an index signal would. Early-exit methods (`find`, `some`, `every`, `findIndex`, …) keep the per-index route, since they only subscribe to the indices they visit.
 
 ## Signal layer
 
