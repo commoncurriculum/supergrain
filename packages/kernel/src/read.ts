@@ -11,6 +11,7 @@ import {
   getNode,
   getNodes,
   isWrappable,
+  trackArrayElements,
   type ReactiveTagged,
 } from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
@@ -47,6 +48,19 @@ const ARRAY_MUTATORS = new Set([
   "fill",
   "copyWithin",
 ]);
+
+// Read-only array methods that always visit every element. Run through the
+// proxy they would do a trap-per-element read and subscribe to every index;
+// `iterateArray` runs them on the raw target with one subscription to the
+// array's `length` and `$ELEMENTS` signals, which change exactly when one of
+// those index signals would. Early-exit methods (`find`, `some`, `every`,
+// `findIndex`, …) are not listed: they only subscribe to the indices they
+// visit, and a whole-array subscription would wake them for changes they skip.
+const ARRAY_ITERATORS = new Set(["map", "forEach", "filter", "flatMap", "reduce", "reduceRight"]);
+
+// Every array method the get handler intercepts. One set so the handler keeps
+// a single membership check — see the note above about its shape.
+const ARRAY_METHODS = new Set([...ARRAY_MUTATORS, ...ARRAY_ITERATORS]);
 
 // The first index `method` can change, given its arguments — mirrors the
 // spec's relative-index clamping for start/target arguments.
@@ -118,6 +132,54 @@ function mutateArray(
   } finally {
     endBatch();
   }
+}
+
+function iterateArray(
+  target: Array<unknown>,
+  receiver: unknown,
+  method: string,
+  native: (...a: Array<unknown>) => unknown,
+  args: Array<unknown>,
+): unknown {
+  const [callback, thisArgOrInitial] = args;
+  const isReduce = method === "reduce" || method === "reduceRight";
+  if (typeof callback !== "function" || (isReduce && args.length < 2)) {
+    // Bad callback: let the native method throw. A reduce without an initial
+    // value seeds its accumulator from a raw element, so take the proxy route,
+    // which hands the callback a reactive one.
+    return native.apply(receiver, args);
+  }
+  if (getActiveSub()) {
+    getNode(getNodes(target), "length", target.length)();
+    trackArrayElements(target);
+  }
+  if (isReduce) {
+    return native.call(
+      target,
+      (acc: unknown, el: unknown, i: number) => callback(acc, wrap(el), i, receiver),
+      thisArgOrInitial,
+    );
+  }
+  const result = native.call(target, (el: unknown, i: number) =>
+    callback.call(thisArgOrInitial, wrap(el), i, receiver),
+  );
+  if (method === "filter") {
+    const kept = result as Array<unknown>;
+    for (let i = 0; i < kept.length; i++) kept[i] = wrap(kept[i]);
+  }
+  return result;
+}
+
+function callArrayMethod(
+  target: Array<unknown>,
+  receiver: unknown,
+  method: string,
+  native: (...a: Array<unknown>) => unknown,
+  args: Array<unknown>,
+): unknown {
+  return ARRAY_ITERATORS.has(method)
+    ? iterateArray(target, receiver, method, native, args)
+    : mutateArray(target, receiver, method, native, args);
 }
 
 const proxyCache = new WeakMap<object, object>();
@@ -203,9 +265,9 @@ const readHandler: Pick<
         if (getActiveSub()) {
           trackSelf(target);
         }
-        if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
+        if (typeof prop === "string" && ARRAY_METHODS.has(prop)) {
           return (...args: Array<unknown>) =>
-            mutateArray(
+            callArrayMethod(
               target as Array<unknown>,
               receiver,
               prop,
