@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 import { createReactive, effect, unwrap } from "../../src";
-import { startBatch, endBatch } from "../../src/internal";
+import { startBatch, endBatch, trackArrayElements } from "../../src/internal";
 
 describe("Array mutation methods trigger reactivity", () => {
   it("push() triggers effect tracking length", () => {
@@ -516,6 +516,35 @@ describe("Array mutators on the raw array", () => {
     store.items.copyWithin(0, 1);
 
     expect(unwrap(store.items).some(isReactive)).toBe(false);
+  });
+
+  it("negative start indices notify the slots they actually change", () => {
+    const store = createReactive({ items: ["a", "b", "c", "d"] });
+    let last = "";
+    let second = "";
+    effect(() => {
+      last = store.items[3]!;
+    });
+    effect(() => {
+      second = store.items[1]!;
+    });
+
+    store.items.splice(-1, 1, "z");
+    expect(last).toBe("z");
+
+    store.items.copyWithin(-3, 0, 1);
+    expect(second).toBe("a");
+    expect([...store.items]).toEqual(["a", "a", "c", "z"]);
+  });
+
+  it("an in-place reorder notifies whole-array element subscribers (what <For> uses)", () => {
+    const store = createReactive({ items: [3, 1, 2] });
+    const run = vi.fn(() => trackArrayElements(unwrap(store.items)));
+    effect(run);
+
+    store.items.sort();
+
+    expect(run).toHaveBeenCalledTimes(2);
   });
 
   it("an in-place reorder fires per-index subscribers, not a length subscriber", () => {
