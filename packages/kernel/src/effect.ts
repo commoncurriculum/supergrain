@@ -18,10 +18,11 @@ import { type Disposer, toDisposer } from "./disposable";
  * const stop = effect(() => console.log(store.count));
  * stop();
  *
- * {
- *   using _ = effect(() => console.log(store.count));
- *   // ...
- * } // stopped here
+ * // Or stop it when the enclosing scope exits:
+ * function logCountDuring(work: () => void) {
+ *   using _stop = effect(() => console.log(store.count));
+ *   work();
+ * } // stopped when logCountDuring returns or throws
  * ```
  */
 export function effect(fn: () => void | (() => void)): Disposer {
