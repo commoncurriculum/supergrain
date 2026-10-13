@@ -310,46 +310,49 @@ function renderRow(row: Row, format: (value: number) => string): string {
   ].join(" | ");
 }
 
+/**
+ * One line saying which rows moved beyond coin-flip noise. `better`/`worse`
+ * name the direction of a negative/positive Δ; `worseNote` is appended when
+ * something got worse.
+ */
+function verdict(table: Row[], better: string, worse: string, worseNote = ""): string {
+  const significant = table.filter((r) => r.p <= SIGNIFICANT);
+  const worseRows = significant.filter((r) => r.deltaMedian > 0);
+  const betterRows = significant.filter((r) => r.deltaMedian < 0);
+  if (worseRows.length > 0) {
+    const names = worseRows.map((r) => `\`${r.name}\``).join(", ");
+    return `⚠️ **${worseRows.length} benchmark(s) look ${worse}**: ${names}.${worseNote}`;
+  }
+  if (betterRows.length > 0) {
+    return `🟢 **${betterRows.length} benchmark(s) look ${better}**, none ${worse}.`;
+  }
+  return "No benchmark moved beyond what coin-flip noise would produce.";
+}
+
+const gcAliasingHint =
+  " Before treating that as real, check whether the change alters allocation volume — see the GC-aliasing note below.";
+
 const ms = (value: number) => `${value.toFixed(1)} ms`;
 const mb = (value: number) => `${value.toFixed(2)} MB`;
 
-const significant = rows.filter((r) => r.p <= SIGNIFICANT);
-const faster = significant.filter((r) => r.deltaMedian < 0);
-const slower = significant.filter((r) => r.deltaMedian > 0);
-const memorySignificant = memoryRows.filter((r) => r.p <= SIGNIFICANT);
-const memoryLower = memorySignificant.filter((r) => r.deltaMedian < 0);
-const memoryHigher = memorySignificant.filter((r) => r.deltaMedian > 0);
+const report = `<!-- supergrain-benchmark -->
+### 📊 Interleaved benchmark: ${experimentLabel} vs ${controlLabel}
 
-const verdict = (() => {
-  if (slower.length > 0) {
-    return `⚠️ **${slower.length} benchmark(s) look slower**: ${slower
-      .map((r) => `\`${r.name}\``)
-      .join(
-        ", ",
-      )}. Before treating that as real, check whether the change alters allocation volume — see the GC-aliasing note below.`;
-  }
-  if (faster.length > 0) {
-    return `🟢 **${faster.length} benchmark(s) look faster**, none slower.`;
-  }
-  return "No benchmark moved beyond what coin-flip noise would produce.";
-})();
+**Time:** ${verdict(rows, "faster", "slower", gcAliasingHint)}
 
-const memoryVerdict = (() => {
-  if (memoryHigher.length > 0) {
-    return `⚠️ **Memory: ${memoryHigher.length} benchmark(s) look higher**: ${memoryHigher
-      .map((r) => `\`${r.name}\``)
-      .join(", ")}.`;
-  }
-  if (memoryLower.length > 0) {
-    return `🟢 **Memory: ${memoryLower.length} benchmark(s) look lower**, none higher.`;
-  }
-  return "Memory: no benchmark moved beyond what coin-flip noise would produce.";
-})();
+**Memory:** ${verdict(memoryRows, "lower", "higher")}
 
-const memorySection =
-  memoryRows.length === 0
-    ? ""
-    : `
+${runs} interleaved pairs. Bold + coloured rows are the ones where a two-sided sign test clears p ≤ ${SIGNIFICANT}.
+
+#### Time
+
+Negative Δ = **faster on this PR**.
+
+| Benchmark | ${controlLabel} | ${experimentLabel} | Δ median | pairs improved | sign test p |
+| --- | ---: | ---: | ---: | ---: | ---: |
+${rows.map((r) => `| ${renderRow(r, ms)} |`).join("\n")}
+| ${renderRow(weightedRow, ms)} |
+
 #### Memory
 
 Negative Δ = **less memory on this PR**.
@@ -357,20 +360,7 @@ Negative Δ = **less memory on this PR**.
 | Benchmark | ${controlLabel} | ${experimentLabel} | Δ median | pairs improved | sign test p |
 | --- | ---: | ---: | ---: | ---: | ---: |
 ${memoryRows.map((r) => `| ${renderRow(r, mb)} |`).join("\n")}
-`;
 
-const report = `<!-- supergrain-benchmark -->
-### 📊 Interleaved benchmark: ${experimentLabel} vs ${controlLabel}
-
-${verdict}${memoryRows.length > 0 ? `\n\n${memoryVerdict}` : ""}
-
-${runs} interleaved pairs. Negative Δ = **faster on this PR**. Bold + coloured rows are the ones where a two-sided sign test clears p ≤ ${SIGNIFICANT}.
-
-| Benchmark | ${controlLabel} | ${experimentLabel} | Δ median | pairs improved | sign test p |
-| --- | ---: | ---: | ---: | ---: | ---: |
-${rows.map((r) => `| ${renderRow(r, ms)} |`).join("\n")}
-| ${renderRow(weightedRow, ms)} |
-${memorySection}
 <details>
 <summary>How to read this</summary>
 

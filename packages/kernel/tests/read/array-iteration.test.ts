@@ -116,6 +116,21 @@ describe("Whole-array iteration methods", () => {
     );
   });
 
+  it("filling a hole re-runs an iterating subscriber", () => {
+    // Same length, no in-place replacement: only the own-keys signal changes,
+    // and the iterating subscriber holds it through the get trap.
+    // eslint-disable-next-line no-sparse-arrays -- the hole is the point
+    const store = createReactive({ items: [1, , 3] as Array<number | undefined> });
+    let seen: Array<number | undefined> = [];
+    effect(() => {
+      seen = store.items.map((n) => n);
+    });
+
+    store.items[1] = 2;
+
+    expect(seen).toEqual([1, 2, 3]);
+  });
+
   it("a reduce subscriber re-runs when the array changes", () => {
     const store = createReactive({ items: [1, 2, 3] });
     let total = 0;

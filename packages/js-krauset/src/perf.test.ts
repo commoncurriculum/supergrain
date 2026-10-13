@@ -418,7 +418,7 @@ async function measureMemory(page: Page): Promise<number> {
  *
  * Krause's browser flags (`--expose-gc`, `--enable-benchmarking`), plus
  * `ForceEagerMeasureMemory`: without it Chrome defers the measurement to its
- * next GC (12-19s each here), with it the reading is the same and immediate.
+ * next GC (up to ~20s each); with it the reading is the same and immediate.
  * Own browser and server, so the timing benchmarks above run exactly as before.
  */
 describe("memory benchmarks", () => {

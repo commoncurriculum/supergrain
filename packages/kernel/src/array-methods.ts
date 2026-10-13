@@ -11,8 +11,8 @@
  *   signals the change touched, once — synchronous effects never observe a
  *   partial state.
  * - Whole-array iterators subscribe once to the array's `length` and
- *   `$ELEMENTS` signals, which change exactly when an index signal would,
- *   instead of to every index. Callbacks still get reactive elements.
+ *   `$ELEMENTS` signals instead of to every index (see `trackWholeArray`).
+ *   Callbacks still get reactive elements.
  *
  * A method not listed in `ARRAY_METHODS` keeps the proxy route: trap by trap
  * and, for a mutator, unbatched, so synchronous effects can observe its
@@ -101,8 +101,10 @@ const sort: RawArrayMethod = (target, receiver, native, args) => {
   );
 };
 
-// An index signal changes only when `length` or `$ELEMENTS` does, so a pass
-// over the whole array needs just these two subscriptions.
+// Whenever an index signal changes, so does `length` (the array grew or
+// shrank), `$ELEMENTS` (an element was replaced in place), or own-keys (a hole
+// was filled). The get trap already subscribed to own-keys when the method was
+// read, so these two complete a pass's dependencies on the array itself.
 function trackWholeArray(target: Array<unknown>): void {
   if (getActiveSub()) {
     getNode(getNodes(target), "length", target.length)();
