@@ -335,6 +335,24 @@ describe("using — reactivePromise / reactiveTask are Disposable", () => {
     expect(abortSignal?.aborted).toBe(true);
   });
 
+  it("leaving a scope early aborts a sibling request still in flight (README example)", async () => {
+    let postsSignal: AbortSignal | undefined;
+
+    async function loadProfile() {
+      using user = reactivePromise(async () => {
+        throw new Error("user failed");
+      });
+      using posts = reactivePromise(async (signal) => {
+        postsSignal = signal;
+        return new Promise<never>(() => {});
+      });
+      return { user: await user.promise, posts: await posts.promise };
+    }
+
+    await expect(loadProfile()).rejects.toThrow("user failed");
+    expect(postsSignal?.aborted).toBe(true);
+  });
+
   it("`using` disposes a reactiveTask at the end of the block", async () => {
     const d = deferred<string>();
     let pending: Promise<string> | undefined;

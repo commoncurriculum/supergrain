@@ -249,15 +249,19 @@ const user = reactivePromise(async (signal) => fetch(url, { signal }).then((r) =
 dispose(user);
 ```
 
-Resources are also `Disposable`, so a `using` declaration disposes them when its scope exits, whether it returns or throws — handy in tests and scripts:
+Resources are also `Disposable`, so a `using` declaration disposes them when its scope exits, on `return` or on a throw. That matters when the scope can exit while a resource is still working:
 
 ```ts
-async function fetchUserName(url: string) {
-  using user = reactivePromise(async (signal) => fetch(url, { signal }).then((r) => r.json()));
-  const data = await user.promise;
-  return data.name;
-} // `user` is disposed here, as if by dispose(user); a throw before the fetch finishes aborts it
+async function loadProfile(id: string) {
+  using user = reactivePromise(async (signal) => (await fetch(`/users/${id}`, { signal })).json());
+  using posts = reactivePromise(async (signal) =>
+    (await fetch(`/users/${id}/posts`, { signal })).json(),
+  );
+  return { user: await user.promise, posts: await posts.promise };
+} // if the user request fails, the posts request is still in flight: leaving the scope aborts it
 ```
+
+Await inside the scope: `return posts.promise` without `await` leaves the scope, and disposes, before the promise settles.
 
 Don't bind a hook result (`useResource`, `useReactivePromise`, …) with `using` — the hook already disposes on unmount, and `using` would dispose at the end of the render.
 
