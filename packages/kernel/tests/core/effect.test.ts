@@ -33,6 +33,19 @@ describe("effect() — Disposable stop function", () => {
     expect(cleanups).toEqual([0, 1]);
   });
 
+  it("[Symbol.dispose] comes from a shared prototype, not a property on each stop function", () => {
+    // One stop function per effect — one per tracked() component — so an own
+    // property would cost every one of them a property store.
+    const first = effect(() => {});
+    const second = effect(() => {});
+
+    expect(Object.getOwnPropertySymbols(first)).not.toContain(Symbol.dispose);
+    expect(Object.getPrototypeOf(first)).toBe(Object.getPrototypeOf(second));
+    expect(first).toBeInstanceOf(Function);
+    first.call(null);
+    second[Symbol.dispose]();
+  });
+
   it("the stop function is still directly callable", () => {
     const store = createReactive({ count: 0 });
     let runs = 0;

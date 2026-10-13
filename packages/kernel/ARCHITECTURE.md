@@ -13,7 +13,7 @@
 - `store.ts`
   The `createReactive(initial)` factory. Normalizes the root (must be a plain object or array) and wraps it via `createReactiveProxy`.
 - `effect.ts` / `disposable.ts`
-  Public `effect(fn)` — alien-signals' `effect` whose stop function also carries `[Symbol.dispose]` (a `Disposer`), so it works with `using`. `makeDisposable` attaches that method; the `SymbolDisposable` type resolves to `{}` when the consumer's TypeScript `lib` lacks `Symbol.dispose`.
+  Public `effect(fn)` — alien-signals' `effect` whose stop function is also `Disposable` (a `Disposer`), so it works with `using`. `toDisposer` gives stop functions a shared prototype that carries `[Symbol.dispose]`, so the one-per-component stop functions don't each pay for an own property. `makeDisposable` attaches `[Symbol.dispose]` as an own property for husk's resource objects. The `SymbolDisposable` type resolves to `{}` when the consumer's TypeScript `lib` lacks `Symbol.dispose`.
 - `batch.ts`
   Public `batch(fn)` — wraps `startBatch`/`endBatch` in try/finally and rejects async callbacks so the depth counter never leaks.
 - `profiler.ts`

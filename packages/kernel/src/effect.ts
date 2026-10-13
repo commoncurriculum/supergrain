@@ -1,6 +1,6 @@
 import { effect as alienEffect } from "alien-signals";
 
-import { type Disposer, makeDisposable } from "./disposable";
+import { type Disposer, toDisposer } from "./disposable";
 
 /**
  * Runs `fn` immediately and re-runs it whenever a signal it read changes.
@@ -25,6 +25,5 @@ import { type Disposer, makeDisposable } from "./disposable";
  * ```
  */
 export function effect(fn: () => void | (() => void)): Disposer {
-  const stop = alienEffect(fn);
-  return makeDisposable(stop, stop);
+  return toDisposer(alienEffect(fn));
 }
