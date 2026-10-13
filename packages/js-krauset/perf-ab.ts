@@ -47,9 +47,15 @@ interface BenchResult {
   paint: number;
 }
 
+interface MemoryResult {
+  name: string;
+  mb: number;
+}
+
 interface RunJson {
   timestamp: string;
   results: BenchResult[];
+  memory: MemoryResult[];
 }
 
 function arg(name: string, fallback?: string): string {
@@ -235,6 +241,12 @@ function totalFor(run: RunJson, name: string): number {
   return r.total;
 }
 
+function memoryFor(run: RunJson, name: string): number {
+  const r = run.memory.find((x) => x.name === name);
+  if (!r) throw new Error(`Memory benchmark "${name}" missing from a run`);
+  return r.mb;
+}
+
 function weightedTotal(run: RunJson): number {
   return run.results.reduce((sum, r) => sum + r.total * (KRAUSE_WEIGHTS[r.name] ?? 1), 0);
 }
@@ -270,6 +282,9 @@ function summarize(name: string, get: (run: RunJson) => number): Row {
 const benchmarkNames: string[] = pairs[0].control.results.map((r) => r.name);
 const rows = benchmarkNames.map((name) => summarize(name, (run) => totalFor(run, name)));
 const weightedRow = summarize("**Weighted total**", weightedTotal);
+const memoryRows = pairs[0].control.memory.map(({ name }) =>
+  summarize(name, (run) => memoryFor(run, name)),
+);
 
 // ---------------------------------------------------------------------------
 // Report
@@ -284,20 +299,26 @@ function fmtDelta(row: Row): string {
   return row.deltaMedian < 0 ? `**${value}** 🟢` : `**${value}** 🔴`;
 }
 
-function renderRow(row: Row): string {
+function renderRow(row: Row, format: (value: number) => string): string {
   return [
     row.name,
-    `${row.controlMedian.toFixed(1)} ms`,
-    `${row.experimentMedian.toFixed(1)} ms`,
+    format(row.controlMedian),
+    format(row.experimentMedian),
     fmtDelta(row),
     `${row.improved}/${row.n}`,
     row.p < 0.001 ? "<0.001" : row.p.toFixed(3),
   ].join(" | ");
 }
 
+const ms = (value: number) => `${value.toFixed(1)} ms`;
+const mb = (value: number) => `${value.toFixed(2)} MB`;
+
 const significant = rows.filter((r) => r.p <= SIGNIFICANT);
 const faster = significant.filter((r) => r.deltaMedian < 0);
 const slower = significant.filter((r) => r.deltaMedian > 0);
+const memorySignificant = memoryRows.filter((r) => r.p <= SIGNIFICANT);
+const memoryLower = memorySignificant.filter((r) => r.deltaMedian < 0);
+const memoryHigher = memorySignificant.filter((r) => r.deltaMedian > 0);
 
 const verdict = (() => {
   if (slower.length > 0) {
@@ -313,18 +334,43 @@ const verdict = (() => {
   return "No benchmark moved beyond what coin-flip noise would produce.";
 })();
 
+const memoryVerdict = (() => {
+  if (memoryHigher.length > 0) {
+    return `⚠️ **Memory: ${memoryHigher.length} benchmark(s) look higher**: ${memoryHigher
+      .map((r) => `\`${r.name}\``)
+      .join(", ")}.`;
+  }
+  if (memoryLower.length > 0) {
+    return `🟢 **Memory: ${memoryLower.length} benchmark(s) look lower**, none higher.`;
+  }
+  return "Memory: no benchmark moved beyond what coin-flip noise would produce.";
+})();
+
+const memorySection =
+  memoryRows.length === 0
+    ? ""
+    : `
+#### Memory
+
+Negative Δ = **less memory on this PR**.
+
+| Benchmark | ${controlLabel} | ${experimentLabel} | Δ median | pairs improved | sign test p |
+| --- | ---: | ---: | ---: | ---: | ---: |
+${memoryRows.map((r) => `| ${renderRow(r, mb)} |`).join("\n")}
+`;
+
 const report = `<!-- supergrain-benchmark -->
 ### 📊 Interleaved benchmark: ${experimentLabel} vs ${controlLabel}
 
-${verdict}
+${verdict}${memoryRows.length > 0 ? `\n\n${memoryVerdict}` : ""}
 
 ${runs} interleaved pairs. Negative Δ = **faster on this PR**. Bold + coloured rows are the ones where a two-sided sign test clears p ≤ ${SIGNIFICANT}.
 
 | Benchmark | ${controlLabel} | ${experimentLabel} | Δ median | pairs improved | sign test p |
 | --- | ---: | ---: | ---: | ---: | ---: |
-${rows.map((r) => `| ${renderRow(r)} |`).join("\n")}
-| ${renderRow(weightedRow)} |
-
+${rows.map((r) => `| ${renderRow(r, ms)} |`).join("\n")}
+| ${renderRow(weightedRow, ms)} |
+${memorySection}
 <details>
 <summary>How to read this</summary>
 
@@ -333,6 +379,8 @@ ${
     ? "Both arms are the **same** app source and the same commit of `js-krauset`; only `packages/kernel/dist` differs — this comparison isolates the kernel change and is blind to app-side changes."
     : "Each arm is a **complete prebuilt app bundle** (kernel + app), so this measures the full difference between the two builds — app-side and kernel-side changes alike."
 } The two builds alternate within one time window, with the order flipped each pair, so machine drift hits both arms equally and the paired delta cancels it.
+
+**Memory** is what the page still holds after a forced major GC, read with \`performance.measureUserAgentSpecificMemory()\` — js-framework-benchmark's three memory benchmarks (ready, 1k rows, create/clear ×5). It is retained memory, not allocation churn, and it is far less noisy than timing.
 
 CI runners are shared and noisy, so **absolute milliseconds here are meaningless** — do not compare them against numbers from your laptop or against a previous run of this job. The paired delta and the win count are the signal.
 
@@ -357,7 +405,13 @@ writeFileSync(
       controlLabel,
       experimentLabel,
       rows: [...rows, weightedRow],
-      pairs: pairs.map((p) => ({ control: p.control.results, experiment: p.experiment.results })),
+      memoryRows,
+      pairs: pairs.map((p) => ({
+        control: p.control.results,
+        experiment: p.experiment.results,
+        controlMemory: p.control.memory,
+        experimentMemory: p.experiment.memory,
+      })),
     },
     null,
     2,
