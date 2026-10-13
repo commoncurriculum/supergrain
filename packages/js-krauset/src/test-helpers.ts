@@ -28,7 +28,19 @@ export function checkDistExists() {
   }
 }
 
-export async function startServer(): Promise<{ server: Server; baseUrl: string }> {
+/**
+ * Serve `dist/` (and `/css/*`) on a free port.
+ *
+ * `crossOriginIsolated` sends the COOP/COEP headers js-framework-benchmark's
+ * server sends with index.html. The memory benchmarks need them:
+ * `performance.measureUserAgentSpecificMemory()` exists only on a
+ * cross-origin-isolated page. The timing benchmarks run without them, as they
+ * always have.
+ */
+export async function startServer({ crossOriginIsolated = false } = {}): Promise<{
+  server: Server;
+  baseUrl: string;
+}> {
   const server = createServer((req, res) => {
     const urlPath = (req.url ?? "/").replace(/^\//, "") || "index.html";
     // Serve /css/* from the css directory, everything else from dist
@@ -41,7 +53,14 @@ export async function startServer(): Promise<{ server: Server; baseUrl: string }
       return;
     }
     const ext = extname(filePath);
-    res.writeHead(200, { "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream" });
+    const headers: Record<string, string> = {
+      "Content-Type": MIME_TYPES[ext] ?? "application/octet-stream",
+    };
+    if (crossOriginIsolated && urlPath === "index.html") {
+      headers["Cross-Origin-Embedder-Policy"] = "require-corp";
+      headers["Cross-Origin-Opener-Policy"] = "same-origin";
+    }
+    res.writeHead(200, headers);
     res.end(readFileSync(filePath));
   });
 

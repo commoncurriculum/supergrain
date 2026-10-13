@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
-import { createReactive, effect } from "../../src";
-import { startBatch, endBatch } from "../../src/internal";
+import { createReactive, effect, unwrap } from "../../src";
+import { startBatch, endBatch, trackArrayElements } from "../../src/internal";
 
 describe("Array mutation methods trigger reactivity", () => {
   it("push() triggers effect tracking length", () => {
@@ -434,5 +434,133 @@ describe("Array mutation methods trigger reactivity", () => {
     // Iteration effect should see new order
     expect(labels).toEqual(["c", "b", "a"]);
     expect(iterEffect).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Mutators run natively on the raw array, then notify once. These pin what that
+// path guarantees beyond "subscribers re-run".
+describe("Array mutators on the raw array", () => {
+  const isReactive = (value: unknown) => unwrap(value) !== value;
+
+  it("one push of many items re-runs a length subscriber once", () => {
+    const store = createReactive({ items: [0] });
+    const run = vi.fn(() => void store.items.length);
+    effect(run);
+
+    store.items.push(1, 2, 3, 4, 5);
+
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(store.items.length).toBe(6);
+  });
+
+  it("an index past a shrunken end reads undefined in its subscriber (splice)", () => {
+    const store = createReactive({ items: ["a", "b", "c"] });
+    let last: string | undefined = "unset";
+    effect(() => {
+      last = store.items[2];
+    });
+    expect(last).toBe("c");
+
+    store.items.splice(1, 1);
+
+    expect(last).toBeUndefined();
+  });
+
+  it("an index past a shrunken end reads undefined in its subscriber (pop)", () => {
+    const store = createReactive({ items: ["a", "b"] });
+    let last: string | undefined = "unset";
+    effect(() => {
+      last = store.items[1];
+    });
+
+    store.items.pop();
+
+    expect(last).toBeUndefined();
+  });
+
+  it("returns what the method returns, with elements as reactive proxies", () => {
+    const store = createReactive({ items: [{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }] });
+
+    expect(store.items.push({ n: 5 })).toBe(5);
+    expect(store.items.unshift({ n: 0 })).toBe(6);
+    expect(isReactive(store.items.pop())).toBe(true);
+    expect(isReactive(store.items.shift())).toBe(true);
+    const removed = store.items.splice(0, 2);
+    expect(removed.map((r) => r.n)).toEqual([1, 2]);
+    expect(removed.every(isReactive)).toBe(true);
+    expect(store.items.reverse()).toBe(store.items);
+    expect(store.items.sort((a, b) => a.n - b.n)).toBe(store.items);
+    expect(store.items.copyWithin(0, 1)).toBe(store.items);
+    expect(store.items.fill({ n: 9 })).toBe(store.items);
+  });
+
+  it("a sort comparator receives reactive elements", () => {
+    const store = createReactive({ items: [{ n: 2 }, { n: 1 }] });
+    const seen: Array<unknown> = [];
+
+    store.items.sort((a, b) => {
+      seen.push(a, b);
+      return a.n - b.n;
+    });
+
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every(isReactive)).toBe(true);
+    expect(store.items.map((i) => i.n)).toEqual([1, 2]);
+  });
+
+  it("keeps raw elements in the raw array after reordering", () => {
+    const store = createReactive({ items: [{ n: 3 }, { n: 1 }, { n: 2 }] });
+
+    store.items.sort((a, b) => a.n - b.n);
+    store.items.reverse();
+    store.items.copyWithin(0, 1);
+
+    expect(unwrap(store.items).some(isReactive)).toBe(false);
+  });
+
+  it("negative start indices notify the slots they actually change", () => {
+    const store = createReactive({ items: ["a", "b", "c", "d"] });
+    let last = "";
+    let second = "";
+    effect(() => {
+      last = store.items[3]!;
+    });
+    effect(() => {
+      second = store.items[1]!;
+    });
+
+    store.items.splice(-1, 1, "z");
+    expect(last).toBe("z");
+
+    store.items.copyWithin(-3, 0, 1);
+    expect(second).toBe("a");
+    expect([...store.items]).toEqual(["a", "a", "c", "z"]);
+  });
+
+  it("an in-place reorder notifies whole-array element subscribers (what <For> uses)", () => {
+    const store = createReactive({ items: [3, 1, 2] });
+    const run = vi.fn(() => trackArrayElements(unwrap(store.items)));
+    effect(run);
+
+    store.items.sort();
+
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("an in-place reorder fires per-index subscribers, not a length subscriber", () => {
+    const store = createReactive({ items: [3, 1, 2] });
+    const length = vi.fn(() => void store.items.length);
+    let first = 0;
+    const index0 = vi.fn(() => {
+      first = store.items[0]!;
+    });
+    effect(length);
+    effect(index0);
+
+    store.items.sort();
+
+    expect(first).toBe(1);
+    expect(index0).toHaveBeenCalledTimes(2);
+    expect(length).toHaveBeenCalledTimes(1);
   });
 });

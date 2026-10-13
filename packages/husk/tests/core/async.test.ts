@@ -321,6 +321,39 @@ describe("reactiveTask", () => {
   });
 });
 
+describe("using — reactivePromise / reactiveTask are Disposable", () => {
+  it("`using` aborts an in-flight reactivePromise at the end of the block", () => {
+    let abortSignal: AbortSignal | undefined;
+
+    {
+      using _user = reactivePromise(async (signal) => {
+        abortSignal = signal;
+        return new Promise<never>(() => {});
+      });
+    }
+
+    expect(abortSignal?.aborted).toBe(true);
+  });
+
+  it("`using` disposes a reactiveTask at the end of the block", async () => {
+    const d = deferred<string>();
+    let pending: Promise<string> | undefined;
+    let escaped: { readonly isPending: boolean; readonly data: string | null } | undefined;
+
+    {
+      using task = reactiveTask(async () => d.promise);
+      pending = task.run();
+      escaped = task;
+      expect(task.isPending).toBe(true);
+    }
+    expect(escaped.isPending).toBe(false);
+
+    d.resolve("done");
+    await pending;
+    expect(escaped.data).toBe(null);
+  });
+});
+
 // =============================================================================
 // Reactive bindings — the consumer side
 //

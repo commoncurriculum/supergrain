@@ -1,4 +1,4 @@
-import { createReactive } from "@supergrain/kernel";
+import { createReactive, type SymbolDisposable } from "@supergrain/kernel";
 
 import { registerDisposer, resource } from "./resource";
 
@@ -105,7 +105,7 @@ function deferred<T>(): Deferred<T> {
  */
 export function reactivePromise<T>(
   asyncFn: (abortSignal: AbortSignal) => Promise<T>,
-): ReactivePromise<T> {
+): ReactivePromise<T> & SymbolDisposable {
   return resource<PromiseEnvelope<T>>(
     {
       data: null,
@@ -155,7 +155,7 @@ export function reactivePromise<T>(
         },
       );
     },
-  ) as ReactivePromise<T>;
+  ) as ReactivePromise<T> & SymbolDisposable;
 }
 
 /**
@@ -176,7 +176,7 @@ export function reactivePromise<T>(
  */
 export function reactiveTask<Args extends unknown[], T>(
   asyncFn: (...args: Args) => Promise<T>,
-): ReactiveTask<Args, T> {
+): ReactiveTask<Args, T> & SymbolDisposable {
   let generation = 0;
   let disposed = false;
 
@@ -239,10 +239,8 @@ export function reactiveTask<Args extends unknown[], T>(
     },
   }) as TaskEnvelope<Args, T>;
 
-  registerDisposer(state, () => {
+  return registerDisposer(state, () => {
     disposed = true;
     state.isPending = false;
   });
-
-  return state;
 }
