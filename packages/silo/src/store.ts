@@ -598,13 +598,13 @@ function getOrCreateFetchingHandle(
  * `map.set(key, value)` for a NEW key, without a synchronous reactive write:
  * the entry lands in the raw map now (visible to every read), and the reactive
  * notification fires on a microtask by re-running the set through the proxy.
- * Skipped if the entry was replaced or removed in the meantime.
+ * Bucket entries are never replaced or deleted (handles are stable for the
+ * store's lifetime), so the entry is still `value` when the microtask runs.
  */
 function setQuietly<K, V>(map: Map<K, V>, key: K, value: V): void {
   const raw = unwrap(map);
   raw.set(key, value);
   queueMicrotask(() => {
-    if (raw.get(key) !== value) return;
     raw.delete(key);
     map.set(key, value);
   });
