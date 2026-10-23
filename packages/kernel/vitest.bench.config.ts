@@ -4,6 +4,8 @@ import { defineConfig } from "vitest/config";
 
 import { playwrightProvider } from "../../vitest.playwright";
 
+const conditions = ["@supergrain/source"];
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -29,5 +31,7 @@ export default defineConfig({
     alias: {
       "@supergrain/kernel": resolve(__dirname, "./src"),
     },
+    conditions,
   },
+  ssr: { resolve: { conditions } },
 });
