@@ -1,4 +1,4 @@
-import { createReactive } from "@supergrain/kernel";
+import { batch, createReactive } from "@supergrain/kernel";
 import { tracked } from "@supergrain/kernel/react";
 import { render, act } from "@testing-library/react";
 import React, { FC, memo, useCallback } from "react";
@@ -78,6 +78,23 @@ interface AppState {
   selected: number | null;
 }
 
+// Swap two rows in place with plain proxy writes, batched so subscribers see
+// one change.
+const swapRows = (store: AppState, a: number, b: number) => {
+  batch(() => {
+    const rowA = store.data[a];
+    const rowB = store.data[b];
+    if (!rowA || !rowB) return;
+    store.data[a] = rowB;
+    store.data[b] = rowA;
+  });
+};
+
+const removeRow = (store: AppState, id: number) => {
+  const index = store.data.findIndex((row) => row.id === id);
+  if (index !== -1) store.data.splice(index, 1);
+};
+
 const buildData = (count: number): RowData[] => {
   const data: RowData[] = new Array(count);
   for (let i = 0; i < count; i++) {
@@ -141,9 +158,11 @@ const MemoizedRow: FC<{
 });
 
 // App with Unmemoized Rows
-const UnmemoizedApp = tracked(({ store, updateStore }: { store: any; updateStore: any }) => {
-  const select = (id: number) => updateStore({ $set: { selected: id } });
-  const remove = (id: number) => updateStore({ $pull: { data: { id } } });
+const UnmemoizedApp = tracked(({ store }: { store: any }) => {
+  const select = (id: number) => {
+    store.selected = id;
+  };
+  const remove = (id: number) => removeRow(store, id);
 
   return (
     <table>
@@ -163,16 +182,15 @@ const UnmemoizedApp = tracked(({ store, updateStore }: { store: any; updateStore
 });
 
 // App with Memoized Rows and Stable Callbacks
-const MemoizedApp = tracked(({ store, updateStore }: { store: any; updateStore: any }) => {
+const MemoizedApp = tracked(({ store }: { store: any }) => {
   // Stable callbacks prevent unnecessary re-renders
   const select = useCallback(
-    (id: number) => updateStore({ $set: { selected: id } }),
-    [updateStore],
+    (id: number) => {
+      store.selected = id;
+    },
+    [store],
   );
-  const remove = useCallback(
-    (id: number) => updateStore({ $pull: { data: { id } } }),
-    [updateStore],
-  );
+  const remove = useCallback((id: number) => removeRow(store, id), [store]);
 
   return (
     <table>
@@ -202,12 +220,12 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "create 1000 rows (unmemoized)",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      render(<UnmemoizedApp store={store} updateStore={updateStore} />);
+      render(<UnmemoizedApp store={store} />);
     },
     {
       warmupIterations: 3,
@@ -219,12 +237,12 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "create 1000 rows (memoized)",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      render(<MemoizedApp store={store} updateStore={updateStore} />);
+      render(<MemoizedApp store={store} />);
     },
     {
       warmupIterations: 3,
@@ -241,16 +259,16 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "select row (unmemoized) - all 1000 rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      const { container } = render(<UnmemoizedApp store={store} updateStore={updateStore} />);
+      const { container } = render(<UnmemoizedApp store={store} />);
 
       // Select row 500 - this causes ALL rows to re-render
       act(() => {
-        updateStore({ $set: { selected: data[500].id } });
+        store.selected = data[500].id;
       });
 
       // Verify selection worked
@@ -269,16 +287,16 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "select row (memoized) - only 1 row re-renders",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      const { container } = render(<MemoizedApp store={store} updateStore={updateStore} />);
+      const { container } = render(<MemoizedApp store={store} />);
 
       // Select row 500 - only this row re-renders thanks to memoization!
       act(() => {
-        updateStore({ $set: { selected: data[500].id } });
+        store.selected = data[500].id;
       });
 
       // Verify selection worked
@@ -301,21 +319,21 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "update every 10th row (unmemoized) - all rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      render(<UnmemoizedApp store={store} updateStore={updateStore} />);
+      render(<UnmemoizedApp store={store} />);
 
       // Update every 10th row (100 rows total)
-      const updates: Record<string, string> = {};
-      for (let i = 0; i < data.length; i += 10) {
-        updates[`data.${i}.label`] = data[i].label + " !!!";
-      }
-
       act(() => {
-        updateStore({ $set: updates });
+        batch(() => {
+          for (let i = 0; i < store.data.length; i += 10) {
+            const row = store.data[i];
+            if (row) row.label += " !!!";
+          }
+        });
       });
     },
     {
@@ -328,22 +346,22 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "update every 10th row (memoized) - only 100 rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      render(<MemoizedApp store={store} updateStore={updateStore} />);
+      render(<MemoizedApp store={store} />);
 
       // Update every 10th row (100 rows total)
       // With memoization, only the changed 100 rows re-render
-      const updates: Record<string, string> = {};
-      for (let i = 0; i < data.length; i += 10) {
-        updates[`data.${i}.label`] = data[i].label + " !!!";
-      }
-
       act(() => {
-        updateStore({ $set: updates });
+        batch(() => {
+          for (let i = 0; i < store.data.length; i += 10) {
+            const row = store.data[i];
+            if (row) row.label += " !!!";
+          }
+        });
       });
     },
     {
@@ -360,24 +378,16 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "swap 2 rows (unmemoized) - all 1000 rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      render(<UnmemoizedApp store={store} updateStore={updateStore} />);
+      render(<UnmemoizedApp store={store} />);
 
       // Swap rows 1 and 998 - only 2 rows actually changed
-      const row1 = data[1];
-      const row998 = data[998];
-
       act(() => {
-        updateStore({
-          $set: {
-            "data.1": row998,
-            "data.998": row1,
-          },
-        });
+        swapRows(store, 1, 998);
       });
     },
     {
@@ -390,24 +400,16 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "swap 2 rows (memoized) - only 2 rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      render(<MemoizedApp store={store} updateStore={updateStore} />);
+      render(<MemoizedApp store={store} />);
 
       // Swap rows 1 and 998 - with memoization, only these 2 rows re-render
-      const row1 = data[1];
-      const row998 = data[998];
-
       act(() => {
-        updateStore({
-          $set: {
-            "data.1": row998,
-            "data.998": row1,
-          },
-        });
+        swapRows(store, 1, 998);
       });
     },
     {
@@ -424,16 +426,16 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "remove 1 row (unmemoized) - all remaining rows re-render",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      render(<UnmemoizedApp store={store} updateStore={updateStore} />);
+      render(<UnmemoizedApp store={store} />);
 
       // Remove row 500
       act(() => {
-        updateStore({ $pull: { data: { id: data[500].id } } });
+        removeRow(store, data[500].id);
       });
     },
     {
@@ -446,16 +448,16 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "remove 1 row (memoized) - minimal re-renders",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      render(<MemoizedApp store={store} updateStore={updateStore} />);
+      render(<MemoizedApp store={store} />);
 
       // Remove row 500 - with memoization, minimal re-renders
       act(() => {
-        updateStore({ $pull: { data: { id: data[500].id } } });
+        removeRow(store, data[500].id);
       });
     },
     {
@@ -472,16 +474,16 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "select row in 10k dataset (unmemoized) - all 10k rows re-render",
     () => {
       const data = buildData(10000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      render(<UnmemoizedApp store={store} updateStore={updateStore} />);
+      render(<UnmemoizedApp store={store} />);
 
       // Select a row in the middle
       act(() => {
-        updateStore({ $set: { selected: data[5000].id } });
+        store.selected = data[5000].id;
       });
     },
     {
@@ -494,16 +496,16 @@ describe("Krauset-style Memoization Benchmarks", () => {
     "select row in 10k dataset (memoized) - only 1 row re-renders",
     () => {
       const data = buildData(10000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      render(<MemoizedApp store={store} updateStore={updateStore} />);
+      render(<MemoizedApp store={store} />);
 
       // Select a row in the middle - massive performance difference!
       act(() => {
-        updateStore({ $set: { selected: data[5000].id } });
+        store.selected = data[5000].id;
       });
     },
     {
