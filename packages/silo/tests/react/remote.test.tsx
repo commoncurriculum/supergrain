@@ -253,6 +253,14 @@ describe("useRemoteQuery", () => {
     await wait(10);
     expect(server.count(2)).toBe(settled + 2);
 
+    // A fetch already in flight isn't restarted by focus.
+    act(() => {
+      void store.find(summaryQuery, body(2)).refetch();
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await wait(10);
+    expect(server.count(2)).toBe(settled + 3);
+
     Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
     try {
       await wait(10);
