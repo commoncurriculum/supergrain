@@ -472,7 +472,7 @@ export interface StoreAdapterRunOptions extends AdapterOptionOverrides {
 
 // The never-fetching handle for a `null` / `undefined` key. Serves both `find`
 // and `findQuery` (a QueryHandle is field-compatible), hence the neutral name.
-const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
+export const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   value: undefined,
   error: undefined,
   isFetching: false,

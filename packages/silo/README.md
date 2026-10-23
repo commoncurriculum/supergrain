@@ -175,6 +175,11 @@ store.insertDocument("user", {
 
 Mutate in place when you're editing a field; insert a new version when a refetch, socket push or mutation response hands you a fresh object. Either way only the changed fields notify, and the cached document keeps its identity: `handle.value` is the same object before and after.
 
+Two consequences:
+
+- **Code keyed on the document's identity no longer re-runs.** `useMemo(..., [doc])`, `useEffect(..., [doc])` and `React.memo` props see the same object. Read the fields inside a tracked component, `useComputed` or `useSignalEffect` instead.
+- **The first object you insert becomes the cached document.** Later versions are written into it, so a reference you kept to it changes too.
+
 The first insert caches the object you pass itself, handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). (If a `prepareInsert` hook returns a replacement, that returned object is cached instead.) Later inserts copy their changes into that cached object. Fields missing from the new version are deleted; arrays whose items all have a unique `id` are matched by `id`, other arrays by index. Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
 
 ## Why this instead of TanStack Query / SWR?
@@ -754,7 +759,6 @@ export const { Provider, useRemoteQuery } = createRemoteQueryStoreContext<Reques
 // <Provider store={remoteQueryStore}>…</Provider>
 const summary = useRemoteQuery(userActivitySummary, { filters: { groupId } });
 summary.value; // typed Summary | undefined
-summary.isStale;
 summary.refetch();
 
 const live = useRemoteQuery(userActivitySummary, body, { refetchInterval: 30_000 });
@@ -766,11 +770,11 @@ await remoteQueryStore.fetch(userActivitySummary, body); // outside React, like 
 
 How the freshness features work:
 
-- **Mounted components count, not reads.** Each `useRemoteQuery` registers while mounted, like React Query's observers. A result with none is dropped `gcTime` later. A result fetched outside a mounted component (`find`, `fetch`, a render that suspended) starts that timer when it's created.
-- **Stale results refetch when it matters.** A stale result refetches when a component mounts on it, the page becomes visible, or the browser reconnects. `refetchInterval` refetches only while the page is visible.
-- **Invalidation refetches only what's on screen.** Unmounted results are marked stale and refetch when next mounted.
+- **Mounted components count, not reads.** Each `useRemoteQuery` registers while mounted, like React Query's observers. A result with none is dropped `gcTime` after its last fetch, or after its last component unmounts.
+- **Each component decides staleness with its own `staleTime`.** A result older than that refetches when the component mounts, when the page becomes visible, or when the browser reconnects. A fetch already in flight isn't restarted. `refetchInterval` refetches only while the page is visible.
+- **Invalidation refetches only what's on screen.** Unmounted results count as stale until their next fetch, whatever their age.
 - **Single-flight.** A new fetch aborts the one in flight (its `signal` fires), and a late result from it is dropped.
-- **Across observers, the most eager setting wins:** the shortest `staleTime` and `refetchInterval`, the longest `gcTime`, and a refetch trigger if any observer enables it.
+- **Across components, the shortest `refetchInterval` and the longest `gcTime` win.**
 
 ## Comparison to TanStack Query
 

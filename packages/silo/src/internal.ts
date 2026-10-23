@@ -14,3 +14,6 @@ export { type AdapterRunOptions, runAdapter } from "./run-adapter";
 // processor coercion, and telemetry-sink calls can't drift from the finder's.
 export { defectToAdapterError, runProcessor } from "./errors";
 export { emitToSink } from "./resolve";
+// The single-flight fetch loop (supersede, generation fencing, defect net),
+// shared by the remote query store and `@supergrain/queries`.
+export { type Flight, runSingleFlight, type SingleFlightOptions } from "./single-flight";

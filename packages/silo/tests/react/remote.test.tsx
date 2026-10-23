@@ -24,6 +24,7 @@ const summaryQuery = remoteQuery<Body, Summary, Request>("summary", { path: "/su
 
 const { Provider, useRemoteQuery } = createRemoteQueryStoreContext<Request>();
 
+// Real time: React's scheduler and effects don't run under fake timers in the browser.
 const wait = (ms: number) => act(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
 /**
@@ -78,7 +79,6 @@ const Rows = tracked(function Rows({
       {summary.value.rows.map((row, index) => (
         <Row key={row.id} groupId={groupId} index={index} renders={renders} />
       ))}
-      <li data-testid={`stale-${groupId}`}>{String(summary.isStale)}</li>
     </ul>
   );
 });
@@ -136,39 +136,33 @@ describe("useRemoteQuery", () => {
     expect(renders.row_2).toBeGreaterThan(afterLoad.row_2!);
   });
 
-  it("stays fresh for staleTime, then refetches when next mounted", async () => {
+  it("refetches on mount only once the result is older than that component's staleTime", async () => {
     const server = makeServer();
     const store = createRemoteQueryStore<Request>({ fetch: server.fetch, staleTime: 60 });
+    const Total = tracked(function Total({ staleTime }: { staleTime?: number }) {
+      return <span>{useRemoteQuery(summaryQuery, body(1), { staleTime }).value?.groupId}</span>;
+    });
+    const mount = (staleTime?: number) =>
+      render(
+        <Provider store={store}>
+          <Total staleTime={staleTime} />
+        </Provider>,
+      );
 
-    const { unmount } = render(
-      <Provider store={store}>
-        <Rows groupId={1} />
-      </Provider>,
-    );
+    mount().unmount();
     await wait(20);
-    expect(screen.getByTestId("stale-1").textContent).toBe("false");
-    unmount();
-
-    render(
-      <Provider store={store}>
-        <Rows groupId={1} />
-      </Provider>,
-    );
+    mount().unmount();
     await wait(10);
     expect(server.count(1)).toBe(1);
 
     await wait(60);
-    expect(screen.getByTestId("stale-1").textContent).toBe("true");
-    cleanup();
+    mount(Infinity).unmount();
+    await wait(10);
+    expect(server.count(1)).toBe(1);
 
-    render(
-      <Provider store={store}>
-        <Rows groupId={1} staleTime={1000} />
-      </Provider>,
-    );
-    await wait(20);
+    mount().unmount();
+    await wait(10);
     expect(server.count(1)).toBe(2);
-    expect(screen.getByTestId("stale-1").textContent).toBe("false");
   });
 
   it("drops a result gcTime after its last component unmounts", async () => {
@@ -221,7 +215,14 @@ describe("useRemoteQuery", () => {
     act(() => store.invalidate(summaryQuery));
     await wait(20);
     expect([server.count(1), server.count(2), server.count(3)]).toEqual([3, 2, 1]);
-    expect(store.find(summaryQuery, body(3)).isStale).toBe(true);
+
+    render(
+      <Provider store={store}>
+        <Rows groupId={3} />
+      </Provider>,
+    );
+    await wait(20);
+    expect(server.count(3)).toBe(2);
   });
 
   it("refetches on an interval, on focus and on reconnect while mounted", async () => {
@@ -236,6 +237,8 @@ describe("useRemoteQuery", () => {
     );
     await wait(100);
     expect(server.count(1)).toBeGreaterThanOrEqual(3);
+    // The rows mounted inside the last `act` observe as it ends, and refetch.
+    await wait(10);
     const settled = server.count(2);
 
     act(() => {

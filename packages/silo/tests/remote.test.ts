@@ -1,6 +1,6 @@
 import { effect } from "@supergrain/kernel";
 import { Schedule } from "effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   AdapterError,
@@ -8,6 +8,7 @@ import {
   remoteQuery,
   type RemoteQueryStoreConfig,
 } from "../src";
+import { setupFakeTimers } from "./setup/timers";
 
 interface Body {
   groupId: number;
@@ -26,8 +27,11 @@ interface Request {
 const summaryQuery = remoteQuery<Body, Summary, Request>("summary", { path: "/summary" });
 const otherQuery = remoteQuery<Body, Summary, Request>("other", { path: "/other" });
 
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+setupFakeTimers();
 
+const advance = (ms: number) => vi.advanceTimersByTimeAsync(ms);
+
+/** A server that answers after 5ms. Every request is recorded, so a test can count fetches. */
 function makeServer() {
   const totals = new Map<number, Array<number>>();
   const requests: Array<number> = [];
@@ -35,7 +39,7 @@ function makeServer() {
   const fetch: RemoteQueryStoreConfig<Request>["fetch"] = async (_request, params) => {
     const { groupId } = params as Body;
     requests.push(groupId);
-    await wait(5);
+    await new Promise((resolve) => setTimeout(resolve, 5));
     if (failing) throw new Error("500");
     return { groupId, totals: totals.get(groupId) ?? [1, 2] } satisfies Summary;
   };
@@ -54,27 +58,31 @@ function body(groupId: number, filters: Body["filters"] = null): Body {
 }
 
 describe("RemoteQueryStore.fetch", () => {
-  it("shares a fetch in flight, returns the cached result while fresh, and rejects on failure", async () => {
+  it("shares a fetch in flight, returns the cached result until staleTime, and rejects on failure", async () => {
     const server = makeServer();
     const store = createRemoteQueryStore<Request>({
       fetch: server.fetch,
-      staleTime: Infinity,
+      staleTime: 1000,
       retry: Schedule.recurs(0),
     });
 
-    const [first, concurrent] = await Promise.all([
+    const both = Promise.all([
       store.fetch(summaryQuery, body(1)),
       store.fetch(summaryQuery, body(1)),
     ]);
-    const second = await store.fetch(summaryQuery, body(1));
+    await advance(5);
+    const [first, concurrent] = await both;
+    const cached = await store.fetch(summaryQuery, body(1));
     expect(first.totals).toEqual([1, 2]);
     expect(concurrent).toBe(first);
-    expect(second).toBe(first);
+    expect(cached).toBe(first);
     expect(server.count(1)).toBe(1);
 
+    await advance(1000);
     server.fail(true);
-    store.invalidate(summaryQuery);
-    await expect(store.fetch(summaryQuery, body(1))).rejects.toBeInstanceOf(AdapterError);
+    const failed = expect(store.fetch(summaryQuery, body(1))).rejects.toBeInstanceOf(AdapterError);
+    await advance(5);
+    await failed;
     expect(server.count(1)).toBe(2);
   });
 
@@ -85,14 +93,38 @@ describe("RemoteQueryStore.fetch", () => {
 
     server.setTotals(1, [7, 8]);
     const superseded = handle.refetch();
-    await wait(1);
+    await advance(1);
     server.setTotals(1, [9, 9]);
     void handle.refetch();
+    await advance(5);
     await superseded;
 
     expect(handle.value?.totals).toEqual([9, 9]);
     expect(handle.isFetching).toBe(false);
     expect(server.count(1)).toBe(3);
+  });
+});
+
+describe("RemoteQueryStore.observe", () => {
+  it("decides staleness per observer, from its own staleTime", async () => {
+    const server = makeServer();
+    const store = createRemoteQueryStore<Request>({ fetch: server.fetch, staleTime: 60_000 });
+
+    const first = store.observe(summaryQuery, body(1));
+    await advance(10_000);
+    expect(server.count(1)).toBe(1);
+
+    const eager = store.observe(summaryQuery, body(1), { staleTime: 0 });
+    await advance(5);
+    expect(server.count(1)).toBe(2);
+
+    const patient = store.observe(summaryQuery, body(1), { staleTime: Infinity });
+    await advance(5);
+    expect(server.count(1)).toBe(2);
+
+    first();
+    eager();
+    patient();
   });
 });
 
@@ -109,19 +141,23 @@ describe("RemoteQueryStore.find", () => {
     expect(server.count(1)).toBe(0);
   });
 
-  it("keeps a result forever with an infinite gcTime", async () => {
+  it("drops an unobserved result gcTime after its last fetch, or never with an infinite gcTime", async () => {
     const server = makeServer();
-    const store = createRemoteQueryStore<Request>({
-      fetch: server.fetch,
-      staleTime: Infinity,
-      gcTime: Infinity,
-    });
+    const store = createRemoteQueryStore<Request>({ fetch: server.fetch, gcTime: 100 });
+    const forever = createRemoteQueryStore<Request>({ fetch: server.fetch, gcTime: Infinity });
 
-    store.observe(summaryQuery, body(1))();
-    await wait(20);
+    const handle = store.find(summaryQuery, body(1));
+    await advance(95);
+    void handle.refetch();
+    await advance(95);
+    expect(store.find(summaryQuery, body(1))).toBe(handle);
 
-    expect(store.find(summaryQuery, body(1)).value?.groupId).toBe(1);
-    expect(server.count(1)).toBe(1);
+    await advance(20);
+    expect(store.find(summaryQuery, body(1))).not.toBe(handle);
+
+    forever.observe(summaryQuery, body(2))();
+    await advance(60_000);
+    expect(forever.find(summaryQuery, body(2)).value?.groupId).toBe(2);
   });
 
   it("fails the handle with reason 'defect' when a subscriber throws as the result lands", async () => {
@@ -142,7 +178,7 @@ describe("RemoteQueryStore.find", () => {
         throw new Error("subscriber bug");
       }
     });
-    await wait(20);
+    await advance(5);
 
     expect((handle.error as AdapterError).reason).toBe("defect");
     expect(handle.isFetching).toBe(false);
@@ -155,14 +191,19 @@ describe("RemoteQueryStore.invalidate", () => {
   it("matches partial params at every depth and ignores queries never loaded", async () => {
     const server = makeServer();
     const store = createRemoteQueryStore<Request>({ fetch: server.fetch, staleTime: Infinity });
-    const unfiltered = store.find(summaryQuery, body(1));
-    const filtered = store.find(summaryQuery, body(2, { standardSetId: "math" }));
-    await wait(20);
+    store.find(summaryQuery, body(1));
+    store.find(summaryQuery, body(2, { standardSetId: "math" }));
+    await advance(5);
 
     store.invalidate(otherQuery);
     store.invalidate(summaryQuery, { filters: { standardSetId: "math" } });
+    const results = Promise.all([
+      store.fetch(summaryQuery, body(1)),
+      store.fetch(summaryQuery, body(2, { standardSetId: "math" })),
+    ]);
+    await advance(5);
+    await results;
 
-    expect(unfiltered.isStale).toBe(false);
-    expect(filtered.isStale).toBe(true);
+    expect([server.count(1), server.count(2)]).toEqual([1, 2]);
   });
 });

@@ -1,9 +1,8 @@
-import type { DocumentHandle } from "./store";
+import type { AdapterError, SiloError } from "./errors";
+import type { Effect } from "effect";
 
-import { batch, createReactive, unwrap } from "@supergrain/kernel";
-import { Effect } from "effect";
+import { createReactive, unwrap } from "@supergrain/kernel";
 
-import { type AdapterError, defectToAdapterError, type SiloError } from "./errors";
 import {
   type AdapterErrorSink,
   type AdapterOptionOverrides,
@@ -11,6 +10,8 @@ import {
   resolveAdapterOptions,
 } from "./resolve";
 import { runAdapter } from "./run-adapter";
+import { type Flight, runSingleFlight } from "./single-flight";
+import { type DocumentHandle, IDLE_HANDLE } from "./store";
 import { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./transitions";
 import { stableStringify } from "./util";
 
@@ -88,13 +89,11 @@ export interface RemoteQueryStoreConfig<Request = unknown>
 }
 
 /**
- * A reactive remote query result: a `DocumentHandle` plus `isStale` and
- * `refetch()`. A refetch is diffed into `value` in place, so only readers of
- * the fields that changed re-render.
+ * A reactive remote query result: a `DocumentHandle` plus `refetch()`. A
+ * refetch is diffed into `value` in place, so only readers of the fields that
+ * changed re-render.
  */
 export type RemoteQueryHandle<T, E = SiloError> = DocumentHandle<T, E> & {
-  /** True when the result is older than `staleTime`, was invalidated, or hasn't loaded. */
-  readonly isStale: boolean;
   /** Fetch again now, superseding any fetch in flight. */
   refetch(): Promise<void>;
 };
@@ -114,8 +113,9 @@ export interface RemoteQueryStore<Request = unknown> {
   ): RemoteQueryHandle<Result>;
   /**
    * Mark `(query, params)` as on screen until the returned function is called.
-   * While observed, a result is never dropped, and a stale one refetches on
-   * observe, focus, reconnect and interval. `useRemoteQuery` calls this.
+   * While observed, a result is never dropped. It refetches on every
+   * `refetchInterval`, and on observe, focus and reconnect when it is older
+   * than this observer's `staleTime`. `useRemoteQuery` calls this.
    */
   observe<Params, Result>(
     query: RemoteQuery<Params, Result, Request>,
@@ -123,8 +123,8 @@ export interface RemoteQueryStore<Request = unknown> {
     options?: RemoteQueryOptions,
   ): () => void;
   /**
-   * The result for `(query, params)`: the cached one while fresh, otherwise
-   * fetched. Rejects with the fetch's error. Like React Query's `fetchQuery`,
+   * The result for `(query, params)`: the cached one while younger than the
+   * store's `staleTime`, otherwise fetched. Rejects with the fetch's error. Like React Query's `fetchQuery`,
    * for code outside React.
    */
   fetch<Params, Result>(
@@ -150,35 +150,23 @@ const defaults = {
   refetchInterval: false,
 } satisfies Required<RemoteQueryOptions>;
 
-type RemoteHandle = InternalHandle & { isStale: boolean; refetch: () => Promise<void> };
-
-interface Entry {
-  readonly name: string;
+interface Entry extends Flight {
+  readonly query: RemoteQuery<unknown, unknown, unknown>;
   readonly key: string;
-  readonly request: unknown;
   readonly params: unknown;
-  readonly handle: RemoteHandle;
+  readonly handle: InternalHandle & { refetch: () => Promise<void> };
   /** One options object per mounted observer. */
   readonly observers: Set<RemoteQueryOptions>;
   /** The longest `gcTime` any observer asked for, as in React Query. */
   gcTime: number;
-  controller?: AbortController;
-  inFlight?: Promise<void>;
-  staleTimer?: ReturnType<typeof setTimeout>;
+  /** Set by `invalidate`: stale whatever its age, until the next result lands. */
+  invalidated: boolean;
   gcTimer?: ReturnType<typeof setTimeout>;
   interval?: { readonly every: number; readonly timer: ReturnType<typeof setInterval> };
 }
 
-const IDLE_HANDLE: RemoteQueryHandle<unknown> = Object.freeze({
-  value: undefined,
-  error: undefined,
-  isFetching: false,
-  fetchedAt: undefined,
-  failureCount: 0,
-  lastError: undefined,
-  status: "pending" as const,
-  promise: undefined,
-  isStale: false,
+const IDLE_REMOTE_HANDLE: RemoteQueryHandle<unknown> = Object.freeze({
+  ...IDLE_HANDLE,
   refetch: () => Promise.resolve(),
 });
 
@@ -207,46 +195,33 @@ export function createRemoteQueryStore<Request = unknown>(
   const resilience = resolveAdapterOptions(config);
   const entries = new Map<string, Map<string, Entry>>();
 
-  // An option's value for an entry: the store's, unless an observer overrides
-  // it. Across observers, the most eager setting wins, as in React Query.
-  function staleTimeOf(entry: Entry): number {
-    const times = [...entry.observers].map((options) => options.staleTime);
-    const overrides = times.filter((time) => time !== undefined);
-    return overrides.length > 0 ? Math.min(...overrides) : (config.staleTime ?? defaults.staleTime);
+  let observerCount = 0;
+
+  // One observer's setting: its own, else the store's, else React Query's default.
+  function optionOf<K extends keyof RemoteQueryOptions>(
+    options: RemoteQueryOptions,
+    name: K,
+  ): Required<RemoteQueryOptions>[K] {
+    return (options[name] ?? config[name] ?? defaults[name]) as Required<RemoteQueryOptions>[K];
   }
 
-  function refetchesOn(entry: Entry, trigger: "refetchOnWindowFocus" | "refetchOnReconnect") {
-    return [...entry.observers].some(
-      (options) => options[trigger] ?? config[trigger] ?? defaults[trigger],
+  // Staleness is decided per observer, from its own `staleTime`, at the moment
+  // it asks, as in React Query. No timer marks a result stale.
+  function isStaleFor(entry: Entry, options: RemoteQueryOptions): boolean {
+    const { fetchedAt } = unwrap(entry.handle);
+    return (
+      entry.invalidated ||
+      fetchedAt === undefined ||
+      Date.now() - fetchedAt.getTime() >= optionOf(options, "staleTime")
     );
   }
 
+  // Across observers, the shortest interval wins, as in React Query.
   function intervalOf(entry: Entry): number | undefined {
     const intervals = [...entry.observers]
-      .map(
-        (options) => options.refetchInterval ?? config.refetchInterval ?? defaults.refetchInterval,
-      )
+      .map((options) => optionOf(options, "refetchInterval"))
       .filter((interval) => interval !== false);
     return intervals.length > 0 ? Math.min(...intervals) : undefined;
-  }
-
-  function markStale(entry: Entry): void {
-    clearTimeout(entry.staleTimer);
-    entry.staleTimer = undefined;
-    if (!unwrap(entry.handle).isStale) entry.handle.isStale = true;
-  }
-
-  function markFresh(entry: Entry): void {
-    clearTimeout(entry.staleTimer);
-    const staleTime = staleTimeOf(entry);
-    if (staleTime <= 0) {
-      markStale(entry);
-      return;
-    }
-    if (unwrap(entry.handle).isStale) entry.handle.isStale = false;
-    if (Number.isFinite(staleTime)) {
-      entry.staleTimer = setTimeout(() => markStale(entry), staleTime);
-    }
   }
 
   function scheduleGc(entry: Entry): void {
@@ -254,8 +229,7 @@ export function createRemoteQueryStore<Request = unknown>(
     if (!Number.isFinite(entry.gcTime)) return;
     entry.gcTimer = setTimeout(() => {
       entry.controller?.abort();
-      clearTimeout(entry.staleTimer);
-      entries.get(entry.name)?.delete(entry.key);
+      entries.get(entry.query.name)?.delete(entry.key);
     }, entry.gcTime);
   }
 
@@ -274,69 +248,36 @@ export function createRemoteQueryStore<Request = unknown>(
           };
   }
 
-  function report(entry: Entry, error: SiloError, info: { attempt: number; retryable: boolean }) {
-    emitToSink(config.onError, error, { type: entry.name, keys: [entry.key], ...info });
-  }
-
-  // Single-flight: a new fetch aborts the one in flight, which interrupts it
-  // before its result can land. Events are stamped with this fetch's
-  // generation, so the statechart ignores a superseded fetch's failures.
   function start(entry: Entry): Promise<void> {
-    entry.controller?.abort();
-    const controller = new AbortController();
-    entry.controller = controller;
-    batch(() => applyEvent(entry.handle, HandleEvent.fetch()));
-    const { generation } = unwrap(entry.handle);
+    const type = entry.query.name;
     const keys = [entry.key];
-
-    const program = runAdapter((ctx) => config.fetch(entry.request as Request, entry.params, ctx), {
-      type: entry.name,
+    const report = (error: SiloError, info: { attempt: number; retryable: boolean }) =>
+      emitToSink(config.onError, error, { type, keys, ...info });
+    return runSingleFlight(entry, {
+      type,
       keys,
-      retry: resilience.retry,
-      timeout: resilience.timeout,
-      deadline: resilience.deadline,
-      retryable: resilience.retryable,
-      onFailure: (error, info) => {
-        report(entry, error, info);
-        batch(() => applyEvent(entry.handle, HandleEvent.retrying(error, generation)));
-      },
-    }).pipe(
-      Effect.flatMap((result) =>
-        Effect.sync(() =>
-          batch(() => {
-            applyEvent(entry.handle, HandleEvent.insert(result));
-            applyEvent(entry.handle, HandleEvent.settled(generation));
-            markFresh(entry);
-          }),
-        ),
-      ),
-      Effect.catchAll((error: SiloError) =>
-        Effect.sync(() =>
-          batch(() => applyEvent(entry.handle, HandleEvent.failed(error, generation))),
-        ),
-      ),
-      Effect.catchAllDefect((defect) =>
-        Effect.sync(() => {
-          const error = defectToAdapterError(entry.name, keys, defect);
-          report(entry, error, { attempt: 1, retryable: false });
-          batch(() => applyEvent(entry.handle, HandleEvent.failed(error, generation)));
+      run: (retrying) =>
+        runAdapter((ctx) => config.fetch(entry.query.request as Request, entry.params, ctx), {
+          type,
+          keys,
+          retry: resilience.retry,
+          timeout: resilience.timeout,
+          deadline: resilience.deadline,
+          retryable: resilience.retryable,
+          onFailure: (error, info) => {
+            report(error, info);
+            retrying(error);
+          },
         }),
-      ),
-      Effect.ensuring(
-        Effect.sync(() => batch(() => applyEvent(entry.handle, HandleEvent.aborted(generation)))),
-      ),
-    );
-
-    // A superseded fetch's promise follows its replacement, so awaiting
-    // `refetch()` always reflects the state the handle settled into.
-    const run: Promise<void> = Effect.runPromiseExit(program, { signal: controller.signal }).then(
-      () => {
-        if (entry.inFlight === run) entry.inFlight = undefined;
-        if (entry.controller !== controller && entry.inFlight !== undefined) return entry.inFlight;
+      commit: (result) => {
+        applyEvent(entry.handle, HandleEvent.insert(result));
+        entry.invalidated = false;
       },
-    );
-    entry.inFlight = run;
-    return run;
+      report: (error) => report(error, { attempt: 1, retryable: false }),
+    }).then(() => {
+      // As in React Query, an unobserved result is kept `gcTime` past its last fetch.
+      if (entry.observers.size === 0) scheduleGc(entry);
+    });
   }
 
   function entryFor(query: RemoteQuery<unknown, unknown, Request>, params: unknown): Entry {
@@ -349,18 +290,15 @@ export function createRemoteQueryStore<Request = unknown>(
     const existing = bucket.get(key);
     if (existing !== undefined) return existing;
 
-    const raw = Object.assign(makeIdleHandle(), {
-      isStale: true,
-      refetch: () => start(entry),
-    });
+    const raw = Object.assign(makeIdleHandle(), { refetch: () => start(entry) });
     const entry: Entry = {
-      name: query.name,
+      query,
       key,
-      request: query.request,
       params,
-      handle: createReactive(raw) as RemoteHandle,
+      handle: createReactive(raw) as Entry["handle"],
       observers: new Set(),
       gcTime: config.gcTime ?? defaults.gcTime,
+      invalidated: false,
     };
     bucket.set(key, entry);
     // Dropped after `gcTime` unless something observes it, like a result
@@ -369,18 +307,16 @@ export function createRemoteQueryStore<Request = unknown>(
     return entry;
   }
 
-  function needsFetch(entry: Entry): boolean {
-    const raw = unwrap(entry.handle);
-    return !raw.isFetching && raw.value === undefined && raw.error === undefined;
-  }
-
+  // A result refetches when any of its observers has the trigger on and finds
+  // it stale.
   function refetchObserved(trigger: "refetchOnWindowFocus" | "refetchOnReconnect"): void {
     for (const bucket of entries.values()) {
       for (const entry of bucket.values()) {
         if (
-          entry.observers.size > 0 &&
-          unwrap(entry.handle).isStale &&
-          refetchesOn(entry, trigger)
+          !unwrap(entry.handle).isFetching &&
+          [...entry.observers].some(
+            (options) => optionOf(options, trigger) && isStaleFor(entry, options),
+          )
         ) {
           void start(entry);
         }
@@ -388,12 +324,10 @@ export function createRemoteQueryStore<Request = unknown>(
     }
   }
 
-  if (typeof document !== "undefined") {
-    document.addEventListener("visibilitychange", () => {
-      if (isPageVisible()) refetchObserved("refetchOnWindowFocus");
-    });
-    globalThis.addEventListener("online", () => refetchObserved("refetchOnReconnect"));
-  }
+  const onVisibilityChange = () => {
+    if (isPageVisible()) refetchObserved("refetchOnWindowFocus");
+  };
+  const onOnline = () => refetchObserved("refetchOnReconnect");
 
   return {
     find<Params, Result>(
@@ -401,10 +335,11 @@ export function createRemoteQueryStore<Request = unknown>(
       params: Params | null | undefined,
     ): RemoteQueryHandle<Result> {
       if (params === null || params === undefined) {
-        return IDLE_HANDLE as RemoteQueryHandle<Result>;
+        return IDLE_REMOTE_HANDLE as RemoteQueryHandle<Result>;
       }
       const entry = entryFor(query, params);
-      if (needsFetch(entry)) void start(entry);
+      const raw = unwrap(entry.handle);
+      if (!raw.isFetching && raw.value === undefined && raw.error === undefined) void start(entry);
       return entry.handle as unknown as RemoteQueryHandle<Result>;
     },
 
@@ -417,13 +352,22 @@ export function createRemoteQueryStore<Request = unknown>(
       // A fresh object per call, so two observers with equal options count twice.
       const observer = { ...options };
       entry.observers.add(observer);
+      // The page is listened to only while something is observed, so an unused
+      // store holds no listeners.
+      if (observerCount++ === 0 && typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        globalThis.addEventListener("online", onOnline);
+      }
       entry.gcTime = Math.max(entry.gcTime, options.gcTime ?? entry.gcTime);
       clearTimeout(entry.gcTimer);
       updateInterval(entry);
-      const raw = unwrap(entry.handle);
-      if (needsFetch(entry) || (raw.isStale && !raw.isFetching)) void start(entry);
+      if (!unwrap(entry.handle).isFetching && isStaleFor(entry, observer)) void start(entry);
       return () => {
         entry.observers.delete(observer);
+        if (--observerCount === 0 && typeof document !== "undefined") {
+          document.removeEventListener("visibilitychange", onVisibilityChange);
+          globalThis.removeEventListener("online", onOnline);
+        }
         updateInterval(entry);
         if (entry.observers.size === 0) scheduleGc(entry);
       };
@@ -434,10 +378,7 @@ export function createRemoteQueryStore<Request = unknown>(
       params: Params,
     ): Promise<Result> {
       const entry = entryFor(query, params);
-      const raw = unwrap(entry.handle);
-      if (raw.isStale || raw.value === undefined) {
-        await (raw.isFetching && entry.inFlight !== undefined ? entry.inFlight : start(entry));
-      }
+      if (isStaleFor(entry, {})) await (entry.inFlight ?? start(entry));
       const settled = unwrap(entry.handle);
       if (settled.error !== undefined) throw settled.error;
       return entry.handle.value as Result;
@@ -449,7 +390,7 @@ export function createRemoteQueryStore<Request = unknown>(
     ): void {
       for (const entry of entries.get(query.name)?.values() ?? []) {
         if (params === undefined || containsParams(entry.params, params)) {
-          markStale(entry);
+          entry.invalidated = true;
           if (entry.observers.size > 0) void start(entry);
         }
       }
