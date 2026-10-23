@@ -91,3 +91,20 @@ console.log(
     fmtPct(baseWeightedTotal, compWeightedTotal).padStart(cols.diff),
 );
 console.log();
+
+// Stats saved before the memory benchmarks existed have no `memory` section.
+if (baseline.memory && compare.memory) {
+  console.log("Memory (MB retained after a forced GC)");
+  console.log(sep);
+  for (const name of Object.keys(baseline.memory)) {
+    const bm = baseline.memory[name].mean;
+    const cm = compare.memory[name].mean;
+    console.log(
+      name.padEnd(cols.name) +
+        `${bm.toFixed(2)}MB`.padStart(cols.base) +
+        `${cm.toFixed(2)}MB`.padStart(cols.comp) +
+        fmtPct(bm, cm).padStart(cols.diff),
+    );
+  }
+  console.log();
+}

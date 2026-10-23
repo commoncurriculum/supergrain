@@ -1,5 +1,5 @@
-import { createReactive, effect } from "@supergrain/kernel";
-import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
+import { createReactive, effect, type SymbolDisposable } from "@supergrain/kernel";
+import { getActiveSub, makeDisposable, setActiveSub } from "@supergrain/kernel/internal";
 
 /**
  * A resource is a reactive function with cleanup logic — one of two
@@ -16,7 +16,9 @@ import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
  *   sites.
  *
  * Both share the same lifecycle contract: setup runs on create, reruns
- * on tracked change (with cleanup first), and tears down on `dispose`.
+ * on tracked change (with cleanup first), and tears down on `dispose` —
+ * or at the end of the block when bound with `using` (resources are
+ * `Disposable`).
  *
  * Sync setups return cleanup (`return () => teardown()`). Async setups
  * register via `ctx.onCleanup(...)` — `return` would resolve a Promise.
@@ -32,21 +34,26 @@ export interface ResourceContext {
  * factory takes no arguments; otherwise it takes an `argsFn` thunk.
  */
 export type ResourceFactory<Args, T extends object> = [Args] extends [void]
-  ? () => T
-  : (argsFn: () => Args) => T;
+  ? () => T & SymbolDisposable
+  : (argsFn: () => Args) => T & SymbolDisposable;
 
 const disposers = new WeakMap<object, () => void>();
 
 /**
  * Internal plumbing: register a teardown function for `target` that
- * `dispose(target)` will invoke. Used by `husk` async primitives to
+ * `dispose(target)` will invoke, and make `target` `Disposable` so
+ * `using` reaches the same teardown. Used by `husk` async primitives to
  * opt into the same dispose machinery as `resource()`. Not part of
  * husk's public API; deep-import only and may change without notice.
  *
  * @internal
  */
-export function registerDisposer(target: object, fn: () => void): void {
+export function registerDisposer<T extends object>(
+  target: T,
+  fn: () => void,
+): T & SymbolDisposable {
   disposers.set(target, fn);
+  return makeDisposable(target, () => dispose(target));
 }
 
 type SetupResult = void | (() => void) | Promise<void>;
@@ -74,7 +81,7 @@ interface RunSpec<Args, T extends object> {
   trackSetup: boolean;
 }
 
-function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
+function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T & SymbolDisposable {
   const { state, getArgs, invokeSetup, trackSetup } = spec;
   let cleanups: Array<() => void> = [];
   let controller: AbortController | undefined = undefined;
@@ -153,13 +160,11 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
     }),
   );
 
-  registerDisposer(state, () => {
+  return registerDisposer(state, () => {
     disposed = true;
     stopEffect();
     runCleanups();
   });
-
-  return state;
 }
 
 /**
@@ -181,7 +186,7 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T {
 export function resource<T extends object>(
   initial: T,
   setup: (state: T, ctx: ResourceContext) => SetupResult,
-): T {
+): T & SymbolDisposable {
   return runResource<void, T>({
     // createReactive returns Branded<T>, which is structurally assignable to T.
     // The cast is needed because TypeScript can't reduce the Branded<T> conditional type.
@@ -218,7 +223,7 @@ export function defineResource<Args, T extends object>(
   initial: () => T,
   setup: (state: T, args: Args, ctx: ResourceContext) => SetupResult,
 ): ResourceFactory<Args, T> {
-  function instantiate(argsFn?: () => Args): T {
+  function instantiate(argsFn?: () => Args): T & SymbolDisposable {
     return runResource<Args, T>({
       // createReactive returns Branded<T>, which is structurally assignable to T.
       // The cast is needed because TypeScript can't reduce the Branded<T> conditional type.
@@ -238,6 +243,9 @@ export function defineResource<Args, T extends object>(
  * halts the reactive effect. Idempotent and safe on any object — no-op
  * if not a resource or already disposed. In React, `useResource`
  * disposes automatically on unmount.
+ *
+ * Resources are also `Disposable`: `using user = reactivePromise(...)`
+ * calls this at the end of the enclosing block.
  */
 export function dispose(resource: object): void {
   const fn = disposers.get(resource);

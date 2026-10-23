@@ -1,5 +1,15 @@
 # @supergrain/kernel
 
+## 7.4.0
+
+### Minor Changes
+
+- 59b21c7: Disposers now work with `using`. `effect(fn)` returns a `Disposer` — still callable as `stop()`, and also `Disposable`, so `using stop = effect(fn)` stops the effect at the end of the enclosing block. Husk's `resource`, `defineResource` instances, `reactivePromise`, and `reactiveTask` are `Disposable` too: `using` runs the same idempotent teardown as `dispose(x)`. The `Disposer` and `SymbolDisposable` types are exported from `@supergrain/kernel`; they fall back to plain types when your TypeScript `lib` doesn't declare `Symbol.dispose`, and runtimes without `Symbol.dispose` are unaffected.
+
+### Patch Changes
+
+- 59b21c7: Array mutators (`push`, `pop`, `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill`, `copyWithin`) on reactive arrays now run on the underlying array and notify subscribers once, instead of routing every element read and write through the proxy. `push` is about 3.7x faster with a subscriber, and removing a row in a React list uses about 44% less JS. Whole-array iteration methods (`map`, `forEach`, `filter`, `flatMap`, `reduce`, `reduceRight`) also run on the underlying array with one subscription to the array instead of one per index: a tracked `map` over 1,000 rows is about 2.6x faster. Also fixes a stale read: after `splice` or `pop` shortens an array, a subscriber reading an index past the new end now sees `undefined` instead of the removed element.
+
 ## 7.3.1
 
 ## 7.3.0

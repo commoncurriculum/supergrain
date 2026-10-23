@@ -1,0 +1,15 @@
+{
+  // Compiles kernel's public entry the way a consumer without `Symbol.dispose`
+  // in their TypeScript `lib` sees it. See tests/compat/no-disposable-lib.ts.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true
+  },
+  "include": ["tests/compat"],
+  "exclude": []
+}
