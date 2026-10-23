@@ -69,8 +69,8 @@ export class ActivityTracker {
 
   private actor: ActorRefFromLogic<typeof activityMachine>;
   private domDetach: (() => void) | null = null;
-  /** Unsubscribes this tracker's three chart subscriptions. Set in the ctor. */
-  private detachActor: () => void;
+  /** This tracker's three chart subscriptions; released in `destroy()`. */
+  private readonly actorSubs: ReadonlyArray<{ unsubscribe(): void }>;
   private inputThrottleMs: number;
   private listeners = new Map<ActivityStatus, Set<ActivityEventHandler>>();
   private enteredAt = Date.now();
@@ -97,14 +97,11 @@ export class ActivityTracker {
       this.enteredAt = at;
       this.dispatch({ fromState, toState, at, durationMs });
     };
-    const subs = [
+    this.actorSubs = [
       this.actor.on("active", () => advance("active")),
       this.actor.on("idle", () => advance("idle")),
       this.actor.on("hidden", () => advance("hidden")),
     ];
-    this.detachActor = () => {
-      for (const s of subs) s.unsubscribe();
-    };
 
     this.actor.start();
   }
@@ -133,12 +130,7 @@ export class ActivityTracker {
     const set = this.listeners.get(toState) ?? new Set<ActivityEventHandler>();
     this.listeners.set(toState, set);
     set.add(handler);
-    // The returned function is the only handle on this subscription. The
-    // tracker deliberately keeps no second reference to it: one per `on()` call
-    // would accumulate for the tracker's whole life, outliving the
-    // subscriptions themselves and pinning every handler (and whatever it
-    // closes over) even after the caller unsubscribed. `destroy()` drops all
-    // subscribers at once via `listeners`, so it never needed them.
+    // `listeners` is the only registry; `destroy()` clears it.
     return () => {
       set.delete(handler);
     };
@@ -166,7 +158,7 @@ export class ActivityTracker {
   destroy(): void {
     this.domDetach?.();
     this.domDetach = null;
-    this.detachActor();
+    for (const sub of this.actorSubs) sub.unsubscribe();
     // Drop every subscriber outright. A destroyed tracker emits nothing, so a
     // retained handler is pure memory — and clearing beats unsubscribing them
     // one at a time.

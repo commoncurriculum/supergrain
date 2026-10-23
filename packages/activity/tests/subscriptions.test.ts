@@ -9,11 +9,11 @@ import { effect } from "@supergrain/kernel";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ActivityTracker, type ActivityStatus } from "../src/activity-tracker";
+import { FakeDocument, asDocument, windowOf } from "./helpers";
 
 /** The tracker's internal subscriber registry, for retention assertions. */
 type TrackerInternals = {
   listeners: Map<ActivityStatus, Set<unknown>>;
-  detachers?: Array<unknown>;
 };
 
 const internals = (tracker: ActivityTracker): TrackerInternals =>
@@ -23,9 +23,6 @@ const internals = (tracker: ActivityTracker): TrackerInternals =>
 function retainedHandlers(tracker: ActivityTracker): number {
   let total = 0;
   for (const set of internals(tracker).listeners.values()) total += set.size;
-  // OLD-IMPL PROBE: per-handler closures the tracker never released.
-  const extra = internals(tracker).detachers;
-  if (extra) total += Math.max(0, extra.length - 1);
   return total;
 }
 
@@ -94,22 +91,6 @@ describe("ActivityTracker.on — retention", () => {
     expect(kept).toHaveBeenCalledTimes(1);
     tracker.destroy();
   });
-
-  it("an unsubscribed handler stops firing, while its siblings keep firing", () => {
-    const tracker = new ActivityTracker({ idleAfterMs: 1000 });
-    const dropped = vi.fn();
-    const kept = vi.fn();
-
-    const off = tracker.on("idle", dropped);
-    tracker.on("idle", kept);
-    off();
-
-    vi.advanceTimersByTime(1001); // active → idle
-
-    expect(dropped).not.toHaveBeenCalled();
-    expect(kept).toHaveBeenCalledTimes(1);
-    tracker.destroy();
-  });
 });
 
 describe("ActivityTracker.destroy — teardown", () => {
@@ -152,21 +133,14 @@ describe("ActivityTracker.destroy — teardown", () => {
   });
 
   it("still detaches DOM listeners", () => {
-    const removed: Array<string> = [];
-    const doc = {
-      hidden: false,
-      defaultView: undefined,
-      addEventListener: () => {},
-      removeEventListener: (type: string) => removed.push(type),
-      hasFocus: () => true,
-    } as unknown as Document;
-
+    const fake = new FakeDocument();
     const tracker = new ActivityTracker({ idleAfterMs: 1000 });
-    tracker.attachDOM(doc);
+    tracker.attachDOM(asDocument(fake));
+    expect(fake.handlerCount()).toBeGreaterThan(0);
 
     tracker.destroy();
 
-    expect(removed).toContain("visibilitychange");
-    expect(removed).toContain("keydown");
+    expect(fake.handlerCount()).toBe(0);
+    expect(windowOf(fake).handlerCount()).toBe(0);
   });
 });
