@@ -1,4 +1,4 @@
-import { effect as alienEffect, unwrap, getNodesIfExist, $TRACK } from "@supergrain/kernel";
+import { effect, unwrap, getNodesIfExist, $TRACK } from "@supergrain/kernel";
 import {
   getActiveSub,
   setActiveSub,
@@ -107,7 +107,7 @@ export const For = tracked((props: ForProps<unknown>) => {
     swapCleanupRef.current?.();
     prevRawRef.current = [...raw];
 
-    const cleanup = alienEffect(() => {
+    const cleanup = effect(() => {
       // One array-level subscription covers in-place element replacement at
       // every index — see trackArrayElements. Structural changes (push,
       // splice, length, new array) re-render For via $TRACK/ownKeys, which

@@ -153,7 +153,7 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
 
 - `effect(fn)`
 
-  > Runs `fn` immediately and re-runs it whenever its dependencies change. Returns a stop function. Use outside React; for components, prefer `useSignalEffect`.
+  > Runs `fn` immediately and re-runs it whenever its dependencies change. Returns a stop function that is also `Disposable`, so `using stop = effect(fn)` stops it at the end of the enclosing block. Use outside React; for components, prefer `useSignalEffect`.
 
 - `batch(fn)`
 
