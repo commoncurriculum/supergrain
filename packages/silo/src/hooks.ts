@@ -88,9 +88,10 @@ export interface StoreHooks<M extends DocumentTypes> {
    * still pending and flush when that outermost batch ends. So: rely on the
    * cache being settled, not on dependent effects/renders having run yet.
    *
-   * Receives the `type` and the **doc that was actually stored** (the
-   * post-`prepareInsert` object, same reference as
-   * `unwrap(store.findInMemory(type, doc.id))`). This is the raw target, not
+   * Receives the `type` and the **doc that was actually stored**, the same
+   * reference as `unwrap(store.findInMemory(type, doc.id))`: the
+   * post-`prepareInsert` object on a first insert, and the existing document,
+   * now updated to match it, after that. This is the raw target, not
    * the reactive proxy — treat it as read-only; mutating it bypasses
    * reactivity. The return value is ignored. Use it to mirror the document into
    * another store, update a derived index, or emit telemetry.
