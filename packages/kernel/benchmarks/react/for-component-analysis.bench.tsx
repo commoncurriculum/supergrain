@@ -140,16 +140,24 @@ const MemoizedRow = memo<{
   );
 });
 
-// For Component implementation
-const For: FC<{
-  each: RowData[];
-  children: (item: RowData, index: number) => React.ReactElement;
-}> = ({ each, children }) => {
-  // Track that For itself rendered
-  renderCount++;
+// For Component implementation. It calls `children` during its own render,
+// so store reads made there (e.g. `store.selected`) subscribe this component,
+// not the parent. It must be tracked() or those reads go unobserved and a
+// selection change never re-renders the rows.
+const For = tracked(
+  ({
+    each,
+    children,
+  }: {
+    each: RowData[];
+    children: (item: RowData, index: number) => React.ReactElement;
+  }) => {
+    // Track that For itself rendered
+    renderCount++;
 
-  return <>{each.map((item, index) => children(item, index))}</>;
-};
+    return <>{each.map((item, index) => children(item, index))}</>;
+  },
+);
 
 // For Component with internal memoization attempt
 const OptimizedFor: FC<{
