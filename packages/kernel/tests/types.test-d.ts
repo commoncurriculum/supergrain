@@ -7,11 +7,12 @@
 //     reactive proxies from raw values via the type system.
 //   - The brand is structural: users still see all the original keys/values.
 //   - `unwrap` widens out of the branded type back to the underlying shape.
-//   - `effect(fn)` returns the disposer signature `() => void`.
+//   - `effect(fn)` returns a `Disposer`: callable as `() => void` and
+//     `Disposable`, so it can be bound with `using`.
 // =============================================================================
 import { describe, expectTypeOf, it } from "vitest";
 
-import { createReactive, effect, unwrap, type Branded } from "../src";
+import { createReactive, effect, unwrap, type Branded, type Disposer } from "../src";
 
 interface User {
   id: string;
@@ -59,10 +60,12 @@ describe("unwrap — type identity (T → T)", () => {
 });
 
 describe("effect — signature", () => {
-  it("returns () => void", () => {
+  it("returns a Disposer — a () => void that is also Disposable", () => {
     const dispose = effect(() => {
       void "side effect";
     });
-    expectTypeOf(dispose).toEqualTypeOf<() => void>();
+    expectTypeOf(dispose).toEqualTypeOf<Disposer>();
+    expectTypeOf(dispose).toExtend<() => void>();
+    expectTypeOf(dispose).toExtend<Disposable>();
   });
 });

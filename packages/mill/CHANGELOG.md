@@ -1,5 +1,13 @@
 # @supergrain/mill
 
+## 7.4.0
+
+### Patch Changes
+
+- Updated dependencies [59b21c7]
+- Updated dependencies [59b21c7]
+  - @supergrain/kernel@7.4.0
+
 ## 7.3.1
 
 ### Patch Changes
