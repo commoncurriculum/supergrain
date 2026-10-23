@@ -1,0 +1,9 @@
+{
+  "jsPlugins": ["../../dist/index.js"],
+  "plugins": [],
+  "categories": {},
+  "rules": {
+    "supergrain/require-tracked": "error",
+    "supergrain/no-async-batch": "error"
+  }
+}
