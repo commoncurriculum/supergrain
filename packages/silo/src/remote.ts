@@ -229,7 +229,10 @@ export function createRemoteQueryStore<Request = unknown>(
     if (!Number.isFinite(entry.gcTime)) return;
     entry.gcTimer = setTimeout(() => {
       entry.controller?.abort();
-      entries.get(entry.query.name)?.delete(entry.key);
+      // A dropped entry's last fetch can reschedule this after a newer entry
+      // took its key; that one must stay.
+      const bucket = entries.get(entry.query.name)!;
+      if (bucket.get(entry.key) === entry) bucket.delete(entry.key);
     }, entry.gcTime);
   }
 

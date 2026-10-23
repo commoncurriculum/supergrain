@@ -160,6 +160,23 @@ describe("RemoteQueryStore.find", () => {
     expect(forever.find(summaryQuery, body(2)).value?.groupId).toBe(2);
   });
 
+  it("never drops a newer result for the same params when an old one's timer fires", async () => {
+    const server = makeServer();
+    const store = createRemoteQueryStore<Request>({ fetch: server.fetch, gcTime: 10 });
+
+    const dropped = store.find(summaryQuery, body(1));
+    await advance(12);
+    void dropped.refetch();
+    await advance(4);
+    const current = store.find(summaryQuery, body(1));
+    expect(current).not.toBe(dropped);
+    const stop = store.observe(summaryQuery, body(1));
+
+    await advance(30);
+    expect(store.find(summaryQuery, body(1))).toBe(current);
+    stop();
+  });
+
   it("fails the handle with reason 'defect' when a subscriber throws as the result lands", async () => {
     const server = makeServer();
     const reasons: Array<AdapterError["reason"]> = [];
