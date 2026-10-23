@@ -163,7 +163,7 @@ const user = store.findInMemory("user", "42")!;
 user.attributes.firstName = "Ada"; // re-renders only firstName readers
 ```
 
-**2. Replace the whole document.** Insert a _new_ object; every reader of the document re-renders.
+**2. Insert a new version.** Silo diffs it into the cached document with the kernel's `reconcile`, so only readers of the fields that changed re-render.
 
 ```ts
 const prev = store.findInMemory("user", "42")!;
@@ -173,9 +173,9 @@ store.insertDocument("user", {
 });
 ```
 
-Reach for in-place when you're editing one field and want the tightest possible re-render; reach for wholesale replace when a socket push or mutation response hands you a fresh object. `insertDocument` writes `handle.value` only when the reference actually changes, so swapping in a new object always notifies, while an in-place field write notifies through that field's own signal.
+Mutate in place when you're editing a field; insert a new version when a refetch, socket push or mutation response hands you a fresh object. Either way only the changed fields notify, and the cached document keeps its identity: `handle.value` is the same object before and after.
 
-No copy is made on insert — the object you pass _is_ the cached target, just handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). (If a `prepareInsert` hook returns a replacement, that returned object is the cached target instead.) Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
+The first insert caches the object you pass itself, handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). (If a `prepareInsert` hook returns a replacement, that returned object is cached instead.) Later inserts copy their changes into that cached object. Fields missing from the new version are deleted; arrays whose items all have a unique `id` are matched by `id`, other arrays by index. Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
 
 ## Why this instead of TanStack Query / SWR?
 
@@ -265,7 +265,7 @@ const store = createDocumentStore<TypeToModel>({
 
 Because `@supergrain/queries` stores its result envelopes through `insertDocument`, this hook also sees those envelopes — return docs you don't recognize unchanged (the pass-through path does this for you); only `return null` for shapes you deliberately drop. For a brand-new object `prepareInsert` runs _before_ the reactive proxy wraps it, so in-place edits notify no subscribers; a throw propagates (on a fetch it surfaces as a `ProcessorError`). Inside the hook `doc` widens to the model union — narrow it with a literal discriminant on the doc (`if (doc.type === "card-stack")`); testing the `type` argument does **not** narrow `doc`, so discriminant-free models need an explicit cast.
 
-**`afterInsert(type, doc)`** — a side-effect observer on the way _out_. When it runs the value is committed (`findInMemory(type, doc.id)` returns it); inside an enclosing batch (a fetch commit, or your own `batch(...)`) subscriber notifications are still pending and flush when that batch ends — so rely on the cache being settled, not on renders having happened. It receives the doc that was actually stored (the post-`prepareInsert` object, same reference as `unwrap(store.findInMemory(type, doc.id))`); this is the raw target, so treat it as read-only — mutating it bypasses reactivity. Its return value is ignored. A throw is **isolated**: reported to the store's `onError` sink and swallowed, so a failing observer never corrupts the commit or fails sibling docs in the same fetch. It does **not** run when `prepareInsert` vetoes. Calling `store.insertDocument(...)` from inside re-enters the hooks — fine for cascading related records, but guard against unbounded recursion.
+**`afterInsert(type, doc)`** — a side-effect observer on the way _out_. When it runs the value is committed (`findInMemory(type, doc.id)` returns it); inside an enclosing batch (a fetch commit, or your own `batch(...)`) subscriber notifications are still pending and flush when that batch ends — so rely on the cache being settled, not on renders having happened. It receives the doc that was actually stored, the same reference as `unwrap(store.findInMemory(type, doc.id))`: the post-`prepareInsert` object on a first insert, and the existing document, now updated to match it, after that; this is the raw target, so treat it as read-only — mutating it bypasses reactivity. Its return value is ignored. A throw is **isolated**: reported to the store's `onError` sink and swallowed, so a failing observer never corrupts the commit or fails sibling docs in the same fetch. It does **not** run when `prepareInsert` vetoes. Calling `store.insertDocument(...)` from inside re-enters the hooks — fine for cascading related records, but guard against unbounded recursion.
 
 ### `createDocumentStoreContext<S extends DocumentStore<any, any>>()`
 
