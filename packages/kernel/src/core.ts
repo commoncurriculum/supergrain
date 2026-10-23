@@ -118,24 +118,17 @@ export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown
 // ---------------------------------------------------------------------------
 
 /**
- * The counter behind every "something here changed" signal write.
+ * The counter behind every "something here changed" signal write. Its value
+ * is never observed; each write only has to differ from the last so
+ * `Object.is` sees a change.
  *
- * Its value is never observed. All that matters is that each write differs
- * from the one before it on the same signal, so `Object.is` inside the signal
- * sees a change and subscribers re-run.
+ * Never `signal(signal() + 1)`: reading the signal would subscribe the active
+ * subscriber to the signal about to be written, so any mutation inside a
+ * tracked render would re-trigger itself.
  *
- * It is a module-local `++` rather than `signal(signal() + 1)` because reading
- * the signal would subscribe the active subscriber to the very signal about to
- * be written, turning any proxy mutation inside a tracked render into a
- * self-triggering loop.
- *
- * One counter for the whole kernel, deliberately. Two counters can drift to
- * the same value, and any signal written by both would then swallow the second
- * write: `Object.is` sees no change, no subscriber re-runs, and the UI goes
- * quietly stale — the exact failure this library exists to make impossible.
- * Today the write and collection paths happen to own disjoint targets, so
- * nothing enforces that but coincidence. Sharing one counter makes the
- * collision unrepresentable instead of merely unlikely.
+ * One counter for the whole kernel: two counters could drift to the same
+ * value, and a signal written by both would swallow the second write and go
+ * silently stale.
  */
 let BUMP = 0;
 

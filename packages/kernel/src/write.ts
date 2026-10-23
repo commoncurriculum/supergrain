@@ -50,7 +50,7 @@ function bumpElementsSignal(nodes: DataNodes | undefined): void {
   }
 }
 
-function bumpSignals(target: any, key: PropertyKey, prevLen: number): void {
+function syncArrayLength(target: any, key: PropertyKey, prevLen: number): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) {
     return;
@@ -93,7 +93,7 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
       node(value);
     }
   }
-  bumpSignals(target, key, prevLen);
+  syncArrayLength(target, key, prevLen);
 
   if (!hadKey) {
     bumpOwnKeysSignal(target, getNodesIfExist(target));
@@ -124,7 +124,7 @@ export function deleteProperty(target: any, key: PropertyKey): void {
         node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
       }
     }
-    bumpSignals(target, key, prevLen);
+    syncArrayLength(target, key, prevLen);
     bumpOwnKeysSignal(target, nodes);
   }
 }
