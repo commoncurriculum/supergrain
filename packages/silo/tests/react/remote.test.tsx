@@ -1,0 +1,302 @@
+import { tracked } from "@supergrain/kernel/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { Schedule } from "effect";
+import { StrictMode } from "react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  AdapterError,
+  createRemoteQueryStore,
+  remoteQuery,
+  type RemoteQueryStoreConfig,
+} from "../../src";
+import { createRemoteQueryStoreContext } from "../../src/react";
+
+interface Body {
+  filters: { groupId: number };
+}
+
+interface Summary {
+  groupId: number;
+  rows: Array<{ id: string; total: number }>;
+}
+
+interface Request {
+  path: string;
+}
+
+const summaryQuery = remoteQuery<Body, Summary, Request>("summary", { path: "/summary" });
+
+const { Provider, useRemoteQuery } = createRemoteQueryStoreContext<Request>();
+
+const wait = (ms: number) => act(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+/**
+ * A server whose totals can be changed between requests. Every request is
+ * recorded, so a test can count fetches per group.
+ */
+function makeServer() {
+  const totals = new Map<number, Array<number>>();
+  const requests: Array<{ path: string; groupId: number }> = [];
+  let failing = false;
+  const fetch: RemoteQueryStoreConfig<Request>["fetch"] = async (request, params) => {
+    const { groupId } = (params as Body).filters;
+    requests.push({ path: request.path, groupId });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    if (failing) throw new Error("500");
+    const groupTotals = totals.get(groupId) ?? [1, 2];
+    return {
+      groupId,
+      rows: groupTotals.map((total, index) => ({ id: `row_${index + 1}`, total })),
+    } satisfies Summary;
+  };
+  return {
+    fetch,
+    requests,
+    setTotals: (groupId: number, values: Array<number>) => totals.set(groupId, values),
+    fail: (value: boolean) => {
+      failing = value;
+    },
+    count: (groupId: number) => requests.filter((request) => request.groupId === groupId).length,
+  };
+}
+
+function body(groupId: number): Body {
+  return { filters: { groupId } };
+}
+
+const Rows = tracked(function Rows({
+  groupId,
+  renders,
+  staleTime,
+  refetchInterval,
+}: {
+  groupId: number;
+  renders?: Record<string, number>;
+  staleTime?: number;
+  refetchInterval?: number;
+}) {
+  const summary = useRemoteQuery(summaryQuery, body(groupId), { staleTime, refetchInterval });
+  if (summary.value === undefined) return <span data-testid={`loading-${groupId}`}>loading</span>;
+  return (
+    <ul>
+      {summary.value.rows.map((row, index) => (
+        <Row key={row.id} groupId={groupId} index={index} renders={renders} />
+      ))}
+      <li data-testid={`stale-${groupId}`}>{String(summary.isStale)}</li>
+    </ul>
+  );
+});
+
+const Row = tracked(function Row({
+  groupId,
+  index,
+  renders,
+}: {
+  groupId: number;
+  index: number;
+  renders?: Record<string, number>;
+}) {
+  const row = useRemoteQuery(summaryQuery, body(groupId)).value!.rows[index]!;
+  if (renders) renders[row.id] = (renders[row.id] ?? 0) + 1;
+  return <li data-testid={`${groupId}-${row.id}`}>{row.total}</li>;
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+describe("useRemoteQuery", () => {
+  it("loads once under StrictMode, then refetches in place on refetch()", async () => {
+    const server = makeServer();
+    const store = createRemoteQueryStore<Request>({
+      fetch: server.fetch,
+      staleTime: 1000,
+      retry: Schedule.recurs(0),
+    });
+    const renders: Record<string, number> = {};
+
+    render(
+      <StrictMode>
+        <Provider store={store}>
+          <Rows groupId={1} renders={renders} />
+        </Provider>
+      </StrictMode>,
+    );
+    expect(screen.getByTestId("loading-1")).toBeTruthy();
+    await wait(20);
+
+    expect(screen.getByTestId("1-row_2").textContent).toBe("2");
+    expect(server.requests).toEqual([{ path: "/summary", groupId: 1 }]);
+    const handle = store.find(summaryQuery, body(1));
+    const loaded = handle.value;
+    const afterLoad = { ...renders };
+
+    server.setTotals(1, [1, 20]);
+    await act(() => handle.refetch());
+
+    expect(screen.getByTestId("1-row_2").textContent).toBe("20");
+    expect(handle.value).toBe(loaded);
+    expect(renders.row_1).toBe(afterLoad.row_1);
+    expect(renders.row_2).toBeGreaterThan(afterLoad.row_2!);
+  });
+
+  it("stays fresh for staleTime, then refetches when next mounted", async () => {
+    const server = makeServer();
+    const store = createRemoteQueryStore<Request>({ fetch: server.fetch, staleTime: 60 });
+
+    const { unmount } = render(
+      <Provider store={store}>
+        <Rows groupId={1} />
+      </Provider>,
+    );
+    await wait(20);
+    expect(screen.getByTestId("stale-1").textContent).toBe("false");
+    unmount();
+
+    render(
+      <Provider store={store}>
+        <Rows groupId={1} />
+      </Provider>,
+    );
+    await wait(10);
+    expect(server.count(1)).toBe(1);
+
+    await wait(60);
+    expect(screen.getByTestId("stale-1").textContent).toBe("true");
+    cleanup();
+
+    render(
+      <Provider store={store}>
+        <Rows groupId={1} staleTime={1000} />
+      </Provider>,
+    );
+    await wait(20);
+    expect(server.count(1)).toBe(2);
+    expect(screen.getByTestId("stale-1").textContent).toBe("false");
+  });
+
+  it("drops a result gcTime after its last component unmounts", async () => {
+    const server = makeServer();
+    const store = createRemoteQueryStore<Request>({
+      fetch: server.fetch,
+      staleTime: Infinity,
+      gcTime: 40,
+    });
+
+    const { unmount } = render(
+      <Provider store={store}>
+        <Rows groupId={1} />
+      </Provider>,
+    );
+    await wait(60);
+    expect(store.find(summaryQuery, body(1)).value?.groupId).toBe(1);
+    expect(server.count(1)).toBe(1);
+
+    unmount();
+    await wait(20);
+    expect(store.find(summaryQuery, body(1)).value?.groupId).toBe(1);
+
+    await wait(40);
+    expect(store.find(summaryQuery, body(1)).value).toBeUndefined();
+    await wait(1);
+    expect(server.count(1)).toBe(2);
+  });
+
+  it("invalidates every body, or only bodies containing the given fields", async () => {
+    const server = makeServer();
+    const store = createRemoteQueryStore<Request>({ fetch: server.fetch, staleTime: Infinity });
+    store.find(summaryQuery, body(3));
+
+    render(
+      <Provider store={store}>
+        <Rows groupId={1} />
+        <Rows groupId={2} />
+      </Provider>,
+    );
+    await wait(20);
+    expect([server.count(1), server.count(2), server.count(3)]).toEqual([1, 1, 1]);
+
+    server.setTotals(1, [5, 6]);
+    act(() => store.invalidate(summaryQuery, { filters: { groupId: 1 } }));
+    await wait(20);
+    expect([server.count(1), server.count(2)]).toEqual([2, 1]);
+    expect(screen.getByTestId("1-row_1").textContent).toBe("5");
+
+    act(() => store.invalidate(summaryQuery));
+    await wait(20);
+    expect([server.count(1), server.count(2), server.count(3)]).toEqual([3, 2, 1]);
+    expect(store.find(summaryQuery, body(3)).isStale).toBe(true);
+  });
+
+  it("refetches on an interval, on focus and on reconnect while mounted", async () => {
+    const server = makeServer();
+    const store = createRemoteQueryStore<Request>({ fetch: server.fetch });
+
+    const { unmount } = render(
+      <Provider store={store}>
+        <Rows groupId={1} refetchInterval={30} />
+        <Rows groupId={2} />
+      </Provider>,
+    );
+    await wait(100);
+    expect(server.count(1)).toBeGreaterThanOrEqual(3);
+    const settled = server.count(2);
+
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await wait(10);
+    expect(server.count(2)).toBe(settled + 1);
+
+    act(() => {
+      globalThis.dispatchEvent(new Event("online"));
+    });
+    await wait(10);
+    expect(server.count(2)).toBe(settled + 2);
+
+    unmount();
+    const afterUnmount = server.count(1);
+    await wait(80);
+    expect(server.count(1)).toBe(afterUnmount);
+  });
+});
+
+describe("RemoteQueryStore.fetch", () => {
+  it("returns the cached result while fresh, fetches when stale, and rejects on failure", async () => {
+    const server = makeServer();
+    const store = createRemoteQueryStore<Request>({
+      fetch: server.fetch,
+      staleTime: Infinity,
+      retry: Schedule.recurs(0),
+    });
+
+    const first = await store.fetch(summaryQuery, body(1));
+    const second = await store.fetch(summaryQuery, body(1));
+    expect(first.rows.map((row) => row.total)).toEqual([1, 2]);
+    expect(second).toBe(first);
+    expect(server.count(1)).toBe(1);
+
+    server.fail(true);
+    store.invalidate(summaryQuery);
+    await expect(store.fetch(summaryQuery, body(1))).rejects.toBeInstanceOf(AdapterError);
+    expect(server.count(1)).toBe(2);
+  });
+
+  it("keeps only the newest result when a fetch is superseded", async () => {
+    const server = makeServer();
+    const store = createRemoteQueryStore<Request>({ fetch: server.fetch });
+    const handle = store.find(summaryQuery, body(1));
+
+    server.setTotals(1, [7, 8]);
+    const superseded = handle.refetch();
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    server.setTotals(1, [9, 9]);
+    void handle.refetch();
+    await superseded;
+
+    expect(handle.value?.rows.map((row) => row.total)).toEqual([9, 9]);
+    expect(handle.isFetching).toBe(false);
+    expect(server.count(1)).toBe(3);
+  });
+});
