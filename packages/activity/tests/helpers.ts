@@ -35,7 +35,7 @@ export function spawnTestActor<TLogic extends AnyActorLogic, TEmitted = unknown>
  * exactly that, with a `dispatch` helper. Window-level events (focus/blur/
  * pageshow/pagehide) go on `defaultView`; the rest on the document.
  */
-class FakeEventTarget {
+export class FakeEventTarget {
   private handlers = new Map<string, Set<EventListener>>();
 
   addEventListener(event: string, handler: EventListener): void {
@@ -80,3 +80,4 @@ export class FakeDocument extends FakeEventTarget {
 }
 
 export const asDocument = (fake: FakeDocument) => fake as unknown as Document;
+export const windowOf = (fake: FakeDocument) => fake.defaultView as FakeWindow;

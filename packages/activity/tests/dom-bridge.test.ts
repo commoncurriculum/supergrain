@@ -5,9 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ActivityTracker, type ActivityEvent } from "../src/activity-tracker";
 import { attachActivityListeners } from "../src/dom-bridge";
-import { asDocument, FakeDocument, type FakeWindow } from "./helpers";
-
-const windowOf = (fake: FakeDocument) => fake.defaultView as FakeWindow;
+import { FakeDocument, asDocument, windowOf } from "./helpers";
 
 beforeEach(() => {
   vi.useFakeTimers();
