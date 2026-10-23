@@ -14,7 +14,15 @@
 import { describe, it, expect } from "vitest";
 
 import { createReactive, effect } from "../../src";
-import { $NODE, $PROXY, $RAW, $VERSION, bumpVersion, deleteProperty } from "../../src/internal";
+import {
+  $NODE,
+  $PROXY,
+  $RAW,
+  $VERSION,
+  bumpVersion,
+  deleteProperty,
+  makeDisposable,
+} from "../../src/internal";
 
 describe("internal symbol exposure", () => {
   it("plain object proxies answer `in` for every internal symbol", () => {
@@ -82,5 +90,29 @@ describe("internal helpers — direct invocation", () => {
     });
 
     expect(snapshot).toEqual([1, 2]);
+  });
+});
+
+describe("makeDisposable — attaches the Disposable protocol for husk", () => {
+  it("adds a non-enumerable [Symbol.dispose] and returns the same object", () => {
+    let disposed = 0;
+    const target = { a: 1 };
+
+    const result = makeDisposable(target, () => disposed++);
+
+    expect(result).toBe(target);
+    expect(Object.keys(result)).toEqual(["a"]);
+    expect(Object.getOwnPropertyDescriptor(result, Symbol.dispose)?.enumerable).toBe(false);
+    result[Symbol.dispose]();
+    expect(disposed).toBe(1);
+  });
+
+  it("leaves a frozen target untouched instead of throwing", () => {
+    const target = Object.freeze({ a: 1 });
+
+    const result = makeDisposable(target, () => {});
+
+    expect(result).toBe(target);
+    expect(Symbol.dispose in result).toBe(false);
   });
 });

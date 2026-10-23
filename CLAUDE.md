@@ -104,7 +104,7 @@ All commands run from `packages/js-krauset`.
 pnpm test:perf
 ```
 
-Writes `perf-results.txt` (human-readable), `perf-results.json` (latest, overwritten each run), and `perf-results-<timestamp>.json` (unique per run). Each JSON contains per-benchmark metrics: total, script, paint, layouts, numberCommits, maxDeltaBetweenCommits, rafLongDelay, plus git metadata.
+Writes `perf-results.txt` (human-readable), `perf-results.json` (latest, overwritten each run), and `perf-results-<timestamp>.json` (unique per run). Each JSON contains per-benchmark metrics: total, script, paint, layouts, numberCommits, maxDeltaBetweenCommits, rafLongDelay, plus git metadata. It also has a `memory` list from js-framework-benchmark's three memory benchmarks (ready, 1k rows, create/clear ×5): MB the page retains after a forced GC.
 
 **Statistical run** (for real comparisons):
 
@@ -139,7 +139,7 @@ Alternates the two prebuilt `packages/kernel/dist` directories within a single t
 
 `--mode app` swaps complete prebuilt `js-krauset/dist` bundles instead (no rebuild between runs) — use it to A/B app-level changes, or two full builds.
 
-This also runs in CI on every PR commit via `.github/workflows/benchmark.yml`, which builds the complete app (kernel + benchmark app) at the PR head and at the base branch and posts the table as a sticky PR comment, stamped with the measured head SHA. It skips itself when the two bundles come out byte-identical.
+This also runs in CI on every PR commit via `.github/workflows/benchmark.yml`, which builds the complete app (kernel + benchmark app) at the PR head and at the base branch and posts the timing and memory tables as a sticky PR comment, stamped with the measured head SHA. It skips itself when the two bundles come out byte-identical.
 
 **CPU profiling** (function-level flame graphs + heap tracking — adds overhead, do NOT use for timing):
 

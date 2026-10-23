@@ -96,8 +96,8 @@ measures the full difference between two builds.
 The `Benchmark` GitHub Actions workflow (`.github/workflows/benchmark.yml`) runs
 `--mode app` automatically on every PR commit: it builds the complete app
 (kernel + benchmark app) at the PR head and at the base branch, runs 10
-interleaved pairs, and posts the table as a sticky PR comment (stamped with the
-measured head SHA). It skips itself when the two bundles are byte-identical. CI
+interleaved pairs, and posts the timing and memory tables as a sticky PR comment
+(stamped with the measured head SHA). It skips itself when the two bundles are byte-identical. CI
 runners are noisy, so treat that job as a regression tripwire — a borderline
 result there means "measure it properly on a quiet machine", not "no effect".
 

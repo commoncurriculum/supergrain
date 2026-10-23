@@ -30,5 +30,5 @@
     "rootDir": "."
   },
   "include": ["src", "tests", "benchmarks", "examples", "test-support"],
-  "exclude": ["node_modules", "dist", "benchmarks/react"]
+  "exclude": ["node_modules", "dist", "benchmarks/react", "tests/compat"]
 }

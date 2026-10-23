@@ -47,9 +47,15 @@ interface BenchResult {
   paint: number;
 }
 
+interface MemoryResult {
+  name: string;
+  mb: number;
+}
+
 interface RunJson {
   timestamp: string;
   results: BenchResult[];
+  memory: MemoryResult[];
 }
 
 function arg(name: string, fallback?: string): string {
@@ -235,6 +241,12 @@ function totalFor(run: RunJson, name: string): number {
   return r.total;
 }
 
+function memoryFor(run: RunJson, name: string): number {
+  const r = run.memory.find((x) => x.name === name);
+  if (!r) throw new Error(`Memory benchmark "${name}" missing from a run`);
+  return r.mb;
+}
+
 function weightedTotal(run: RunJson): number {
   return run.results.reduce((sum, r) => sum + r.total * (KRAUSE_WEIGHTS[r.name] ?? 1), 0);
 }
@@ -270,6 +282,9 @@ function summarize(name: string, get: (run: RunJson) => number): Row {
 const benchmarkNames: string[] = pairs[0].control.results.map((r) => r.name);
 const rows = benchmarkNames.map((name) => summarize(name, (run) => totalFor(run, name)));
 const weightedRow = summarize("**Weighted total**", weightedTotal);
+const memoryRows = pairs[0].control.memory.map(({ name }) =>
+  summarize(name, (run) => memoryFor(run, name)),
+);
 
 // ---------------------------------------------------------------------------
 // Report
@@ -284,46 +299,67 @@ function fmtDelta(row: Row): string {
   return row.deltaMedian < 0 ? `**${value}** 🟢` : `**${value}** 🔴`;
 }
 
-function renderRow(row: Row): string {
+function renderRow(row: Row, format: (value: number) => string): string {
   return [
     row.name,
-    `${row.controlMedian.toFixed(1)} ms`,
-    `${row.experimentMedian.toFixed(1)} ms`,
+    format(row.controlMedian),
+    format(row.experimentMedian),
     fmtDelta(row),
     `${row.improved}/${row.n}`,
     row.p < 0.001 ? "<0.001" : row.p.toFixed(3),
   ].join(" | ");
 }
 
-const significant = rows.filter((r) => r.p <= SIGNIFICANT);
-const faster = significant.filter((r) => r.deltaMedian < 0);
-const slower = significant.filter((r) => r.deltaMedian > 0);
-
-const verdict = (() => {
-  if (slower.length > 0) {
-    return `⚠️ **${slower.length} benchmark(s) look slower**: ${slower
-      .map((r) => `\`${r.name}\``)
-      .join(
-        ", ",
-      )}. Before treating that as real, check whether the change alters allocation volume — see the GC-aliasing note below.`;
+/**
+ * One line saying which rows moved beyond coin-flip noise. `better`/`worse`
+ * name the direction of a negative/positive Δ; `worseNote` is appended when
+ * something got worse.
+ */
+function verdict(table: Row[], better: string, worse: string, worseNote = ""): string {
+  const significant = table.filter((r) => r.p <= SIGNIFICANT);
+  const worseRows = significant.filter((r) => r.deltaMedian > 0);
+  const betterRows = significant.filter((r) => r.deltaMedian < 0);
+  if (worseRows.length > 0) {
+    const names = worseRows.map((r) => `\`${r.name}\``).join(", ");
+    return `⚠️ **${worseRows.length} benchmark(s) look ${worse}**: ${names}.${worseNote}`;
   }
-  if (faster.length > 0) {
-    return `🟢 **${faster.length} benchmark(s) look faster**, none slower.`;
+  if (betterRows.length > 0) {
+    return `🟢 **${betterRows.length} benchmark(s) look ${better}**, none ${worse}.`;
   }
   return "No benchmark moved beyond what coin-flip noise would produce.";
-})();
+}
+
+const gcAliasingHint =
+  " Before treating that as real, check whether the change alters allocation volume — see the GC-aliasing note below.";
+
+const ms = (value: number) => `${value.toFixed(1)} ms`;
+const mb = (value: number) => `${value.toFixed(2)} MB`;
 
 const report = `<!-- supergrain-benchmark -->
 ### 📊 Interleaved benchmark: ${experimentLabel} vs ${controlLabel}
 
-${verdict}
+**Time:** ${verdict(rows, "faster", "slower", gcAliasingHint)}
 
-${runs} interleaved pairs. Negative Δ = **faster on this PR**. Bold + coloured rows are the ones where a two-sided sign test clears p ≤ ${SIGNIFICANT}.
+**Memory:** ${verdict(memoryRows, "lower", "higher")}
+
+${runs} interleaved pairs. Bold + coloured rows are the ones where a two-sided sign test clears p ≤ ${SIGNIFICANT}.
+
+#### Time
+
+Negative Δ = **faster on this PR**.
 
 | Benchmark | ${controlLabel} | ${experimentLabel} | Δ median | pairs improved | sign test p |
 | --- | ---: | ---: | ---: | ---: | ---: |
-${rows.map((r) => `| ${renderRow(r)} |`).join("\n")}
-| ${renderRow(weightedRow)} |
+${rows.map((r) => `| ${renderRow(r, ms)} |`).join("\n")}
+| ${renderRow(weightedRow, ms)} |
+
+#### Memory
+
+Negative Δ = **less memory on this PR**.
+
+| Benchmark | ${controlLabel} | ${experimentLabel} | Δ median | pairs improved | sign test p |
+| --- | ---: | ---: | ---: | ---: | ---: |
+${memoryRows.map((r) => `| ${renderRow(r, mb)} |`).join("\n")}
 
 <details>
 <summary>How to read this</summary>
@@ -333,6 +369,8 @@ ${
     ? "Both arms are the **same** app source and the same commit of `js-krauset`; only `packages/kernel/dist` differs — this comparison isolates the kernel change and is blind to app-side changes."
     : "Each arm is a **complete prebuilt app bundle** (kernel + app), so this measures the full difference between the two builds — app-side and kernel-side changes alike."
 } The two builds alternate within one time window, with the order flipped each pair, so machine drift hits both arms equally and the paired delta cancels it.
+
+**Memory** is what the page still holds after a forced major GC, read with \`performance.measureUserAgentSpecificMemory()\` — js-framework-benchmark's three memory benchmarks (ready, 1k rows, create/clear ×5). It is retained memory, not allocation churn, and it is far less noisy than timing.
 
 CI runners are shared and noisy, so **absolute milliseconds here are meaningless** — do not compare them against numbers from your laptop or against a previous run of this job. The paired delta and the win count are the signal.
 
@@ -357,7 +395,13 @@ writeFileSync(
       controlLabel,
       experimentLabel,
       rows: [...rows, weightedRow],
-      pairs: pairs.map((p) => ({ control: p.control.results, experiment: p.experiment.results })),
+      memoryRows,
+      pairs: pairs.map((p) => ({
+        control: p.control.results,
+        experiment: p.experiment.results,
+        controlMemory: p.control.memory,
+        experimentMemory: p.experiment.memory,
+      })),
     },
     null,
     2,
