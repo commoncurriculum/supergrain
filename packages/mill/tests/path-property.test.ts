@@ -25,12 +25,27 @@ import {
 const WRITE = { allowNullIntermediates: false };
 
 // A deliberately prefix-heavy alphabet: "a"/"ab" and "1"/"12" are exactly the
-// pairs a string-prefix implementation of `pathCovers` gets wrong.
-const segmentArbitrary = fc.constantFrom("a", "ab", "abc", "b", "0", "1", "12", "x_y", "é");
+// pairs a string-prefix implementation of `pathCovers` gets wrong. These are
+// plain data keys — the set/get/has/delete laws hold on every path built from
+// them.
+const dataSegmentArbitrary = fc.constantFrom("a", "ab", "abc", "b", "0", "1", "12", "x_y", "é");
 
-const pathArbitrary = fc
-  .array(segmentArbitrary, { minLength: 1, maxLength: 4 })
-  .map((segments) => segments.join("."));
+// The keys that mean something to the JS object model. Mixed into the general
+// alphabet at a low weight so the syntax and prefix-order laws — and the
+// pollution property below — meet them without being hand-placed.
+const OBJECT_MODEL_SEGMENTS = ["__proto__", "constructor", "prototype"] as const;
+const segmentArbitrary = fc.oneof(
+  { weight: 8, arbitrary: dataSegmentArbitrary },
+  { weight: 1, arbitrary: fc.constantFrom(...OBJECT_MODEL_SEGMENTS) },
+);
+
+const toPath = (segments: ReadonlyArray<string>) => segments.join(".");
+const pathArbitrary = fc.array(segmentArbitrary, { minLength: 1, maxLength: 4 }).map(toPath);
+const dataPathArbitrary = fc
+  .array(dataSegmentArbitrary, { minLength: 1, maxLength: 4 })
+  .map(toPath);
+
+const hasProtoSegment = (path: string) => path.split(".").includes("__proto__");
 
 /** Segment-wise reference for `pathCovers`, written the obvious slow way. */
 function pathCoversReference(ancestor: string, path: string): boolean {
@@ -41,10 +56,11 @@ function pathCoversReference(ancestor: string, path: string): boolean {
 }
 
 describe("splitPath — round-trip and rejection", () => {
-  it("joining the segments reproduces the path", () => {
+  it("joining the segments reproduces the path, unless it steps through `__proto__`", () => {
     fc.assert(
       fc.property(pathArbitrary, (path) => {
-        expect(splitPath(path).join(".")).toBe(path);
+        if (hasProtoSegment(path)) expect(() => splitPath(path)).toThrow(/__proto__/u);
+        else expect(splitPath(path).join(".")).toBe(path);
       }),
       { numRuns: 300 },
     );
@@ -53,7 +69,9 @@ describe("splitPath — round-trip and rejection", () => {
   it("yields one segment per dot-separated part, each non-empty", () => {
     fc.assert(
       fc.property(fc.array(segmentArbitrary, { minLength: 1, maxLength: 4 }), (segments) => {
-        expect(splitPath(segments.join("."))).toEqual(segments);
+        const path = toPath(segments);
+        if (segments.includes("__proto__")) expect(() => splitPath(path)).toThrow(/__proto__/u);
+        else expect(splitPath(path)).toEqual(segments);
       }),
       { numRuns: 300 },
     );
@@ -184,7 +202,7 @@ describe("set / get / has / delete — mutual agreement", () => {
 
   it("get after set returns exactly what was set", () => {
     fc.assert(
-      fc.property(pathArbitrary, valueArbitrary, (path, value) => {
+      fc.property(dataPathArbitrary, valueArbitrary, (path, value) => {
         const target: Record<string, unknown> = {};
         setValueAtPath(target, path, value, WRITE);
         expect(getValueAtPath(target, path)).toBe(value);
@@ -196,7 +214,7 @@ describe("set / get / has / delete — mutual agreement", () => {
   it("has is true after set, for every value including null and undefined", () => {
     fc.assert(
       fc.property(
-        pathArbitrary,
+        dataPathArbitrary,
         fc.oneof(valueArbitrary, fc.constant(undefined)),
         (path, value) => {
           const target: Record<string, unknown> = {};
@@ -210,7 +228,7 @@ describe("set / get / has / delete — mutual agreement", () => {
 
   it("set is idempotent — writing the same value twice leaves the same document", () => {
     fc.assert(
-      fc.property(pathArbitrary, valueArbitrary, (path, value) => {
+      fc.property(dataPathArbitrary, valueArbitrary, (path, value) => {
         const once: Record<string, unknown> = {};
         setValueAtPath(once, path, value, WRITE);
         const twice: Record<string, unknown> = {};
@@ -224,7 +242,7 @@ describe("set / get / has / delete — mutual agreement", () => {
 
   it("set then delete leaves no value, and delete is idempotent", () => {
     fc.assert(
-      fc.property(pathArbitrary, valueArbitrary, (path, value) => {
+      fc.property(dataPathArbitrary, valueArbitrary, (path, value) => {
         const target: Record<string, unknown> = {};
         setValueAtPath(target, path, value, WRITE);
         deleteValueAtPath(target, path);
@@ -240,9 +258,9 @@ describe("set / get / has / delete — mutual agreement", () => {
   it("delete removes only its own leaf — siblings survive", () => {
     fc.assert(
       fc.property(
-        pathArbitrary,
-        segmentArbitrary,
-        segmentArbitrary,
+        dataPathArbitrary,
+        dataSegmentArbitrary,
+        dataSegmentArbitrary,
         valueArbitrary,
         valueArbitrary,
         (base, left, right, leftValue, rightValue) => {
@@ -273,7 +291,7 @@ describe("set / get / has / delete — mutual agreement", () => {
           fc.constant<unknown>({ a: { b: 1 } }),
           fc.constant<unknown>({ a: [1, 2, 3] }),
         ),
-        pathArbitrary,
+        dataPathArbitrary,
         (target, path) => {
           expect(() => getValueAtPath(target, path)).not.toThrow();
           expect(() => hasValueAtPath(target, path)).not.toThrow();
@@ -333,7 +351,7 @@ describe("array writes — padding and unset semantics", () => {
 
   it("unset on an object key removes the key entirely", () => {
     fc.assert(
-      fc.property(pathArbitrary, fc.integer(), (path, value) => {
+      fc.property(dataPathArbitrary, fc.integer(), (path, value) => {
         const target: Record<string, unknown> = {};
         setValueAtPath(target, path, value, WRITE);
         unsetValueAtPath(target, path);
@@ -363,7 +381,7 @@ describe("array writes — padding and unset semantics", () => {
     fc.assert(
       fc.property(
         fc.oneof(fc.integer(), fc.string({ maxLength: 3 }), fc.boolean()),
-        segmentArbitrary,
+        dataSegmentArbitrary,
         fc.integer(),
         (scalar, leaf, value) => {
           const target: Record<string, unknown> = { a: scalar };
@@ -388,6 +406,26 @@ describe("path segments with meaning to the JS object model", () => {
     for (const key of OBJECT_PROTOTYPE_KEYS) {
       expect(({} as Record<string, unknown>)[key]).toBeUndefined();
     }
+  });
+
+  it("no update, through any path, ever touches `Object.prototype`", () => {
+    // The law the `__proto__` guard exists for, over the general alphabet: an
+    // update either throws or lands on the document — never on the prototype
+    // every other object in the process shares.
+    const prototypeKeys = Object.getOwnPropertyNames(Object.prototype);
+    fc.assert(
+      fc.property(pathArbitrary, fc.integer({ min: 1, max: 1000 }), (path, value) => {
+        const store: Record<string, unknown> = { a: 1 };
+        try {
+          update(store, {}, { $set: { [path]: value } } as never);
+        } catch {
+          // Rejected paths are fine; what matters is where accepted ones land.
+        }
+        expect(Object.getOwnPropertyNames(Object.prototype)).toEqual(prototypeKeys);
+        expect(Object.getPrototypeOf(store)).toBe(Object.prototype);
+      }),
+      { numRuns: 500 },
+    );
   });
 
   it("rejects `__proto__` anywhere in a path rather than writing through it", () => {

@@ -10,41 +10,9 @@ import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ActivityTracker, type ActivityEvent, type ActivityStatus } from "../src/activity-tracker";
+import { asDocument, FakeDocument } from "./helpers";
 
 const IDLE_AFTER_MS = 1000;
-
-/**
- * Minimal `Document` stand-in: enough surface for `attachActivityListeners`
- * (listener registry, `hidden`, `hasFocus()`, `defaultView`) and a `dispatch`
- * to drive it. `defaultView` is undefined so focus/blur arrive through
- * `visibilitychange`, keeping one input path per event kind.
- */
-class FakeDocument {
-  hidden = false;
-  focused = true;
-  readonly defaultView = undefined;
-  private readonly listeners = new Map<string, Set<EventListener>>();
-
-  addEventListener(type: string, handler: EventListener): void {
-    const set = this.listeners.get(type) ?? new Set<EventListener>();
-    this.listeners.set(type, set);
-    set.add(handler);
-  }
-
-  removeEventListener(type: string, handler: EventListener): void {
-    this.listeners.get(type)?.delete(handler);
-  }
-
-  hasFocus(): boolean {
-    return this.focused;
-  }
-
-  dispatch(type: string): void {
-    for (const handler of [...(this.listeners.get(type) ?? [])]) {
-      handler({ type } as unknown as Event);
-    }
-  }
-}
 
 type Step =
   | { kind: "input" }
@@ -127,11 +95,31 @@ function drive(doc: FakeDocument, model: ReferenceMachine, step: Step): void {
   }
 }
 
-function setup(): { tracker: ActivityTracker; doc: FakeDocument; model: ReferenceMachine } {
-  const doc = new FakeDocument();
+interface Env {
+  tracker: ActivityTracker;
+  doc: FakeDocument;
+  model: ReferenceMachine;
+  detach: () => void;
+}
+
+/**
+ * A tracker attached to `doc`. The document has no `defaultView`, so focus and
+ * blur arrive through `visibilitychange`, keeping one input path per step kind.
+ */
+function setup(doc = new FakeDocument(null)): Env {
   const tracker = new ActivityTracker({ idleAfterMs: IDLE_AFTER_MS, inputThrottleMs: 0 });
-  tracker.attachDOM(doc as unknown as Document);
-  return { tracker, doc, model: new ReferenceMachine() };
+  const detach = tracker.attachDOM(asDocument(doc));
+  return { tracker, doc, model: new ReferenceMachine(), detach };
+}
+
+/** Run `fn` against a fresh tracker, destroying it afterwards. */
+function withTracker(fn: (env: Env) => void, doc?: FakeDocument): void {
+  const env = setup(doc);
+  try {
+    fn(env);
+  } finally {
+    env.tracker.destroy();
+  }
 }
 
 beforeEach(() => {
@@ -148,35 +136,29 @@ const sequenceArbitrary = fc.array(stepArbitrary, { maxLength: 30 });
 describe("ActivityTracker — matches the reference machine", () => {
   it("status agrees with the reference after every step", () => {
     fc.assert(
-      fc.property(sequenceArbitrary, (steps) => {
-        const { tracker, doc, model } = setup();
-        try {
+      fc.property(sequenceArbitrary, (steps) =>
+        withTracker(({ tracker, doc, model }) => {
           expect(tracker.state.status).toBe(model.status);
           for (const step of steps) {
             drive(doc, model, step);
             expect(tracker.state.status).toBe(model.status);
           }
-        } finally {
-          tracker.destroy();
-        }
-      }),
+        }),
+      ),
       { numRuns: 300 },
     );
   });
 
   it("status is always one of the three chart states", () => {
     fc.assert(
-      fc.property(sequenceArbitrary, (steps) => {
-        const { tracker, doc, model } = setup();
-        try {
+      fc.property(sequenceArbitrary, (steps) =>
+        withTracker(({ tracker, doc, model }) => {
           for (const step of steps) {
             drive(doc, model, step);
             expect(["active", "idle", "hidden"]).toContain(tracker.state.status);
           }
-        } finally {
-          tracker.destroy();
-        }
-      }),
+        }),
+      ),
       { numRuns: 200 },
     );
   });
@@ -185,19 +167,18 @@ describe("ActivityTracker — matches the reference machine", () => {
 describe("ActivityTracker — transition events", () => {
   it("every delivered event is a genuine change, and matches the new status", () => {
     fc.assert(
-      fc.property(sequenceArbitrary, (steps) => {
-        const { tracker, doc, model } = setup();
-        const seen: Array<ActivityEvent> = [];
-        for (const status of ["active", "idle", "hidden"] as const) {
-          tracker.on(status, (event) => {
-            // The reactive projection must already reflect the transition by
-            // the time listeners run — `state` and `on` can't disagree.
-            expect(tracker.state.status).toBe(status);
-            seen.push(event);
-          });
-        }
+      fc.property(sequenceArbitrary, (steps) =>
+        withTracker(({ tracker, doc, model }) => {
+          const seen: Array<ActivityEvent> = [];
+          for (const status of ["active", "idle", "hidden"] as const) {
+            tracker.on(status, (event) => {
+              // The reactive projection must already reflect the transition by
+              // the time listeners run — `state` and `on` can't disagree.
+              expect(tracker.state.status).toBe(status);
+              seen.push(event);
+            });
+          }
 
-        try {
           for (const step of steps) drive(doc, model, step);
 
           for (const event of seen) {
@@ -212,47 +193,41 @@ describe("ActivityTracker — transition events", () => {
             expect(seen[0]!.fromState).toBe("active"); // the chart's initial state
             expect(seen[seen.length - 1]!.toState).toBe(tracker.state.status);
           }
-        } finally {
-          tracker.destroy();
-        }
-      }),
+        }),
+      ),
       { numRuns: 300 },
     );
   });
 
   it("reported durations tile the elapsed time exactly", () => {
     fc.assert(
-      fc.property(sequenceArbitrary, (steps) => {
-        const { tracker, doc, model } = setup();
-        const seen: Array<ActivityEvent> = [];
-        for (const status of ["active", "idle", "hidden"] as const) {
-          tracker.on(status, (event) => seen.push(event));
-        }
+      fc.property(sequenceArbitrary, (steps) =>
+        withTracker(({ tracker, doc, model }) => {
+          const seen: Array<ActivityEvent> = [];
+          for (const status of ["active", "idle", "hidden"] as const) {
+            tracker.on(status, (event) => seen.push(event));
+          }
 
-        try {
           const startedAt = Date.now();
           for (const step of steps) drive(doc, model, step);
 
           const total = seen.reduce((sum, event) => sum + event.durationMs, 0);
           expect(total + tracker.currentDurationMs()).toBe(Date.now() - startedAt);
-        } finally {
-          tracker.destroy();
-        }
-      }),
+        }),
+      ),
       { numRuns: 300 },
     );
   });
 
   it("an unsubscribed handler never fires again", () => {
     fc.assert(
-      fc.property(sequenceArbitrary, fc.nat(), (steps, cut) => {
-        const { tracker, doc, model } = setup();
-        let calls = 0;
-        const off = tracker.on("idle", () => {
-          calls++;
-        });
+      fc.property(sequenceArbitrary, fc.nat(), (steps, cut) =>
+        withTracker(({ tracker, doc, model }) => {
+          let calls = 0;
+          const off = tracker.on("idle", () => {
+            calls++;
+          });
 
-        try {
           const splitAt = steps.length === 0 ? 0 : cut % (steps.length + 1);
           for (const step of steps.slice(0, splitAt)) drive(doc, model, step);
           off();
@@ -260,10 +235,8 @@ describe("ActivityTracker — transition events", () => {
           for (const step of steps.slice(splitAt)) drive(doc, model, step);
 
           expect(calls).toBe(afterUnsubscribe);
-        } finally {
-          tracker.destroy();
-        }
-      }),
+        }),
+      ),
       { numRuns: 300 },
     );
   });
@@ -291,39 +264,26 @@ describe("ActivityTracker — transition events", () => {
 });
 
 describe("ActivityTracker — attachDOM seeding", () => {
-  it("a hidden or unfocused document starts hidden, a visible focused one starts active", () => {
-    fc.assert(
-      fc.property(fc.boolean(), fc.boolean(), (hidden, focused) => {
-        const doc = new FakeDocument();
-        doc.hidden = hidden;
-        doc.focused = focused;
-        const tracker = new ActivityTracker({ idleAfterMs: IDLE_AFTER_MS, inputThrottleMs: 0 });
-
-        try {
-          tracker.attachDOM(doc as unknown as Document);
-          expect(tracker.state.status).toBe(hidden || !focused ? "hidden" : "active");
-        } finally {
-          tracker.destroy();
-        }
-      }),
-      { numRuns: 100 },
-    );
-  });
+  it.each([
+    { hidden: false, focused: true, expected: "active" },
+    { hidden: false, focused: false, expected: "hidden" },
+    { hidden: true, focused: true, expected: "hidden" },
+    { hidden: true, focused: false, expected: "hidden" },
+  ] as const)(
+    "hidden=$hidden, focused=$focused starts $expected",
+    ({ hidden, focused, expected }) => {
+      const doc = new FakeDocument(null);
+      doc.hidden = hidden;
+      doc.focused = focused;
+      withTracker(({ tracker }) => {
+        expect(tracker.state.status).toBe(expected);
+      }, doc);
+    },
+  );
 
   it("attachDOM is idempotent — the second call returns the same detach", () => {
-    fc.assert(
-      fc.property(fc.constant(null), () => {
-        const doc = new FakeDocument();
-        const tracker = new ActivityTracker({ idleAfterMs: IDLE_AFTER_MS, inputThrottleMs: 0 });
-        try {
-          expect(tracker.attachDOM(doc as unknown as Document)).toBe(
-            tracker.attachDOM(doc as unknown as Document),
-          );
-        } finally {
-          tracker.destroy();
-        }
-      }),
-      { numRuns: 20 },
-    );
+    withTracker(({ tracker, doc, detach }) => {
+      expect(tracker.attachDOM(asDocument(doc))).toBe(detach);
+    });
   });
 });

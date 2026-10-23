@@ -7,38 +7,12 @@
 // tests set up — so they're stated here as properties over generated page
 // sequences.
 
-import { createDocumentStore, type DocumentStore } from "@supergrain/silo";
-import { Effect, Schedule } from "effect";
+import { Effect } from "effect";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { createQuery, type QueryAdapter } from "../src";
-
-interface Ref {
-  type: string;
-  id: string;
-  offset: number;
-}
-
-type TypeToModel = {
-  refs_for_user: {
-    id: string;
-    type: "refs_for_user";
-    results: Array<Ref>;
-    nextOffset: number | null;
-  };
-  ref: { id: string; type: "ref" };
-};
-
-function makeStore(): DocumentStore<TypeToModel> {
-  return createDocumentStore<TypeToModel>({
-    models: {
-      refs_for_user: { adapter: { find: () => Effect.succeed({ data: [] }) } },
-      ref: { adapter: { find: () => Effect.succeed({ data: [] }) } },
-    },
-    retry: Schedule.recurs(0),
-  });
-}
+import { createQuery, type Query, type QueryAdapter } from "../src";
+import { makeStore, type PlanbookRef } from "./setup/store";
 
 /** One server page: `count` results starting at `startOffset`, contiguous. */
 interface Page {
@@ -51,7 +25,7 @@ interface Page {
  * asked for so the merge can be checked against what the client requested.
  */
 function makeScriptedAdapter(): {
-  adapter: QueryAdapter<Ref>;
+  adapter: QueryAdapter<PlanbookRef>;
   setPage: (page: Page) => void;
   lastRequestedOffset: () => number;
 } {
@@ -62,7 +36,7 @@ function makeScriptedAdapter(): {
       fetch: (_id: string, opts: { offset: number; limit: number; signal: AbortSignal }) => {
         requested = opts.offset;
         const results = Array.from({ length: page.count }, (_, i) => ({
-          type: "ref",
+          type: "planbook",
           id: `r${opts.offset + i}`,
           offset: opts.offset + i,
         }));
@@ -80,6 +54,24 @@ function makeScriptedAdapter(): {
   };
 }
 
+/** Run `fn` against a fresh query on a scripted adapter, destroying it afterwards. */
+async function withQuery(
+  fn: (env: { q: Query<PlanbookRef> } & ReturnType<typeof makeScriptedAdapter>) => Promise<void>,
+): Promise<void> {
+  const scripted = makeScriptedAdapter();
+  const q = createQuery({
+    store: makeStore(),
+    adapter: scripted.adapter,
+    type: "planbooks_for_user",
+    id: "u1",
+  });
+  try {
+    await fn({ q, ...scripted });
+  } finally {
+    q.destroy();
+  }
+}
+
 /**
  * Every result the server sent sits at its own offset.
  *
@@ -90,7 +82,7 @@ function makeScriptedAdapter(): {
  * create-query.test.ts, which pins exactly that. Callers index by offset rather
  * than iterating blindly.
  */
-function expectPositionedByOffset(results: ReadonlyArray<Ref>): void {
+function expectPositionedByOffset(results: ReadonlyArray<PlanbookRef>): void {
   for (let i = 0; i < results.length; i++) {
     // A gap the server left is either a hole or — once a later merge has
     // spread the array — an explicit `undefined`. Both are slots the client
@@ -113,11 +105,7 @@ describe("createQuery — page 0 replaces wholesale", () => {
         fc.array(pageArbitrary, { maxLength: 6 }),
         fc.integer({ min: 1, max: 5 }),
         async (history, finalCount) => {
-          const store = makeStore();
-          const { adapter, setPage } = makeScriptedAdapter();
-          const q = createQuery({ store, adapter, type: "refs_for_user", id: "u1" });
-
-          try {
+          await withQuery(async ({ q, setPage }) => {
             for (const page of history) {
               setPage(page);
               await q.refetch();
@@ -135,9 +123,7 @@ describe("createQuery — page 0 replaces wholesale", () => {
             for (let i = 0; i < q.results.length; i++) {
               expect(Object.hasOwn(q.results, String(i))).toBe(true);
             }
-          } finally {
-            q.destroy();
-          }
+          });
         },
       ),
       { numRuns: 60 },
@@ -147,11 +133,7 @@ describe("createQuery — page 0 replaces wholesale", () => {
   it("an empty response resets the results to [] from any prior state", async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(pageArbitrary, { maxLength: 6 }), async (history) => {
-        const store = makeStore();
-        const { adapter, setPage } = makeScriptedAdapter();
-        const q = createQuery({ store, adapter, type: "refs_for_user", id: "u1" });
-
-        try {
+        await withQuery(async ({ q, setPage }) => {
           for (const page of history) {
             setPage(page);
             await q.refetch();
@@ -161,9 +143,7 @@ describe("createQuery — page 0 replaces wholesale", () => {
           await q.refetch();
 
           expect(q.results).toEqual([]);
-        } finally {
-          q.destroy();
-        }
+        });
       }),
       { numRuns: 60 },
     );
@@ -176,11 +156,7 @@ describe("createQuery — fetchNextPage merges by offset", () => {
       fc.asyncProperty(
         fc.array(fc.integer({ min: 1, max: 4 }), { minLength: 1, maxLength: 5 }),
         async (pageSizes) => {
-          const store = makeStore();
-          const { adapter, setPage, lastRequestedOffset } = makeScriptedAdapter();
-          const q = createQuery({ store, adapter, type: "refs_for_user", id: "u1" });
-
-          try {
+          await withQuery(async ({ q, setPage, lastRequestedOffset }) => {
             // Page 0 establishes the array; each later page is contiguous, as
             // a paginating server produces.
             let served = 0;
@@ -202,9 +178,7 @@ describe("createQuery — fetchNextPage merges by offset", () => {
               }
               expectPositionedByOffset(q.results);
             }
-          } finally {
-            q.destroy();
-          }
+          });
         },
       ),
       { numRuns: 60 },
@@ -222,19 +196,13 @@ describe("createQuery — fetchNextPage merges by offset", () => {
           { maxLength: 8 },
         ),
         async (steps) => {
-          const store = makeStore();
-          const { adapter, setPage } = makeScriptedAdapter();
-          const q = createQuery({ store, adapter, type: "refs_for_user", id: "u1" });
-
-          try {
+          await withQuery(async ({ q, setPage }) => {
             for (const step of steps) {
               setPage(step.page);
               await (step.next ? q.fetchNextPage() : q.refetch());
               expectPositionedByOffset(q.results);
             }
-          } finally {
-            q.destroy();
-          }
+          });
         },
       ),
       { numRuns: 60 },
@@ -246,19 +214,13 @@ describe("createQuery — nextOffset and transient state", () => {
   it("nextOffset always mirrors the last response's meta", async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(pageArbitrary, { minLength: 1, maxLength: 6 }), async (pages) => {
-        const store = makeStore();
-        const { adapter, setPage } = makeScriptedAdapter();
-        const q = createQuery({ store, adapter, type: "refs_for_user", id: "u1" });
-
-        try {
+        await withQuery(async ({ q, setPage }) => {
           for (const page of pages) {
             setPage(page);
             await q.refetch();
             expect(q.nextOffset).toBe(page.nextOffset);
           }
-        } finally {
-          q.destroy();
-        }
+        });
       }),
       { numRuns: 60 },
     );
@@ -267,11 +229,7 @@ describe("createQuery — nextOffset and transient state", () => {
   it("a successful fetch always ends with no error and no activity", async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(pageArbitrary, { minLength: 1, maxLength: 6 }), async (pages) => {
-        const store = makeStore();
-        const { adapter, setPage } = makeScriptedAdapter();
-        const q = createQuery({ store, adapter, type: "refs_for_user", id: "u1" });
-
-        try {
+        await withQuery(async ({ q, setPage }) => {
           for (const page of pages) {
             setPage(page);
             await q.refetch();
@@ -280,9 +238,7 @@ describe("createQuery — nextOffset and transient state", () => {
             expect(q.failureCount).toBe(0);
             expect(q.lastError).toBeUndefined();
           }
-        } finally {
-          q.destroy();
-        }
+        });
       }),
       { numRuns: 60 },
     );
@@ -293,7 +249,7 @@ describe("createQuery — nextOffset and transient state", () => {
       fc.asyncProperty(fc.array(pageArbitrary, { maxLength: 4 }), async (pages) => {
         const store = makeStore();
         const { adapter, setPage } = makeScriptedAdapter();
-        const q = createQuery({ store, adapter, type: "refs_for_user", id: "u1" });
+        const q = createQuery({ store, adapter, type: "planbooks_for_user", id: "u1" });
 
         for (const page of pages) {
           setPage(page);

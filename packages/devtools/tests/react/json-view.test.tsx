@@ -3,6 +3,8 @@ import { JsonView } from "@supergrain/devtools/react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { defineThrowingGetter } from "../fixtures";
+
 afterEach(() => cleanup());
 
 describe("<JsonView />", () => {
@@ -28,13 +30,7 @@ describe("<JsonView />", () => {
   });
 
   it("renders an unreadable leaf with what was thrown", () => {
-    const target = { ok: 1 };
-    Object.defineProperty(target, "boom", {
-      enumerable: true,
-      get() {
-        throw new TypeError("getter exploded");
-      },
-    });
+    const target = defineThrowingGetter({ ok: 1 }, "boom", new TypeError("getter exploded"));
 
     render(<JsonView node={serialize(target)} />);
     expect(screen.getByText(/TypeError: getter exploded/)).toBeTruthy();

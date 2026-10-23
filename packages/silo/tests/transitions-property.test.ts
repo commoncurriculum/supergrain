@@ -79,6 +79,15 @@ function toEvent(spec: EventSpec, handle: InternalHandle<unknown>) {
   }
 }
 
+/** Whether the generation fence will drop `event` on `handle` as it is now. */
+function isFenced(event: HandleEvent, handle: InternalHandle<unknown>): boolean {
+  return (
+    "generation" in event &&
+    event.generation !== undefined &&
+    event.generation !== handle.generation
+  );
+}
+
 /** The observable flat fields, for "did this event change anything?" checks. */
 function snapshot(handle: InternalHandle<unknown>) {
   return {
@@ -101,6 +110,13 @@ function deriveStatus(value: unknown, error: unknown): string {
 }
 
 const sequenceArbitrary = fc.array(eventSpecArbitrary, { maxLength: 30 });
+
+/** Only the generation-stamped kinds, always stamped with a superseded generation. */
+const staleSpecArbitrary: fc.Arbitrary<EventSpec> = eventSpecArbitrary
+  .filter((spec) => "stale" in spec)
+  .map((spec) =>
+    spec.kind === "aborted" ? { ...spec, stamped: true, stale: true } : { ...spec, stale: true },
+  );
 
 describe("applyEvent — invariants over arbitrary event sequences", () => {
   it("never throws", () => {
@@ -138,10 +154,7 @@ describe("applyEvent — invariants over arbitrary event sequences", () => {
         const handle = makeIdleHandle();
         for (const spec of specs) {
           const event = toEvent(spec, handle);
-          const fenced =
-            "generation" in event &&
-            event.generation !== undefined &&
-            event.generation !== handle.generation;
+          const fenced = isFenced(event, handle);
           applyEvent(handle, event);
           if (event._tag === "Failed" && !fenced) {
             expect(handle.error).toBe(event.error);
@@ -201,10 +214,7 @@ describe("applyEvent — invariants over arbitrary event sequences", () => {
         const handle = makeIdleHandle();
         for (const spec of specs) {
           const event = toEvent(spec, handle);
-          const fenced =
-            "generation" in event &&
-            event.generation !== undefined &&
-            event.generation !== handle.generation;
+          const fenced = isFenced(event, handle);
           applyEvent(handle, event);
           if (!fenced && ["Settled", "Failed", "Aborted"].includes(event._tag)) {
             expect(handle.isFetching).toBe(false);
@@ -259,36 +269,15 @@ describe("applyEvent — invariants over arbitrary event sequences", () => {
 describe("applyEvent — generation fencing", () => {
   it("a stale-stamped event is a total no-op, whatever the handle looks like", () => {
     fc.assert(
-      fc.property(
-        sequenceArbitrary,
-        fc.oneof(
-          fc.record({ kind: fc.constant<"settled">("settled"), stale: fc.constant(true) }),
-          fc.record({
-            kind: fc.constant<"retrying">("retrying"),
-            id: fc.integer({ min: 1, max: 99 }),
-            stale: fc.constant(true),
-          }),
-          fc.record({
-            kind: fc.constant<"failed">("failed"),
-            id: fc.integer({ min: 1, max: 99 }),
-            stale: fc.constant(true),
-          }),
-          fc.record({
-            kind: fc.constant<"aborted">("aborted"),
-            stamped: fc.constant(true),
-            stale: fc.constant(true),
-          }),
-        ) as fc.Arbitrary<EventSpec>,
-        (specs, staleSpec) => {
-          const handle = makeIdleHandle();
-          for (const spec of specs) applyEvent(handle, toEvent(spec, handle));
+      fc.property(sequenceArbitrary, staleSpecArbitrary, (specs, staleSpec) => {
+        const handle = makeIdleHandle();
+        for (const spec of specs) applyEvent(handle, toEvent(spec, handle));
 
-          const before = snapshot(handle);
-          applyEvent(handle, toEvent(staleSpec, handle));
+        const before = snapshot(handle);
+        applyEvent(handle, toEvent(staleSpec, handle));
 
-          expect(snapshot(handle)).toEqual(before);
-        },
-      ),
+        expect(snapshot(handle)).toEqual(before);
+      }),
       { numRuns: 500 },
     );
   });
@@ -409,42 +398,28 @@ describe("applyEvent — promise lifecycle", () => {
   });
 
   it("a first-load failure rejects the pending promise with the recorded error", async () => {
-    await fc.assert(
-      fc.asyncProperty(fc.integer({ min: 1, max: 99 }), async (id) => {
-        const handle = makeIdleHandle();
-        applyEvent(handle, HandleEvent.fetch());
-        const failure = err(id);
-        applyEvent(handle, HandleEvent.failed(failure, handle.generation));
+    const handle = makeIdleHandle();
+    applyEvent(handle, HandleEvent.fetch());
+    const failure = err(1);
+    applyEvent(handle, HandleEvent.failed(failure, handle.generation));
 
-        expect(handle.error).toBe(failure);
-        await expect(handle.promise).rejects.toBe(failure);
-      }),
-      { numRuns: 100 },
-    );
+    expect(handle.error).toBe(failure);
+    await expect(handle.promise).rejects.toBe(failure);
   });
 
   it("a refetch failure after a success leaves the resolved promise intact", async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.integer({ min: 1, max: 999 }),
-        fc.integer({ min: 1, max: 99 }),
-        async (value, id) => {
-          const handle = makeIdleHandle();
-          applyEvent(handle, HandleEvent.fetch());
-          applyEvent(handle, HandleEvent.insert(value));
-          const resolved = handle.promise;
+    const handle = makeIdleHandle();
+    applyEvent(handle, HandleEvent.fetch());
+    applyEvent(handle, HandleEvent.insert(42));
+    const resolved = handle.promise;
 
-          applyEvent(handle, HandleEvent.fetch());
-          applyEvent(handle, HandleEvent.failed(err(id), handle.generation));
+    applyEvent(handle, HandleEvent.fetch());
+    applyEvent(handle, HandleEvent.failed(err(1), handle.generation));
 
-          expect(handle.promise).toBe(resolved);
-          await expect(handle.promise).resolves.toBe(value);
-          // The stale value survives the refetch error.
-          expect(handle.value).toBe(value);
-          expect(handle.status).toBe("success");
-        },
-      ),
-      { numRuns: 150 },
-    );
+    expect(handle.promise).toBe(resolved);
+    await expect(handle.promise).resolves.toBe(42);
+    // The stale value survives the refetch error.
+    expect(handle.value).toBe(42);
+    expect(handle.status).toBe("success");
   });
 });

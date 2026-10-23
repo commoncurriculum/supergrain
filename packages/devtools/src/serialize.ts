@@ -12,9 +12,9 @@
 //     don't read as distinct), depth and breadth are capped, and exotic values
 //     (Date, bigint, Error, Map, Set, function, symbol) get their own node
 //     kinds instead of collapsing to `{}` or throwing. Reading a value can
-//     itself throw — an asserting getter, a revoked proxy, a native method
-//     handed a foreign receiver — so every read is guarded and degrades to an
-//     `unreadable` node. The panel shows the rest of the document instead of
+//     itself throw — an asserting getter, a revoked proxy — so property reads
+//     and the revoked-proxy probe are guarded and degrade to an `unreadable`
+//     node. The panel shows the rest of the document instead of
 //     going blank.
 
 import { unwrap } from "@supergrain/kernel";
@@ -86,44 +86,36 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const seen = new WeakSet<object>();
 
-  // `walk` is total: nothing below is guaranteed safe on a hostile value —
-  // `instanceof` and `Array.isArray` trap through a proxy, `Object.keys` can
-  // throw, a Map/Set method rejects a foreign receiver — so the whole body is
-  // guarded and one bad value costs its own subtree and nothing more.
   function walk(input: unknown, depth: number): JsonNode {
-    try {
-      const leaf = walkLeaf(input);
-      if (leaf) return leaf;
+    const leaf = walkLeaf(input);
+    if (leaf) return leaf;
 
-      const raw = unwrap(input) as object;
-      if (seen.has(raw)) return { t: "circular" };
-      if (depth >= maxDepth) return { t: "max-depth" };
-      seen.add(raw);
-      try {
-        return walkComposite(input, depth);
-      } finally {
-        // Drop after fully walking this node so sibling references to the same
-        // object (a DAG, not a cycle) aren't flagged as circular.
-        seen.delete(raw);
-      }
-    } catch (error) {
-      return unreadable(error);
+    const raw = unwrap(input) as object;
+    if (seen.has(raw)) return { t: "circular" };
+    if (depth >= maxDepth) return { t: "max-depth" };
+    seen.add(raw);
+    try {
+      return walkComposite(input, depth);
+    } finally {
+      // Drop after fully walking this node so sibling references to the same
+      // object (a DAG, not a cycle) aren't flagged as circular.
+      seen.delete(raw);
     }
   }
 
   /**
-   * Read one property, then walk it. Reading is what usually throws (an
-   * asserting getter, a revoked proxy), and it is guarded per property so a
-   * single bad field degrades to one `unreadable` leaf while its siblings still
-   * render — catching at the container level would lose them all.
+   * Read one property, then walk it. The read is what throws (an asserting
+   * getter), so only the read is guarded: a bad field degrades to one
+   * `unreadable` leaf while its siblings still render.
    */
   function walkProperty(container: unknown, key: string, depth: number): JsonNode {
+    let value_: unknown = undefined;
     try {
-      return walk((container as Record<string, unknown>)[key], depth);
+      value_ = (container as Record<string, unknown>)[key];
     } catch (error) {
-      // Only the read reaches here — `walk` itself never throws.
       return unreadable(error);
     }
+    return walk(value_, depth);
   }
 
   function walkLeaf(input: unknown): JsonNode | undefined {
@@ -151,6 +143,14 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
       default: {
         break;
       }
+    }
+    // A revoked proxy throws on every operation — `instanceof`, `unwrap`,
+    // `Array.isArray`, `Object.keys` — so probe it once here, where it first
+    // reaches an object operation, and render it as a leaf.
+    try {
+      Object.getPrototypeOf(input);
+    } catch (error) {
+      return unreadable(error);
     }
     // Date is a leaf too, but counts as an object to `typeof`.
     if (input instanceof Date) {

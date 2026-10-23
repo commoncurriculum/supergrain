@@ -79,7 +79,7 @@ describe("effect — never observes a half-applied batch", () => {
           const store = createReactive({ a: 0, b: 100 });
           const observed: Array<number> = [];
 
-          effect(() => {
+          using _stop = effect(() => {
             observed.push(store.a + store.b);
           });
 
@@ -105,7 +105,7 @@ describe("effect — never observes a half-applied batch", () => {
           const store = createReactive({ n: 0 });
           let last = Number.NaN;
 
-          effect(() => {
+          using _stop = effect(() => {
             last = store.n;
           });
 
@@ -201,7 +201,7 @@ describe("stableComputed — reconciles to exactly a fresh recompute", () => {
           const subscriber = vi.fn(() => {
             void derived().join(",");
           });
-          effect(subscriber);
+          using _stop = effect(subscriber);
           const before = subscriber.mock.calls.length;
 
           for (let i = 0; i < store.items.length; i++) {
@@ -224,7 +224,7 @@ describe("stableComputed — reconciles to exactly a fresh recompute", () => {
         const subscriber = vi.fn(() => {
           void derived().join(",");
         });
-        effect(subscriber);
+        using _stop = effect(subscriber);
         const before = subscriber.mock.calls.length;
 
         store.items.push(seed * 2); // an even value — the projection grows
