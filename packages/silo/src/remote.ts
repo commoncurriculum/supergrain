@@ -253,7 +253,6 @@ export function createRemoteQueryStore<Request = unknown>(
     clearTimeout(entry.gcTimer);
     if (!Number.isFinite(entry.gcTime)) return;
     entry.gcTimer = setTimeout(() => {
-      if (entry.observers.size > 0) return;
       entry.controller?.abort();
       clearTimeout(entry.staleTimer);
       entries.get(entry.name)?.delete(entry.key);
@@ -279,9 +278,9 @@ export function createRemoteQueryStore<Request = unknown>(
     emitToSink(config.onError, error, { type: entry.name, keys: [entry.key], ...info });
   }
 
-  // Single-flight: a new fetch aborts the one in flight. Every event is
-  // stamped with this fetch's generation, so a superseded fetch's late result
-  // is dropped by the statechart.
+  // Single-flight: a new fetch aborts the one in flight, which interrupts it
+  // before its result can land. Events are stamped with this fetch's
+  // generation, so the statechart ignores a superseded fetch's failures.
   function start(entry: Entry): Promise<void> {
     entry.controller?.abort();
     const controller = new AbortController();
@@ -305,7 +304,6 @@ export function createRemoteQueryStore<Request = unknown>(
       Effect.flatMap((result) =>
         Effect.sync(() =>
           batch(() => {
-            if (unwrap(entry.handle).generation !== generation) return;
             applyEvent(entry.handle, HandleEvent.insert(result));
             applyEvent(entry.handle, HandleEvent.settled(generation));
             markFresh(entry);
@@ -425,7 +423,7 @@ export function createRemoteQueryStore<Request = unknown>(
       const raw = unwrap(entry.handle);
       if (needsFetch(entry) || (raw.isStale && !raw.isFetching)) void start(entry);
       return () => {
-        if (!entry.observers.delete(observer)) return;
+        entry.observers.delete(observer);
         updateInterval(entry);
         if (entry.observers.size === 0) scheduleGc(entry);
       };

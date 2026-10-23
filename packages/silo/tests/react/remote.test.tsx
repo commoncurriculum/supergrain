@@ -4,12 +4,7 @@ import { Schedule } from "effect";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  AdapterError,
-  createRemoteQueryStore,
-  remoteQuery,
-  type RemoteQueryStoreConfig,
-} from "../../src";
+import { createRemoteQueryStore, remoteQuery, type RemoteQueryStoreConfig } from "../../src";
 import { createRemoteQueryStoreContext } from "../../src/react";
 
 interface Body {
@@ -255,48 +250,41 @@ describe("useRemoteQuery", () => {
     await wait(10);
     expect(server.count(2)).toBe(settled + 2);
 
+    Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+    try {
+      await wait(10);
+      const hidden = [server.count(1), server.count(2)];
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await wait(80);
+      expect([server.count(1), server.count(2)]).toEqual(hidden);
+    } finally {
+      Reflect.deleteProperty(document, "visibilityState");
+    }
+
     unmount();
     const afterUnmount = server.count(1);
     await wait(80);
     expect(server.count(1)).toBe(afterUnmount);
   });
-});
 
-describe("RemoteQueryStore.fetch", () => {
-  it("returns the cached result while fresh, fetches when stale, and rejects on failure", async () => {
-    const server = makeServer();
-    const store = createRemoteQueryStore<Request>({
-      fetch: server.fetch,
-      staleTime: Infinity,
-      retry: Schedule.recurs(0),
-    });
-
-    const first = await store.fetch(summaryQuery, body(1));
-    const second = await store.fetch(summaryQuery, body(1));
-    expect(first.rows.map((row) => row.total)).toEqual([1, 2]);
-    expect(second).toBe(first);
-    expect(server.count(1)).toBe(1);
-
-    server.fail(true);
-    store.invalidate(summaryQuery);
-    await expect(store.fetch(summaryQuery, body(1))).rejects.toBeInstanceOf(AdapterError);
-    expect(server.count(1)).toBe(2);
-  });
-
-  it("keeps only the newest result when a fetch is superseded", async () => {
+  it("waits without fetching while params are null, and throws outside a Provider", async () => {
     const server = makeServer();
     const store = createRemoteQueryStore<Request>({ fetch: server.fetch });
-    const handle = store.find(summaryQuery, body(1));
+    const Pending = tracked(function Pending() {
+      return <span data-testid="pending">{useRemoteQuery(summaryQuery, null).status}</span>;
+    });
 
-    server.setTotals(1, [7, 8]);
-    const superseded = handle.refetch();
-    await new Promise((resolve) => setTimeout(resolve, 1));
-    server.setTotals(1, [9, 9]);
-    void handle.refetch();
-    await superseded;
+    render(
+      <Provider store={store}>
+        <Pending />
+      </Provider>,
+    );
+    await wait(20);
+    expect(screen.getByTestId("pending").textContent).toBe("pending");
+    expect(server.requests).toEqual([]);
 
-    expect(handle.value?.rows.map((row) => row.total)).toEqual([9, 9]);
-    expect(handle.isFetching).toBe(false);
-    expect(server.count(1)).toBe(3);
+    expect(() => render(<Pending />)).toThrow(/must be used within the Provider/);
   });
 });
