@@ -82,17 +82,35 @@ Every component is flagged by default, not just ones provably reading reactive
 state — proving that needs type information a linter doesn't have, and a miss
 here is a silent bug, while a needless wrapper costs nothing.
 
-| Option         | Default | Effect                                                                                               |
-| -------------- | ------- | ---------------------------------------------------------------------------------------------------- |
-| `onlyReactive` | `false` | Only flag components calling a known reactive hook. Quieter, but misses reactivity arriving by prop. |
-| `storeHooks`   | `[]`    | Extra hook names that read reactive state, for `onlyReactive`.                                       |
+| Option          | Default            | Effect                                                                                               |
+| --------------- | ------------------ | ---------------------------------------------------------------------------------------------------- |
+| `onlyReactive`  | `false`            | Only flag components calling a known reactive hook. Quieter, but misses reactivity arriving by prop. |
+| `storeHooks`    | `[]`               | Extra hook names that read reactive state, for `onlyReactive`. Matched by name, from any import.     |
+| `importSources` | `["@supergrain/"]` | Modules whose exports count as supergrain's — see [Import sources](#import-sources).                 |
 
-`storeHooks` exists because `createStoreContext()` returns a hook you name
-yourself, usually in another module:
+Under `onlyReactive`, supergrain's own hooks (`useReactive`, `useComputed`,
+`useReactivePromise`, …) count only when imported from a supergrain module, so
+an unrelated `useQuery` from `@tanstack/react-query` doesn't. Hooks
+destructured from `createStoreContext()` or `createDocumentStoreContext()` in
+the same file count too. `storeHooks` covers the rest: those factories return
+hooks you name yourself, usually in another module:
 
 ```jsonc
 "supergrain/require-tracked": ["error", { "onlyReactive": true, "storeHooks": ["useStore", "useSession"] }]
 ```
+
+A component passed to `tracked()` by name is tracked, wherever it is
+declared:
+
+```tsx
+function RowImpl() {
+  return <tr />;
+}
+export const Row = tracked(RowImpl); // RowImpl is not reported
+```
+
+Default exports are components however they are written, so
+`export default () => <div />` is reported too.
 
 ### `no-async-batch`
 
@@ -114,6 +132,27 @@ batch(() => {
 });
 ```
 
+## Import sources
+
+Both rules only fire on bindings imported from a supergrain module, so a
+project's own `batch()` or `tracked()` is left alone. If you re-export
+supergrain from a barrel, list it in `importSources` for each rule:
+
+```jsonc
+"supergrain/require-tracked": ["error", { "importSources": ["@supergrain/", "@/lib/state"] }],
+"supergrain/no-async-batch": ["error", { "importSources": ["@supergrain/", "@/lib/state"] }]
+```
+
+An entry ending in `/` is a prefix. Any other entry is a module, matched
+exactly or through a subpath: `@/lib/state` covers `@/lib/state/react`, not
+`@/lib/statement`. Relative specifiers differ from file to file, so use a path
+alias for the barrel. Setting the option replaces the default, so keep
+`"@supergrain/"` in the list.
+
+If the barrel is missing from the list, `require-tracked` reports every
+component wrapped in its `tracked` — which is how the misconfiguration shows
+up — and `no-async-batch` reports nothing.
+
 ## Known limits
 
 - **No type information.** Rules identify supergrain values by tracking imports
@@ -126,6 +165,16 @@ batch(() => {
   resolve; `import * as sg` then `sg.batch(...)` does not.
 - **Component detection follows React's own convention** — a capitalised name
   that renders JSX. A component assigned to a lowercase name is not seen.
+- **Only `tracked`, `memo` and `forwardRef` are walked through.** A component
+  built by any other higher-order function (`const Row = withTheme(() => …)`)
+  is not seen, and neither is one declared as a class or an object method.
+- **`tracked(RowImpl)` suppresses by direct argument only.** `tracked(memo(RowImpl))`
+  still reports `RowImpl`.
+- **`no-async-batch` resolves a named callback only within the file**, and only
+  when it is a function declaration or a `const` bound to a function.
+  `batch(save)` where `save` is a parameter, an import, a `let`, or a function
+  returned by another call is not checked. Neither is a sync function that
+  returns a Promise (`batch(() => load())`).
 
 ## Development
 

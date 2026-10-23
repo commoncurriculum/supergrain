@@ -12,8 +12,10 @@ export default defineConfig({
       fileName: "index",
     },
     rollupOptions: {
-      // `@oxlint/plugins` is only type helpers plus pass-through functions, but
-      // it stays external so a consumer's oxlint and the plugin agree on it.
+      // The source imports `@oxlint/plugins` for types only, so nothing from
+      // it should reach the bundle. Keeping it external means a stray runtime
+      // import shows up as an import in dist (which tests/dist.test.ts
+      // rejects) rather than being silently inlined.
       external: ["@oxlint/plugins"],
     },
   },

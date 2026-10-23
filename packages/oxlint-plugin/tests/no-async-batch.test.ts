@@ -49,6 +49,29 @@ tester.run("no-async-batch", rule, {
     // A non-function first argument.
     `import { batch } from "@supergrain/kernel";
      batch(someCallback);`,
+
+    // A named callback that resolves to a sync function.
+    `import { batch } from "@supergrain/kernel";
+     function apply() { store.a = 1; }
+     batch(apply);`,
+
+    // A parameter could be anything — not resolved.
+    `import { batch } from "@supergrain/kernel";
+     function run(cb) { batch(cb); }`,
+
+    // A `let` may be reassigned before the call — not resolved. Documented.
+    `import { batch } from "@supergrain/kernel";
+     let save = async () => {};
+     batch(save);`,
+
+    // A local shadowing the async function is what the call sees.
+    `import { batch } from "@supergrain/kernel";
+     const save = async () => {};
+     function run() { const save = () => {}; batch(save); }`,
+
+    // A barrel is not recognised until it is listed in importSources.
+    `import { batch } from "@/lib/state";
+     batch(async () => {});`,
   ],
 
   invalid: [
@@ -67,6 +90,27 @@ tester.run("no-async-batch", rule, {
       // Async function expression, not just arrows.
       code: `import { batch } from "@supergrain/kernel";
              batch(async function () { await x(); });`,
+      errors: [{ messageId: "asyncBatch" }],
+    },
+    {
+      // A locally declared async function, passed by name.
+      code: `import { batch } from "@supergrain/kernel";
+             async function save() { store.a = await load(); }
+             batch(save);`,
+      errors: [{ messageId: "asyncBatch" }],
+    },
+    {
+      // A const bound to an async arrow, passed by name from a nested scope.
+      code: `import { batch } from "@supergrain/kernel";
+             const save = async () => { store.a = await load(); };
+             function run() { batch(save); }`,
+      errors: [{ messageId: "asyncBatch" }],
+    },
+    {
+      // importSources: a project barrel that re-exports batch.
+      code: `import { batch } from "@/lib/state";
+             batch(async () => {});`,
+      options: [{ importSources: ["@supergrain/", "@/lib/state"] }],
       errors: [{ messageId: "asyncBatch" }],
     },
   ],

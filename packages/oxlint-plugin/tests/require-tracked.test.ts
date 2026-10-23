@@ -67,6 +67,49 @@ tester.run("require-tracked", rule, {
 
     // Anonymous arrow: no capitalised name to judge by.
     `${TRACKED}const x = () => <tr />;`,
+
+    // Wrapped after declaration: the declaration is the implementation of a
+    // tracked component, not a component of its own.
+    `${TRACKED}function RowImpl() { return <tr />; }
+     export const Row = tracked(RowImpl);`,
+    `${TRACKED}const RowImpl = () => <tr />;
+     export const Row = tracked(RowImpl);`,
+    // Order doesn't matter: function declarations hoist.
+    `${TRACKED}export const Row = tracked(RowImpl);
+     function RowImpl() { return <tr />; }`,
+
+    // A call that isn't a component wrapper takes the function as an argument;
+    // what it binds is a rendered element, not a component.
+    `${TRACKED}import { useMemo } from "react";
+     const List = tracked(() => {
+       const Content = useMemo(() => <div />, []);
+       return Content;
+     });`,
+
+    // Default exports are components too, and this one is tracked.
+    `${TRACKED}export default tracked(() => <div />);`,
+    `${TRACKED}const Row = tracked(() => <tr />);
+     export default Row;`,
+
+    // onlyReactive: a hook that merely shares a supergrain hook's name is not
+    // supergrain's, so it doesn't make the component reactive.
+    {
+      code: `${TRACKED}import { useQuery } from "@tanstack/react-query";
+             function Row() { const q = useQuery({}); return <tr>{q.data}</tr>; }`,
+      options: [{ onlyReactive: true }],
+    },
+    // ... nor does one that isn't imported at all.
+    {
+      code: `${TRACKED}function Row() { const s = useReactive({ n: 0 }); return <tr>{s.n}</tr>; }`,
+      options: [{ onlyReactive: true }],
+    },
+
+    // importSources: a barrel that re-exports supergrain's tracked.
+    {
+      code: `import { tracked } from "@/lib/state";
+             const Row = tracked(() => <tr />);`,
+      options: [{ importSources: ["@supergrain/", "@/lib/state"] }],
+    },
   ],
 
   invalid: [
@@ -124,6 +167,65 @@ tester.run("require-tracked", rule, {
       code: `${TRACKED}import { useReactive } from "@supergrain/kernel/react";
              function Row() { const s = useReactive({ n: 0 }); return <tr>{s.n}</tr>; }`,
       options: [{ onlyReactive: true }],
+      errors: [{ messageId: "untracked" }],
+    },
+    {
+      // Passing a declaration to a `tracked` that isn't supergrain's proves nothing.
+      code: `import { tracked } from "./my-hoc";
+             function RowImpl() { return <tr />; }
+             export const Row = tracked(RowImpl);`,
+      errors: [{ messageId: "untracked" }],
+    },
+    {
+      // Without importSources, a barrel's tracked is not recognised — reported,
+      // so the misconfiguration surfaces instead of hiding every component.
+      code: `import { tracked } from "@/lib/state";
+             const Row = tracked(() => <tr />);`,
+      errors: [{ messageId: "untracked" }],
+    },
+    {
+      // A module entry matches its subpaths but not a longer name.
+      code: `import { tracked } from "@/lib/statement";
+             const Row = tracked(() => <tr />);`,
+      options: [{ importSources: ["@/lib/state"] }],
+      errors: [{ messageId: "untracked" }],
+    },
+    {
+      code: `${TRACKED}export default () => <div />;`,
+      errors: [{ messageId: "untrackedDefault" }],
+    },
+    {
+      code: `${TRACKED}export default function () { return <div />; }`,
+      errors: [{ messageId: "untrackedDefault" }],
+    },
+    {
+      code: `${TRACKED}export default (function () { return <div />; });`,
+      errors: [{ messageId: "untrackedDefault" }],
+    },
+    {
+      code: `${TRACKED}import { memo } from "react";
+             export default memo(() => <div />);`,
+      errors: [{ messageId: "untrackedDefault" }],
+    },
+    {
+      // React.forwardRef is walked through like memo.
+      code: `${TRACKED}import React from "react";
+             const Input = React.forwardRef((props, ref) => <input ref={ref} />);`,
+      errors: [{ messageId: "untracked" }],
+    },
+    {
+      // onlyReactive: a hook destructured from a supergrain factory in this file.
+      code: `import { createStoreContext } from "@supergrain/kernel/react";
+             const { Provider, useStore } = createStoreContext();
+             function Row() { const s = useStore(); return <tr>{s.n}</tr>; }`,
+      options: [{ onlyReactive: true }],
+      errors: [{ messageId: "untracked" }],
+    },
+    {
+      // onlyReactive: a silo hook re-exported by a configured barrel.
+      code: `import { useDocument } from "@/store";
+             function Row() { const d = useDocument("todo", "1"); return <tr>{d.data}</tr>; }`,
+      options: [{ onlyReactive: true, importSources: ["@supergrain/", "@/store"] }],
       errors: [{ messageId: "untracked" }],
     },
     {

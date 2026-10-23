@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/oxlint-plugin",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Oxlint rules that catch silently non-reactive Supergrain code",
   "keywords": [
     "eslint",
