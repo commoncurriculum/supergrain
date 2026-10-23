@@ -2,7 +2,7 @@ import { tracked } from "@supergrain/kernel/react";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { Schedule } from "effect";
 import { StrictMode } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createRemoteQueryStore, remoteQuery, type RemoteQueryStoreConfig } from "../../src";
 import { createRemoteQueryStoreContext } from "../../src/react";
@@ -138,7 +138,7 @@ describe("useRemoteQuery", () => {
 
   it("refetches on mount only once the result is older than that component's staleTime", async () => {
     const server = makeServer();
-    const store = createRemoteQueryStore<Request>({ fetch: server.fetch, staleTime: 60 });
+    const store = createRemoteQueryStore<Request>({ fetch: server.fetch, staleTime: 60_000 });
     const Total = tracked(function Total({ staleTime }: { staleTime?: number }) {
       return <span>{useRemoteQuery(summaryQuery, body(1), { staleTime }).value?.groupId}</span>;
     });
@@ -148,21 +148,26 @@ describe("useRemoteQuery", () => {
           <Total staleTime={staleTime} />
         </Provider>,
       );
+    // Only the clock is faked, so a result's age doesn't depend on how loaded the machine is.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      mount().unmount();
+      await wait(20);
+      mount().unmount();
+      await wait(10);
+      expect(server.count(1)).toBe(1);
 
-    mount().unmount();
-    await wait(20);
-    mount().unmount();
-    await wait(10);
-    expect(server.count(1)).toBe(1);
+      vi.setSystemTime(Date.now() + 60_000);
+      mount(Infinity).unmount();
+      await wait(10);
+      expect(server.count(1)).toBe(1);
 
-    await wait(60);
-    mount(Infinity).unmount();
-    await wait(10);
-    expect(server.count(1)).toBe(1);
-
-    mount().unmount();
-    await wait(10);
-    expect(server.count(1)).toBe(2);
+      mount().unmount();
+      await wait(10);
+      expect(server.count(1)).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("drops a result gcTime after its last component unmounts", async () => {
