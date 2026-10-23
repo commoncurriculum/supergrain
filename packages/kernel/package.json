@@ -1,6 +1,6 @@
 {
   "name": "@supergrain/kernel",
-  "version": "7.0.1",
+  "version": "7.4.0",
   "description": "Core reactive store implementation for Supergrain.",
   "keywords": [
     "kernel",
@@ -66,7 +66,7 @@
     "bench:additional": "vitest bench benchmarks/additional.bench.ts",
     "bench:libraries": "vitest bench benchmarks/state-libraries.bench.ts",
     "bench:react": "vitest bench --config vitest.bench.config.ts",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit && tsgo --noEmit -p tsconfig.no-disposable.json"
   },
   "dependencies": {
     "alien-signals": "^3.2.1"
@@ -87,7 +87,7 @@
     "jotai": "^2.14.0",
     "magic-string": "^0.30.17",
     "mobx": "^6.13.7",
-    "playwright": "^1.55.0",
+    "playwright": "^1.61.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "solid-js": "^1.9.9",

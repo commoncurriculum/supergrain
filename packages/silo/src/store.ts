@@ -16,6 +16,11 @@ import {
   type ResolvedAdapterOptions,
 } from "./resolve";
 import { type AdapterFailureInfo, runAdapter } from "./run-adapter";
+import {
+  combineDocumentsTogether,
+  type DocumentsTogetherHandle,
+  IDLE_DOCUMENTS_TOGETHER_HANDLE,
+} from "./together";
 import { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./transitions";
 
 interface InternalState {
@@ -110,7 +115,7 @@ export type HandleStatus = "pending" | "success" | "error";
  * first-load error hands out a NEW resolved promise so a Suspense boundary
  * nested in an error boundary can recover.
  */
-type HandlePromise<T> = Promise<T> | undefined;
+export type HandlePromise<T> = Promise<T> | undefined;
 
 /**
  * Reactive handle for a single document — a `status`-discriminated union over
@@ -166,6 +171,9 @@ export type DocumentHandle<T, E = SiloError> =
       readonly lastError: E | undefined;
       readonly promise: HandlePromise<T>;
     };
+
+// The all-or-nothing batch view over these handles — `DocumentsTogetherHandle`
+// and its aggregation machinery — lives in ./together.
 
 // =============================================================================
 // DocumentAdapter — consumer-owned transport (Effect-based)
@@ -383,6 +391,27 @@ export interface DocumentStore<
   Q extends QueryTypes = Record<string, never>,
 > {
   find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]>;
+  /**
+   * Find many documents of one type by id, returning one **independent**
+   * {@link DocumentHandle} per id (each fetched via `find`), in id order — every
+   * handle settles on its own. A `null` / `undefined` `ids` yields an empty
+   * array. A fresh array each call; the handles inside are stable (`find` is
+   * idempotent), so `useDocumentsIndividually` layers render-stability on top.
+   */
+  findDocumentsIndividually<K extends keyof M & string>(
+    type: K,
+    ids: string[] | null | undefined,
+  ): Array<DocumentHandle<M[K]>>;
+  /**
+   * Find many documents of one type by id as an **all-or-nothing** batch,
+   * returning a single {@link DocumentsTogetherHandle} that settles once every
+   * document has loaded (or as soon as one fails). A `null` / `undefined` `ids`
+   * yields an idle handle; empty `ids` is immediately `success` with `value: []`.
+   */
+  findDocumentsTogether<K extends keyof M & string>(
+    type: K,
+    ids: string[] | null | undefined,
+  ): DocumentsTogetherHandle<M[K]>;
   findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined;
   insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void;
   findQuery<K extends keyof Q & string>(
@@ -440,6 +469,8 @@ export interface StoreAdapterRunOptions extends AdapterOptionOverrides {
   readonly onFailure?: (error: AdapterError, info: AdapterFailureInfo) => void;
 }
 
+// The never-fetching handle for a `null` / `undefined` key. Serves both `find`
+// and `findQuery` (a QueryHandle is field-compatible), hence the neutral name.
 const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   value: undefined,
   error: undefined,
@@ -568,6 +599,29 @@ export function createDocumentStore<
         finder.queueDocument(type, id);
       }
       return handle as unknown as DocumentHandle<M[K]>;
+    },
+
+    findDocumentsIndividually<K extends keyof M & string>(
+      type: K,
+      ids: string[] | null | undefined,
+    ): Array<DocumentHandle<M[K]>> {
+      if (ids === null || ids === undefined) return [];
+      // `find` is stable + idempotent: same reactive handle per id, and it only
+      // enqueues a fetch when one is needed — so mapping over ids both triggers
+      // the loads and collects the handles in id order. Batch to combine find's
+      // internal batch calls.
+      // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
+      return batch(() => ids.map((id) => store.find(type, id)));
+    },
+
+    findDocumentsTogether<K extends keyof M & string>(
+      type: K,
+      ids: string[] | null | undefined,
+    ): DocumentsTogetherHandle<M[K]> {
+      if (ids === null || ids === undefined) return IDLE_DOCUMENTS_TOGETHER_HANDLE;
+      // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
+      const handles = batch(() => ids.map((id) => store.find(type, id)));
+      return combineDocumentsTogether(handles);
     },
 
     findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined {

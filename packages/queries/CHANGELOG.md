@@ -1,5 +1,45 @@
 # @supergrain/queries
 
+## 7.4.0
+
+### Patch Changes
+
+- Updated dependencies [59b21c7]
+- Updated dependencies [59b21c7]
+  - @supergrain/kernel@7.4.0
+  - @supergrain/silo@7.4.0
+
+## 7.3.1
+
+### Patch Changes
+
+- @supergrain/kernel@7.3.1
+- @supergrain/silo@7.3.1
+
+## 7.3.0
+
+### Patch Changes
+
+- Updated dependencies [22c5b7c]
+  - @supergrain/kernel@7.3.0
+  - @supergrain/silo@7.3.0
+
+## 7.2.0
+
+### Patch Changes
+
+- Updated dependencies [9dffca6]
+- Updated dependencies [9dffca6]
+  - @supergrain/kernel@7.2.0
+  - @supergrain/silo@7.2.0
+
+## 7.1.0
+
+### Patch Changes
+
+- @supergrain/kernel@7.1.0
+- @supergrain/silo@7.1.0
+
 ## 7.0.1
 
 ### Patch Changes

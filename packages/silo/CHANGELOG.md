@@ -1,5 +1,54 @@
 # @supergrain/silo
 
+## 7.4.0
+
+### Patch Changes
+
+- Updated dependencies [59b21c7]
+- Updated dependencies [59b21c7]
+  - @supergrain/kernel@7.4.0
+
+## 7.3.1
+
+### Patch Changes
+
+- @supergrain/kernel@7.3.1
+
+## 7.3.0
+
+### Patch Changes
+
+- Updated dependencies [22c5b7c]
+  - @supergrain/kernel@7.3.0
+
+## 7.2.0
+
+### Minor Changes
+
+- 9dffca6: Add multi-document reads in two shapes:
+
+  - `store.findDocumentsIndividually(type, ids)` / `useDocumentsIndividually(type, ids)`
+    return one **independent** `DocumentHandle` per id (in id order); each settles
+    on its own, so you can render each document as it arrives.
+  - `store.findDocumentsTogether(type, ids)` / `useDocumentsTogether(type, ids)`
+    return a single **all-or-nothing** `DocumentsTogetherHandle`: `pending` until
+    every document has loaded, `success` with `value` = all documents in id order
+    once they have, `error` if any fails (with a combined `promise` for `use()`).
+
+  Both batch their fetches through `store.find`, so N ids collapse into one
+  `adapter.find(ids)` call.
+
+### Patch Changes
+
+- Updated dependencies [9dffca6]
+  - @supergrain/kernel@7.2.0
+
+## 7.1.0
+
+### Patch Changes
+
+- @supergrain/kernel@7.1.0
+
 ## 7.0.1
 
 ### Patch Changes

@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
-import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
+
+import { playwrightProvider } from "../../vitest.playwright";
 
 const conditions = ["@supergrain/source"];
 
@@ -9,7 +10,7 @@ export default defineConfig({
   test: {
     browser: {
       enabled: true,
-      provider: playwright() as any,
+      provider: playwrightProvider() as any,
       headless: true,
       instances: [
         {

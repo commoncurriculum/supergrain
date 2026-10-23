@@ -1,2 +1,7 @@
-@import url("/css/bootstrap/dist/css/bootstrap.min.css");
+/* Bootstrap comes from the npm dependency, not a checked-in copy — the old
+   /css/bootstrap/dist path was gitignored, so fresh clones and CI had no file
+   and the vite build failed. postcss-import resolves the bare specifier from
+   node_modules. (The js-framework-benchmark repo serves its own /css tree, and
+   this file is not among those copied for submission, so this is local-only.) */
+@import url("bootstrap/dist/css/bootstrap.min.css");
 @import url("/css/main.css");

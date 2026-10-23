@@ -117,15 +117,6 @@ export function removeIndices(arr: Array<any>, shouldRemove: (index: number) => 
   setProperty(arr, "length", writeIndex);
 }
 
-export function isContiguousAscending(indices: Array<number>): boolean {
-  for (let i = 1; i < indices.length; i++) {
-    if (indices[i] !== indices[i - 1]! + 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
 function compareScalar(a: any, b: any): number {
   if (a < b) return -1;
   if (a > b) return 1;

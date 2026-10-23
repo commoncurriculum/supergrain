@@ -1,7 +1,7 @@
-import { docsImageRoute } from './shared';
+import { docsImageRoute } from "./shared";
 
 export function getPageImagePath(slugs: string[]) {
-  const segments = [...slugs, 'image.webp'];
+  const segments = [...slugs, "image.webp"];
 
-  return `${docsImageRoute}/${segments.join('/')}`;
+  return `${docsImageRoute}/${segments.join("/")}`;
 }

@@ -1,6 +1,8 @@
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
+import { KRAUSE_WEIGHTS } from "./perf-weights.ts";
+
 const dir = import.meta.dirname;
 const args = process.argv.slice(2);
 
@@ -10,19 +12,7 @@ if (args.length !== 2) {
   process.exit(1);
 }
 
-// Krause benchmark weights (from js-framework-benchmark scoring)
-// Maps our benchmark names to their weights
-const weights: Record<string, number> = {
-  "create rows (1k)": 0.64,
-  "replace all rows": 0.56,
-  "partial update (10th)": 0.56,
-  "select row": 0.19,
-  "swap rows": 0.13,
-  "remove row": 0.53,
-  "create many rows (10k)": 0.56,
-  "append rows (1k to 1k)": 0.55,
-  "clear rows": 0.42,
-};
+const weights = KRAUSE_WEIGHTS;
 
 const [baselineName, compareName] = args;
 const baselinePath = resolve(dir, `perf-stats-${baselineName}.json`);
@@ -101,3 +91,20 @@ console.log(
     fmtPct(baseWeightedTotal, compWeightedTotal).padStart(cols.diff),
 );
 console.log();
+
+// Stats saved before the memory benchmarks existed have no `memory` section.
+if (baseline.memory && compare.memory) {
+  console.log("Memory (MB retained after a forced GC)");
+  console.log(sep);
+  for (const name of Object.keys(baseline.memory)) {
+    const bm = baseline.memory[name].mean;
+    const cm = compare.memory[name].mean;
+    console.log(
+      name.padEnd(cols.name) +
+        `${bm.toFixed(2)}MB`.padStart(cols.base) +
+        `${cm.toFixed(2)}MB`.padStart(cols.comp) +
+        fmtPct(bm, cm).padStart(cols.diff),
+    );
+  }
+  console.log();
+}

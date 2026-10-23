@@ -9,3 +9,11 @@
 # The repo-root .gitignore ignores `lib/` (build artifacts), which would swallow
 # our source directory app/lib. Re-include it.
 !app/lib/
+
+# Package reference pages, generated from packages/*/README.md by
+# scripts/generate-readme-pages.mjs (listed in readme-pages.json).
+/content/docs/kernel.md
+/content/docs/husk.md
+/content/docs/silo.md
+/content/docs/queries.md
+/content/docs/mill.md

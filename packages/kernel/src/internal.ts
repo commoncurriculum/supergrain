@@ -1,6 +1,15 @@
 // Internal entrypoint consumed by sibling Supergrain packages.
 // Not re-exported from the package root.
-export { $NODE, $OWN_KEYS, $PROXY, $RAW, $VERSION, type ReactiveTagged } from "./core";
+export {
+  $ELEMENTS,
+  $NODE,
+  $OWN_KEYS,
+  $PROXY,
+  $RAW,
+  $VERSION,
+  trackArrayElements,
+  type ReactiveTagged,
+} from "./core";
 export { setProperty, deleteProperty, bumpOwnKeysSignal, bumpVersion } from "./write";
 export { profileSignalWrite } from "./profiler";
 
@@ -10,3 +19,7 @@ export { profileSignalWrite } from "./profiler";
 // that other code assumes is restored. Public users should reach for `batch()`
 // from `@supergrain/kernel` instead.
 export { startBatch, endBatch, getActiveSub, setActiveSub } from "alien-signals";
+
+// Attaches a `[Symbol.dispose]` to an object so it works with `using`. Used by
+// husk to make resources `Disposable`.
+export { makeDisposable } from "./disposable";

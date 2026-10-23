@@ -1,16 +1,18 @@
-import type { Route } from './+types/home';
-import { HomeLayout } from 'fumadocs-ui/layouts/home';
-import { Link } from 'react-router';
-import { baseOptions } from '@/lib/layout.shared';
-import { gitConfig } from '@/lib/shared';
+import type { Route } from "./+types/home";
+
+import { HomeLayout } from "fumadocs-ui/layouts/home";
+import { Link } from "react-router";
+
+import { baseOptions } from "@/lib/layout.shared";
+import { gitConfig } from "@/lib/shared";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: 'Supergrain — reactive state for React' },
+    { title: "Supergrain — reactive state for React" },
     {
-      name: 'description',
+      name: "description",
       content:
-        'A reactive store library for React with super fine-grained reactivity. Mutate state directly; re-render only the leaf that changed.',
+        "A reactive store library for React with super fine-grained reactivity. Mutate state directly; re-render only the leaf that changed.",
     },
   ];
 }
@@ -26,8 +28,8 @@ export default function Home() {
           Mutate state directly. Re-render only the leaf that changed.
         </h1>
         <p className="mb-8 max-w-2xl text-fd-muted-foreground">
-          Supergrain gives you plain objects with super fine-grained reactivity —
-          no reducers, no selectors, no ceremony.
+          Supergrain gives you plain objects with super fine-grained reactivity — no reducers, no
+          selectors, no ceremony.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link

@@ -1,7 +1,7 @@
 import { tracked } from "@supergrain/kernel/react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Effect, Schedule } from "effect";
-import { type ReactNode, StrictMode } from "react";
+import { type ReactNode, StrictMode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -75,8 +75,14 @@ afterEach(() => {
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-const { Provider, useDocument, useDocumentStore, useQuery } =
-  createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
+const {
+  Provider,
+  useDocument,
+  useDocumentsIndividually,
+  useDocumentsTogether,
+  useDocumentStore,
+  useQuery,
+} = createDocumentStoreContext<DocumentStore<TypeToModel, TypeToQuery>>();
 
 const userAdapter: DocumentAdapter = {
   find: (ids) =>
@@ -166,6 +172,57 @@ const UserList = tracked(function UserList({ ids }: { ids: ReadonlyArray<string>
           <li key={handle.value.id}>{handle.value.attributes.firstName}</li>
         ) : null,
       )}
+    </ul>
+  );
+});
+
+// Individually: one handle per id, each rendering its own loading/error/value.
+const UserRosterIndividually = tracked(function UserRosterIndividually({
+  ids,
+}: {
+  ids: ReadonlyArray<string> | null;
+}) {
+  const idList = ids == null ? [] : [...ids];
+  const handles = useDocumentsIndividually("user", ids == null ? null : idList);
+
+  if (handles.length === 0) return <span>no roster</span>;
+
+  return (
+    <ul>
+      {handles.map((handle, i) => (
+        // Key by the requested id (handles are in id order) so a row stays with
+        // its document across reorder/insert/remove — never the array index.
+        <li key={idList[i]}>
+          {handle.status === "pending"
+            ? "loading"
+            : handle.status === "error"
+              ? "error"
+              : handle.value.attributes.firstName}
+        </li>
+      ))}
+    </ul>
+  );
+});
+
+// Together: the all-or-nothing batch — idle for no ids, loading until every id
+// is in, an error banner if any fails, else the full list.
+const UserRosterTogether = tracked(function UserRosterTogether({
+  ids,
+}: {
+  ids: ReadonlyArray<string> | null;
+}) {
+  const docs = useDocumentsTogether("user", ids == null ? null : [...ids]);
+
+  if (ids == null || ids.length === 0) return <span>no roster</span>;
+  if (docs.status === "error") return <span>error</span>;
+  if (docs.status === "pending") return <span>loading</span>;
+
+  // `status === "success"` narrowed `docs.value` to the array — no `!` needed.
+  return (
+    <ul>
+      {docs.value.map((user) => (
+        <li key={user.id}>{user.attributes.firstName}</li>
+      ))}
     </ul>
   );
 });
@@ -282,6 +339,223 @@ describe("useDocumentStore + find composition", () => {
     // a per-attempt `Retrying` notification before the terminal `error`, so poll
     // for the end state instead of racing a single tick.
     expect(await screen.findByText("error")).toBeDefined();
+  });
+});
+
+// =============================================================================
+// useDocumentsIndividually — one handle per id, each settling on its own. A
+// pure reactive read; the returned array is held stable across renders (ref)
+// while the ids are unchanged.
+// =============================================================================
+
+describe("useDocumentsIndividually", () => {
+  it("renders 'no roster' when ids is null", () => {
+    render(
+      <Wrap>
+        <UserRosterIndividually ids={null} />
+      </Wrap>,
+    );
+    expect(screen.getByText("no roster")).toBeDefined();
+  });
+
+  it("renders 'no roster' for an empty ids array", () => {
+    render(
+      <Wrap>
+        <UserRosterIndividually ids={[]} />
+      </Wrap>,
+    );
+    expect(screen.getByText("no roster")).toBeDefined();
+  });
+
+  it("renders each row loading, then each value as its handle settles", async () => {
+    render(
+      <Wrap>
+        <UserRosterIndividually ids={["1", "2", "3"]} />
+      </Wrap>,
+    );
+
+    expect(screen.getAllByText("loading")).toHaveLength(3);
+
+    expect(await screen.findByText("User1", undefined, { timeout: 5000 })).toBeDefined();
+    expect(screen.getByText("User2")).toBeDefined();
+    expect(screen.getByText("User3")).toBeDefined();
+  });
+
+  it("renders cached values immediately with no loading rows", () => {
+    render(
+      <Wrap>
+        <SeedUser user={makeUser("1", { firstName: "Ada" })} />
+        <SeedUser user={makeUser("2", { firstName: "Grace" })} />
+        <UserRosterIndividually ids={["1", "2"]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("Ada")).toBeDefined();
+    expect(screen.getByText("Grace")).toBeDefined();
+    expect(screen.queryByText("loading")).toBeNull();
+  });
+
+  it("keeps a stable array identity across re-renders while ids are unchanged", () => {
+    const seen: Array<unknown> = [];
+
+    const Probe = tracked(function Probe() {
+      const [, force] = useState(0);
+      const handles = useDocumentsIndividually("user", ["1", "2"]);
+      seen.push(handles);
+      return (
+        <button type="button" onClick={() => force((n) => n + 1)}>
+          rerender
+        </button>
+      );
+    });
+
+    render(
+      <Wrap>
+        <Probe />
+      </Wrap>,
+    );
+
+    fireEvent.click(screen.getByText("rerender"));
+
+    expect(seen.length).toBeGreaterThan(1);
+    expect(seen.every((h) => h === seen[0])).toBe(true);
+  });
+
+  it("hands back a fresh array when the ids change to a same-length, different set", () => {
+    // Same length (2 → 2), all different handles — so the stability check has to
+    // compare elements, not just length.
+    const seen: Array<unknown> = [];
+
+    const Probe = tracked(function Probe({ ids }: { ids: Array<string> }) {
+      seen.push(useDocumentsIndividually("user", ids));
+      return null;
+    });
+
+    const { rerender } = render(
+      <Wrap>
+        <Probe ids={["1", "2"]} />
+      </Wrap>,
+    );
+    rerender(
+      <Wrap>
+        <Probe ids={["3", "4"]} />
+      </Wrap>,
+    );
+
+    expect(seen[0]).not.toBe(seen.at(-1));
+  });
+});
+
+// =============================================================================
+// useDocumentsTogether — the all-or-nothing batch hook. Pure reactive read; the
+// returned handle is held stable across renders (ref) while the ids are
+// unchanged, so use()/memoization see a stable object + promise.
+// =============================================================================
+
+describe("useDocumentsTogether", () => {
+  it("renders 'no roster' when ids is null", () => {
+    render(
+      <Wrap>
+        <UserRosterTogether ids={null} />
+      </Wrap>,
+    );
+    expect(screen.getByText("no roster")).toBeDefined();
+  });
+
+  it("renders 'no roster' for an empty ids array", () => {
+    render(
+      <Wrap>
+        <UserRosterTogether ids={[]} />
+      </Wrap>,
+    );
+    expect(screen.getByText("no roster")).toBeDefined();
+  });
+
+  it("renders loading until every id is in, then the full roster in id order", async () => {
+    render(
+      <Wrap>
+        <UserRosterTogether ids={["1", "2", "3"]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("loading")).toBeDefined();
+
+    expect(await screen.findByText("User1", undefined, { timeout: 5000 })).toBeDefined();
+    expect(screen.getByText("User2")).toBeDefined();
+    expect(screen.getByText("User3")).toBeDefined();
+  });
+
+  it("renders a fully-cached batch immediately with no loading state", () => {
+    render(
+      <Wrap>
+        <SeedUser user={makeUser("1", { firstName: "Ada" })} />
+        <SeedUser user={makeUser("2", { firstName: "Grace" })} />
+        <UserRosterTogether ids={["1", "2"]} />
+      </Wrap>,
+    );
+
+    expect(screen.getByText("Ada")).toBeDefined();
+    expect(screen.getByText("Grace")).toBeDefined();
+    expect(screen.queryByText("loading")).toBeNull();
+  });
+
+  it("surfaces a failing id as the batch error state", async () => {
+    usersShouldFail = true;
+
+    render(
+      <Wrap>
+        <UserRosterTogether ids={["1", "2"]} />
+      </Wrap>,
+    );
+
+    expect(await screen.findByText("error")).toBeDefined();
+  });
+
+  it("keeps a stable handle identity across re-renders while ids are unchanged", () => {
+    const seen: Array<unknown> = [];
+
+    const Probe = tracked(function Probe() {
+      const [, force] = useState(0);
+      seen.push(useDocumentsTogether("user", ["1", "2"]));
+      return (
+        <button type="button" onClick={() => force((n) => n + 1)}>
+          rerender
+        </button>
+      );
+    });
+
+    render(
+      <Wrap>
+        <Probe />
+      </Wrap>,
+    );
+
+    fireEvent.click(screen.getByText("rerender"));
+
+    expect(seen.length).toBeGreaterThan(1);
+    expect(seen.every((h) => h === seen[0])).toBe(true);
+  });
+
+  it("hands back a fresh handle when the ids change", () => {
+    const seen: Array<unknown> = [];
+
+    const Probe = tracked(function Probe({ ids }: { ids: Array<string> }) {
+      seen.push(useDocumentsTogether("user", ids));
+      return null;
+    });
+
+    const { rerender } = render(
+      <Wrap>
+        <Probe ids={["1", "2"]} />
+      </Wrap>,
+    );
+    rerender(
+      <Wrap>
+        <Probe ids={["1", "2", "3"]} />
+      </Wrap>,
+    );
+
+    expect(seen[0]).not.toBe(seen.at(-1));
   });
 });
 

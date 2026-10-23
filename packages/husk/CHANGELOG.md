@@ -1,5 +1,43 @@
 # @supergrain/husk
 
+## 7.4.0
+
+### Minor Changes
+
+- 59b21c7: Disposers now work with `using`. `effect(fn)` returns a `Disposer` — still callable as `stop()`, and also `Disposable`, so `using stop = effect(fn)` stops the effect at the end of the enclosing block. Husk's `resource`, `defineResource` instances, `reactivePromise`, and `reactiveTask` are `Disposable` too: `using` runs the same idempotent teardown as `dispose(x)`. The `Disposer` and `SymbolDisposable` types are exported from `@supergrain/kernel`; they fall back to plain types when your TypeScript `lib` doesn't declare `Symbol.dispose`, and runtimes without `Symbol.dispose` are unaffected.
+
+### Patch Changes
+
+- Updated dependencies [59b21c7]
+- Updated dependencies [59b21c7]
+  - @supergrain/kernel@7.4.0
+
+## 7.3.1
+
+### Patch Changes
+
+- @supergrain/kernel@7.3.1
+
+## 7.3.0
+
+### Patch Changes
+
+- Updated dependencies [22c5b7c]
+  - @supergrain/kernel@7.3.0
+
+## 7.2.0
+
+### Patch Changes
+
+- Updated dependencies [9dffca6]
+  - @supergrain/kernel@7.2.0
+
+## 7.1.0
+
+### Patch Changes
+
+- @supergrain/kernel@7.1.0
+
 ## 7.0.1
 
 ### Patch Changes

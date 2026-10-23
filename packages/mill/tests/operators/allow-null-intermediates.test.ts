@@ -65,6 +65,55 @@ describe("allowNullIntermediates", () => {
     });
   });
 
+  it("$inc starts from 0 when the target is null", () => {
+    const store = createReactive<any>({ attributes: { _revision: null } });
+    expectRoundTrip(store, { $inc: { "attributes._revision": 1 } }, () => {
+      expect(store.attributes._revision).toBe(1);
+    });
+  });
+
+  it("$inc from a null target handles a negative delta and a zero delta", () => {
+    const decrement = createReactive<any>({ n: null });
+    expectRoundTrip(decrement, { $inc: { n: -3 } }, () => {
+      expect(decrement.n).toBe(-3);
+    });
+
+    // `null + 0` still writes: the field goes from null to the number 0, exactly
+    // as $inc-ing an absent field by 0 creates it in MongoDB.
+    const zero = createReactive<any>({ n: null });
+    expectRoundTrip(zero, { $inc: { n: 0 } }, () => {
+      expect(zero.n).toBe(0);
+    });
+  });
+
+  it("$mul starts from 0 when the target is null", () => {
+    const store = createReactive<any>({ n: null });
+    expectRoundTrip(store, { $mul: { n: 4 } }, () => {
+      expect(store.n).toBe(0);
+    });
+  });
+
+  it("$min / $max take the candidate when the target is null", () => {
+    const min = createReactive<any>({ n: null });
+    expectRoundTrip(min, { $min: { n: 7 } }, () => {
+      expect(min.n).toBe(7);
+    });
+
+    const max = createReactive<any>({ n: null });
+    expectRoundTrip(max, { $max: { n: 7 } }, () => {
+      expect(max.n).toBe(7);
+    });
+  });
+
+  it("a null target is only absent for the operator that writes it", () => {
+    // The option doesn't make nulls disappear: an untouched null stays put.
+    const store = createReactive<any>({ touched: null, untouched: null });
+    expectRoundTrip(store, { $inc: { touched: 2 } }, () => {
+      expect(store.touched).toBe(2);
+      expect(store.untouched).toBe(null);
+    });
+  });
+
   it("$pull / $pullAll / $pop no-op on a null target (leaving the null in place)", () => {
     for (const ops of [
       { $pull: { items: 1 } },
@@ -94,5 +143,11 @@ describe("allowNullIntermediates", () => {
 
     const pushStore = createReactive<any>({ a: null });
     expect(() => update(pushStore, {}, { $push: { a: 1 } })).toThrow(/must point to an array/i);
+
+    const incStore = createReactive<any>({ a: null });
+    expect(() => update(incStore, {}, { $inc: { a: 1 } })).toThrow(/must point to a number/i);
+
+    const mulStore = createReactive<any>({ a: null });
+    expect(() => update(mulStore, {}, { $mul: { a: 2 } })).toThrow(/must point to a number/i);
   });
 });

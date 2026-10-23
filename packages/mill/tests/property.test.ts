@@ -4,6 +4,7 @@ import { match } from "ts-pattern";
 import { describe, expect, it } from "vitest";
 
 import { update } from "../src";
+import { pathsConflict } from "../src/path";
 import { recordedUpdate } from "./helpers";
 
 interface MillState {
@@ -362,6 +363,137 @@ describe("property-based undo round-trip", () => {
         }
       }),
       { numRuns: 100 },
+    );
+  });
+});
+
+// ─── multi-path undo round-trip ──────────────────────────────────────────────
+//
+// Single-path updates can never make undo entries interact. The failure family
+// this hunts is several disjoint update paths whose *undo* paths collide:
+// branches the update itself creates, out-of-bounds array growth, and every
+// ordering of the two. For any legal combination, the generated undo must
+// itself be a legal update document (replaying must not throw) and replaying
+// it must restore the exact prior document.
+
+const pathKeyArbitrary = fc.constantFrom("a", "b", "c");
+const pathSegmentArbitrary = fc.oneof(pathKeyArbitrary, fc.constantFrom("0", "1", "5"));
+const pathArbitrary = fc
+  .array(pathSegmentArbitrary, { minLength: 1, maxLength: 3 })
+  .map((segments) => segments.join("."));
+
+// JSON-ish values/documents over the same tiny key alphabet, so generated
+// paths sometimes traverse existing structure and sometimes create it.
+const { value: valueArbitrary } = fc.letrec((tie) => ({
+  value: fc.oneof(
+    { depthSize: "small", withCrossShrink: true },
+    integerArbitrary,
+    fc.array(tie("value"), { maxLength: 3 }),
+    fc.dictionary(pathKeyArbitrary, tie("value"), { maxKeys: 2 }),
+  ),
+}));
+const documentArbitrary = fc.dictionary(pathKeyArbitrary, valueArbitrary, { maxKeys: 3 });
+
+// Keep only mutually non-conflicting paths — mill (like Mongo) rejects
+// conflicting forward paths up front, which is not the behavior under test.
+function keepNonConflicting(paths: ReadonlyArray<string>): Array<string> {
+  const kept: Array<string> = [];
+  for (const path of paths) {
+    if (kept.every((existing) => !pathsConflict(existing, path))) {
+      kept.push(path);
+    }
+  }
+  return kept;
+}
+
+type MultiPathOperation = { op: "$set"; value: unknown } | { op: "$unset" };
+const multiPathOperationArbitrary: fc.Arbitrary<MultiPathOperation> = fc.oneof(
+  valueArbitrary.map((value) => ({ op: "$set", value }) as MultiPathOperation),
+  fc.constant<MultiPathOperation>({ op: "$unset" }),
+);
+
+// A $set/$unset update document over a non-conflicting subset of paths drawn
+// from `candidatePathArbitrary`, in random order.
+function multiPathUpdateArbitrary(
+  candidatePathArbitrary: fc.Arbitrary<string>,
+): fc.Arbitrary<Record<string, Record<string, unknown>>> {
+  return fc
+    .uniqueArray(candidatePathArbitrary, { minLength: 1, maxLength: 4 })
+    .map(keepNonConflicting)
+    .chain((paths) =>
+      fc
+        .array(multiPathOperationArbitrary, { minLength: paths.length, maxLength: paths.length })
+        .map((operations) => {
+          const ops: Record<string, Record<string, unknown>> = {};
+          paths.forEach((path, index) => {
+            const operation = operations[index]!;
+            (ops[operation.op] ??= {})[path] = operation.op === "$set" ? operation.value : 1;
+          });
+          return ops;
+        }),
+    );
+}
+
+function assertUndoRoundTrips(
+  initial: Record<string, unknown>,
+  ops: Record<string, Record<string, unknown>>,
+): void {
+  const store = createReactive<Record<string, unknown>>(structuredClone(initial));
+  let undo: Record<string, unknown>;
+  try {
+    ({ undo } = recordedUpdate(store, {}, ops as never) as {
+      undo: Record<string, unknown>;
+    });
+  } catch {
+    // Updates this document's shape rejects (a path through a scalar or null)
+    // throw in mill exactly as in Mongo — not the property under test.
+    return;
+  }
+  update(store, {}, undo as never);
+  expect(unwrap(store)).toEqual(initial);
+}
+
+describe("property-based undo round-trip — multi-path updates", () => {
+  it("undo is always replayable and restores the exact prior document", () => {
+    fc.assert(
+      fc.property(documentArbitrary, multiPathUpdateArbitrary(pathArbitrary), (initial, ops) => {
+        assertUndoRoundTrips(initial, ops);
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  // Focused variant of the same property: sibling index writes on one array,
+  // in and out of bounds, in every order. This is the shape where an
+  // out-of-bounds write escalates to a whole-array restore that must absorb
+  // (not conflict with) undo entries already recorded beneath it.
+  it("sibling index writes on one array — in and out of bounds", () => {
+    const elementArbitrary = fc.oneof(
+      integerArbitrary,
+      fc.record({ t: fc.array(integerArbitrary, { maxLength: 2 }) }),
+    );
+    const arrayDocumentArbitrary = fc
+      .array(elementArbitrary, { maxLength: 4 })
+      .map((arr) => ({ arr }) as Record<string, unknown>);
+    const arrayPathArbitrary = fc.constantFrom(
+      "arr.0",
+      "arr.1",
+      "arr.2",
+      "arr.5",
+      "arr.8",
+      "arr.0.t",
+      "arr.1.t.0",
+      "arr.5.t",
+    );
+    fc.assert(
+      fc.property(
+        arrayDocumentArbitrary,
+        multiPathUpdateArbitrary(arrayPathArbitrary),
+        (initial, ops) => {
+          assertUndoRoundTrips(initial, ops);
+        },
+      ),
+      { numRuns: 300 },
     );
   });
 });

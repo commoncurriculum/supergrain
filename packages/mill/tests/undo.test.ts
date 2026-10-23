@@ -153,3 +153,158 @@ describe("undo — no-ops produce no undo", () => {
     expect(undo).toEqual({});
   });
 });
+
+// The undo document must itself be a legal update document. When several paths
+// share a branch the update has to create, the first one captures the whole
+// missing branch and the rest are redundant — emitting them anyway produced an
+// undo that `update()` refused to replay ("would create a conflict between
+// paths ...").
+describe("undo — sibling writes under a created branch stay conflict-free", () => {
+  it("collapses to the created branch for two $set siblings", () => {
+    const { undo } = roundTrip({} as Record<string, unknown>, {
+      $set: { "rel.course": { id: "c1" }, "rel.planbook": { id: "p1" } },
+    });
+    expect(undo).toEqual({ $unset: { rel: "" } });
+  });
+
+  it("collapses across a deeper shared branch", () => {
+    const { undo } = roundTrip({ a: {} } as Record<string, unknown>, {
+      $set: { "a.b.c": 1, "a.b.d": 2 },
+    });
+    expect(undo).toEqual({ $unset: { "a.b": "" } });
+  });
+
+  it("collapses across different operators", () => {
+    const { undo } = roundTrip({} as Record<string, unknown>, {
+      $set: { "rel.course": { id: "c1" } },
+      $inc: { "rel.count": 2 },
+      $push: { "rel.tags": "x" },
+    });
+    expect(undo).toEqual({ $unset: { rel: "" } });
+  });
+
+  it("keeps siblings that do not share a created branch", () => {
+    const { undo } = roundTrip({ rel: {} } as Record<string, unknown>, {
+      $set: { "rel.course": { id: "c1" }, "rel.planbook": { id: "p1" } },
+    });
+    expect(undo).toEqual({ $unset: { "rel.course": "", "rel.planbook": "" } });
+  });
+
+  it("collapses to a null intermediate under allowNullIntermediates", () => {
+    const initial = { rel: null } as Record<string, unknown>;
+    const store = createReactive(structuredClone(initial));
+
+    const { undo } = update(
+      store,
+      {},
+      { $set: { "rel.course": { id: "c1" }, "rel.planbook": { id: "p1" } } },
+      { allowNullIntermediates: true },
+    );
+    expect(undo).toEqual({ $set: { rel: null } });
+
+    update(store, {}, undo, { allowNullIntermediates: true });
+    expect(unwrap(store)).toEqual(initial);
+  });
+});
+
+// The covering entry doesn't always come first: an out-of-bounds index write
+// forces a whole-array restore that can arrive *after* granular entries under
+// the same array. The stale snapshot (earlier ops already wrote into it) must
+// absorb those entries, not conflict with them.
+describe("undo — whole-array snapshots arriving after granular entries", () => {
+  it("in-bounds write, then out-of-bounds growth of the same array", () => {
+    const { undo } = roundTrip({ arr: [10, 20, 30] } as Record<string, unknown>, {
+      $set: { "arr.2": 99, "arr.5": 77 },
+    });
+    expect(undo).toEqual({ $set: { arr: [10, 20, 30] } });
+  });
+
+  it("out-of-bounds growth, then in-bounds write (covering entry first)", () => {
+    const { undo } = roundTrip({ arr: [10, 20, 30] } as Record<string, unknown>, {
+      $set: { "arr.5": 77, "arr.2": 99 },
+    });
+    expect(undo).toEqual({ $set: { arr: [10, 20, 30] } });
+  });
+
+  it("two out-of-bounds writes undo with one truncation", () => {
+    const { undo } = roundTrip({ arr: [1] } as Record<string, unknown>, {
+      $set: { "arr.3": 7, "arr.6": 8 },
+    });
+    expect(undo).toEqual({ $push: { arr: { $each: [], $slice: 1 } } });
+  });
+
+  it("absorbs a write nested inside an element", () => {
+    const { undo } = roundTrip({ arr: [{ t: [1, 2] }] } as Record<string, unknown>, {
+      $set: { "arr.0.t.1": 9, "arr.5": 3 },
+    });
+    expect(undo).toEqual({ $set: { arr: [{ t: [1, 2] }] } });
+  });
+
+  it("absorbs a granular array inverse inside an element", () => {
+    const { undo } = roundTrip({ arr: [{ t: [1, 2] }] } as Record<string, unknown>, {
+      $pull: { "arr.0.t": 2 },
+      $push: { "arr.3": 9 },
+    });
+    expect(undo).toEqual({ $set: { arr: [{ t: [1, 2] }] } });
+  });
+
+  it("growth through an out-of-bounds *intermediate* index absorbs too", () => {
+    const { undo } = roundTrip({ arr: [{ t: 1 }] } as Record<string, unknown>, {
+      $set: { "arr.0.t": 2, "arr.4.u": 3 },
+    });
+    expect(undo).toEqual({ $set: { arr: [{ t: 1 }] } });
+  });
+
+  it("a scattered $pull on a nested array restores that array precisely", () => {
+    const { undo } = roundTrip({ arr: [{ t: [1, 2, 3] }] } as Record<string, unknown>, {
+      $pull: { "arr.0.t": { $in: [1, 3] } },
+    });
+    expect(undo).toEqual({ $set: { "arr.0.t": [1, 2, 3] } });
+  });
+
+  it("a field created inside an element restores with the whole array", () => {
+    const { undo } = roundTrip({ arr: [{}] } as Record<string, unknown>, {
+      $set: { "arr.0.x": 1, "arr.5": 2 },
+    });
+    expect(undo).toEqual({ $set: { arr: [{}] } });
+  });
+
+  it("a positional write alongside an index write restores both", () => {
+    const initial = { items: [{ k: 1, x: 0, y: 0 }] } as Record<string, unknown>;
+    const store = createReactive(structuredClone(initial));
+    const { undo } = update(
+      store,
+      { "items.k": 1 } as never,
+      { $set: { "items.$.x": 5, "items.0.y": 6 } } as never,
+    );
+    update(store, {}, undo);
+    expect(unwrap(store)).toEqual(initial);
+  });
+
+  it("rejects a positional segment at the document root", () => {
+    const store = createReactive<Record<string, unknown>>({ a: 1 });
+    expect(() => update(store, {}, { $set: { "$.x": 1 } } as never)).toThrow();
+    expect(() => update(store, {}, { $set: { $: 1 } } as never)).toThrow();
+  });
+
+  // Mongo paths can't name a key that is empty or contains a dot. A write at a
+  // sibling path restores just itself; replacing the whole object restores it
+  // wholesale rather than descending into the unaddressable key. Plain
+  // update() here — the mongod oracle's tolerance for dotted keys varies by
+  // server version.
+  it("dotted keys: sibling writes restore precisely, replacements wholesale", () => {
+    const initial = { a: { "x.y": 1, b: 2 } } as Record<string, unknown>;
+
+    const sibling = createReactive(structuredClone(initial));
+    const { undo: siblingUndo } = update(sibling, {}, { $set: { "a.b": 3 } });
+    expect(siblingUndo).toEqual({ $set: { "a.b": 2 } });
+    update(sibling, {}, siblingUndo);
+    expect(unwrap(sibling)).toEqual(initial);
+
+    const replaced = createReactive(structuredClone(initial));
+    const { undo: replacedUndo } = update(replaced, {}, { $set: { a: { b: 9 } } });
+    expect(replacedUndo).toEqual({ $set: { a: { "x.y": 1, b: 2 } } });
+    update(replaced, {}, replacedUndo);
+    expect(unwrap(replaced)).toEqual(initial);
+  });
+});

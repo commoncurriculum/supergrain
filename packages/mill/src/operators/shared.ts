@@ -1,16 +1,15 @@
-import { isContiguousAscending, removeIndices, resolveArrayTarget } from "../array-ops";
+import { removeIndices, resolveArrayTarget } from "../array-ops";
 import { getValueAtPath, hasValueAtPath, setValueAtPath } from "../path";
 import { type ArrayFilter, type Query, resolvePaths } from "../query";
-import { capturePathUndo, type MutableUndo, undoPushSpec, undoSet } from "../undo";
-import { cloneValue, describeValue, isEqual } from "../util";
+import { describeValue, isEqual } from "../util";
 
 // Shared execution context + helpers used by every operator. Each operator
-// receives the unwrapped document, the undo accumulator, and the query +
-// arrayFilters needed to resolve positional paths.
+// receives the unwrapped document and the query + arrayFilters needed to
+// resolve positional paths. Undo is derived outside the operators (see
+// undo.ts), so they only mutate.
 
 export interface OperatorContext {
   raw: object;
-  undo: MutableUndo;
   query: Query;
   arrayFilters: ReadonlyArray<ArrayFilter>;
   // When set, `null` intermediates/targets are treated as absent — created for
@@ -51,6 +50,8 @@ function assertNumericTarget(
 ): void {
   // $min/$max compare against an existing null (it sorts below every number);
   // $inc/$mul reject it the way real MongoDB does ("non-numeric type null").
+  // Only reachable for a stored null — `allowNullIntermediates` normalizes those
+  // to `undefined` (absent) before we get here.
   if (currentValue === null && allowNull) {
     return;
   }
@@ -69,7 +70,13 @@ export interface NumericWrite {
 }
 
 export function writeNumeric(context: OperatorContext, path: string, write: NumericWrite): void {
-  const previous = getValueAtPath(context.raw, path) as number | null | undefined;
+  const stored = getValueAtPath(context.raw, path) as number | null | undefined;
+  // With `allowNullIntermediates`, a `null` *target* counts as absent just like a
+  // `null` intermediate does: $inc/$mul start from 0 instead of throwing, and
+  // $min/$max take the candidate value rather than keeping the null. Only the
+  // arithmetic treats it as absent — the undo plan snapshots the real stored
+  // `null` before we run, so a rewind restores it exactly.
+  const previous = context.allowNullIntermediates && stored === null ? undefined : stored;
   assertNumericTarget(write.operator, path, previous, write.allowNull);
   const next = write.compute(previous);
   if (next === undefined) {
@@ -78,15 +85,12 @@ export function writeNumeric(context: OperatorContext, path: string, write: Nume
   if (hasValueAtPath(context.raw, path) && isEqual(previous, next)) {
     return; // no-op
   }
-  capturePathUndo(context.undo, context.raw, path);
   setValueAtPath(context.raw, path, next, pathWriteOptions(context));
 }
 
 // ─── array removal ($pull / $pullAll) ───────────────────────────────────────
 
-// Remove every element matching `op.matches`, recording the fine-grained
-// inverse: a contiguous run re-inserts as one `$push` at its original index; a
-// scattered removal falls back to `$set`-ing the whole prior array.
+// Remove every element matching `op.matches`.
 export function removeByPredicate(
   context: OperatorContext,
   path: string,
@@ -97,26 +101,14 @@ export function removeByPredicate(
     return; // absent field — Mongo no-ops $pull / $pullAll
   }
 
-  const removedIndices: Array<number> = [];
-  const removedValues: Array<unknown> = [];
+  const removedIndices = new Set<number>();
   for (let i = 0; i < arr.length; i++) {
     if (op.matches(arr[i])) {
-      removedIndices.push(i);
-      removedValues.push(cloneValue(arr[i]));
+      removedIndices.add(i);
     }
   }
-
-  if (removedIndices.length === 0) {
+  if (removedIndices.size === 0) {
     return; // no-op
   }
-
-  const previousArray = cloneValue(arr) as Array<any>;
-  const removedSet = new Set(removedIndices);
-  removeIndices(arr, (index) => removedSet.has(index));
-
-  if (isContiguousAscending(removedIndices)) {
-    undoPushSpec(context.undo, path, { $each: removedValues, $position: removedIndices[0] });
-  } else {
-    undoSet(context.undo, path, previousArray);
-  }
+  removeIndices(arr, (index) => removedIndices.has(index));
 }

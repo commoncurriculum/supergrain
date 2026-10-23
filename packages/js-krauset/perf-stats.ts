@@ -77,6 +77,14 @@ for (const benchName of benchmarkNames) {
   output.benchmarks[benchName] = benchmark;
 }
 
+// Memory benchmarks: MB the page retains after a forced GC.
+output.memory = {} as any;
+for (const { name: memoryName } of runs[0].memory) {
+  output.memory[memoryName] = stats(
+    runs.map((run: any) => run.memory.find((m: any) => m.name === memoryName).mb),
+  );
+}
+
 const totalSamples = runs.map((run: any) => run.totals);
 output.totals = {} as any;
 for (const key of numericKeys.filter((k) => k in runs[0].totals)) {

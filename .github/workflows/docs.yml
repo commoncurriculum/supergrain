@@ -21,10 +21,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        # The docs site is an isolated sub-project with its own lockfile.
-        working-directory: packages/docs
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,16 +35,17 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: packages/docs/pnpm-lock.yaml
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Install dependencies
-        run: pnpm install --ignore-workspace --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
+      # Generates the package pages from packages/*/README.md, then builds and
+      # prerenders the site into build/client/supergrain/.
       - name: Build docs
-        run: pnpm run build:pages
+        run: pnpm --filter @supergrain/docs run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

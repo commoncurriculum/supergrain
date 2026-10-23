@@ -4,16 +4,15 @@ on:
   pull_request:
     paths:
       - "packages/docs/**"
+      # The package pages are generated from the package READMEs.
+      - "packages/*/README.md"
+      - "pnpm-lock.yaml"
       - ".github/workflows/docs-ci.yml"
 
 jobs:
   build:
     name: Docs / typecheck + build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        # Isolated sub-project with its own lockfile (see packages/docs/README.md).
-        working-directory: packages/docs
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,13 +27,12 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: packages/docs/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install --ignore-workspace --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
-        run: pnpm run typecheck
+        run: pnpm --filter @supergrain/docs run typecheck
 
-      - name: Build (with Pages output)
-        run: pnpm run build:pages
+      - name: Build
+        run: pnpm --filter @supergrain/docs run build

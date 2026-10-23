@@ -1,5 +1,59 @@
 # @supergrain/kernel
 
+## 7.4.0
+
+### Minor Changes
+
+- 59b21c7: Disposers now work with `using`. `effect(fn)` returns a `Disposer` — still callable as `stop()`, and also `Disposable`, so `using stop = effect(fn)` stops the effect at the end of the enclosing block. Husk's `resource`, `defineResource` instances, `reactivePromise`, and `reactiveTask` are `Disposable` too: `using` runs the same idempotent teardown as `dispose(x)`. The `Disposer` and `SymbolDisposable` types are exported from `@supergrain/kernel`; they fall back to plain types when your TypeScript `lib` doesn't declare `Symbol.dispose`, and runtimes without `Symbol.dispose` are unaffected.
+
+### Patch Changes
+
+- 59b21c7: Array mutators (`push`, `pop`, `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill`, `copyWithin`) on reactive arrays now run on the underlying array and notify subscribers once, instead of routing every element read and write through the proxy. `push` is about 3.7x faster with a subscriber, and removing a row in a React list uses about 44% less JS. Whole-array iteration methods (`map`, `forEach`, `filter`, `flatMap`, `reduce`, `reduceRight`) also run on the underlying array with one subscription to the array instead of one per index: a tracked `map` over 1,000 rows is about 2.6x faster. Also fixes a stale read: after `splice` or `pop` shortens an array, a subscriber reading an index past the new end now sees `undefined` instead of the removed element.
+
+## 7.3.1
+
+## 7.3.0
+
+### Minor Changes
+
+- 22c5b7c: Faster list teardown and swap tracking in `@supergrain/kernel/react`.
+
+  **`tracked()` now defers effect teardown past the next paint.** Unlinking an
+  effect from the signal graph is bookkeeping with no observable output, so
+  running it inside React's unmount commit put O(subscriptions) work between a
+  state change and the frame that shows it — unmounting a 1,000-row list tore
+  down 1,000 effects before the browser could present the empty table. Disposers
+  are now queued and flushed in the first macrotask after the next frame.
+
+  Every queued disposer still runs: the flush is deferred, never skipped, so
+  subscriber lists cannot leak. The observable difference is a short window after
+  unmount in which a component's effect can still fire; for `tracked()` that means
+  a `forceUpdate` on an unmounted component, which React ignores. If you dispose
+  effects yourself and need them to stop firing at exactly the unmount commit,
+  guard the effect body with your own disposed flag.
+
+  **Parent-mode `For` now uses a single array-level subscription for swaps.** A
+  new internal `$ELEMENTS` signal answers "some element was replaced in place" for
+  the whole array, replacing one subscription per index in the O(1)-swap effect.
+  Rendering 10,000 rows no longer creates 10,000 per-index dependency links for
+  swap tracking. Structural changes (push, splice, length, new array) are
+  unaffected — they still notify through the version and ownKeys signals. No
+  public API change; behavior is identical.
+
+## 7.2.0
+
+### Minor Changes
+
+- 9dffca6: Add `stableComputed(getter)` — a memoized derived array with a **stable
+  reference**. It keeps one persistent reactive array and reconciles it in place
+  to match the getter's result, so the returned reference never changes across
+  recomputes (`use()` / `<For>` / dependency arrays don't churn), reads stay
+  fine-grained (only changed slots notify), and it still firewalls (an equal
+  re-run doesn't propagate). `computed` is untouched — it remains the plain
+  alien-signals export.
+
+## 7.1.0
+
 ## 7.0.1
 
 ## 7.0.0

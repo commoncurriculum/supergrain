@@ -2,7 +2,8 @@
  * Documentation Validation Tests
  *
  * Tests that ensure:
- * - All code blocks in README.md and docs/*.md have DOC_TEST identifiers
+ * - All code blocks in the root and package READMEs, and the docs site's
+ *   hand-written pages (packages/docs/content/docs) have DOC_TEST identifiers
  * - All DOC_TEST identifiers have corresponding tests in the test suite
  */
 
@@ -12,15 +13,28 @@ import { describe, it, expect } from "vitest";
 
 describe("README Documentation Validation", () => {
   const rootDir = join(__dirname, "../../..");
-  // Collect documentation markdown that carries tested examples:
-  //   root README.md
-  //   + the docs site's comparison guide — the one docs-only page with examples
-  //     (the docs site's package reference pages mirror each package README,
-  //     which is the canonical source scanned below)
-  //   + packages/*/README.md
+  // Collect all documentation markdown: root README.md + packages/*/README.md
+  // + the docs site's hand-written pages. The docs site's package pages are
+  // generated from the package READMEs at build time (listed in
+  // packages/docs/readme-pages.json), so they're validated at the source README
+  // and skipped here.
   const docFiles = [join(rootDir, "README.md")];
-  const comparisonGuide = join(rootDir, "packages/docs/content/docs/comparison.md");
-  if (existsSync(comparisonGuide)) docFiles.push(comparisonGuide);
+  const docsSiteDir = join(rootDir, "packages/docs");
+  const docsContentDir = join(docsSiteDir, "content/docs");
+  if (existsSync(docsContentDir)) {
+    const generated = new Set(
+      (
+        JSON.parse(readFileSync(join(docsSiteDir, "readme-pages.json"), "utf-8")) as {
+          slug: string;
+        }[]
+      ).map(({ slug }) => `${slug}.md`),
+    );
+    for (const file of readdirSync(docsContentDir, { recursive: true, encoding: "utf-8" })) {
+      if (/\.mdx?$/.test(file) && !generated.has(file)) {
+        docFiles.push(join(docsContentDir, file));
+      }
+    }
+  }
   const packagesDir = join(rootDir, "packages");
   if (existsSync(packagesDir)) {
     for (const pkg of readdirSync(packagesDir)) {

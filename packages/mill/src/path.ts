@@ -107,6 +107,32 @@ export function splitPath(path: string): Array<PathSegment> {
   return parts;
 }
 
+/**
+ * Whether `ancestor` covers `path` — they're equal, or `ancestor` names a
+ * segment-wise prefix of `path`, so writing `ancestor` also writes everything
+ * `path` names. e.g. "a" covers "a" and "a.b"; "a.b" covers neither "a" nor
+ * "a.c". Directional: `pathCovers("a.b", "a")` is false.
+ */
+export function pathCovers(ancestor: string, path: string): boolean {
+  // A segment-wise prefix is exactly a string prefix that lands on a separator:
+  // `path` covered by `ancestor` means `path` is `ancestor` + "." + the rest, and
+  // splitting that always reproduces `ancestor`'s segments first. The boundary
+  // check is what keeps "a" from covering "ab". Done on the raw strings so this
+  // stays allocation-free — it runs against every recorded undo entry.
+  return (
+    path.startsWith(ancestor) && (path.length === ancestor.length || path[ancestor.length] === ".")
+  );
+}
+
+/**
+ * Two update paths conflict when either covers the other — MongoDB rejects such
+ * an update rather than applying both. e.g. "a" conflicts with "a" and "a.b";
+ * "a.b" and "a.c" don't.
+ */
+export function pathsConflict(a: string, b: string): boolean {
+  return pathCovers(a, b) || pathCovers(b, a);
+}
+
 export function resolveParentPath(
   target: object,
   path: string,
@@ -143,6 +169,12 @@ export interface PathWriteOptions {
   allowNullIntermediates: boolean;
 }
 
+// The `{field: value}` element label used in Mongo-style errors. When the
+// blocking value sits at the document root there is no field name to show.
+function describeElement(segment: string | undefined, value: unknown): string {
+  return segment === undefined ? JSON.stringify(value) : `{${segment}: ${JSON.stringify(value)}}`;
+}
+
 export function ensureParentPath(
   target: object,
   path: string,
@@ -156,6 +188,13 @@ export function ensureParentPath(
 
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i]!;
+    // An array only has index fields: Mongo rejects stepping into one via a
+    // non-index segment rather than creating a string key on the array.
+    if (Array.isArray(current) && !isArrayIndex(part)) {
+      throw new TypeError(
+        `Cannot create field '${part}' in element ${describeElement(parts[i - 1], current)}.`,
+      );
+    }
     const existing = (current as any)[part];
     // A `null` intermediate is normally a hard error (Mongo can't create a
     // field inside null); with `allowNullIntermediates` it's treated as absent
@@ -191,7 +230,13 @@ export function setValueAtPath(
   options: PathWriteOptions,
 ): void {
   const { parent, key } = ensureParentPath(target, path, options);
-  if (Array.isArray(parent) && isArrayIndex(key)) {
+  if (Array.isArray(parent)) {
+    // An array only has index fields — Mongo rejects a non-index leaf.
+    if (!isArrayIndex(key)) {
+      throw new TypeError(
+        `Cannot create field '${key}' in element ${describeElement(splitPath(path).at(-2), parent)}.`,
+      );
+    }
     // Writing past the end grows the array; Mongo pads the gap with null rather
     // than leaving holes. e.g. [1] + "scores.3" -> [1, null, null, 4].
     for (let i = parent.length; i < Number(key); i++) {

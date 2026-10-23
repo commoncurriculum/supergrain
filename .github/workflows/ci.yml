@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [kernel, husk, silo, mill, devtools]
+        package: [kernel, husk, silo, mill, devtools, activity]
 
     steps:
       - name: Checkout code
@@ -76,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [kernel, husk, silo, mill, devtools]
+        package: [kernel, husk, silo, mill, devtools, activity]
 
     steps:
       - name: Checkout code
@@ -105,7 +105,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [kernel, husk, silo, mill, devtools]
+        package: [kernel, husk, silo, mill, devtools, activity]
 
     steps:
       - name: Checkout code
@@ -134,7 +134,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [kernel, husk, silo, mill, devtools]
+        package: [kernel, husk, silo, mill, devtools, activity]
 
     steps:
       - name: Checkout code
@@ -161,7 +161,7 @@ jobs:
     name: Coverage
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright:v1.55.0-noble
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
       options: --user 1001
 
     steps:

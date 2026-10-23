@@ -22,8 +22,8 @@ rules.
 ## Quick start
 
 ```tsx
-import { createReactive } from '@supergrain/kernel';
-import { useReactive } from '@supergrain/kernel/react';
+import { createReactive } from "@supergrain/kernel";
+import { useReactive } from "@supergrain/kernel/react";
 
 const store = createReactive({ count: 0 });
 
@@ -39,9 +39,9 @@ Supergrain infers everything from your plain object — no generics, no casts.
 Hover any identifier below to see its inferred type:
 
 ```ts twoslash
-import { createReactive } from '@supergrain/kernel';
+import { createReactive } from "@supergrain/kernel";
 
-const store = createReactive({ user: { name: 'Ada' }, count: 0 });
+const store = createReactive({ user: { name: "Ada" }, count: 0 });
 
 const name = store.user.name;
 //    ^?
@@ -50,10 +50,34 @@ const name = store.user.name;
 ## Packages
 
 <Cards>
-  <Card title="Kernel" href="/docs/kernel" description="The core reactive store and React bindings." />
-  <Card title="Husk" href="/docs/husk" description="Reactive side-effect primitives: resources, tasks, modifiers." />
-  <Card title="Silo" href="/docs/silo" description="A Suspense-native, request-batched reactive document cache." />
-  <Card title="Queries" href="/docs/queries" description="Pagination and live-subscription queries for Silo." />
-  <Card title="Mill" href="/docs/mill" description="MongoDB-style update operators ($set, $push, ...)." />
-  <Card title="Comparison" href="/docs/comparison" description="How Supergrain compares to other reactive libraries." />
+  <Card
+    title="Kernel"
+    href="/docs/kernel"
+    description="The core reactive store and React bindings."
+  />
+  <Card
+    title="Husk"
+    href="/docs/husk"
+    description="Reactive side-effect primitives: resources, tasks, modifiers."
+  />
+  <Card
+    title="Silo"
+    href="/docs/silo"
+    description="A Suspense-native, request-batched reactive document cache."
+  />
+  <Card
+    title="Queries"
+    href="/docs/queries"
+    description="Pagination and live-subscription queries for Silo."
+  />
+  <Card
+    title="Mill"
+    href="/docs/mill"
+    description="MongoDB-style update operators ($set, $push, ...)."
+  />
+  <Card
+    title="Comparison"
+    href="/docs/comparison"
+    description="How Supergrain compares to other reactive libraries."
+  />
 </Cards>

@@ -1,7 +1,8 @@
 packages:
   - "packages/*"
-  # The docs site is an isolated sub-project: it runs a bleeding-edge toolchain
-  # (Vite 8 / React Router 8 / TypeScript 6) and keeps its own lockfile so it
-  # never perturbs the core library's dependency resolution. Install it with
-  # `pnpm install --ignore-workspace` from inside packages/docs.
-  - "!packages/docs"
+
+# pnpm 10 blocks dependency postinstall scripts by default. Playwright's
+# postinstall downloads its browsers; without this approval a fresh clone has no
+# browsers and every browser-mode test suite silently can't launch.
+onlyBuiltDependencies:
+  - playwright

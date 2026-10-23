@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
-import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
+
+import { playwrightProvider } from "./vitest.playwright";
 
 // Routes every `@supergrain/*` import to source TypeScript. Matches
 // `customConditions` in tsconfig.json. Both `resolve.conditions` (main)
@@ -38,6 +39,7 @@ export default defineConfig({
         "packages/silo/src/queries.ts",
         "packages/devtools/src/index.ts",
         "packages/devtools/src/react/index.ts",
+        "packages/activity/src/index.ts",
       ],
       reportsDirectory: "./coverage",
     },
@@ -50,6 +52,30 @@ export default defineConfig({
         resolve,
         ssr,
       },
+      {
+        test: {
+          include: ["packages/activity/tests/**/*.test.{ts,tsx}"],
+          environment: "node",
+        },
+        resolve,
+        ssr,
+      },
+      {
+        // Executable checks for the behavioural claims in
+        // skills/supergrain{,-silo}/SKILL.md — subscription scoping, the
+        // captured-closure semantics of the husk hooks, and which fields each
+        // envelope actually has. Run in jsdom because none of these assertions
+        // need a real engine, which also keeps them off the browser projects.
+        plugins: [react()],
+        test: {
+          name: "skill-claims",
+          include: ["packages/*/tests/skill-claims/**/*.test.{ts,tsx}"],
+          environment: "jsdom",
+          globals: true,
+        },
+        resolve,
+        ssr,
+      },
       // mill runs under its own config (node env + the real-mongod oracle:
       // globalSetup/setupFiles/hookTimeout). Referencing the file keeps that
       // setup in one place instead of duplicating it here.
@@ -57,7 +83,10 @@ export default defineConfig({
       {
         test: {
           include: ["packages/silo/tests/**/*.test.{ts,tsx}"],
-          exclude: ["packages/silo/tests/react/**/*.test.{ts,tsx}"],
+          exclude: [
+            "packages/silo/tests/react/**/*.test.{ts,tsx}",
+            "packages/silo/tests/skill-claims/**/*.test.{ts,tsx}",
+          ],
           environment: "node",
         },
         resolve,
@@ -69,7 +98,7 @@ export default defineConfig({
           include: ["packages/silo/tests/react/**/*.test.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            provider: playwrightProvider(),
             headless: true,
             instances: [
               {
@@ -88,7 +117,7 @@ export default defineConfig({
           include: ["packages/queries/**/*.test.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            provider: playwrightProvider(),
             headless: true,
             instances: [
               {
@@ -116,7 +145,7 @@ export default defineConfig({
           include: ["packages/husk/tests/react/**/*.test.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            provider: playwrightProvider(),
             headless: true,
             instances: [
               {
@@ -136,7 +165,7 @@ export default defineConfig({
           include: ["packages/kernel/tests/react/**/*.test.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            provider: playwrightProvider(),
             headless: true,
             instances: [
               {
@@ -165,7 +194,7 @@ export default defineConfig({
           include: ["packages/devtools/tests/react/**/*.test.{ts,tsx}"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            provider: playwrightProvider(),
             headless: true,
             instances: [
               {

@@ -12,6 +12,60 @@ This project uses `pnpm` for package management. Do not use `npm` or `yarn`. All
 - `pnpm add <package-name>`
 - `pnpm run <script-name>`
 
+## Releases
+
+Releases are driven by [Changesets](https://github.com/changesets/changesets) and
+published automatically by CI. **You never run `npm publish` or `pnpm release`
+by hand** — the workflow in `.github/workflows/publish.yml` does it on `main`.
+
+### The flow
+
+1. **Add a changeset.** A change that should ship adds a `.changeset/*.md` file with
+   frontmatter listing each package and its bump (`patch` / `minor` / `major`),
+   followed by the changelog prose. Create it with `pnpm changeset`, by hand, or via
+   the **Add Changeset** workflow (`.github/workflows/add-changeset.yml`, run from the
+   Actions tab). Multiple changesets accumulate on `main`.
+2. **CI opens a release PR.** On every push to `main`, the **Release** workflow runs
+   `changesets/action`. While pending changesets exist it opens/updates a PR titled
+   **"Release: Version Packages"** on branch `changeset-release/main`. That PR consumes
+   the changeset files, bumps versions in each `package.json`, and writes each
+   package's `CHANGELOG.md`. It updates itself automatically as more changesets land —
+   you do **not** need to run `changeset version` locally.
+3. **Cut the release = merge that PR.** Merging "Release: Version Packages" into `main`
+   leaves no pending changesets, so the next Release run publishes instead of
+   re-opening the PR. Publishing runs `pnpm run build` (root `build` script) then
+   `pnpm release` (`pnpm -r publish`), which rewrites `workspace:*` deps to real
+   versions. Then `.github/scripts/create-github-releases.mjs` tags each newly-live
+   `@supergrain/*` version and creates a GitHub Release from its `CHANGELOG.md`.
+
+**So to cut a release: make sure the changeset(s) are on `main`, then merge the open
+"Release: Version Packages" PR.** Everything downstream is automatic.
+
+### npm auth (trusted publishing / OIDC)
+
+There is **no `NPM_TOKEN`**. Publishing uses npm **trusted publishing** — the job's
+`id-token: write` permission lets npm mint a short-lived, repo-scoped credential, and
+provenance attestations are generated automatically (`NPM_CONFIG_PROVENANCE: true`).
+This requires **each published package to have a Trusted Publisher configured at
+npmjs.com** pointing at `commoncurriculum/supergrain` + `publish.yml`.
+
+### Publishing a brand-new package
+
+When adding a package that should be published (e.g. a new `@supergrain/*`), wire it up
+so the automated flow picks it up:
+
+- Add its filter to the root **`build`** script in `package.json` (dist is gitignored,
+  so CI must build it before publish).
+- Do **not** add it to `ignore` in `.changeset/config.json`. Leave it out of the
+  `fixed` group unless it must version in lockstep with the core packages — a new
+  package normally starts at its own version (e.g. `0.0.0` → `0.1.0` from a `minor`
+  changeset).
+- Set `"publishConfig": { "access": "public" }` in its `package.json`.
+- **Configure a Trusted Publisher for the new package name on npmjs.com** before the
+  first publish, or the OIDC publish step will fail — this is a manual npmjs.com step
+  that cannot be done from the repo. The GitHub Release step needs no setup;
+  `create-github-releases.mjs` already covers every non-private `@supergrain/*` package.
+
 ## Pre-Push Verification
 
 Before committing or pushing changes, run the same checks as CI when feasible:

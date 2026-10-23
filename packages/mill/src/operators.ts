@@ -20,11 +20,12 @@ import {
   type ArrayPushOperations,
   type ArrayWriteOperations,
   type NumericPathOperations,
+  pathsConflict,
   type SetPathOperations,
   type UnsetPathOperations,
 } from "./path";
 import { type ArrayFilter, arrayFilterIdentifier, type Query } from "./query";
-import { type MutableUndo } from "./undo";
+import { buildUndo, planUndo } from "./undo";
 
 /**
  * MongoDB-style update engine for in-memory documents.
@@ -34,7 +35,7 @@ import { type MutableUndo } from "./undo";
  * and an `undo` — itself a standard Mongo update document — that reverses the
  * exact changes made. There is no mill-specific syntax.
  *
- * The implementation is split by concern: `undo.ts` (inverse accumulation),
+ * The implementation is split by concern: `undo.ts` (undo via snapshot + compare),
  * `array-ops.ts` (in-place array primitives), `query.ts` (positional resolution
  * + matching), `path.ts` (path navigation + typing), and one file per operator
  * under `operators/` over a small shared `operators/shared.ts`. This module just
@@ -141,6 +142,9 @@ export interface UpdateOptions {
    *
    *   - `$set` / `$inc` / `$mul` / `$min` / `$max` / `$rename` build objects
    *     over `null` intermediates instead of throwing.
+   *   - `$inc` / `$mul` / `$min` / `$max` treat a `null` *target* as absent:
+   *     `$inc` starts from 0 and `$mul` yields 0 rather than throwing, while
+   *     `$min` / `$max` take the operand instead of sorting against the `null`.
    *   - `$push` / `$addToSet` create the array when the target (or an
    *     intermediate) is `null`.
    *   - `$pull` / `$pullAll` / `$pop` no-op on a `null` target (exactly as they
@@ -168,24 +172,6 @@ function referencedArrayFilterIdentifiers(operations: UpdateOperations<any>): Se
     }
   }
   return used;
-}
-
-// Two update paths conflict when they're equal or one is a prefix of the other
-// (compared segment by segment) — MongoDB rejects such an update rather than
-// applying both. e.g. "a" conflicts with "a" and "a.b"; "a.b" and "a.c" don't.
-function pathsConflict(a: string, b: string): boolean {
-  if (a === b) {
-    return true;
-  }
-  const aSegments = a.split(".");
-  const bSegments = b.split(".");
-  const shared = Math.min(aSegments.length, bSegments.length);
-  for (let i = 0; i < shared; i++) {
-    if (aSegments[i] !== bSegments[i]) {
-      return false;
-    }
-  }
-  return true; // one path is a prefix of the other
 }
 
 // Reject an update whose operators (or keys) write the same path, or a
@@ -238,7 +224,6 @@ export function update<T extends object>(
   options?: UpdateOptions,
 ): UpdateResult<T> {
   const raw = unwrap(doc) as object;
-  const undo: MutableUndo = {};
   const arrayFilters = options?.arrayFilters ?? [];
 
   assertNoPathConflicts(operations);
@@ -265,9 +250,10 @@ export function update<T extends object>(
     }
   }
 
+  const plan = planUndo(raw, operations as Record<string, object>);
+
   const context: OperatorContext = {
     raw,
-    undo,
     query: query as Query,
     arrayFilters,
     allowNullIntermediates: options?.allowNullIntermediates ?? false,
@@ -282,5 +268,5 @@ export function update<T extends object>(
     }
   });
 
-  return { doc, undo: undo as UpdateOperations<T> };
+  return { doc, undo: buildUndo(raw, plan) as UpdateOperations<T> };
 }

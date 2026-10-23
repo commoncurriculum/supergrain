@@ -1,5 +1,6 @@
-import { getActiveSub, startBatch, endBatch } from "alien-signals";
+import { getActiveSub } from "alien-signals";
 
+import { ARRAY_METHODS, type NativeArrayMethod } from "./array-methods";
 import { createReactiveMap, createReactiveSet } from "./collections";
 import {
   $NODE,
@@ -16,41 +17,9 @@ import {
 import { profileSignalRead, profileSignalSkip } from "./profiler";
 import { writeHandler } from "./write";
 
-// Array methods that mutate the array internally do multiple proxy `set`
-// operations (e.g., `push` does `arr[len] = x; arr.length += 1`). Without
-// batching, each internal write fires its own propagate/drain cycle, and
-// synchronous effects (`useSignalEffect`, raw `effect()`) observe partial
-// states between sub-operations — for example, length updated before the
-// new element, or vice versa. Wrapping these methods in `startBatch` /
-// `endBatch` coalesces all internal writes into a single notification.
-//
-// The list is enumerated rather than "wrap all array method calls" because
-// the proxy `get` handler is the hottest function in the library (every
-// property read goes through it), and V8 deoptimizes the entire handler when
-// its shape changes. See `notes/failed-approaches/fast-push-bypass-proxy.md`
-// for an attempt that regressed unrelated benchmarks 13-27% by adding a
-// single conditional branch here.
-//
-// Trade-off: any future ES mutator (e.g., a hypothetical
-// `Array.prototype.frobnicate`) won't be batched until added to this list.
-// Synchronous effects observing arrays mutated via the new method would see
-// partial states. React renderers via `tracked()` are unaffected (React
-// batches `forceUpdate` calls).
-const ARRAY_MUTATORS = new Set([
-  "push",
-  "pop",
-  "shift",
-  "unshift",
-  "splice",
-  "sort",
-  "reverse",
-  "fill",
-  "copyWithin",
-]);
-
 const proxyCache = new WeakMap<object, object>();
 
-function wrap<T>(value: T): T {
+export function wrap<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
     return value;
   }
@@ -131,15 +100,12 @@ const readHandler: Pick<
         if (getActiveSub()) {
           trackSelf(target);
         }
-        if (typeof prop === "string" && ARRAY_MUTATORS.has(prop)) {
-          return (...args: Array<unknown>) => {
-            startBatch();
-            try {
-              return (value as (...a: Array<unknown>) => unknown).apply(receiver, args);
-            } finally {
-              endBatch();
-            }
-          };
+        // Keep this branch to one lookup and one closure: the handler's shape
+        // is load-bearing (notes/failed-approaches/fast-push-bypass-proxy.md).
+        const method = ARRAY_METHODS.get(prop);
+        if (method) {
+          return (...args: Array<unknown>) =>
+            method(target, receiver, value as NativeArrayMethod, args);
         }
       }
       return value;

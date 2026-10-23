@@ -7,6 +7,6 @@
  * so they go through here.
  */
 export function withBase(path: string): string {
-  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   return `${base}${path}`;
 }

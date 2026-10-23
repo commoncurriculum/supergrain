@@ -146,65 +146,85 @@ async function timeClick(
 
 const results: BenchmarkResult[] = [];
 
+interface MemoryResult {
+  name: string;
+  /** Memory the page retains after a forced major GC, in MB. */
+  mb: number;
+}
+
+const memoryResults: MemoryResult[] = [];
+
+// File-level, so it runs after both suites: one results file holds the
+// timing and the memory numbers.
+afterAll(() => {
+  if (results.length === 0 && memoryResults.length === 0) return;
+
+  const sep = "─".repeat(58);
+  const header = `${"Operation".padEnd(30)} ${"Total".padStart(8)} ${"Script".padStart(8)} ${"Paint".padStart(8)}`;
+  const lines = results.map(
+    (r) =>
+      `${r.name.padEnd(30)} ${(r.total.toFixed(1) + "ms").padStart(8)} ${(r.script.toFixed(1) + "ms").padStart(8)} ${(r.paint.toFixed(1) + "ms").padStart(8)}`,
+  );
+  const memoryLines = memoryResults.map(
+    (r) => `${r.name.padEnd(30)} ${(r.mb.toFixed(2) + "MB").padStart(8)}`,
+  );
+  const output = [
+    `Benchmark Results\n${sep}\n${header}\n${sep}\n${lines.join("\n")}\n${sep}`,
+    ...(memoryLines.length > 0
+      ? [`Memory (after a forced GC)\n${sep}\n${memoryLines.join("\n")}\n${sep}`]
+      : []),
+  ].join("\n");
+  console.log(`\n${output}`);
+  writeFileSync(resolve(__dirname, "../perf-results.txt"), output + "\n");
+
+  // Write JSON results with git metadata
+  const git = (cmd: string) => execSync(cmd, { encoding: "utf-8" }).trim();
+  const timestamp = new Date().toISOString();
+  const json = {
+    timestamp,
+    git: {
+      branch: git("git rev-parse --abbrev-ref HEAD"),
+      commit: git("git rev-parse --short HEAD"),
+      message: git("git log -1 --pretty=%s"),
+      dirty: git("git status --porcelain") !== "",
+    },
+    results,
+    memory: memoryResults,
+    totals: {
+      total: results.reduce((s, r) => s + r.total, 0),
+      script: results.reduce((s, r) => s + r.script, 0),
+      paint: results.reduce((s, r) => s + r.paint, 0),
+      layouts: results.reduce((s, r) => s + r.layouts, 0),
+      numberCommits: results.reduce((s, r) => s + r.numberCommits, 0),
+      rafLongDelay: results.reduce((s, r) => s + r.rafLongDelay, 0),
+      heapUsedDelta: results.reduce((s, r) => s + r.heapUsedDelta, 0),
+      heapTotalDelta: results.reduce((s, r) => s + r.heapTotalDelta, 0),
+      domNodesDelta: results.reduce((s, r) => s + r.domNodesDelta, 0),
+    },
+  };
+  const jsonPath = resolve(__dirname, `../perf-results-${timestamp.replace(/[:.]/g, "-")}.json`);
+  writeFileSync(jsonPath, JSON.stringify(json, null, 2) + "\n");
+  writeFileSync(resolve(__dirname, "../perf-results.json"), JSON.stringify(json, null, 2) + "\n");
+  console.log(`\nJSON results written to: ${jsonPath}`);
+});
+
 describe("performance benchmarks", () => {
   beforeAll(async () => {
     checkDistExists();
     const { server, baseUrl } = await startServer();
     ctx.server = server;
     ctx.baseUrl = baseUrl;
-    ctx.browser = await chromium.launch({ headless: true });
+    // CHROMIUM_EXECUTABLE_PATH lets environments with a pre-installed browser
+    // (e.g. remote CI sandboxes) run without `playwright install`.
+    ctx.browser = await chromium.launch({
+      headless: true,
+      executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
+    });
   }, 30000);
 
   afterAll(async () => {
     await ctx.browser?.close();
     ctx.server?.close();
-
-    if (results.length > 0) {
-      const header = `${"Operation".padEnd(30)} ${"Total".padStart(8)} ${"Script".padStart(8)} ${"Paint".padStart(8)}`;
-      const lines = results.map(
-        (r) =>
-          `${r.name.padEnd(30)} ${(r.total.toFixed(1) + "ms").padStart(8)} ${(r.script.toFixed(1) + "ms").padStart(8)} ${(r.paint.toFixed(1) + "ms").padStart(8)}`,
-      );
-      const sep = "─".repeat(58);
-      const output = `Benchmark Results\n${sep}\n${header}\n${sep}\n${lines.join("\n")}\n${sep}`;
-      console.log(`\n${output}`);
-      writeFileSync(resolve(__dirname, "../perf-results.txt"), output + "\n");
-
-      // Write JSON results with git metadata
-      const git = (cmd: string) => execSync(cmd, { encoding: "utf-8" }).trim();
-      const timestamp = new Date().toISOString();
-      const json = {
-        timestamp,
-        git: {
-          branch: git("git rev-parse --abbrev-ref HEAD"),
-          commit: git("git rev-parse --short HEAD"),
-          message: git("git log -1 --pretty=%s"),
-          dirty: git("git status --porcelain") !== "",
-        },
-        results,
-        totals: {
-          total: results.reduce((s, r) => s + r.total, 0),
-          script: results.reduce((s, r) => s + r.script, 0),
-          paint: results.reduce((s, r) => s + r.paint, 0),
-          layouts: results.reduce((s, r) => s + r.layouts, 0),
-          numberCommits: results.reduce((s, r) => s + r.numberCommits, 0),
-          rafLongDelay: results.reduce((s, r) => s + r.rafLongDelay, 0),
-          heapUsedDelta: results.reduce((s, r) => s + r.heapUsedDelta, 0),
-          heapTotalDelta: results.reduce((s, r) => s + r.heapTotalDelta, 0),
-          domNodesDelta: results.reduce((s, r) => s + r.domNodesDelta, 0),
-        },
-      };
-      const jsonPath = resolve(
-        __dirname,
-        `../perf-results-${timestamp.replace(/[:.]/g, "-")}.json`,
-      );
-      writeFileSync(jsonPath, JSON.stringify(json, null, 2) + "\n");
-      writeFileSync(
-        resolve(__dirname, "../perf-results.json"),
-        JSON.stringify(json, null, 2) + "\n",
-      );
-      console.log(`\nJSON results written to: ${jsonPath}`);
-    }
   });
 
   // 01_run1k: 5 warmup run+clear cycles, then time run
@@ -263,6 +283,13 @@ describe("performance benchmarks", () => {
     await click(page, "#run");
     await waitFor(page, "tbody>tr:nth-of-type(1000)");
     await click(page, "tbody>tr:nth-of-type(5)>td:nth-of-type(2)>a");
+    // Selecting an already-selected row is a no-op, so timing one would report
+    // "0ms" for doing nothing. Assert the warmup left a *different* row
+    // selected, otherwise this benchmark silently stops measuring anything.
+    const warmupSelectedTimedRow = await page.evaluate(() =>
+      document.querySelector("tbody>tr:nth-of-type(2)")?.classList.contains("danger"),
+    );
+    expect(warmupSelectedTimedRow).toBe(false);
     const ms = await timeClick(page, "tbody>tr:nth-of-type(2)>td:nth-of-type(2)>a", {
       traceName: "select-row",
       cpuThrottle: 4,
@@ -370,5 +397,91 @@ describe("performance benchmarks", () => {
       },
     });
     results.push({ name: "clear rows", ...ms });
+  });
+});
+
+// Krause's memory reading: force a major GC, give it 40ms, then ask Chrome
+// what the page still holds.
+async function measureMemory(page: Page): Promise<number> {
+  await page.evaluate("window.gc({type:'major',execution:'sync',flavor:'last-resort'})");
+  await page.waitForTimeout(40);
+  const bytes = await page.evaluate<number>(
+    "performance.measureUserAgentSpecificMemory().then((m) => m.bytes)",
+  );
+  return bytes / 1024 / 1024;
+}
+
+/**
+ * Memory benchmarks, mirroring js-framework-benchmark's 21_ready-memory,
+ * 22_run-memory and 25_run-clear-memory: a fresh page, the benchmark's steps,
+ * a forced major GC, 40ms, then `performance.measureUserAgentSpecificMemory()`.
+ *
+ * Krause's browser flags (`--expose-gc`, `--enable-benchmarking`), plus
+ * `ForceEagerMeasureMemory`: without it Chrome defers the measurement to its
+ * next GC (up to ~20s each); with it the reading is the same and immediate.
+ * Own browser and server, so the timing benchmarks above run exactly as before.
+ */
+describe("memory benchmarks", () => {
+  const memCtx: TestContext = {} as TestContext;
+
+  beforeAll(async () => {
+    const { server, baseUrl } = await startServer({ crossOriginIsolated: true });
+    memCtx.server = server;
+    memCtx.baseUrl = baseUrl;
+    memCtx.browser = await chromium.launch({
+      headless: true,
+      // The full Chromium build in new headless mode, as Krause runs it.
+      // Playwright's default headless shell has no
+      // `measureUserAgentSpecificMemory`.
+      channel: "chromium",
+      executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
+      args: [
+        "--js-flags=--expose-gc",
+        "--enable-benchmarking",
+        "--enable-blink-features=ForceEagerMeasureMemory",
+      ],
+    });
+  }, 30000);
+
+  afterAll(async () => {
+    await memCtx.browser?.close();
+    memCtx.server?.close();
+  });
+
+  // 21_ready-memory: after page load.
+  it("ready memory", async () => {
+    const page = await freshPage(memCtx);
+    await waitFor(page, "#run");
+    memoryResults.push({ name: "ready memory", mb: await measureMemory(page) });
+  });
+
+  // 22_run-memory: after adding 1,000 rows.
+  it("run memory (1k rows)", async () => {
+    const page = await freshPage(memCtx);
+    await click(page, "#run");
+    await waitFor(page, "tbody>tr:nth-of-type(1)>td:nth-of-type(2)>a");
+    memoryResults.push({ name: "run memory (1k rows)", mb: await measureMemory(page) });
+  });
+
+  // 25_run-clear-memory: after creating and clearing 1,000 rows 5 times.
+  it("create/clear 1k (5 cycles)", async () => {
+    const page = await freshPage(memCtx);
+    for (let i = 0; i < 5; i++) {
+      await click(page, "#run");
+      await page.waitForFunction(
+        (id) =>
+          document.querySelector("tbody>tr:nth-of-type(1000)>td:nth-of-type(1)")?.textContent ===
+          id,
+        String(1000 * (i + 1)),
+      );
+      await click(page, "#clear");
+      await page.waitForFunction(
+        () => !document.querySelector("tbody>tr:nth-of-type(1000)>td:nth-of-type(1)"),
+      );
+    }
+    memoryResults.push({
+      name: "create/clear 1k (5 cycles)",
+      mb: await measureMemory(page),
+    });
   });
 });

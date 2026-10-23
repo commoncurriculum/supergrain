@@ -147,9 +147,13 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
 
   > Returns a derived value that recomputes lazily when its dependencies change. Use for memoized derivations outside React (`useComputed` is the React-aware variant).
 
+- `stableComputed(fn)`
+
+  > Like `computed`, for a getter that derives an **array** (`xs.filter(...).map(...)`). A plain computed hands back a fresh array on every re-run; `stableComputed` keeps one persistent reactive array and reconciles it in place, so the returned reference never changes, only the slots that actually changed notify, and an equal re-run doesn't propagate. The getter's transform must preserve order (`map`/`filter` — not `sort`).
+
 - `effect(fn)`
 
-  > Runs `fn` immediately and re-runs it whenever its dependencies change. Returns a stop function. Use outside React; for components, prefer `useSignalEffect`.
+  > Runs `fn` immediately and re-runs it whenever its dependencies change. Returns a stop function that is also `Disposable`, so `using stop = effect(fn)` stops it at the end of the enclosing block. Use outside React; for components, prefer `useSignalEffect`.
 
 - `batch(fn)`
 

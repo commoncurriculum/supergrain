@@ -1,5 +1,6 @@
-import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
+
+import { playwrightProvider } from "../../vitest.playwright";
 
 const conditions = ["@supergrain/source"];
 
@@ -7,7 +8,7 @@ export default defineConfig({
   test: {
     browser: {
       enabled: true,
-      provider: playwright(),
+      provider: playwrightProvider(),
       headless: true,
       instances: [
         {

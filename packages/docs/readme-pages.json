@@ -1,0 +1,32 @@
+[
+  {
+    "slug": "kernel",
+    "package": "kernel",
+    "title": "Kernel",
+    "description": "A fast, ergonomic reactive store for React."
+  },
+  {
+    "slug": "husk",
+    "package": "husk",
+    "title": "Husk",
+    "description": "Reactive side-effect primitives — resources, tasks, and modifiers."
+  },
+  {
+    "slug": "silo",
+    "package": "silo",
+    "title": "Silo",
+    "description": "A reactive document cache for React — Suspense-compatible and request-batched."
+  },
+  {
+    "slug": "queries",
+    "package": "queries",
+    "title": "Queries",
+    "description": "Pagination and live-subscription queries for Silo."
+  },
+  {
+    "slug": "mill",
+    "package": "mill",
+    "title": "Mill",
+    "description": "MongoDB update operators with undo for in-memory documents and Supergrain stores."
+  }
+]

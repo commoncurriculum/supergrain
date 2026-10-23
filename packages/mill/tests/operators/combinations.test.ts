@@ -8,8 +8,8 @@ describe("MongoDB Style Operators", () => {
     const state = createReactive<any>({ a: [{ b: 1 }] });
     const { undo, rewindAndAssertRestored } = applyWithUndo(state, {}, { $set: { "a.5.c": 2 } });
     expect(state.a).toEqual([{ b: 1 }, null, null, null, null, { c: 2 }]);
-    // Growing the array can only be inverted by restoring the whole prior array.
-    expect(undo).toEqual({ $set: { a: [{ b: 1 }] } });
+    // Growth pads the tail, so truncating back to the prior length inverts it.
+    expect(undo).toEqual({ $push: { a: { $each: [], $slice: 1 } } });
     rewindAndAssertRestored();
   });
 

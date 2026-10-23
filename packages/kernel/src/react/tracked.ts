@@ -1,9 +1,10 @@
 import type { ReactiveNode } from "alien-signals/system";
 
-import { effect as alienEffect } from "@supergrain/kernel";
+import { effect } from "@supergrain/kernel";
 import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
 import { type FC, memo, useReducer } from "react";
 
+import { scheduleDisposal } from "./disposal-queue";
 import { useDisposeOnUnmount } from "./use-dispose-on-unmount";
 
 interface TrackedState {
@@ -60,8 +61,8 @@ export function tracked<P extends object>(Component: FC<P>) {
     const fu = forceUpdate as unknown as { __sg?: TrackedState };
     if (!fu.__sg) {
       let firstRun = true;
-      let capturedNode: ReactiveNode | undefined = null!; // eslint-disable-line unicorn/no-null -- set synchronously by alienEffect
-      const cleanup = alienEffect(() => {
+      let capturedNode: ReactiveNode | undefined = null!; // eslint-disable-line unicorn/no-null -- set synchronously by effect()
+      const cleanup = effect(() => {
         if (firstRun) {
           capturedNode = getActiveSub();
           firstRun = false;
@@ -77,7 +78,12 @@ export function tracked<P extends object>(Component: FC<P>) {
     // need post-cycle.
     useDisposeOnUnmount(() => {
       const fu = forceUpdate as unknown as { __sg?: TrackedState };
-      fu.__sg!.cleanup();
+      // Defer the signal-graph unlink past the next paint. Unlinking is pure
+      // bookkeeping with no observable output; running 1,000 of them inside
+      // React's unmount commit blocks presentation of the frame that removes
+      // the rows. A spurious effect firing before the deferred flush only
+      // calls forceUpdate on an unmounted component — a no-op in React.
+      scheduleDisposal(fu.__sg!.cleanup);
       delete fu.__sg;
     });
 
