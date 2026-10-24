@@ -3,6 +3,7 @@ import type { QueryConfig, QueryHandle, QueryTypes } from "./queries";
 import type { Effect } from "effect";
 
 import { batch, createReactive, unwrap } from "@supergrain/kernel";
+import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
 
 import { attachSiloDevtools } from "./devtools";
 import { type AdapterError, ProcessorError, type SiloError } from "./errors";
@@ -665,17 +666,20 @@ export function createDocumentStore<
         applyEvent(inserted, HandleEvent.insert(prepared));
         return inserted;
       });
-      const stored = unwrap(handle).value as M[K];
       // `afterInsert` tails the pipeline. The value is committed (findInMemory
       // returns it); within an enclosing batch — a fetch commit, or a caller's
       // own batch() — subscriber notifications are still pending and flush when
       // that outermost batch ends. Skipped when `prepareInsert` vetoed. Isolated
       // like the `onError` sink: a throwing observer is reported, never allowed
-      // to corrupt the commit or fail sibling docs in the same fetch.
+      // to corrupt the commit or fail sibling docs in the same fetch. Run
+      // untracked, so an effect that calls `insertDocument` is not subscribed
+      // to what the hook reads.
       const afterInsert = config.hooks?.afterInsert;
       if (afterInsert) {
+        const previousSubscriber = getActiveSub();
+        setActiveSub(undefined);
         try {
-          afterInsert(type, stored);
+          afterInsert(type, handle.value as M[K]);
         } catch (error) {
           emitToSink(config.onError, new ProcessorError({ type, cause: error }), {
             type,
@@ -683,6 +687,8 @@ export function createDocumentStore<
             attempt: 1,
             retryable: false,
           });
+        } finally {
+          setActiveSub(previousSubscriber);
         }
       }
     },

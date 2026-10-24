@@ -317,8 +317,35 @@ describe("Store — hooks", () => {
 
     // afterInsert sees the exact post-prepareInsert object that was stored, and
     // prepareInsert necessarily ran first to produce it.
-    expect(received).toBe(unwrap(store.findInMemory("card-stack", "1")));
+    expect(received).toBe(store.findInMemory("card-stack", "1"));
     expect((received as CardStack).meta).toEqual({ normalized: true });
+  });
+
+  it("afterInsert receives the reactive doc and runs untracked", () => {
+    const store = makeHookStore({
+      afterInsert: () => {
+        void (store.findInMemory("card-stack", "1") as CardStack | undefined)?.meta;
+      },
+    });
+    store.insertDocument("card-stack", { id: "1", type: "card-stack", meta: { count: 1 } });
+    const stored = store.findInMemory("card-stack", "1") as CardStack;
+
+    const metaWrites: Array<unknown> = [];
+    let effectRuns = 0;
+    const stopMeta = effect(() => {
+      metaWrites.push(stored.meta);
+    });
+    const stopInsert = effect(() => {
+      effectRuns++;
+      store.insertDocument("planbook", { id: "p1", type: "planbook" });
+    });
+
+    stored.meta = { count: 2 };
+
+    expect(metaWrites).toEqual([{ count: 1 }, { count: 2 }]);
+    expect(effectRuns).toBe(1);
+    stopMeta();
+    stopInsert();
   });
 
   it("afterInsert observes the committed value even inside an enclosing batch", () => {
