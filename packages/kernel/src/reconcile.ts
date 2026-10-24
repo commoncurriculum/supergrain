@@ -25,28 +25,27 @@ import { deleteProperty, setProperty } from "./write";
  * ```
  */
 export function reconcile<T>(previous: T, next: T): T {
-  const root: Record<PropertyKey, unknown> = { value: unwrap(previous) };
-  batch(() => applyState(unwrap(next), root, "value"));
-  return root["value"] === unwrap(previous) ? previous : next;
+  const target = unwrap(previous);
+  const value = unwrap(next);
+  if (!canPatch(target, value)) return next;
+  batch(() => patch(target, value as Container));
+  return previous;
 }
 
 type Container = Record<PropertyKey, unknown>;
 
-// Solid's `applyState`. It reads the raw objects, so no read subscribes the
-// running effect, and writes with `setProperty` / `deleteProperty`, the
-// functions the proxy's traps call, so subscribers are notified as for any write.
+// Solid's `applyState`, split into its replace check and its diff. It reads
+// the raw objects, so no read subscribes the running effect, and writes with
+// `setProperty` / `deleteProperty`, the functions the proxy's traps call, so
+// subscribers are notified as for any write.
 function applyState(target: unknown, parent: Container, property: PropertyKey): void {
   const previous = unwrap(parent[property]);
   if (target === previous) return;
-  if (
-    !isContainer(target) ||
-    !isContainer(previous) ||
-    Array.isArray(target) !== Array.isArray(previous) ||
-    target["id"] !== previous["id"]
-  ) {
-    setProperty(parent, property, target);
-    return;
-  }
+  if (canPatch(previous, target)) patch(previous, target as Container);
+  else setProperty(parent, property, target);
+}
+
+function patch(previous: Container, target: Container): void {
   if (Array.isArray(target)) {
     applyArray(target, previous as unknown as Array<unknown>);
     return;
@@ -55,6 +54,16 @@ function applyState(target: unknown, parent: Container, property: PropertyKey): 
   for (const key of Object.keys(previous)) {
     if (!Object.hasOwn(target, key)) deleteProperty(previous, key);
   }
+}
+
+// Both objects or both arrays, with the same `id`.
+function canPatch(previous: unknown, next: unknown): previous is Container {
+  return (
+    isContainer(previous) &&
+    isContainer(next) &&
+    Array.isArray(previous) === Array.isArray(next) &&
+    previous["id"] === next["id"]
+  );
 }
 
 // Solid's array pass: skip the common prefix and suffix, then move each

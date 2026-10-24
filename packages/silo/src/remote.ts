@@ -94,9 +94,9 @@ export interface RemoteQueryStoreConfig<Request = unknown>
 }
 
 /**
- * A reactive remote query result: a `DocumentHandle` plus `refetch()`. A
- * refetch is diffed into `value` in place, so only readers of the fields that
- * changed re-render.
+ * A reactive remote query result: a `DocumentHandle` plus `refetch()`. Unless
+ * the store sets `onRefetch: "replace"`, a refetch is diffed into `value` in
+ * place, so only readers of the fields that changed re-render.
  */
 export type RemoteQueryHandle<T, E = SiloError> = DocumentHandle<T, E> & {
   /** Fetch again now, superseding any fetch in flight. */

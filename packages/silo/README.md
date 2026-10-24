@@ -182,7 +182,7 @@ Two consequences:
 
 To swap in each new version instead, for code that can only see a whole new object, set `onRefetch: "replace"` on the model, the query, or the remote query store. The default is `"patch"`.
 
-The first insert caches the object you pass itself, handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). (If a `prepareInsert` hook returns a replacement, that returned object is cached instead.) Later inserts copy their changes into that cached object. Fields missing from the new version are deleted; arrays whose items all have a unique `id` are matched by `id`, other arrays by index. Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
+The first insert caches the object you pass itself, handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). (If a `prepareInsert` hook returns a replacement, that returned object is cached instead.) Later inserts copy their changes into that cached object. Fields missing from the new version are deleted, and array items with the same `id` keep their object wherever they move. Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
 
 ## Why this instead of TanStack Query / SWR?
 
@@ -737,7 +737,7 @@ A remote query is a result the server computes from a request: an analytics repo
 - **Defined once, typed.** `remoteQuery<Params, Result>(name, request)` is a value you import, usually generated, one per API operation.
 - **One transport.** The store's `fetch(request, params, { signal })` turns a definition's opaque `request` into an HTTP call, so silo knows nothing about your API.
 - **React Query's names and defaults.** `staleTime` (0), `gcTime` (5 minutes), `refetchOnWindowFocus` (true), `refetchOnReconnect` (true), `refetchInterval` (false), set on the store and overridable per call.
-- **Updates in place.** A refetch is diffed into the cached result with the kernel's `reconcile`, so only readers of the fields that changed re-render.
+- **Updates in place.** A refetch is diffed into the cached result with the kernel's `reconcile`, so only readers of the fields that changed re-render. `onRefetch: "replace"` on the store swaps in each new result instead.
 - **Same engine as documents.** `retry`, `timeout`, `deadline`, `retryable` and `onError` behave exactly as on `createDocumentStore`.
 
 ```ts
