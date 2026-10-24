@@ -151,6 +151,10 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
 
   > Like `computed`, for a getter that derives an **array** (`xs.filter(...).map(...)`). A plain computed hands back a fresh array on every re-run; `stableComputed` keeps one persistent reactive array and reconciles it in place, so the returned reference never changes, only the slots that actually changed notify, and an equal re-run doesn't propagate. The getter's transform must preserve order (`map`/`filter` — not `sort`).
 
+- `reconcile(previous, next)`
+
+  > Updates `previous` in place to equal `next`, writing only the fields that changed, and returns `previous`. Subscribers re-run only for fields that changed, and objects keep their identity. It is Solid's `reconcile` with `key: "id"`. Fields missing from `next` are deleted, and array items with the same `id` keep their object wherever they move. A value that isn't a plain object or array, or whose `id` changed, is replaced; when that's true of `previous` and `next` themselves, it changes nothing and returns `next` for you to store. Silo uses it whenever a new version of a loaded document arrives.
+
 - `effect(fn)`
 
   > Runs `fn` immediately and re-runs it whenever its dependencies change. Returns a stop function that is also `Disposable`, so `using stop = effect(fn)` stops it at the end of the enclosing block. Use outside React; for components, prefer `useSignalEffect`.

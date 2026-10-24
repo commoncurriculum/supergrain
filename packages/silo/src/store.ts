@@ -636,13 +636,13 @@ export function createDocumentStore<
       //   1. Mutate a field in place (`handle.value.attributes.name = "Ada"`).
       //      Fine-grained: only readers of that field re-render. The write goes
       //      through the proxy's signal, so no reinsert is needed.
-      //   2. Insert a NEW object. Wholesale replace; readers of the whole doc
-      //      re-render. `applyEvent` writes `handle.value` only when the
-      //      reference actually changes (`raw.value !== value` in
-      //      transitions.ts), so swapping in a fresh object always notifies.
-      // No copy is made — the inserted (or `prepareInsert`-returned) object IS
-      // the stored target (unwrap the handle's value to recover the exact
-      // reference). We deliberately do NOT freeze: a frozen target is handed
+      //   2. Insert a new version. `applyEvent` diffs it into the stored
+      //      object with the kernel's `reconcile`, so only readers of the
+      //      fields that changed re-render and the stored object keeps its
+      //      identity.
+      // The first insert stores the inserted (or `prepareInsert`-returned)
+      // object itself; later inserts copy their changes into it. We
+      // deliberately do NOT freeze: a frozen target is handed
       // back unwrapped by the kernel (`createReactiveProxy` bails on
       // `Object.isFrozen`), which would kill per-field reactivity and the
       // in-place update path above.
@@ -660,10 +660,12 @@ export function createDocumentStore<
         if (result === null) return; // explicit veto — write nothing
         prepared = result ?? doc; // undefined / no return = keep `doc` as-is
       }
-      batch(() => {
-        const handle = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
-        applyEvent(handle, HandleEvent.insert(prepared));
+      const handle = batch(() => {
+        const inserted = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
+        applyEvent(inserted, HandleEvent.insert(prepared));
+        return inserted;
       });
+      const stored = unwrap(handle).value as M[K];
       // `afterInsert` tails the pipeline. The value is committed (findInMemory
       // returns it); within an enclosing batch — a fetch commit, or a caller's
       // own batch() — subscriber notifications are still pending and flush when
@@ -673,7 +675,7 @@ export function createDocumentStore<
       const afterInsert = config.hooks?.afterInsert;
       if (afterInsert) {
         try {
-          afterInsert(type, prepared);
+          afterInsert(type, stored);
         } catch (error) {
           emitToSink(config.onError, new ProcessorError({ type, cause: error }), {
             type,
@@ -729,7 +731,8 @@ export function createDocumentStore<
       // Like insertDocument: query results are live and reactive — not frozen.
       // An object result is wrapped in a reactive proxy by the kernel, so reads
       // track the fields they touch and an in-place mutation re-renders just
-      // those subscribers. Update in place or insert a fresh result; both work.
+      // those subscribers. Update in place or insert a new result; a new result is
+      // diffed into the stored one, so only the fields that changed notify.
       const paramsKey = stableStringify(params);
       batch(() => {
         const handle = getOrCreateHandle(ensureBucket(state.queries, type), paramsKey);

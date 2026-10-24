@@ -14,6 +14,7 @@ export type { Disposer, SymbolDisposable } from "./disposable";
 // one persistent reactive array, reconciled in place, so the reference is
 // stable across recomputes. See ./stable-computed.
 export { stableComputed } from "./stable-computed";
+export { reconcile } from "./reconcile";
 export { batch } from "./batch";
 export {
   enableProfiling,

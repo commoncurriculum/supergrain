@@ -2,7 +2,7 @@ import type { SiloError } from "./errors";
 import type { HandleStatus } from "./store";
 import type { Data } from "effect";
 
-import { unwrap } from "@supergrain/kernel";
+import { reconcile, unwrap } from "@supergrain/kernel";
 
 // =============================================================================
 // Handle statechart — flat orthogonal fields, one event alphabet
@@ -201,7 +201,9 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       break;
     }
     case "Insert": {
-      ({ value } = event);
+      // A new version of a loaded value is diffed into the stored object, so
+      // only readers of the fields that changed re-render.
+      value = reconcile(value, event.value);
       // Stamp `fetchedAt` only when this insert answers a fetch (the handle is
       // mid-fetch) or first populates the handle. A local insert into an
       // already-loaded idle handle (e.g. a websocket push) preserves it, so

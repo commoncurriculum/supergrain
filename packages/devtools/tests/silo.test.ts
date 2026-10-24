@@ -142,7 +142,7 @@ describe("snapshotSilo()", () => {
 
     let runs = 0;
     const stop = effect(() => {
-      snapshotSilo(bridge);
+      snapshotSilo(bridge, { includeValue: () => true });
       runs++;
     });
     const initial = runs;
