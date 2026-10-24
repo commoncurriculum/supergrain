@@ -1,6 +1,6 @@
 import { batch } from "./batch";
 import { unwrap } from "./core";
-import { createReactiveProxy } from "./read";
+import { deleteProperty, setProperty } from "./write";
 
 /**
  * Bring `previous` in line with `next` by writing only what changed, and return
@@ -24,11 +24,45 @@ import { createReactiveProxy } from "./read";
  * ```
  */
 export function reconcile<T>(previous: T, next: T): T {
-  const previousRaw = unwrap(previous);
-  const nextRaw = unwrap(next);
-  if (previousRaw === nextRaw || !sameShape(previousRaw, nextRaw)) return next;
-  batch(() => reconcileInto(previousRaw as object, nextRaw as object));
+  const target = unwrap(previous);
+  const value = unwrap(next);
+  if (target === value || !sameShape(target, value)) return next;
+  batch(() =>
+    update(target as Record<PropertyKey, unknown>, value as Record<PropertyKey, unknown>),
+  );
   return previous;
+}
+
+// Works on the raw objects: reads never subscribe the running effect, and
+// `setProperty` / `deleteProperty` notify exactly as a write through the proxy.
+function update(target: Record<PropertyKey, unknown>, next: Record<PropertyKey, unknown>): void {
+  if (Array.isArray(target)) {
+    const items = next as unknown as Array<unknown>;
+    const previousById = byId(target, items);
+    items.forEach((item, index) =>
+      write(target, index, previousById ? previousById.get(idOf(item)) : target[index], item),
+    );
+    if (target.length > items.length) setProperty(target, "length", items.length);
+    return;
+  }
+  for (const key of Object.keys(next)) write(target, key, target[key], next[key]);
+  for (const key of Object.keys(target)) if (!Object.hasOwn(next, key)) deleteProperty(target, key);
+}
+
+// Store `next` at `target[key]`, reusing `previous` when the two can be reconciled.
+function write(
+  target: Record<PropertyKey, unknown>,
+  key: PropertyKey,
+  previous: unknown,
+  next: unknown,
+): void {
+  const value = unwrap(next);
+  if (sameShape(unwrap(previous), value)) {
+    update(unwrap(previous) as Record<PropertyKey, unknown>, value as Record<PropertyKey, unknown>);
+    if (unwrap(target[key]) !== unwrap(previous)) setProperty(target, key, previous);
+  } else if (!Object.hasOwn(target, key) || unwrap(target[key]) !== value) {
+    setProperty(target, key, next);
+  }
 }
 
 function shapeOf(value: unknown): "array" | "object" | undefined {
@@ -43,79 +77,17 @@ function sameShape(previous: unknown, next: unknown): boolean {
   return shape !== undefined && shape === shapeOf(next);
 }
 
-// Reads go to the raw target and writes through its proxy, so the writes notify
-// subscribers while the reads never subscribe whoever is running.
-function reconcileInto(raw: object, next: object): void {
-  if (Array.isArray(raw)) {
-    reconcileArray(raw, next as Array<unknown>, createReactiveProxy(raw));
-    return;
-  }
-  const record = raw as Record<string, unknown>;
-  const proxy = createReactiveProxy(record);
-  const nextRecord = next as Record<string, unknown>;
-  for (const key of Object.keys(nextRecord)) reconcileSlot(record, key, nextRecord[key], proxy);
-  for (const key of Object.keys(record)) {
-    if (!Object.hasOwn(nextRecord, key)) delete proxy[key];
-  }
-}
-
-function reconcileSlot(
-  raw: Record<PropertyKey, unknown>,
-  key: PropertyKey,
-  next: unknown,
-  proxy: Record<PropertyKey, unknown>,
-): void {
-  const previous = unwrap(raw[key]);
-  const nextRaw = unwrap(next);
-  if (previous === nextRaw && Object.hasOwn(raw, key)) return;
-  if (sameShape(previous, nextRaw)) reconcileInto(previous as object, nextRaw as object);
-  else proxy[key] = next;
-}
-
-function reconcileArray(
-  raw: Array<unknown>,
-  next: ReadonlyArray<unknown>,
-  proxy: Array<unknown>,
-): void {
-  const previousById = indexById(raw, next);
-  for (let index = 0; index < next.length; index++) {
-    const match = previousById?.get(idOf(next[index]));
-    if (previousById === undefined) {
-      reconcileSlot(
-        raw as unknown as Record<PropertyKey, unknown>,
-        index,
-        next[index],
-        proxy as unknown as Record<PropertyKey, unknown>,
-      );
-    } else if (match === undefined) {
-      proxy[index] = next[index];
-    } else {
-      reconcileInto(match, unwrap(next[index]) as object);
-      if (unwrap(raw[index]) !== match) proxy[index] = match;
-    }
-  }
-  if (raw.length > next.length) proxy.length = next.length;
-}
-
-// The previous items keyed by `id`, or undefined when the arrays can't be
-// matched that way: an item without a string or number `id`, or a repeated one.
-function indexById(
-  raw: ReadonlyArray<unknown>,
-  next: ReadonlyArray<unknown>,
-): Map<unknown, object> | undefined {
-  const previousById = new Map<unknown, object>();
-  for (const item of raw) {
-    const id = idOf(item);
-    if (id === undefined || previousById.has(id)) return undefined;
-    previousById.set(id, unwrap(item) as object);
-  }
-  const nextIds = new Set<unknown>();
-  for (const item of next) {
-    const id = idOf(item);
-    if (id === undefined || nextIds.has(id)) return undefined;
-    nextIds.add(id);
-  }
-  return previousById;
+// The previous items keyed by `id`, or undefined when either array has an item
+// without a string or number `id`, or a repeated one.
+function byId(previous: Array<unknown>, next: Array<unknown>): Map<unknown, unknown> | undefined {
+  const previousById = new Map(previous.map((item) => [idOf(item), item]));
+  const nextIds = new Set(next.map(idOf));
+  const unique =
+    previousById.size === previous.length &&
+    nextIds.size === next.length &&
+    !previousById.has(undefined) &&
+    !nextIds.has(undefined);
+  return unique ? previousById : undefined;
 }
 
 function idOf(item: unknown): string | number | undefined {
