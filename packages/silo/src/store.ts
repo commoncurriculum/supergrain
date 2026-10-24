@@ -665,8 +665,6 @@ export function createDocumentStore<
         applyEvent(inserted, HandleEvent.insert(prepared));
         return inserted;
       });
-      // The cached object: `prepared` itself on a first insert, the existing
-      // document (now updated to match `prepared`) after that.
       const stored = unwrap(handle).value as M[K];
       // `afterInsert` tails the pipeline. The value is committed (findInMemory
       // returns it); within an enclosing batch — a fetch commit, or a caller's
