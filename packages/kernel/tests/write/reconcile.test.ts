@@ -66,6 +66,39 @@ describe("reconcile", () => {
     expect(totalB.count).toBe(0);
   });
 
+  it("keeps the items around an insertion or a removal by id", () => {
+    const state = createReactive({
+      rows: [
+        { id: "a", total: 1 },
+        { id: "b", total: 2 },
+        { id: "c", total: 3 },
+      ],
+    });
+    const [rowA, rowB, rowC] = state.rows;
+    const totalC = runs(() => rowC!.total);
+
+    reconcile(state.rows, [
+      { id: "a", total: 1 },
+      { id: "x", total: 0 },
+      { id: "b", total: 2 },
+      { id: "c", total: 30 },
+    ]);
+
+    expect(state.rows.map((row) => row.id)).toEqual(["a", "x", "b", "c"]);
+    expect(state.rows[0]).toBe(rowA);
+    expect(state.rows[2]).toBe(rowB);
+    expect(state.rows[3]).toBe(rowC);
+    expect(totalC.count).toBe(1);
+
+    reconcile(state.rows, [
+      { id: "a", total: 1 },
+      { id: "c", total: 30 },
+    ]);
+
+    expect(state.rows.map((row) => row.id)).toEqual(["a", "c"]);
+    expect(state.rows[1]).toBe(rowC);
+  });
+
   it("matches other arrays by index", () => {
     const state = createReactive({ points: [{ x: 1 }, { x: 2 }, { x: 3 }], tags: ["a", "b"] });
     const first = state.points[0];
@@ -80,6 +113,13 @@ describe("reconcile", () => {
     expect(firstX.count).toBe(0);
     expect(secondX.count).toBe(1);
     expect(unwrap(state.tags)).toEqual(["a", "b", "c"]);
+
+    const tags = state.tags;
+    reconcile(state.tags, []);
+    expect(unwrap(state.tags)).toEqual([]);
+    reconcile(state.tags, ["d"]);
+    expect(state.tags).toBe(tags);
+    expect(unwrap(state.tags)).toEqual(["d"]);
   });
 
   it("returns next when the two can't be reconciled", () => {
