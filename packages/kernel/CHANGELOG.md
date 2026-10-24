@@ -1,5 +1,11 @@
 # @supergrain/kernel
 
+## 7.5.0
+
+### Minor Changes
+
+- cace4d3: Kernel reconcile (updates loaded documents in place), and silo remote queries: createRemoteQueryStore, useRemoteQuery, and onRefetch patch | replace.
+
 ## 7.4.0
 
 ### Minor Changes
