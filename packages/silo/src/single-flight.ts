@@ -75,7 +75,7 @@ export function runSingleFlight<T>(flight: Flight, options: SingleFlightOptions<
   const run: Promise<void> = Effect.runPromiseExit(program, { signal: controller.signal }).then(
     () => {
       if (flight.inFlight === run) flight.inFlight = undefined;
-      if (flight.controller !== controller && flight.inFlight !== undefined) return flight.inFlight;
+      return flight.controller === controller ? undefined : flight.inFlight;
     },
   );
   flight.inFlight = run;
