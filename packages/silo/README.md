@@ -175,6 +175,13 @@ store.insertDocument("user", {
 
 Mutate in place when you're editing a field; insert a new version when a refetch, socket push or mutation response hands you a fresh object. Either way only the changed fields notify, and the cached document keeps its identity: `handle.value` is the same object before and after.
 
+Two consequences:
+
+- **Code keyed on the document's identity no longer re-runs.** `useMemo(..., [doc])`, `useEffect(..., [doc])` and `React.memo` props see the same object. Read the fields inside a tracked component, `useComputed` or `useSignalEffect` instead.
+- **The first object you insert becomes the cached document.** Later versions are written into it, so a reference you kept to it changes too.
+
+To swap in each new version instead, for code that can only see a whole new object, set `onRefetch: "replace"` on the model, the query, or the remote query store. The default is `"patch"`.
+
 The first insert caches the object you pass itself, handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). (If a `prepareInsert` hook returns a replacement, that returned object is cached instead.) Later inserts copy their changes into that cached object. Fields missing from the new version are deleted, and array items with the same `id` keep their object wherever they move. Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
 
 ## Why this instead of TanStack Query / SWR?
@@ -723,6 +730,54 @@ Queries support the same **ordered pipeline** as documents — supply `processor
 
 Rule of thumb: "Would I ever want `useDocument(type, id)` to read from this cache slot?" If yes → document. If no → query.
 
+## Remote queries
+
+A remote query is a result the server computes from a request: an analytics report, a search. It isn't an entity, so there's nothing to normalize, and it needs React Query's freshness features: stale time, garbage collection, refetch on focus / reconnect / interval, and invalidation. It lives in its own store, apart from the document store.
+
+- **Defined once, typed.** `remoteQuery<Params, Result>(name, request)` is a value you import, usually generated, one per API operation.
+- **One transport.** The store's `fetch(request, params, { signal })` turns a definition's opaque `request` into an HTTP call, so silo knows nothing about your API.
+- **React Query's names and defaults.** `staleTime` (0), `gcTime` (5 minutes), `refetchOnWindowFocus` (true), `refetchOnReconnect` (true), `refetchInterval` (false), set on the store and overridable per call.
+- **Updates in place.** A refetch is diffed into the cached result with the kernel's `reconcile`, so only readers of the fields that changed re-render. `onRefetch: "replace"` on the store swaps in each new result instead.
+- **Same engine as documents.** `retry`, `timeout`, `deadline`, `retryable` and `onError` behave exactly as on `createDocumentStore`.
+
+```ts
+import { createRemoteQueryStore, remoteQuery } from "@supergrain/silo";
+import { createRemoteQueryStoreContext } from "@supergrain/silo/react";
+
+type Request = { method: "post"; path: string };
+
+export const userActivitySummary = remoteQuery<{ filters: { groupId: string } }, Summary, Request>(
+  "user_activity_summary",
+  { method: "post", path: "/api/v5/analytics/user_activity_summary" },
+);
+
+export const remoteQueryStore = createRemoteQueryStore<Request>({
+  fetch: ({ path }, body, { signal }) =>
+    fetch(path, { method: "POST", body: JSON.stringify(body), signal }).then((r) => r.json()),
+  staleTime: 60_000,
+});
+export const { Provider, useRemoteQuery } = createRemoteQueryStoreContext<Request>();
+
+// <Provider store={remoteQueryStore}>…</Provider>
+const summary = useRemoteQuery(userActivitySummary, { filters: { groupId } });
+summary.value; // typed Summary | undefined
+summary.refetch();
+
+const live = useRemoteQuery(userActivitySummary, body, { refetchInterval: 30_000 });
+
+remoteQueryStore.invalidate(userActivitySummary); // every body
+remoteQueryStore.invalidate(userActivitySummary, { filters: { groupId } }); // bodies containing these fields
+await remoteQueryStore.fetch(userActivitySummary, body); // outside React, like fetchQuery
+```
+
+How the freshness features work:
+
+- **Mounted components count, not reads.** Each `useRemoteQuery` registers while mounted, like React Query's observers. A result with none is dropped `gcTime` after its last fetch, or after its last component unmounts.
+- **Each component decides staleness with its own `staleTime`.** A result older than that refetches when the component mounts, when the page becomes visible, or when the browser reconnects. A fetch already in flight isn't restarted. `refetchInterval` refetches only while the page is visible.
+- **Invalidation refetches only what's on screen.** Unmounted results count as stale until their next fetch, whatever their age.
+- **Single-flight.** A new fetch aborts the one in flight (its `signal` fires), and a late result from it is dropped.
+- **Across components, the shortest `refetchInterval` and the longest `gcTime` win.**
+
 ## Comparison to TanStack Query
 
 TanStack Query (TQ) and SWR make similar bets; TQ is more feature-complete, so this comparison uses it as the stand-in.
@@ -749,9 +804,9 @@ These aren't "same library, different maturity" — they're genuinely different 
 | **Cross-query sync (edit user → every view updates)**  | ✗ (manual) |           ✓            | —                                              |
 | **Stable reactive handles (fine-grained field reads)** |     ✗      |           ✓            | —                                              |
 | Suspense via `use()`                                   | ✓ (opt-in) |       ✓ (opt-in)       | —                                              |
-| Invalidation                                           |     ✓      |           ✗            | add `invalidate` / `invalidateType`            |
-| Stale-time / gc-time                                   |     ✓      |           ✗            | add `staleMs`; compare against `fetchedAt`     |
-| Refetch on focus / reconnect / interval                |     ✓      |           ✗            | add opt-in hooks                               |
+| Invalidation                                           |     ✓      |   ✓ (remote queries)   | —                                              |
+| Stale-time / gc-time                                   |     ✓      |   ✓ (remote queries)   | —                                              |
+| Refetch on focus / reconnect / interval                |     ✓      |   ✓ (remote queries)   | —                                              |
 | Retry with backoff                                     |     ✓      |           ✓            | — (jittered fibonacci default; configurable)   |
 | Cancellation                                           |     ✓      |           ✓            | — (adapter `AbortSignal`; not on unmount)      |
 | Pagination / infinite queries                          |     ✓      |           ✗            | `@supergrain/queries` (shipped)                |
@@ -765,7 +820,7 @@ These aren't "same library, different maturity" — they're genuinely different 
 
 ### What we give up vs TQ
 
-- **Shipped feature count.** TQ has years of polish; we're shipping a read layer. If you need stale-time, refetch-on-focus, or mutations _today_, TQ wins. (Retry/backoff, cancellation, and pagination have since landed — pagination ships separately in [`@supergrain/queries`](../queries/README.md).)
+- **Shipped feature count.** TQ has years of polish; we're shipping a read layer. If you need stale-time, refetch-on-focus, or mutations _today_, TQ wins. (Retry/backoff, cancellation, and pagination have since landed — pagination ships separately in [`@supergrain/queries`](../queries/README.md) — and so have stale time, refetch triggers and invalidation for [remote queries](#remote-queries).)
 - **Partial-key pattern invalidation.** `invalidateQueries({ queryKey: ['users'] })` in TQ matches every key starting with `['users']`. Our planned `invalidateType('users-by-role')` is blunter — drops everything under a type in one call. Predicate invalidation (`invalidateWhere`) handles the precise cases. Net: ~5% of real-world invalidation needs are less ergonomic.
 - **Zero-discipline fetching.** Write `queryFn` and you're done. Here you write adapter + processor + provider wiring. More up-front work; pays off if normalization matters to you.
 - **Mature ecosystem.** Persisters, devtools, SSR integrations, community plugins.
@@ -793,7 +848,7 @@ Much of the comparison above contrasts TQ-as-shipped with document-store-as-desi
 These are deliberate — every one was considered and left out for this read layer. Most will land in subsequent packages / PRs.
 
 - Writes, dispatch, optimistic updates — a separate write layer will build on this.
-- Stale-time / refetch-on-focus / background revalidation.
+- Stale-time / refetch-on-focus / background revalidation for documents. (Remote queries have them; see [Remote queries](#remote-queries).)
 - Imperative `handle.refetch()` on a document — observe fresh data by calling `insertDocument` from a socket handler or a mutation response. (Paginated queries in [`@supergrain/queries`](../queries/README.md) do expose `refetch()` / `fetchNextPage()`.)
 - Server-push invalidation for individual documents — push fresh data with `insertDocument` instead. ([`@supergrain/queries`](../queries/README.md) adds an opt-in `subscribe` hook for paginated queries.)
 - Unmount-driven cancellation — an in-flight fetch completes and populates the cache even after its component unmounts. Adapters still receive an `AbortSignal` that fires on `timeout` / `deadline` / interrupt, so request cancellation itself is supported.

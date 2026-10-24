@@ -14,6 +14,9 @@ import { deleteProperty, setProperty } from "./write";
  * - Fields missing from `next` are deleted.
  * - Array items with the same `id` keep their object, wherever they move.
  * - An object whose `id` changed is replaced, not written into.
+ * - Objects reached from `previous` are written into, so they must belong to
+ *   the caller. That is why `stableComputed` keeps its own index-only sync:
+ *   its items belong to another store.
  *
  * @example
  * ```ts
