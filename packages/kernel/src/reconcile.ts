@@ -1,21 +1,19 @@
 import { batch } from "./batch";
-import { unwrap } from "./core";
+import { isWrappable, unwrap } from "./core";
 import { deleteProperty, setProperty } from "./write";
 
 /**
  * Bring `previous` in line with `next` by writing only what changed, and return
- * the value to keep.
+ * the value to keep. This is Solid's `reconcile` with `key: "id"`, on the
+ * kernel's own write functions.
  *
- * When `previous` and `next` are both plain objects, or both arrays, `previous`
- * is updated in place and returned: a subscriber re-runs only when a field it
- * reads changed, and the object's identity never changes. Otherwise (a first
- * value, a primitive, a `Date`, a `Map`, or a change of shape) `next` is
- * returned for the caller to store.
+ * When `previous` and `next` are both objects or both arrays, `previous` is
+ * updated in place and returned, so a subscriber re-runs only when a field it
+ * reads changed. Otherwise `next` is returned for the caller to store.
  *
  * - Fields missing from `next` are deleted.
- * - Arrays whose items all carry a unique string or number `id` are matched by
- *   `id`, so a moved item keeps its object. Other arrays are matched by index.
- * - `next` must be acyclic, like any fetched JSON.
+ * - Array items with the same `id` keep their object, wherever they move.
+ * - An object whose `id` changed is replaced, not written into.
  *
  * @example
  * ```ts
@@ -24,75 +22,117 @@ import { deleteProperty, setProperty } from "./write";
  * ```
  */
 export function reconcile<T>(previous: T, next: T): T {
-  const target = unwrap(previous);
-  const value = unwrap(next);
-  if (target === value || !sameShape(target, value)) return next;
-  batch(() =>
-    update(target as Record<PropertyKey, unknown>, value as Record<PropertyKey, unknown>),
-  );
-  return previous;
+  const root: Record<PropertyKey, unknown> = { value: unwrap(previous) };
+  batch(() => applyState(unwrap(next), root, "value"));
+  return root["value"] === unwrap(previous) ? previous : next;
 }
 
-// Works on the raw objects: reads never subscribe the running effect, and
-// `setProperty` / `deleteProperty` notify exactly as a write through the proxy.
-function update(target: Record<PropertyKey, unknown>, next: Record<PropertyKey, unknown>): void {
-  if (Array.isArray(target)) {
-    const items = next as unknown as Array<unknown>;
-    const previousById = byId(target, items);
-    items.forEach((item, index) =>
-      write(target, index, previousById ? previousById.get(idOf(item)) : target[index], item),
-    );
-    if (target.length > items.length) setProperty(target, "length", items.length);
+type Container = Record<PropertyKey, unknown>;
+
+// Solid's `applyState`. It reads the raw objects, so no read subscribes the
+// running effect, and writes with `setProperty` / `deleteProperty`, the
+// functions the proxy's traps call, so subscribers are notified as for any write.
+function applyState(target: unknown, parent: Container, property: PropertyKey): void {
+  const previous = unwrap(parent[property]);
+  if (target === previous) return;
+  if (
+    !isContainer(target) ||
+    !isContainer(previous) ||
+    Array.isArray(target) !== Array.isArray(previous) ||
+    target["id"] !== previous["id"]
+  ) {
+    setProperty(parent, property, target);
     return;
   }
-  for (const key of Object.keys(next)) write(target, key, target[key], next[key]);
-  for (const key of Object.keys(target)) if (!Object.hasOwn(next, key)) deleteProperty(target, key);
-}
-
-// Store `next` at `target[key]`, reusing `previous` when the two can be reconciled.
-function write(
-  target: Record<PropertyKey, unknown>,
-  key: PropertyKey,
-  previous: unknown,
-  next: unknown,
-): void {
-  const value = unwrap(next);
-  if (sameShape(unwrap(previous), value)) {
-    update(unwrap(previous) as Record<PropertyKey, unknown>, value as Record<PropertyKey, unknown>);
-    if (unwrap(target[key]) !== unwrap(previous)) setProperty(target, key, previous);
-  } else if (!Object.hasOwn(target, key) || unwrap(target[key]) !== value) {
-    setProperty(target, key, next);
+  if (Array.isArray(target)) {
+    applyArray(target, previous as unknown as Array<unknown>);
+    return;
+  }
+  for (const key of Object.keys(target)) applyState(target[key], previous, key);
+  for (const key of Object.keys(previous)) {
+    if (!Object.hasOwn(target, key)) deleteProperty(previous, key);
   }
 }
 
-function shapeOf(value: unknown): "array" | "object" | undefined {
-  if (Array.isArray(value)) return "array";
-  if (value === null || typeof value !== "object") return undefined;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null ? "object" : undefined;
+// Solid's array pass: skip the common prefix and suffix, then move each
+// remaining previous item to the index of the next item with its `id`.
+function applyArray(target: Array<unknown>, previous: Array<unknown>): void {
+  const parent = previous as unknown as Container;
+  if (target.length === 0 || previous.length === 0) {
+    target.forEach((item, index) => applyState(item, parent, index));
+    if (previous.length > target.length) setProperty(previous, "length", target.length);
+    return;
+  }
+
+  let start = 0;
+  const shortest = Math.min(previous.length, target.length);
+  while (start < shortest && sameItem(previous[start], target[start])) {
+    applyState(target[start], parent, start);
+    start++;
+  }
+
+  const moved: Array<unknown> = Array.from({ length: target.length });
+  const placed = new Set<number>();
+  let end = previous.length - 1;
+  let newEnd = target.length - 1;
+  while (end >= start && newEnd >= start && sameItem(previous[end], target[newEnd])) {
+    moved[newEnd] = previous[end];
+    placed.add(newEnd);
+    end--;
+    newEnd--;
+  }
+
+  if (start > newEnd || start > end) {
+    for (let index = start; index <= newEnd; index++) setProperty(previous, index, target[index]);
+    for (let index = newEnd + 1; index < target.length; index++) {
+      setProperty(previous, index, moved[index]);
+      applyState(target[index], parent, index);
+    }
+    if (previous.length > target.length) setProperty(previous, "length", target.length);
+    return;
+  }
+
+  // For each id, the first index in `target[start..newEnd]` that wants it, with
+  // `nextIndexWithKey` chaining to the following index that wants the same id.
+  const firstIndexWithKey = new Map<unknown, number>();
+  const nextIndexWithKey: Array<number> = [];
+  for (let index = newEnd; index >= start; index--) {
+    const key = keyOf(target[index]);
+    nextIndexWithKey[index] = firstIndexWithKey.get(key) ?? -1;
+    firstIndexWithKey.set(key, index);
+  }
+  for (let index = start; index <= end; index++) {
+    const key = keyOf(previous[index]);
+    const wanted = firstIndexWithKey.get(key);
+    if (wanted !== undefined && wanted !== -1) {
+      moved[wanted] = previous[index];
+      placed.add(wanted);
+      firstIndexWithKey.set(key, nextIndexWithKey[wanted]!);
+    }
+  }
+  for (let index = start; index < target.length; index++) {
+    if (placed.has(index)) {
+      setProperty(previous, index, moved[index]);
+      applyState(target[index], parent, index);
+    } else {
+      setProperty(previous, index, target[index]);
+    }
+  }
+  if (previous.length > target.length) setProperty(previous, "length", target.length);
 }
 
-function sameShape(previous: unknown, next: unknown): boolean {
-  const shape = shapeOf(previous);
-  return shape !== undefined && shape === shapeOf(next);
+// What Solid wraps: plain objects and arrays. The kernel also wraps Maps and
+// Sets, which have no fields to diff, so those are replaced whole.
+function isContainer(value: unknown): value is Container {
+  return isWrappable(value) && !(value instanceof Map) && !(value instanceof Set);
 }
 
-// The previous items keyed by `id`, or undefined when either array has an item
-// without a string or number `id`, or a repeated one.
-function byId(previous: Array<unknown>, next: Array<unknown>): Map<unknown, unknown> | undefined {
-  const previousById = new Map(previous.map((item) => [idOf(item), item]));
-  const nextIds = new Set(next.map(idOf));
-  const unique =
-    previousById.size === previous.length &&
-    nextIds.size === next.length &&
-    !previousById.has(undefined) &&
-    !nextIds.has(undefined);
-  return unique ? previousById : undefined;
-}
-
-function idOf(item: unknown): string | number | undefined {
+function keyOf(item: unknown): unknown {
   const raw = unwrap(item);
-  if (shapeOf(raw) !== "object") return undefined;
-  const { id } = raw as { id?: unknown };
-  return typeof id === "string" || typeof id === "number" ? id : undefined;
+  return raw && typeof raw === "object" ? (raw as Container)["id"] : undefined;
+}
+
+function sameItem(previous: unknown, next: unknown): boolean {
+  const key = keyOf(previous);
+  return unwrap(previous) === next || (key !== undefined && key !== null && key === keyOf(next));
 }
