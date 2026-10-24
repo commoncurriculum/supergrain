@@ -174,6 +174,12 @@ export interface QueryConfig<
    * exclusive with `processor`.
    */
   processors?: ReadonlyArray<QueryProcessor<M, Q, Type>>;
+  /**
+   * What a new result for params already loaded does: `"patch"` (default)
+   * writes only the changed fields into the stored result; `"replace"` swaps
+   * in the new object.
+   */
+  onRefetch?: "patch" | "replace";
 }
 
 // =============================================================================

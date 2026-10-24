@@ -86,6 +86,11 @@ export interface RemoteQueryStoreConfig<Request = unknown>
   ): Promise<unknown> | Effect.Effect<unknown, AdapterError>;
   /** Called on every failed attempt, like `DocumentStoreConfig.onError`. */
   readonly onError?: AdapterErrorSink;
+  /**
+   * What a refetched result does: `"patch"` (default) writes only the changed
+   * fields into the stored result; `"replace"` swaps in the new object.
+   */
+  readonly onRefetch?: "patch" | "replace";
 }
 
 /**
@@ -273,7 +278,7 @@ export function createRemoteQueryStore<Request = unknown>(
           },
         }),
       commit: (result) => {
-        applyEvent(entry.handle, HandleEvent.insert(result));
+        applyEvent(entry.handle, HandleEvent.insert(result, config.onRefetch));
         entry.invalidated = false;
       },
       report: (error) => report(error, { attempt: 1, retryable: false }),

@@ -103,6 +103,25 @@ describe("RemoteQueryStore.fetch", () => {
     expect(handle.isFetching).toBe(false);
     expect(server.count(1)).toBe(3);
   });
+
+  it("swaps in each refetched result with onRefetch: 'replace'", async () => {
+    const server = makeServer();
+    const store = createRemoteQueryStore<Request>({ fetch: server.fetch, onRefetch: "replace" });
+    const loading = store.fetch(summaryQuery, body(1));
+    await advance(5);
+    const first = await loading;
+
+    server.setTotals(1, [3, 4]);
+    const refetching = store.fetch(summaryQuery, body(1));
+    await advance(5);
+    const second = await refetching;
+
+    expect(second).not.toBe(first);
+    expect([first.totals, second.totals]).toEqual([
+      [1, 2],
+      [3, 4],
+    ]);
+  });
 });
 
 describe("RemoteQueryStore.observe", () => {

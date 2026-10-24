@@ -18,7 +18,7 @@ export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
   /** A (re)fetch started. Bumps the handle's fetch `generation`. */
   Fetch: Record<never, never>;
   /** A document/result was inserted (by a processor or `insertDocument`). */
-  Insert: { readonly value: T };
+  Insert: { readonly value: T; readonly onRefetch: "patch" | "replace" };
   /** The in-flight fetch completed and the requested key is present. */
   Settled: { readonly generation: number };
   /**
@@ -58,7 +58,11 @@ export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
  */
 export const HandleEvent = {
   fetch: (): HandleEvent => ({ _tag: "Fetch" }),
-  insert: <T>(value: T): HandleEvent<T> => ({ _tag: "Insert", value }),
+  insert: <T>(value: T, onRefetch: "patch" | "replace" = "patch"): HandleEvent<T> => ({
+    _tag: "Insert",
+    value,
+    onRefetch,
+  }),
   settled: (generation: number): HandleEvent => ({ _tag: "Settled", generation }),
   retrying: (error: SiloError, generation: number): HandleEvent => ({
     _tag: "Retrying",
@@ -201,9 +205,9 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       break;
     }
     case "Insert": {
-      // A new version of a loaded value is diffed into the stored object, so
-      // only readers of the fields that changed re-render.
-      value = reconcile(value, event.value);
+      // "patch" diffs a new version into the stored object, so only readers of
+      // the fields that changed re-render. "replace" swaps in the new object.
+      value = event.onRefetch === "replace" ? event.value : reconcile(value, event.value);
       // Stamp `fetchedAt` only when this insert answers a fetch (the handle is
       // mid-fetch) or first populates the handle. A local insert into an
       // already-loaded idle handle (e.g. a websocket push) preserves it, so

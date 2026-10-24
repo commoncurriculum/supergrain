@@ -314,6 +314,12 @@ export interface ModelConfig<M extends DocumentTypes> extends ResilienceOptions 
    * with `processor`.
    */
   processors?: ReadonlyArray<ResponseProcessor<M>>;
+  /**
+   * What a new version of a stored document does: `"patch"` (default) writes
+   * only the changed fields into the stored document; `"replace"` swaps in the
+   * new object.
+   */
+  onRefetch?: "patch" | "replace";
 }
 
 // =============================================================================
@@ -607,7 +613,7 @@ export function createDocumentStore<
       }
       const handle = batch(() => {
         const inserted = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
-        applyEvent(inserted, HandleEvent.insert(prepared));
+        applyEvent(inserted, HandleEvent.insert(prepared, config.models[type]?.onRefetch));
         return inserted;
       });
       // The cached object: `prepared` itself on a first insert, the existing
@@ -683,7 +689,7 @@ export function createDocumentStore<
       const paramsKey = stableStringify(params);
       batch(() => {
         const handle = getOrCreateHandle(ensureBucket(state.queries, type), paramsKey);
-        applyEvent(handle, HandleEvent.insert(result));
+        applyEvent(handle, HandleEvent.insert(result, config.queries?.[type]?.onRefetch));
       });
     },
 

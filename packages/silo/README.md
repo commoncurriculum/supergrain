@@ -180,6 +180,8 @@ Two consequences:
 - **Code keyed on the document's identity no longer re-runs.** `useMemo(..., [doc])`, `useEffect(..., [doc])` and `React.memo` props see the same object. Read the fields inside a tracked component, `useComputed` or `useSignalEffect` instead.
 - **The first object you insert becomes the cached document.** Later versions are written into it, so a reference you kept to it changes too.
 
+To swap in each new version instead, for code that can only see a whole new object, set `onRefetch: "replace"` on the model, the query, or the remote query store. The default is `"patch"`.
+
 The first insert caches the object you pass itself, handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). (If a `prepareInsert` hook returns a replacement, that returned object is cached instead.) Later inserts copy their changes into that cached object. Fields missing from the new version are deleted; arrays whose items all have a unique `id` are matched by `id`, other arrays by index. Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
 
 ## Why this instead of TanStack Query / SWR?
