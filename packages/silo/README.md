@@ -175,7 +175,7 @@ store.insertDocument("user", {
 
 Mutate in place when you're editing a field; insert a new version when a refetch, socket push or mutation response hands you a fresh object. Either way only the changed fields notify, and the cached document keeps its identity: `handle.value` is the same object before and after.
 
-The first insert caches the object you pass itself, handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). (If a `prepareInsert` hook returns a replacement, that returned object is cached instead.) Later inserts copy their changes into that cached object. Fields missing from the new version are deleted; arrays whose items all have a unique `id` are matched by `id`, other arrays by index. Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
+The first insert caches the object you pass itself, handed back through a reactive proxy (`unwrap(handle.value)` recovers the exact reference). (If a `prepareInsert` hook returns a replacement, that returned object is cached instead.) Later inserts copy their changes into that cached object. Fields missing from the new version are deleted, and array items with the same `id` keep their object wherever they move. Documents are **not frozen**: a frozen object is the one thing the kernel hands back _unwrapped_, which would drop it out of the reactive graph — so if you freeze a doc yourself before inserting it, you opt that document out of per-field tracking and in-place updates.
 
 ## Why this instead of TanStack Query / SWR?
 

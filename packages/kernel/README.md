@@ -153,7 +153,7 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
 
 - `reconcile(previous, next)`
 
-  > Updates `previous` in place to equal `next`, writing only the fields that changed, and returns `previous`. Subscribers re-run only for fields that changed, and objects keep their identity. Fields missing from `next` are deleted. Arrays whose items all have a unique `id` are matched by `id`, so a moved item keeps its object; other arrays are matched by index. When the two aren't both plain objects or both arrays, it changes nothing and returns `next` for you to store. Silo uses it whenever a new version of a loaded document arrives.
+  > Updates `previous` in place to equal `next`, writing only the fields that changed, and returns `previous`. Subscribers re-run only for fields that changed, and objects keep their identity. It is Solid's `reconcile` with `key: "id"`. Fields missing from `next` are deleted, and array items with the same `id` keep their object wherever they move. A value that isn't a plain object or array, or whose `id` changed, is replaced; when that's true of `previous` and `next` themselves, it changes nothing and returns `next` for you to store. Silo uses it whenever a new version of a loaded document arrives.
 
 - `effect(fn)`
 
