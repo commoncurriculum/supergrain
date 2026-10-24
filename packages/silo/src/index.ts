@@ -45,6 +45,16 @@ export type {
   ResolvedAdapterOptions,
 } from "./resolve";
 
+export { createRemoteQueryStore, remoteQuery } from "./remote";
+export type {
+  PartialParams,
+  RemoteQuery,
+  RemoteQueryHandle,
+  RemoteQueryOptions,
+  RemoteQueryStore,
+  RemoteQueryStoreConfig,
+} from "./remote";
+
 export type {
   QueryAdapter,
   QueryConfig,

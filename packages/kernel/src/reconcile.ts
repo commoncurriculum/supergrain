@@ -16,6 +16,9 @@ import { createReactiveProxy } from "./read";
  * - Arrays whose items all carry a unique string or number `id` are matched by
  *   `id`, so a moved item keeps its object. Other arrays are matched by index.
  * - `next` must be acyclic, like any fetched JSON.
+ * - Objects reached from `previous` are written into, so they must belong to
+ *   the caller. That is why `stableComputed` keeps its own index-only sync:
+ *   its items belong to another store.
  *
  * @example
  * ```ts
