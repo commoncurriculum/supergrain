@@ -1,5 +1,12 @@
 # @supergrain/activity
 
+## 1.0.4
+
+### Patch Changes
+
+- Updated dependencies [cace4d3]
+  - @supergrain/kernel@7.5.0
+
 ## 1.0.3
 
 ### Patch Changes
