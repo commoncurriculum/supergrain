@@ -1,4 +1,4 @@
-import { batch, effect, unwrap } from "@supergrain/kernel";
+import { batch, createReactive, effect, unwrap } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -945,5 +945,98 @@ describe("Store.find — cached documents of unconfigured types stay readable", 
     expect(handle.value).toEqual({ total: 3 });
     expect(handle.status).toBe("success");
     expect(handle.isFetching).toBe(false);
+  });
+});
+
+// =============================================================================
+// find is a read — it must not flush the outer batch from inside an effect
+// (#144). Ending a batch (or writing a subscribed signal) at batch depth 0
+// calls alien-signals' flush, which would run the outer batch's LATER effects
+// nested inside the effect that called find — in React, a setState in another
+// component's render.
+// =============================================================================
+
+describe("Store.find — no nested flush from inside an effect (#144)", () => {
+  function recordFlushOrder(read: () => void): string[] {
+    const trigger = createReactive({ a: 0, b: 0 });
+    const log: string[] = [];
+    const stopA = effect(() => {
+      if (trigger.a === 0) return;
+      log.push("A:start");
+      read();
+      log.push("A:end");
+    });
+    const stopB = effect(() => {
+      if (trigger.b === 0) return;
+      log.push("B");
+    });
+    batch(() => {
+      trigger.a = 1;
+      trigger.b = 1;
+    });
+    stopA();
+    stopB();
+    return log;
+  }
+
+  it("find on a never-fetched document runs B after A, not inside it", () => {
+    const log = recordFlushOrder(() => store.find("user", "1"));
+    expect(log).toEqual(["A:start", "A:end", "B"]);
+  });
+
+  it("findQuery on never-fetched params runs B after A, not inside it", () => {
+    const log = recordFlushOrder(() =>
+      store.findQuery("dashboard", { workspaceId: 1, filters: { active: true } }),
+    );
+    expect(log).toEqual(["A:start", "A:end", "B"]);
+  });
+
+  it("findDocumentsIndividually / findDocumentsTogether don't flush either", () => {
+    expect(recordFlushOrder(() => store.findDocumentsIndividually("user", ["1", "2"]))).toEqual([
+      "A:start",
+      "A:end",
+      "B",
+    ]);
+    expect(recordFlushOrder(() => store.findDocumentsTogether("user", ["3", "4"]))).toEqual([
+      "A:start",
+      "A:end",
+      "B",
+    ]);
+  });
+
+  it("a brand-new handle is already fetching, with a promise, on the same tick", () => {
+    const handle = store.find("user", "1");
+    expect(handle.isFetching).toBe(true);
+    expect(handle.status).toBe("pending");
+    expect(handle.promise).toBeInstanceOf(Promise);
+    expect(store.find("user", "1")).toBe(handle);
+  });
+
+  it("a findInMemory reader still sees the document that find later loads", async () => {
+    const seen: Array<string | undefined> = [];
+    const stop = effect(() => {
+      seen.push(store.findInMemory("user", "1")?.attributes.firstName);
+    });
+    store.find("user", "1");
+    await flushCoalescer();
+    stop();
+    expect(seen.at(-1)).toBe("User1");
+  });
+
+  it("a findInMemory reader sees a sync insert right after find", async () => {
+    const seen: Array<string | undefined> = [];
+    const stop = effect(() => {
+      seen.push(store.findInMemory("user", "1")?.attributes.firstName);
+    });
+    store.find("user", "1");
+    store.insertDocument("user", makeUser("1", { firstName: "Pushed" }));
+    await Promise.resolve();
+    stop();
+    expect(seen.at(-1)).toBe("Pushed");
+  });
+
+  it("still validates the type before creating a handle", () => {
+    expect(() => store.find("nope" as never, "1")).toThrow(/no model "nope" is configured/);
+    expect(store.findInMemory("nope" as never, "1")).toBeUndefined();
   });
 });

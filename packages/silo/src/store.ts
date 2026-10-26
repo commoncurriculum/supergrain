@@ -505,6 +505,63 @@ function getOrCreateHandle(bucket: Map<string, InternalHandle>, key: string): In
 }
 
 /**
+ * `find`/`findQuery` are reads, so they must not write reactively: any
+ * `batch`/`endBatch` (or a write to a subscribed signal) at batch depth 0 calls
+ * alien-signals' `flush`, which — when `find` runs inside an effect, e.g. a
+ * synchronous React render triggered by an outer flush — drains the rest of the
+ * OUTER flush's queue from inside this read. Downstream that surfaces as React
+ * "setState in render" errors (#144).
+ *
+ * So a first-time key gets a handle that is BORN mid-fetch (`isFetching: true`,
+ * pending `promise`) — built as a plain object, so no signal exists to notify —
+ * and is stored in the raw maps. Synchronous callers (the render that called
+ * `find`) see it immediately. Structural notification (`findInMemory` readers,
+ * key iteration) is announced on a microtask, outside any flush; the handle
+ * holds no `value` until its fetch settles, well after that microtask.
+ *
+ * Returns the handle (the stable reactive proxy) and whether it was created.
+ */
+function getOrCreateFetchingHandle(
+  buckets: Map<string, Map<string, InternalHandle>>,
+  type: string,
+  key: string,
+  onCreate: () => void,
+): InternalHandle {
+  const rawBucket = unwrap(buckets).get(type);
+  if (rawBucket === undefined || !rawBucket.has(key)) {
+    onCreate();
+    const handle = makeIdleHandle();
+    // A plain object: `applyEvent` writes raw fields and builds the promise
+    // without touching any signal.
+    applyEvent(handle, HandleEvent.fetch());
+    let bucket = rawBucket;
+    if (bucket === undefined) {
+      bucket = new Map<string, InternalHandle>([[key, handle]]);
+      setQuietly(buckets, type, bucket);
+    } else {
+      setQuietly(buckets.get(type)!, key, handle);
+    }
+  }
+  return getOrCreateHandle(buckets.get(type)!, key);
+}
+
+/**
+ * `map.set(key, value)` for a NEW key, without a synchronous reactive write:
+ * the entry lands in the raw map now (visible to every read), and the reactive
+ * notification fires on a microtask by re-running the set through the proxy.
+ * Bucket entries are never replaced or deleted (handles are stable for the
+ * store's lifetime), so the entry is still `value` when the microtask runs.
+ */
+function setQuietly<K, V>(map: Map<K, V>, key: K, value: V): void {
+  const raw = unwrap(map);
+  raw.set(key, value);
+  queueMicrotask(() => {
+    raw.delete(key);
+    map.set(key, value);
+  });
+}
+
+/**
  * True when the handle has never loaded (no value, no prior error) and no
  * fetch is in flight — i.e. `find`/`findQuery` must enqueue a request.
  * Errored handles don't auto-retry; loaded handles serve from cache.
@@ -534,18 +591,29 @@ export function createDocumentStore<
   const store: DocumentStore<M, Q> = {
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
       if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
-      const handle = getOrCreateHandle(ensureBucket(state.documents, type), id);
-      if (needsFetch(handle)) {
-        // Validate only when a fetch must be enqueued — an unconfigured type
-        // would otherwise enqueue a request no drain can serve, killing the
-        // whole batch window and stranding every handle in it. A cached
-        // document (e.g. a sideload inserted under a type with no model
-        // config) stays readable: the cache path never needs an adapter.
+      // Validate only when a fetch must be enqueued — an unconfigured type
+      // would otherwise enqueue a request no drain can serve, killing the
+      // whole batch window and stranding every handle in it. A cached
+      // document (e.g. a sideload inserted under a type with no model
+      // config) stays readable: the cache path never needs an adapter.
+      const assertConfigured = () => {
         if (config.models[type] === undefined) {
           throw new Error(
             `@supergrain/silo: no model "${type}" is configured — add it to DocumentStoreConfig.models`,
           );
         }
+      };
+      let created = false;
+      const handle = getOrCreateFetchingHandle(state.documents, type, id, () => {
+        assertConfigured();
+        created = true;
+      });
+      if (created) {
+        finder.queueDocument(type, id);
+      } else if (needsFetch(handle)) {
+        // An existing idle handle (e.g. after `clearMemory`) may have readers,
+        // so its transition to fetching must notify them reactively.
+        assertConfigured();
         batch(() => applyEvent(handle, HandleEvent.fetch()));
         finder.queueDocument(type, id);
       }
@@ -559,10 +627,10 @@ export function createDocumentStore<
       if (ids === null || ids === undefined) return [];
       // `find` is stable + idempotent: same reactive handle per id, and it only
       // enqueues a fetch when one is needed — so mapping over ids both triggers
-      // the loads and collects the handles in id order. Batch to combine find's
-      // internal batch calls.
+      // the loads and collects the handles in id order. Deliberately NOT
+      // wrapped in `batch`: ending a batch flushes, and this is a read (#144).
       // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
-      return batch(() => ids.map((id) => store.find(type, id)));
+      return ids.map((id) => store.find(type, id));
     },
 
     findDocumentsTogether<K extends keyof M & string>(
@@ -571,7 +639,7 @@ export function createDocumentStore<
     ): DocumentsTogetherHandle<M[K]> {
       if (ids === null || ids === undefined) return IDLE_DOCUMENTS_TOGETHER_HANDLE;
       // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
-      const handles = batch(() => ids.map((id) => store.find(type, id)));
+      const handles = ids.map((id) => store.find(type, id));
       return combineDocumentsTogether(handles);
     },
 
@@ -650,16 +718,26 @@ export function createDocumentStore<
         return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
 
       const paramsKey = stableStringify(params);
-      const handle = getOrCreateHandle(ensureBucket(state.queries, type), paramsKey);
-      if (needsFetch(handle)) {
-        // Validate only when a fetch must be enqueued — an unconfigured type
-        // would otherwise enqueue a request no drain can serve, stranding the
-        // handle. A result seeded via `insertQueryResult` stays readable.
+      // Validate only when a fetch must be enqueued — an unconfigured type
+      // would otherwise enqueue a request no drain can serve, stranding the
+      // handle. A result seeded via `insertQueryResult` stays readable.
+      const assertConfigured = () => {
         if (config.queries?.[type] === undefined) {
           throw new Error(
             `@supergrain/silo: no query "${type}" is configured — add it to DocumentStoreConfig.queries`,
           );
         }
+      };
+      let created = false;
+      const handle = getOrCreateFetchingHandle(state.queries, type, paramsKey, () => {
+        assertConfigured();
+        created = true;
+      });
+      if (created) {
+        finder.queueQuery(type, paramsKey, params);
+      } else if (needsFetch(handle)) {
+        // See `find`: an existing idle handle must notify its readers.
+        assertConfigured();
         batch(() => applyEvent(handle, HandleEvent.fetch()));
         finder.queueQuery(type, paramsKey, params);
       }
