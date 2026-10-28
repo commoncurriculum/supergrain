@@ -2,21 +2,13 @@ import {
   $ELEMENTS,
   $OWN_KEYS,
   $VERSION,
+  bumpSignal,
   unwrap,
   getNodes,
   getNodesIfExist,
   type DataNodes,
 } from "./core";
 import { profileSignalWrite } from "./profiler";
-
-// Monotonic counter feeding every counter-style signal write. The value only
-// needs to differ from the previous one so `Object.is` detects a change and
-// subscribers re-run; its specific number is not observed by anyone. Using a
-// module-local `++` avoids `signal(signal() + 1)` — the signal read there
-// would subscribe the active `currentSub` to the very signal we're about to
-// write, turning every proxy mutation inside a tracked render into a
-// self-triggering loop.
-let BUMP = 0;
 
 export function bumpVersion(target: object): void {
   let nodes = getNodesIfExist(target);
@@ -27,7 +19,7 @@ export function bumpVersion(target: object): void {
   const v = nodes[$VERSION];
   /* c8 ignore start -- callers that need notifications create the version signal before bumping */
   if (v) {
-    v(++BUMP);
+    bumpSignal(v);
   }
   /* c8 ignore stop */
 }
@@ -41,7 +33,7 @@ export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, an
   const ownKeysSignal = resolvedNodes[$OWN_KEYS];
   if (ownKeysSignal) {
     profileSignalWrite();
-    ownKeysSignal(++BUMP);
+    bumpSignal(ownKeysSignal);
   }
 }
 
@@ -54,11 +46,11 @@ export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, an
 function bumpElementsSignal(nodes: DataNodes | undefined): void {
   const elements = nodes?.[$ELEMENTS];
   if (elements) {
-    elements(++BUMP);
+    bumpSignal(elements);
   }
 }
 
-function bumpSignals(target: any, key: PropertyKey, prevLen: number): void {
+function syncArrayLength(target: any, key: PropertyKey, prevLen: number): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) {
     return;
@@ -101,7 +93,7 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
       node(value);
     }
   }
-  bumpSignals(target, key, prevLen);
+  syncArrayLength(target, key, prevLen);
 
   if (!hadKey) {
     bumpOwnKeysSignal(target, getNodesIfExist(target));
@@ -132,7 +124,7 @@ export function deleteProperty(target: any, key: PropertyKey): void {
         node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
       }
     }
-    bumpSignals(target, key, prevLen);
+    syncArrayLength(target, key, prevLen);
     bumpOwnKeysSignal(target, nodes);
   }
 }

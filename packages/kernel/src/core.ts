@@ -112,3 +112,27 @@ export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown
   nodes[property] = newSignal;
   return newSignal;
 }
+
+// ---------------------------------------------------------------------------
+// Change notification
+// ---------------------------------------------------------------------------
+
+/**
+ * The counter behind every "something here changed" signal write. Its value
+ * is never observed; each write only has to differ from the last so
+ * `Object.is` sees a change.
+ *
+ * Never `signal(signal() + 1)`: reading the signal would subscribe the active
+ * subscriber to the signal about to be written, so any mutation inside a
+ * tracked render would re-trigger itself.
+ *
+ * One counter for the whole kernel: two counters could drift to the same
+ * value, and a signal written by both would swallow the second write and go
+ * silently stale.
+ */
+let BUMP = 0;
+
+/** Writes a value the signal does not currently hold, so subscribers re-run. */
+export function bumpSignal(node: Signal<unknown>): void {
+  node(++BUMP);
+}

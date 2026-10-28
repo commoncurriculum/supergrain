@@ -232,7 +232,7 @@ The library uses alien-signals as the reactivity engine. Signals are lazily crea
 
 - **Proxy read handler** (`packages/core/src/read.ts`) — every property access goes through this
 - **Proxy write handler** (`packages/core/src/write.ts`) — every property set goes through this
-- **Signal bookkeeping** — `getNodes()`, `getNodesIfExist()`, `bumpVersion()`, `bumpSignals()`, `bumpOwnKeysSignal()`
+- **Signal bookkeeping** — `getNodes()`, `getNodesIfExist()`, `bumpVersion()`, `syncArrayLength()`, `bumpOwnKeysSignal()`
 - **React hook** (`packages/react/src/use-store.ts`) — `useStore` hook creates an alien-signals `effect()` per component, uses `useReducer` for re-render triggers
 - **For component** (`packages/react/src/use-store.ts`) — list rendering, must handle keyed updates efficiently
 
