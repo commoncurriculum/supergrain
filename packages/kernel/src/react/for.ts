@@ -116,7 +116,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       const previous = elementsRef.current;
       const next = new Map<unknown, React.ReactNode>();
       for (let i = 0; i < raw.length; i++) {
-        const rawItem = raw[i];
+        const rawItem = unwrap(raw[i]);
         slots[i] = previous.get(rawItem) ?? children(each[i], i);
         next.set(rawItem, slots[i]);
       }
@@ -145,23 +145,26 @@ export const For = tracked((props: ForProps<unknown>) => {
 }) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;
 
 /**
- * How `next` differs from `shown`, which has the same length or `next` would
- * have re-rendered `For`: `undefined` if no slot differs, the two indices if
- * exactly two items traded places, otherwise `null`.
+ * How `next` differs from what the DOM shows (comparing raw objects: an
+ * assigned element may be stored as a proxy): `undefined` if there is nothing
+ * for the swap effect to do, the two indices if exactly two items traded
+ * places, otherwise `null` (re-render). A length change counts as nothing to
+ * do: it already re-renders `For`, which takes a fresh snapshot.
  */
 function findSwap(
   shown: ReadonlyArray<unknown>,
   next: ReadonlyArray<unknown>,
 ): readonly [number, number] | null | undefined {
-  if (shown.length !== next.length) return null;
+  if (shown.length !== next.length) return undefined;
   const changed: Array<number> = [];
   for (let i = 0; i < next.length; i++) {
-    if (next[i] !== shown[i] && changed.push(i) > 2) return null;
+    if (unwrap(next[i]) !== unwrap(shown[i]) && changed.push(i) > 2) return null;
   }
   if (changed.length === 0) return undefined;
   if (changed.length === 1) return null;
   const [a, b] = changed as [number, number];
-  return next[a] === shown[b] && next[b] === shown[a] ? [a, b] : null;
+  if (unwrap(next[a]) !== unwrap(shown[b])) return null;
+  return unwrap(next[b]) === unwrap(shown[a]) ? [a, b] : null;
 }
 
 function keyOf(rawItem: unknown, index: number): React.Key {

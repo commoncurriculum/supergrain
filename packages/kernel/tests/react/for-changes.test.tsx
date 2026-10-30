@@ -1,4 +1,4 @@
-import { createReactive, liveQuery } from "@supergrain/kernel";
+import { batch, createReactive, liveQuery } from "@supergrain/kernel";
 import { For, tracked } from "@supergrain/kernel/react";
 import { act, cleanup, render } from "@testing-library/react";
 import React from "react";
@@ -138,6 +138,78 @@ for (const withParent of [false, true]) {
     });
   });
 }
+
+describe("For with parent: edge cases", () => {
+  function mountWithParent(data: Item[], parent?: React.RefObject<Element | null>) {
+    const List = tracked(() => {
+      const ul = React.useRef<HTMLUListElement>(null);
+      return (
+        <ul ref={ul}>
+          <For each={data} parent={parent ?? ul}>
+            {(item: Item) => <Row key={item.id} item={item} />}
+          </For>
+        </ul>
+      );
+    });
+    const { container } = render(<List />);
+    return () => container.textContent;
+  }
+
+  it("does nothing when a swap is undone in the same batch", async () => {
+    const store = createReactive({ data: items(1, 2, 3) });
+    const shown = mountWithParent(store.data);
+
+    rowRenders = 0;
+    await act(async () => {
+      const [a, c] = [store.data[0]!, store.data[2]!];
+      store.data[0] = c;
+      store.data[2] = a;
+      store.data[0] = a;
+      store.data[2] = c;
+    });
+    expect(shown()).toBe("i1i2i3");
+    expect(rowRenders).toBe(0);
+  });
+
+  it("shows a replacement and an append made in the same batch", async () => {
+    const store = createReactive({ data: items(1, 2, 3) });
+    const shown = mountWithParent(store.data);
+
+    await act(async () => {
+      batch(() => {
+        store.data[0] = { id: 9, label: "i9" };
+        store.data.push({ id: 4, label: "i4" });
+      });
+    });
+    expect(shown()).toBe("i9i2i3i4");
+  });
+
+  it("shows an item moved into a replaced item's slot (not a swap)", async () => {
+    const store = createReactive({ data: items(1, 2, 3) });
+    const shown = mountWithParent(store.data);
+
+    await act(async () => {
+      batch(() => {
+        store.data[0] = store.data[1]!;
+        store.data[1] = { id: 9, label: "i9" };
+      });
+    });
+    expect(shown()).toBe("i2i9i3");
+  });
+
+  it("re-renders a swap when the parent element isn't mounted", async () => {
+    const store = createReactive({ data: items(1, 2, 3) });
+    const detached: React.RefObject<Element | null> = { current: null };
+    const shown = mountWithParent(store.data, detached);
+
+    await act(async () => {
+      const first = store.data[0]!;
+      store.data[0] = store.data[2]!;
+      store.data[2] = first;
+    });
+    expect(shown()).toBe("i3i2i1");
+  });
+});
 
 describe("For without parent", () => {
   it("doesn't call children again for rows that only moved", async () => {
