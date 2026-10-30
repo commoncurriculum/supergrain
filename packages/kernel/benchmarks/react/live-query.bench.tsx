@@ -1,7 +1,7 @@
 import { For, tracked } from "@supergrain/kernel/react";
 import { useLiveQuery } from "@tanstack/react-db";
 import { act, render } from "@testing-library/react";
-import React, { memo, type FC } from "react";
+import React, { memo, useRef, type FC } from "react";
 import { bench, describe } from "vitest";
 
 import {
@@ -26,10 +26,8 @@ import {
  * Each app renders the top 10 tasks as a list, one row component per task,
  * the way each library recommends:
  * - supergrain: `tracked` list and rows. The list reads the query, with a
- *   plain `.map()` or with `<For>`; each row reads its own task's fields, so
- *   a field edit re-renders only that row. (`<For parent>` isn't included: it
- *   doesn't update when a slot is replaced without the length changing, which
- *   is how a top-10 list changes.)
+ *   plain `.map()`, `<For>` or `<For parent>`; each row reads its own task's
+ *   fields, so a field edit re-renders only that row.
  * - TanStack DB: `useLiveQuery` in the list, `memo` rows. A changed task is a
  *   new object, so the list and that row re-render.
  *
@@ -67,12 +65,25 @@ const MapList = tracked(({ query }: ListProps) => {
   );
 });
 
-/** `<For>`: one tracked item per slot, so a changed slot re-renders only itself. */
+/** `<For>`: rows keyed by task, so a task that only moved keeps its row. */
 const ForList = tracked(({ query }: ListProps) => {
   renders.list++;
   return (
     <ul>
       <For each={query() as Task[]}>{(task) => <SupergrainRow key={task.id} task={task} />}</For>
+    </ul>
+  );
+});
+
+/** `<For parent>`: the krauset fast path, which moves DOM nodes on a swap. */
+const ForParentList = tracked(({ query }: ListProps) => {
+  renders.list++;
+  const ul = useRef<HTMLUListElement>(null);
+  return (
+    <ul ref={ul}>
+      <For each={query() as Task[]} parent={ul}>
+        {(task) => <SupergrainRow key={task.id} task={task} />}
+      </For>
     </ul>
   );
 });
@@ -140,6 +151,7 @@ const tanstack =
 const APPS: ReadonlyArray<[string, Mount]> = [
   ["supergrain liveQuery", supergrain(liveQueryTopTen)],
   ["supergrain liveQuery + <For>", supergrain(liveQueryTopTen, ForList)],
+  ["supergrain liveQuery + <For parent>", supergrain(liveQueryTopTen, ForParentList)],
   ["supergrain stableComputed", supergrain(stableComputedTopTen)],
   ["TanStack DB (sync write)", tanstack(tanstackSyncWrite)],
   ["TanStack DB (optimistic update)", tanstack(tanstackOptimisticUpdate)],

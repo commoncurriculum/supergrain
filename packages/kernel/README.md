@@ -194,7 +194,7 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
   > Shorthand for `useEffect(() => effect(fn), [])`. Runs a signal-tracked side effect that re-runs when tracked signals change and cleans up on unmount. Does **not** cause the component to re-render.
 
 - `<For each={array} parent={ref?}>{item => ...}</For>`
-  > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
+  > Optimized list rendering. Re-renders when items are added, removed, replaced or moved, never for a change inside an item (the row that reads that field re-renders instead). Rows are keyed by item, so rows that only moved keep their components. When a `parent` ref is provided, swapping two items moves their DOM nodes directly instead of rendering.
 
 > React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](../husk/README.md).
 
@@ -345,9 +345,10 @@ const App = tracked(() => {
 });
 ```
 
-- Tracks which items changed and only re-renders those
-- Optional `parent` ref enables O(1) direct DOM moves for swaps
-- Without `parent`, falls back to standard React reconciliation
+- A change inside an item re-renders only the row that reads it; `For` itself re-renders only when items are added, removed, replaced or moved
+- Rows are keyed by item (`item.id`), so when items shift — one leaves the top of a sorted list — the rows that only moved don't re-render
+- Optional `parent` ref: swapping two items moves their two DOM nodes directly, with no render. Children must then be `tracked()` components
+- Pairs with `liveQuery` for filtered, sorted lists: `<For each={openTasks()}>`
 
 ### Synchronous Writes and Batching
 
