@@ -104,6 +104,9 @@ export const For = tracked((props: ForProps<unknown>) => {
   });
 
   if (!raw || raw.length === 0) {
+    // Drop the last rows' items and elements, so a cleared list holds nothing.
+    shownRef.current = [];
+    elementsRef.current = new Map();
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
 
