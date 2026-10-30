@@ -20,6 +20,7 @@ These compare supergrain against other reactive store libraries:
 | `state-libraries.bench.ts` | supergrain vs zustand, jotai, valtio, mobx, preact/signals                 |
 | `additional.bench.ts`      | Proxy overhead analysis, effect lifecycle, complex scenarios               |
 | `row-operations.bench.ts`  | Table row operations (select, swap) — krauset-style                        |
+| `live-query.bench.ts`      | `liveQuery` vs `stableComputed` vs TanStack DB live queries (1k, 10k rows) |
 
 Results: See the corresponding .md files (CORE_COMPARISON.md, etc.)
 

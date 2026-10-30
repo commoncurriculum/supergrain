@@ -48,6 +48,38 @@ interface Row<T, K> {
 /** A row whose result changed since it was last filed, and its new result. */
 type Change<T, K> = readonly [row: Row<T, K>, next: RowResult<K>];
 
+/**
+ * A run of rows whose `version` changes whenever one of their results does.
+ * The query reads one version per block instead of one result per row, so a
+ * change to one row costs about √N reads instead of N.
+ */
+interface Block<T, K> {
+  readonly rows: ReadonlyArray<Row<T, K>>;
+  readonly version: () => object;
+}
+
+interface Structure<T, K> {
+  readonly list: ReadonlyArray<Row<T, K>>;
+  readonly removed: ReadonlyArray<Row<T, K>>;
+  readonly blocks: ReadonlyArray<Block<T, K>>;
+}
+
+function toBlocks<T, K>(list: ReadonlyArray<Row<T, K>>): Array<Block<T, K>> {
+  const size = Math.max(16, Math.ceil(Math.sqrt(list.length)));
+  const blocks: Array<Block<T, K>> = [];
+  for (let start = 0; start < list.length; start += size) {
+    const rows = list.slice(start, start + size);
+    blocks.push({
+      rows,
+      version: rethrowingComputed(() => {
+        for (const row of rows) row.result();
+        return {};
+      }),
+    });
+  }
+  return blocks;
+}
+
 const OUTSIDE: RowResult<never> = Object.freeze({ member: false, key: undefined });
 
 /**
@@ -71,10 +103,12 @@ const OUTSIDE: RowResult<never> = Object.freeze({ member: false, key: undefined 
  * rather than holding on to the array it returns — reading `query()` is what
  * brings the array up to date.
  *
- * A change still costs one pass over the source that checks each row's cached
- * result (no `where`/`orderBy` calls for unchanged rows). Removing that pass
- * needs the source to report which rows changed, which kernel collections
- * don't do today.
+ * To find the changed row without checking every row, rows are grouped into
+ * blocks of about √N, each with a version that changes when one of its rows'
+ * results does. A field edit costs about √N cached reads (two blocks' worth),
+ * not N. Adding or removing rows in the source walks it once (no `where` or
+ * `orderBy` calls for rows it already knew). Without `orderBy`, the result is
+ * refiltered in source order from cached results on each change.
  */
 export function liveQuery<T extends object, K = unknown>(
   options: LiveQueryOptions<T, K>,
@@ -124,36 +158,51 @@ export function liveQuery<T extends object, K = unknown>(
     };
   }
 
+  // The source's rows in order, the rows that left it, and the rows split
+  // into blocks. Recomputed only when the source's structure changes.
+  const structure = rethrowingComputed(readStructure);
+  let current: Structure<T, K> | undefined = undefined;
+  // Per block, the version last applied to `sorted`.
+  let appliedVersions: Array<object | undefined> = [];
+
   return rethrowingComputed((): ReadonlyArray<T> => {
-    // Tracked: the source's structure, each row's cached result, the window.
-    const { members, changes } = walkSource();
+    // Tracked: the source's structure, each block's version, the window.
+    const next = structure();
+    const fresh = next !== current;
+    const versions = next.blocks.map((block) => block.version());
     const offset = offsetOf();
     const limit = limitOf();
     // Untracked: `compare` may read reactive values, and the query must not
     // subscribe to them or to its own output.
     const prevSub = setActiveSub(undefined);
     try {
-      const ordered = orderBy ? applyChanges(changes) : members;
+      const changes: Array<Change<T, K>> = [];
+      if (fresh) {
+        for (const row of next.removed) if (row.applied.member) changes.push([row, OUTSIDE]);
+      }
+      next.blocks.forEach((block, b) => {
+        if (fresh || versions[b] !== appliedVersions[b]) collectChanges(block.rows, changes);
+      });
+      const ordered = orderBy
+        ? applyChanges(changes)
+        : next.list.filter((row) => row.result().member);
       syncArray(
         out,
         ordered.slice(offset, offset + limit).map((row) => row.item),
       );
+      current = next;
+      appliedVersions = versions;
     } finally {
       setActiveSub(prevSub);
     }
     return out;
   });
 
-  /**
-   * Read the source and every row's result. Returns the matching rows in
-   * source order, and the rows to refile in `sorted` (including rows that
-   * left the source).
-   */
-  function walkSource(): { members: Array<Row<T, K>>; changes: Array<Change<T, K>> } {
+  /** Walk the source: its rows in order (once each), blocks of them, and the rows that left. */
+  function readStructure(): Structure<T, K> {
     const read = ++reads;
-    const members: Array<Row<T, K>> = [];
-    const changes: Array<Change<T, K>> = [];
-    let found = 0;
+    const list: Array<Row<T, K>> = [];
+    const removed: Array<Row<T, K>> = [];
     forEachItem(from(), (item) => {
       if (typeof item !== "object" || item === null) {
         throw new TypeError("@supergrain/kernel: liveQuery rows must be objects.");
@@ -167,21 +216,17 @@ export function liveQuery<T extends object, K = unknown>(
         return; // The same object twice counts once.
       }
       row.seenAt = read;
-      found++;
-      const result = row.result();
-      // Without `orderBy` nothing is filed in `sorted`, so there's nothing to refile.
-      if (orderBy && result !== row.applied) changes.push([row, result]);
-      if (result.member) members.push(row);
+      list.push(row);
     });
-    if (found < rows.size) {
+    if (list.length < rows.size) {
       for (const [raw, row] of rows) {
         if (row.seenAt !== read) {
           rows.delete(raw);
-          if (row.applied.member) changes.push([row, OUTSIDE]);
+          removed.push(row);
         }
       }
     }
-    return { members, changes };
+    return { list, removed, blocks: toBlocks(list) };
   }
 
   function applyChanges(changes: ReadonlyArray<Change<T, K>>): ReadonlyArray<Row<T, K>> {
@@ -201,6 +246,17 @@ export function liveQuery<T extends object, K = unknown>(
     }
     sorted = current;
     return sorted;
+  }
+}
+
+/** Add each row whose result differs from where it is filed. */
+function collectChanges<T, K>(
+  blockRows: ReadonlyArray<Row<T, K>>,
+  changes: Array<Change<T, K>>,
+): void {
+  for (const row of blockRows) {
+    const result = row.result();
+    if (result !== row.applied) changes.push([row, result]);
   }
 }
 
