@@ -151,6 +151,10 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
 
   > Like `computed`, for a getter that derives an **array** (`xs.filter(...).map(...)`). A plain computed hands back a fresh array on every re-run; `stableComputed` keeps one persistent reactive array and reconciles it in place, so the returned reference never changes, only the slots that actually changed notify, and an equal re-run doesn't propagate. The getter's transform must preserve order (`map`/`filter` — not `sort`).
 
+- `liveQuery({ from, where?, orderBy?, compare?, offset?, limit? })`
+
+  > A filtered, sorted, windowed view of a reactive collection, for when `stableComputed(() => xs.filter(...).sort(...).slice(...))` gets expensive. Like `stableComputed`, it skips changes to fields `where`/`orderBy` never read and returns one stable reactive array. Unlike it, a change to a field they did read reruns `where`/`orderBy` for that row only, and moves that row with a binary search instead of filtering and sorting every row again. `from` returns the rows (a kernel array, a Map's `values()`, any iterable of objects), and `offset`/`limit` can be functions to read them reactively. It is pull-based, with no effects and nothing to dispose. Call the query in every reader rather than keeping the array it returned. Rows with equal keys keep the order they first appeared in. Without `orderBy`, rows keep source order.
+
 - `reconcile(previous, next)`
 
   > Updates `previous` in place to equal `next`, writing only the fields that changed, and returns `previous`. Subscribers re-run only for fields that changed, and objects keep their identity. It is Solid's `reconcile` with `key: "id"`. Fields missing from `next` are deleted, and array items with the same `id` keep their object wherever they move. A value that isn't a plain object or array, or whose `id` changed, is replaced; when that's true of `previous` and `next` themselves, it changes nothing and returns `next` for you to store. Silo uses it whenever a new version of a loaded document arrives.
