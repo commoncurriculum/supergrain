@@ -1,6 +1,7 @@
-import { computed, setActiveSub } from "alien-signals";
+import { setActiveSub } from "alien-signals";
 
 import { unwrap } from "./core";
+import { rethrowingComputed } from "./rethrowing-computed";
 import { createReactive } from "./store";
 import { syncArray } from "./sync-array";
 
@@ -40,11 +41,12 @@ interface Row<T, K> {
   readonly result: () => RowResult<K>;
   /** The result this row is filed under in `sorted`. */
   applied: RowResult<K>;
-  /** The result to file it under on this read, when it differs from `applied`. */
-  next: RowResult<K>;
-  /** The last read of the query that saw this row in the source. */
-  seen: number;
+  /** The last read that found this row in the source. */
+  seenAt: number;
 }
+
+/** A row whose result changed since it was last filed, and its new result. */
+type Change<T, K> = readonly [row: Row<T, K>, next: RowResult<K>];
 
 const OUTSIDE: RowResult<never> = Object.freeze({ member: false, key: undefined });
 
@@ -85,11 +87,15 @@ export function liveQuery<T extends object, K = unknown>(
   const offsetOf = toGetter(options.offset, 0);
   const limitOf = toGetter(options.limit, Infinity);
 
+  // Rows by raw object. Each read stamps the rows it finds with `seenAt`, so
+  // a row with an older stamp has left the source. (A stamp, rather than
+  // moving rows between maps, stays correct when a read throws part-way.)
   const rows = new Map<object, Row<T, K>>();
-  let sorted: Array<Row<T, K>> = [];
-  let needsRebuild = false;
+  let reads = 0;
+  // The matching rows by `(key, seq)`. `null` after an update threw part-way
+  // (a throwing `compare`), so the next read rebuilds it instead of trusting it.
+  let sorted: Array<Row<T, K>> | null = [];
   let nextSeq = 0;
-  let read = 0;
   const out = createReactive<Array<T>>([]) as Array<T>;
 
   const compareRows = (a: Row<T, K>, b: Row<T, K>): number =>
@@ -100,9 +106,8 @@ export function liveQuery<T extends object, K = unknown>(
       item,
       seq: nextSeq++,
       applied: OUTSIDE,
-      next: OUTSIDE,
-      seen: 0,
-      result: computed((previous?: RowResult<K>): RowResult<K> => {
+      seenAt: 0,
+      result: rethrowingComputed((previous: RowResult<K> | undefined): RowResult<K> => {
         const member = where ? Boolean(where(item)) : true;
         const key = member && orderBy ? orderBy(item) : undefined;
         // Hand back the previous object when nothing changed, so the query
@@ -119,12 +124,36 @@ export function liveQuery<T extends object, K = unknown>(
     };
   }
 
-  return computed((): ReadonlyArray<T> => {
-    read++;
-    // Tracked: the source's structure and each row's cached result.
-    const changed: Array<Row<T, K>> = [];
-    const inOrder: Array<Row<T, K>> = [];
-    let seenCount = 0;
+  return rethrowingComputed((): ReadonlyArray<T> => {
+    // Tracked: the source's structure, each row's cached result, the window.
+    const { members, changes } = walkSource();
+    const offset = offsetOf();
+    const limit = limitOf();
+    // Untracked: `compare` may read reactive values, and the query must not
+    // subscribe to them or to its own output.
+    const prevSub = setActiveSub(undefined);
+    try {
+      const ordered = orderBy ? applyChanges(changes) : members;
+      syncArray(
+        out,
+        ordered.slice(offset, offset + limit).map((row) => row.item),
+      );
+    } finally {
+      setActiveSub(prevSub);
+    }
+    return out;
+  });
+
+  /**
+   * Read the source and every row's result. Returns the matching rows in
+   * source order, and the rows to refile in `sorted` (including rows that
+   * left the source).
+   */
+  function walkSource(): { members: Array<Row<T, K>>; changes: Array<Change<T, K>> } {
+    const read = ++reads;
+    const members: Array<Row<T, K>> = [];
+    const changes: Array<Change<T, K>> = [];
+    let found = 0;
     forEachItem(from(), (item) => {
       if (typeof item !== "object" || item === null) {
         throw new TypeError("@supergrain/kernel: liveQuery rows must be objects.");
@@ -134,95 +163,68 @@ export function liveQuery<T extends object, K = unknown>(
       if (row === undefined) {
         row = createRow(item);
         rows.set(raw, row);
-      } else if (row.seen === read) {
+      } else if (row.seenAt === read) {
         return; // The same object twice counts once.
       }
-      row.seen = read;
-      seenCount++;
+      row.seenAt = read;
+      found++;
       const result = row.result();
-      if (orderBy && result !== row.applied) {
-        row.next = result;
-        changed.push(row);
-      }
-      if (!orderBy && result.member) inOrder.push(row);
+      // Without `orderBy` nothing is filed in `sorted`, so there's nothing to refile.
+      if (orderBy && result !== row.applied) changes.push([row, result]);
+      if (result.member) members.push(row);
     });
-    const offset = offsetOf();
-    const limit = limitOf();
-
-    // Untracked: `compare` may read reactive values, and the query must not
-    // subscribe to them or to its own output.
-    const prevSub = setActiveSub(undefined);
-    try {
-      if (seenCount < rows.size) dropRowsNotSeen(changed);
-      const window = orderBy
-        ? applyChanges(changed).slice(offset, offset + limit)
-        : inOrder.slice(offset, offset + limit);
-      syncArray(
-        out,
-        window.map((row) => row.item),
-      );
-    } finally {
-      setActiveSub(prevSub);
-    }
-    return out;
-  });
-
-  /** Forget rows that left the source, queueing their removal from `sorted`. */
-  function dropRowsNotSeen(changed: Array<Row<T, K>>): void {
-    for (const [raw, row] of rows) {
-      if (row.seen !== read) {
-        rows.delete(raw);
-        if (row.applied.member) {
-          row.next = OUTSIDE;
-          changed.push(row);
+    if (found < rows.size) {
+      for (const [raw, row] of rows) {
+        if (row.seenAt !== read) {
+          rows.delete(raw);
+          if (row.applied.member) changes.push([row, OUTSIDE]);
         }
       }
     }
+    return { members, changes };
   }
 
-  function applyChanges(changed: ReadonlyArray<Row<T, K>>): ReadonlyArray<Row<T, K>> {
-    if (changed.length === 0 && !needsRebuild) return sorted;
+  function applyChanges(changes: ReadonlyArray<Change<T, K>>): ReadonlyArray<Row<T, K>> {
     // When many rows moved at once (say `where` reads a shared value), sorting
     // from scratch is cheaper than moving each one.
-    const rebuild = needsRebuild || changed.length > 16 + sorted.length / 4;
-    // Stays set if `compare` throws part-way through, so the next read
-    // rebuilds instead of trusting a half-updated `sorted`.
-    needsRebuild = true;
-    if (rebuild) {
-      for (const row of changed) row.applied = row.next;
-      sorted = [];
-      for (const row of rows.values()) if (row.applied.member) sorted.push(row);
-      sorted.sort(compareRows);
-    } else {
-      for (const row of changed) {
-        if (row.applied.member) sorted.splice(indexOfRow(row), 1);
-        row.applied = row.next;
-        if (row.applied.member) sorted.splice(insertionPoint(row), 0, row);
-      }
+    if (sorted === null || changes.length > 16 + sorted.length / 4) {
+      for (const [row, next] of changes) row.applied = next;
+      sorted = [...rows.values()].filter((row) => row.applied.member).sort(compareRows);
+      return sorted;
     }
-    needsRebuild = false;
+    const current = sorted;
+    sorted = null;
+    for (const [row, next] of changes) {
+      if (row.applied.member) current.splice(indexOf(current, row, compareRows), 1);
+      row.applied = next;
+      if (next.member) current.splice(insertionPoint(current, row, compareRows), 0, row);
+    }
+    sorted = current;
     return sorted;
   }
+}
 
-  /** Where `row` sits in `sorted`, found by its applied key. */
-  function indexOfRow(row: Row<T, K>): number {
-    const i = insertionPoint(row);
-    if (sorted[i] === row) return i;
-    // Only reachable with an inconsistent `compare` or a key that mutated.
-    return sorted.indexOf(row);
+/** The first index in `sorted` whose item orders at or after `item`. */
+function insertionPoint<R>(
+  sorted: ReadonlyArray<R>,
+  item: R,
+  compare: (a: R, b: R) => number,
+): number {
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (compare(sorted[mid]!, item) < 0) low = mid + 1;
+    else high = mid;
   }
+  return low;
+}
 
-  /** The first index whose row sorts at or after `row`. */
-  function insertionPoint(row: Row<T, K>): number {
-    let low = 0;
-    let high = sorted.length;
-    while (low < high) {
-      const mid = (low + high) >>> 1;
-      if (compareRows(sorted[mid]!, row) < 0) low = mid + 1;
-      else high = mid;
-    }
-    return low;
-  }
+/** Where `item` sits in `sorted`, by binary search. */
+function indexOf<R>(sorted: ReadonlyArray<R>, item: R, compare: (a: R, b: R) => number): number {
+  const i = insertionPoint(sorted, item, compare);
+  // A miss only happens with an inconsistent `compare` or a key that mutated.
+  return sorted[i] === item ? i : sorted.indexOf(item);
 }
 
 function toGetter(value: number | (() => number) | undefined, fallback: number): () => number {
@@ -241,14 +243,14 @@ function forEachItem<T>(source: Iterable<T>, fn: (item: T) => void): void {
   }
 }
 
-/**
- * A total order over numbers, strings, bigints and arrays of them. Values of
- * different types order by type name; `null`, `undefined` and `NaN` sort last.
- */
 function isMissing(value: unknown): boolean {
   return value === null || value === undefined || Number.isNaN(value);
 }
 
+/**
+ * A total order over numbers, strings, bigints and arrays of them. Values of
+ * different types order by type name; `null`, `undefined` and `NaN` sort last.
+ */
 function defaultCompare(a: unknown, b: unknown): number {
   const aMissing = isMissing(a);
   const bMissing = isMissing(b);

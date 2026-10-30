@@ -266,6 +266,70 @@ describe("liveQuery", () => {
     expect(ids(query())).toEqual([3]);
   });
 
+  it("keeps every row after a where that throws part-way through the source", () => {
+    const store = createReactive({ tasks: makeTasks(6) });
+    const query = liveQuery({
+      from: () => store.tasks,
+      where: (task) => {
+        if (task.title === "boom") throw new Error("boom");
+        return !task.completed;
+      },
+      orderBy: (task) => task.id,
+    });
+    expect(ids(query())).toEqual([1, 3, 5]);
+
+    store.tasks[4]!.title = "boom";
+    expect(() => query()).toThrow("boom");
+    store.tasks[4]!.title = "fine";
+    expect(ids(query())).toEqual([1, 3, 5]);
+  });
+
+  it("keeps throwing on every read until a field the failing row read changes", () => {
+    const store = createReactive({ tasks: makeTasks(4) });
+    let fail = false;
+    const query = liveQuery({
+      from: () => store.tasks,
+      where: (task) => {
+        const visible = !task.completed && task.title !== "hidden";
+        if (fail && task.id === 1) throw new Error("where");
+        return visible;
+      },
+    });
+    expect(ids(query())).toEqual([1, 3]);
+
+    fail = true;
+    store.tasks[1]!.title = "x";
+    expect(() => query()).toThrow("where");
+    fail = false;
+    // Not stale data: the failure is cached until row 1 changes again.
+    expect(() => query()).toThrow("where");
+    store.tasks[1]!.title = "y";
+    expect(ids(query())).toEqual([1, 3]);
+  });
+
+  it("rebuilds the order after a compare that throws part-way through an update", () => {
+    const store = createReactive({ tasks: makeTasks(6) });
+    let fail = false;
+    const query = liveQuery({
+      from: () => store.tasks,
+      where: (task) => !task.completed,
+      orderBy: (task) => task.priority,
+      compare: (a, b) => {
+        if (fail) throw new Error("compare");
+        return a - b;
+      },
+    });
+    expect(ids(query())).toEqual([1, 3, 5]);
+
+    // Row 0 enters the result, so it is inserted with a binary search that throws.
+    fail = true;
+    store.tasks[0]!.completed = false;
+    expect(() => query()).toThrow("compare");
+    fail = false;
+    store.tasks[4]!.completed = false;
+    expect(ids(query())).toEqual([0, 1, 3, 4, 5]);
+  });
+
   it("does not subscribe the query to reactive reads inside compare", () => {
     const store = createReactive({ tasks: makeTasks(4), flag: false });
     let reads = 0;
