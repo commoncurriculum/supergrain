@@ -203,6 +203,46 @@ describe("liveQuery", () => {
     expect(ids(query())).toEqual([1, 4, 0, 2, 3]);
   });
 
+  it("orders mixed key types by type name, and arrays element by element", () => {
+    const keys: unknown[] = ["b", 2, [1, 2], "a", 1n, [1], 1];
+    const store = createReactive({ rows: keys.map((key, id) => ({ id, key })) });
+    const query = liveQuery({ from: () => store.rows, orderBy: (row) => row.key });
+    // bigint < number < object (arrays) < string.
+    expect(query().map((row) => row.key)).toEqual([1n, 1, 2, [1], [1, 2], "a", "b"]);
+  });
+
+  it("doesn't wake readers when a row's result is unchanged", () => {
+    const store = createReactive({ tasks: makeTasks(4) });
+    const query = liveQuery({
+      from: () => store.tasks,
+      where: (task) => task.title.length > 0,
+      orderBy: (task) => task.id,
+    });
+    const reader = vi.fn();
+    effect(() => void reader(ids(query())));
+    reader.mockClear();
+
+    store.tasks[1]!.title = "still has a title";
+    expect(ids(query())).toEqual([0, 1, 2, 3]);
+    expect(reader).not.toHaveBeenCalled();
+  });
+
+  it("still finds a row when compare is inconsistent", () => {
+    const store = createReactive({ tasks: makeTasks(6) });
+    let direction = 1;
+    const query = liveQuery({
+      from: () => store.tasks,
+      orderBy: (task) => task.id,
+      compare: (a, b) => direction * (a - b),
+    });
+    expect(ids(query())).toEqual([0, 1, 2, 3, 4, 5]);
+
+    direction = -1;
+    store.tasks.splice(1, 1);
+    expect(ids(query())).not.toContain(1);
+    expect(query()).toHaveLength(5);
+  });
+
   it("surfaces a throwing where on read, leaves other effects alone, and recovers", () => {
     const store = createReactive({ tasks: makeTasks(4) });
     const query = liveQuery({
