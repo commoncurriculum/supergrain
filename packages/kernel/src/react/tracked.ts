@@ -9,7 +9,7 @@ import { useDisposeOnUnmount } from "./use-dispose-on-unmount";
 
 interface TrackedState {
   cleanup: () => void;
-  effectNode: ReactiveNode | undefined;
+  effectNode: ReactiveNode;
 }
 
 /**
@@ -111,6 +111,7 @@ export function tracked<P extends object>(Component: FC<P>) {
  * render's effect takes over the subscriptions instead.
  */
 function trackRender(onChange: () => void): TrackedState {
+  // Set by the effect's first run, which `effect()` makes synchronously.
   let effectNode: ReactiveNode | undefined = undefined;
   // Created outside any active subscriber, so it isn't owned (and disposed)
   // by whatever effect happens to be running.
@@ -124,7 +125,7 @@ function trackRender(onChange: () => void): TrackedState {
       keepDependencies(effectNode);
       onChange();
     });
-    return { cleanup, effectNode };
+    return { cleanup, effectNode: effectNode! };
   } finally {
     setActiveSub(prev);
   }

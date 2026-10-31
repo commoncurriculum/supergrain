@@ -31,7 +31,7 @@ function mount(list: () => ReadonlyArray<Item>, withParent: boolean) {
     const ul = React.useRef<HTMLUListElement>(null);
     return (
       <ul ref={ul}>
-        <For each={list() as Item[]} {...(withParent && { parent: ul })}>
+        <For each={list()} {...(withParent && { parent: ul })}>
           {(item: Item) => <Row key={item.id} item={item} />}
         </For>
       </ul>

@@ -70,7 +70,7 @@ const ForList = tracked(({ query }: ListProps) => {
   renders.list++;
   return (
     <ul>
-      <For each={query() as Task[]}>{(task) => <SupergrainRow key={task.id} task={task} />}</For>
+      <For each={query()}>{(task) => <SupergrainRow key={task.id} task={task} />}</For>
     </ul>
   );
 });
@@ -81,7 +81,7 @@ const ForParentList = tracked(({ query }: ListProps) => {
   const ul = useRef<HTMLUListElement>(null);
   return (
     <ul ref={ul}>
-      <For each={query() as Task[]} parent={ul}>
+      <For each={query()} parent={ul}>
         {(task) => <SupergrainRow key={task.id} task={task} />}
       </For>
     </ul>

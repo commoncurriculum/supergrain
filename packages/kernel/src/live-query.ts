@@ -237,14 +237,14 @@ export function liveQuery<T extends object, K = unknown>(
       sorted = [...rows.values()].filter((row) => row.applied.member).sort(compareRows);
       return sorted;
     }
-    const current = sorted;
+    const list = sorted;
     sorted = null;
     for (const [row, next] of changes) {
-      if (row.applied.member) current.splice(indexOf(current, row, compareRows), 1);
+      if (row.applied.member) list.splice(indexOf(list, row, compareRows), 1);
       row.applied = next;
-      if (next.member) current.splice(insertionPoint(current, row, compareRows), 0, row);
+      if (next.member) list.splice(insertionPoint(list, row, compareRows), 0, row);
     }
-    sorted = current;
+    sorted = list;
     return sorted;
   }
 }

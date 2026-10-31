@@ -11,7 +11,7 @@ import { tracked } from "./tracked";
 type Children = (item: unknown, index: number) => React.ReactNode;
 
 interface ForProps<T> {
-  each: Array<T>;
+  each: ReadonlyArray<T>;
   children: (item: T, index: number) => React.ReactNode;
   fallback?: React.ReactNode;
   parent?: React.RefObject<Element | null>;
