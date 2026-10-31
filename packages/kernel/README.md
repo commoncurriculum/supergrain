@@ -151,9 +151,9 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
 
   > Like `computed`, for a getter that derives an **array** (`xs.filter(...).map(...)`). A plain computed hands back a fresh array on every re-run; `stableComputed` keeps one persistent reactive array and reconciles it in place, so the returned reference never changes, only the slots that actually changed notify, and an equal re-run doesn't propagate. The getter's transform must preserve order (`map`/`filter` — not `sort`).
 
-- `liveQuery({ from, where?, orderBy?, compare?, offset?, limit? })`
+- `computedList({ from, where?, orderBy?, compare?, offset?, limit? })`
 
-  > A filtered, sorted, windowed view of a reactive collection, for when `stableComputed(() => xs.filter(...).sort(...).slice(...))` gets expensive. Like `stableComputed`, it skips changes to fields `where`/`orderBy` never read and returns one stable reactive array. Unlike it, a change to a field they did read reruns `where`/`orderBy` for that row only, finds that row with about √N cached reads, and moves it with a binary search instead of filtering and sorting every row again. `from` returns the rows (a kernel array, a Map's `values()`, any iterable of objects), and `offset`/`limit` can be functions to read them reactively. It is pull-based, with no effects and nothing to dispose. Call the query in every reader rather than keeping the array it returned. Rows with equal keys keep the order they first appeared in. Without `orderBy`, rows keep source order.
+  > A filtered, sorted, windowed view of a reactive collection, for when `stableComputed(() => xs.filter(...).sort(...).slice(...))` gets expensive. Like `stableComputed`, it skips changes to fields `where`/`orderBy` never read and returns one stable reactive array. Unlike it, a change to a field they did read reruns `where`/`orderBy` for that row only, finds that row with about √N cached reads, and moves it with a binary search instead of filtering and sorting every row again. `from` returns the rows (a kernel array, a Map's `values()`, any iterable of objects), and `offset`/`limit` can be functions to read them reactively. It is pull-based, with no effects and nothing to dispose. Call it in every reader rather than keeping the array it returned. Rows with equal keys keep the order they first appeared in. Without `orderBy`, rows keep source order.
 
 - `reconcile(previous, next)`
 
@@ -348,7 +348,7 @@ const App = tracked(() => {
 - A change inside an item re-renders only the row that reads it; `For` itself re-renders only when items are added, removed, replaced or moved
 - Rows are keyed by item (`item.id`), so when items shift — one leaves the top of a sorted list — the rows that only moved don't re-render
 - Optional `parent` ref: swapping two items moves their two DOM nodes directly, with no render. Children must then be `tracked()` components
-- Pairs with `liveQuery` for filtered, sorted lists: `<For each={openTasks()}>`
+- Pairs with `computedList` for filtered, sorted lists: `<For each={openTasks()}>`
 
 ### Synchronous Writes and Batching
 

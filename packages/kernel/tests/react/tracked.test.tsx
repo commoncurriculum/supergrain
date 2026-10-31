@@ -1,4 +1,4 @@
-import { computed, createReactive, liveQuery } from "@supergrain/kernel";
+import { computed, createReactive, computedList } from "@supergrain/kernel";
 import { tracked, For } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
 import { describe, it, expect, afterEach } from "vitest";
@@ -364,12 +364,12 @@ describe("tracked()", () => {
       expect(heavyRuns).toBe(2);
     });
 
-    it("let a liveQuery update one row per change", async () => {
+    it("let a computedList update one row per change", async () => {
       const store = createReactive({
         tasks: Array.from({ length: 100 }, (_, id) => ({ id, done: false })),
       });
       let whereCalls = 0;
-      const firstThree = liveQuery({
+      const firstThree = computedList({
         from: () => store.tasks,
         where: (task) => (whereCalls++, !task.done),
         limit: 3,

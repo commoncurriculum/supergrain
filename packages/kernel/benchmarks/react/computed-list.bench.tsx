@@ -5,7 +5,7 @@ import React, { memo, useRef, type FC } from "react";
 import { bench, describe } from "vitest";
 
 import {
-  liveQueryTopTen,
+  computedListTopTen,
   makeTasks,
   scenarios,
   stableComputedTopTen,
@@ -18,10 +18,10 @@ import {
   type SupergrainQuery,
   type Task,
   type TanstackTasks,
-} from "../live-query-fixtures";
+} from "../computed-list-fixtures";
 
 /**
- * The `live-query.bench.ts` comparison, rendered by React 19 in Chromium.
+ * The `computed-list.bench.ts` comparison, rendered by React 19 in Chromium.
  *
  * Each app renders the top 10 tasks as a list, one row component per task,
  * the way each library recommends:
@@ -149,9 +149,9 @@ const tanstack =
   };
 
 const APPS: ReadonlyArray<[string, Mount]> = [
-  ["supergrain liveQuery", supergrain(liveQueryTopTen)],
-  ["supergrain liveQuery + <For>", supergrain(liveQueryTopTen, ForList)],
-  ["supergrain liveQuery + <For parent>", supergrain(liveQueryTopTen, ForParentList)],
+  ["supergrain computedList", supergrain(computedListTopTen)],
+  ["supergrain computedList + <For>", supergrain(computedListTopTen, ForList)],
+  ["supergrain computedList + <For parent>", supergrain(computedListTopTen, ForParentList)],
   ["supergrain stableComputed", supergrain(stableComputedTopTen)],
   ["TanStack DB (sync write)", tanstack(tanstackSyncWrite)],
   ["TanStack DB (optimistic update)", tanstack(tanstackOptimisticUpdate)],
@@ -172,7 +172,7 @@ function validate(size: number): void {
   for (const [name, seen] of results) {
     if (seen !== results[0]![1]) {
       throw new Error(
-        `react live-query bench: ${name} disagrees with ${results[0]![0]} at ${size} rows`,
+        `react computed-list bench: ${name} disagrees with ${results[0]![0]} at ${size} rows`,
       );
     }
   }

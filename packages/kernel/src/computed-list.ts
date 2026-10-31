@@ -5,9 +5,9 @@ import { rethrowingComputed } from "./rethrowing-computed";
 import { createReactive } from "./store";
 import { syncArray } from "./sync-array";
 
-/** Options for {@link liveQuery}. */
-export interface LiveQueryOptions<T extends object, K> {
-  /** The rows to query. Read reactively; only its structure should be read here. */
+/** Options for {@link computedList}. */
+export interface ComputedListOptions<T extends object, K> {
+  /** The source rows. Read reactively; only its structure should be read here. */
   from: () => Iterable<T>;
   /** Keep a row when this returns true. Omit to keep every row. */
   where?: (row: T) => boolean;
@@ -50,7 +50,7 @@ type Change<T, K> = readonly [row: Row<T, K>, next: RowResult<K>];
 
 /**
  * A run of rows whose `version` changes whenever one of their results does.
- * The query reads one version per block instead of one result per row, so a
+ * The list reads one version per block instead of one result per row, so a
  * change to one row costs about √N reads instead of N.
  */
 interface Block<T, K> {
@@ -88,19 +88,19 @@ const OUTSIDE: RowResult<never> = Object.freeze({ member: false, key: undefined 
  *
  * A `stableComputed(() => xs.filter(where).sort(by).slice(0, 10))` already
  * skips changes to fields it never read, but when a field it did read changes,
- * it reruns `where` on every row and sorts everything again. `liveQuery` keeps
+ * it reruns `where` on every row and sorts everything again. `computedList` keeps
  * the first property and fixes the second:
  *
  * - each row gets its own `computed` for `where` and `orderBy`, so the kernel's
  *   field tracking reruns them for the changed row only;
- * - the query keeps the matching rows in a sorted array, and moves only the
+ * - the list keeps the matching rows in a sorted array, and moves only the
  *   rows whose result changed, with a binary search;
  * - the result is one persistent reactive array synced in place (as in
  *   `stableComputed`), so only slots that changed notify.
  *
- * It is pull-based: nothing runs until the query is read, there are no
- * effects, and so there is nothing to dispose. Read `query()` in every reader
- * rather than holding on to the array it returns — reading `query()` is what
+ * It is pull-based: nothing runs until the list is read, there are no
+ * effects, and so there is nothing to dispose. Call the list in every reader
+ * rather than holding on to the array it returns — calling it is what
  * brings the array up to date.
  *
  * To find the changed row without checking every row, rows are grouped into
@@ -110,8 +110,8 @@ const OUTSIDE: RowResult<never> = Object.freeze({ member: false, key: undefined 
  * `orderBy` calls for rows it already knew). Without `orderBy`, the result is
  * refiltered in source order from cached results on each change.
  */
-export function liveQuery<T extends object, K = unknown>(
-  options: LiveQueryOptions<T, K>,
+export function computedList<T extends object, K = unknown>(
+  options: ComputedListOptions<T, K>,
 ): () => ReadonlyArray<T> {
   const { from, where, orderBy } = options;
   const compare = (options.compare ?? defaultCompare) as (
@@ -144,7 +144,7 @@ export function liveQuery<T extends object, K = unknown>(
       result: rethrowingComputed((previous: RowResult<K> | undefined): RowResult<K> => {
         const member = where ? Boolean(where(item)) : true;
         const key = member && orderBy ? orderBy(item) : undefined;
-        // Hand back the previous object when nothing changed, so the query
+        // Hand back the previous object when nothing changed, so the list
         // isn't dirtied by edits that don't move this row.
         if (
           previous &&
@@ -172,7 +172,7 @@ export function liveQuery<T extends object, K = unknown>(
     const versions = next.blocks.map((block) => block.version());
     const offset = offsetOf();
     const limit = limitOf();
-    // Untracked: `compare` may read reactive values, and the query must not
+    // Untracked: `compare` may read reactive values, and the list must not
     // subscribe to them or to its own output.
     const prevSub = setActiveSub(undefined);
     try {
@@ -205,7 +205,7 @@ export function liveQuery<T extends object, K = unknown>(
     const removed: Array<Row<T, K>> = [];
     forEachItem(from(), (item) => {
       if (typeof item !== "object" || item === null) {
-        throw new TypeError("@supergrain/kernel: liveQuery rows must be objects.");
+        throw new TypeError("@supergrain/kernel: computedList rows must be objects.");
       }
       const raw = unwrap(item);
       let row = rows.get(raw);

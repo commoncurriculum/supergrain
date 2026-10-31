@@ -8,11 +8,11 @@ import {
   type QueryBuilder,
 } from "@tanstack/db";
 
-import { batch, createReactive, liveQuery, stableComputed } from "../src";
+import { batch, createReactive, computedList, stableComputed } from "../src";
 
 /**
- * Shared setup for `live-query.bench.ts` (plain JS) and
- * `react/live-query.bench.tsx` (the same comparison rendered by React).
+ * Shared setup for `computed-list.bench.ts` (plain JS) and
+ * `react/computed-list.bench.tsx` (the same comparison rendered by React).
  *
  * The query everywhere: "tasks not completed, by priority then id, top 10".
  */
@@ -80,8 +80,8 @@ export function scenarios(size: number): ReadonlyArray<[title: string, edit: (i:
 
 export type SupergrainQuery = (store: { tasks: Task[] }) => () => ReadonlyArray<Task>;
 
-export const liveQueryTopTen: SupergrainQuery = (store) =>
-  liveQuery({
+export const computedListTopTen: SupergrainQuery = (store) =>
+  computedList({
     from: () => store.tasks,
     where: (task) => !task.completed,
     orderBy: (task) => [task.priority, task.id],

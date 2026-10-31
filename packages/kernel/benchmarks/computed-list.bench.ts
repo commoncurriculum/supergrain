@@ -2,7 +2,7 @@ import { createLiveQueryCollection } from "@tanstack/db";
 import { bench, describe } from "vitest";
 
 import {
-  liveQueryTopTen,
+  computedListTopTen,
   makeTasks,
   scenarios,
   stableComputedTopTen,
@@ -15,15 +15,15 @@ import {
   type SupergrainQuery,
   type Task,
   type TanstackTasks,
-} from "./live-query-fixtures";
+} from "./computed-list-fixtures";
 
 /**
- * `liveQuery` vs `stableComputed` vs TanStack DB 1.0 RC1 live queries, with
- * no UI. `react/live-query.bench.tsx` runs the same comparison rendered by
+ * `computedList` vs `stableComputed` vs TanStack DB 1.0 RC1 live queries, with
+ * no UI. `react/computed-list.bench.tsx` runs the same comparison rendered by
  * React.
  *
  * Each benchmark is one change followed by one read of the result, the way a
- * UI would see it. TanStack DB runs two ways (see `live-query-fixtures.ts`):
+ * UI would see it. TanStack DB runs two ways (see `computed-list-fixtures.ts`):
  * "sync write" (server data) and "optimistic update" (a user edit). Both get
  * the B-tree indexes TanStack DB asks for.
  *
@@ -69,7 +69,7 @@ function tanstack(setup: (tasks: Task[]) => TanstackTasks): Build {
 }
 
 const IMPLEMENTATIONS: ReadonlyArray<[string, Build]> = [
-  ["supergrain liveQuery", supergrain(liveQueryTopTen)],
+  ["supergrain computedList", supergrain(computedListTopTen)],
   ["supergrain stableComputed", supergrain(stableComputedTopTen)],
   ["TanStack DB (sync write)", tanstack(tanstackSyncWrite)],
   ["TanStack DB (optimistic update)", tanstack(tanstackOptimisticUpdate)],
@@ -89,7 +89,9 @@ function validate(size: number): void {
   });
   for (const [name, seen] of results) {
     if (seen !== results[0]![1]) {
-      throw new Error(`live-query bench: ${name} disagrees with ${results[0]![0]} at ${size} rows`);
+      throw new Error(
+        `computed-list bench: ${name} disagrees with ${results[0]![0]} at ${size} rows`,
+      );
     }
   }
 }

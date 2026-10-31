@@ -14,14 +14,14 @@ pnpm bench
 
 These compare supergrain against other reactive store libraries:
 
-| File                         | What it measures                                                                       |
-| ---------------------------- | -------------------------------------------------------------------------------------- |
-| `core-comparison.bench.ts`   | supergrain vs solid-js (store creation, reads, effects, updates, batching)             |
-| `state-libraries.bench.ts`   | supergrain vs zustand, jotai, valtio, mobx, preact/signals                             |
-| `additional.bench.ts`        | Proxy overhead analysis, effect lifecycle, complex scenarios                           |
-| `row-operations.bench.ts`    | Table row operations (select, swap) — krauset-style                                    |
-| `live-query.bench.ts`        | `liveQuery` vs `stableComputed` vs TanStack DB live queries (1k, 10k rows)             |
-| `react/live-query.bench.tsx` | The same, rendered by React (`tracked` vs `useLiveQuery`); run with `pnpm bench:react` |
+| File                            | What it measures                                                                       |
+| ------------------------------- | -------------------------------------------------------------------------------------- |
+| `core-comparison.bench.ts`      | supergrain vs solid-js (store creation, reads, effects, updates, batching)             |
+| `state-libraries.bench.ts`      | supergrain vs zustand, jotai, valtio, mobx, preact/signals                             |
+| `additional.bench.ts`           | Proxy overhead analysis, effect lifecycle, complex scenarios                           |
+| `row-operations.bench.ts`       | Table row operations (select, swap) — krauset-style                                    |
+| `computed-list.bench.ts`        | `computedList` vs `stableComputed` vs TanStack DB live queries (1k, 10k rows)          |
+| `react/computed-list.bench.tsx` | The same, rendered by React (`tracked` vs `useLiveQuery`); run with `pnpm bench:react` |
 
 Results: See the corresponding .md files (CORE_COMPARISON.md, etc.)
 

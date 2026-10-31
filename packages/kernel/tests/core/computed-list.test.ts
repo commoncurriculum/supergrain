@@ -5,7 +5,7 @@ import {
   batch,
   createReactive,
   effect,
-  liveQuery,
+  computedList,
   signal,
   stableComputed,
   unwrap,
@@ -29,10 +29,10 @@ function makeTasks(count: number): Task[] {
 
 const ids = (rows: ReadonlyArray<{ id: number }>) => rows.map((row) => row.id);
 
-describe("liveQuery", () => {
+describe("computedList", () => {
   it("filters, sorts and windows the source", () => {
     const store = createReactive({ tasks: makeTasks(20) });
-    const query = liveQuery({
+    const query = computedList({
       from: () => store.tasks,
       where: (task) => !task.completed,
       orderBy: (task) => [task.priority, task.id],
@@ -46,7 +46,7 @@ describe("liveQuery", () => {
 
   it("returns the same array, and only changed slots notify", () => {
     const store = createReactive({ tasks: makeTasks(10) });
-    const query = liveQuery({ from: () => store.tasks, where: (task) => !task.completed });
+    const query = computedList({ from: () => store.tasks, where: (task) => !task.completed });
     const result = query();
     const firstSlot = vi.fn();
     effect(() => void firstSlot(query()[0]!.id));
@@ -60,7 +60,7 @@ describe("liveQuery", () => {
 
   it("keeps fields of listed rows fine-grained", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = liveQuery({ from: () => store.tasks, where: (task) => !task.completed });
+    const query = computedList({ from: () => store.tasks, where: (task) => !task.completed });
     const titles = vi.fn();
     const list = vi.fn();
     effect(() => void list(query().length));
@@ -75,7 +75,7 @@ describe("liveQuery", () => {
 
   it("keeps source order without orderBy, including reorders", () => {
     const store = createReactive({ tasks: makeTasks(6) });
-    const query = liveQuery({ from: () => store.tasks, where: (task) => !task.completed });
+    const query = computedList({ from: () => store.tasks, where: (task) => !task.completed });
     expect(ids(query())).toEqual([1, 3, 5]);
 
     store.tasks.reverse();
@@ -84,7 +84,7 @@ describe("liveQuery", () => {
 
   it("orders equal keys by first appearance in the source", () => {
     const store = createReactive({ tasks: makeTasks(6) });
-    const query = liveQuery({ from: () => store.tasks, orderBy: () => 0 });
+    const query = computedList({ from: () => store.tasks, orderBy: () => 0 });
     expect(ids(query())).toEqual([0, 1, 2, 3, 4, 5]);
 
     store.tasks.reverse();
@@ -93,7 +93,7 @@ describe("liveQuery", () => {
 
   it("follows pushes, splices, replaced elements and leave-then-return", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = liveQuery({ from: () => store.tasks, orderBy: (task) => task.id });
+    const query = computedList({ from: () => store.tasks, orderBy: (task) => task.id });
 
     store.tasks.push({ id: 10, completed: false, priority: 0, title: "new" });
     expect(ids(query())).toEqual([0, 1, 2, 3, 10]);
@@ -110,7 +110,7 @@ describe("liveQuery", () => {
 
   it("reads a Map's values", () => {
     const tasks = createReactive(new Map(makeTasks(4).map((task) => [task.id, task])));
-    const query = liveQuery({
+    const query = computedList({
       from: () => tasks.values(),
       where: (task) => !task.completed,
       orderBy: (task) => -task.id,
@@ -124,7 +124,7 @@ describe("liveQuery", () => {
 
   it("is correct when read inside a batch", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = liveQuery({ from: () => store.tasks, where: (task) => !task.completed });
+    const query = computedList({ from: () => store.tasks, where: (task) => !task.completed });
     batch(() => {
       store.tasks[1]!.completed = true;
       expect(ids(query())).toEqual([3]);
@@ -133,7 +133,7 @@ describe("liveQuery", () => {
 
   it("runs a reader once per change, with fresh data, when the reader subscribed to the field first", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = liveQuery({ from: () => store.tasks, where: (task) => !task.completed });
+    const query = computedList({ from: () => store.tasks, where: (task) => !task.completed });
     const seen: Array<[boolean, number[]]> = [];
     // The reader reads the field before the query, so it is notified first.
     effect(() => void seen.push([store.tasks[1]!.completed, ids(query())]));
@@ -145,7 +145,7 @@ describe("liveQuery", () => {
 
   it("runs a reader once when many rows arrive at once", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = liveQuery({ from: () => store.tasks, orderBy: (task) => task.id });
+    const query = computedList({ from: () => store.tasks, orderBy: (task) => task.id });
     const lengths: number[] = [];
     effect(() => void lengths.push(query().length));
     lengths.length = 0;
@@ -156,7 +156,7 @@ describe("liveQuery", () => {
 
   it("moves many rows at once when where reads shared state", () => {
     const store = createReactive({ tasks: makeTasks(100), showDone: false });
-    const query = liveQuery({
+    const query = computedList({
       from: () => store.tasks,
       where: (task) => task.completed === store.showDone,
       orderBy: (task) => [task.priority, task.id],
@@ -171,7 +171,7 @@ describe("liveQuery", () => {
   it("reads a reactive offset and limit", () => {
     const store = createReactive({ tasks: makeTasks(10) });
     const page = signal(0);
-    const query = liveQuery({
+    const query = computedList({
       from: () => store.tasks,
       orderBy: (task) => task.id,
       offset: () => page() * 3,
@@ -185,9 +185,9 @@ describe("liveQuery", () => {
   it("counts the same object once and rejects rows that aren't objects", () => {
     const task = { id: 1, completed: false, priority: 0, title: "a" };
     const store = createReactive({ tasks: [task, task] });
-    expect(ids(liveQuery({ from: () => store.tasks })())).toEqual([1]);
+    expect(ids(computedList({ from: () => store.tasks })())).toEqual([1]);
 
-    const bad = liveQuery({ from: () => [1] as unknown as Task[] });
+    const bad = computedList({ from: () => [1] as unknown as Task[] });
     expect(() => bad()).toThrow(/must be objects/);
   });
 
@@ -195,7 +195,7 @@ describe("liveQuery", () => {
     const store = createReactive({
       tasks: [3, Number.NaN, 1, undefined, 2].map((priority, id) => ({ id, priority })),
     });
-    const query = liveQuery({ from: () => store.tasks, orderBy: (task) => task.priority });
+    const query = computedList({ from: () => store.tasks, orderBy: (task) => task.priority });
     expect(ids(query())).toEqual([2, 4, 0, 1, 3]);
 
     store.tasks[1]!.priority = 0;
@@ -206,14 +206,14 @@ describe("liveQuery", () => {
   it("orders mixed key types by type name, and arrays element by element", () => {
     const keys: unknown[] = ["b", 2, [1, 2], "a", 1n, [1], 1];
     const store = createReactive({ rows: keys.map((key, id) => ({ id, key })) });
-    const query = liveQuery({ from: () => store.rows, orderBy: (row) => row.key });
+    const query = computedList({ from: () => store.rows, orderBy: (row) => row.key });
     // bigint < number < object (arrays) < string.
     expect(query().map((row) => row.key)).toEqual([1n, 1, 2, [1], [1, 2], "a", "b"]);
   });
 
   it("doesn't wake readers when a row's result is unchanged", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = liveQuery({
+    const query = computedList({
       from: () => store.tasks,
       where: (task) => task.title.length > 0,
       orderBy: (task) => task.id,
@@ -230,7 +230,7 @@ describe("liveQuery", () => {
   it("still finds a row when compare is inconsistent", () => {
     const store = createReactive({ tasks: makeTasks(6) });
     let direction = 1;
-    const query = liveQuery({
+    const query = computedList({
       from: () => store.tasks,
       orderBy: (task) => task.id,
       compare: (a, b) => direction * (a - b),
@@ -245,7 +245,7 @@ describe("liveQuery", () => {
 
   it("surfaces a throwing where on read, leaves other effects alone, and recovers", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = liveQuery({
+    const query = computedList({
       from: () => store.tasks,
       where: (task) => {
         if (task.title === "boom") throw new Error("boom");
@@ -268,7 +268,7 @@ describe("liveQuery", () => {
 
   it("keeps every row after a where that throws part-way through the source", () => {
     const store = createReactive({ tasks: makeTasks(6) });
-    const query = liveQuery({
+    const query = computedList({
       from: () => store.tasks,
       where: (task) => {
         if (task.title === "boom") throw new Error("boom");
@@ -287,7 +287,7 @@ describe("liveQuery", () => {
   it("keeps throwing on every read until a field the failing row read changes", () => {
     const store = createReactive({ tasks: makeTasks(4) });
     let fail = false;
-    const query = liveQuery({
+    const query = computedList({
       from: () => store.tasks,
       where: (task) => {
         const visible = !task.completed && task.title !== "hidden";
@@ -310,7 +310,7 @@ describe("liveQuery", () => {
   it("rebuilds the order after a compare that throws part-way through an update", () => {
     const store = createReactive({ tasks: makeTasks(6) });
     let fail = false;
-    const query = liveQuery({
+    const query = computedList({
       from: () => store.tasks,
       where: (task) => !task.completed,
       orderBy: (task) => task.priority,
@@ -333,7 +333,7 @@ describe("liveQuery", () => {
   it("does not subscribe the query to reactive reads inside compare", () => {
     const store = createReactive({ tasks: makeTasks(4), flag: false });
     let reads = 0;
-    const query = liveQuery({
+    const query = computedList({
       from: () => {
         reads++;
         return store.tasks;
@@ -353,7 +353,7 @@ describe("liveQuery", () => {
 
 // The four changes from the TanStack DB comparison: 1,000 tasks, "not
 // completed, by priority, top 10". `stableComputed` skips fields the query
-// never read but redoes the whole filter and sort otherwise; `liveQuery` also
+// never read but redoes the whole filter and sort otherwise; `computedList` also
 // skips those, and otherwise touches only the changed row.
 describe("work per change", () => {
   type Key = readonly [number, number];
@@ -417,9 +417,9 @@ describe("work per change", () => {
     expect(counts.d.reader).toBe(1);
   });
 
-  it("liveQuery: nothing for unread fields, one row otherwise", () => {
+  it("computedList: nothing for unread fields, one row otherwise", () => {
     const counts = measure((store, where, compare) =>
-      liveQuery({ from: () => store.tasks, where, orderBy: keyOf, compare, limit: 10 }),
+      computedList({ from: () => store.tasks, where, orderBy: keyOf, compare, limit: 10 }),
     );
     expect(counts.top).toEqual([7, 21, 35, 49, 63, 77, 91, 105, 119, 133]);
     expect(counts.a).toEqual({ where: 0, compare: 0, reader: 0 });
@@ -435,7 +435,7 @@ describe("work per change", () => {
   });
 });
 
-describe("liveQuery matches a from-scratch reference", () => {
+describe("computedList matches a from-scratch reference", () => {
   type Op =
     | { type: "toggle"; index: number }
     | { type: "priority"; index: number; value: number }
@@ -482,7 +482,7 @@ describe("liveQuery matches a from-scratch reference", () => {
           });
           const where = (t: Task) => !t.completed;
           // Keys are unique, so tie order doesn't matter to the reference.
-          const query = liveQuery({
+          const query = computedList({
             from: () => store.tasks,
             where,
             ...(sortRows && { orderBy: (t: Task) => [t.priority, t.id] }),

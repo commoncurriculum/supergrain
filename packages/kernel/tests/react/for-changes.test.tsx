@@ -1,4 +1,4 @@
-import { batch, createReactive, liveQuery } from "@supergrain/kernel";
+import { batch, createReactive, computedList } from "@supergrain/kernel";
 import { For, tracked } from "@supergrain/kernel/react";
 import { act, cleanup, render } from "@testing-library/react";
 import React from "react";
@@ -105,11 +105,11 @@ for (const withParent of [false, true]) {
       expect(rowRenders).toBe(1);
     });
 
-    it("keeps a liveQuery's top 3 in sync", async () => {
+    it("keeps a computedList's top 3 in sync", async () => {
       const store = createReactive({
         tasks: Array.from({ length: 20 }, (_, id) => ({ id, label: `t${id}`, done: false })),
       });
-      const top = liveQuery({
+      const top = computedList({
         from: () => store.tasks,
         where: (task) => !task.done,
         orderBy: (task) => task.id,
