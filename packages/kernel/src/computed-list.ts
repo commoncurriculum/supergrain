@@ -126,8 +126,10 @@ export function computedList<T extends object, K = unknown>(
   // moving rows between maps, stays correct when a read throws part-way.)
   const rows = new Map<object, Row<T, K>>();
   let reads = 0;
-  // The matching rows by `(key, seq)`. `null` after an update threw part-way
-  // (a throwing `compare`), so the next read rebuilds it instead of trusting it.
+  // The matching rows by `(key, seq)`. `null` after a read threw part-way (a
+  // throwing `where`, `orderBy` or `compare`), so the next read rebuilds it
+  // from `rows` instead of trusting it: rows that left the source during the
+  // failed read were never taken out of it.
   let sorted: Array<Row<T, K>> | null = [];
   let nextSeq = 0;
   const out = createReactive<Array<T>>([]) as Array<T>;
@@ -149,7 +151,7 @@ export function computedList<T extends object, K = unknown>(
         if (
           previous &&
           previous.member === member &&
-          (!member || !orderBy || compare(previous.key, key) === 0)
+          (!member || !orderBy || untracked(() => compare(previous.key, key)) === 0)
         ) {
           return previous;
         }
@@ -166,16 +168,24 @@ export function computedList<T extends object, K = unknown>(
   let appliedVersions: Array<object | undefined> = [];
 
   return rethrowingComputed((): ReadonlyArray<T> => {
+    try {
+      return update();
+    } catch (error) {
+      sorted = null;
+      throw error;
+    }
+  });
+
+  function update(): ReadonlyArray<T> {
     // Tracked: the source's structure, each block's version, the window.
     const next = structure();
     const fresh = next !== current;
     const versions = next.blocks.map((block) => block.version());
-    const offset = offsetOf();
-    const limit = limitOf();
+    const offset = Math.max(0, offsetOf());
+    const limit = Math.max(0, limitOf());
     // Untracked: `compare` may read reactive values, and the list must not
     // subscribe to them or to its own output.
-    const prevSub = setActiveSub(undefined);
-    try {
+    untracked(() => {
       const changes: Array<Change<T, K>> = [];
       if (fresh) {
         for (const row of next.removed) if (row.applied.member) changes.push([row, OUTSIDE]);
@@ -190,13 +200,11 @@ export function computedList<T extends object, K = unknown>(
         out,
         ordered.slice(offset, offset + limit).map((row) => row.item),
       );
-      current = next;
-      appliedVersions = versions;
-    } finally {
-      setActiveSub(prevSub);
-    }
+    });
+    current = next;
+    appliedVersions = versions;
     return out;
-  });
+  }
 
   /** Walk the source: its rows in order (once each), blocks of them, and the rows that left. */
   function readStructure(): Structure<T, K> {
@@ -237,14 +245,11 @@ export function computedList<T extends object, K = unknown>(
       sorted = [...rows.values()].filter((row) => row.applied.member).sort(compareRows);
       return sorted;
     }
-    const list = sorted;
-    sorted = null;
     for (const [row, next] of changes) {
-      if (row.applied.member) list.splice(indexOf(list, row, compareRows), 1);
+      if (row.applied.member) sorted.splice(indexOf(sorted, row, compareRows), 1);
       row.applied = next;
-      if (next.member) list.splice(insertionPoint(list, row, compareRows), 0, row);
+      if (next.member) sorted.splice(insertionPoint(sorted, row, compareRows), 0, row);
     }
-    sorted = list;
     return sorted;
   }
 }
@@ -281,6 +286,16 @@ function indexOf<R>(sorted: ReadonlyArray<R>, item: R, compare: (a: R, b: R) => 
   const i = insertionPoint(sorted, item, compare);
   // A miss only happens with an inconsistent `compare` or a key that mutated.
   return sorted[i] === item ? i : sorted.indexOf(item);
+}
+
+/** Run `fn` without subscribing the active computed to what it reads. */
+function untracked<R>(fn: () => R): R {
+  const prevSub = setActiveSub(undefined);
+  try {
+    return fn();
+  } finally {
+    setActiveSub(prevSub);
+  }
 }
 
 function toGetter(value: number | (() => number) | undefined, fallback: number): () => number {

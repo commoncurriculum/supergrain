@@ -15,7 +15,7 @@ import {
   tanstackTopTen,
   validationEdits,
   type Edit,
-  type SupergrainQuery,
+  type SupergrainList,
   type Task,
   type TanstackTasks,
 } from "../computed-list-fixtures";
@@ -25,7 +25,7 @@ import {
  *
  * Each app renders the top 10 tasks as a list, one row component per task,
  * the way each library recommends:
- * - supergrain: `tracked` list and rows. The list reads the query, with a
+ * - supergrain: `tracked` list and rows. The list reads the computed list, with a
  *   plain `.map()`, `<For>` or `<For parent>`; each row reads its own task's
  *   fields, so a field edit re-renders only that row.
  * - TanStack DB: `useLiveQuery` in the list, `memo` rows. A changed task is a
@@ -51,14 +51,14 @@ const RowView: FC<{ task: Task }> = ({ task }) => {
 
 const SupergrainRow = tracked(RowView);
 
-type ListProps = { query: () => ReadonlyArray<Task> };
+type ListProps = { rows: () => ReadonlyArray<Task> };
 
 /** Plain `.map()`: the list re-renders whenever a slot of the result changes. */
-const MapList = tracked(({ query }: ListProps) => {
+const MapList = tracked(({ rows }: ListProps) => {
   renders.list++;
   return (
     <ul>
-      {query().map((task) => (
+      {rows().map((task) => (
         <SupergrainRow key={task.id} task={task} />
       ))}
     </ul>
@@ -66,22 +66,22 @@ const MapList = tracked(({ query }: ListProps) => {
 });
 
 /** `<For>`: rows keyed by task, so a task that only moved keeps its row. */
-const ForList = tracked(({ query }: ListProps) => {
+const ForList = tracked(({ rows }: ListProps) => {
   renders.list++;
   return (
     <ul>
-      <For each={query()}>{(task) => <SupergrainRow key={task.id} task={task} />}</For>
+      <For each={rows()}>{(task) => <SupergrainRow key={task.id} task={task} />}</For>
     </ul>
   );
 });
 
 /** `<For parent>`: the krauset fast path, which moves DOM nodes on a swap. */
-const ForParentList = tracked(({ query }: ListProps) => {
+const ForParentList = tracked(({ rows }: ListProps) => {
   renders.list++;
   const ul = useRef<HTMLUListElement>(null);
   return (
     <ul ref={ul}>
-      <For each={query()} parent={ul}>
+      <For each={rows()} parent={ul}>
         {(task) => <SupergrainRow key={task.id} task={task} />}
       </For>
     </ul>
@@ -133,10 +133,10 @@ function mount(element: React.ReactElement, edit: (changes: Edit) => void): App 
 }
 
 const supergrain =
-  (makeQuery: SupergrainQuery, List: FC<ListProps> = MapList): Mount =>
+  (makeList: SupergrainList, List: FC<ListProps> = MapList): Mount =>
   (tasks) => {
     const { store, edit } = supergrainStore(tasks);
-    return mount(<List query={makeQuery(store)} />, edit);
+    return mount(<List rows={makeList(store)} />, edit);
   };
 
 const tanstack =

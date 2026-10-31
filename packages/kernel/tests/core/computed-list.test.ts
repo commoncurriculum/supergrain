@@ -32,7 +32,7 @@ const ids = (rows: ReadonlyArray<{ id: number }>) => rows.map((row) => row.id);
 describe("computedList", () => {
   it("filters, sorts and windows the source", () => {
     const store = createReactive({ tasks: makeTasks(20) });
-    const query = computedList({
+    const view = computedList({
       from: () => store.tasks,
       where: (task) => !task.completed,
       orderBy: (task) => [task.priority, task.id],
@@ -41,30 +41,30 @@ describe("computedList", () => {
     });
 
     // Odd ids with priority 0, 1, 1, 2, ...: 7 (0), 1 (1), 15 (1), 9 (2).
-    expect(ids(query())).toEqual([1, 15, 9]);
+    expect(ids(view())).toEqual([1, 15, 9]);
   });
 
   it("returns the same array, and only changed slots notify", () => {
     const store = createReactive({ tasks: makeTasks(10) });
-    const query = computedList({ from: () => store.tasks, where: (task) => !task.completed });
-    const result = query();
+    const view = computedList({ from: () => store.tasks, where: (task) => !task.completed });
+    const result = view();
     const firstSlot = vi.fn();
-    effect(() => void firstSlot(query()[0]!.id));
+    effect(() => void firstSlot(view()[0]!.id));
     firstSlot.mockClear();
 
     store.tasks[9]!.completed = true;
-    expect(query()).toBe(result);
+    expect(view()).toBe(result);
     expect(ids(result)).toEqual([1, 3, 5, 7]);
     expect(firstSlot).not.toHaveBeenCalled();
   });
 
   it("keeps fields of listed rows fine-grained", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = computedList({ from: () => store.tasks, where: (task) => !task.completed });
+    const view = computedList({ from: () => store.tasks, where: (task) => !task.completed });
     const titles = vi.fn();
     const list = vi.fn();
-    effect(() => void list(query().length));
-    effect(() => void titles(query().map((task) => task.title)));
+    effect(() => void list(view().length));
+    effect(() => void titles(view().map((task) => task.title)));
     titles.mockClear();
     list.mockClear();
 
@@ -75,68 +75,68 @@ describe("computedList", () => {
 
   it("keeps source order without orderBy, including reorders", () => {
     const store = createReactive({ tasks: makeTasks(6) });
-    const query = computedList({ from: () => store.tasks, where: (task) => !task.completed });
-    expect(ids(query())).toEqual([1, 3, 5]);
+    const view = computedList({ from: () => store.tasks, where: (task) => !task.completed });
+    expect(ids(view())).toEqual([1, 3, 5]);
 
     store.tasks.reverse();
-    expect(ids(query())).toEqual([5, 3, 1]);
+    expect(ids(view())).toEqual([5, 3, 1]);
   });
 
   it("orders equal keys by first appearance in the source", () => {
     const store = createReactive({ tasks: makeTasks(6) });
-    const query = computedList({ from: () => store.tasks, orderBy: () => 0 });
-    expect(ids(query())).toEqual([0, 1, 2, 3, 4, 5]);
+    const view = computedList({ from: () => store.tasks, orderBy: () => 0 });
+    expect(ids(view())).toEqual([0, 1, 2, 3, 4, 5]);
 
     store.tasks.reverse();
-    expect(ids(query())).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(ids(view())).toEqual([0, 1, 2, 3, 4, 5]);
   });
 
   it("follows pushes, splices, replaced elements and leave-then-return", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = computedList({ from: () => store.tasks, orderBy: (task) => task.id });
+    const view = computedList({ from: () => store.tasks, orderBy: (task) => task.id });
 
     store.tasks.push({ id: 10, completed: false, priority: 0, title: "new" });
-    expect(ids(query())).toEqual([0, 1, 2, 3, 10]);
+    expect(ids(view())).toEqual([0, 1, 2, 3, 10]);
 
     const [removed] = store.tasks.splice(1, 1);
-    expect(ids(query())).toEqual([0, 2, 3, 10]);
+    expect(ids(view())).toEqual([0, 2, 3, 10]);
 
     store.tasks[0] = { id: 7, completed: false, priority: 0, title: "replaced" };
-    expect(ids(query())).toEqual([2, 3, 7, 10]);
+    expect(ids(view())).toEqual([2, 3, 7, 10]);
 
     store.tasks.push(removed!);
-    expect(ids(query())).toEqual([1, 2, 3, 7, 10]);
+    expect(ids(view())).toEqual([1, 2, 3, 7, 10]);
   });
 
   it("reads a Map's values", () => {
     const tasks = createReactive(new Map(makeTasks(4).map((task) => [task.id, task])));
-    const query = computedList({
+    const view = computedList({
       from: () => tasks.values(),
       where: (task) => !task.completed,
       orderBy: (task) => -task.id,
     });
-    expect(ids(query())).toEqual([3, 1]);
+    expect(ids(view())).toEqual([3, 1]);
 
     tasks.get(2)!.completed = false;
     tasks.delete(3);
-    expect(ids(query())).toEqual([2, 1]);
+    expect(ids(view())).toEqual([2, 1]);
   });
 
   it("is correct when read inside a batch", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = computedList({ from: () => store.tasks, where: (task) => !task.completed });
+    const view = computedList({ from: () => store.tasks, where: (task) => !task.completed });
     batch(() => {
       store.tasks[1]!.completed = true;
-      expect(ids(query())).toEqual([3]);
+      expect(ids(view())).toEqual([3]);
     });
   });
 
   it("runs a reader once per change, with fresh data, when the reader subscribed to the field first", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = computedList({ from: () => store.tasks, where: (task) => !task.completed });
+    const view = computedList({ from: () => store.tasks, where: (task) => !task.completed });
     const seen: Array<[boolean, number[]]> = [];
-    // The reader reads the field before the query, so it is notified first.
-    effect(() => void seen.push([store.tasks[1]!.completed, ids(query())]));
+    // The reader reads the field before the list, so it is notified first.
+    effect(() => void seen.push([store.tasks[1]!.completed, ids(view())]));
     seen.length = 0;
 
     store.tasks[1]!.completed = true;
@@ -145,9 +145,9 @@ describe("computedList", () => {
 
   it("runs a reader once when many rows arrive at once", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = computedList({ from: () => store.tasks, orderBy: (task) => task.id });
+    const view = computedList({ from: () => store.tasks, orderBy: (task) => task.id });
     const lengths: number[] = [];
-    effect(() => void lengths.push(query().length));
+    effect(() => void lengths.push(view().length));
     lengths.length = 0;
 
     store.tasks = makeTasks(50);
@@ -156,30 +156,30 @@ describe("computedList", () => {
 
   it("moves many rows at once when where reads shared state", () => {
     const store = createReactive({ tasks: makeTasks(100), showDone: false });
-    const query = computedList({
+    const view = computedList({
       from: () => store.tasks,
       where: (task) => task.completed === store.showDone,
       orderBy: (task) => [task.priority, task.id],
       limit: 3,
     });
-    expect(ids(query())).toEqual([7, 21, 35]);
+    expect(ids(view())).toEqual([7, 21, 35]);
 
     store.showDone = true;
-    expect(ids(query())).toEqual([0, 14, 28]);
+    expect(ids(view())).toEqual([0, 14, 28]);
   });
 
   it("reads a reactive offset and limit", () => {
     const store = createReactive({ tasks: makeTasks(10) });
     const page = signal(0);
-    const query = computedList({
+    const view = computedList({
       from: () => store.tasks,
       orderBy: (task) => task.id,
       offset: () => page() * 3,
       limit: 3,
     });
-    expect(ids(query())).toEqual([0, 1, 2]);
+    expect(ids(view())).toEqual([0, 1, 2]);
     page(2);
-    expect(ids(query())).toEqual([6, 7, 8]);
+    expect(ids(view())).toEqual([6, 7, 8]);
   });
 
   it("counts the same object once and rejects rows that aren't objects", () => {
@@ -195,80 +195,80 @@ describe("computedList", () => {
     const store = createReactive({
       tasks: [3, Number.NaN, 1, undefined, 2].map((priority, id) => ({ id, priority })),
     });
-    const query = computedList({ from: () => store.tasks, orderBy: (task) => task.priority });
-    expect(ids(query())).toEqual([2, 4, 0, 1, 3]);
+    const view = computedList({ from: () => store.tasks, orderBy: (task) => task.priority });
+    expect(ids(view())).toEqual([2, 4, 0, 1, 3]);
 
     store.tasks[1]!.priority = 0;
     store.tasks[2]!.priority = Number.NaN;
-    expect(ids(query())).toEqual([1, 4, 0, 2, 3]);
+    expect(ids(view())).toEqual([1, 4, 0, 2, 3]);
   });
 
   it("orders mixed key types by type name, and arrays element by element", () => {
     const keys: unknown[] = ["b", 2, [1, 2], "a", 1n, [1], 1];
     const store = createReactive({ rows: keys.map((key, id) => ({ id, key })) });
-    const query = computedList({ from: () => store.rows, orderBy: (row) => row.key });
+    const view = computedList({ from: () => store.rows, orderBy: (row) => row.key });
     // bigint < number < object (arrays) < string.
-    expect(query().map((row) => row.key)).toEqual([1n, 1, 2, [1], [1, 2], "a", "b"]);
+    expect(view().map((row) => row.key)).toEqual([1n, 1, 2, [1], [1, 2], "a", "b"]);
   });
 
   it("doesn't wake readers when a row's result is unchanged", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = computedList({
+    const view = computedList({
       from: () => store.tasks,
       where: (task) => task.title.length > 0,
       orderBy: (task) => task.id,
     });
     const reader = vi.fn();
-    effect(() => void reader(ids(query())));
+    effect(() => void reader(ids(view())));
     reader.mockClear();
 
     store.tasks[1]!.title = "still has a title";
-    expect(ids(query())).toEqual([0, 1, 2, 3]);
+    expect(ids(view())).toEqual([0, 1, 2, 3]);
     expect(reader).not.toHaveBeenCalled();
   });
 
   it("still finds a row when compare is inconsistent", () => {
     const store = createReactive({ tasks: makeTasks(6) });
     let direction = 1;
-    const query = computedList({
+    const view = computedList({
       from: () => store.tasks,
       orderBy: (task) => task.id,
       compare: (a, b) => direction * (a - b),
     });
-    expect(ids(query())).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(ids(view())).toEqual([0, 1, 2, 3, 4, 5]);
 
     direction = -1;
     store.tasks.splice(1, 1);
-    expect(ids(query())).not.toContain(1);
-    expect(query()).toHaveLength(5);
+    expect(ids(view())).not.toContain(1);
+    expect(view()).toHaveLength(5);
   });
 
   it("surfaces a throwing where on read, leaves other effects alone, and recovers", () => {
     const store = createReactive({ tasks: makeTasks(4) });
-    const query = computedList({
+    const view = computedList({
       from: () => store.tasks,
       where: (task) => {
         if (task.title === "boom") throw new Error("boom");
         return !task.completed;
       },
     });
-    expect(ids(query())).toEqual([1, 3]);
+    expect(ids(view())).toEqual([1, 3]);
     const other = vi.fn();
     effect(() => void other(store.tasks[1]!.title));
     other.mockClear();
 
     store.tasks[1]!.title = "boom";
     expect(other).toHaveBeenCalledTimes(1);
-    expect(() => query()).toThrow("boom");
+    expect(() => view()).toThrow("boom");
 
     store.tasks[1]!.title = "fine";
     store.tasks[1]!.completed = true;
-    expect(ids(query())).toEqual([3]);
+    expect(ids(view())).toEqual([3]);
   });
 
   it("keeps every row after a where that throws part-way through the source", () => {
     const store = createReactive({ tasks: makeTasks(6) });
-    const query = computedList({
+    const view = computedList({
       from: () => store.tasks,
       where: (task) => {
         if (task.title === "boom") throw new Error("boom");
@@ -276,18 +276,18 @@ describe("computedList", () => {
       },
       orderBy: (task) => task.id,
     });
-    expect(ids(query())).toEqual([1, 3, 5]);
+    expect(ids(view())).toEqual([1, 3, 5]);
 
     store.tasks[4]!.title = "boom";
-    expect(() => query()).toThrow("boom");
+    expect(() => view()).toThrow("boom");
     store.tasks[4]!.title = "fine";
-    expect(ids(query())).toEqual([1, 3, 5]);
+    expect(ids(view())).toEqual([1, 3, 5]);
   });
 
   it("keeps throwing on every read until a field the failing row read changes", () => {
     const store = createReactive({ tasks: makeTasks(4) });
     let fail = false;
-    const query = computedList({
+    const view = computedList({
       from: () => store.tasks,
       where: (task) => {
         const visible = !task.completed && task.title !== "hidden";
@@ -295,22 +295,22 @@ describe("computedList", () => {
         return visible;
       },
     });
-    expect(ids(query())).toEqual([1, 3]);
+    expect(ids(view())).toEqual([1, 3]);
 
     fail = true;
     store.tasks[1]!.title = "x";
-    expect(() => query()).toThrow("where");
+    expect(() => view()).toThrow("where");
     fail = false;
     // Not stale data: the failure is cached until row 1 changes again.
-    expect(() => query()).toThrow("where");
+    expect(() => view()).toThrow("where");
     store.tasks[1]!.title = "y";
-    expect(ids(query())).toEqual([1, 3]);
+    expect(ids(view())).toEqual([1, 3]);
   });
 
   it("rebuilds the order after a compare that throws part-way through an update", () => {
     const store = createReactive({ tasks: makeTasks(6) });
     let fail = false;
-    const query = computedList({
+    const view = computedList({
       from: () => store.tasks,
       where: (task) => !task.completed,
       orderBy: (task) => task.priority,
@@ -319,21 +319,78 @@ describe("computedList", () => {
         return a - b;
       },
     });
-    expect(ids(query())).toEqual([1, 3, 5]);
+    expect(ids(view())).toEqual([1, 3, 5]);
 
     // Row 0 enters the result, so it is inserted with a binary search that throws.
     fail = true;
     store.tasks[0]!.completed = false;
-    expect(() => query()).toThrow("compare");
+    expect(() => view()).toThrow("compare");
     fail = false;
     store.tasks[4]!.completed = false;
-    expect(ids(query())).toEqual([0, 1, 3, 4, 5]);
+    expect(ids(view())).toEqual([0, 1, 3, 4, 5]);
   });
 
-  it("does not subscribe the query to reactive reads inside compare", () => {
+  it("drops rows that left the source while a where was throwing", () => {
+    const store = createReactive({ tasks: makeTasks(4) });
+    const view = computedList({
+      from: () => store.tasks,
+      where: (task) => {
+        if (task.title === "boom") throw new Error("boom");
+        return true;
+      },
+      orderBy: (task) => task.id,
+    });
+    expect(ids(view())).toEqual([0, 1, 2, 3]);
+
+    store.tasks[3]!.title = "boom";
+    const removed = store.tasks.shift()!;
+    expect(() => view()).toThrow("boom");
+
+    store.tasks[2]!.title = "fine";
+    store.tasks.push({ id: 9, completed: false, priority: 0, title: "t9" });
+    expect(ids(view())).toEqual([1, 2, 3, 9]);
+
+    // Added back, it shows once.
+    store.tasks.push(removed);
+    expect(ids(view())).toEqual([0, 1, 2, 3, 9]);
+  });
+
+  it("does not subscribe rows to reactive reads inside compare", () => {
+    const store = createReactive({ tasks: makeTasks(4), flag: false });
+    let orderByCalls = 0;
+    const view = computedList({
+      from: () => store.tasks,
+      orderBy: (task) => (orderByCalls++, task.priority),
+      compare: (a, b) => (store.flag ? 0 : 0) + a - b,
+    });
+    view();
+    // Row 0 recomputes and compares its new key with the old one.
+    store.tasks[0]!.priority = 5;
+    view();
+    orderByCalls = 0;
+
+    store.flag = true;
+    view();
+    expect(orderByCalls).toBe(0);
+  });
+
+  it("treats a negative offset or limit as zero", () => {
+    const store = createReactive({ tasks: makeTasks(5), offset: -2, limit: 2 });
+    const view = computedList({
+      from: () => store.tasks,
+      orderBy: (task) => task.id,
+      offset: () => store.offset,
+      limit: () => store.limit,
+    });
+    expect(ids(view())).toEqual([0, 1]);
+    store.limit = -1;
+    expect(ids(view())).toEqual([]);
+  });
+
+  it("does not subscribe the list to reactive reads inside compare", () => {
     const store = createReactive({ tasks: makeTasks(4), flag: false });
     let reads = 0;
-    const query = computedList({
+    const view = computedList({
       from: () => {
         reads++;
         return store.tasks;
@@ -342,17 +399,17 @@ describe("computedList", () => {
       compare: (a, b) => (store.flag ? 0 : 0) + a - b,
     });
     store.tasks[0]!.id = 9;
-    expect(ids(query())).toEqual([1, 2, 3, 9]);
+    expect(ids(view())).toEqual([1, 2, 3, 9]);
     reads = 0;
 
     store.flag = true;
-    query();
+    view();
     expect(reads).toBe(0);
   });
 });
 
 // The four changes from the TanStack DB comparison: 1,000 tasks, "not
-// completed, by priority, top 10". `stableComputed` skips fields the query
+// completed, by priority, top 10". `stableComputed` skips fields the list
 // never read but redoes the whole filter and sort otherwise; `computedList` also
 // skips those, and otherwise touches only the changed row.
 describe("work per change", () => {
@@ -366,7 +423,7 @@ describe("work per change", () => {
   function measure(build: Build) {
     const store = createReactive({ tasks: makeTasks(1000) });
     const counts = { where: 0, compare: 0, reader: 0 };
-    const query = build(
+    const view = build(
       store,
       (task) => {
         counts.where++;
@@ -378,22 +435,22 @@ describe("work per change", () => {
       },
     );
     effect(() => {
-      query().forEach((task) => task.id);
+      view().forEach((task) => task.id);
       counts.reader++;
     });
     const step = (change: () => void) => {
       counts.where = counts.compare = counts.reader = 0;
       change();
-      query();
+      view();
       return { ...counts };
     };
     return {
-      top: ids(query()),
+      top: ids(view()),
       a: step(() => (store.tasks[5]!.title = "renamed")),
       b: step(() => (store.tasks[2]!.priority = 3)),
       c: step(() => (store.tasks[401]!.completed = true)),
       d: step(() => (store.tasks[7]!.completed = true)),
-      after: ids(query()),
+      after: ids(view()),
     };
   }
 
@@ -482,7 +539,7 @@ describe("computedList matches a from-scratch reference", () => {
           });
           const where = (t: Task) => !t.completed;
           // Keys are unique, so tie order doesn't matter to the reference.
-          const query = computedList({
+          const view = computedList({
             from: () => store.tasks,
             where,
             ...(sortRows && { orderBy: (t: Task) => [t.priority, t.id] }),
@@ -519,7 +576,7 @@ describe("computedList matches a from-scratch reference", () => {
             };
             if (batched) batch(apply);
             else apply();
-            expect(ids(query())).toEqual(expected());
+            expect(ids(view())).toEqual(expected());
           }
         },
       ),

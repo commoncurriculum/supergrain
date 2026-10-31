@@ -78,9 +78,9 @@ export function scenarios(size: number): ReadonlyArray<[title: string, edit: (i:
 
 // --- supergrain ---
 
-export type SupergrainQuery = (store: { tasks: Task[] }) => () => ReadonlyArray<Task>;
+export type SupergrainList = (store: { tasks: Task[] }) => () => ReadonlyArray<Task>;
 
-export const computedListTopTen: SupergrainQuery = (store) =>
+export const computedListTopTen: SupergrainList = (store) =>
   computedList({
     from: () => store.tasks,
     where: (task) => !task.completed,
@@ -88,7 +88,7 @@ export const computedListTopTen: SupergrainQuery = (store) =>
     limit: 10,
   });
 
-export const stableComputedTopTen: SupergrainQuery = (store) =>
+export const stableComputedTopTen: SupergrainList = (store) =>
   stableComputed(() =>
     store.tasks
       .filter((task) => !task.completed)

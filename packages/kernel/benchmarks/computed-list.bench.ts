@@ -12,7 +12,7 @@ import {
   tanstackTopTen,
   validationEdits,
   type Edit,
-  type SupergrainQuery,
+  type SupergrainList,
   type Task,
   type TanstackTasks,
 } from "./computed-list-fixtures";
@@ -42,11 +42,11 @@ type Build = (tasks: Task[]) => Harness;
 
 const ids = (rows: Iterable<{ id: number }>) => Array.from(rows, (row) => row.id);
 
-function supergrain(makeQuery: SupergrainQuery): Build {
+function supergrain(makeList: SupergrainList): Build {
   return (tasks) => {
     const { store, edit } = supergrainStore(tasks);
-    const query = makeQuery(store);
-    return { read: () => ids(query()), edit, dispose: () => {} };
+    const list = makeList(store);
+    return { read: () => ids(list()), edit, dispose: () => {} };
   };
 }
 
@@ -100,7 +100,7 @@ for (const size of [1_000, 10_000]) {
   validate(size);
   const rows = `${size.toLocaleString("en-US")} rows`;
 
-  describe(`Build the query and read it (${rows})`, () => {
+  describe(`Build the list and read it (${rows})`, () => {
     for (const [name, build] of IMPLEMENTATIONS) {
       const tasks = makeTasks(size);
       bench(name, () => {
