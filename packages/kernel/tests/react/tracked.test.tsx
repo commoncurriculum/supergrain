@@ -1,4 +1,4 @@
-import { createReactive } from "@supergrain/kernel";
+import { computed, createReactive, computedList } from "@supergrain/kernel";
 import { tracked, For } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
 import { describe, it, expect, afterEach } from "vitest";
@@ -330,6 +330,94 @@ describe("tracked()", () => {
       });
       expect(parentRenders).toBe(pAfter + 1); // Parent re-rendered exactly once
       expect(childRenders).toBe(cAfter2); // Child did NOT re-render
+    });
+  });
+  describe("computeds read during render", () => {
+    it("keep their cached state across re-renders", async () => {
+      const store = createReactive({ shown: "a", heavy: 1 });
+      let heavyRuns = 0;
+      const heavy = computed(() => {
+        heavyRuns++;
+        return store.heavy * 2;
+      });
+
+      const View = tracked(() => (
+        <span>
+          {store.shown} {heavy()}
+        </span>
+      ));
+
+      const { container } = render(<View />);
+      expect(heavyRuns).toBe(1);
+
+      // Re-renders View, but `heavy` didn't change: it must not recompute.
+      await act(async () => {
+        store.shown = "b";
+      });
+      expect(container.textContent).toBe("b 2");
+      expect(heavyRuns).toBe(1);
+
+      await act(async () => {
+        store.heavy = 2;
+      });
+      expect(container.textContent).toBe("b 4");
+      expect(heavyRuns).toBe(2);
+    });
+
+    it("let a computedList update one row per change", async () => {
+      const store = createReactive({
+        tasks: Array.from({ length: 100 }, (_, id) => ({ id, done: false })),
+      });
+      let whereCalls = 0;
+      const firstThree = computedList({
+        from: () => store.tasks,
+        where: (task) => (whereCalls++, !task.done),
+        limit: 3,
+      });
+
+      const List = tracked(() => (
+        <span>
+          {firstThree()
+            .map((task) => task.id)
+            .join(",")}
+        </span>
+      ));
+
+      const { container } = render(<List />);
+      expect(container.textContent).toBe("0,1,2");
+
+      whereCalls = 0;
+      await act(async () => {
+        store.tasks[1]!.done = true;
+      });
+      expect(container.textContent).toBe("0,2,3");
+      expect(whereCalls).toBe(1);
+    });
+
+    it("are released when no render reads them any more", async () => {
+      const store = createReactive({ useHeavy: true, heavy: 1 });
+      let heavyRuns = 0;
+      const heavy = computed(() => {
+        heavyRuns++;
+        return store.heavy;
+      });
+
+      const View = tracked(() => <span>{store.useHeavy ? heavy() : "none"}</span>);
+
+      const { container } = render(<View />);
+      await act(async () => {
+        store.useHeavy = false;
+      });
+      expect(container.textContent).toBe("none");
+
+      // Nothing reads `heavy` now, so changing its input neither recomputes
+      // it nor re-renders View.
+      const runs = heavyRuns;
+      await act(async () => {
+        store.heavy = 2;
+      });
+      expect(heavyRuns).toBe(runs);
+      expect(container.textContent).toBe("none");
     });
   });
 });
