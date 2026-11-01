@@ -13,7 +13,7 @@ export type RowOutcome<O, K> =
   | { readonly member: false }
   | { readonly member: true; readonly value: O; readonly key: K };
 
-/** Options for {@link createList}, the engine under `collections(...).from(...)` queries. */
+/** Options for {@link createList}, the engine under `computedList`. */
 export interface ListOptions<S extends object, O, K> {
   /** The source items. Read reactively; only its structure should be read here. */
   source: () => Iterable<S>;
@@ -31,7 +31,7 @@ export interface ListOptions<S extends object, O, K> {
   limit: () => number;
 }
 
-/** A row's latest `where`/`orderBy` result. A new object only when it changed. */
+/** A row's latest outcome (member, value, sort key). A new object only when it changed. */
 interface RowResult<O, K> {
   readonly member: boolean;
   readonly value: O | undefined;
@@ -98,9 +98,9 @@ const OUTSIDE: RowResult<never, never> = Object.freeze({
 });
 
 /**
- * The engine under `collections(...).from(...)` queries: a list of
- * source rows, each run through its steps in its own computed, kept sorted
- * and windowed, that updates **one row at a time**.
+ * The engine under `computedList`: a list of source rows, each run through
+ * its steps in its own computed, kept sorted and windowed, that updates
+ * **one row at a time**.
  *
  * - each row's steps run in their own `computed`, so the kernel's field
  *   tracking reruns them for the changed row only;
@@ -131,7 +131,7 @@ export function createList<T extends object, O, K>(
   const rows = new Map<object, Row<T, O, K>>();
   let reads = 0;
   // The matching rows by `(key, seq)`. `null` after a read threw part-way (a
-  // throwing `where`, `orderBy` or `compare`), so the next read rebuilds it
+  // a throwing step or `compare`), so the next read rebuilds it
   // from `rows` instead of trusting it: rows that left the source during the
   // failed read were never taken out of it.
   let sorted: Array<Row<T, O, K>> | null = [];
@@ -170,7 +170,7 @@ export function createList<T extends object, O, K>(
   let blocks: Array<Block<T, O, K>> = [];
   const structure = rethrowingComputed(readStructure);
   let current: Structure<T, O, K> | undefined = undefined;
-  // Without `orderBy`: the matching rows in source order.
+  // Without a sort: the matching rows in source order.
   let matching: ReadonlyArray<Row<T, O, K>> = [];
 
   return rethrowingComputed((): ReadonlyArray<O> => {
@@ -290,7 +290,7 @@ export function createList<T extends object, O, K>(
     return createBlock(blockRows);
   }
 
-  /** Without `orderBy`: the matching rows in source order, refiltered only when something changed. */
+  /** Without a sort: the matching rows in source order, refiltered only when something changed. */
   function filterChanges(
     next: Structure<T, O, K>,
     changes: ReadonlyArray<Change<T, O, K>>,
@@ -303,7 +303,7 @@ export function createList<T extends object, O, K>(
   }
 
   function applyChanges(changes: ReadonlyArray<Change<T, O, K>>): ReadonlyArray<Row<T, O, K>> {
-    // When many rows moved at once (say `where` reads a shared value), sorting
+    // When many rows moved at once (say a filter reads a shared value), sorting
     // from scratch is cheaper than moving each one.
     if (sorted === null || changes.length > 16 + sorted.length / 4) {
       for (const [row, next] of changes) row.applied = next;
