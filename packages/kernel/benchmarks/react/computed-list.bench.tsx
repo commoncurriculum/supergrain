@@ -122,9 +122,13 @@ function TanstackList({ collection }: { collection: TanstackTasks["collection"] 
 
 // --- harness ---
 
-/** A mounted app: edit tasks (React commits before this returns), read the rows shown. */
+/**
+ * A mounted app: edit tasks, read the rows shown. An edit resolves once React
+ * has committed it and any work it queued has run: TanStack DB finishes some
+ * updates in microtasks, and the async `act` waits for them.
+ */
 interface App {
-  edit(changes: Edit): void;
+  edit(changes: Edit): Promise<void>;
   shown(): string[];
   unmount(): void;
 }
@@ -137,7 +141,10 @@ function mount(element: React.ReactElement, edit: (changes: Edit) => void): App 
     view = render(element);
   });
   return {
-    edit: (changes) => act(() => edit(changes)),
+    edit: (changes) =>
+      act(async () => {
+        edit(changes);
+      }),
     shown: () => Array.from(view.container.querySelectorAll("li"), (li) => li.textContent ?? ""),
     unmount: () => view.unmount(),
   };
@@ -169,17 +176,18 @@ const APPS: ReadonlyArray<[string, Mount]> = [
 ];
 
 /** Run the same edits in every app; throw if any shows different rows. */
-function validate(size: number): void {
-  const results = APPS.map(([name, mountApp]) => {
+async function validate(size: number): Promise<void> {
+  const results: Array<readonly [string, string]> = [];
+  for (const [name, mountApp] of APPS) {
     const app = mountApp(makeTasks(size));
     const seen = [app.shown()];
     for (const edit of validationEdits(size)) {
-      app.edit(edit);
+      await app.edit(edit);
       seen.push(app.shown());
     }
     app.unmount();
-    return [name, JSON.stringify(seen)] as const;
-  });
+    results.push([name, JSON.stringify(seen)]);
+  }
   for (const [name, seen] of results) {
     if (seen !== results[0]![1]) {
       throw new Error(
@@ -190,16 +198,16 @@ function validate(size: number): void {
 }
 
 /** Print how many list and row renders one change causes in each app. */
-function reportRenders(size: number): void {
+async function reportRenders(size: number): Promise<void> {
   const lines = [`React renders per change (${size.toLocaleString("en-US")} rows):`];
   for (const [title, edit] of scenarios(size)) {
     lines.push(`  ${title}`);
     for (const [name, mountApp] of APPS) {
       const app = mountApp(makeTasks(size));
-      app.edit(edit(0));
+      await app.edit(edit(0));
       renders.list = 0;
       renders.row = 0;
-      app.edit(edit(1));
+      await app.edit(edit(1));
       lines.push(`    ${name}: list ${renders.list}, rows ${renders.row}`);
       app.unmount();
     }
@@ -208,8 +216,8 @@ function reportRenders(size: number): void {
 }
 
 for (const size of [1_000, 10_000]) {
-  validate(size);
-  reportRenders(size);
+  await validate(size);
+  await reportRenders(size);
   const rows = `${size.toLocaleString("en-US")} rows`;
 
   describe(`Mount the list (${rows})`, () => {
@@ -228,8 +236,8 @@ for (const size of [1_000, 10_000]) {
         let i = 0;
         bench(
           name,
-          () => {
-            app!.edit(edit(i++));
+          async () => {
+            await app!.edit(edit(i++));
           },
           {
             setup: () => {
@@ -286,7 +294,7 @@ function TanstackJoinedList({ setup }: { setup: ReturnType<typeof tanstackJoin> 
 }
 
 interface JoinApp {
-  change(change: JoinChange): void;
+  change(change: JoinChange): Promise<void>;
   shown(): string[];
   unmount(): void;
 }
@@ -295,7 +303,14 @@ type MountJoin = (tasks: Owned[], users: User[]) => JoinApp;
 
 function mountJoin(element: React.ReactElement, change: (change: JoinChange) => void): JoinApp {
   const app = mount(element, () => {});
-  return { change: (next) => act(() => change(next)), shown: app.shown, unmount: app.unmount };
+  return {
+    change: (next) =>
+      act(async () => {
+        change(next);
+      }),
+    shown: app.shown,
+    unmount: app.unmount,
+  };
 }
 
 const JOIN_APPS: ReadonlyArray<[string, MountJoin]> = [
@@ -316,17 +331,18 @@ const JOIN_APPS: ReadonlyArray<[string, MountJoin]> = [
   ],
 ];
 
-function validateJoin(size: number): void {
-  const results = JOIN_APPS.map(([name, mountApp]) => {
+async function validateJoin(size: number): Promise<void> {
+  const results: Array<readonly [string, string]> = [];
+  for (const [name, mountApp] of JOIN_APPS) {
     const app = mountApp(makeOwnedTasks(size), makeUsers());
     const seen = [app.shown()];
     for (const change of joinValidationChanges(size)) {
-      app.change(change);
+      await app.change(change);
       seen.push(app.shown());
     }
     app.unmount();
-    return [name, JSON.stringify(seen)] as const;
-  });
+    results.push([name, JSON.stringify(seen)]);
+  }
   for (const [name, seen] of results) {
     if (seen !== results[0]![1]) {
       throw new Error(
@@ -337,7 +353,7 @@ function validateJoin(size: number): void {
 }
 
 for (const size of [1_000, 10_000]) {
-  validateJoin(size);
+  await validateJoin(size);
   const rows = `${size.toLocaleString("en-US")} tasks, 100 users`;
 
   describe(`Join: mount the list (${rows})`, () => {
@@ -359,8 +375,8 @@ for (const size of [1_000, 10_000]) {
         let i = 0;
         bench(
           name,
-          () => {
-            app!.change(change(i++));
+          async () => {
+            await app!.change(change(i++));
           },
           {
             setup: () => {
