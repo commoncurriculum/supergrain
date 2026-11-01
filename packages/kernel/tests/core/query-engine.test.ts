@@ -254,6 +254,87 @@ describe("query engine", () => {
     expect(() => bad()).toThrow(/must be objects/);
   });
 
+  describe("follows a store array through its changes", () => {
+    const all = (store: { tasks: Task[] }) =>
+      ids(unwrap(store.tasks).filter((task, i, list) => list.indexOf(task) === i));
+
+    it("between reads, however many there were", () => {
+      const store = createReactive({ tasks: makeTasks(5) });
+      const view = engine({ source: () => store.tasks });
+      view();
+      for (let i = 0; i < 300; i++) store.tasks.push(makeTasks(1)[0]!);
+      store.tasks.splice(2, 290);
+      expect(ids(view())).toEqual(all(store));
+    });
+
+    it("with the same object twice: counted once, at its first position", () => {
+      const store = createReactive({ tasks: makeTasks(3) });
+      const view = engine({ source: () => store.tasks });
+      view();
+      store.tasks.push(store.tasks[0]!);
+      expect(ids(view())).toEqual([0, 1, 2]);
+      store.tasks.shift();
+      expect(ids(view())).toEqual([1, 2, 0]);
+      store.tasks.pop();
+      expect(ids(view())).toEqual([1, 2]);
+    });
+
+    it("with holes", () => {
+      const store = createReactive({ tasks: makeTasks(4) });
+      const view = engine({ source: () => store.tasks });
+      view();
+      delete store.tasks[1];
+      expect(ids(view())).toEqual([0, 2, 3]);
+      store.tasks.push({ id: 9, completed: false, priority: 0, title: "" });
+      expect(ids(view())).toEqual([0, 2, 3, 9]);
+      store.tasks[1] = { id: 8, completed: false, priority: 0, title: "" };
+      expect(ids(view())).toEqual([0, 8, 2, 3, 9]);
+      store.tasks.splice(0, 1);
+      expect(ids(view())).toEqual([8, 2, 3, 9]);
+    });
+
+    it("when the source becomes another array, or not a store array", () => {
+      const store = createReactive({ tasks: makeTasks(3), plain: true });
+      const other = makeTasks(5).slice(3);
+      const view = engine({ source: () => (store.plain ? store.tasks : other) });
+      view();
+      store.tasks = makeTasks(2);
+      expect(ids(view())).toEqual([0, 1]);
+      store.plain = false;
+      expect(ids(view())).toEqual([3, 4]);
+      store.plain = true;
+      store.tasks.push({ id: 7, completed: false, priority: 0, title: "" });
+      expect(ids(view())).toEqual([0, 1, 7]);
+    });
+
+    it("past an item that isn't an object and left before the read", () => {
+      const store = createReactive({ tasks: makeTasks(2) as unknown[] });
+      const view = engine({ source: () => store.tasks as Task[] });
+      view();
+      batch(() => {
+        store.tasks.push(5);
+        store.tasks.pop();
+      });
+      expect(ids(view())).toEqual([0, 1]);
+    });
+
+    it("without running the steps of rows that didn't change", () => {
+      const store = createReactive({ tasks: makeTasks(100) });
+      let runs = 0;
+      const view = engine({
+        source: () => store.tasks,
+        filter: (task) => (runs++, !task.completed),
+        sortKey: (task) => task.priority,
+      });
+      view();
+      runs = 0;
+      store.tasks.splice(50, 1);
+      store.tasks.push({ id: 100, completed: false, priority: 0, title: "" });
+      view();
+      expect(runs).toBe(1);
+    });
+  });
+
   it("sorts null, undefined and NaN keys last without corrupting the order", () => {
     const store = createReactive({
       tasks: [3, Number.NaN, 1, undefined, 2].map((priority, id) => ({ id, priority })),

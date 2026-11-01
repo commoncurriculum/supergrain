@@ -1,3 +1,4 @@
+import { existingLog, record, recordMutation, type ArrayLog } from "./array-log";
 import {
   $ELEMENTS,
   $OWN_KEYS,
@@ -76,6 +77,10 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
   const hadKey = Object.hasOwn(target, key);
   const prevLen = Array.isArray(target) ? target.length : -1;
   const oldValue = target[key];
+  if (prevLen !== -1) {
+    const log = existingLog(target);
+    if (log) logArrayWrite(log, target, key, value, prevLen);
+  }
 
   target[key] = value;
 
@@ -108,8 +113,53 @@ export function setProperty(target: any, key: PropertyKey, value: any): void {
   }
 }
 
+// An index or `length` write to an array whose log someone reads, as a splice
+// when it is one. Anything that leaves a hole is recorded as `null`.
+function logArrayWrite(
+  log: ArrayLog,
+  target: Array<unknown>,
+  key: PropertyKey,
+  value: unknown,
+  prevLen: number,
+): void {
+  if (key === "length") {
+    if (value === prevLen) return;
+    record(
+      log,
+      (value as number) < prevLen
+        ? { index: value as number, removed: target.slice(value as number), added: [] }
+        : null,
+    );
+    return;
+  }
+  const index = arrayIndex(key);
+  if (index === -1) return;
+  if (index === prevLen) {
+    record(log, { index, removed: [], added: [value] });
+  } else if (index > prevLen || !Object.hasOwn(target, index)) {
+    record(log, null);
+  } else if (unwrap(target[index]) !== unwrap(value)) {
+    record(log, { index, removed: [target[index]], added: [value] });
+  }
+}
+
+// The array index a property key names, or -1 if it names none.
+function arrayIndex(key: PropertyKey): number {
+  if (typeof key === "number") return key;
+  if (typeof key !== "string") return -1;
+  const index = Number(key);
+  return Number.isInteger(index) && index >= 0 && String(index) === key ? index : -1;
+}
+
+// A deleted array index leaves a hole: readers of the log must walk the array.
+function logHole(target: object): void {
+  const log = existingLog(target);
+  if (log) record(log, null);
+}
+
 export function deleteProperty(target: any, key: PropertyKey): void {
   const hadKey = Object.hasOwn(target, key);
+  if (hadKey && Array.isArray(target)) logHole(target);
   const prevLen = Array.isArray(target) ? target.length : -1;
 
   delete target[key];
@@ -161,6 +211,8 @@ export function notifyArrayMutation(
   // `bumpVersion` below may create the node table, but a fresh table holds
   // only the version signal, so `nodes` stays accurate for every other one.
   const nodes = getNodesIfExist(target);
+  const log = existingLog(target);
+  if (log) recordMutation(log, target, from, before, (a, b) => unwrap(a) === unwrap(b));
   const newLength = target.length;
   const end = Math.max(oldLength, newLength);
   let anyIndexChanged = false;
@@ -208,6 +260,7 @@ export const writeHandler: Pick<ProxyHandler<object>, "set" | "deleteProperty"> 
       // includes symbol which can't index an array — cast through unknown.
       delete (target as unknown as Record<PropertyKey, unknown>)[prop];
       if (hadKey) {
+        logHole(target);
         bumpOwnKeysSignal(target);
       }
       return true;

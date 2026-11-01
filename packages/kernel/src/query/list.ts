@@ -1,6 +1,8 @@
 import { setActiveSub } from "alien-signals";
 
+import { arrayLog, logEnd, trackArrayItems, type ArrayLog, type Splice } from "../array-log";
 import { unwrap } from "../core";
+import { wrap } from "../read";
 import { rethrowingComputed } from "../rethrowing-computed";
 import { createReactive } from "../store";
 import { syncArray } from "../sync-array";
@@ -40,13 +42,17 @@ interface RowResult<O, K> {
 
 interface Row<T, O, K> {
   readonly item: T;
+  /** The raw object behind `item`: the row's identity. */
+  readonly raw: object;
   /** Order of first appearance; breaks ties between equal keys. */
   readonly seq: number;
   readonly result: () => RowResult<O, K>;
   /** The result this row is filed under in the list. */
   applied: RowResult<O, K>;
-  /** The last read that found this row in the source. */
+  /** The last walk that found this row in the source. */
   seenAt: number;
+  /** How many times the source holds this row. */
+  count: number;
   /** The block this row belongs to, or -1 before it is placed in one. */
   block: number;
 }
@@ -141,12 +147,14 @@ export function createList<T extends object, O, K>(
   const compareRows = (a: Row<T, O, K>, b: Row<T, O, K>): number =>
     compare!(a.applied.key as K, b.applied.key as K) || a.seq - b.seq;
 
-  function createRow(item: T): Row<T, O, K> {
+  function createRow(item: T, raw: object): Row<T, O, K> {
     return {
       item,
+      raw,
       seq: nextSeq++,
       applied: OUTSIDE,
       seenAt: 0,
+      count: 0,
       block: -1,
       result: rethrowingComputed((previous: RowResult<O, K> | undefined): RowResult<O, K> => {
         const outcome = run(item, previous?.value);
@@ -172,6 +180,12 @@ export function createList<T extends object, O, K>(
   let current: Structure<T, O, K> | undefined = undefined;
   // Without a sort: the matching rows in source order.
   let matching: ReadonlyArray<Row<T, O, K>> = [];
+  // When the source is a store array, the list follows it through the
+  // array's log: `mirror` is its rows in order, as of log position
+  // `position`. A change then costs the splices since, not a walk.
+  let followed: ReadonlyArray<unknown> | undefined = undefined;
+  let position = -1;
+  let mirror: Array<Row<T, O, K>> = [];
 
   return rethrowingComputed((): ReadonlyArray<O> => {
     try {
@@ -212,25 +226,125 @@ export function createList<T extends object, O, K>(
     return out;
   }
 
-  /** Walk the source: its rows in order (once each), the rows that left, and the blocks. */
+  /** The source's rows in order (once each), the rows that left, and the blocks. */
   function readStructure(): Structure<T, O, K> {
+    const items = source();
+    const raw = unwrap(items);
+    if (raw === items || !Array.isArray(raw)) {
+      followed = undefined;
+      return walk((fn) => forEachItem(items, fn), []);
+    }
+    trackArrayItems(raw);
+    const log = arrayLog(raw);
+    const splices = raw === followed ? splicesSince(log) : undefined;
+    const removed: Array<Row<T, O, K>> = [];
+    const unplaced: Array<Row<T, O, K>> = [];
+    if (splices && applySplices(splices, unplaced, removed)) {
+      position = logEnd(log);
+      return place(
+        mirror,
+        unplaced.filter((row) => rows.get(row.raw) === row),
+        removed,
+      );
+    }
+    // Walk the raw array: no proxy reads, and the three signals above
+    // already cover every change to it.
+    followed = undefined;
+    let seen = 0;
+    const structure = walk((fn) => {
+      raw.forEach((item: unknown) => {
+        seen++;
+        fn(wrap(item) as T);
+      });
+    }, removed);
+    followed = raw;
+    mirror = [...structure.list];
+    // An array with holes can't be followed by splices; walk it every time.
+    // The mirror can't follow an array with holes, or one that holds a row
+    // twice (the list counts it once, at its first position): walk those
+    // every time.
+    position = seen === raw.length && structure.list.length === seen ? logEnd(log) : -1;
+    return structure;
+  }
+
+  /** The splices since `position`, or `undefined` if the log can't say. */
+  function splicesSince(log: ArrayLog): ReadonlyArray<Splice> | undefined {
+    if (position < log.base) return undefined;
+    const splices = log.entries.slice(position - log.base);
+    for (const splice of splices) {
+      // A hole, or an item that isn't an object: the walk handles both.
+      if (splice === null) return undefined;
+      for (const item of splice.added)
+        if (typeof item !== "object" || item === null) return undefined;
+    }
+    return splices as ReadonlyArray<Splice>;
+  }
+
+  /**
+   * Apply `splices` to the mirror. Rows no longer in the source are deleted
+   * from `rows` and added to `removed`; new rows are added to `unplaced`.
+   * Returns false, for the caller to walk instead, if the source now holds a
+   * row twice.
+   */
+  function applySplices(
+    splices: ReadonlyArray<Splice>,
+    unplaced: Array<Row<T, O, K>>,
+    removed: Array<Row<T, O, K>>,
+  ): boolean {
+    const touched: Array<Row<T, O, K>> = [];
+    for (const { index, removed: out, added } of splices) {
+      for (const item of out) {
+        const row = rows.get(unwrap(item) as object)!;
+        row.count--;
+        touched.push(row);
+      }
+      const rowsIn = added.map((item) => {
+        const raw = unwrap(item) as object;
+        let row = rows.get(raw);
+        if (row === undefined) {
+          row = createRow(wrap(raw) as T, raw);
+          rows.set(raw, row);
+          unplaced.push(row);
+        }
+        row.count++;
+        touched.push(row);
+        return row;
+      });
+      mirror.splice(index, out.length, ...rowsIn);
+    }
+    let twice = false;
+    for (const row of touched) {
+      if (row.count > 1) twice = true;
+      else if (row.count === 0 && rows.get(row.raw) === row) {
+        rows.delete(row.raw);
+        removed.push(row);
+      }
+    }
+    return !twice;
+  }
+
+  /** Walk `items`: every row in order, once each. Rows not found have left. */
+  function walk(
+    each: (fn: (item: T) => void) => void,
+    removed: Array<Row<T, O, K>>,
+  ): Structure<T, O, K> {
     const read = ++reads;
     const list: Array<Row<T, O, K>> = [];
     const unplaced: Array<Row<T, O, K>> = [];
-    const removed: Array<Row<T, O, K>> = [];
-    forEachItem(source(), (item) => {
+    each((item) => {
       if (typeof item !== "object" || item === null) {
         throw new TypeError("@supergrain/kernel: query rows must be objects.");
       }
       const raw = unwrap(item);
       let row = rows.get(raw);
       if (row === undefined) {
-        row = createRow(item);
+        row = createRow(item, raw);
         rows.set(raw, row);
       } else if (row.seenAt === read) {
         return; // The same object twice counts once.
       }
       row.seenAt = read;
+      row.count = 1;
       list.push(row);
       if (row.block === -1) unplaced.push(row);
     });
@@ -242,8 +356,16 @@ export function createList<T extends object, O, K>(
         }
       }
     }
-    // The walk succeeded, so it's safe to move rows between blocks now.
-    placeRows(list, unplaced, removed, read);
+    return place(list, unplaced, removed);
+  }
+
+  /** Put new rows in blocks and take removed ones out. Safe only once the read succeeded. */
+  function place(
+    list: ReadonlyArray<Row<T, O, K>>,
+    unplaced: ReadonlyArray<Row<T, O, K>>,
+    removed: ReadonlyArray<Row<T, O, K>>,
+  ): Structure<T, O, K> {
+    placeRows(list, unplaced, removed);
     return { list, removed, blocks: [...blocks] };
   }
 
@@ -256,7 +378,6 @@ export function createList<T extends object, O, K>(
     list: ReadonlyArray<Row<T, O, K>>,
     unplaced: ReadonlyArray<Row<T, O, K>>,
     removed: ReadonlyArray<Row<T, O, K>>,
-    read: number,
   ): void {
     const size = Math.max(16, Math.ceil(Math.sqrt(list.length)));
     if (blocks.length + unplaced.length / size > 2 * Math.ceil(list.length / size) + 1) {
@@ -270,7 +391,8 @@ export function createList<T extends object, O, K>(
     const rowsOf = (b: number): Array<Row<T, O, K>> => {
       let blockRows = edited.get(b);
       if (blockRows === undefined) {
-        blockRows = b < blocks.length ? blocks[b]!.rows.filter((row) => row.seenAt === read) : [];
+        blockRows =
+          b < blocks.length ? blocks[b]!.rows.filter((row) => rows.get(row.raw) === row) : [];
         edited.set(b, blockRows);
       }
       return blockRows;
