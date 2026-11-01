@@ -28,7 +28,9 @@ export interface ListOptions<S extends object, O, K> {
   /**
    * Run a row's steps. Runs inside the row's own computed, so it reruns only
    * when something it read changes. `previous` is the value it last returned,
-   * so it can hand back the same object when nothing changed.
+   * so it can hand back the same object when nothing changed. A member
+   * outcome must be a new object each time: the list keeps it as the row's
+   * result and tells changes apart by identity.
    */
   run: (item: S, previous: O | undefined) => RowOutcome<O, K>;
   /** Compare sort keys, or `undefined` to keep source order. */
@@ -194,7 +196,7 @@ export function createList<T extends object, O, K>(
         ) {
           return previous;
         }
-        return { member: true, value: outcome.value, key: outcome.key };
+        return outcome;
       }),
     };
   }
