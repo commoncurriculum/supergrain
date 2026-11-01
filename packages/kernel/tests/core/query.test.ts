@@ -234,6 +234,37 @@ describe("computedList", () => {
     expect(query().map((owner) => owner?.name)).toEqual(["Ann", "Cy", "Cy"]);
   });
 
+  it("reuses a mapped object only when it's a plain object with the same fields", () => {
+    const { store } = setup();
+    class Box {
+      constructor(readonly id: number) {}
+    }
+    const shapes = computedList(() => store.tasks)
+      .filter((task) => task.id === 1)
+      .map((task) => (task.done ? { id: task.id, done: true } : { id: task.id }));
+    const nullProto = computedList(() => store.tasks)
+      .filter((task) => task.id === 1)
+      .map((task) =>
+        Object.assign(Object.create(null) as { id: number }, {
+          id: task.id,
+          done: task.done && false,
+        }),
+      );
+    const boxes = computedList(() => store.tasks)
+      .filter((task) => task.id === 1)
+      .map((task) => (task.done, new Box(task.id)));
+    const [shape, bare, box] = [shapes()[0], nullProto()[0], boxes()[0]];
+    // Each map reads `done`, so each reruns.
+    store.tasks[1]!.done = true;
+    expect(shapes()[0]).not.toBe(shape);
+    expect(shapes()[0]).toEqual({ id: 1, done: true });
+    store.tasks[1]!.done = false;
+    expect(shapes()[0]).toEqual({ id: 1 });
+    expect(nullProto()[0]).toBe(bare);
+    // A class instance isn't compared field by field: each rerun is a new row.
+    expect(boxes()[0]).not.toBe(box);
+  });
+
   it("windows with a reactive offset and limit", () => {
     const { tasks } = setup();
     const window = createReactive({ offset: 1, limit: 2 });
