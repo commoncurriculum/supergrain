@@ -37,6 +37,8 @@ export function createLookup<V extends object, K>(
   source: () => Iterable<V>,
   key: (doc: V) => K,
 ): Lookup<K, V> {
+  // One signal per key ever looked up. Never deleted: a reader may still
+  // hold one. A lookup over keys that keep changing grows slowly.
   const slots = new Map<K, (value?: V) => V | undefined>();
   let synced: Map<K, V> | undefined = undefined;
   const entries = rethrowingComputed((): Map<K, V> => {

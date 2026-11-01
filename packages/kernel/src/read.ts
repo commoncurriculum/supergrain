@@ -19,27 +19,36 @@ import { writeHandler } from "./write";
 
 const proxyCache = new WeakMap<object, object>();
 
-// The subscriber that `readWholeObjects` is running, if any.
+// The object `readWholeObject` tracks as a whole, and for which subscriber.
+let wholeObject: object | null = null;
 let wholeObjectReader: unknown = null;
 
 /**
- * Run `fn` so that the active subscriber tracks each plain object it reads
- * as a whole: one subscription to the object's version, which every write
- * to it bumps, instead of one signal per field read. It reruns more often
- * (on writes to fields it never read), but costs far less memory. Fields
- * that already have a signal are still tracked per field. Computeds that
- * `fn` reads track as usual.
+ * Run `fn` so that the active subscriber tracks `target` (a raw, non-array
+ * object) as a whole: one subscription to its version, which every write to
+ * it bumps, instead of one signal per field read. The subscriber reruns more
+ * often (on writes to fields it never read), but costs far less memory.
+ *
+ * Only `target` itself: other objects `fn` reads, including ones nested in
+ * it, are tracked per field as usual, so a shared object never wakes every
+ * reader. Fields of `target` that already have a signal are still tracked
+ * per field, and computeds that `fn` reads track as usual.
  *
  * Only for a reader whose result can't tell the extra reruns apart, such as
  * a list row that keeps its previous outcome when nothing moved.
  */
-export function readWholeObjects<R>(fn: () => R): R {
-  const previous = wholeObjectReader;
+export function readWholeObject<R>(target: object, fn: () => R): R {
+  // Replacing an array's element doesn't bump its version: track per index.
+  if (Array.isArray(target)) return fn();
+  const previous = wholeObject;
+  const previousReader = wholeObjectReader;
+  wholeObject = target;
   wholeObjectReader = getActiveSub();
   try {
     return fn();
   } finally {
-    wholeObjectReader = previous;
+    wholeObject = previous;
+    wholeObjectReader = previousReader;
   }
 }
 
@@ -136,15 +145,9 @@ const readHandler: Pick<
 
     profileSignalRead();
     const nodes = getNodes(target);
-    // A whole-object reader subscribes to the object's version, which every
-    // write to it bumps, instead of making a signal for each field. Arrays
-    // are tracked per index as usual: replacing an element doesn't bump
-    // their version.
-    if (
-      wholeObjectReader !== null &&
-      wholeObjectReader === getActiveSub() &&
-      !Array.isArray(target)
-    ) {
+    // An object read as a whole: subscribe to its version, which every
+    // write to it bumps, instead of making a signal for this field.
+    if (target === wholeObject && wholeObjectReader === getActiveSub()) {
       getNode(nodes, $VERSION, 0)();
       return wrap(value);
     }

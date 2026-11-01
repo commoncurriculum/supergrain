@@ -1,5 +1,4 @@
 import { untracked } from "../core";
-import { readWholeObjects } from "../read";
 import { catchingComputed, rethrowingComputed } from "../rethrowing-computed";
 import { createReactive } from "../store";
 import { syncArray } from "../sync-array";
@@ -32,14 +31,6 @@ export interface ListOptions<S extends object, O, K> {
    * result and tells changes apart by identity.
    */
   run: (item: S, previous: O | undefined) => RowOutcome<O, K>;
-  /**
-   * Track the objects `run` reads as wholes (see `readWholeObjects`): far
-   * less memory per row, but a row reruns on any write to an object it read.
-   * Safe when a rerun that changed nothing returns an equal outcome, which
-   * the list then ignores: true when `run`'s value is the item itself, not
-   * when it builds a new object.
-   */
-  wholeObjects?: boolean;
   /** Compare sort keys, or `undefined` to keep source order. */
   compare: ((a: K, b: K) => number) | undefined;
   /** Rows to skip from the start of the result. Read reactively. */
@@ -74,21 +65,18 @@ export interface ListOptions<S extends object, O, K> {
 export function createList<T extends object, O, K>(
   options: ListOptions<T, O, K>,
 ): () => ReadonlyArray<O> {
-  const { source, prepare, compare, offset: offsetOf, limit: limitOf } = options;
-  const run = options.wholeObjects
-    ? (item: T, previous: O | undefined) => readWholeObjects(() => options.run(item, previous))
-    : options.run;
+  const { source, prepare, run, compare, offset: offsetOf, limit: limitOf } = options;
 
   let nextSeq = 0;
-  const { rows, read: readStructure } = createSourceRows<T, O, K>(source, createRow);
+  const readStructure = createSourceRows<T, O, K>(source, createRow);
   const out = createReactive<Array<O>>([]) as Array<O>;
 
   const compareRows = (a: Row<T, O, K>, b: Row<T, O, K>): number =>
     compare!(a.applied.key as K, b.applied.key as K) || a.seq - b.seq;
   // The matching rows by `(key, seq)`. Stale after a read threw part-way (a
-  // throwing step or `compare`), so the next read rebuilds it from `rows`
-  // instead of trusting it: rows that left the source during the failed read
-  // were never taken out of it.
+  // throwing step or `compare`), so the next read rebuilds it from the
+  // source's rows instead of trusting it: rows that left the source during
+  // the failed read were never taken out of it.
   const sorted = createSortedRows(compareRows);
   let sortedIsStale = false;
 
@@ -153,7 +141,7 @@ export function createList<T extends object, O, K>(
         // A failed update may have filed some of these already.
         for (const change of pending[g]!) if (change[0].applied !== change[1]) changes.push(change);
       });
-      const ordered = compare ? applyChanges(changes) : filterChanges(next, changes);
+      const ordered = compare ? applyChanges(next, changes) : filterChanges(next, changes);
       syncArray(
         out,
         ordered.slice(offset, offset + limit).map((row) => row.applied.value),
@@ -177,19 +165,22 @@ export function createList<T extends object, O, K>(
     return matching;
   }
 
-  function applyChanges(changes: ReadonlyArray<Change<T, O, K>>): Window<Row<T, O, K>> {
+  function applyChanges(
+    next: Structure<T, O, K>,
+    changes: ReadonlyArray<Change<T, O, K>>,
+  ): Window<Row<T, O, K>> {
     // When many rows moved at once (say a filter reads a shared value), sorting
     // from scratch is cheaper than moving each one.
     if (sortedIsStale || changes.length > 16 + sorted.size / 4) {
-      for (const [row, next] of changes) row.applied = next;
-      sorted.reset([...rows.values()].filter((row) => row.applied.member).sort(compareRows));
+      for (const [row, result] of changes) row.applied = result;
+      sorted.reset(next.list.filter((row) => row.applied.member).sort(compareRows));
       sortedIsStale = false;
       return sorted;
     }
-    for (const [row, next] of changes) {
+    for (const [row, result] of changes) {
       if (row.applied.member) sorted.remove(row);
-      row.applied = next;
-      if (next.member) sorted.insert(row);
+      row.applied = result;
+      if (result.member) sorted.insert(row);
     }
     return sorted;
   }

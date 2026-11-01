@@ -1,4 +1,5 @@
 import { unwrap } from "../core";
+import { readWholeObject } from "../read";
 import { defaultCompare } from "./compare";
 import { createList } from "./list";
 import { createLookup, type Lookup } from "./lookup";
@@ -85,8 +86,8 @@ export interface Query<Row, L> extends Sorted<Row, L> {
  * ```
  *
  * A lookup's map is built on first use and rebuilt when its list changes.
- * Each key looked up has its own computed over the map, so a rebuild reruns
- * only the rows whose key now finds another doc.
+ * Each key looked up has its own signal, written only when the doc under it
+ * changes, so a rebuild reruns only the rows whose key now finds another doc.
  *
  * A row's output object is reused while its fields are the same, so `<For>`
  * re-renders a row only when it changed. Nothing runs until the list is
@@ -152,27 +153,28 @@ function build({ source, lookups, steps, order, offset, limit }: Spec) {
   const mapped = steps.some((step) => step.kind === "map");
   // The list syncs every named lookup before each read.
   const used = Object.values(lookups as Record<string, Lookup<unknown, object>>);
+  function runSteps(item: object, previous?: unknown) {
+    let row: unknown = item;
+    for (const { kind, fn } of steps) {
+      if (kind === "map") row = fn(row, lookups);
+      else if (!fn(row, lookups)) return { member: false } as const;
+    }
+    return {
+      member: true,
+      // Without a `map`, the row is the source item itself.
+      value: mapped ? sameIfEqual(previous, row) : row,
+      key: order.length === 0 ? NO_KEY : order.map(({ key }) => key(row, lookups)),
+    } as const;
+  }
   return createList<object, unknown, ReadonlyArray<unknown>>({
     source,
     prepare: () => {
       for (const lookup of used) lookup.sync();
     },
     // Without a `map`, a row's value is the item itself, so a rerun that
-    // changed nothing is invisible.
-    wholeObjects: !mapped,
-    run: (item, previous) => {
-      let row: unknown = item;
-      for (const { kind, fn } of steps) {
-        if (kind === "map") row = fn(row, lookups);
-        else if (!fn(row, lookups)) return { member: false };
-      }
-      return {
-        member: true,
-        // Without a `map`, the row is the source item itself.
-        value: mapped ? sameIfEqual(previous, row) : row,
-        key: order.length === 0 ? NO_KEY : order.map(({ key }) => key(row, lookups)),
-      };
-    },
+    // changed nothing is invisible: track the item as a whole, which costs
+    // far less memory than a signal per field.
+    run: mapped ? runSteps : (item) => readWholeObject(unwrap(item), () => runSteps(item)),
     compare:
       order.length === 0
         ? undefined

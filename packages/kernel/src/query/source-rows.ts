@@ -5,13 +5,19 @@ import { createRowBlocks, type Group, type Row } from "./row-blocks";
 
 /** The source's rows in order (once each), the rows that left it, and the groups to read. */
 export interface Structure<T, O, K> {
+  /**
+   * Valid only until the next read: when following an array's log, this is
+   * the mirror itself, which the next splices change in place (copying it
+   * would cost a walk per change).
+   */
   readonly list: ReadonlyArray<Row<T, O, K>>;
   readonly removed: ReadonlyArray<Row<T, O, K>>;
   readonly groups: ReadonlyArray<Group<T, O, K>>;
 }
 
 /**
- * The list's rows, by raw object, and how to read the source's structure.
+ * Reads the source's structure: its rows in order, made on first sight and
+ * kept by raw object.
  *
  * Every row counts how many times the source holds it, and a row whose count
  * drops to zero has left. A walk recounts every row; when the source is a
@@ -152,7 +158,7 @@ export function createSourceRows<T extends object, O, K>(
     return { list, removed, groups: place(list, unplaced, removed) };
   }
 
-  return { rows, read };
+  return read;
 }
 
 // A kernel array's `forEach` subscribes to its structure with three signals;

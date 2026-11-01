@@ -16,7 +16,7 @@ export type { Disposer, SymbolDisposable } from "./disposable";
 export { stableComputed } from "./stable-computed";
 // `computedList` is a filtered, mapped, sorted, windowed list that updates
 // one row at a time; its steps can read other docs (joins) per row. See
-// ./query.
+// ./query/computed-list.
 export {
   computedList,
   type Direction,
