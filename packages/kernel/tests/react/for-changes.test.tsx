@@ -105,6 +105,44 @@ for (const withParent of [false, true]) {
       expect(rowRenders).toBe(1);
     });
 
+    it("keeps the components of rows without an id that only moved", async () => {
+      interface Pair {
+        item: Item;
+      }
+      let pairRenders = 0;
+      const PairRow = tracked(({ pair }: { pair: Pair }) => {
+        pairRenders++;
+        return <li>{pair.item.label}</li>;
+      });
+      const store = createReactive({ data: items(1, 2, 3, 4).map((item) => ({ item })) });
+      const List = tracked(() => {
+        const ul = React.useRef<HTMLUListElement>(null);
+        return (
+          <ul ref={ul}>
+            <For each={store.data} {...(withParent && { parent: ul })}>
+              {(pair: Pair) => <PairRow key={pair.item.id} pair={pair} />}
+            </For>
+          </ul>
+        );
+      });
+      const { container } = render(<List />);
+
+      pairRenders = 0;
+      await act(async () => {
+        store.data.splice(0, 1);
+        store.data.push({ item: { id: 5, label: "i5" } });
+      });
+      expect(container.textContent).toBe("i2i3i4i5");
+      expect(pairRenders).toBe(1);
+
+      if (withParent) return; // There, `children`' own keys must be unique.
+      // The same object twice still shows twice.
+      await act(async () => {
+        store.data.push(store.data[0]!);
+      });
+      expect(container.textContent).toBe("i2i3i4i5i2");
+    });
+
     it("keeps a computedList's top 3 in sync", async () => {
       const store = createReactive({
         tasks: Array.from({ length: 20 }, (_, id) => ({ id, label: `t${id}`, done: false })),

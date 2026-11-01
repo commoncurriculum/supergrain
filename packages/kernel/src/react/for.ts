@@ -34,8 +34,9 @@ const ForItem = tracked(
  * `For` re-renders when the list itself changes: an item added, removed,
  * replaced or moved. It never re-renders for a change inside an item; the
  * row that reads that field does. Rows are keyed by item (`item.id`, or the
- * index for items without one), so when items shift — say one leaves the
- * top of a sorted list — the rows that only moved keep their components.
+ * object itself for items without one, or the index for primitives), so when
+ * items shift — say one leaves the top of a sorted list — the rows that only
+ * moved keep their components.
  *
  * With a `parent` ref, swapping two items moves their two DOM nodes directly,
  * with no React render at all. Any other change re-renders `For` as usual.
@@ -153,14 +154,19 @@ function rowComponents(
   // index, `(item, i = 0) => …`, doesn't count as declared: write
   // `(item, i) => …`.)
   const passIndex = children.length !== 1;
-  return raw.map((item, i) =>
-    React.createElement(ForItem, {
-      key: keyOf(item, i),
+  const used = new Set<React.Key>();
+  return raw.map((item, i) => {
+    let key = keyOf(item, i);
+    // The same item twice: key the repeat by position.
+    if (used.has(key)) key = `\u0000${i}`;
+    used.add(key);
+    return React.createElement(ForItem, {
+      key,
       item: each[i],
       index: passIndex ? i : 0,
       children,
-    }),
-  );
+    });
+  });
 }
 
 /**
@@ -188,8 +194,19 @@ function isSwap(
   return unwrap(next[b]) === unwrap(shown[a]);
 }
 
+// Keys for objects without an `id`, by identity, so a row keeps its
+// component when it moves (say a mapped row that keeps its object).
+const objectKeys = new WeakMap<object, string>();
+let nextObjectKey = 0;
+
+/** `item.id`, else the object's identity, else (for a primitive) the index. */
 function keyOf(rawItem: unknown, index: number): React.Key {
-  return rawItem && typeof rawItem === "object" && "id" in rawItem
-    ? (rawItem as { id: React.Key }).id
-    : index;
+  if (!rawItem || typeof rawItem !== "object") return index;
+  if ("id" in rawItem) return (rawItem as { id: React.Key }).id;
+  let key = objectKeys.get(rawItem);
+  if (key === undefined) {
+    key = `\u0000o${nextObjectKey++}`;
+    objectKeys.set(rawItem, key);
+  }
+  return key;
 }
