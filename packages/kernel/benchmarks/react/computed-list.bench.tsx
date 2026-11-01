@@ -6,6 +6,17 @@ import { bench, describe } from "vitest";
 
 import {
   computedListTopTen,
+  joinScenarios,
+  joinValidationChanges,
+  makeOwnedTasks,
+  makeUsers,
+  supergrainJoined,
+  supergrainJoinStore,
+  tanstackJoin,
+  tanstackJoinedTopTen,
+  type JoinChange,
+  type Owned,
+  type User,
   makeTasks,
   scenarios,
   stableComputedTopTen,
@@ -223,6 +234,137 @@ for (const size of [1_000, 10_000]) {
           {
             setup: () => {
               app ??= mountApp(makeTasks(size));
+            },
+          },
+        );
+      }
+    });
+  }
+}
+
+// --- Joins: tasks joined to their owners (see `joinScenarios`) ---
+
+type JoinedRow = { task: Owned; owner: User };
+
+const JoinedRowView: FC<JoinedRow> = ({ task, owner }) => {
+  renders.row++;
+  return (
+    <li>
+      {task.title} · {owner.name}
+    </li>
+  );
+};
+
+const SupergrainJoinedRow = tracked(JoinedRowView);
+
+const SupergrainJoinedList = tracked(({ rows }: { rows: () => ReadonlyArray<JoinedRow> }) => {
+  renders.list++;
+  return (
+    <ul>
+      <For each={rows()}>
+        {(row) => <SupergrainJoinedRow key={row.task.id} task={row.task} owner={row.owner} />}
+      </For>
+    </ul>
+  );
+});
+
+const TanstackJoinedRow = memo(JoinedRowView);
+
+function TanstackJoinedList({ setup }: { setup: ReturnType<typeof tanstackJoin> }) {
+  renders.list++;
+  const { data } = useLiveQuery({
+    queryKey: ["joined-top-ten", setup.tasks.id],
+    query: (q) => tanstackJoinedTopTen(q, setup.tasks, setup.users),
+  });
+  return (
+    <ul>
+      {(data as JoinedRow[]).map((row) => (
+        <TanstackJoinedRow key={row.task.id} task={row.task} owner={row.owner} />
+      ))}
+    </ul>
+  );
+}
+
+interface JoinApp {
+  change(change: JoinChange): void;
+  shown(): string[];
+  unmount(): void;
+}
+
+type MountJoin = (tasks: Owned[], users: User[]) => JoinApp;
+
+function mountJoin(element: React.ReactElement, change: (change: JoinChange) => void): JoinApp {
+  const app = mount(element, () => {});
+  return { change: (next) => act(() => change(next)), shown: app.shown, unmount: app.unmount };
+}
+
+const JOIN_APPS: ReadonlyArray<[string, MountJoin]> = [
+  [
+    "supergrain from().join() + <For>",
+    (tasks, users) => {
+      const { store, change } = supergrainJoinStore(tasks, users);
+      const rows = supergrainJoined(store) as () => ReadonlyArray<JoinedRow>;
+      return mountJoin(<SupergrainJoinedList rows={rows} />, change);
+    },
+  ],
+  [
+    "TanStack DB join (sync write)",
+    (tasks, users) => {
+      const setup = tanstackJoin(tasks, users);
+      return mountJoin(<TanstackJoinedList setup={setup} />, setup.change);
+    },
+  ],
+];
+
+function validateJoin(size: number): void {
+  const results = JOIN_APPS.map(([name, mountApp]) => {
+    const app = mountApp(makeOwnedTasks(size), makeUsers());
+    const seen = [app.shown()];
+    for (const change of joinValidationChanges(size)) {
+      app.change(change);
+      seen.push(app.shown());
+    }
+    app.unmount();
+    return [name, JSON.stringify(seen)] as const;
+  });
+  for (const [name, seen] of results) {
+    if (seen !== results[0]![1]) {
+      throw new Error(
+        `react computed-list bench: ${name} disagrees with ${results[0]![0]} at ${size} rows`,
+      );
+    }
+  }
+}
+
+for (const size of [1_000, 10_000]) {
+  validateJoin(size);
+  const rows = `${size.toLocaleString("en-US")} tasks, 100 users`;
+
+  describe(`Join: mount the list (${rows})`, () => {
+    for (const [name, mountApp] of JOIN_APPS) {
+      const tasks = makeOwnedTasks(size);
+      bench(name, () => {
+        mountApp(
+          tasks.map((task) => ({ ...task })),
+          makeUsers(),
+        ).unmount();
+      });
+    }
+  });
+
+  for (const [title, change] of joinScenarios(size)) {
+    describe(`Join: ${title} (${rows})`, () => {
+      for (const [name, mountApp] of JOIN_APPS) {
+        let app: JoinApp | undefined;
+        let i = 0;
+        bench(
+          name,
+          () => {
+            app!.change(change(i++));
+          },
+          {
+            setup: () => {
+              app ??= mountApp(makeOwnedTasks(size), makeUsers());
             },
           },
         );
