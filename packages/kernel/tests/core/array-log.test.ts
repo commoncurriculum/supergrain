@@ -75,6 +75,7 @@ describe("array log", () => {
     store.items[1] = item(9);
     store.items[3] = item(10);
     store.items[0] = store.items[0]!; // the same item: nothing to record
+    store.items.length = 4; // the same length: nothing to record
     store.items.length = 2;
     expect(log.entries).toHaveLength(3);
     expectSameItems(replayed(), store.items);
