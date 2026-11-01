@@ -330,6 +330,32 @@ describe("computedList", () => {
     expect(ids(view())).toEqual([0, 1, 3, 4, 5]);
   });
 
+  it("keeps every change of an update that compare threw part-way through", () => {
+    const store = createReactive({ tasks: makeTasks(100) });
+    let failOn: number | undefined = undefined;
+    const view = computedList({
+      from: () => store.tasks,
+      where: (task) => !task.completed,
+      orderBy: (task) => task.id,
+      compare: (a: number, b: number) => {
+        if (a === failOn || b === failOn) throw new Error("compare");
+        return a - b;
+      },
+    });
+    view();
+    // Row 3 is refiled first; finding row 91, in a later block, throws.
+    failOn = 91;
+    batch(() => {
+      store.tasks[3]!.completed = true;
+      store.tasks[91]!.completed = true;
+    });
+    expect(() => view()).toThrow("compare");
+    // The list keeps rethrowing until something it read changes.
+    failOn = undefined;
+    store.tasks[51]!.completed = true;
+    expect(ids(view())).toEqual(ids(unwrap(store.tasks).filter((task) => !task.completed)));
+  });
+
   it("drops rows that left the source while a where was throwing", () => {
     const store = createReactive({ tasks: makeTasks(4) });
     const view = computedList({
@@ -451,6 +477,8 @@ describe("work per change", () => {
       c: step(() => (store.tasks[401]!.completed = true)),
       d: step(() => (store.tasks[7]!.completed = true)),
       after: ids(view()),
+      push: step(() => store.tasks.push({ id: 1000, completed: false, priority: 0, title: "" })),
+      remove: step(() => store.tasks.splice(300, 1)),
     };
   }
 
@@ -489,6 +517,11 @@ describe("work per change", () => {
     expect(counts.d.compare).toBeLessThanOrEqual(10);
     expect(counts.d.reader).toBe(1);
     expect(counts.after).toEqual([21, 35, 49, 63, 77, 91, 105, 119, 133, 147]);
+    // Adding or removing a row runs `where` for that row only.
+    expect(counts.push.where).toBe(1);
+    expect(counts.push.compare).toBeLessThanOrEqual(10);
+    expect(counts.remove.where).toBe(0);
+    expect(counts.remove.compare).toBeLessThanOrEqual(10);
   });
 });
 
@@ -497,18 +530,30 @@ describe("computedList matches a from-scratch reference", () => {
     | { type: "toggle"; index: number }
     | { type: "priority"; index: number; value: number }
     | { type: "push"; priority: number; completed: boolean }
-    | { type: "remove"; index: number }
+    | { type: "pushMany"; count: number }
+    | { type: "remove"; index: number; count: number }
+    | { type: "reinsert"; index: number }
     | { type: "replace"; index: number; priority: number }
     | { type: "swap"; a: number; b: number }
-    | { type: "window"; offset: number; limit: number };
+    | { type: "window"; offset: number; limit: number }
+    | { type: "poison"; index: number }
+    | { type: "cure" }
+    | { type: "pushBadRow" }
+    | { type: "dropBadRows" };
 
-  const index = fc.nat({ max: 30 });
+  const index = fc.nat({ max: 1000 });
   const priority = fc.integer({ min: 0, max: 4 });
   const op: fc.Arbitrary<Op> = fc.oneof(
     fc.record({ type: fc.constant("toggle" as const), index }),
     fc.record({ type: fc.constant("priority" as const), index, value: priority }),
     fc.record({ type: fc.constant("push" as const), priority, completed: fc.boolean() }),
-    fc.record({ type: fc.constant("remove" as const), index }),
+    fc.record({ type: fc.constant("pushMany" as const), count: fc.integer({ min: 1, max: 40 }) }),
+    fc.record({
+      type: fc.constant("remove" as const),
+      index,
+      count: fc.integer({ min: 1, max: 30 }),
+    }),
+    fc.record({ type: fc.constant("reinsert" as const), index }),
     fc.record({ type: fc.constant("replace" as const), index, priority }),
     fc.record({ type: fc.constant("swap" as const), a: index, b: index }),
     fc.record({
@@ -516,15 +561,23 @@ describe("computedList matches a from-scratch reference", () => {
       offset: fc.nat({ max: 5 }),
       limit: fc.integer({ min: 0, max: 8 }),
     }),
+    fc.record({ type: fc.constant("poison" as const), index }),
+    fc.record({ type: fc.constant("cure" as const) }),
+    fc.record({ type: fc.constant("pushBadRow" as const) }),
+    fc.record({ type: fc.constant("dropBadRows" as const) }),
   );
 
-  it("after every step, with and without orderBy, batched or not", () => {
+  // A row titled "boom" makes `where` throw, and a row that isn't an object
+  // makes the source walk throw. The list must throw exactly while one is
+  // present, and be right again after.
+  it("after every step, with and without orderBy, batched or not, through throws", () => {
     fc.assert(
       fc.property(
+        fc.integer({ min: 0, max: 80 }),
         fc.array(op, { maxLength: 40 }),
         fc.boolean(),
         fc.boolean(),
-        (ops, sortRows, batched) => {
+        (initial, ops, sortRows, batched) => {
           let nextId = 0;
           const task = (p: number, completed = false): Task => ({
             id: nextId++,
@@ -533,11 +586,15 @@ describe("computedList matches a from-scratch reference", () => {
             title: "",
           });
           const store = createReactive({
-            tasks: [task(1), task(0, true), task(2), task(1)],
+            tasks: Array.from({ length: initial }, (_, i) => task(i % 3, i % 4 === 0)),
             offset: 0,
             limit: 5,
           });
-          const where = (t: Task) => !t.completed;
+          const removed: Task[] = [];
+          const where = (t: Task) => {
+            if (t.title === "boom") throw new Error("boom");
+            return !t.completed;
+          };
           // Keys are unique, so tie order doesn't matter to the reference.
           const view = computedList({
             from: () => store.tasks,
@@ -546,41 +603,83 @@ describe("computedList matches a from-scratch reference", () => {
             offset: () => store.offset,
             limit: () => store.limit,
           });
+          const isTask = (t: unknown): t is Task => typeof t === "object" && t !== null;
+          const failing = () => unwrap(store.tasks).some((t) => !isTask(t) || t.title === "boom");
           const expected = () => {
             const rows = unwrap(store.tasks).filter(where);
             if (sortRows) rows.sort((a, b) => a.priority - b.priority || a.id - b.id);
             return ids(rows.slice(store.offset, store.offset + store.limit));
           };
           const at = (i: number) => (store.tasks.length ? i % store.tasks.length : -1);
+          const taskAt = (i: number): Task | undefined => {
+            const t = store.tasks[at(i)];
+            return isTask(t) ? t : undefined;
+          };
 
           for (const step of ops) {
             const apply = () => {
-              const i = at("index" in step ? step.index : 0);
-              if (step.type === "push") store.tasks.push(task(step.priority, step.completed));
-              else if (step.type === "window") {
-                store.offset = step.offset;
-                store.limit = step.limit;
-              } else if (i < 0) return;
-              else if (step.type === "toggle")
-                store.tasks[i]!.completed = !store.tasks[i]!.completed;
-              else if (step.type === "priority") store.tasks[i]!.priority = step.value;
-              else if (step.type === "remove") store.tasks.splice(i, 1);
-              else if (step.type === "replace") store.tasks[i] = task(step.priority);
-              else if (step.type === "swap") {
-                const a = at(step.a);
-                const b = at(step.b);
-                const first = store.tasks[a]!;
-                store.tasks[a] = store.tasks[b]!;
-                store.tasks[b] = first;
+              const tasks = store.tasks;
+              switch (step.type) {
+                case "push":
+                  tasks.push(task(step.priority, step.completed));
+                  break;
+                case "pushMany":
+                  tasks.push(
+                    ...Array.from({ length: step.count }, (_, i) => task(i % 5, i % 3 === 0)),
+                  );
+                  break;
+                case "window":
+                  store.offset = step.offset;
+                  store.limit = step.limit;
+                  break;
+                case "remove":
+                  if (tasks.length)
+                    removed.push(...tasks.splice(at(step.index), step.count).filter(isTask));
+                  break;
+                case "reinsert": {
+                  const back = removed.pop();
+                  if (back) tasks.splice(Math.max(0, at(step.index)), 0, back);
+                  break;
+                }
+                case "replace":
+                  if (tasks.length) tasks[at(step.index)] = task(step.priority);
+                  break;
+                case "swap":
+                  if (tasks.length) {
+                    const a = at(step.a);
+                    const b = at(step.b);
+                    const first = tasks[a]!;
+                    tasks[a] = tasks[b]!;
+                    tasks[b] = first;
+                  }
+                  break;
+                case "cure":
+                  for (const t of tasks) if (isTask(t) && t.title === "boom") t.title = "";
+                  break;
+                case "pushBadRow":
+                  (tasks as unknown[]).push(0);
+                  break;
+                case "dropBadRows":
+                  for (let i = tasks.length - 1; i >= 0; i--)
+                    if (!isTask(tasks[i])) tasks.splice(i, 1);
+                  break;
+                default: {
+                  const t = taskAt("index" in step ? step.index : 0);
+                  if (!t) break;
+                  if (step.type === "toggle") t.completed = !t.completed;
+                  else if (step.type === "priority") t.priority = step.value;
+                  else t.title = "boom";
+                }
               }
             };
             if (batched) batch(apply);
             else apply();
-            expect(ids(view())).toEqual(expected());
+            if (failing()) expect(() => view()).toThrow();
+            else expect(ids(view())).toEqual(expected());
           }
         },
       ),
-      { numRuns: 300 },
+      { numRuns: 500 },
     );
   });
 });

@@ -26,6 +26,11 @@ export interface Task {
 
 export type Edit = ReadonlyArray<{ id: number; patch: Partial<Task> }>;
 
+/** Add a task at a position in the source, or remove one by id. */
+export type Membership =
+  | { readonly insert: Task; readonly at: number }
+  | { readonly remove: number };
+
 export function makeTasks(count: number): Task[] {
   return Array.from({ length: count }, (_, i) => ({
     id: i,
@@ -76,6 +81,26 @@ export function scenarios(size: number): ReadonlyArray<[title: string, edit: (i:
   ];
 }
 
+/**
+ * The benchmarked adds and removes. Even iterations add a task, odd ones
+ * remove it again, so the source is back where it started after each pair.
+ */
+export function membershipScenarios(
+  size: number,
+): ReadonlyArray<[title: string, change: (i: number) => Membership]> {
+  const added = (id: number): Task => ({ id, completed: false, priority: 3, title: `t${id}` });
+  return [
+    [
+      "Add or remove a task at the end",
+      (i) => (i % 2 === 0 ? { insert: added(size), at: size } : { remove: size }),
+    ],
+    [
+      "Add or remove a task in the middle",
+      (i) => (i % 2 === 0 ? { insert: added(size + 1), at: size / 2 } : { remove: size + 1 }),
+    ],
+  ];
+}
+
 // --- supergrain ---
 
 export type SupergrainList = (store: { tasks: Task[] }) => () => ReadonlyArray<Task>;
@@ -99,14 +124,24 @@ export const stableComputedTopTen: SupergrainList = (store) =>
 export function supergrainStore(tasks: Task[]): {
   store: { tasks: Task[] };
   edit: (changes: Edit) => void;
+  change: (change: Membership) => void;
 } {
   const store = createReactive({ tasks });
   return {
     store,
+    // Tasks sit at the index of their id, except while an added task is in.
     edit: (changes: Edit) =>
       batch(() => {
         for (const { id, patch } of changes) Object.assign(store.tasks[id]!, patch);
       }),
+    change: (change) => {
+      if ("insert" in change) store.tasks.splice(change.at, 0, change.insert);
+      else
+        store.tasks.splice(
+          store.tasks.findIndex((task) => task.id === change.remove),
+          1,
+        );
+    },
   };
 }
 
@@ -116,6 +151,7 @@ export function supergrainStore(tasks: Task[]): {
 export interface TanstackTasks {
   collection: Collection<Task, number>;
   edit: (changes: Edit) => void;
+  change: (change: Membership) => void;
   dispose: () => void;
 }
 
@@ -150,7 +186,7 @@ export function tanstackSyncWrite(tasks: Task[]): TanstackTasks {
   const rows = new Map(tasks.map((task) => [task.id, { ...task }]));
   let writer!: {
     begin: () => void;
-    write: (message: { type: "update"; value: Task }) => void;
+    write: (message: { type: "insert" | "update" | "delete"; value: Task }) => void;
     commit: () => void;
   };
   const collection = indexed(
@@ -180,6 +216,17 @@ export function tanstackSyncWrite(tasks: Task[]): TanstackTasks {
       }
       writer.commit();
     },
+    change: (change) => {
+      writer.begin();
+      if ("insert" in change) {
+        rows.set(change.insert.id, change.insert);
+        writer.write({ type: "insert", value: change.insert });
+      } else {
+        writer.write({ type: "delete", value: rows.get(change.remove)! });
+        rows.delete(change.remove);
+      }
+      writer.commit();
+    },
     dispose: () => void collection.cleanup(),
   };
 }
@@ -205,6 +252,10 @@ export function tanstackOptimisticUpdate(tasks: Task[]): TanstackTasks {
       collection.update([...patches.keys()], (drafts) => {
         for (const draft of drafts) Object.assign(draft, patches.get(draft.id));
       });
+    },
+    change: (change) => {
+      if ("insert" in change) collection.insert({ ...change.insert });
+      else collection.delete(change.remove);
     },
     dispose: () => void collection.cleanup(),
   };

@@ -39,23 +39,30 @@ interface Row<T, K> {
   /** Order of first appearance; breaks ties between equal keys. */
   readonly seq: number;
   readonly result: () => RowResult<K>;
-  /** The result this row is filed under in `sorted`. */
+  /** The result this row is filed under in the list. */
   applied: RowResult<K>;
   /** The last read that found this row in the source. */
   seenAt: number;
+  /** The block this row belongs to, or -1 before it is placed in one. */
+  block: number;
 }
 
 /** A row whose result changed since it was last filed, and its new result. */
 type Change<T, K> = readonly [row: Row<T, K>, next: RowResult<K>];
 
 /**
- * A run of rows whose `version` changes whenever one of their results does.
+ * A group of rows whose `version` changes whenever one of their results does.
  * The list reads one version per block instead of one result per row, so a
  * change to one row costs about √N reads instead of N.
+ *
+ * Rows stay in their block when other rows come and go, so adding or removing
+ * a row replaces only the blocks it touched. The others keep their version.
  */
 interface Block<T, K> {
   readonly rows: ReadonlyArray<Row<T, K>>;
   readonly version: () => object;
+  /** The version last applied to the list. Set only after an update succeeds. */
+  applied: object | undefined;
 }
 
 interface Structure<T, K> {
@@ -64,20 +71,15 @@ interface Structure<T, K> {
   readonly blocks: ReadonlyArray<Block<T, K>>;
 }
 
-function toBlocks<T, K>(list: ReadonlyArray<Row<T, K>>): Array<Block<T, K>> {
-  const size = Math.max(16, Math.ceil(Math.sqrt(list.length)));
-  const blocks: Array<Block<T, K>> = [];
-  for (let start = 0; start < list.length; start += size) {
-    const rows = list.slice(start, start + size);
-    blocks.push({
-      rows,
-      version: rethrowingComputed(() => {
-        for (const row of rows) row.result();
-        return {};
-      }),
-    });
-  }
-  return blocks;
+function createBlock<T, K>(rows: ReadonlyArray<Row<T, K>>): Block<T, K> {
+  return {
+    rows,
+    applied: undefined,
+    version: rethrowingComputed(() => {
+      for (const row of rows) row.result();
+      return {};
+    }),
+  };
 }
 
 const OUTSIDE: RowResult<never> = Object.freeze({ member: false, key: undefined });
@@ -107,8 +109,9 @@ const OUTSIDE: RowResult<never> = Object.freeze({ member: false, key: undefined 
  * blocks of about √N, each with a version that changes when one of its rows'
  * results does. A field edit costs about √N cached reads (two blocks' worth),
  * not N. Adding or removing rows in the source walks it once (no `where` or
- * `orderBy` calls for rows it already knew). Without `orderBy`, the result is
- * refiltered in source order from cached results on each change.
+ * `orderBy` calls for rows it already knew), and replaces only the blocks
+ * those rows were in. Without `orderBy`, the result is refiltered in source
+ * order from cached results on each change.
  */
 export function computedList<T extends object, K = unknown>(
   options: ComputedListOptions<T, K>,
@@ -143,6 +146,7 @@ export function computedList<T extends object, K = unknown>(
       seq: nextSeq++,
       applied: OUTSIDE,
       seenAt: 0,
+      block: -1,
       result: rethrowingComputed((previous: RowResult<K> | undefined): RowResult<K> => {
         const member = where ? Boolean(where(item)) : true;
         const key = member && orderBy ? orderBy(item) : undefined;
@@ -160,12 +164,13 @@ export function computedList<T extends object, K = unknown>(
     };
   }
 
-  // The source's rows in order, the rows that left it, and the rows split
-  // into blocks. Recomputed only when the source's structure changes.
+  // The source's rows in order, the rows that left it, and the blocks.
+  // Recomputed only when the source's structure changes.
+  let blocks: Array<Block<T, K>> = [];
   const structure = rethrowingComputed(readStructure);
   let current: Structure<T, K> | undefined = undefined;
-  // Per block, the version last applied to `sorted`.
-  let appliedVersions: Array<object | undefined> = [];
+  // Without `orderBy`: the matching rows in source order.
+  let matching: ReadonlyArray<Row<T, K>> = [];
 
   return rethrowingComputed((): ReadonlyArray<T> => {
     try {
@@ -179,7 +184,6 @@ export function computedList<T extends object, K = unknown>(
   function update(): ReadonlyArray<T> {
     // Tracked: the source's structure, each block's version, the window.
     const next = structure();
-    const fresh = next !== current;
     const versions = next.blocks.map((block) => block.version());
     const offset = Math.max(0, offsetOf());
     const limit = Math.max(0, limitOf());
@@ -187,29 +191,29 @@ export function computedList<T extends object, K = unknown>(
     // subscribe to them or to its own output.
     untracked(() => {
       const changes: Array<Change<T, K>> = [];
-      if (fresh) {
+      if (next !== current) {
         for (const row of next.removed) if (row.applied.member) changes.push([row, OUTSIDE]);
       }
       next.blocks.forEach((block, b) => {
-        if (fresh || versions[b] !== appliedVersions[b]) collectChanges(block.rows, changes);
+        if (versions[b] !== block.applied) collectChanges(block.rows, changes);
       });
-      const ordered = orderBy
-        ? applyChanges(changes)
-        : next.list.filter((row) => row.result().member);
+      const ordered = orderBy ? applyChanges(changes) : filterChanges(next, changes);
       syncArray(
         out,
         ordered.slice(offset, offset + limit).map((row) => row.item),
       );
     });
+    // Nothing threw: record what the list now reflects.
+    next.blocks.forEach((block, b) => (block.applied = versions[b]));
     current = next;
-    appliedVersions = versions;
     return out;
   }
 
-  /** Walk the source: its rows in order (once each), blocks of them, and the rows that left. */
+  /** Walk the source: its rows in order (once each), the rows that left, and the blocks. */
   function readStructure(): Structure<T, K> {
     const read = ++reads;
     const list: Array<Row<T, K>> = [];
+    const unplaced: Array<Row<T, K>> = [];
     const removed: Array<Row<T, K>> = [];
     forEachItem(from(), (item) => {
       if (typeof item !== "object" || item === null) {
@@ -225,6 +229,7 @@ export function computedList<T extends object, K = unknown>(
       }
       row.seenAt = read;
       list.push(row);
+      if (row.block === -1) unplaced.push(row);
     });
     if (list.length < rows.size) {
       for (const [raw, row] of rows) {
@@ -234,7 +239,64 @@ export function computedList<T extends object, K = unknown>(
         }
       }
     }
-    return { list, removed, blocks: toBlocks(list) };
+    // The walk succeeded, so it's safe to move rows between blocks now.
+    placeRows(list, unplaced, removed, read);
+    return { list, removed, blocks: [...blocks] };
+  }
+
+  /**
+   * Take removed rows out of their blocks and put new rows in the last
+   * block, or new ones. Only the blocks that changed are replaced. When
+   * removals have left too many sparse blocks, regroup every row.
+   */
+  function placeRows(
+    list: ReadonlyArray<Row<T, K>>,
+    unplaced: ReadonlyArray<Row<T, K>>,
+    removed: ReadonlyArray<Row<T, K>>,
+    read: number,
+  ): void {
+    const size = Math.max(16, Math.ceil(Math.sqrt(list.length)));
+    if (blocks.length + unplaced.length / size > 2 * Math.ceil(list.length / size) + 1) {
+      blocks = [];
+      for (let start = 0; start < list.length; start += size) {
+        blocks.push(placeIn(blocks.length, list.slice(start, start + size)));
+      }
+      return;
+    }
+    const edited = new Map<number, Array<Row<T, K>>>();
+    const rowsOf = (b: number): Array<Row<T, K>> => {
+      let blockRows = edited.get(b);
+      if (blockRows === undefined) {
+        blockRows = b < blocks.length ? blocks[b]!.rows.filter((row) => row.seenAt === read) : [];
+        edited.set(b, blockRows);
+      }
+      return blockRows;
+    };
+    for (const row of removed) if (row.block !== -1) rowsOf(row.block);
+    let last = blocks.length - 1;
+    for (const row of unplaced) {
+      const lastSize = edited.get(last)?.length ?? blocks[last]?.rows.length ?? size;
+      if (lastSize >= size) last++;
+      rowsOf(last).push(row);
+    }
+    for (const [b, blockRows] of edited) blocks[b] = placeIn(b, blockRows);
+  }
+
+  function placeIn(b: number, blockRows: ReadonlyArray<Row<T, K>>): Block<T, K> {
+    for (const row of blockRows) row.block = b;
+    return createBlock(blockRows);
+  }
+
+  /** Without `orderBy`: the matching rows in source order, refiltered only when something changed. */
+  function filterChanges(
+    next: Structure<T, K>,
+    changes: ReadonlyArray<Change<T, K>>,
+  ): ReadonlyArray<Row<T, K>> {
+    for (const [row, result] of changes) row.applied = result;
+    if (next !== current || changes.length > 0) {
+      matching = next.list.filter((row) => row.applied.member);
+    }
+    return matching;
   }
 
   function applyChanges(changes: ReadonlyArray<Change<T, K>>): ReadonlyArray<Row<T, K>> {

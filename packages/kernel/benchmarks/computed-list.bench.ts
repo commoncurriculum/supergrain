@@ -4,6 +4,7 @@ import { bench, describe } from "vitest";
 import {
   computedListTopTen,
   makeTasks,
+  membershipScenarios,
   scenarios,
   stableComputedTopTen,
   supergrainStore,
@@ -12,6 +13,7 @@ import {
   tanstackTopTen,
   validationEdits,
   type Edit,
+  type Membership,
   type SupergrainList,
   type Task,
   type TanstackTasks,
@@ -31,10 +33,11 @@ import {
  * same rows, so the numbers compare equal work.
  */
 
-/** What every implementation can do: edit rows, and read the top 10 ids. */
+/** What every implementation can do: edit, add and remove rows, and read the top 10 ids. */
 interface Harness {
   read(): number[];
   edit(changes: Edit): void;
+  change(change: Membership): void;
   dispose(): void;
 }
 
@@ -44,15 +47,15 @@ const ids = (rows: Iterable<{ id: number }>) => Array.from(rows, (row) => row.id
 
 function supergrain(makeList: SupergrainList): Build {
   return (tasks) => {
-    const { store, edit } = supergrainStore(tasks);
+    const { store, edit, change } = supergrainStore(tasks);
     const list = makeList(store);
-    return { read: () => ids(list()), edit, dispose: () => {} };
+    return { read: () => ids(list()), edit, change, dispose: () => {} };
   };
 }
 
 function tanstack(setup: (tasks: Task[]) => TanstackTasks): Build {
   return (tasks) => {
-    const { collection, edit, dispose } = setup(tasks);
+    const { collection, edit, change, dispose } = setup(tasks);
     const query = createLiveQueryCollection({
       startSync: true,
       query: (q) => tanstackTopTen(q, collection),
@@ -60,6 +63,7 @@ function tanstack(setup: (tasks: Task[]) => TanstackTasks): Build {
     return {
       read: () => ids(query.values()),
       edit,
+      change,
       dispose: () => {
         void query.cleanup();
         dispose();
@@ -83,6 +87,12 @@ function validate(size: number): void {
     for (const edit of validationEdits(size)) {
       harness.edit(edit);
       seen.push(harness.read());
+    }
+    for (const [, change] of membershipScenarios(size)) {
+      for (let i = 0; i < 2; i++) {
+        harness.change(change(i));
+        seen.push(harness.read());
+      }
     }
     harness.dispose();
     return [name, JSON.stringify(seen)] as const;
@@ -119,6 +129,20 @@ for (const size of [1_000, 10_000]) {
         let i = 0;
         bench(name, () => {
           harness.edit(edit(i++));
+          harness.read();
+        });
+      }
+    });
+  }
+
+  for (const [title, change] of membershipScenarios(size)) {
+    describe(`${title} (${rows})`, () => {
+      for (const [name, build] of IMPLEMENTATIONS) {
+        const harness = build(makeTasks(size));
+        harness.read();
+        let i = 0;
+        bench(name, () => {
+          harness.change(change(i++));
           harness.read();
         });
       }
