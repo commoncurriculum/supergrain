@@ -89,9 +89,10 @@ function trackOwnKeys(target: object): void {
 }
 
 // Whenever this module creates `nodes` for a Map/Set, it also creates
-// $OWN_KEYS and $VERSION (see `reactiveSet`/`reactiveAdd`). So once `nodes`
-// exists for one of these targets, both signals are present — the `!`
-// asserts that invariant.
+// $OWN_KEYS (see `trackOwnKeys`, `reactiveSet`, `reactiveAdd`). So once
+// `nodes` exists for one of these targets, that signal is present — the `!`
+// asserts that invariant. $VERSION may not exist yet: it's made by its first
+// reader.
 function bumpOwnKeys(target: object): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) return;
@@ -100,9 +101,7 @@ function bumpOwnKeys(target: object): void {
 }
 
 function bumpVersionSignal(target: object): void {
-  const nodes = getNodesIfExist(target);
-  if (!nodes) return;
-  nodes[$VERSION]!(++BUMP);
+  getNodesIfExist(target)?.[$VERSION]?.(++BUMP);
 }
 
 // ---------------------------------------------------------------------------

@@ -19,6 +19,30 @@ import { writeHandler } from "./write";
 
 const proxyCache = new WeakMap<object, object>();
 
+// The subscriber that `readWholeObjects` is running, if any.
+let wholeObjectReader: unknown = null;
+
+/**
+ * Run `fn` so that the active subscriber tracks each plain object it reads
+ * as a whole: one subscription to the object's version, which every write
+ * to it bumps, instead of one signal per field read. It reruns more often
+ * (on writes to fields it never read), but costs far less memory. Fields
+ * that already have a signal are still tracked per field. Computeds that
+ * `fn` reads track as usual.
+ *
+ * Only for a reader whose result can't tell the extra reruns apart, such as
+ * a list row that keeps its previous outcome when nothing moved.
+ */
+export function readWholeObjects<R>(fn: () => R): R {
+  const previous = wholeObjectReader;
+  wholeObjectReader = getActiveSub();
+  try {
+    return fn();
+  } finally {
+    wholeObjectReader = previous;
+  }
+}
+
 export function wrap<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
     return value;
@@ -40,12 +64,7 @@ function trackSelf(target: object): void {
 // because alien-signals deduplicates dirty-marking.
 function trackArrayVersion(value: unknown): void {
   if (Array.isArray(value) && getActiveSub()) {
-    const arrayNodes = getNodes(value);
-    /* c8 ignore start -- absence of an array version signal is a no-op fast path */
-    if (arrayNodes[$VERSION]) {
-      arrayNodes[$VERSION]();
-    }
-    /* c8 ignore stop */
+    getNode(getNodes(value), $VERSION, 0)();
   }
 }
 
@@ -86,8 +105,7 @@ const readHandler: Pick<
       return receiver;
     }
     if (prop === $VERSION) {
-      const nodes = (target as ReactiveTagged)[$NODE];
-      return nodes?.[$VERSION] ? nodes[$VERSION]() : 0;
+      return getNode(getNodes(target), $VERSION, 0)();
     }
 
     // Direct bracket access — Reflect.get is ~22x slower in this hot handler
@@ -118,6 +136,18 @@ const readHandler: Pick<
 
     profileSignalRead();
     const nodes = getNodes(target);
+    // A whole-object reader subscribes to the object's version, which every
+    // write to it bumps, instead of making a signal for each field. Arrays
+    // are tracked per index as usual: replacing an element doesn't bump
+    // their version.
+    if (
+      wholeObjectReader !== null &&
+      wholeObjectReader === getActiveSub() &&
+      !Array.isArray(target)
+    ) {
+      getNode(nodes, $VERSION, 0)();
+      return wrap(value);
+    }
     const node = getNode(nodes, prop, value);
     return wrap(node());
   },
@@ -169,22 +199,20 @@ export function createReactiveProxy<T extends object>(target: T): T {
   const cached = (target as ReactiveTagged)[$PROXY];
   if (cached) return cached as T;
 
-  if (proxyCache.has(target)) {
-    return proxyCache.get(target) as T;
+  // The proxy lives on its target. Only a target that can't take a new
+  // property keeps it in a WeakMap, which costs more to fill and to collect.
+  if (Object.isExtensible(target)) {
+    const proxy = new Proxy(target, handler);
+    Object.defineProperty(target, $PROXY, { value: proxy });
+    return proxy as T;
   }
-
   if (Object.isFrozen(target)) {
     return target;
   }
-
-  const proxy = new Proxy(target, handler);
-  proxyCache.set(target, proxy);
-
-  try {
-    Object.defineProperty(target, $PROXY, { value: proxy, enumerable: false });
-  } catch {
-    // Fails for sealed or non-configurable objects.
+  let proxy = proxyCache.get(target);
+  if (proxy === undefined) {
+    proxy = new Proxy(target, handler);
+    proxyCache.set(target, proxy);
   }
-
   return proxy as T;
 }

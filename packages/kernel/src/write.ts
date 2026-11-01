@@ -1,13 +1,5 @@
 import { existingLog, record, recordMutation, type ArrayLog } from "./array-log";
-import {
-  $ELEMENTS,
-  $OWN_KEYS,
-  $VERSION,
-  unwrap,
-  getNodes,
-  getNodesIfExist,
-  type DataNodes,
-} from "./core";
+import { $ELEMENTS, $OWN_KEYS, $VERSION, unwrap, getNodesIfExist, type DataNodes } from "./core";
 import { profileSignalWrite } from "./profiler";
 
 // Monotonic counter feeding every counter-style signal write. The value only
@@ -19,18 +11,10 @@ import { profileSignalWrite } from "./profiler";
 // self-triggering loop.
 let BUMP = 0;
 
+// The version signal is made by its first reader, so a write before that
+// has no one to tell.
 export function bumpVersion(target: object): void {
-  let nodes = getNodesIfExist(target);
-  if (!nodes) {
-    // Lazily create nodes + version signal on first mutation
-    nodes = getNodes(target);
-  }
-  const v = nodes[$VERSION];
-  /* c8 ignore start -- callers that need notifications create the version signal before bumping */
-  if (v) {
-    v(++BUMP);
-  }
-  /* c8 ignore stop */
+  getNodesIfExist(target)?.[$VERSION]?.(++BUMP);
 }
 
 export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, any>): void {

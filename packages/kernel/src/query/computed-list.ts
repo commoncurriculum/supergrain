@@ -162,6 +162,9 @@ function build({ source, lookups, steps, order, offset, limit }: Spec) {
     prepare: () => {
       for (const lookup of used) lookup.sync();
     },
+    // Without a `map`, a row's value is the item itself, so a rerun that
+    // changed nothing is invisible.
+    wholeObjects: !mapped,
     run: (item, previous) => {
       let row: unknown = item;
       for (const { kind, fn } of steps) {

@@ -342,4 +342,26 @@ describe("Store", () => {
       expect(callCount).toBe(2);
     });
   });
+
+  it("tracks and writes keys named like Object.prototype methods", () => {
+    // Typed as plain strings, so TypeScript doesn't take them for the methods.
+    const valueOf: string = "valueOf";
+    const toString: string = "toString";
+    const hasOwn: string = "hasOwnProperty";
+    const state = createReactive<Record<string, number>>({ [valueOf]: 0, [toString]: 0 });
+    const seen: Array<unknown> = [];
+    effect(() => {
+      seen.push([state[valueOf], state[toString]]);
+    });
+    state[valueOf] = 1;
+    state[toString] = 2;
+    // A key no one read: no node, and nothing inherited taken for one.
+    state[hasOwn] = 3;
+    expect(seen).toEqual([
+      [0, 0],
+      [1, 0],
+      [1, 2],
+    ]);
+    expect(state[hasOwn]).toBe(3);
+  });
 });

@@ -1,8 +1,8 @@
-import { setActiveSub } from "alien-signals";
+import { computed, setActiveSub } from "alien-signals";
 
 import { arrayLog, logEnd, trackArrayItems, type ArrayLog, type Splice } from "../array-log";
 import { unwrap } from "../core";
-import { wrap } from "../read";
+import { readWholeObjects, wrap } from "../read";
 import { rethrowingComputed } from "../rethrowing-computed";
 import { createReactive } from "../store";
 import { syncArray } from "../sync-array";
@@ -33,6 +33,14 @@ export interface ListOptions<S extends object, O, K> {
    * result and tells changes apart by identity.
    */
   run: (item: S, previous: O | undefined) => RowOutcome<O, K>;
+  /**
+   * Track the objects `run` reads as wholes (see `readWholeObjects`): far
+   * less memory per row, but a row reruns on any write to an object it read.
+   * Safe when a rerun that changed nothing returns an equal outcome, which
+   * the list then ignores: true when `run`'s value is the item itself, not
+   * when it builds a new object.
+   */
+  wholeObjects?: boolean;
   /** Compare sort keys, or `undefined` to keep source order. */
   compare: ((a: K, b: K) => number) | undefined;
   /** Rows to skip from the start of the result. Read reactively. */
@@ -46,6 +54,8 @@ interface RowResult<O, K> {
   readonly member: boolean;
   readonly value: O | undefined;
   readonly key: K | undefined;
+  /** Set when the row's steps threw. */
+  readonly failed?: { readonly error: unknown };
 }
 
 interface Row<T, O, K> {
@@ -110,6 +120,7 @@ function createBlock<T, O, K>(rows: ReadonlyArray<Row<T, O, K>>): Block<T, O, K>
       const changes: Array<Change<T, O, K>> = [];
       for (const row of rows) {
         const result = row.result();
+        if (result.failed) throw result.failed.error;
         if (result !== row.applied) changes.push([row, result]);
       }
       return changes;
@@ -156,7 +167,10 @@ const OUTSIDE: RowResult<never, never> = Object.freeze({
 export function createList<T extends object, O, K>(
   options: ListOptions<T, O, K>,
 ): () => ReadonlyArray<O> {
-  const { source, prepare, run, compare, offset: offsetOf, limit: limitOf } = options;
+  const { source, prepare, compare, offset: offsetOf, limit: limitOf } = options;
+  const run = options.wholeObjects
+    ? (item: T, previous: O | undefined) => readWholeObjects(() => options.run(item, previous))
+    : options.run;
 
   // Rows by raw object. Each read stamps the rows it finds with `seenAt`, so
   // a row with an older stamp has left the source. (A stamp, rather than
@@ -184,19 +198,26 @@ export function createList<T extends object, O, K>(
       seenAt: 0,
       count: 0,
       block: -1,
-      result: rethrowingComputed((previous: RowResult<O, K> | undefined): RowResult<O, K> => {
-        const outcome = run(item, previous?.value);
-        if (!outcome.member) return OUTSIDE;
-        // Hand back the previous object when nothing changed, so the list
-        // isn't dirtied by edits that don't move this row.
-        if (
-          previous?.member &&
-          previous.value === outcome.value &&
-          (!compare || untracked(() => compare(previous.key as K, outcome.key)) === 0)
-        ) {
-          return previous;
+      // A plain computed, not `rethrowingComputed`: a row is small, and there
+      // are many. A throw is cached as a `Failed` result, which its block
+      // rethrows.
+      result: computed((previous: RowResult<O, K> | undefined): RowResult<O, K> => {
+        try {
+          const outcome = run(item, previous?.value);
+          if (!outcome.member) return OUTSIDE;
+          // Hand back the previous object when nothing changed, so the list
+          // isn't dirtied by edits that don't move this row.
+          if (
+            previous?.member &&
+            previous.value === outcome.value &&
+            (!compare || untracked(() => compare(previous.key as K, outcome.key)) === 0)
+          ) {
+            return previous;
+          }
+          return outcome;
+        } catch (error) {
+          return { member: false, value: undefined, key: undefined, failed: { error } };
         }
-        return outcome;
       }),
     };
   }

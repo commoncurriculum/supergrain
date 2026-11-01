@@ -65,15 +65,20 @@ export function getNodesIfExist(target: object): DataNodes | undefined {
   return (target as ReactiveTagged)[$NODE];
 }
 
+// A node map's prototype chain ends without Object.prototype, so inherited
+// methods (toString, valueOf, hasOwnProperty, …) are never mistaken for
+// per-key signal nodes during writes. With a plain `{}`, `setProperty` writing
+// key="valueOf" would resolve `nodes[key]` to `Object.prototype.valueOf` and
+// call it as a signal setter, throwing. Made with `new` rather than
+// `Object.create(null)`: a null-prototype object starts in V8's slow
+// dictionary mode and takes three times the memory.
+function Nodes(): void {}
+Nodes.prototype = Object.create(null);
+
 export function getNodes(target: object): DataNodes {
   let nodes = (target as ReactiveTagged)[$NODE];
   if (!nodes) {
-    // Null-prototype: avoid inherited methods (toString, valueOf, hasOwnProperty,
-    // …) being mistaken for per-key signal nodes during writes. With a plain
-    // `{}` here, `setProperty` writing key="valueOf" would resolve `nodes[key]`
-    // to `Object.prototype.valueOf` (truthy function) and call it as a signal
-    // setter, throwing.
-    nodes = Object.create(null) as DataNodes;
+    nodes = new (Nodes as unknown as new () => DataNodes)();
     try {
       Object.defineProperty(target, $NODE, {
         value: nodes,
@@ -83,10 +88,6 @@ export function getNodes(target: object): DataNodes {
     } catch {
       // Frozen objects can't be modified.
     }
-  }
-  // Ensure version signal exists (lazy creation)
-  if (!nodes[$VERSION]) {
-    nodes[$VERSION] = signal(0) as Signal<unknown>;
   }
   return nodes;
 }
