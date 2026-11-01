@@ -1,4 +1,5 @@
 import {
+  and,
   BTreeIndex,
   createCollection,
   eq,
@@ -8,7 +9,7 @@ import {
   type QueryBuilder,
 } from "@tanstack/db";
 
-import { batch, createReactive, computedList, stableComputed } from "../src";
+import { batch, createReactive, computedList, from, indexBy, stableComputed, unwrap } from "../src";
 
 /**
  * Shared setup for `computed-list.bench.ts` (plain JS) and
@@ -138,7 +139,7 @@ export function supergrainStore(tasks: Task[]): {
       if ("insert" in change) store.tasks.splice(change.at, 0, change.insert);
       else
         store.tasks.splice(
-          store.tasks.findIndex((task) => task.id === change.remove),
+          unwrap(store.tasks).findIndex((task) => task.id === change.remove),
           1,
         );
     },
@@ -260,3 +261,217 @@ export function tanstackOptimisticUpdate(tasks: Task[]): TanstackTasks {
     dispose: () => void collection.cleanup(),
   };
 }
+
+// --- Joins: tasks joined to their owners ---
+
+/**
+ * The join query everywhere: "tasks not completed whose owner is active, by
+ * priority then id, top 10". Tasks are owned by users 0–109, but only users
+ * 0–99 exist at the start, so the inner join drops some tasks until their
+ * owner is added.
+ */
+export interface Owned extends Task {
+  ownerId: number;
+}
+
+export interface User {
+  id: number;
+  active: boolean;
+  name: string;
+}
+
+export const USERS = 100;
+
+export function makeOwnedTasks(count: number): Owned[] {
+  return makeTasks(count).map((task) => ({ ...task, ownerId: (task.id * 7) % (USERS + 10) }));
+}
+
+export function makeUsers(): User[] {
+  return Array.from({ length: USERS }, (_, id) => ({ id, active: id % 5 !== 0, name: `u${id}` }));
+}
+
+/** A change to either side of the join. */
+export type JoinChange =
+  | { readonly task: number; readonly patch: Partial<Owned> }
+  | { readonly user: number; readonly patch: Partial<User> }
+  | { readonly addTask: Owned }
+  | { readonly removeTask: number }
+  | { readonly addUser: User }
+  | { readonly removeUser: number };
+
+/** The benchmarked join changes. Each is undone by the next iteration. */
+export function joinScenarios(
+  size: number,
+): ReadonlyArray<[title: string, change: (i: number) => JoinChange]> {
+  const added: Owned = { id: size, ownerId: 1, completed: false, priority: 3, title: "new" };
+  return [
+    ["Rename a user (nothing reads the name)", (i) => ({ user: 3, patch: { name: `n${i}` } })],
+    [
+      "Complete or reopen a task outside the top 10",
+      (i) => ({ task: size / 2 + 1, patch: { completed: i % 2 === 0 } }),
+    ],
+    ["Deactivate or reactivate a user", (i) => ({ user: 1, patch: { active: i % 2 !== 0 } })],
+    [
+      "Add or remove a task",
+      (i) => (i % 2 === 0 ? { addTask: { ...added } } : { removeTask: size }),
+    ],
+    [
+      "Add or remove a user that owns tasks",
+      (i) =>
+        i % 2 === 0
+          ? { addUser: { id: USERS + 3, active: true, name: "new" } }
+          : { removeUser: USERS + 3 },
+    ],
+  ];
+}
+
+/** Changes that touch every case; every implementation must agree after each. */
+export function joinValidationChanges(size: number): JoinChange[] {
+  return [
+    ...joinScenarios(size).flatMap(([, change]) => [change(0), change(1)]),
+    { user: 2, patch: { active: false } },
+    { task: 9, patch: { ownerId: 2 } },
+    { addUser: { id: USERS + 5, active: true, name: "late" } },
+    { task: 0, patch: { completed: false } },
+  ];
+}
+
+export type JoinedList = (store: { tasks: Owned[]; users: User[] }) => () => ReadonlyArray<{
+  task: Owned;
+}>;
+
+export const supergrainJoined: JoinedList = (store) => {
+  const usersById = indexBy(
+    () => store.users,
+    (user) => user.id,
+  );
+  return from({ task: () => store.tasks })
+    .where(({ task }) => !task.completed)
+    .join({ owner: usersById }, ({ task }) => task.ownerId, "inner")
+    .where(({ owner }) => owner.active)
+    .orderBy(({ task }) => task.priority)
+    .orderBy(({ task }) => task.id)
+    .limit(10);
+};
+
+export const stableComputedJoined: JoinedList = (store) =>
+  stableComputed(() => {
+    const usersById = new Map(store.users.map((user) => [user.id, user]));
+    return store.tasks
+      .filter((task) => !task.completed && usersById.get(task.ownerId)?.active === true)
+      .sort((a, b) => a.priority - b.priority || a.id - b.id)
+      .slice(0, 10)
+      .map((task) => ({ task }));
+  });
+
+export function supergrainJoinStore(
+  tasks: Owned[],
+  users: User[],
+): { store: { tasks: Owned[]; users: User[] }; change: (change: JoinChange) => void } {
+  const store: { tasks: Owned[]; users: User[] } = createReactive({ tasks, users });
+  // Search the raw array: reading 10k rows through the store would cost more
+  // than the change being measured.
+  const indexOf = <T extends { id: number }>(list: T[], id: number) =>
+    unwrap(list).findIndex((row) => row.id === id);
+  return {
+    store,
+    change: (change: JoinChange) =>
+      batch(() => {
+        if ("task" in change)
+          Object.assign(store.tasks[indexOf(store.tasks, change.task)]!, change.patch);
+        else if ("user" in change)
+          Object.assign(store.users[indexOf(store.users, change.user)]!, change.patch);
+        else if ("addTask" in change) store.tasks.push(change.addTask);
+        else if ("removeTask" in change)
+          store.tasks.splice(indexOf(store.tasks, change.removeTask), 1);
+        else if ("addUser" in change) store.users.push(change.addUser);
+        else store.users.splice(indexOf(store.users, change.removeUser), 1);
+      }),
+  };
+}
+
+/** A collection written through a sync adapter, as server data would be. */
+function syncCollection<T extends { id: number }>(name: string, initial: T[]) {
+  const rows = new Map(initial.map((row) => [row.id, { ...row }]));
+  let writer!: {
+    begin: () => void;
+    write: (message: { type: "insert" | "update" | "delete"; value: T }) => void;
+    commit: () => void;
+  };
+  const collection = createCollection<T, number>({
+    id: `${name}-${Math.random()}`,
+    getKey: (row) => row.id,
+    startSync: true,
+    sync: {
+      sync: ({ begin, write, commit, markReady }) => {
+        writer = { begin, write, commit };
+        begin();
+        for (const row of rows.values()) write({ type: "insert", value: row });
+        commit();
+        markReady();
+      },
+    },
+  });
+  const write = (type: "insert" | "update" | "delete", value: T) => {
+    writer.begin();
+    writer.write({ type, value });
+    writer.commit();
+  };
+  return {
+    collection,
+    update: (id: number, patch: Partial<T>) => {
+      const next = { ...rows.get(id)!, ...patch };
+      rows.set(id, next);
+      write("update", next);
+    },
+    insert: (row: T) => {
+      rows.set(row.id, { ...row });
+      write("insert", { ...row });
+    },
+    remove: (id: number) => {
+      write("delete", rows.get(id)!);
+      rows.delete(id);
+    },
+  };
+}
+
+/** TanStack DB's join over two sync-written collections, with B-tree indexes. */
+export function tanstackJoin(tasks: Owned[], users: User[]) {
+  const taskRows = syncCollection("tasks", tasks);
+  const userRows = syncCollection("users", users);
+  taskRows.collection.createIndex((row) => row.priority, { indexType: BTreeIndex });
+  taskRows.collection.createIndex((row) => row.completed, { indexType: BTreeIndex });
+  taskRows.collection.createIndex((row) => row.ownerId, { indexType: BTreeIndex });
+  userRows.collection.createIndex((row) => row.active, { indexType: BTreeIndex });
+  return {
+    tasks: taskRows.collection,
+    users: userRows.collection,
+    change: (change: JoinChange) => {
+      if ("task" in change) taskRows.update(change.task, change.patch);
+      else if ("user" in change) userRows.update(change.user, change.patch);
+      else if ("addTask" in change) taskRows.insert(change.addTask);
+      else if ("removeTask" in change) taskRows.remove(change.removeTask);
+      else if ("addUser" in change) userRows.insert(change.addUser);
+      else userRows.remove(change.removeUser);
+    },
+    dispose: () => {
+      void taskRows.collection.cleanup();
+      void userRows.collection.cleanup();
+    },
+  };
+}
+
+/** The join query in TanStack DB's builder. (Typed loosely, as above.) */
+export const tanstackJoinedTopTen = (
+  q: InitialQueryBuilder,
+  tasks: Collection<Owned, number>,
+  users: Collection<User, number>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see tanstackTopTen
+): QueryBuilder<any> =>
+  q
+    .from({ task: tasks })
+    .join({ owner: users }, ({ task, owner }) => eq(task.ownerId, owner.id), "inner")
+    .where(({ task, owner }) => and(eq(task.completed, false), eq(owner.active, true)))
+    .orderBy(({ task }) => task.priority, "asc")
+    .orderBy(({ task }) => task.id, "asc")
+    .limit(10);

@@ -1,9 +1,5 @@
-import { setActiveSub } from "alien-signals";
-
-import { unwrap } from "./core";
-import { rethrowingComputed } from "./rethrowing-computed";
-import { createReactive } from "./store";
-import { syncArray } from "./sync-array";
+import { defaultCompare } from "./query/compare";
+import { createList, toGetter } from "./query/list";
 
 /** Options for {@link computedList}. */
 export interface ComputedListOptions<T extends object, K> {
@@ -28,376 +24,34 @@ export interface ComputedListOptions<T extends object, K> {
   limit?: number | (() => number);
 }
 
-/** A row's latest `where`/`orderBy` result. A new object only when it changed. */
-interface RowResult<K> {
-  readonly member: boolean;
-  readonly key: K | undefined;
-}
-
-interface Row<T, K> {
-  readonly item: T;
-  /** Order of first appearance; breaks ties between equal keys. */
-  readonly seq: number;
-  readonly result: () => RowResult<K>;
-  /** The result this row is filed under in the list. */
-  applied: RowResult<K>;
-  /** The last read that found this row in the source. */
-  seenAt: number;
-  /** The block this row belongs to, or -1 before it is placed in one. */
-  block: number;
-}
-
-/** A row whose result changed since it was last filed, and its new result. */
-type Change<T, K> = readonly [row: Row<T, K>, next: RowResult<K>];
-
-/**
- * A group of rows whose `version` changes whenever one of their results does.
- * The list reads one version per block instead of one result per row, so a
- * change to one row costs about √N reads instead of N.
- *
- * Rows stay in their block when other rows come and go, so adding or removing
- * a row replaces only the blocks it touched. The others keep their version.
- */
-interface Block<T, K> {
-  readonly rows: ReadonlyArray<Row<T, K>>;
-  readonly version: () => object;
-  /** The version last applied to the list. Set only after an update succeeds. */
-  applied: object | undefined;
-}
-
-interface Structure<T, K> {
-  readonly list: ReadonlyArray<Row<T, K>>;
-  readonly removed: ReadonlyArray<Row<T, K>>;
-  readonly blocks: ReadonlyArray<Block<T, K>>;
-}
-
-function createBlock<T, K>(rows: ReadonlyArray<Row<T, K>>): Block<T, K> {
-  return {
-    rows,
-    applied: undefined,
-    version: rethrowingComputed(() => {
-      for (const row of rows) row.result();
-      return {};
-    }),
-  };
-}
-
-const OUTSIDE: RowResult<never> = Object.freeze({ member: false, key: undefined });
-
 /**
  * A filtered, sorted, windowed view of a reactive collection that updates
  * **one row at a time**.
  *
  * A `stableComputed(() => xs.filter(where).sort(by).slice(0, 10))` already
  * skips changes to fields it never read, but when a field it did read changes,
- * it reruns `where` on every row and sorts everything again. `computedList` keeps
- * the first property and fixes the second:
+ * it reruns `where` on every row and sorts everything again. `computedList`
+ * keeps the first property and fixes the second: each row's `where` and
+ * `orderBy` run in their own computed, and the list moves only the rows whose
+ * result changed. See `createList` for how.
  *
- * - each row gets its own `computed` for `where` and `orderBy`, so the kernel's
- *   field tracking reruns them for the changed row only;
- * - the list keeps the matching rows in a sorted array, and moves only the
- *   rows whose result changed, with a binary search;
- * - the result is one persistent reactive array synced in place (as in
- *   `stableComputed`), so only slots that changed notify.
- *
- * It is pull-based: nothing runs until the list is read, there are no
- * effects, and so there is nothing to dispose. Call the list in every reader
- * rather than holding on to the array it returns — calling it is what
- * brings the array up to date.
- *
- * To find the changed row without checking every row, rows are grouped into
- * blocks of about √N, each with a version that changes when one of its rows'
- * results does. A field edit costs about √N cached reads (two blocks' worth),
- * not N. Adding or removing rows in the source walks it once (no `where` or
- * `orderBy` calls for rows it already knew), and replaces only the blocks
- * those rows were in. Without `orderBy`, the result is refiltered in source
- * order from cached results on each change.
+ * Call the list in every reader rather than holding on to the array it
+ * returns — calling it is what brings the array up to date.
  */
 export function computedList<T extends object, K = unknown>(
   options: ComputedListOptions<T, K>,
 ): () => ReadonlyArray<T> {
   const { from, where, orderBy } = options;
-  const compare = (options.compare ?? defaultCompare) as (
-    a: K | undefined,
-    b: K | undefined,
-  ) => number;
-  const offsetOf = toGetter(options.offset, 0);
-  const limitOf = toGetter(options.limit, Infinity);
-
-  // Rows by raw object. Each read stamps the rows it finds with `seenAt`, so
-  // a row with an older stamp has left the source. (A stamp, rather than
-  // moving rows between maps, stays correct when a read throws part-way.)
-  const rows = new Map<object, Row<T, K>>();
-  let reads = 0;
-  // The matching rows by `(key, seq)`. `null` after a read threw part-way (a
-  // throwing `where`, `orderBy` or `compare`), so the next read rebuilds it
-  // from `rows` instead of trusting it: rows that left the source during the
-  // failed read were never taken out of it.
-  let sorted: Array<Row<T, K>> | null = [];
-  let nextSeq = 0;
-  const out = createReactive<Array<T>>([]) as Array<T>;
-
-  const compareRows = (a: Row<T, K>, b: Row<T, K>): number =>
-    compare(a.applied.key, b.applied.key) || a.seq - b.seq;
-
-  function createRow(item: T): Row<T, K> {
-    return {
-      item,
-      seq: nextSeq++,
-      applied: OUTSIDE,
-      seenAt: 0,
-      block: -1,
-      result: rethrowingComputed((previous: RowResult<K> | undefined): RowResult<K> => {
-        const member = where ? Boolean(where(item)) : true;
-        const key = member && orderBy ? orderBy(item) : undefined;
-        // Hand back the previous object when nothing changed, so the list
-        // isn't dirtied by edits that don't move this row.
-        if (
-          previous &&
-          previous.member === member &&
-          (!member || !orderBy || untracked(() => compare(previous.key, key)) === 0)
-        ) {
-          return previous;
-        }
-        return { member, key };
-      }),
-    };
-  }
-
-  // The source's rows in order, the rows that left it, and the blocks.
-  // Recomputed only when the source's structure changes.
-  let blocks: Array<Block<T, K>> = [];
-  const structure = rethrowingComputed(readStructure);
-  let current: Structure<T, K> | undefined = undefined;
-  // Without `orderBy`: the matching rows in source order.
-  let matching: ReadonlyArray<Row<T, K>> = [];
-
-  return rethrowingComputed((): ReadonlyArray<T> => {
-    try {
-      return update();
-    } catch (error) {
-      sorted = null;
-      throw error;
-    }
+  return createList<T, T, K | undefined>({
+    source: from,
+    run: (item) => {
+      if (where && !where(item)) return { member: false };
+      return { member: true, value: item, key: orderBy?.(item) };
+    },
+    compare: orderBy
+      ? ((options.compare ?? defaultCompare) as (a: K | undefined, b: K | undefined) => number)
+      : undefined,
+    offset: toGetter(options.offset, 0),
+    limit: toGetter(options.limit, Infinity),
   });
-
-  function update(): ReadonlyArray<T> {
-    // Tracked: the source's structure, each block's version, the window.
-    const next = structure();
-    const versions = next.blocks.map((block) => block.version());
-    const offset = Math.max(0, offsetOf());
-    const limit = Math.max(0, limitOf());
-    // Untracked: `compare` may read reactive values, and the list must not
-    // subscribe to them or to its own output.
-    untracked(() => {
-      const changes: Array<Change<T, K>> = [];
-      if (next !== current) {
-        for (const row of next.removed) if (row.applied.member) changes.push([row, OUTSIDE]);
-      }
-      next.blocks.forEach((block, b) => {
-        if (versions[b] !== block.applied) collectChanges(block.rows, changes);
-      });
-      const ordered = orderBy ? applyChanges(changes) : filterChanges(next, changes);
-      syncArray(
-        out,
-        ordered.slice(offset, offset + limit).map((row) => row.item),
-      );
-    });
-    // Nothing threw: record what the list now reflects.
-    next.blocks.forEach((block, b) => (block.applied = versions[b]));
-    current = next;
-    return out;
-  }
-
-  /** Walk the source: its rows in order (once each), the rows that left, and the blocks. */
-  function readStructure(): Structure<T, K> {
-    const read = ++reads;
-    const list: Array<Row<T, K>> = [];
-    const unplaced: Array<Row<T, K>> = [];
-    const removed: Array<Row<T, K>> = [];
-    forEachItem(from(), (item) => {
-      if (typeof item !== "object" || item === null) {
-        throw new TypeError("@supergrain/kernel: computedList rows must be objects.");
-      }
-      const raw = unwrap(item);
-      let row = rows.get(raw);
-      if (row === undefined) {
-        row = createRow(item);
-        rows.set(raw, row);
-      } else if (row.seenAt === read) {
-        return; // The same object twice counts once.
-      }
-      row.seenAt = read;
-      list.push(row);
-      if (row.block === -1) unplaced.push(row);
-    });
-    if (list.length < rows.size) {
-      for (const [raw, row] of rows) {
-        if (row.seenAt !== read) {
-          rows.delete(raw);
-          removed.push(row);
-        }
-      }
-    }
-    // The walk succeeded, so it's safe to move rows between blocks now.
-    placeRows(list, unplaced, removed, read);
-    return { list, removed, blocks: [...blocks] };
-  }
-
-  /**
-   * Take removed rows out of their blocks and put new rows in the last
-   * block, or new ones. Only the blocks that changed are replaced. When
-   * removals have left too many sparse blocks, regroup every row.
-   */
-  function placeRows(
-    list: ReadonlyArray<Row<T, K>>,
-    unplaced: ReadonlyArray<Row<T, K>>,
-    removed: ReadonlyArray<Row<T, K>>,
-    read: number,
-  ): void {
-    const size = Math.max(16, Math.ceil(Math.sqrt(list.length)));
-    if (blocks.length + unplaced.length / size > 2 * Math.ceil(list.length / size) + 1) {
-      blocks = [];
-      for (let start = 0; start < list.length; start += size) {
-        blocks.push(placeIn(blocks.length, list.slice(start, start + size)));
-      }
-      return;
-    }
-    const edited = new Map<number, Array<Row<T, K>>>();
-    const rowsOf = (b: number): Array<Row<T, K>> => {
-      let blockRows = edited.get(b);
-      if (blockRows === undefined) {
-        blockRows = b < blocks.length ? blocks[b]!.rows.filter((row) => row.seenAt === read) : [];
-        edited.set(b, blockRows);
-      }
-      return blockRows;
-    };
-    for (const row of removed) if (row.block !== -1) rowsOf(row.block);
-    let last = blocks.length - 1;
-    for (const row of unplaced) {
-      const lastSize = edited.get(last)?.length ?? blocks[last]?.rows.length ?? size;
-      if (lastSize >= size) last++;
-      rowsOf(last).push(row);
-    }
-    for (const [b, blockRows] of edited) blocks[b] = placeIn(b, blockRows);
-  }
-
-  function placeIn(b: number, blockRows: ReadonlyArray<Row<T, K>>): Block<T, K> {
-    for (const row of blockRows) row.block = b;
-    return createBlock(blockRows);
-  }
-
-  /** Without `orderBy`: the matching rows in source order, refiltered only when something changed. */
-  function filterChanges(
-    next: Structure<T, K>,
-    changes: ReadonlyArray<Change<T, K>>,
-  ): ReadonlyArray<Row<T, K>> {
-    for (const [row, result] of changes) row.applied = result;
-    if (next !== current || changes.length > 0) {
-      matching = next.list.filter((row) => row.applied.member);
-    }
-    return matching;
-  }
-
-  function applyChanges(changes: ReadonlyArray<Change<T, K>>): ReadonlyArray<Row<T, K>> {
-    // When many rows moved at once (say `where` reads a shared value), sorting
-    // from scratch is cheaper than moving each one.
-    if (sorted === null || changes.length > 16 + sorted.length / 4) {
-      for (const [row, next] of changes) row.applied = next;
-      sorted = [...rows.values()].filter((row) => row.applied.member).sort(compareRows);
-      return sorted;
-    }
-    for (const [row, next] of changes) {
-      if (row.applied.member) sorted.splice(indexOf(sorted, row, compareRows), 1);
-      row.applied = next;
-      if (next.member) sorted.splice(insertionPoint(sorted, row, compareRows), 0, row);
-    }
-    return sorted;
-  }
-}
-
-/** Add each row whose result differs from where it is filed. */
-function collectChanges<T, K>(
-  blockRows: ReadonlyArray<Row<T, K>>,
-  changes: Array<Change<T, K>>,
-): void {
-  for (const row of blockRows) {
-    const result = row.result();
-    if (result !== row.applied) changes.push([row, result]);
-  }
-}
-
-/** The first index in `sorted` whose item orders at or after `item`. */
-function insertionPoint<R>(
-  sorted: ReadonlyArray<R>,
-  item: R,
-  compare: (a: R, b: R) => number,
-): number {
-  let low = 0;
-  let high = sorted.length;
-  while (low < high) {
-    const mid = (low + high) >>> 1;
-    if (compare(sorted[mid]!, item) < 0) low = mid + 1;
-    else high = mid;
-  }
-  return low;
-}
-
-/** Where `item` sits in `sorted`, by binary search. */
-function indexOf<R>(sorted: ReadonlyArray<R>, item: R, compare: (a: R, b: R) => number): number {
-  const i = insertionPoint(sorted, item, compare);
-  // A miss only happens with an inconsistent `compare` or a key that mutated.
-  return sorted[i] === item ? i : sorted.indexOf(item);
-}
-
-/** Run `fn` without subscribing the active computed to what it reads. */
-function untracked<R>(fn: () => R): R {
-  const prevSub = setActiveSub(undefined);
-  try {
-    return fn();
-  } finally {
-    setActiveSub(prevSub);
-  }
-}
-
-function toGetter(value: number | (() => number) | undefined, fallback: number): () => number {
-  if (typeof value === "function") return value;
-  const fixed = value ?? fallback;
-  return () => fixed;
-}
-
-// A kernel array's `forEach` subscribes to its structure with three signals;
-// `for...of` would subscribe to every index.
-function forEachItem<T>(source: Iterable<T>, fn: (item: T) => void): void {
-  if (Array.isArray(source)) {
-    (source as ReadonlyArray<T>).forEach((item) => fn(item));
-  } else {
-    for (const item of source) fn(item);
-  }
-}
-
-function isMissing(value: unknown): boolean {
-  return value === null || value === undefined || Number.isNaN(value);
-}
-
-/**
- * A total order over numbers, strings, bigints and arrays of them. Values of
- * different types order by type name; `null`, `undefined` and `NaN` sort last.
- */
-function defaultCompare(a: unknown, b: unknown): number {
-  const aMissing = isMissing(a);
-  const bMissing = isMissing(b);
-  if (aMissing || bMissing) return Number(aMissing) - Number(bMissing);
-  if (Array.isArray(a) && Array.isArray(b)) {
-    const length = Math.min(a.length, b.length);
-    for (let i = 0; i < length; i++) {
-      const order = defaultCompare(a[i], b[i]);
-      if (order !== 0) return order;
-    }
-    return a.length - b.length;
-  }
-  const aType = typeof a;
-  const bType = typeof b;
-  if (aType !== bType) return aType < bType ? -1 : 1;
-  return (a as number) < (b as number) ? -1 : (a as number) > (b as number) ? 1 : 0;
 }
