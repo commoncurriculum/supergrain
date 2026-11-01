@@ -1,7 +1,7 @@
 import type { ReactiveNode } from "alien-signals/system";
 
 import { effect } from "@supergrain/kernel";
-import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
+import { getActiveSub, setActiveSub, untracked } from "@supergrain/kernel/internal";
 import { type FC, memo, useReducer } from "react";
 
 import { scheduleDisposal } from "./disposal-queue";
@@ -115,23 +115,27 @@ function trackRender(onChange: () => void): TrackedState {
   let effectNode: ReactiveNode | undefined = undefined;
   // Created outside any active subscriber, so it isn't owned (and disposed)
   // by whatever effect happens to be running.
-  const prev = setActiveSub(undefined);
-  try {
-    const cleanup = effect(() => {
+  const cleanup = untracked(() =>
+    effect(() => {
       if (effectNode === undefined) {
         effectNode = getActiveSub();
         return;
       }
       keepDependencies(effectNode);
       onChange();
-    });
-    return { cleanup, effectNode: effectNode! };
-  } finally {
-    setActiveSub(prev);
-  }
+    }),
+  );
+  return { cleanup, effectNode: effectNode! };
 }
 
-/** Mark every current dependency as read in this run, so none are dropped. */
+/**
+ * Mark every current dependency as read in this run, so none are dropped.
+ *
+ * This sets `depsTail`, a field of alien-signals' node, not its public API:
+ * after a run, the effect drops every link after `depsTail`. Checked against
+ * alien-signals 3.2. Recheck it when upgrading: the test "keep their cached
+ * state across re-renders" in tracked.test.tsx fails if it stops working.
+ */
 function keepDependencies(node: ReactiveNode): void {
   // An effect only fires through a dependency, so there is at least one.
   let link = node.deps!;

@@ -1,8 +1,9 @@
-import { setActiveSub, signal } from "alien-signals";
+import { signal } from "alien-signals";
 
+import { untracked } from "../core";
 import { rethrowingComputed } from "../rethrowing-computed";
 import { isMissing } from "./compare";
-import { forEachItem } from "./list";
+import { forEachItem } from "./source-rows";
 
 /** A collection's docs by key, for looking docs up inside query steps. */
 export interface Lookup<K, V> {
@@ -75,13 +76,4 @@ export function createLookup<V extends object, K>(
     sync,
     get: (k) => (isMissing(k) ? undefined : slotOf(k as K)()),
   };
-}
-
-function untracked<R>(fn: () => R): R {
-  const prevSub = setActiveSub(undefined);
-  try {
-    return fn();
-  } finally {
-    setActiveSub(prevSub);
-  }
 }

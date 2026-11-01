@@ -1,4 +1,4 @@
-import { signal } from "alien-signals";
+import { setActiveSub, signal } from "alien-signals";
 
 // Phantom brand for compile-time store identification (no runtime property).
 // Exported as a real symbol so consumers can reference `typeof $BRAND` in type positions.
@@ -112,4 +112,14 @@ export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown
   const newSignal = signal(value) as Signal<unknown>;
   nodes[property] = newSignal;
   return newSignal;
+}
+
+/** Run `fn` without subscribing the active subscriber to what it reads. */
+export function untracked<R>(fn: () => R): R {
+  const prevSub = setActiveSub(undefined);
+  try {
+    return fn();
+  } finally {
+    setActiveSub(prevSub);
+  }
 }

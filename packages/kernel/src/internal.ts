@@ -8,6 +8,7 @@ export {
   $RAW,
   $VERSION,
   trackArrayElements,
+  untracked,
   type ReactiveTagged,
 } from "./core";
 export { setProperty, deleteProperty, bumpOwnKeysSignal, bumpVersion } from "./write";

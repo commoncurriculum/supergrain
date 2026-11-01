@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { batch, createReactive, effect, signal, stableComputed, unwrap } from "../../src";
 import { defaultCompare } from "../../src/query/compare";
-import { createList, toGetter } from "../../src/query/list";
+import { toGetter } from "../../src/query/computed-list";
+import { createList } from "../../src/query/list";
 
 interface Task {
   id: number;

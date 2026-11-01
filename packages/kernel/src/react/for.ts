@@ -1,5 +1,5 @@
 import { effect, unwrap, $TRACK } from "@supergrain/kernel";
-import { setActiveSub, trackArrayElements, type ReactiveTagged } from "@supergrain/kernel/internal";
+import { trackArrayElements, untracked, type ReactiveTagged } from "@supergrain/kernel/internal";
 import React, { useEffect, useLayoutEffect, useReducer, useRef } from "react";
 
 /* c8 ignore start -- the React project runs in a browser; this branch is for SSR consumers */
@@ -109,15 +109,10 @@ export const For = tracked((props: ForProps<unknown>) => {
 
   // Item reads below are untracked: `For` already follows the array as a
   // whole, and per-index subscriptions would only add N links.
-  const prevSub = setActiveSub(undefined);
-  try {
-    const slots = parent
-      ? reusedElements(raw, each, children, elementsRef)
-      : rowComponents(raw, each, children);
-    return React.createElement(React.Fragment, null, ...slots);
-  } finally {
-    setActiveSub(prevSub);
-  }
+  const slots = untracked(() =>
+    parent ? reusedElements(raw, each, children, elementsRef) : rowComponents(raw, each, children),
+  );
+  return React.createElement(React.Fragment, null, ...slots);
 }) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;
 
 /**

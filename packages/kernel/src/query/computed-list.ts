@@ -1,6 +1,6 @@
 import { unwrap } from "../core";
 import { defaultCompare } from "./compare";
-import { createList, toGetter } from "./list";
+import { createList } from "./list";
 import { createLookup, type Lookup } from "./lookup";
 
 /** Sort direction for {@link Sorted.orderBy}. `null`, `undefined` and `NaN` sort last ascending. */
@@ -97,14 +97,9 @@ export function computedList<
   T extends object,
   S extends Record<string, LookupSource> = Record<never, never>,
 >(source: () => Iterable<T>, lookups?: S): Query<T, Lookups<S>> {
-  const named = {} as Record<string, Lookup<unknown, object>>;
-  for (const [name, from] of Object.entries(lookups ?? {})) {
-    let lookup: Lookup<unknown, object> | undefined = undefined;
-    Object.defineProperty(named, name, {
-      enumerable: true,
-      get: () => (lookup ??= lookupOf(from)),
-    });
-  }
+  // A lookup builds nothing until it's read, so making them all now is cheap.
+  const named: Record<string, Lookup<unknown, object>> = {};
+  for (const [name, from] of Object.entries(lookups ?? {})) named[name] = lookupOf(from);
   return makeQuery({
     source,
     lookups: named,
@@ -155,7 +150,7 @@ const NO_KEY: ReadonlyArray<unknown> = [];
 
 function build({ source, lookups, steps, order, offset, limit }: Spec) {
   const mapped = steps.some((step) => step.kind === "map");
-  // Every named lookup, created now so the list can sync them before each read.
+  // The list syncs every named lookup before each read.
   const used = Object.values(lookups as Record<string, Lookup<unknown, object>>);
   return createList<object, unknown, ReadonlyArray<unknown>>({
     source,
@@ -209,4 +204,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || unwrap(value) !== value) return false;
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
+}
+
+/** A fixed or reactive count as a getter, with `fallback` for none. */
+export function toGetter(
+  value: number | (() => number) | undefined,
+  fallback: number,
+): () => number {
+  if (typeof value === "function") return value;
+  const fixed = value ?? fallback;
+  return () => fixed;
 }
