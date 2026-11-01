@@ -130,6 +130,47 @@ describe("query engine", () => {
     expect(ids(view())).toEqual([1, 2, 3, 7, 10]);
   });
 
+  it("without a sort, follows a filter change and a reactive limit", () => {
+    const store = createReactive({ tasks: makeTasks(6) });
+    const limit = signal(10);
+    const view = engine({ source: () => store.tasks, filter: (task) => !task.completed, limit });
+    expect(ids(view())).toEqual([1, 3, 5]);
+
+    store.tasks[0]!.completed = false;
+    expect(ids(view())).toEqual([0, 1, 3, 5]);
+
+    limit(2);
+    expect(ids(view())).toEqual([0, 1]);
+  });
+
+  it("drops a row that arrived and left while the source walk was throwing", () => {
+    const store = createReactive({ tasks: makeTasks(4) as unknown[] });
+    const view = engine({ source: () => store.tasks as Task[], sortKey: (task) => task.id });
+    expect(ids(view())).toEqual([0, 1, 2, 3]);
+
+    // The walk meets the new task, then throws on the number after it.
+    store.tasks.push({ id: 9, completed: false, priority: 0, title: "new" }, 5);
+    expect(() => view()).toThrow();
+
+    store.tasks.splice(4);
+    expect(ids(view())).toEqual([0, 1, 2, 3]);
+  });
+
+  it("regroups its blocks after most rows leave, and stays correct", () => {
+    // 64 rows fill 4 blocks of 16. Keeping 10 leaves more sparse blocks
+    // than the list needs, so the next walk regroups every row.
+    const store = createReactive({ tasks: makeTasks(64) });
+    const view = engine({ source: () => store.tasks, sortKey: (task) => -task.id });
+    expect(view()).toHaveLength(64);
+
+    store.tasks.splice(10);
+    expect(ids(view())).toEqual([9, 8, 7, 6, 5, 4, 3, 2, 1, 0]);
+
+    store.tasks[3]!.id = 100;
+    store.tasks.push({ id: 50, completed: false, priority: 0, title: "new" });
+    expect(ids(view())).toEqual([100, 50, 9, 8, 7, 6, 5, 4, 2, 1, 0]);
+  });
+
   it("reads a Map's values", () => {
     const tasks = createReactive(new Map(makeTasks(4).map((task) => [task.id, task])));
     const view = engine({
