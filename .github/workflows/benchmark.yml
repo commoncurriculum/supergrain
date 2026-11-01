@@ -112,6 +112,9 @@ jobs:
         env:
           RUNS: ${{ github.event.inputs.runs || '10' }}
           BASE_REF: ${{ github.base_ref || 'default' }}
+          # Temporary: force a GC before each trace, to check whether the
+          # create-rows slowdown is GC timing. Reverted in the next commit.
+          PROFILE: "1"
         run: >
           node perf-ab.ts
           --mode app
