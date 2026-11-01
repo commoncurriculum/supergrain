@@ -1,3 +1,5 @@
+import { setActiveSub, signal } from "alien-signals";
+
 import { rethrowingComputed } from "../rethrowing-computed";
 import { isMissing } from "./compare";
 import { forEachItem } from "./list";
@@ -10,6 +12,12 @@ export interface Lookup<K, V> {
    * when other keys do.
    */
   get(key: K | null | undefined): V | undefined;
+  /**
+   * Bring every looked-up key up to date with the source, and subscribe the
+   * caller to the source. A list calls this before reading its rows, so a
+   * change to the source wakes only the rows whose key now finds another doc.
+   */
+  sync(): void;
 }
 
 /**
@@ -20,38 +28,60 @@ export interface Lookup<K, V> {
  *
  * The map is rebuilt when the source's structure changes, or when a key a
  * doc returned changes. That's one walk of the source. Each key that has been
- * looked up has its own computed over the map, so a rebuild wakes only the
- * readers whose key now finds another doc.
+ * looked up has its own signal, written only when the doc under that key
+ * changes. Readers subscribe to that signal alone, never to the map, so one
+ * change to the source doesn't mark every reader for a recheck.
  */
 export function createLookup<V extends object, K>(
   source: () => Iterable<V>,
   key: (doc: V) => K,
 ): Lookup<K, V> {
-  const lookups = new Map<K, () => V | undefined>();
+  const slots = new Map<K, (value?: V) => V | undefined>();
+  let synced: Map<K, V> | undefined = undefined;
   const entries = rethrowingComputed((): Map<K, V> => {
     const map = new Map<K, V>();
     forEachItem(source(), (doc) => {
       const k = key(doc);
       if (!isMissing(k) && !map.has(k)) map.set(k, doc);
     });
-    // Forget lookups for keys that are gone. A reader still subscribed to a
-    // forgotten one keeps working: it still reads the map, and looks the key
-    // up again (making a new lookup) when the map changes.
-    if (lookups.size > 2 * map.size + 64) {
-      for (const k of lookups.keys()) if (!map.has(k)) lookups.delete(k);
-    }
     return map;
   });
-  return {
-    get: (k) => (isMissing(k) ? undefined : lookupOf(k as K)()),
-  };
 
-  function lookupOf(k: K): () => V | undefined {
-    let lookup = lookups.get(k);
-    if (lookup === undefined) {
-      lookup = rethrowingComputed(() => entries().get(k));
-      lookups.set(k, lookup);
+  /** The signal holding the doc under `k`, made on first use. */
+  function slotOf(k: K): (value?: V) => V | undefined {
+    // Untracked: the reader subscribes to its key's slot, not to the map.
+    untracked(sync);
+    let slot = slots.get(k);
+    if (slot === undefined) {
+      slot = signal<V | undefined>(synced!.get(k)) as (value?: V) => V | undefined;
+      slots.set(k, slot);
     }
-    return lookup;
+    return slot;
+  }
+
+  function sync(): void {
+    const map = entries();
+    if (map === synced) return;
+    synced = map;
+    // A slot stays for as long as the lookup does: a reader may be
+    // subscribed to it even while no doc has its key.
+    for (const [k, slot] of slots) {
+      const doc = map.get(k);
+      if (untracked(slot) !== doc) slot(doc);
+    }
+  }
+
+  return {
+    sync,
+    get: (k) => (isMissing(k) ? undefined : slotOf(k as K)()),
+  };
+}
+
+function untracked<R>(fn: () => R): R {
+  const prevSub = setActiveSub(undefined);
+  try {
+    return fn();
+  } finally {
+    setActiveSub(prevSub);
   }
 }

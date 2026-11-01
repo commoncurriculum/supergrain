@@ -277,7 +277,7 @@ describe("computedList", () => {
     expect(ids(query())).toEqual([5, 6]);
   });
 
-  it("forgets lookups for missing keys, and rows that used them still update", () => {
+  it("updates rows that looked up a missing key once a doc gets that key", () => {
     const { store, tasks } = setup();
     store.tasks.push(
       ...Array.from({ length: 200 }, (_, i) => ({
@@ -292,7 +292,6 @@ describe("computedList", () => {
       .filter((task) => task.id >= 100)
       .map((task, { users }) => users.get(task.ownerId)?.name);
     expect(query().filter(Boolean)).toEqual([]);
-    // Rebuilding the lookup map forgets the 200 lookups for missing keys.
     store.users.push({ id: "other", name: "Other", active: true });
     store.users.push({ id: "k99", name: "Kay", active: true });
     expect(query().filter(Boolean)).toEqual(["Kay"]);

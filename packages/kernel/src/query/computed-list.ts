@@ -155,8 +155,13 @@ const NO_KEY: ReadonlyArray<unknown> = [];
 
 function build({ source, lookups, steps, order, offset, limit }: Spec) {
   const mapped = steps.some((step) => step.kind === "map");
+  // Every named lookup, created now so the list can sync them before each read.
+  const used = Object.values(lookups as Record<string, Lookup<unknown, object>>);
   return createList<object, unknown, ReadonlyArray<unknown>>({
     source,
+    prepare: () => {
+      for (const lookup of used) lookup.sync();
+    },
     run: (item, previous) => {
       let row: unknown = item;
       for (const { kind, fn } of steps) {

@@ -6,6 +6,7 @@ import { wrap } from "../read";
 import { rethrowingComputed } from "../rethrowing-computed";
 import { createReactive } from "../store";
 import { syncArray } from "../sync-array";
+import { createSortedRows } from "./sorted-rows";
 
 /**
  * What a row's steps produce: whether it's in the list, its output value, and
@@ -19,6 +20,11 @@ export type RowOutcome<O, K> =
 export interface ListOptions<S extends object, O, K> {
   /** The source items. Read reactively; only its structure should be read here. */
   source: () => Iterable<S>;
+  /**
+   * Runs, tracked, at the start of every update, before any row is read. The
+   * query uses it to bring its lookups up to date.
+   */
+  prepare?: () => void;
   /**
    * Run a row's steps. Runs inside the row's own computed, so it reruns only
    * when something it read changes. `previous` is the value it last returned,
@@ -60,17 +66,30 @@ interface Row<T, O, K> {
 /** A row whose result changed since it was last filed, and its new result. */
 type Change<T, O, K> = readonly [row: Row<T, O, K>, next: RowResult<O, K>];
 
+/** Rows per block. */
+const BLOCK = 16;
+/** Blocks per group. */
+const GROUP = 16;
+
 /**
- * A group of rows with one computed over all their results. It reruns when
+ * Up to `BLOCK` rows with one computed over all their results. It reruns when
  * one of them changes, and returns the rows whose result differs from where
- * they are filed. The list reads one of these per block instead of one result
- * per row, so a change to one row costs about √N reads instead of N.
+ * they are filed.
  *
  * Rows stay in their block when other rows come and go, so adding or removing
- * a row replaces only the blocks it touched. The others keep their changes.
+ * a row replaces only the blocks it touched.
  */
 interface Block<T, O, K> {
   readonly rows: ReadonlyArray<Row<T, O, K>>;
+  readonly changes: () => ReadonlyArray<Change<T, O, K>>;
+}
+
+/**
+ * Up to `BLOCK` blocks with one computed over their changes. The list reads
+ * one of these per group, so a field edit costs a few dozen cached reads
+ * (every group, then one group's blocks, then one block's rows), not N.
+ */
+interface Group<T, O, K> {
   readonly changes: () => ReadonlyArray<Change<T, O, K>>;
   /** The changes last applied to the list. Set only after an update succeeds. */
   applied: ReadonlyArray<Change<T, O, K>> | undefined;
@@ -79,13 +98,12 @@ interface Block<T, O, K> {
 interface Structure<T, O, K> {
   readonly list: ReadonlyArray<Row<T, O, K>>;
   readonly removed: ReadonlyArray<Row<T, O, K>>;
-  readonly blocks: ReadonlyArray<Block<T, O, K>>;
+  readonly groups: ReadonlyArray<Group<T, O, K>>;
 }
 
 function createBlock<T, O, K>(rows: ReadonlyArray<Row<T, O, K>>): Block<T, O, K> {
   return {
     rows,
-    applied: undefined,
     changes: rethrowingComputed(() => {
       const changes: Array<Change<T, O, K>> = [];
       for (const row of rows) {
@@ -94,6 +112,13 @@ function createBlock<T, O, K>(rows: ReadonlyArray<Row<T, O, K>>): Block<T, O, K>
       }
       return changes;
     }),
+  };
+}
+
+function createGroup<T, O, K>(blocks: ReadonlyArray<Block<T, O, K>>): Group<T, O, K> {
+  return {
+    applied: undefined,
+    changes: rethrowingComputed(() => blocks.flatMap((block) => block.changes())),
   };
 }
 
@@ -119,33 +144,34 @@ const OUTSIDE: RowResult<never, never> = Object.freeze({
  * effects, and so there is nothing to dispose.
  *
  * To find the changed row without checking every row, rows are grouped into
- * blocks of about √N, each with a computed that finds which of its rows'
- * outcomes changed. A field edit costs about √N cached reads (two blocks'
- * worth), not N. Adding or removing rows in the source walks it once (no
- * steps run for rows it already knew), and replaces only the blocks those
- * rows were in. Without a sort, the result is refiltered in source order from
- * cached outcomes on each change.
+ * small blocks, and blocks into groups, each with a computed that finds which
+ * of its rows' outcomes changed. A field edit costs a few dozen cached reads,
+ * not N. When the source is a store array, adding or removing rows applies the
+ * array's recent splices (see `array-log.ts`) and replaces only the blocks
+ * those rows were in. Without a sort, the result is refiltered in source order
+ * from cached outcomes on each change.
  */
 export function createList<T extends object, O, K>(
   options: ListOptions<T, O, K>,
 ): () => ReadonlyArray<O> {
-  const { source, run, compare, offset: offsetOf, limit: limitOf } = options;
+  const { source, prepare, run, compare, offset: offsetOf, limit: limitOf } = options;
 
   // Rows by raw object. Each read stamps the rows it finds with `seenAt`, so
   // a row with an older stamp has left the source. (A stamp, rather than
   // moving rows between maps, stays correct when a read throws part-way.)
   const rows = new Map<object, Row<T, O, K>>();
   let reads = 0;
-  // The matching rows by `(key, seq)`. `null` after a read threw part-way (a
-  // a throwing step or `compare`), so the next read rebuilds it
-  // from `rows` instead of trusting it: rows that left the source during the
-  // failed read were never taken out of it.
-  let sorted: Array<Row<T, O, K>> | null = [];
   let nextSeq = 0;
   const out = createReactive<Array<O>>([]) as Array<O>;
 
   const compareRows = (a: Row<T, O, K>, b: Row<T, O, K>): number =>
     compare!(a.applied.key as K, b.applied.key as K) || a.seq - b.seq;
+  // The matching rows by `(key, seq)`. Stale after a read threw part-way (a
+  // throwing step or `compare`), so the next read rebuilds it from `rows`
+  // instead of trusting it: rows that left the source during the failed read
+  // were never taken out of it.
+  const sorted = createSortedRows(compareRows);
+  let sortedIsStale = false;
 
   function createRow(item: T, raw: object): Row<T, O, K> {
     return {
@@ -176,6 +202,7 @@ export function createList<T extends object, O, K>(
   // The source's rows in order, the rows that left it, and the blocks.
   // Recomputed only when the source's structure changes.
   let blocks: Array<Block<T, O, K>> = [];
+  let groups: Array<Group<T, O, K>> = [];
   const structure = rethrowingComputed(readStructure);
   let current: Structure<T, O, K> | undefined = undefined;
   // Without a sort: the matching rows in source order.
@@ -191,15 +218,17 @@ export function createList<T extends object, O, K>(
     try {
       return update();
     } catch (error) {
-      sorted = null;
+      sortedIsStale = true;
       throw error;
     }
   });
 
   function update(): ReadonlyArray<O> {
-    // Tracked: the source's structure, each block's changes, the window.
+    // Tracked: the lookups, the source's structure, each group's changes,
+    // the window.
+    prepare?.();
     const next = structure();
-    const pending = next.blocks.map((block) => block.changes());
+    const pending = next.groups.map((group) => group.changes());
     const offset = Math.max(0, offsetOf());
     const limit = Math.max(0, limitOf());
     // Untracked: `compare` may read reactive values, and the list must not
@@ -209,10 +238,10 @@ export function createList<T extends object, O, K>(
       if (next !== current) {
         for (const row of next.removed) if (row.applied.member) changes.push([row, OUTSIDE]);
       }
-      next.blocks.forEach((block, b) => {
-        if (pending[b] === block.applied) return;
+      next.groups.forEach((group, g) => {
+        if (pending[g] === group.applied) return;
         // A failed update may have filed some of these already.
-        for (const change of pending[b]!) if (change[0].applied !== change[1]) changes.push(change);
+        for (const change of pending[g]!) if (change[0].applied !== change[1]) changes.push(change);
       });
       const ordered = compare ? applyChanges(changes) : filterChanges(next, changes);
       syncArray(
@@ -221,7 +250,7 @@ export function createList<T extends object, O, K>(
       );
     });
     // Nothing threw: record what the list now reflects.
-    next.blocks.forEach((block, b) => (block.applied = pending[b]));
+    next.groups.forEach((group, g) => (group.applied = pending[g]));
     current = next;
     return out;
   }
@@ -366,7 +395,7 @@ export function createList<T extends object, O, K>(
     removed: ReadonlyArray<Row<T, O, K>>,
   ): Structure<T, O, K> {
     placeRows(list, unplaced, removed);
-    return { list, removed, blocks: [...blocks] };
+    return { list, removed, groups: [...groups] };
   }
 
   /**
@@ -379,11 +408,15 @@ export function createList<T extends object, O, K>(
     unplaced: ReadonlyArray<Row<T, O, K>>,
     removed: ReadonlyArray<Row<T, O, K>>,
   ): void {
-    const size = Math.max(16, Math.ceil(Math.sqrt(list.length)));
+    const size = BLOCK;
     if (blocks.length + unplaced.length / size > 2 * Math.ceil(list.length / size) + 1) {
       blocks = [];
       for (let start = 0; start < list.length; start += size) {
         blocks.push(placeIn(blocks.length, list.slice(start, start + size)));
+      }
+      groups = [];
+      for (let start = 0; start < blocks.length; start += GROUP) {
+        groups.push(createGroup(blocks.slice(start, start + GROUP)));
       }
       return;
     }
@@ -404,7 +437,14 @@ export function createList<T extends object, O, K>(
       if (lastSize >= size) last++;
       rowsOf(last).push(row);
     }
-    for (const [b, blockRows] of edited) blocks[b] = placeIn(b, blockRows);
+    const regroup = new Set<number>();
+    for (const [b, blockRows] of edited) {
+      blocks[b] = placeIn(b, blockRows);
+      regroup.add(Math.floor(b / GROUP));
+    }
+    for (const g of regroup) {
+      groups[g] = createGroup(blocks.slice(g * GROUP, (g + 1) * GROUP));
+    }
   }
 
   function placeIn(b: number, blockRows: ReadonlyArray<Row<T, O, K>>): Block<T, O, K> {
@@ -416,7 +456,7 @@ export function createList<T extends object, O, K>(
   function filterChanges(
     next: Structure<T, O, K>,
     changes: ReadonlyArray<Change<T, O, K>>,
-  ): ReadonlyArray<Row<T, O, K>> {
+  ): Window<Row<T, O, K>> {
     for (const [row, result] of changes) row.applied = result;
     if (next !== current || changes.length > 0) {
       matching = next.list.filter((row) => row.applied.member);
@@ -424,44 +464,27 @@ export function createList<T extends object, O, K>(
     return matching;
   }
 
-  function applyChanges(changes: ReadonlyArray<Change<T, O, K>>): ReadonlyArray<Row<T, O, K>> {
+  function applyChanges(changes: ReadonlyArray<Change<T, O, K>>): Window<Row<T, O, K>> {
     // When many rows moved at once (say a filter reads a shared value), sorting
     // from scratch is cheaper than moving each one.
-    if (sorted === null || changes.length > 16 + sorted.length / 4) {
+    if (sortedIsStale || changes.length > 16 + sorted.size / 4) {
       for (const [row, next] of changes) row.applied = next;
-      sorted = [...rows.values()].filter((row) => row.applied.member).sort(compareRows);
+      sorted.reset([...rows.values()].filter((row) => row.applied.member).sort(compareRows));
+      sortedIsStale = false;
       return sorted;
     }
     for (const [row, next] of changes) {
-      if (row.applied.member) sorted.splice(indexOf(sorted, row, compareRows), 1);
+      if (row.applied.member) sorted.remove(row);
       row.applied = next;
-      if (next.member) sorted.splice(insertionPoint(sorted, row, compareRows), 0, row);
+      if (next.member) sorted.insert(row);
     }
     return sorted;
   }
 }
 
-/** The first index in `sorted` whose item orders at or after `item`. */
-function insertionPoint<R>(
-  sorted: ReadonlyArray<R>,
-  item: R,
-  compare: (a: R, b: R) => number,
-): number {
-  let low = 0;
-  let high = sorted.length;
-  while (low < high) {
-    const mid = (low + high) >>> 1;
-    if (compare(sorted[mid]!, item) < 0) low = mid + 1;
-    else high = mid;
-  }
-  return low;
-}
-
-/** Where `item` sits in `sorted`, by binary search. */
-function indexOf<R>(sorted: ReadonlyArray<R>, item: R, compare: (a: R, b: R) => number): number {
-  const i = insertionPoint(sorted, item, compare);
-  // A miss only happens with an inconsistent `compare` or a key that mutated.
-  return sorted[i] === item ? i : sorted.indexOf(item);
+/** The matching rows in result order; the list reads only its window. */
+interface Window<R> {
+  slice(start: number, end: number): ReadonlyArray<R>;
 }
 
 /** Run `fn` without subscribing the active computed to what it reads. */
