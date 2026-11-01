@@ -14,14 +14,18 @@ export type { Disposer, SymbolDisposable } from "./disposable";
 // one persistent reactive array, reconciled in place, so the reference is
 // stable across recomputes. See ./stable-computed.
 export { stableComputed } from "./stable-computed";
-// `computedList` is a filtered, sorted, windowed view that moves only the rows
-// whose result changed. See ./computed-list.
-export { computedList, type ComputedListOptions } from "./computed-list";
-// `from(...)` starts a chained query (where, join, map, orderBy, limit) built
-// on the same engine; `indexBy` is the reactive index a join looks docs up in.
-// See ./query.
-export { from, type Direction, type JoinType, type Query, type Sorted } from "./query/from";
-export { indexBy, type Index } from "./query/index-by";
+// `computedList` is a filtered, mapped, sorted, windowed list that updates
+// one row at a time; its steps can read other docs (joins) per row. See
+// ./query.
+export {
+  computedList,
+  type Direction,
+  type LookupSource,
+  type Lookups,
+  type Query,
+  type Sorted,
+} from "./query/computed-list";
+export type { Lookup } from "./query/lookup";
 export { reconcile } from "./reconcile";
 export { batch } from "./batch";
 export {

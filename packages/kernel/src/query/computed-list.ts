@@ -1,0 +1,204 @@
+import { unwrap } from "../core";
+import { defaultCompare } from "./compare";
+import { createList, toGetter } from "./list";
+import { createLookup, type Lookup } from "./lookup";
+
+/** Sort direction for {@link Sorted.orderBy}. `null`, `undefined` and `NaN` sort last ascending. */
+export type Direction = "asc" | "desc";
+
+type Source<T> = () => Iterable<T>;
+
+/**
+ * A list a {@link computedList} can look docs up in: a function that returns
+ * its docs (looked up by `id`), or the docs and the key to look them up by.
+ */
+export type LookupSource<T extends object = object> =
+  | Source<T>
+  | { readonly from: Source<T>; key(doc: T): unknown };
+
+type DocOf<S> = S extends Source<infer T> ? T : S extends { from: Source<infer T> } ? T : never;
+type KeyOf<S> = S extends { key(doc: never): infer K }
+  ? K
+  : DocOf<S> extends { id: infer K }
+    ? K
+    : never;
+
+/** The named lookup lists, as passed to each step: look docs up with `get(key)`. */
+export type Lookups<S> = { readonly [N in keyof S]: Lookup<KeyOf<S[N]>, DocOf<S[N]>> };
+
+/** A query you can still sort and window. Call it to read the result. */
+export interface Sorted<Row, L> {
+  (): ReadonlyArray<Row>;
+  /**
+   * Sort by this key. A second `orderBy` breaks ties of the first, and so on.
+   * Rows with equal keys keep source order. Keys are numbers, strings,
+   * bigints, or arrays of them.
+   */
+  orderBy(key: (row: Row, lookups: L) => unknown, direction?: Direction): Sorted<Row, L>;
+  /** Skip this many rows. A function is read reactively. */
+  offset(count: number | (() => number)): Sorted<Row, L>;
+  /** Return at most this many rows. A function is read reactively. */
+  limit(count: number | (() => number)): Sorted<Row, L>;
+}
+
+/**
+ * Steps over the rows of one list. Each step gets the row as the steps
+ * before it left it, and the query's named lookups. Call the query to read
+ * the result.
+ */
+export interface Query<Row, L> extends Sorted<Row, L> {
+  /** Keep the rows for which this returns true. */
+  filter<Kept extends Row>(predicate: (row: Row, lookups: L) => row is Kept): Query<Kept, L>;
+  filter(predicate: (row: Row, lookups: L) => boolean): Query<Row, L>;
+  /** Replace each row with what this returns. Look other docs up here: read the store, or `lookups.name.get(key)`. */
+  map<Next>(fn: (row: Row, lookups: L) => Next): Query<Next, L>;
+}
+
+/**
+ * A filtered, mapped, sorted, windowed view of a reactive list that updates
+ * **one row at a time**:
+ *
+ * ```ts
+ * const openTasks = computedList(() => store.tasks)
+ *   .filter((task) => !task.done)
+ *   .map((task) => ({ task, owner: store.usersById[task.ownerId] }))
+ *   .filter(({ owner }) => owner?.active === true)
+ *   .orderBy(({ task }) => task.rank)
+ *   .limit(10);
+ *
+ * openTasks(); // ReadonlyArray<{ task: Task; owner: User | undefined }>
+ * ```
+ *
+ * Each source row runs its steps in its own computed, so a change reruns
+ * only the rows that read what changed, and the list then moves only those
+ * rows. A step can read anything reactive: reading another doc from the
+ * store (a join) is tracked per row like any other field.
+ *
+ * To look docs up in a list rather than a keyed object, name it in the
+ * second argument. Each step then gets it by name, with `get(key)`:
+ *
+ * ```ts
+ * computedList(() => store.tasks, {
+ *   users: () => store.users, // looked up by `id`
+ *   leads: { from: () => store.users.filter((u) => u.isLead), key: (u) => u.email },
+ * }).map((task, { users, leads }) => ({ task, owner: users.get(task.ownerId), lead: leads.get(task.leadEmail) }));
+ * ```
+ *
+ * A lookup's map is built on first use and rebuilt when its list changes.
+ * Each key looked up has its own computed over the map, so a rebuild reruns
+ * only the rows whose key now finds another doc.
+ *
+ * A row's output object is reused while its fields are the same, so `<For>`
+ * re-renders a row only when it changed. Nothing runs until the list is
+ * called. Call it in every reader rather than holding on to the array it
+ * returns: calling it brings the array up to date.
+ */
+export function computedList<
+  T extends object,
+  S extends Record<string, LookupSource> = Record<never, never>,
+>(source: () => Iterable<T>, lookups?: S): Query<T, Lookups<S>> {
+  const named = {} as Record<string, Lookup<unknown, object>>;
+  for (const [name, from] of Object.entries(lookups ?? {})) {
+    let lookup: Lookup<unknown, object> | undefined = undefined;
+    Object.defineProperty(named, name, {
+      enumerable: true,
+      get: () => (lookup ??= lookupOf(from)),
+    });
+  }
+  return makeQuery({
+    source,
+    lookups: named,
+    steps: [],
+    order: [],
+    offset: () => 0,
+    limit: () => Infinity,
+  }) as never;
+}
+
+function lookupOf(source: LookupSource): Lookup<unknown, object> {
+  if (typeof source === "function") {
+    return createLookup(source as Source<object>, (doc) => (doc as { id?: unknown }).id);
+  }
+  return createLookup(source.from as Source<object>, source.key as (doc: object) => unknown);
+}
+
+interface Spec {
+  readonly source: Source<object>;
+  readonly lookups: unknown;
+  readonly steps: ReadonlyArray<Step>;
+  readonly order: ReadonlyArray<{ readonly key: StepFn; readonly sign: 1 | -1 }>;
+  readonly offset: () => number;
+  readonly limit: () => number;
+}
+
+type StepFn = (row: unknown, lookups: unknown) => unknown;
+interface Step {
+  readonly kind: "filter" | "map";
+  readonly fn: StepFn;
+}
+
+function makeQuery(spec: Spec): Query<unknown, unknown> {
+  let list: (() => ReadonlyArray<unknown>) | undefined = undefined;
+  const query = () => (list ??= build(spec))();
+  const next = (change: Partial<Spec>) => makeQuery({ ...spec, ...change });
+  return Object.assign(query, {
+    filter: (fn: StepFn) => next({ steps: [...spec.steps, { kind: "filter", fn }] }),
+    map: (fn: StepFn) => next({ steps: [...spec.steps, { kind: "map", fn }] }),
+    orderBy: (key: StepFn, direction: Direction = "asc") =>
+      next({ order: [...spec.order, { key, sign: direction === "desc" ? -1 : 1 }] }),
+    offset: (count: number | (() => number)) => next({ offset: toGetter(count, 0) }),
+    limit: (count: number | (() => number)) => next({ limit: toGetter(count, Infinity) }),
+  }) as never;
+}
+
+const NO_KEY: ReadonlyArray<unknown> = [];
+
+function build({ source, lookups, steps, order, offset, limit }: Spec) {
+  const mapped = steps.some((step) => step.kind === "map");
+  return createList<object, unknown, ReadonlyArray<unknown>>({
+    source,
+    run: (item, previous) => {
+      let row: unknown = item;
+      for (const { kind, fn } of steps) {
+        if (kind === "map") row = fn(row, lookups);
+        else if (!fn(row, lookups)) return { member: false };
+      }
+      return {
+        member: true,
+        // Without a `map`, the row is the source item itself.
+        value: mapped ? sameIfEqual(previous, row) : row,
+        key: order.length === 0 ? NO_KEY : order.map(({ key }) => key(row, lookups)),
+      };
+    },
+    compare:
+      order.length === 0
+        ? undefined
+        : (a, b) => {
+            for (let i = 0; i < order.length; i++) {
+              const result = defaultCompare(a[i], b[i]);
+              if (result !== 0) return result * order[i]!.sign;
+            }
+            return 0;
+          },
+    offset,
+    limit,
+  });
+}
+
+/**
+ * `previous` when `next` is a new plain object with the same fields, so a
+ * mapped row keeps its identity when it reruns without changing.
+ */
+function sameIfEqual(previous: unknown, next: unknown): unknown {
+  if (!isPlainObject(previous) || !isPlainObject(next)) return next;
+  const keys = Object.keys(next);
+  if (keys.length !== Object.keys(previous).length) return next;
+  return keys.every((k) => Object.is(previous[k], next[k])) ? previous : next;
+}
+
+/** A plain object that isn't a store proxy (reading a proxy's fields here would subscribe the row to them). */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || unwrap(value) !== value) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}

@@ -109,12 +109,10 @@ for (const withParent of [false, true]) {
       const store = createReactive({
         tasks: Array.from({ length: 20 }, (_, id) => ({ id, label: `t${id}`, done: false })),
       });
-      const top = computedList({
-        from: () => store.tasks,
-        where: (task) => !task.done,
-        orderBy: (task) => task.id,
-        limit: 3,
-      });
+      const top = computedList(() => store.tasks)
+        .filter((task) => !task.done)
+        .orderBy((task) => task.id)
+        .limit(3);
       const shown = mount(top, withParent);
       expect(shown()).toBe("t0t1t2");
 

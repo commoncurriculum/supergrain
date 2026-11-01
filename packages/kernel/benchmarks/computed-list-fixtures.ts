@@ -9,7 +9,7 @@ import {
   type QueryBuilder,
 } from "@tanstack/db";
 
-import { batch, createReactive, computedList, from, indexBy, stableComputed, unwrap } from "../src";
+import { batch, createReactive, computedList, stableComputed, unwrap } from "../src";
 
 /**
  * Shared setup for `computed-list.bench.ts` (plain JS) and
@@ -107,12 +107,11 @@ export function membershipScenarios(
 export type SupergrainList = (store: { tasks: Task[] }) => () => ReadonlyArray<Task>;
 
 export const computedListTopTen: SupergrainList = (store) =>
-  computedList({
-    from: () => store.tasks,
-    where: (task) => !task.completed,
-    orderBy: (task) => [task.priority, task.id],
-    limit: 10,
-  });
+  computedList(() => store.tasks)
+    .filter((task) => !task.completed)
+    .orderBy((task) => task.priority)
+    .orderBy((task) => task.id)
+    .limit(10);
 
 export const stableComputedTopTen: SupergrainList = (store) =>
   stableComputed(() =>
@@ -340,19 +339,14 @@ export type JoinedList = (store: { tasks: Owned[]; users: User[] }) => () => Rea
   task: Owned;
 }>;
 
-export const supergrainJoined: JoinedList = (store) => {
-  const usersById = indexBy(
-    () => store.users,
-    (user) => user.id,
-  );
-  return from({ task: () => store.tasks })
-    .where(({ task }) => !task.completed)
-    .join({ owner: usersById }, ({ task }) => task.ownerId, "inner")
-    .where(({ owner }) => owner.active)
+export const supergrainJoined: JoinedList = (store) =>
+  computedList(() => store.tasks, { users: () => store.users })
+    .filter((task) => !task.completed)
+    .map((task, { users }) => ({ task, owner: users.get(task.ownerId) }))
+    .filter(({ owner }) => owner?.active === true)
     .orderBy(({ task }) => task.priority)
     .orderBy(({ task }) => task.id)
     .limit(10);
-};
 
 export const stableComputedJoined: JoinedList = (store) =>
   stableComputed(() => {

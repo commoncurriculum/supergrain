@@ -300,7 +300,7 @@ function mountJoin(element: React.ReactElement, change: (change: JoinChange) => 
 
 const JOIN_APPS: ReadonlyArray<[string, MountJoin]> = [
   [
-    "supergrain from().join() + <For>",
+    "supergrain computedList + <For>",
     (tasks, users) => {
       const { store, change } = supergrainJoinStore(tasks, users);
       const rows = supergrainJoined(store) as () => ReadonlyArray<JoinedRow>;

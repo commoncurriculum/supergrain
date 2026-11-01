@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { batch, createReactive, effect, from, indexBy, unwrap } from "../../src";
+import { batch, computedList, createReactive, effect, unwrap } from "../../src";
 
 interface User {
   id: string;
@@ -43,15 +43,10 @@ function setup() {
       }),
     ),
   });
-  const usersById = indexBy(
-    () => store.users,
-    (user) => user.id,
-  );
-  const teamsById = indexBy(
-    () => store.teams,
-    (team) => team.id,
-  );
-  return { store, usersById, teamsById };
+  // The tasks, with users and teams to look up by id.
+  const tasks = () =>
+    computedList(() => store.tasks, { users: () => store.users, teams: () => store.teams });
+  return { store, tasks };
 }
 
 type Stored = ReturnType<typeof setup>["store"];
@@ -62,12 +57,12 @@ type STeam = Stored["teams"][number];
 const ids = (rows: ReadonlyArray<{ id: number }>) => rows.map((row) => row.id);
 const taskIds = (rows: ReadonlyArray<{ task: { id: number } }>) => rows.map((row) => row.task.id);
 
-describe("from", () => {
-  it("filters, sorts and windows one collection, and returns its items", () => {
-    const { store } = setup();
-    const query = from({ task: () => store.tasks })
-      .where(({ task }) => !task.done)
-      .orderBy(({ task }) => task.rank)
+describe("computedList", () => {
+  it("filters, sorts and windows one collection, and returns its docs", () => {
+    const { store, tasks } = setup();
+    const query = tasks()
+      .filter((task) => !task.done)
+      .orderBy((task) => task.rank)
       .limit(3);
     expectTypeOf(query()).toEqualTypeOf<ReadonlyArray<STask>>();
     expect(ids(query())).toEqual([11, 10, 8]);
@@ -77,18 +72,18 @@ describe("from", () => {
   });
 
   it("sorts by several keys and directions", () => {
-    const { store } = setup();
-    const query = from({ task: () => store.tasks })
-      .orderBy(({ task }) => task.ownerId)
-      .orderBy(({ task }) => task.id, "desc");
+    const { tasks } = setup();
+    const query = tasks()
+      .orderBy((task) => task.ownerId)
+      .orderBy((task) => task.id, "desc");
     expect(ids(query())).toEqual([8, 4, 0, 9, 5, 1, 10, 6, 2, 11, 7, 3]);
   });
 
-  it("left-joins: the field is undefined when nothing matches", () => {
-    const { store, usersById } = setup();
-    const query = from({ task: () => store.tasks })
-      .where(({ task }) => task.id < 4)
-      .join({ owner: usersById }, ({ task }) => task.ownerId);
+  it("looks docs up in other collections inside a map", () => {
+    const { tasks } = setup();
+    const query = tasks()
+      .filter((task) => task.id < 4)
+      .map((task, { users }) => ({ task, owner: users.get(task.ownerId) }));
     expectTypeOf(query()).toEqualTypeOf<ReadonlyArray<{ task: STask; owner: SUser | undefined }>>();
     expect(query().map(({ task, owner }) => [task.id, owner?.name])).toEqual([
       [0, "Ann"],
@@ -98,12 +93,13 @@ describe("from", () => {
     ]);
   });
 
-  it("inner-joins, filters on the joined doc, and joins again from it", () => {
-    const { store, usersById, teamsById } = setup();
-    const query = from({ task: () => store.tasks })
-      .join({ owner: usersById }, ({ task }) => task.ownerId, "inner")
-      .where(({ owner }) => owner.active)
-      .join({ team: teamsById }, ({ owner }) => owner.teamId)
+  it("drops unmatched rows, filters on looked-up docs, and looks up from them again", () => {
+    const { store, tasks } = setup();
+    const query = tasks()
+      .map((task, { users }) => ({ task, owner: users.get(task.ownerId) }))
+      .filter((row): row is { task: STask; owner: SUser } => row.owner !== undefined)
+      .filter(({ owner }) => owner.active)
+      .map((row, { teams }) => ({ ...row, team: teams.get(row.owner.teamId) }))
       .orderBy(({ task }) => task.id)
       .limit(4);
     expectTypeOf(query()).toEqualTypeOf<
@@ -120,11 +116,14 @@ describe("from", () => {
     expect(view()).toEqual(["0:Ann:Red", "1:Bob:undefined", "2:Cy:undefined", "4:Ann:Red"]);
   });
 
-  it("maps rows, and looks docs up inside a map", () => {
-    const { store, usersById } = setup();
-    const query = from({ task: () => store.tasks })
-      .map(({ task }) => ({ title: task.title, owner: usersById.get(task.ownerId)?.name ?? "-" }))
-      .where((row) => row.owner !== "Bob")
+  it("filters and sorts on values a map computed", () => {
+    const { store, tasks } = setup();
+    const query = tasks()
+      .map((task, { users }) => ({
+        title: task.title,
+        owner: users.get(task.ownerId)?.name ?? "-",
+      }))
+      .filter((row) => row.owner !== "Bob")
       .orderBy((row) => row.title)
       .limit(3);
     expectTypeOf(query()).toEqualTypeOf<ReadonlyArray<{ title: string; owner: string }>>();
@@ -137,10 +136,21 @@ describe("from", () => {
     expect(query()[1]).toEqual({ title: "t10", owner: "Cyd" });
   });
 
-  it("follows adds, removes and key changes on both sides", () => {
-    const { store, usersById } = setup();
-    const query = from({ task: () => store.tasks })
-      .join({ owner: usersById }, ({ task }) => task.ownerId, "inner")
+  it("looks docs up by another key", () => {
+    const { store } = setup();
+    const query = computedList(() => store.tasks, {
+      usersByName: { from: () => store.users, key: (user: User) => user.name },
+    })
+      .filter((task) => task.id < 2)
+      .map((task, { usersByName }) => usersByName.get(task.id === 0 ? "Cy" : "Nobody"));
+    expect(query().map((user) => user?.id)).toEqual(["c", undefined]);
+  });
+
+  it("follows adds, removes and key changes in every collection", () => {
+    const { store, tasks } = setup();
+    const query = tasks()
+      .map((task, { users }) => ({ task, owner: users.get(task.ownerId) }))
+      .filter(({ owner }) => owner !== undefined)
       .orderBy(({ task }) => task.id);
     expect(taskIds(query())).toEqual([0, 1, 2, 4, 5, 6, 8, 9, 10]);
     store.users.push({ id: "zz", name: "Zed", active: true });
@@ -155,23 +165,23 @@ describe("from", () => {
     expect(taskIds(query())).toEqual([1, 3, 5, 6, 7, 9, 10, 11, 12]);
   });
 
-  it("uses the first doc when two share a key", () => {
-    const { store, usersById } = setup();
+  it("finds the first doc when two share a key", () => {
+    const { store, tasks } = setup();
     store.users.push({ id: "a", name: "Second Ann", active: true });
-    const query = from({ task: () => store.tasks })
-      .where(({ task }) => task.id === 0)
-      .join({ owner: usersById }, ({ task }) => task.ownerId);
-    expect(query()[0]!.owner?.name).toBe("Ann");
+    const query = tasks()
+      .filter((task) => task.id === 0)
+      .map((task, { users }) => users.get(task.ownerId));
+    expect(query()[0]?.name).toBe("Ann");
     store.users.shift();
-    expect(query()[0]!.owner?.name).toBe("Second Ann");
+    expect(query()[0]?.name).toBe("Second Ann");
   });
 
-  it("reruns only the rows joined to a changed doc, and keeps row identity", () => {
-    const { store, usersById } = setup();
+  it("reruns only the rows that looked up a changed doc, and keeps row identity", () => {
+    const { store, tasks } = setup();
     let runs = 0;
-    const query = from({ task: () => store.tasks })
-      .join({ owner: usersById }, ({ task }) => task.ownerId)
-      .where(({ task, owner }) => {
+    const query = tasks()
+      .map((task, { users }) => ({ task, owner: users.get(task.ownerId) }))
+      .filter(({ task, owner }) => {
         runs++;
         return owner?.active === true && task.rank < 100;
       });
@@ -191,7 +201,7 @@ describe("from", () => {
     store.users[1]!.active = true;
     expect(runs).toBe(3);
     expect(reads).toBe(1);
-    // A new user rebuilds the index but only reruns the rows on its key.
+    // A new user rebuilds the lookup map but only reruns the rows on its key.
     runs = 0;
     store.users.push({ id: "zz", name: "Zed", active: true });
     query();
@@ -206,28 +216,29 @@ describe("from", () => {
 
   it("throws while a key or step throws, and recovers", () => {
     const { store } = setup();
-    const byName = indexBy(
-      () => store.users,
-      (user) => {
-        if (user.name === "boom") throw new Error("key");
-        return user.name;
+    const query = computedList(() => store.tasks, {
+      users: {
+        from: () => store.users,
+        key: (user: User) => {
+          if (user.name === "boom") throw new Error("key");
+          return user.name;
+        },
       },
-    );
-    const query = from({ task: () => store.tasks })
-      .where(({ task }) => task.id < 3)
-      .join({ owner: byName }, ({ task }) => (task.ownerId === "a" ? "Ann" : "Cy"));
-    expect(query().map(({ owner }) => owner?.name)).toEqual(["Ann", "Cy", "Cy"]);
+    })
+      .filter((task) => task.id < 3)
+      .map((task, { users }) => users.get(task.ownerId === "a" ? "Ann" : "Cy"));
+    expect(query().map((owner) => owner?.name)).toEqual(["Ann", "Cy", "Cy"]);
     store.users[1]!.name = "boom";
     expect(() => query()).toThrow("key");
     store.users[1]!.name = "Bob";
-    expect(query().map(({ owner }) => owner?.name)).toEqual(["Ann", "Cy", "Cy"]);
+    expect(query().map((owner) => owner?.name)).toEqual(["Ann", "Cy", "Cy"]);
   });
 
   it("windows with a reactive offset and limit", () => {
-    const { store } = setup();
+    const { tasks } = setup();
     const window = createReactive({ offset: 1, limit: 2 });
-    const query = from({ task: () => store.tasks })
-      .orderBy(({ task }) => task.id)
+    const query = tasks()
+      .orderBy((task) => task.id)
       .offset(() => window.offset)
       .limit(() => window.limit);
     expect(ids(query())).toEqual([1, 2]);
@@ -235,33 +246,71 @@ describe("from", () => {
     expect(ids(query())).toEqual([5, 6]);
   });
 
-  it("forgets lookups for missing keys, and readers of them still update", () => {
-    const { store, usersById } = setup();
-    const seen: Array<string | undefined> = [];
-    effect(() => {
-      seen.push(usersById.get("k99")?.name);
-    });
-    for (let i = 0; i < 200; i++) usersById.get(`k${i}`);
-    // Rebuilding the index forgets the 200 lookups.
+  it("forgets lookups for missing keys, and rows that used them still update", () => {
+    const { store, tasks } = setup();
+    store.tasks.push(
+      ...Array.from({ length: 200 }, (_, i) => ({
+        id: 100 + i,
+        ownerId: `k${i}`,
+        done: false,
+        rank: 0,
+        title: "",
+      })),
+    );
+    const query = tasks()
+      .filter((task) => task.id >= 100)
+      .map((task, { users }) => users.get(task.ownerId)?.name);
+    expect(query().filter(Boolean)).toEqual([]);
+    // Rebuilding the lookup map forgets the 200 lookups for missing keys.
     store.users.push({ id: "other", name: "Other", active: true });
     store.users.push({ id: "k99", name: "Kay", active: true });
-    expect(seen).toEqual([undefined, "Kay"]);
-    expect(usersById.get("k99")?.name).toBe("Kay");
+    expect(query().filter(Boolean)).toEqual(["Kay"]);
   });
 
-  it("takes exactly one collection and one index", () => {
-    const { store, usersById } = setup();
-    expect(() => from({ a: () => store.tasks, b: () => store.tasks })).toThrow(TypeError);
-    expect(() =>
-      from({ task: () => store.tasks }).join(
-        { a: usersById, b: usersById },
-        ({ task }) => task.ownerId,
-      ),
-    ).toThrow(TypeError);
+  it("joins by reading a keyed store, with no lookups declared", () => {
+    const { store } = setup();
+    const keyed = createReactive({
+      usersById: Object.fromEntries(unwrap(store.users).map((u) => [u.id, { ...u }])) as Record<
+        string,
+        User | undefined
+      >,
+    });
+    let runs = 0;
+    const query = computedList(() => store.tasks)
+      .map((task) => {
+        runs++;
+        return { task, owner: keyed.usersById[task.ownerId ?? ""] };
+      })
+      .filter(({ owner }) => owner?.active === true)
+      .orderBy(({ task }) => task.id);
+    expect(taskIds(query())).toEqual([0, 2, 4, 6, 8, 10]);
+    runs = 0;
+    keyed.usersById["b"]!.active = true;
+    expect(taskIds(query())).toEqual([0, 1, 2, 4, 5, 6, 8, 9, 10]);
+    // Each row's steps run in one computed: Bob's 3 rows reran, no others.
+    expect(runs).toBe(3);
+    runs = 0;
+    keyed.usersById["zz"] = { id: "zz", name: "Zed", active: true };
+    expect(taskIds(query())).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(runs).toBe(3);
+  });
+
+  it("looks docs up in a list derived inside the query", () => {
+    const { store } = setup();
+    const query = computedList(() => store.tasks, {
+      activeUsers: () => store.users.filter((user) => user.active),
+    })
+      .filter((task) => task.id < 4)
+      .map((task, { activeUsers }) => activeUsers.get(task.ownerId)?.name);
+    expect(query()).toEqual(["Ann", undefined, "Cy", undefined]);
+    store.users[1]!.active = true;
+    expect(query()).toEqual(["Ann", "Bob", "Cy", undefined]);
+    store.users[0]!.active = false;
+    expect(query()).toEqual([undefined, "Bob", "Cy", undefined]);
   });
 });
 
-describe("from matches a from-scratch reference across three collections", () => {
+describe("queries match a from-scratch reference across three collections", () => {
   type Op =
     | { type: "taskOwner"; index: number; owner: number }
     | { type: "taskDone"; index: number }
@@ -295,7 +344,7 @@ describe("from matches a from-scratch reference across three collections", () =>
     fc.record({ type: fc.constant("addTeam" as const), id: small, name: small }),
   );
 
-  it("after every step, left or inner, sorted or not", () => {
+  it("after every step, keeping or dropping unmatched rows, sorted or not", () => {
     fc.assert(
       fc.property(
         fc.array(op, { maxLength: 40 }),
@@ -322,25 +371,22 @@ describe("from matches a from-scratch reference across three collections", () =>
               }),
             ),
           });
-          const usersById = indexBy(
-            () => store.users,
-            (user) => user.id,
-          );
-          const teamsById = indexBy(
-            () => store.teams,
-            (team) => team.id,
-          );
-          let query = from({ task: () => store.tasks })
-            .where(({ task }) => !task.done)
-            .join({ owner: usersById }, ({ task }) => task.ownerId)
-            .where(({ owner }) => owner === undefined || owner.active)
-            .join({ team: teamsById }, ({ owner }) => owner?.teamId, inner ? "inner" : "left")
+          const joined = computedList(() => store.tasks, {
+            users: () => store.users,
+            teams: () => store.teams,
+          })
+            .filter((task) => !task.done)
+            .map((task, { users }) => ({ task, owner: users.get(task.ownerId) }))
+            .filter(({ owner }) => owner === undefined || owner.active)
+            .map((row, { teams }) => ({ ...row, team: teams.get(row.owner?.teamId) }))
+            .filter(({ team }) => !inner || team !== undefined)
             .map(({ task, team }) => ({ id: task.id, rank: task.rank, team: team?.name ?? "-" }));
-          if (sorted)
-            query = query
-              .orderBy((row) => row.team)
-              .orderBy((row) => row.rank, "desc")
-              .orderBy((row) => row.id) as never;
+          const query = sorted
+            ? joined
+                .orderBy((row) => row.team)
+                .orderBy((row) => row.rank, "desc")
+                .orderBy((row) => row.id)
+            : joined;
 
           const expected = () => {
             const users = unwrap(store.users);

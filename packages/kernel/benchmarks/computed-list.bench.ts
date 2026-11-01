@@ -198,7 +198,7 @@ const tanstackJoined: BuildJoin = (tasks, users) => {
 };
 
 const JOIN_IMPLEMENTATIONS: ReadonlyArray<[string, BuildJoin]> = [
-  ["supergrain from().join()", supergrainJoin(supergrainJoined)],
+  ["supergrain computedList", supergrainJoin(supergrainJoined)],
   ["supergrain stableComputed + Map", supergrainJoin(stableComputedJoined)],
   ["TanStack DB join (sync write)", tanstackJoined],
 ];

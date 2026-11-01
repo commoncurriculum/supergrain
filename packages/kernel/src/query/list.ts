@@ -13,7 +13,7 @@ export type RowOutcome<O, K> =
   | { readonly member: false }
   | { readonly member: true; readonly value: O; readonly key: K };
 
-/** Options for {@link createList}, the engine under `from(...)` and `computedList`. */
+/** Options for {@link createList}, the engine under `collections(...).from(...)` queries. */
 export interface ListOptions<S extends object, O, K> {
   /** The source items. Read reactively; only its structure should be read here. */
   source: () => Iterable<S>;
@@ -98,7 +98,7 @@ const OUTSIDE: RowResult<never, never> = Object.freeze({
 });
 
 /**
- * The engine under `from(...)` queries (and `computedList`): a list of
+ * The engine under `collections(...).from(...)` queries: a list of
  * source rows, each run through its steps in its own computed, kept sorted
  * and windowed, that updates **one row at a time**.
  *

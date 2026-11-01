@@ -368,12 +368,10 @@ describe("tracked()", () => {
       const store = createReactive({
         tasks: Array.from({ length: 100 }, (_, id) => ({ id, done: false })),
       });
-      let whereCalls = 0;
-      const firstThree = computedList({
-        from: () => store.tasks,
-        where: (task) => (whereCalls++, !task.done),
-        limit: 3,
-      });
+      let filterCalls = 0;
+      const firstThree = computedList(() => store.tasks)
+        .filter((task) => (filterCalls++, !task.done))
+        .limit(3);
 
       const List = tracked(() => (
         <span>
@@ -386,12 +384,12 @@ describe("tracked()", () => {
       const { container } = render(<List />);
       expect(container.textContent).toBe("0,1,2");
 
-      whereCalls = 0;
+      filterCalls = 0;
       await act(async () => {
         store.tasks[1]!.done = true;
       });
       expect(container.textContent).toBe("0,2,3");
-      expect(whereCalls).toBe(1);
+      expect(filterCalls).toBe(1);
     });
 
     it("are released when no render reads them any more", async () => {

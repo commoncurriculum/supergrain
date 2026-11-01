@@ -2,8 +2,8 @@ import { rethrowingComputed } from "../rethrowing-computed";
 import { isMissing } from "./compare";
 import { forEachItem } from "./list";
 
-/** A reactive lookup from key to doc. See {@link indexBy}. */
-export interface Index<K, V> {
+/** A collection's docs by key, for looking docs up inside query steps. */
+export interface Lookup<K, V> {
   /**
    * The doc with this key, or `undefined`. Read reactively: a reader reruns
    * only when the doc under this key changes (another object, or none), not
@@ -13,26 +13,20 @@ export interface Index<K, V> {
 }
 
 /**
- * A reactive index of a collection by key, for joins.
+ * A reactive map from key to doc over a collection.
  *
- * ```ts
- * const usersById = indexBy(() => store.users, (user) => user.id);
- * usersById.get(task.ownerId); // the user, or undefined
- * ```
- *
- * Build it once and share it: every query that joins on it reuses the same
- * map. Keys are compared like `Map` keys. `null`, `undefined` and `NaN`
- * never match. When two docs share a key, the first in the source wins.
+ * Keys are compared like `Map` keys. `null`, `undefined` and `NaN` never
+ * match. When two docs share a key, the first in the source wins.
  *
  * The map is rebuilt when the source's structure changes, or when a key a
  * doc returned changes. That's one walk of the source. Each key that has been
  * looked up has its own computed over the map, so a rebuild wakes only the
  * readers whose key now finds another doc.
  */
-export function indexBy<V extends object, K>(
+export function createLookup<V extends object, K>(
   source: () => Iterable<V>,
   key: (doc: V) => K,
-): Index<K, V> {
+): Lookup<K, V> {
   const lookups = new Map<K, () => V | undefined>();
   const entries = rethrowingComputed((): Map<K, V> => {
     const map = new Map<K, V>();
