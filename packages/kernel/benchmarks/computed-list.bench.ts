@@ -1,4 +1,4 @@
-import { createLiveQueryCollection } from "@tanstack/db";
+import { createLiveQueryCollection, type Collection } from "@tanstack/db";
 import { bench, describe } from "vitest";
 
 import {
@@ -46,6 +46,14 @@ import {
  * same rows, so the numbers compare equal work.
  */
 
+/**
+ * Wait for work a write queued for later. TanStack DB finishes some updates in
+ * microtasks (loading more rows for an ordered, limited query), so timing only
+ * the synchronous call would leave that work out. Every implementation waits
+ * the same way, so the wait itself adds the same small cost to each.
+ */
+const settled = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 /** What every implementation can do: edit, add and remove rows, and read the top 10 ids. */
 interface Harness {
   read(): number[];
@@ -66,19 +74,42 @@ function supergrain(makeList: SupergrainList): Build {
   };
 }
 
+/**
+ * Keep a live query alive the way a UI would, by subscribing to it. A live
+ * query nobody subscribes to is garbage-collected after 5 seconds (TanStack
+ * DB's default `gcTime`); after that it reads empty and does no work, so a
+ * bench reading it would time nothing. Reading a collected query throws.
+ */
+function watch<T extends object>(query: Collection<T>): { values(): Iterable<T>; stop(): void } {
+  const subscription = query.subscribeChanges(() => {});
+  return {
+    values: () => {
+      if (query.status === "cleaned-up")
+        throw new Error("computed-list bench: live query was collected");
+      return query.values();
+    },
+    stop: () => {
+      subscription.unsubscribe();
+      void query.cleanup();
+    },
+  };
+}
+
 function tanstack(setup: (tasks: Task[]) => TanstackTasks): Build {
   return (tasks) => {
     const { collection, edit, change, dispose } = setup(tasks);
-    const query = createLiveQueryCollection({
-      startSync: true,
-      query: (q) => tanstackTopTen(q, collection),
-    });
+    const query = watch(
+      createLiveQueryCollection({
+        startSync: true,
+        query: (q) => tanstackTopTen(q, collection),
+      }),
+    );
     return {
       read: () => ids(query.values()),
       edit,
       change,
       dispose: () => {
-        void query.cleanup();
+        query.stop();
         dispose();
       },
     };
@@ -140,8 +171,9 @@ for (const size of [1_000, 10_000]) {
         const harness = build(makeTasks(size));
         harness.read();
         let i = 0;
-        bench(name, () => {
+        bench(name, async () => {
           harness.edit(edit(i++));
+          await settled();
           harness.read();
         });
       }
@@ -154,8 +186,9 @@ for (const size of [1_000, 10_000]) {
         const harness = build(makeTasks(size));
         harness.read();
         let i = 0;
-        bench(name, () => {
+        bench(name, async () => {
           harness.change(change(i++));
+          await settled();
           harness.read();
         });
       }
@@ -183,15 +216,17 @@ function supergrainJoin(makeList: JoinedList): BuildJoin {
 
 const tanstackJoined: BuildJoin = (tasks, users) => {
   const setup = tanstackJoin(tasks, users);
-  const query = createLiveQueryCollection({
-    startSync: true,
-    query: (q) => tanstackJoinedTopTen(q, setup.tasks, setup.users),
-  });
+  const query = watch(
+    createLiveQueryCollection({
+      startSync: true,
+      query: (q) => tanstackJoinedTopTen(q, setup.tasks, setup.users),
+    }),
+  );
   return {
     read: () => Array.from(query.values(), (row: { task: Owned }) => row.task.id),
     change: setup.change,
     dispose: () => {
-      void query.cleanup();
+      query.stop();
       setup.dispose();
     },
   };
@@ -247,8 +282,9 @@ for (const size of [1_000, 10_000]) {
         const harness = build(makeOwnedTasks(size), makeUsers());
         harness.read();
         let i = 0;
-        bench(name, () => {
+        bench(name, async () => {
           harness.change(change(i++));
+          await settled();
           harness.read();
         });
       }
