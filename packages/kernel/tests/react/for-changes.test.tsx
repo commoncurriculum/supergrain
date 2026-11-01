@@ -293,3 +293,16 @@ describe("For without parent", () => {
     expect(container.textContent).toBe("0:i21:i3");
   });
 });
+
+describe("For without parent: items that aren't objects", () => {
+  it("keys primitives, falsy ones included, by position", () => {
+    const store = createReactive({ data: [0, "", "b", null] as Array<unknown> });
+    const List = tracked(() => (
+      <ul>
+        <For each={store.data}>{(value) => <li>{String(value)}</li>}</For>
+      </ul>
+    ));
+    const { container } = render(<List />);
+    expect(container.textContent).toBe("0bnull");
+  });
+});

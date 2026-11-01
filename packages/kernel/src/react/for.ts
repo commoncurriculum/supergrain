@@ -156,7 +156,7 @@ function rowComponents(
   const passIndex = children.length !== 1;
   const used = new Set<React.Key>();
   return raw.map((item, i) => {
-    let key = keyOf(item, i);
+    let key = keyOf(unwrap(item), i);
     // The same item twice: key the repeat by position.
     if (used.has(key)) key = `\u0000${i}`;
     used.add(key);
