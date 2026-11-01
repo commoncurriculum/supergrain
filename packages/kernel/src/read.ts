@@ -21,7 +21,7 @@ const proxyCache = new WeakMap<object, object>();
 
 // The object `readWholeObject` tracks as a whole, and for which subscriber.
 let wholeObject: object | null = null;
-let wholeObjectReader: unknown = null;
+let wholeObjectReader: ReturnType<typeof getActiveSub> | null = null;
 
 /**
  * Run `fn` so that the active subscriber tracks `target` (a raw, non-array

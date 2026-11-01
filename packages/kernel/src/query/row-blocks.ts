@@ -44,6 +44,18 @@ export const OUTSIDE: RowResult<never, never> = Object.freeze({
   key: undefined,
 });
 
+// Shared by every list: only the order of first appearance matters.
+let nextSeq = 0;
+
+/** A row for `item`, not yet filed in the list or placed in a block. */
+export function createRow<T, O, K>(
+  item: T,
+  raw: object,
+  result: () => Caught<RowResult<O, K>>,
+): Row<T, O, K> {
+  return { item, raw, seq: nextSeq++, result, applied: OUTSIDE, count: 0, block: -1 };
+}
+
 /** Rows per block. */
 const BLOCK = 16;
 /** Blocks per group. */

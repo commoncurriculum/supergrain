@@ -67,8 +67,7 @@ export function createList<T extends object, O, K>(
 ): () => ReadonlyArray<O> {
   const { source, prepare, run, compare, offset: offsetOf, limit: limitOf } = options;
 
-  let nextSeq = 0;
-  const readStructure = createSourceRows<T, O, K>(source, createRow);
+  const readStructure = createSourceRows<T, O, K>(source, resultOf);
   const out = createReactive<Array<O>>([]) as Array<O>;
 
   const compareRows = (a: Row<T, O, K>, b: Row<T, O, K>): number =>
@@ -80,30 +79,22 @@ export function createList<T extends object, O, K>(
   const sorted = createSortedRows(compareRows);
   let sortedIsStale = false;
 
-  function createRow(item: T, raw: object): Row<T, O, K> {
-    return {
-      item,
-      raw,
-      seq: nextSeq++,
-      applied: OUTSIDE,
-      count: 0,
-      block: -1,
-      // Its block reads it with `settle`, which rethrows a throw.
-      result: catchingComputed((previous: RowResult<O, K> | undefined): RowResult<O, K> => {
-        const outcome = run(item, previous?.value);
-        if (!outcome.member) return OUTSIDE;
-        // Hand back the previous object when nothing changed, so the list
-        // isn't dirtied by edits that don't move this row.
-        if (
-          previous?.member &&
-          previous.value === outcome.value &&
-          (!compare || untracked(() => compare(previous.key as K, outcome.key)) === 0)
-        ) {
-          return previous;
-        }
-        return outcome;
-      }),
-    };
+  /** A row's result, in its own computed. Its block reads it with `settle`. */
+  function resultOf(item: T) {
+    return catchingComputed((previous: RowResult<O, K> | undefined): RowResult<O, K> => {
+      const outcome = run(item, previous?.value);
+      if (!outcome.member) return OUTSIDE;
+      // Hand back the previous object when nothing changed, so the list
+      // isn't dirtied by edits that don't move this row.
+      if (
+        previous?.member &&
+        previous.value === outcome.value &&
+        (!compare || untracked(() => compare(previous.key as K, outcome.key)) === 0)
+      ) {
+        return previous;
+      }
+      return outcome;
+    });
   }
 
   // Recomputed only when the source's structure changes.
@@ -133,9 +124,8 @@ export function createList<T extends object, O, K>(
     // subscribe to them or to its own output.
     untracked(() => {
       const changes: Array<Change<T, O, K>> = [];
-      if (next !== current) {
-        for (const row of next.removed) if (row.applied.member) changes.push([row, OUTSIDE]);
-      }
+      // Already OUTSIDE if an earlier update with this structure succeeded.
+      for (const row of next.removed) if (row.applied.member) changes.push([row, OUTSIDE]);
       next.groups.forEach((group, g) => {
         if (pending[g] === group.applied) return;
         // A failed update may have filed some of these already.

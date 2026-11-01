@@ -99,7 +99,7 @@ export function computedList<
   S extends Record<string, LookupSource> = Record<never, never>,
 >(source: () => Iterable<T>, lookups?: S): Query<T, Lookups<S>> {
   // A lookup builds nothing until it's read, so making them all now is cheap.
-  const named: Record<string, Lookup<unknown, object>> = {};
+  const named: Record<string, AnyLookup> = {};
   for (const [name, from] of Object.entries(lookups ?? {})) named[name] = lookupOf(from);
   return makeQuery({
     source,
@@ -111,7 +111,9 @@ export function computedList<
   }) as never;
 }
 
-function lookupOf(source: LookupSource): Lookup<unknown, object> {
+type AnyLookup = Lookup<unknown, object>;
+
+function lookupOf(source: LookupSource): AnyLookup {
   if (typeof source === "function") {
     return createLookup(source as Source<object>, (doc) => (doc as { id?: unknown }).id);
   }
@@ -120,14 +122,14 @@ function lookupOf(source: LookupSource): Lookup<unknown, object> {
 
 interface Spec {
   readonly source: Source<object>;
-  readonly lookups: unknown;
+  readonly lookups: Readonly<Record<string, AnyLookup>>;
   readonly steps: ReadonlyArray<Step>;
   readonly order: ReadonlyArray<{ readonly key: StepFn; readonly sign: 1 | -1 }>;
   readonly offset: () => number;
   readonly limit: () => number;
 }
 
-type StepFn = (row: unknown, lookups: unknown) => unknown;
+type StepFn = (row: unknown, lookups: Spec["lookups"]) => unknown;
 interface Step {
   readonly kind: "filter" | "map";
   readonly fn: StepFn;
@@ -142,8 +144,8 @@ function makeQuery(spec: Spec): Query<unknown, unknown> {
     map: (fn: StepFn) => next({ steps: [...spec.steps, { kind: "map", fn }] }),
     orderBy: (key: StepFn, direction: Direction = "asc") =>
       next({ order: [...spec.order, { key, sign: direction === "desc" ? -1 : 1 }] }),
-    offset: (count: number | (() => number)) => next({ offset: toGetter(count, 0) }),
-    limit: (count: number | (() => number)) => next({ limit: toGetter(count, Infinity) }),
+    offset: (count: number | (() => number)) => next({ offset: toGetter(count) }),
+    limit: (count: number | (() => number)) => next({ limit: toGetter(count) }),
   }) as never;
 }
 
@@ -152,7 +154,7 @@ const NO_KEY: ReadonlyArray<unknown> = [];
 function build({ source, lookups, steps, order, offset, limit }: Spec) {
   const mapped = steps.some((step) => step.kind === "map");
   // The list syncs every named lookup before each read.
-  const used = Object.values(lookups as Record<string, Lookup<unknown, object>>);
+  const used = Object.values(lookups);
   function runSteps(item: object, previous?: unknown) {
     let row: unknown = item;
     for (const { kind, fn } of steps) {
@@ -208,12 +210,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-/** A fixed or reactive count as a getter, with `fallback` for none. */
-export function toGetter(
-  value: number | (() => number) | undefined,
-  fallback: number,
-): () => number {
-  if (typeof value === "function") return value;
-  const fixed = value ?? fallback;
-  return () => fixed;
+/** A fixed or reactive count as a getter. */
+function toGetter(count: number | (() => number)): () => number {
+  return typeof count === "function" ? count : () => count;
 }

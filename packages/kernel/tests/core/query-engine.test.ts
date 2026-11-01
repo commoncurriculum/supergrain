@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { batch, createReactive, effect, signal, stableComputed, unwrap } from "../../src";
 import { defaultCompare } from "../../src/query/compare";
-import { toGetter } from "../../src/query/computed-list";
 import { createList } from "../../src/query/list";
 
 interface Task {
@@ -48,6 +47,11 @@ function engine<T extends object, K = unknown>(options: {
     offset: toGetter(options.offset, 0),
     limit: toGetter(options.limit, Infinity),
   });
+}
+
+function toGetter(count: number | (() => number) | undefined, fallback: number): () => number {
+  if (typeof count === "function") return count;
+  return () => count ?? fallback;
 }
 
 const ids = (rows: ReadonlyArray<{ id: number }>) => rows.map((row) => row.id);

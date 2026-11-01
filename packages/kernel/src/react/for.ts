@@ -2,13 +2,15 @@ import { effect, unwrap, $TRACK } from "@supergrain/kernel";
 import { trackArrayElements, untracked, type ReactiveTagged } from "@supergrain/kernel/internal";
 import React, { useEffect, useLayoutEffect, useReducer, useRef } from "react";
 
+import { tracked } from "./tracked";
+
 /* c8 ignore start -- the React project runs in a browser; this branch is for SSR consumers */
 const useIsomorphicLayoutEffect = globalThis.document === undefined ? useEffect : useLayoutEffect;
 /* c8 ignore stop */
 
-import { tracked } from "./tracked";
-
 type Children = (item: unknown, index: number) => React.ReactNode;
+/** Parent mode: the element `children` returned for each raw item. */
+type Elements = Map<unknown, React.ReactNode>;
 
 interface ForProps<T> {
   each: ReadonlyArray<T>;
@@ -65,7 +67,7 @@ export const For = tracked((props: ForProps<unknown>) => {
   const [, rerender] = useReducer((n: number) => n + 1, 0);
   // Parent mode: the element `children` returned for each item, reused while
   // the item stays in the list.
-  const elementsRef = useRef(new Map<unknown, React.ReactNode>());
+  const elementsRef = useRef<Elements | null>(null);
 
   // Structure (push, splice, length, a new array) always re-renders `For`.
   void (each as ReactiveTagged)?.[$TRACK];
@@ -103,7 +105,7 @@ export const For = tracked((props: ForProps<unknown>) => {
 
   if (!raw || raw.length === 0) {
     // Drop the last rows' elements, so a cleared list holds nothing.
-    elementsRef.current = new Map();
+    elementsRef.current = null;
     return fallback ? React.createElement(React.Fragment, null, fallback) : null;
   }
 
@@ -123,13 +125,13 @@ function reusedElements(
   raw: ReadonlyArray<unknown>,
   each: ReadonlyArray<unknown>,
   children: Children,
-  elementsRef: React.RefObject<Map<unknown, React.ReactNode>>,
+  elementsRef: React.RefObject<Elements | null>,
 ): Array<React.ReactNode> {
   const previous = elementsRef.current;
-  const next = new Map<unknown, React.ReactNode>();
+  const next: Elements = new Map();
   const slots = raw.map((item, i) => {
     const rawItem = unwrap(item);
-    const element = previous.get(rawItem) ?? children(each[i], i);
+    const element = previous?.get(rawItem) ?? children(each[i], i);
     next.set(rawItem, element);
     return element;
   });
@@ -194,10 +196,11 @@ function isSwap(
 const objectKeys = new WeakMap<object, string>();
 let nextObjectKey = 0;
 
-/** `item.id`, else the object's identity, else (for a primitive) the index. */
+/** `item.id` (a string or number), else the object's identity, else (for a primitive) the index. */
 function keyOf(rawItem: unknown, index: number): React.Key {
   if (!rawItem || typeof rawItem !== "object") return index;
-  if ("id" in rawItem) return (rawItem as { id: React.Key }).id;
+  const { id } = rawItem as { id?: unknown };
+  if (typeof id === "string" || typeof id === "number") return id;
   let key = objectKeys.get(rawItem);
   if (key === undefined) {
     key = `\u0000o${nextObjectKey++}`;

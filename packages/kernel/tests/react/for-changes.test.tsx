@@ -306,3 +306,34 @@ describe("For without parent: items that aren't objects", () => {
     expect(container.textContent).toBe("0bnull");
   });
 });
+
+describe("For without parent: ids that can't be keys", () => {
+  it("keys items whose id isn't a string or number by identity", async () => {
+    const store = createReactive({
+      data: [
+        { id: undefined, label: "a" },
+        { id: null, label: "b" },
+        { id: {}, label: "c" },
+      ],
+    });
+    let calls = 0;
+    const List = tracked(() => (
+      <ul>
+        <For each={store.data}>
+          {(item) => {
+            calls++;
+            return <li>{item.label}</li>;
+          }}
+        </For>
+      </ul>
+    ));
+    const { container } = render(<List />);
+    calls = 0;
+    await act(async () => {
+      store.data.reverse();
+    });
+    expect(container.textContent).toBe("cba");
+    // Every row only moved, so none calls `children` again.
+    expect(calls).toBe(0);
+  });
+});

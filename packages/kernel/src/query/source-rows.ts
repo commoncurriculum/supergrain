@@ -1,7 +1,10 @@
+import type { Caught } from "../rethrowing-computed";
+
 import { arrayLog, logEnd, trackArrayItems, type ArrayLog, type Splice } from "../array-log";
 import { unwrap } from "../core";
 import { wrap } from "../read";
-import { createRowBlocks, type Group, type Row } from "./row-blocks";
+import { forEachItem } from "./for-each-item";
+import { createRow, createRowBlocks, type Group, type Row, type RowResult } from "./row-blocks";
 
 /** The source's rows in order (once each), the rows that left it, and the groups to read. */
 export interface Structure<T, O, K> {
@@ -27,7 +30,7 @@ export interface Structure<T, O, K> {
  */
 export function createSourceRows<T extends object, O, K>(
   source: () => Iterable<T>,
-  createRow: (item: T, raw: object) => Row<T, O, K>,
+  resultOf: (item: T) => () => Caught<RowResult<O, K>>,
 ) {
   const rows = new Map<object, Row<T, O, K>>();
   const place = createRowBlocks<T, O, K>((row) => rows.get(row.raw) === row);
@@ -102,7 +105,8 @@ export function createSourceRows<T extends object, O, K>(
         const raw = unwrap(item) as object;
         let row = rows.get(raw);
         if (row === undefined) {
-          row = createRow(wrap(raw) as T, raw);
+          const wrapped = wrap(raw) as T;
+          row = createRow(wrapped, raw, resultOf(wrapped));
           rows.set(raw, row);
           unplaced.push(row);
         }
@@ -137,7 +141,7 @@ export function createSourceRows<T extends object, O, K>(
       const raw = unwrap(item);
       let row = rows.get(raw);
       if (row === undefined) {
-        row = createRow(item, raw);
+        row = createRow(item, raw, resultOf(item));
         rows.set(raw, row);
       } else if (row.count > 0) {
         return; // The same object twice counts once.
@@ -159,14 +163,4 @@ export function createSourceRows<T extends object, O, K>(
   }
 
   return read;
-}
-
-// A kernel array's `forEach` subscribes to its structure with three signals;
-// `for...of` would subscribe to every index.
-export function forEachItem<T>(source: Iterable<T>, fn: (item: T) => void): void {
-  if (Array.isArray(source)) {
-    (source as ReadonlyArray<T>).forEach((item) => fn(item));
-  } else {
-    for (const item of source) fn(item);
-  }
 }

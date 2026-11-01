@@ -3,7 +3,7 @@ import { signal } from "alien-signals";
 import { untracked } from "../core";
 import { rethrowingComputed } from "../rethrowing-computed";
 import { isMissing } from "./compare";
-import { forEachItem } from "./source-rows";
+import { forEachItem } from "./for-each-item";
 
 /** A collection's docs by key, for looking docs up inside query steps. */
 export interface Lookup<K, V> {

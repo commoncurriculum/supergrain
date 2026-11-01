@@ -43,6 +43,7 @@ export function settle<V>(read: () => Caught<V>): V {
  */
 export function rethrowingComputed<V>(getter: (previous: V | undefined) => V): () => V {
   const read = catchingComputed(getter);
+  // `settle` inlined: calling it here costs a measurable share of every read.
   return () => {
     const result = read();
     if (result instanceof Failure) throw result.error;
