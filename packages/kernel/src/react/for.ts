@@ -88,7 +88,9 @@ export const For = tracked((props: ForProps<unknown>) => {
       const changed = changedSlots(shown, raw);
       if (changed.length === 0) return;
       const container = parent.current;
-      if (!container || !isSwap(shown, raw, changed)) {
+      // DOM node i shows item i only when the array has no holes (a hole
+      // renders nothing), so only then can a swap move nodes by index.
+      if (!container || container.children.length !== raw.length || !isSwap(shown, raw, changed)) {
         rerender();
         return;
       }

@@ -64,6 +64,22 @@ for (const withParent of [false, true]) {
       expect(shown()).toBe("i7i2i8");
     });
 
+    it("shows a swap in an array with a hole", async () => {
+      const data = items(1, 2, 3, 4);
+      delete data[1];
+      const store = createReactive({ data });
+      const shown = mount(() => store.data, withParent);
+
+      await act(async () => {
+        batch(() => {
+          const third = store.data[2]!;
+          store.data[2] = store.data[3]!;
+          store.data[3] = third;
+        });
+      });
+      expect(shown()).toBe("i1i4i3");
+    });
+
     it("shows a swap, and only the swapped rows' order changes", async () => {
       const store = createReactive({ data: items(1, 2, 3, 4) });
       const shown = mount(() => store.data, withParent);

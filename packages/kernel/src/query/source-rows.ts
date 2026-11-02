@@ -1,6 +1,6 @@
 import type { Caught } from "../rethrowing-computed";
 
-import { arrayLog, logEnd, type ArrayLog, type Splice } from "../array-log";
+import { followArray, logEnd, type ArrayLog, type LogReader, type Splice } from "../array-log";
 import { trackArrayItems } from "../array-methods";
 import { unwrap } from "../core";
 import { wrap } from "../read";
@@ -26,8 +26,8 @@ export interface Structure<T, O, K> {
  * Every row counts how many times the source holds it, and a row whose count
  * drops to zero has left. A walk recounts every row; when the source is a
  * store array, the list instead follows it through the array's log
- * (`array-log.ts`): `mirror` is its rows in order as of log position
- * `position`, so a change costs the splices since, not a walk.
+ * (`array-log.ts`): `mirror` is its rows in order as of its reader's log
+ * position, so a change costs the splices since, not a walk.
  */
 export function createSourceRows<T extends object, O, K>(
   source: () => Iterable<T>,
@@ -38,8 +38,8 @@ export function createSourceRows<T extends object, O, K>(
   const isLive = (row: Row<T, O, K>): boolean => rows.get(row.raw) === row;
   const place = createRowBlocks<T, O, K>(isLive);
   let nextSeq = 0;
-  let followed: ReadonlyArray<unknown> | null = null;
-  let position = -1;
+  /** The store array being followed through its log, and the list's place in it. */
+  let followed: { raw: ReadonlyArray<unknown>; log: ArrayLog; reader: LogReader } | null = null;
   let mirror: Array<Row<T, O, K>> = [];
 
   /** Read the source's structure. Tracked. */
@@ -51,18 +51,24 @@ export function createSourceRows<T extends object, O, K>(
       return walk((fn) => forEachItem(items, fn));
     }
     trackArrayItems(raw);
-    const log = arrayLog(raw);
-    const splices = raw === followed ? splicesSince(log) : undefined;
-    if (splices) {
-      const structure = applySplices(splices);
+    if (followed?.raw === raw) {
+      const { log, reader } = followed;
+      const splices = splicesSince(log, reader.position);
+      const structure = splices && applySplices(splices);
       if (structure) {
-        position = logEnd(log);
+        reader.position = logEnd(log);
         return structure;
       }
+    } else {
+      // A new reader per array: the old one, no longer held, lets its log go.
+      const reader: LogReader = { position: -1 };
+      followed = { raw, log: followArray(raw, reader), reader };
     }
+    const { log, reader } = followed;
+    // Until the walk succeeds, the mirror is stale: walk again next time.
+    reader.position = -1;
     // Walk the raw array: no proxy reads, and the three signals above
     // already cover every change to it.
-    followed = null;
     let seen = 0;
     const structure = walk((fn) => {
       raw.forEach((item: unknown) => {
@@ -70,17 +76,16 @@ export function createSourceRows<T extends object, O, K>(
         fn(wrap(item) as T);
       });
     });
-    followed = raw;
     mirror = [...structure.list];
     // The mirror can't follow an array with holes, or one that holds a row
     // twice (the list counts it once, at its first position): walk those
     // every time.
-    position = seen === raw.length && structure.list.length === seen ? logEnd(log) : -1;
+    if (seen === raw.length && structure.list.length === seen) reader.position = logEnd(log);
     return structure;
   }
 
   /** The splices since `position`, or `undefined` if the log can't say. */
-  function splicesSince(log: ArrayLog): ReadonlyArray<Splice> | undefined {
+  function splicesSince(log: ArrayLog, position: number): ReadonlyArray<Splice> | undefined {
     if (position < log.base) return undefined;
     const splices = log.entries.slice(position - log.base);
     for (const splice of splices) {

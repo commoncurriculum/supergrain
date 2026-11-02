@@ -1,14 +1,24 @@
 import fc from "fast-check";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
 import { createReactive, reconcile, unwrap } from "../../src";
-import { arrayLog, logEnd, type ArrayLog } from "../../src/array-log";
+import { followArray, logEnd, type ArrayLog } from "../../src/array-log";
 
 interface Item {
   id: number;
 }
 
 const item = (id: number): Item => ({ id });
+
+/** A full garbage collection, so weak references to unreachable objects clear. */
+async function collectGarbage(): Promise<void> {
+  // WeakRefs created in this turn stay alive until it ends.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  setFlagsFromString("--expose-gc");
+  (runInNewContext("gc") as () => void)();
+}
 
 /**
  * Replay the log from `from` onto `start`. Returns `undefined` when the log
@@ -34,17 +44,19 @@ function expectSameItems(actual: unknown[] | undefined, items: Item[]): void {
 
 function follow(items: Item[]) {
   const raw = unwrap(items);
-  const log = arrayLog(raw);
-  const from = logEnd(log);
+  // The reader stays at the start, so the log keeps every entry for it.
+  const reader = { position: -1 };
+  const log = followArray(raw, reader);
+  reader.position = logEnd(log);
   const start = [...raw];
-  return { log, replayed: () => replay(log, from, start) };
+  return { log, replayed: () => replay(log, reader.position, start) };
 }
 
 describe("array log", () => {
   it("records nothing for arrays no reader asked about", () => {
     const store = createReactive({ items: [item(1)] });
     store.items.push(item(2));
-    const log = arrayLog(unwrap(store.items));
+    const log = followArray(unwrap(store.items), { position: -1 });
     expect(log.entries).toEqual([]);
   });
 
@@ -118,6 +130,39 @@ describe("array log", () => {
     const { replayed } = follow(store.items);
     store.items[1] = item(4);
     expect(replayed()).toBeUndefined();
+  });
+
+  it("drops the entries every reader has seen", () => {
+    const store = createReactive({ items: [item(0)] });
+    const reader = { position: -1 };
+    const log = followArray(unwrap(store.items), reader);
+    for (let i = 1; i <= 5; i++) {
+      reader.position = logEnd(log);
+      store.items.push(item(i));
+      // Only the push the reader hasn't read yet is kept.
+      expect(log.entries).toHaveLength(1);
+    }
+  });
+
+  it("records nothing while its readers will walk anyway", () => {
+    const store = createReactive({ items: [item(0)] });
+    const log = followArray(unwrap(store.items), { position: -1 });
+    store.items.push(item(1));
+    expect(log.entries).toEqual([]);
+  });
+
+  it("is dropped once its last reader is gone", async () => {
+    const store = createReactive({ items: [item(0)] });
+    let reader: { position: number } | undefined = { position: 0 };
+    const log = followArray(unwrap(store.items), reader);
+    store.items.push(item(1));
+    expect(log.entries).toHaveLength(1);
+    reader = undefined;
+    await collectGarbage();
+    store.items.push(item(2));
+    // No new entry, and a new reader starts a fresh log.
+    expect(log.entries).toHaveLength(1);
+    expect(followArray(unwrap(store.items), { position: 0 })).not.toBe(log);
   });
 
   it("keeps only recent entries, so a reader far behind walks", () => {

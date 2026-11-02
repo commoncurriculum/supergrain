@@ -187,12 +187,18 @@ describe("useRemoteQuery", () => {
     expect(store.find(summaryQuery, body(1)).value?.groupId).toBe(1);
     expect(server.count(1)).toBe(1);
 
+    // Timers never fire early but can fire late on a loaded machine, so check
+    // a lower bound on when the result goes, not a window around it.
     unmount();
-    await wait(20);
+    const unmountedAt = performance.now();
+    await wait(0);
     expect(store.find(summaryQuery, body(1)).value?.groupId).toBe(1);
 
-    await wait(40);
-    expect(store.find(summaryQuery, body(1)).value).toBeUndefined();
+    await vi.waitFor(() => expect(store.find(summaryQuery, body(1)).value).toBeUndefined(), {
+      timeout: 2000,
+      interval: 5,
+    });
+    expect(performance.now() - unmountedAt).toBeGreaterThanOrEqual(40);
     await wait(1);
     expect(server.count(1)).toBe(2);
   });
