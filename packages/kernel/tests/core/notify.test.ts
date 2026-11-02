@@ -41,6 +41,8 @@ type Write =
   | { kind: "set"; index: number; value: number }
   | { kind: "length"; value: number }
   | { kind: "delete"; index: number }
+  // A key that isn't an index: a plain property on the array.
+  | { kind: "setProp" | "deleteProp"; key: "extra" | "-1" | "1.5" }
   | { kind: "push" | "unshift"; count: number }
   | { kind: "pop" | "shift" | "reverse" | "sort" }
   | { kind: "splice"; start: number; remove: number; add: number }
@@ -60,6 +62,12 @@ function apply(list: Array<Item>, write: Write): void {
       break;
     case "delete":
       delete list[write.index];
+      break;
+    case "setProp":
+      (list as unknown as Record<string, unknown>)[write.key] = newItem();
+      break;
+    case "deleteProp":
+      delete (list as unknown as Record<string, unknown>)[write.key];
       break;
     case "push":
     case "unshift":
@@ -94,6 +102,10 @@ const write: fc.Arbitrary<Write> = fc.oneof(
   }),
   fc.record({ kind: fc.constant("length" as const), value: small }),
   fc.record({ kind: fc.constant("delete" as const), index: small }),
+  fc.record({
+    kind: fc.constantFrom("setProp" as const, "deleteProp" as const),
+    key: fc.constantFrom("extra" as const, "-1" as const, "1.5" as const),
+  }),
   fc.record({
     kind: fc.constantFrom("push" as const, "unshift" as const),
     count: fc.nat({ max: 3 }),

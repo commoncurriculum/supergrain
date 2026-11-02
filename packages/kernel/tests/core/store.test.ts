@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 import { createReactive, effect, unwrap, batch } from "../../src";
+import { setProperty } from "../../src/internal";
 
 describe("Store", () => {
   describe("createReactive", () => {
@@ -390,5 +391,16 @@ describe("Store", () => {
     });
     state.list.length = 1;
     expect(seen).toEqual([["0", "1", "2"], ["0"]]);
+  });
+
+  it("treats a number key that isn't an index as a plain property of an array", () => {
+    const state = createReactive({ list: [1, 2] });
+    const seen: Array<Array<string>> = [];
+    effect(() => {
+      seen.push(Object.keys(state.list));
+    });
+    for (const key of [-1, 1.5]) setProperty(unwrap(state.list), key, "x");
+    expect(unwrap(state.list)).toEqual(Object.assign([1, 2], { "-1": "x", "1.5": "x" }));
+    expect(seen.at(-1)).toEqual(["0", "1", "-1", "1.5"]);
   });
 });
