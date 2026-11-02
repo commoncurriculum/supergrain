@@ -3,6 +3,7 @@ import { getActiveSub } from "alien-signals";
 import { ARRAY_METHODS, type NativeArrayMethod } from "./array-methods";
 import { createReactiveMap, createReactiveSet } from "./collections";
 import {
+  $HAS_FIELD_NODES,
   $NODE,
   $OWN_KEYS,
   $PROXY,
@@ -13,6 +14,7 @@ import {
   getNode,
   getNodes,
   isWrappable,
+  type DataNodes,
   type ReactiveTagged,
 } from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
@@ -156,7 +158,7 @@ const readHandler: Pick<
       getNode(nodes, $VERSION, 0)();
       return wrap(value);
     }
-    const node = getNode(nodes, prop, value);
+    const node = nodes[prop] ?? fieldNode(target, nodes, prop, value);
     return wrap(node());
   },
 
@@ -218,4 +220,11 @@ export function createReactiveProxy<T extends object>(target: T): T {
     if (!defineHidden(target, $PROXY, proxy)) proxyCache.set(target, proxy);
   }
   return proxy as T;
+}
+
+/** A new signal for `prop`, marking an array as having per-field signals (see `$HAS_FIELD_NODES`). */
+function fieldNode(target: object, nodes: DataNodes, prop: PropertyKey, value: unknown) {
+  const node = getNode(nodes, prop, value);
+  if (prop !== "length" && Array.isArray(target)) nodes[$HAS_FIELD_NODES] = node;
+  return node;
 }

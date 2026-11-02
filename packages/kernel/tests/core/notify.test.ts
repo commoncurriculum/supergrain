@@ -163,6 +163,31 @@ describe("notify contract: every reader of an array reruns when what it read cha
   }
 });
 
+describe("an array key past the largest index", () => {
+  // 2 ** 32 - 1 and up name ordinary properties, not elements: writing one
+  // leaves `length` alone, so it must notify like an object's field.
+  for (const key of ["4294967295", "4294967296"]) {
+    it(`notifies a reader of list[${key}] on a write and a delete`, () => {
+      const store = createReactive({ list: [1, 2] });
+      const list = store.list as unknown as Record<string, unknown>;
+      const seen: Array<unknown> = [];
+      const stop = effect(() => {
+        seen.push(list[key]);
+      });
+      list[key] = "x";
+      delete list[key];
+      stop();
+      // An extra rerun is allowed; a missed one is not.
+      expect(seen.filter((value, i) => i === 0 || value !== seen[i - 1])).toEqual([
+        undefined,
+        "x",
+        undefined,
+      ]);
+      expect(unwrap(store.list).length).toBe(2);
+    });
+  }
+});
+
 type ObjectWrite = { kind: "set"; key: string; value: number } | { kind: "delete"; key: string };
 
 const KEYS = ["a", "b", "c"];

@@ -1,12 +1,14 @@
 import {
   and,
   BTreeIndex,
+  count,
   createCollection,
   eq,
   localOnlyCollectionOptions,
   type Collection,
   type InitialQueryBuilder,
   type QueryBuilder,
+  toArray,
 } from "@tanstack/db";
 
 import { batch, createReactive, computedList, stableComputed, unwrap } from "../src";
@@ -324,6 +326,21 @@ export function joinScenarios(
   ];
 }
 
+/** The join's changes, plus moving a task to another owner and back. */
+export function oneToManyScenarios(
+  size: number,
+): ReadonlyArray<[title: string, change: (i: number) => JoinChange]> {
+  const moved = size / 2 + 1;
+  const owner = (moved * 7) % (USERS + 10);
+  return [
+    ...joinScenarios(size),
+    [
+      "Move an open task to another user",
+      (i) => ({ task: moved, patch: { ownerId: i % 2 === 0 ? (owner + 1) % USERS : owner } }),
+    ],
+  ];
+}
+
 /** Changes that touch every case; every implementation must agree after each. */
 export function joinValidationChanges(size: number): JoinChange[] {
   return [
@@ -469,3 +486,116 @@ export const tanstackJoinedTopTen = (
     .orderBy(({ task }) => task.priority, "asc")
     .orderBy(({ task }) => task.id, "asc")
     .limit(10);
+
+// --- One-to-many: each active user with their open tasks ---
+
+/**
+ * The one-to-many query everywhere: "active users by id, each with their
+ * open tasks by id". Same tasks, users and changes as the join.
+ */
+export type OpenTasksByUser = (store: {
+  tasks: Owned[];
+  users: User[];
+}) => () => ReadonlyArray<{ user: User; tasks: ReadonlyArray<Owned> }>;
+
+/** Look tasks up by owner, with completed tasks under no key. */
+export const supergrainOpenTasksByUser: OpenTasksByUser = (store) =>
+  computedList(() => store.users, {
+    open: { from: () => store.tasks, key: (task: Owned) => (task.completed ? null : task.ownerId) },
+  })
+    .filter((user) => user.active)
+    .map((user, { open }) => ({ user, tasks: open.getAll(user.id) }));
+
+/** The same, with the open tasks as a list of their own to look up in. */
+export const supergrainOpenTasksByUserFromList: OpenTasksByUser = (store) => {
+  const openTasks = computedList(() => store.tasks).filter((task) => !task.completed);
+  return computedList(() => store.users, {
+    open: { from: openTasks, key: (task: Owned) => task.ownerId },
+  })
+    .filter((user) => user.active)
+    .map((user, { open }) => ({ user, tasks: open.getAll(user.id) }));
+};
+
+export const stableComputedOpenTasksByUser: OpenTasksByUser = (store) =>
+  stableComputed(() => {
+    const open = new Map<number, Owned[]>();
+    for (const task of store.tasks) {
+      const list = task.completed ? undefined : open.get(task.ownerId);
+      if (list) list.push(task);
+      else if (!task.completed) open.set(task.ownerId, [task]);
+    }
+    return store.users
+      .filter((user) => user.active)
+      .map((user) => ({ user, tasks: open.get(user.id) ?? [] }));
+  });
+
+/** The one-to-many query in TanStack DB's builder: a `toArray` include. */
+export const tanstackOpenTasksByUser = (
+  q: InitialQueryBuilder,
+  tasks: Collection<Owned, number>,
+  users: Collection<User, number>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see tanstackTopTen
+): QueryBuilder<any> =>
+  q
+    .from({ user: users })
+    .where(({ user }) => eq(user.active, true))
+    .orderBy(({ user }) => user.id, "asc")
+    .select(({ user }) => ({
+      user,
+      tasks: toArray(
+        q
+          .from({ task: tasks })
+          .where(({ task }) => and(eq(task.ownerId, user.id), eq(task.completed, false)))
+          .orderBy(({ task }) => task.id, "asc"),
+      ),
+    }));
+
+// --- Grouping: open tasks counted per owner ---
+
+/** The grouping query everywhere: "open tasks per owner, as counts, by owner id". */
+export type CountsByOwner = (store: {
+  tasks: Owned[];
+}) => () => ReadonlyArray<{ ownerId: number; count: number }>;
+
+/** The task changes from `oneToManyScenarios`, plus one no step reads. */
+export function groupScenarios(
+  size: number,
+): ReadonlyArray<[title: string, change: (i: number) => JoinChange]> {
+  return [
+    ["Rename a task (nothing reads the title)", (i) => ({ task: 7, patch: { title: `t${i}` } })],
+    ...oneToManyScenarios(size).filter(
+      ([title]) => /\btask\b/.test(title) && !title.includes("user that"),
+    ),
+  ];
+}
+
+export const supergrainCountsByOwner: CountsByOwner = (store) =>
+  computedList(() => store.tasks)
+    .filter((task) => !task.completed)
+    .groupBy((task) => task.ownerId)
+    .map((group) => ({ ownerId: group.key, count: group.rows.length }))
+    .orderBy((row) => row.ownerId);
+
+export const stableComputedCountsByOwner: CountsByOwner = (store) =>
+  stableComputed(() => {
+    const counts = new Map<number, number>();
+    for (const task of store.tasks) {
+      if (!task.completed) counts.set(task.ownerId, (counts.get(task.ownerId) ?? 0) + 1);
+    }
+    return Array.from(counts, ([ownerId, n]) => ({ ownerId, count: n })).sort(
+      (a, b) => a.ownerId - b.ownerId,
+    );
+  });
+
+/** The grouping query in TanStack DB's builder. */
+export const tanstackCountsByOwner = (
+  q: InitialQueryBuilder,
+  tasks: Collection<Owned, number>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see tanstackTopTen
+): QueryBuilder<any> =>
+  q
+    .from({ task: tasks })
+    .where(({ task }) => eq(task.completed, false))
+    .groupBy(({ task }) => task.ownerId)
+    .select(({ task }) => ({ ownerId: task.ownerId, count: count(task.id) }))
+    .orderBy(({ task }) => task.ownerId, "asc");

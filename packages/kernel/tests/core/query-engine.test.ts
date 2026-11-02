@@ -117,13 +117,36 @@ describe("query engine", () => {
     expect(ids(view())).toEqual([5, 3, 1]);
   });
 
-  it("orders equal keys by first appearance in the source", () => {
+  it("orders equal keys by their place in the source, and follows a reorder", () => {
     const store = createReactive({ tasks: makeTasks(6) });
     const view = engine({ source: () => store.tasks, sortKey: () => 0 });
     expect(ids(view())).toEqual([0, 1, 2, 3, 4, 5]);
 
     store.tasks.reverse();
-    expect(ids(view())).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(ids(view())).toEqual([5, 4, 3, 2, 1, 0]);
+    // A row moved to the middle, then rows added before and between.
+    const [moved] = store.tasks.splice(0, 1);
+    store.tasks.splice(2, 0, moved!);
+    expect(ids(view())).toEqual([4, 3, 5, 2, 1, 0]);
+    store.tasks.unshift({ id: 8, completed: false, priority: 0, title: "" });
+    store.tasks.splice(3, 0, { id: 9, completed: false, priority: 0, title: "" });
+    expect(ids(view())).toEqual([8, 4, 3, 9, 5, 2, 1, 0]);
+  });
+
+  it("keeps source order without a sort when rows are inserted between others", () => {
+    const store = createReactive({ tasks: makeTasks(4) });
+    const view = engine({ source: () => store.tasks, filter: (task) => task.id !== 2 });
+    expect(ids(view())).toEqual([0, 1, 3]);
+    // Many inserts at one place split the gap between two labels (1 and 2,
+    // so about 52 halvings fit) until it runs out, then every row is
+    // labelled again.
+    for (let i = 0; i < 80; i++) {
+      store.tasks.splice(2, 0, { id: 100 + i, completed: false, priority: 0, title: "" });
+    }
+    const expected = [0, 1, ...Array.from({ length: 80 }, (_, i) => 179 - i), 3];
+    expect(ids(view())).toEqual(expected);
+    store.tasks[2]!.completed = true;
+    expect(ids(view())).toEqual(expected);
   });
 
   it("follows pushes, splices, replaced elements and leave-then-return", () => {

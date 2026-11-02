@@ -17,6 +17,20 @@ export class Scratch<T> {
     return this.items[index] as T;
   }
 
+  /** Put `item` at `index`, moving the items after it up. */
+  insertAt(index: number, item: T): void {
+    for (let i = this.size; i > index; i--) this.items[i] = this.items[i - 1];
+    this.items[index] = item;
+    this.size++;
+  }
+
+  /** Take the item at `index` out, moving the items after it down. */
+  removeAt(index: number): void {
+    this.size--;
+    for (let i = index; i < this.size; i++) this.items[i] = this.items[i + 1];
+    this.items[this.size] = undefined;
+  }
+
   clear(): void {
     for (let i = 0; i < this.size; i++) this.items[i] = undefined;
     this.size = 0;

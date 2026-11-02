@@ -17,8 +17,12 @@ export interface Row<T, O, K> {
   readonly item: T;
   /** The raw object behind `item`: the row's identity. */
   readonly raw: object;
-  /** Order of first appearance; breaks ties between equal keys. */
-  readonly seq: number;
+  /**
+   * The row's place in the source: labels increase along the source, so
+   * ordering rows by it gives source order. Kept up to date by the source's
+   * rows; breaks ties between equal keys.
+   */
+  order: number;
   /** Its latest result. A `catchingComputed`: read it with `settle`. */
   readonly result: () => Caught<RowResult<O, K>>;
   /** The result this row is filed under in the list. */
@@ -57,10 +61,9 @@ export const OUTSIDE: RowResult<never, never> = Object.freeze({
 export function createRow<T, O, K>(
   item: T,
   raw: object,
-  seq: number,
   result: () => Caught<RowResult<O, K>>,
 ): Row<T, O, K> {
-  return { item, raw, seq, result, applied: OUTSIDE, count: 0, block: -1 };
+  return { item, raw, order: 0, result, applied: OUTSIDE, count: 0, block: -1 };
 }
 
 /** Rows per block. */

@@ -1,5 +1,13 @@
 import { logMutation } from "./array-log";
-import { $ELEMENTS, $OWN_KEYS, $VERSION, unwrap, getNodesIfExist, type DataNodes } from "./core";
+import {
+  $ELEMENTS,
+  $HAS_FIELD_NODES,
+  $OWN_KEYS,
+  $VERSION,
+  unwrap,
+  getNodesIfExist,
+  type DataNodes,
+} from "./core";
 import { profileSignalWrite } from "./profiler";
 
 // Monotonic counter feeding every counter-style signal write. The value only
@@ -141,7 +149,11 @@ export function notifyArrayMutation(
   // only a hole made or filled changes the keys, and every index looked at
   // is one of `replaced`.
   let keysChanged = lengthChanged;
-  for (let i = from; i < end; i++) {
+  // With a new length, the loop below only looks for index signals to fire
+  // (the keys changed anyway): skip it when there are none, so a splice in a
+  // long array that nothing reads by index costs no walk of what it shifted.
+  const loopEnd = lengthChanged && nodes?.[$HAS_FIELD_NODES] === undefined ? from : end;
+  for (let i = from; i < loopEnd; i++) {
     const k = i - from;
     const next = target[i];
     if (!keysChanged && k in replaced !== i in target) keysChanged = true;
@@ -171,12 +183,19 @@ export function notifyArrayMutation(
   }
 }
 
+/** The largest array index: `2 ** 32 - 2`. A larger number is an ordinary property. */
+const MAX_INDEX = 4_294_967_294;
+
 /** The array index a property key names, or -1 if it names none. */
 export function arrayIndex(key: PropertyKey): number {
-  if (typeof key === "number") return Number.isInteger(key) && key >= 0 ? key : -1;
+  if (typeof key === "number") return isIndex(key) ? key : -1;
   if (typeof key !== "string") return -1;
   const index = Number(key);
-  return Number.isInteger(index) && index >= 0 && String(index) === key ? index : -1;
+  return isIndex(index) && String(index) === key ? index : -1;
+}
+
+function isIndex(n: number): boolean {
+  return Number.isInteger(n) && n >= 0 && n <= MAX_INDEX;
 }
 
 // Local alias so the proxy trap (also named `deleteProperty`) can call the

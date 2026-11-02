@@ -1,3 +1,6 @@
+/* eslint-disable typescript-eslint/prefer-for-of --
+ * Index loops on purpose: `for…of` allocates an iterator per loop.
+ */
 import { effect, unwrap, $TRACK } from "@supergrain/kernel";
 import { setActiveSub, trackArrayElements, type ReactiveTagged } from "@supergrain/kernel/internal";
 import React, { useEffect, useLayoutEffect, useReducer, useRef } from "react";
@@ -70,11 +73,10 @@ export const For = tracked((props: ForProps<unknown>) => {
     elements: new Map(),
     shown: [],
     swaps: [],
+    committed: null,
     swappedIn: null,
+    exact: true,
   });
-  // React still has the rows in the order of its last render: put back the
-  // nodes the effect below swapped since, before React places them again.
-  if (state.swaps.length > 0) undoSwaps(state);
 
   // Structure (push, splice, length, a new array) always re-renders `For`.
   void (each as ReactiveTagged)?.[$TRACK];
@@ -87,6 +89,8 @@ export const For = tracked((props: ForProps<unknown>) => {
     // The items in the order the DOM shows them. A swap updates it in place;
     // any other change re-renders `For`, which runs this effect again.
     const { shown } = state;
+    // React has placed the rows: any swaps before this were undone first.
+    forgetSwaps(state);
     if (!parent || !raw || raw.length === 0) {
       shown.length = 0;
       return;
@@ -125,11 +129,17 @@ export const For = tracked((props: ForProps<unknown>) => {
         rerender();
         return;
       }
-      swapNodes(container, a, b);
+      const nodeA = container.children[a]!;
+      const nodeB = container.children[b]!;
+      // The order React placed the rows in, for when the swaps can't be
+      // undone one by one. Taken once per run of swaps between renders.
+      state.committed ??= [...container.children];
+      state.swappedIn = container;
+      if (state.swaps.length < MAX_SWAPS * 2) state.swaps.push(nodeA, nodeB);
+      else state.exact = false;
+      swapElements(nodeA, nodeB);
       shown[a] = raw[a];
       shown[b] = raw[b];
-      state.swaps.push(a, b);
-      state.swappedIn = container;
     });
   });
 
@@ -143,7 +153,14 @@ export const For = tracked((props: ForProps<unknown>) => {
   // whole, and per-index subscriptions would only add N links.
   const outer = setActiveSub(undefined);
   try {
-    return parent ? reusedElements(raw, each, children, state) : rowComponents(raw, each, children);
+    if (!parent) return rowComponents(raw, each, children);
+    // The guard puts back swapped nodes when React commits this render.
+    return React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(UndoSwaps, { state }),
+      reusedElements(raw, each, children, state),
+    );
   } finally {
     setActiveSub(outer);
   }
@@ -157,35 +174,86 @@ interface ForState {
   elements: Elements;
   /** Parent mode: the items in the order the DOM shows them. */
   shown: Array<unknown>;
-  /** Parent mode: the slots swapped by moving nodes since React last rendered, in pairs. */
-  swaps: Array<number>;
-  /** The element those swaps moved nodes in. */
+  /** Parent mode: the node pairs swapped since React last placed the rows, oldest first. */
+  swaps: Array<Element>;
+  /** The row nodes in the order React last placed them, once a swap moved one. */
+  committed: Array<Element> | null;
+  /** The element those nodes are in. */
   swappedIn: Element | null;
+  /** Whether `swaps` holds every swap (it stops at `MAX_SWAPS`). */
+  exact: boolean;
 }
 
-/** Swap the nodes at `a` and `b` (`a` before `b`). Its own inverse. */
-function swapNodes(container: Element, a: number, b: number): void {
-  const nodeA = container.children[a]!;
-  const nodeB = container.children[b]!;
-  const siblingA = nodeA.nextSibling === nodeB ? nodeA : nodeA.nextSibling!;
-  nodeB.after(nodeA);
-  siblingA.before(nodeB);
-}
+/** Swaps kept one by one between renders; past this, undoing restores `committed`. */
+const MAX_SWAPS = 32;
 
-/** Undo the swaps, latest first, in the DOM and in `shown`. */
-function undoSwaps(state: ForState): void {
-  const { swaps, shown } = state;
-  const container = state.swappedIn!;
-  for (let i = swaps.length - 2; i >= 0; i -= 2) {
-    const a = swaps[i]!;
-    const b = swaps[i + 1]!;
-    swapNodes(container, a, b);
-    const item = shown[a];
-    shown[a] = shown[b];
-    shown[b] = item;
+/**
+ * Parent mode: React still has the rows in the order of its last render, and
+ * places them by that order. Before it changes the DOM, put back the nodes
+ * swapped since. `getSnapshotBeforeUpdate` runs then, in the commit, and
+ * never for a render React drops (one that suspended, say), which must leave
+ * the screen as it is.
+ */
+class UndoSwaps extends React.Component<{ state: ForState }> {
+  override getSnapshotBeforeUpdate(): null {
+    undoSwaps(this.props.state);
+    return null;
   }
-  swaps.length = 0;
+
+  override componentDidUpdate(): void {}
+
+  override render(): null {
+    return null;
+  }
+}
+
+/** Put the swapped nodes back in the order React placed them. */
+function undoSwaps(state: ForState): void {
+  const { swaps, committed } = state;
+  if (committed === null) return;
+  // Latest first, unless one was dropped or a node has left since (a row
+  // that rendered nothing): then restore the whole order.
+  let { exact } = state;
+  for (let i = 0; exact && i < swaps.length; i++) exact = swaps[i]!.isConnected;
+  if (exact) {
+    for (let i = swaps.length - 2; i >= 0; i -= 2) swapElements(swaps[i]!, swaps[i + 1]!);
+  } else {
+    restoreOrder(state.swappedIn!, committed);
+  }
+  forgetSwaps(state);
+}
+
+function forgetSwaps(state: ForState): void {
+  state.swaps.length = 0;
+  state.committed = null;
   state.swappedIn = null;
+  state.exact = true;
+}
+
+/** Swap two sibling nodes. Its own inverse. */
+function swapElements(x: Element, y: Element): void {
+  const afterX = x.nextSibling;
+  if (afterX === y) {
+    x.before(y);
+    return;
+  }
+  const parent = x.parentNode!;
+  y.before(x);
+  if (afterX === null) parent.append(y);
+  else afterX.before(y);
+}
+
+/** Put the nodes of `order` still in `container` back in that order. */
+function restoreOrder(container: Element, order: ReadonlyArray<Element>): void {
+  let cursor = container.firstElementChild;
+  for (let i = 0; i < order.length; i++) {
+    const node = order[i]!;
+    if (node.parentNode === container) {
+      // A node not yet placed is at or after `cursor`, so `cursor` is set.
+      if (node === cursor) cursor = cursor.nextElementSibling;
+      else cursor!.before(node);
+    }
+  }
 }
 
 /**

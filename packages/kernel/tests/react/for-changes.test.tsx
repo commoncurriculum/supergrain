@@ -20,6 +20,8 @@ interface Item {
 
 const items = (...ids: number[]): Item[] => ids.map((id) => ({ id, label: `i${id}` }));
 
+const unwrapIds = (data: ReadonlyArray<Item>): string => data.map((item) => item.label).join("");
+
 let rowRenders = 0;
 const Row = tracked(({ item }: { item: Item }) => {
   rowRenders++;
@@ -308,6 +310,123 @@ describe("For with parent: edge cases", () => {
       store.data[2] = first;
     });
     expect(shown()).toBe("i3i2i1");
+  });
+
+  const swapEnds = (data: Array<{ id: number }>) => {
+    const first = data[0]!;
+    data[0] = data.at(-1)! as never;
+    data[data.length - 1] = first as never;
+  };
+
+  it("re-renders correctly after a swapped row stopped rendering", async () => {
+    const store = createReactive({ data: items(1, 2, 3), hidden: 0 });
+    const Hideable = tracked(({ item }: { item: Item }) =>
+      store.hidden === item.id ? null : <li>{item.label}</li>,
+    );
+    const List = tracked(() => {
+      const ul = React.useRef<HTMLUListElement>(null);
+      return (
+        <ul ref={ul}>
+          <For each={store.data} parent={ul}>
+            {(item: Item) => <Hideable key={item.id} item={item} />}
+          </For>
+        </ul>
+      );
+    });
+    const { container } = render(<List />);
+    await act(async () => {
+      batch(() => swapEnds(store.data));
+    });
+    expect(container.textContent).toBe("i3i2i1");
+    // The row now in the middle of the swap stops rendering, without `For`.
+    await act(async () => {
+      store.hidden = 1;
+    });
+    expect(container.textContent).toBe("i3i2");
+    await act(async () => {
+      store.data.push({ id: 4, label: "i4" });
+    });
+    expect(container.textContent).toBe("i3i2i4");
+    await act(async () => {
+      store.hidden = 0;
+    });
+    expect(container.textContent).toBe("i3i2i1i4");
+  });
+
+  it("re-renders correctly after more swaps than it keeps one by one", async () => {
+    const store = createReactive({ data: items(1, 2, 3, 4, 5) });
+    const shown = mountWithParent(store.data);
+    for (let i = 0; i < 41; i++) {
+      await act(async () => {
+        batch(() => {
+          const a = i % 5;
+          const b = (i * 3 + 1) % 5;
+          if (a === b) return;
+          const first = store.data[a]!;
+          store.data[a] = store.data[b]!;
+          store.data[b] = first;
+        });
+      });
+    }
+    const order = () => unwrapIds(store.data);
+    expect(shown()).toBe(order());
+    await act(async () => {
+      store.data.push({ id: 6, label: "i6" });
+    });
+    expect(shown()).toBe(order());
+  });
+
+  it("leaves a swap on screen when a render that would undo it suspends", async () => {
+    const store = createReactive({ data: items(1, 2, 3), waiting: false, tick: 0 });
+    const never = new Promise<never>(() => {});
+    const Waits = tracked(() => {
+      if (store.waiting) throw never;
+      return null;
+    });
+    const List = tracked(() => {
+      const ul = React.useRef<HTMLUListElement>(null);
+      void store.tick;
+      return (
+        <>
+          <ul ref={ul}>
+            <For each={store.data} parent={ul}>
+              {(item: Item) => <Row key={item.id} item={item} />}
+            </For>
+          </ul>
+          <Waits />
+        </>
+      );
+    });
+    const { container } = render(
+      <React.Suspense fallback={<i>loading</i>}>
+        <List />
+      </React.Suspense>,
+    );
+    await act(async () => {
+      batch(() => swapEnds(store.data));
+    });
+    expect(container.textContent).toBe("i3i2i1");
+    // `For` renders in this transition, then `Waits` suspends it: React
+    // keeps the screen, which must still show the swap.
+    await act(async () => {
+      React.startTransition(() => {
+        batch(() => {
+          store.tick++;
+          store.waiting = true;
+        });
+      });
+    });
+    expect(container.textContent).toBe("i3i2i1");
+    await act(async () => {
+      React.startTransition(() => {
+        store.waiting = false;
+      });
+    });
+    expect(container.textContent).toBe("i3i2i1");
+    await act(async () => {
+      store.data.push({ id: 4, label: "i4" });
+    });
+    expect(container.textContent).toBe("i3i2i1i4");
   });
 });
 

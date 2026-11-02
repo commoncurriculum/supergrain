@@ -25,6 +25,7 @@ export {
   type Query,
   type Sorted,
 } from "./query/computed-list";
+export type { Group } from "./query/index-rows";
 export type { Lookup } from "./query/lookup";
 export { reconcile } from "./reconcile";
 export { batch } from "./batch";

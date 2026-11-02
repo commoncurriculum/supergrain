@@ -4,6 +4,17 @@ import { bench, describe } from "vitest";
 import {
   computedListTopTen,
   joinScenarios,
+  oneToManyScenarios,
+  groupScenarios,
+  stableComputedCountsByOwner,
+  supergrainCountsByOwner,
+  tanstackCountsByOwner,
+  type CountsByOwner,
+  stableComputedOpenTasksByUser,
+  supergrainOpenTasksByUser,
+  supergrainOpenTasksByUserFromList,
+  tanstackOpenTasksByUser,
+  type OpenTasksByUser,
   joinValidationChanges,
   makeOwnedTasks,
   makeUsers,
@@ -53,6 +64,71 @@ import {
  * the same way, so the wait itself adds the same small cost to each.
  */
 const settled = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+/**
+ * Bench one kind of change: `build` makes a fresh harness right before the
+ * warmup and again before the timed run, and the harness is dropped after
+ * each. Building every harness up front, while the benches are collected,
+ * would keep all of them alive at once, and the large heap that leaves slows
+ * every bench through the garbage collector.
+ */
+function benchChanges<H extends { read(): unknown; dispose(): void }>(
+  name: string,
+  build: () => H,
+  step: (harness: H, i: number) => void,
+): void {
+  let harness: H | undefined;
+  let i = 0;
+  bench(
+    name,
+    async () => {
+      step(harness!, i++);
+      await settled();
+      harness!.read();
+    },
+    {
+      setup: () => {
+        harness = build();
+        harness.read();
+        i = 0;
+      },
+      teardown: () => {
+        harness?.dispose();
+        harness = undefined;
+      },
+    },
+  );
+}
+
+/**
+ * Check that every implementation shows the same thing after each step,
+ * waiting for queued work after each write, as the timed benches do.
+ */
+async function expectAgreement<H extends { dispose(): void }>(
+  what: string,
+  implementations: ReadonlyArray<readonly [string, () => H]>,
+  read: (harness: H) => unknown,
+  steps: ReadonlyArray<(harness: H) => void>,
+): Promise<void> {
+  const results: Array<readonly [string, string]> = [];
+  for (const [name, build] of implementations) {
+    const harness = build();
+    await settled();
+    const seen = [read(harness)];
+    for (const step of steps) {
+      step(harness);
+      await settled();
+      seen.push(read(harness));
+    }
+    harness.dispose();
+    results.push([name, JSON.stringify(seen)]);
+  }
+  for (const [name, seen] of results) {
+    if (seen !== results[0]![1]) {
+      throw new Error(`computed-list bench: ${name} disagrees with ${results[0]![0]} at ${what}`);
+    }
+  }
+}
 
 /** What every implementation can do: edit, add and remove rows, and read the top 10 ids. */
 interface Harness {
@@ -124,34 +200,21 @@ const IMPLEMENTATIONS: ReadonlyArray<[string, Build]> = [
 ];
 
 /** Run the same edits on every implementation; throw if any result differs. */
-function validate(size: number): void {
-  const results = IMPLEMENTATIONS.map(([name, build]) => {
-    const harness = build(makeTasks(size));
-    const seen = [harness.read()];
-    for (const edit of validationEdits(size)) {
-      harness.edit(edit);
-      seen.push(harness.read());
-    }
-    for (const [, change] of membershipScenarios(size)) {
-      for (let i = 0; i < 2; i++) {
-        harness.change(change(i));
-        seen.push(harness.read());
-      }
-    }
-    harness.dispose();
-    return [name, JSON.stringify(seen)] as const;
-  });
-  for (const [name, seen] of results) {
-    if (seen !== results[0]![1]) {
-      throw new Error(
-        `computed-list bench: ${name} disagrees with ${results[0]![0]} at ${size} rows`,
-      );
-    }
-  }
+function validate(size: number): Promise<void> {
+  const membership = membershipScenarios(size).flatMap(([, change]) => [change(0), change(1)]);
+  return expectAgreement(
+    `${size} rows`,
+    IMPLEMENTATIONS.map(([name, build]) => [name, () => build(makeTasks(size))] as const),
+    (harness) => harness.read(),
+    [
+      ...validationEdits(size).map((edit) => (harness: Harness) => harness.edit(edit)),
+      ...membership.map((change) => (harness: Harness) => harness.change(change)),
+    ],
+  );
 }
 
 for (const size of [1_000, 10_000]) {
-  validate(size);
+  await validate(size);
   const rows = `${size.toLocaleString("en-US")} rows`;
 
   describe(`Build the list and read it (${rows})`, () => {
@@ -168,14 +231,11 @@ for (const size of [1_000, 10_000]) {
   for (const [title, edit] of scenarios(size)) {
     describe(`${title} (${rows})`, () => {
       for (const [name, build] of IMPLEMENTATIONS) {
-        const harness = build(makeTasks(size));
-        harness.read();
-        let i = 0;
-        bench(name, async () => {
-          harness.edit(edit(i++));
-          await settled();
-          harness.read();
-        });
+        benchChanges(
+          name,
+          () => build(makeTasks(size)),
+          (harness, i) => harness.edit(edit(i)),
+        );
       }
     });
   }
@@ -183,14 +243,11 @@ for (const size of [1_000, 10_000]) {
   for (const [title, change] of membershipScenarios(size)) {
     describe(`${title} (${rows})`, () => {
       for (const [name, build] of IMPLEMENTATIONS) {
-        const harness = build(makeTasks(size));
-        harness.read();
-        let i = 0;
-        bench(name, async () => {
-          harness.change(change(i++));
-          await settled();
-          harness.read();
-        });
+        benchChanges(
+          name,
+          () => build(makeTasks(size)),
+          (harness, i) => harness.change(change(i)),
+        );
       }
     });
   }
@@ -238,28 +295,19 @@ const JOIN_IMPLEMENTATIONS: ReadonlyArray<[string, BuildJoin]> = [
   ["TanStack DB join (sync write)", tanstackJoined],
 ];
 
-function validateJoin(size: number): void {
-  const results = JOIN_IMPLEMENTATIONS.map(([name, build]) => {
-    const harness = build(makeOwnedTasks(size), makeUsers());
-    const seen = [harness.read()];
-    for (const change of joinValidationChanges(size)) {
-      harness.change(change);
-      seen.push(harness.read());
-    }
-    harness.dispose();
-    return [name, JSON.stringify(seen)] as const;
-  });
-  for (const [name, seen] of results) {
-    if (seen !== results[0]![1]) {
-      throw new Error(
-        `computed-list bench: ${name} disagrees with ${results[0]![0]} at ${size} rows`,
-      );
-    }
-  }
+function validateJoin(size: number): Promise<void> {
+  return expectAgreement(
+    `${size} rows`,
+    JOIN_IMPLEMENTATIONS.map(
+      ([name, build]) => [name, () => build(makeOwnedTasks(size), makeUsers())] as const,
+    ),
+    (harness) => harness.read(),
+    joinValidationChanges(size).map((change) => (harness: JoinHarness) => harness.change(change)),
+  );
 }
 
 for (const size of [1_000, 10_000]) {
-  validateJoin(size);
+  await validateJoin(size);
   const rows = `${size.toLocaleString("en-US")} tasks, 100 users`;
 
   describe(`Join: build the list and read it (${rows})`, () => {
@@ -279,14 +327,203 @@ for (const size of [1_000, 10_000]) {
   for (const [title, change] of joinScenarios(size)) {
     describe(`Join: ${title} (${rows})`, () => {
       for (const [name, build] of JOIN_IMPLEMENTATIONS) {
-        const harness = build(makeOwnedTasks(size), makeUsers());
+        benchChanges(
+          name,
+          () => build(makeOwnedTasks(size), makeUsers()),
+          (harness, i) => harness.change(change(i)),
+        );
+      }
+    });
+  }
+}
+
+// --- One-to-many: each active user with their open tasks ---
+
+interface OneToManyHarness {
+  /** Each user's id and open task ids: what validation compares. */
+  readAll(): Array<[number, number[]]>;
+  /** Each user's id and open task count: what each benchmark reads. */
+  read(): number[];
+  change(change: JoinChange): void;
+  dispose(): void;
+}
+
+type BuildOneToMany = (tasks: Owned[], users: User[]) => OneToManyHarness;
+
+type Grouped = Iterable<{ user: { id: number }; tasks: Iterable<{ id: number }> }>;
+const readAll = (rows: Grouped): Array<[number, number[]]> =>
+  Array.from(rows, ({ user, tasks }) => [user.id, ids(tasks)]);
+const readCounts = (rows: Iterable<{ tasks: { length: number } }>): number[] =>
+  Array.from(rows, ({ tasks }) => tasks.length);
+
+function supergrainOneToMany(makeList: OpenTasksByUser): BuildOneToMany {
+  return (tasks, users) => {
+    const { store, change } = supergrainJoinStore(tasks, users);
+    const list = makeList(store);
+    return {
+      readAll: () => readAll(list()),
+      read: () => readCounts(list()),
+      change,
+      dispose: () => {},
+    };
+  };
+}
+
+const tanstackOneToMany: BuildOneToMany = (tasks, users) => {
+  const setup = tanstackJoin(tasks, users);
+  const query = watch(
+    createLiveQueryCollection({
+      startSync: true,
+      query: (q) => tanstackOpenTasksByUser(q, setup.tasks, setup.users),
+    }),
+  );
+  const rows = () => query.values() as Iterable<{ user: User; tasks: Owned[] }>;
+  return {
+    readAll: () => readAll(rows()),
+    read: () => readCounts(rows()),
+    change: setup.change,
+    dispose: () => {
+      query.stop();
+      setup.dispose();
+    },
+  };
+};
+
+const ONE_TO_MANY_IMPLEMENTATIONS: ReadonlyArray<[string, BuildOneToMany]> = [
+  ["supergrain getAll", supergrainOneToMany(supergrainOpenTasksByUser)],
+  ["supergrain getAll from a list", supergrainOneToMany(supergrainOpenTasksByUserFromList)],
+  ["supergrain stableComputed + Map", supergrainOneToMany(stableComputedOpenTasksByUser)],
+  ["TanStack DB toArray (sync write)", tanstackOneToMany],
+];
+
+function validateOneToMany(size: number): Promise<void> {
+  const changes = [
+    ...oneToManyScenarios(size).flatMap(([, change]) => [change(0), change(1)]),
+    ...joinValidationChanges(size),
+  ];
+  return expectAgreement(
+    `${size} tasks`,
+    ONE_TO_MANY_IMPLEMENTATIONS.map(
+      ([name, build]) => [name, () => build(makeOwnedTasks(size), makeUsers())] as const,
+    ),
+    (harness) => harness.readAll(),
+    changes.map((change) => (harness: OneToManyHarness) => harness.change(change)),
+  );
+}
+
+for (const size of [1_000, 10_000]) {
+  await validateOneToMany(size);
+  const rows = `${size.toLocaleString("en-US")} tasks, 100 users`;
+
+  describe(`One-to-many: build the list and read it (${rows})`, () => {
+    for (const [name, build] of ONE_TO_MANY_IMPLEMENTATIONS) {
+      const tasks = makeOwnedTasks(size);
+      bench(name, async () => {
+        const harness = build(
+          tasks.map((task) => ({ ...task })),
+          makeUsers(),
+        );
+        await settled();
         harness.read();
-        let i = 0;
-        bench(name, async () => {
-          harness.change(change(i++));
-          await settled();
-          harness.read();
-        });
+        harness.dispose();
+      });
+    }
+  });
+
+  for (const [title, change] of oneToManyScenarios(size)) {
+    describe(`One-to-many: ${title} (${rows})`, () => {
+      for (const [name, build] of ONE_TO_MANY_IMPLEMENTATIONS) {
+        benchChanges(
+          name,
+          () => build(makeOwnedTasks(size), makeUsers()),
+          (harness, i) => harness.change(change(i)),
+        );
+      }
+    });
+  }
+}
+
+// --- Grouping: open tasks counted per owner ---
+
+interface GroupHarness {
+  read(): Array<[number, number]>;
+  change(change: JoinChange): void;
+  dispose(): void;
+}
+
+type BuildGroup = (tasks: Owned[]) => GroupHarness;
+
+const readGroups = (rows: Iterable<{ ownerId: number; count: number }>): Array<[number, number]> =>
+  Array.from(rows, ({ ownerId, count }) => [ownerId, count]);
+
+function supergrainGroups(makeList: CountsByOwner): BuildGroup {
+  return (tasks) => {
+    const { store, change } = supergrainJoinStore(tasks, makeUsers());
+    const list = makeList(store);
+    return { read: () => readGroups(list()), change, dispose: () => {} };
+  };
+}
+
+const tanstackGroups: BuildGroup = (tasks) => {
+  const setup = tanstackJoin(tasks, makeUsers());
+  const query = watch(
+    createLiveQueryCollection({
+      startSync: true,
+      query: (q) => tanstackCountsByOwner(q, setup.tasks),
+    }),
+  );
+  return {
+    read: () => readGroups(query.values() as Iterable<{ ownerId: number; count: number }>),
+    change: setup.change,
+    dispose: () => {
+      query.stop();
+      setup.dispose();
+    },
+  };
+};
+
+const GROUP_IMPLEMENTATIONS: ReadonlyArray<[string, BuildGroup]> = [
+  ["supergrain groupBy", supergrainGroups(supergrainCountsByOwner)],
+  ["supergrain stableComputed + Map", supergrainGroups(stableComputedCountsByOwner)],
+  ["TanStack DB groupBy (sync write)", tanstackGroups],
+];
+
+function validateGroups(size: number): Promise<void> {
+  const changes = groupScenarios(size).flatMap(([, change]) => [change(0), change(1)]);
+  return expectAgreement(
+    `${size} tasks`,
+    GROUP_IMPLEMENTATIONS.map(
+      ([name, build]) => [name, () => build(makeOwnedTasks(size))] as const,
+    ),
+    (harness) => harness.read(),
+    changes.map((change) => (harness: GroupHarness) => harness.change(change)),
+  );
+}
+
+for (const size of [1_000, 10_000]) {
+  await validateGroups(size);
+  const rows = `${size.toLocaleString("en-US")} tasks, 110 owners`;
+
+  describe(`Group: build the list and read it (${rows})`, () => {
+    for (const [name, build] of GROUP_IMPLEMENTATIONS) {
+      const tasks = makeOwnedTasks(size);
+      bench(name, async () => {
+        const harness = build(tasks.map((task) => ({ ...task })));
+        await settled();
+        harness.read();
+        harness.dispose();
+      });
+    }
+  });
+
+  for (const [title, change] of groupScenarios(size)) {
+    describe(`Group: ${title} (${rows})`, () => {
+      for (const [name, build] of GROUP_IMPLEMENTATIONS) {
+        benchChanges(
+          name,
+          () => build(makeOwnedTasks(size)),
+          (harness, i) => harness.change(change(i)),
+        );
       }
     });
   }

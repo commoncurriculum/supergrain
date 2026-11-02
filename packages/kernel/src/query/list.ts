@@ -1,3 +1,6 @@
+import type { Row, RowResult } from "./row-blocks";
+import type { Structure } from "./source-rows";
+
 /* eslint-disable typescript-eslint/prefer-for-of, prefer-destructuring --
  * Index loops and indexed tuple reads on purpose: in this hot path `for…of`
  * and `[a, b] = tuple` each allocated an iterator per loop (measured with a
@@ -5,13 +8,13 @@
  */
 import { setActiveSub } from "alien-signals";
 
-import { catchingComputed, rethrowingComputed } from "../rethrowing-computed";
+import { unwrap } from "../core";
+import { rethrowingComputed } from "../rethrowing-computed";
 import { createReactive } from "../store";
-import { syncArray } from "../sync-array";
-import { OUTSIDE, type Change, type Row, type RowResult } from "./row-blocks";
+import { spliceArray } from "../sync-array";
+import { createRowFeed } from "./row-feed";
 import { Scratch } from "./scratch";
-import { createSortedRows, type SortedRows } from "./sorted-rows";
-import { createSourceRows, type Structure } from "./source-rows";
+import { createSortedRows } from "./sorted-rows";
 
 /** Options for {@link createList}, the engine under `computedList`. */
 export interface ListOptions<S extends object, O, K> {
@@ -58,42 +61,36 @@ export interface ListOptions<S extends object, O, K> {
  * of its rows' outcomes changed (see `row-blocks.ts`). A field edit costs a
  * few dozen cached reads, not N. When the source is a store array, adding or
  * removing rows applies the array's recent splices and replaces only the
- * blocks those rows were in (see `source-rows.ts`). Without a sort, the result
- * is refiltered in source order from cached outcomes on each change.
+ * blocks those rows were in (see `source-rows.ts`). Without a sort, the rows
+ * are kept in source order the same way, by their place in the source.
  */
 export function createList<T extends object, O, K>(
   options: ListOptions<T, O, K>,
 ): () => ReadonlyArray<O> {
   const { source, prepare, run, compare, offset: offsetOf, limit: limitOf } = options;
 
-  const readStructure = createSourceRows<T, O, K>(source, resultOf);
+  const feed = createRowFeed<T, O, K>(source, run);
+  const { changes } = feed;
   const out = createReactive<Array<O>>([]) as Array<O>;
 
-  const compareRows = (a: Row<T, O, K>, b: Row<T, O, K>): number =>
-    compare!(filed(a).key, filed(b).key) || a.seq - b.seq;
-  // The matching rows by `(key, seq)`. Stale after a read threw part-way (a
+  // By key, then by place in the source. Without a sort, by place alone.
+  const compareRows = compare
+    ? (a: Row<T, O, K>, b: Row<T, O, K>): number =>
+        compare(filed(a).key, filed(b).key) || a.order - b.order
+    : (a: Row<T, O, K>, b: Row<T, O, K>): number => a.order - b.order;
+  // The matching rows, in that order. Stale after a read threw part-way (a
   // throwing step or `compare`), so the next read rebuilds it from the
   // source's rows instead of trusting it: rows that left the source during
-  // the failed read were never taken out of it.
+  // the failed read were never taken out of it. Also rebuilt when the
+  // source's rows changed order among themselves.
   const sorted = createSortedRows(compareRows);
   let sortedIsStale = false;
 
-  /** A row's result, in its own computed. Its block reads it with `settle`. */
-  function resultOf(item: T) {
-    return catchingComputed((previous: RowResult<O, K> | undefined) => run(item, previous));
-  }
-
-  // Recomputed only when the source's structure changes.
-  const structure = rethrowingComputed(readStructure);
-  let current: Structure<T, O, K> | undefined = undefined;
-  // Kept between updates, so an update allocates no arrays of its own:
-  // each group's changes, the changes to apply, and the window's values.
-  const pending = new Scratch<ReadonlyArray<Change<T, O, K>>>();
-  const changes = new Scratch<Change<T, O, K>>();
-  const window = new Scratch<O>();
+  // Kept between updates, so an update allocates no array of its own: the
+  // window being built, and the one `out` holds now (to compare by identity).
+  let window = new Scratch<O>();
+  let shown = new Scratch<O>();
   const addToWindow = { push: (row: Row<T, O, K>) => window.push(filed(row).value) };
-  // Without a sort: the matching rows in source order.
-  const matching = new Scratch<Row<T, O, K>>();
 
   return rethrowingComputed((): ReadonlyArray<O> => {
     try {
@@ -102,8 +99,7 @@ export function createList<T extends object, O, K>(
       sortedIsStale = true;
       throw error;
     } finally {
-      pending.clear();
-      changes.clear();
+      feed.clear();
       window.clear();
     }
   });
@@ -112,42 +108,32 @@ export function createList<T extends object, O, K>(
     // Tracked: the lookups, the source's structure, each group's changes,
     // the window.
     prepare?.();
-    const next = structure();
-    const { groups } = next;
-    for (let g = 0; g < groups.length; g++) pending.push(groups[g]!.changes());
+    const next = feed.read();
     const offset = offsetOf();
     const limit = limitOf();
     // Untracked: `compare` may read reactive values, and the list must not
     // subscribe to them or to its own output.
     const outer = setActiveSub(undefined);
     try {
-      // Already OUTSIDE if an earlier update with this structure succeeded.
-      const { removed } = next;
-      for (let i = 0; i < removed.length; i++) {
-        if (removed[i]!.applied.member) changes.push([removed[i]!, OUTSIDE]);
-      }
-      for (let g = 0; g < groups.length; g++) {
-        const groupChanges = pending.at(g);
-        if (groupChanges !== groups[g]!.applied) addUnfiled(groupChanges);
-      }
-      if (compare) applyChanges(next).copy(offset, offset + limit, addToWindow);
-      else addMatching(next, offset, offset + limit);
-      syncArray(out, window.items, window.size);
+      feed.collect(next);
+      // When `out` shows every row and was up to date, move each changed
+      // row in it, one splice per row, instead of rebuilding it.
+      const resorting = mustResort(next);
+      const inOut =
+        !resorting &&
+        offset === 0 &&
+        limit === Infinity &&
+        shown.size === sorted.size &&
+        changes.size <= 32;
+      if (resorting) resort(next);
+      else applyChanges(inOut);
+      if (!inOut) showWindow(offset, limit);
     } finally {
       setActiveSub(outer);
     }
     // Nothing threw: record what the list now reflects.
-    for (let g = 0; g < groups.length; g++) groups[g]!.applied = pending.at(g);
-    current = next;
+    feed.commit(next);
     return out;
-  }
-
-  /** Add the changes not yet filed. A failed update may have filed some already. */
-  function addUnfiled(groupChanges: ReadonlyArray<Change<T, O, K>>): void {
-    for (let i = 0; i < groupChanges.length; i++) {
-      const change = groupChanges[i]!;
-      if (change[0].applied !== change[1]) changes.push(change);
-    }
   }
 
   /** File every change. */
@@ -158,39 +144,65 @@ export function createList<T extends object, O, K>(
     }
   }
 
-  /**
-   * Without a sort: add the window of the matching rows, in source order, to
-   * the window. They are refiltered only when something changed.
-   */
-  function addMatching(next: Structure<T, O, K>, start: number, end: number): void {
-    fileChanges();
-    if (next !== current || changes.size > 0) {
-      matching.clear();
-      const { list } = next;
-      for (let i = 0; i < list.length; i++) if (list[i]!.applied.member) matching.push(list[i]!);
-    }
-    const stop = Math.min(end, matching.size);
-    for (let i = start; i < stop; i++) addToWindow.push(matching.at(i));
+  /** Rebuild the window from the sorted rows, and splice `out` to match it. */
+  function showWindow(offset: number, limit: number): void {
+    sorted.copy(offset, offset + limit, addToWindow);
+    spliceArray(out, shown.items, shown.size, window.items, window.size);
+    const built = window;
+    window = shown;
+    shown = built;
   }
 
-  function applyChanges(next: Structure<T, O, K>): SortedRows<Row<T, O, K>> {
-    // When many rows moved at once (say a filter reads a shared value), sorting
-    // from scratch is cheaper than moving each one.
-    if (sortedIsStale || changes.size > 16 + sorted.size / 4) {
-      fileChanges();
-      sorted.reset(next.list.filter((row) => row.applied.member).sort(compareRows));
-      sortedIsStale = false;
-      return sorted;
-    }
+  /**
+   * Whether to sort every row again rather than move the changed ones: after
+   * a throw, after the source's rows changed order, or when many rows moved
+   * at once (say a filter reads a shared value), which is cheaper to sort.
+   */
+  function mustResort(next: Structure<T, O, K>): boolean {
+    return sortedIsStale || next.reordered || changes.size > 16 + sorted.size / 4;
+  }
+
+  function resort(next: Structure<T, O, K>): void {
+    fileChanges();
+    const members = next.list.filter((row) => row.applied.member);
+    // The source's rows are already in source order.
+    sorted.reset(compare ? members.sort(compareRows) : members);
+    sortedIsStale = false;
+  }
+
+  /**
+   * Move each changed row in the sorted rows. With `inOut`, `out` (and
+   * `shown`, which mirrors it) hold every sorted row, and each move is made
+   * there too.
+   */
+  function applyChanges(inOut: boolean): void {
     for (let i = 0; i < changes.size; i++) {
       const change = changes.at(i);
       const row = change[0];
       const result = change[1];
-      if (row.applied.member) sorted.remove(row);
+      const from = row.applied.member ? sorted.remove(row) : -1;
       row.applied = result;
-      if (result.member) sorted.insert(row);
+      const to = result.member ? sorted.insert(row) : -1;
+      if (inOut) move(from, to, result.value as O);
     }
-    return sorted;
+  }
+
+  /** Move a row in `out` from place `from` to `to`, either -1 for none. */
+  function move(from: number, to: number, value: O): void {
+    if (from === to) {
+      if (from === -1 || shown.at(from) === value) return;
+      out.splice(from, 1, unwrap(value));
+      shown.items[from] = value;
+      return;
+    }
+    if (from !== -1) {
+      out.splice(from, 1);
+      shown.removeAt(from);
+    }
+    if (to !== -1) {
+      out.splice(to, 0, unwrap(value));
+      shown.insertAt(to, value);
+    }
   }
 }
 

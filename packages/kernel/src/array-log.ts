@@ -62,6 +62,22 @@ export function logEnd(log: ArrayLog): number {
 }
 
 /**
+ * Mark `reader` as having seen every change to `target`. When no live reader
+ * needs any entry now, empty the log, so it doesn't hold removed items until
+ * the next write.
+ */
+export function catchUp(target: object, log: ArrayLog, reader: LogReader): void {
+  const end = logEnd(log);
+  reader.position = end;
+  if (log.entries.length === 0) return;
+  const oldest = oldestNeeded(target, log);
+  if (oldest === undefined || oldest >= end) {
+    log.entries.length = 0;
+    log.base = end;
+  }
+}
+
+/**
  * The oldest position a live reader still needs, or `undefined` if none
  * needs any. Forgets readers that are gone, and drops the log with the last.
  */
@@ -74,6 +90,10 @@ function oldestNeeded(target: object, log: ArrayLog): number | undefined {
   }
   if (log.readers.length === 0) logs.delete(target);
   return oldest === Infinity ? undefined : oldest;
+}
+
+function same(a: unknown, b: unknown): boolean {
+  return unwrap(a) === unwrap(b);
 }
 
 /** Add `entry`, first dropping the entries every reader has seen (before `oldest`). */
@@ -111,7 +131,6 @@ export function logMutation(
   if (log === undefined) return;
   const oldest = oldestNeeded(target, log);
   if (oldest === undefined) return;
-  const same = (a: unknown, b: unknown): boolean => unwrap(a) === unwrap(b);
   // Past `before`, the items didn't change, only moved by the change in length.
   let start = 0;
   let removedEnd = before.length;

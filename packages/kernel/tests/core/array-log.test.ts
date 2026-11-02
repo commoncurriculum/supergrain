@@ -4,7 +4,7 @@ import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
 import { createReactive, reconcile, unwrap } from "../../src";
-import { followArray, logEnd, type ArrayLog } from "../../src/array-log";
+import { catchUp, followArray, logEnd, type ArrayLog } from "../../src/array-log";
 
 interface Item {
   id: number;
@@ -142,6 +142,30 @@ describe("array log", () => {
       // Only the push the reader hasn't read yet is kept.
       expect(log.entries).toHaveLength(1);
     }
+  });
+
+  it("lets go of removed items once every reader has caught up", () => {
+    const store = createReactive({ items: [item(0), item(1)] });
+    const raw = unwrap(store.items);
+    const first = { position: -1 };
+    const second = { position: -1 };
+    const log = followArray(raw, first);
+    followArray(raw, second);
+    first.position = logEnd(log);
+    second.position = logEnd(log);
+    store.items.pop();
+    expect(log.entries).toHaveLength(1);
+    // One reader is still behind: the entry stays.
+    catchUp(raw, log, first);
+    expect(log.entries).toHaveLength(1);
+    catchUp(raw, log, second);
+    expect(log.entries).toEqual([]);
+    expect(first.position).toBe(logEnd(log));
+    // A reader that will walk needs nothing either.
+    store.items.push(item(2));
+    second.position = -1;
+    catchUp(raw, log, first);
+    expect(log.entries).toEqual([]);
   });
 
   it("records nothing while its readers will walk anyway", () => {

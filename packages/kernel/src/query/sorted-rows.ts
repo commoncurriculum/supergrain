@@ -3,15 +3,18 @@
  * removing a row splices one short chunk, not one long array, and reading a
  * window skips whole chunks by their sizes.
  *
- * `compare` must be a total order (the list breaks key ties by arrival), and a
+ * `compare` must be a total order (the list breaks key ties by place in the
+ * source), and a
  * row must be removed with the key it was inserted with.
  */
 export interface SortedRows<R> {
   readonly size: number;
   /** Replace every row with `rows`, which must already be sorted. */
   reset(rows: ReadonlyArray<R>): void;
-  insert(row: R): void;
-  remove(row: R): void;
+  /** Insert `row`; returns its place among the rows. */
+  insert(row: R): number;
+  /** Remove `row`; returns the place it had. */
+  remove(row: R): number;
   /** Push the rows from `start` up to, not including, `end` onto `into`. Whole counts. */
   copy(start: number, end: number, into: { push(row: R): void }): void;
 }
@@ -34,10 +37,18 @@ export function createSortedRows<R>(compare: (a: R, b: R) => number): SortedRows
     return low;
   };
 
-  const removeAt = (c: number, i: number): void => {
+  /** The place of row `i` of chunk `c` among all rows. */
+  const placeOf = (c: number, i: number): number => {
+    for (let before = 0; before < c; before++) i += chunks[before]!.length;
+    return i;
+  };
+
+  const removeAt = (c: number, i: number): number => {
+    const place = placeOf(c, i);
     chunks[c]!.splice(i, 1);
     size--;
     if (chunks[c]!.length === 0) chunks.splice(c, 1);
+    return place;
   };
 
   return {
@@ -57,30 +68,30 @@ export function createSortedRows<R>(compare: (a: R, b: R) => number): SortedRows
       size++;
       if (chunks.length === 0) {
         chunks.push([row]);
-        return;
+        return 0;
       }
       const c = chunkFor(row);
       const chunk = chunks[c]!;
-      chunk.splice(insertionPoint(chunk, row, compare), 0, row);
+      const i = insertionPoint(chunk, row, compare);
+      chunk.splice(i, 0, row);
+      const place = placeOf(c, i);
       if (chunk.length > 2 * LOAD) chunks.splice(c + 1, 0, chunk.splice(LOAD));
+      return place;
     },
 
     remove(row) {
       const c = chunkFor(row);
       const i = insertionPoint(chunks[c]!, row, compare);
-      if (chunks[c]![i] === row) {
-        removeAt(c, i);
-        return;
-      }
-      // A miss only happens with an inconsistent `compare` or a key that
-      // mutated: find the row by scanning.
+      if (chunks[c]![i] === row) return removeAt(c, i);
+      // A miss only happens with an inconsistent `compare`, a key that
+      // mutated, or a row that left the source with its last label: find
+      // the row by scanning.
       for (let c = 0; c < chunks.length; c++) {
         const i = chunks[c]!.indexOf(row);
-        if (i !== -1) {
-          removeAt(c, i);
-          return;
-        }
+        if (i !== -1) return removeAt(c, i);
       }
+      /* c8 ignore next -- only rows in the list are removed */
+      return -1;
     },
 
     copy(start, end, into) {

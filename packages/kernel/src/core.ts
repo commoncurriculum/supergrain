@@ -29,6 +29,11 @@ export const $RAW = Symbol.for("supergrain:raw");
 export const $VERSION = Symbol.for("supergrain:version");
 export const $ELEMENTS = Symbol.for("supergrain:elements");
 export const $OWN_KEYS = Symbol.for("ownKeys");
+/**
+ * Set in an array's nodes once it has a signal per index (or any other
+ * field): a write that shifts items can skip looking for them otherwise.
+ */
+export const $HAS_FIELD_NODES = Symbol("supergrain:has-field-nodes");
 
 // Well-known symbol properties attached to reactive proxy targets and proxies.
 // Typed as optional so structural subtype checks pass for plain objects.

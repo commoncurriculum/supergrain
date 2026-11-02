@@ -1,7 +1,15 @@
 import fc from "fast-check";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { batch, computedList, createReactive, effect, unwrap, type Lookup } from "../../src";
+import {
+  batch,
+  computedList,
+  createReactive,
+  effect,
+  unwrap,
+  type Group,
+  type Lookup,
+} from "../../src";
 
 interface User {
   id: string;
@@ -239,6 +247,280 @@ describe("computedList", () => {
     expect(query().map((owner) => owner?.name)).toEqual(["Ann", "Cy", "Cy"]);
   });
 
+  it("looks up every doc with a key (one-to-many)", () => {
+    const { store } = setup();
+    const query = computedList(() => store.users, {
+      tasks: { from: () => store.tasks, key: (task: Task) => task.ownerId },
+    }).map((user, { tasks }) => {
+      expectTypeOf(tasks.getAll(user.id)).toEqualTypeOf<ReadonlyArray<STask>>();
+      return { user, tasks: tasks.getAll(user.id) };
+    });
+    const view = () => query().map(({ user, tasks }) => [user.id, ids(tasks)]);
+    expect(view()).toEqual([
+      ["a", [0, 4, 8]],
+      ["b", [1, 5, 9]],
+      ["c", [2, 6, 10]],
+    ]);
+    // The same array for a key every time, updated in place.
+    const annTasks = query()[0]!.tasks;
+    store.tasks[1]!.ownerId = "a";
+    store.tasks.splice(4, 1);
+    store.tasks.push({ id: 12, ownerId: "c", done: false, rank: 0, title: "" });
+    expect(view()).toEqual([
+      ["a", [0, 1, 8]],
+      ["b", [5, 9]],
+      ["c", [2, 6, 10, 12]],
+    ]);
+    expect(query()[0]!.tasks).toBe(annTasks);
+    store.users.push({ id: "zz", name: "Zed", active: true });
+    expect(view()[3]).toEqual(["zz", [3, 7, 11]]);
+  });
+
+  it("returns an empty list for a missing key, and fills one no doc had yet", () => {
+    const { store } = setup();
+    const query = computedList(() => store.users, {
+      tasks: { from: () => store.tasks, key: (task: Task) => task.ownerId },
+    }).map((user, { tasks }) => ({
+      none: tasks.getAll(user.teamId === undefined ? null : undefined),
+      nan: tasks.getAll(Number.NaN as never),
+      later: tasks.getAll(`${user.id}2`),
+    }));
+    expect(query()[0]!.none).toEqual([]);
+    expect(query()[0]!.nan).toEqual([]);
+    expect(query()[0]!.later).toEqual([]);
+    store.tasks[0]!.ownerId = "a2";
+    expect(ids(query()[0]!.later)).toEqual([0]);
+  });
+
+  it("reruns only the rows whose key's docs changed", () => {
+    const { store } = setup();
+    const runs: string[] = [];
+    const query = computedList(() => store.users, {
+      tasks: { from: () => store.tasks, key: (task: Task) => task.ownerId },
+    }).map((user, { tasks }) => {
+      runs.push(user.id);
+      return { id: user.id, count: tasks.getAll(user.id).length };
+    });
+    const counts = () => query().map(({ id, count }) => `${id}:${count}`);
+    expect(counts()).toEqual(["a:3", "b:3", "c:3"]);
+    runs.length = 0;
+    // No key changed.
+    store.tasks[0]!.title = "renamed";
+    expect(counts()).toEqual(["a:3", "b:3", "c:3"]);
+    expect(runs).toEqual([]);
+    // A task moves from b to c.
+    store.tasks[1]!.ownerId = "c";
+    expect(counts()).toEqual(["a:3", "b:2", "c:4"]);
+    expect(runs.sort()).toEqual(["b", "c"]);
+    runs.length = 0;
+    store.tasks.push({ id: 12, ownerId: "a", done: false, rank: 0, title: "" });
+    expect(counts()).toEqual(["a:4", "b:2", "c:4"]);
+    expect(runs).toEqual(["a"]);
+  });
+
+  it("gets the first doc and every doc under one key consistently", () => {
+    const { store } = setup();
+    const query = computedList(() => store.users, {
+      tasks: { from: () => store.tasks, key: (task: Task) => task.ownerId },
+    })
+      .filter((user) => user.id === "a")
+      .map((user, { tasks }) => ({
+        first: tasks.get(user.id)?.id,
+        all: ids(tasks.getAll(user.id)),
+      }));
+    expect(query()).toEqual([{ first: 0, all: [0, 4, 8] }]);
+    store.tasks.shift();
+    expect(query()).toEqual([{ first: 4, all: [4, 8] }]);
+    store.tasks[3]!.ownerId = null; // task 4
+    expect(query()).toEqual([{ first: 8, all: [8] }]);
+  });
+
+  it("recovers every key's docs after a key throws part-way", () => {
+    const { store } = setup();
+    const query = computedList(() => store.users, {
+      tasks: {
+        from: () => store.tasks,
+        key: (task: Task) => {
+          if (task.title === "boom") throw new Error("key");
+          return task.ownerId;
+        },
+      },
+    }).map((user, { tasks }) => ids(tasks.getAll(user.id)));
+    expect(query()).toEqual([
+      [0, 4, 8],
+      [1, 5, 9],
+      [2, 6, 10],
+    ]);
+    batch(() => {
+      store.tasks[0]!.ownerId = "b";
+      store.tasks[5]!.title = "boom";
+    });
+    expect(() => query()).toThrow("key");
+    store.tasks[5]!.title = "t5";
+    expect(query()).toEqual([
+      [4, 8],
+      [0, 1, 5, 9],
+      [2, 6, 10],
+    ]);
+  });
+
+  it("groups rows by a key, and runs the steps after it once per group", () => {
+    const { tasks } = setup();
+    const query = tasks()
+      .filter((task) => !task.done)
+      .groupBy((task) => task.ownerId)
+      .map((group) => {
+        expectTypeOf(group).toEqualTypeOf<Group<string | null, STask>>();
+        return { owner: group.key, ids: ids(group.rows) };
+      });
+    // Groups in the order of their first row; rows in source order.
+    expect(query()).toEqual([
+      { owner: "b", ids: [1, 5] },
+      { owner: "c", ids: [2, 10] },
+      { owner: "a", ids: [4, 8] },
+      { owner: "zz", ids: [7, 11] },
+    ]);
+  });
+
+  it("follows rows that move between groups, and groups that empty or appear", () => {
+    const { store, tasks } = setup();
+    const query = tasks()
+      .groupBy((task) => task.ownerId)
+      .map((group) => `${group.key}:${ids(group.rows).join(",")}`);
+    expect(query()).toEqual(["a:0,4,8", "b:1,5,9", "c:2,6,10", "zz:3,7,11"]);
+    store.tasks[0]!.ownerId = "b";
+    expect(query()).toEqual(["b:0,1,5,9", "c:2,6,10", "zz:3,7,11", "a:4,8"]);
+    for (const task of store.tasks) if (task.ownerId === "c") task.ownerId = "zz";
+    expect(query()).toEqual(["b:0,1,5,9", "zz:2,3,6,7,10,11", "a:4,8"]);
+    store.tasks.push({ id: 12, ownerId: "new", done: false, rank: 0, title: "" });
+    store.tasks.unshift({ id: 13, ownerId: "first", done: false, rank: 0, title: "" });
+    expect(query()).toEqual(["first:13", "b:0,1,5,9", "zz:2,3,6,7,10,11", "a:4,8", "new:12"]);
+    store.tasks.reverse();
+    expect(query()).toEqual(["new:12", "zz:11,10,7,6,3,2", "b:9,5,1,0", "a:8,4", "first:13"]);
+  });
+
+  it("reruns only the groups whose rows changed", () => {
+    const { store, tasks } = setup();
+    const runs: Array<string | null> = [];
+    const query = tasks()
+      .groupBy((task) => task.ownerId)
+      .map((group) => {
+        runs.push(group.key);
+        return { owner: group.key, open: group.rows.filter((task) => !task.done).length };
+      });
+    const view = () => query().map(({ owner, open }) => `${owner}:${open}`);
+    expect(view()).toEqual(["a:2", "b:2", "c:2", "zz:2"]);
+    runs.length = 0;
+    store.tasks[1]!.title = "renamed";
+    expect(view()).toEqual(["a:2", "b:2", "c:2", "zz:2"]);
+    expect(runs).toEqual([]);
+    store.tasks[1]!.done = true;
+    expect(view()).toEqual(["a:2", "b:1", "c:2", "zz:2"]);
+    expect(runs).toEqual(["b"]);
+    runs.length = 0;
+    // c's first row is now task 6, after zz's first (task 3).
+    store.tasks[2]!.ownerId = "a";
+    expect(view()).toEqual(["a:3", "b:1", "zz:2", "c:1"]);
+    expect(runs.sort()).toEqual(["a", "c"]);
+  });
+
+  it("drops a row from its group when rows before it left the source too", () => {
+    // Read through `filter`, the source is walked each time, which labels
+    // the rows that stay again from 0, while one that left keeps its label.
+    const store = createReactive({
+      items: [..."oooooRS"].map((k, id) => ({ id, k: k === "o" ? "o" : "k", show: true })),
+    });
+    const query = computedList(() => store.items.filter((item) => item.show))
+      .groupBy((item) => item.k)
+      .map((group) => [group.key, group.rows.map((item) => item.id)]);
+    expect(query()).toEqual([
+      ["o", [0, 1, 2, 3, 4]],
+      ["k", [5, 6]],
+    ]);
+    batch(() => {
+      for (let i = 0; i < 6; i++) store.items[i]!.show = false;
+    });
+    expect(query()).toEqual([["k", [6]]]);
+  });
+
+  it("keeps null, undefined and NaN as keys of their own", () => {
+    const store = createReactive({
+      items: [null, undefined, Number.NaN, null, Number.NaN].map((k) => ({ k, n: 0 })),
+    });
+    const query = computedList(() => store.items)
+      .groupBy((item) => item.k)
+      .map((group) => [group.key, group.rows.length]);
+    const expected = [
+      [null, 2],
+      [undefined, 1],
+      [Number.NaN, 2],
+    ];
+    expect(query()).toEqual(expected);
+    // A row that reruns with the same NaN key stays where it is.
+    store.items[2]!.n = 1;
+    expect(query()).toEqual(expected);
+  });
+
+  it("filters, sorts and windows the groups, and looks docs up on both sides", () => {
+    const { store, tasks } = setup();
+    const query = tasks()
+      .map((task, { users }) => ({ task, owner: users.get(task.ownerId) }))
+      .filter(({ owner }) => owner !== undefined)
+      .groupBy(({ owner }) => owner!.teamId)
+      .map((group, { teams }) => ({
+        team: teams.get(group.key)?.name ?? "-",
+        count: group.rows.length,
+      }))
+      .filter(({ count }) => count > 0)
+      .orderBy(({ count }) => count, "desc")
+      .orderBy(({ team }) => team)
+      .limit(2);
+    expect(query()).toEqual([
+      { team: "-", count: 3 },
+      { team: "Blue", count: 3 },
+    ]);
+    store.users[2]!.teamId = "x";
+    expect(query()).toEqual([
+      { team: "Red", count: 6 },
+      { team: "Blue", count: 3 },
+    ]);
+    store.teams[0]!.name = "Crimson";
+    expect(query()[0]).toEqual({ team: "Crimson", count: 6 });
+  });
+
+  it("groups groups", () => {
+    const { tasks } = setup();
+    const query = tasks()
+      .groupBy((task) => task.ownerId)
+      .groupBy((group) => group.rows.length)
+      .map((sizes) => [sizes.key, sizes.rows.map((group) => group.key)]);
+    expect(query()).toEqual([[3, ["a", "b", "c", "zz"]]]);
+  });
+
+  it("throws while a key or a step before groupBy throws, and recovers", () => {
+    const { store, tasks } = setup();
+    const query = tasks()
+      .filter((task) => {
+        if (task.title === "boom") throw new Error("step");
+        return true;
+      })
+      .groupBy((task) => {
+        if (task.title === "bang") throw new Error("key");
+        return task.ownerId;
+      })
+      .map((group) => group.rows.length);
+    expect(query()).toEqual([3, 3, 3, 3]);
+    batch(() => {
+      store.tasks[0]!.ownerId = "b";
+      store.tasks[5]!.title = "boom";
+    });
+    expect(() => query()).toThrow("step");
+    store.tasks[5]!.title = "bang";
+    expect(() => query()).toThrow("key");
+    store.tasks[5]!.title = "t5";
+    expect(query()).toEqual([4, 3, 3, 2]);
+  });
+
   it("reuses a mapped object only when it's a plain object with the same fields", () => {
     const { store } = setup();
     class Box {
@@ -293,6 +575,42 @@ describe("computedList", () => {
     expect(ids()).toEqual([1, 0, 2]);
     store.tasks[0]!.rank = 0;
     expect(ids()).toEqual([0, 1, 2]);
+  });
+
+  it("never reuses a mapped row whose fields include a symbol key", () => {
+    const label = Symbol("label");
+    const store = createReactive({ items: [{ id: 1, title: "a" }] });
+    const rows = computedList(() => store.items).map((item) => ({ [label]: item.title }));
+    expect(rows()[0]![label]).toBe("a");
+    store.items[0]!.title = "b";
+    expect(rows()[0]![label]).toBe("b");
+    // A previous row with a symbol, and a next one without.
+    const mixed = computedList(() => store.items).map((item) =>
+      item.title === "b" ? { [label]: 1 } : {},
+    );
+    expect(label in mixed()[0]!).toBe(true);
+    store.items[0]!.title = "c";
+    expect(label in mixed()[0]!).toBe(false);
+  });
+
+  it("follows a store array used as a sort key", () => {
+    const store = createReactive({
+      items: [
+        { id: 1, path: [2, 0] },
+        { id: 2, path: [1, 5] },
+        { id: 3, path: [3] },
+      ],
+    });
+    const rows = computedList(() => store.items).orderBy((item) => item.path);
+    const ids = () => rows().map((item) => item.id);
+    expect(ids()).toEqual([2, 1, 3]);
+    store.items[1]!.path[0] = 4;
+    expect(ids()).toEqual([1, 3, 2]);
+    store.items[2]!.path.push(1);
+    store.items[0]!.path.length = 1;
+    expect(ids()).toEqual([1, 3, 2]);
+    store.items[2]!.path[0] = 0;
+    expect(ids()).toEqual([3, 1, 2]);
   });
 
   it("recovers when comparing keys throws after some rows were filed", () => {
@@ -452,6 +770,8 @@ describe("queries match a from-scratch reference across three collections", () =
     | { type: "taskRank"; index: number; rank: number }
     | { type: "addTask"; owner: number; rank: number }
     | { type: "removeTask"; index: number }
+    | { type: "moveTask"; index: number; to: number }
+    | { type: "reverseTasks" }
     | { type: "userActive"; index: number }
     | { type: "userTeam"; index: number; team: number }
     | { type: "userId"; index: number; id: number }
@@ -469,6 +789,8 @@ describe("queries match a from-scratch reference across three collections", () =
     fc.record({ type: fc.constant("taskRank" as const), index, rank: small }),
     fc.record({ type: fc.constant("addTask" as const), owner: small, rank: small }),
     fc.record({ type: fc.constant("removeTask" as const), index }),
+    fc.record({ type: fc.constant("moveTask" as const), index, to: index }),
+    fc.record({ type: fc.constant("reverseTasks" as const) }),
     fc.record({ type: fc.constant("userActive" as const), index }),
     fc.record({ type: fc.constant("userTeam" as const), index, team: small }),
     fc.record({ type: fc.constant("userId" as const), index, id: small }),
@@ -541,6 +863,42 @@ describe("queries match a from-scratch reference across three collections", () =
               );
             return rows;
           };
+          // One-to-many, the other way: each active user's open tasks.
+          const owned = computedList(() => store.users, {
+            tasks: { from: () => store.tasks, key: (task: Task) => task.ownerId },
+          })
+            .filter((user) => user.active)
+            .map((user, { tasks }) => ({
+              id: user.id,
+              open: tasks
+                .getAll(user.id)
+                .filter((task) => !task.done)
+                .map((task) => task.id),
+            }));
+          const expectedOwned = () =>
+            unwrap(store.users)
+              .filter((user) => user.active)
+              .map((user) => ({
+                id: user.id,
+                open: unwrap(store.tasks)
+                  .filter((task) => task.ownerId === user.id && !task.done)
+                  .map((task) => task.id),
+              }));
+          // The open tasks of each owner, grouped.
+          const grouped = computedList(() => store.tasks)
+            .filter((task) => !task.done)
+            .groupBy((task) => task.ownerId)
+            .map((group) => ({ key: group.key, ids: group.rows.map((task) => task.id) }));
+          const expectedGrouped = () => {
+            const groups = new Map<string | null, number[]>();
+            for (const task of unwrap(store.tasks)) {
+              if (task.done) continue;
+              const list = groups.get(task.ownerId) ?? [];
+              list.push(task.id);
+              groups.set(task.ownerId, list);
+            }
+            return Array.from(groups, ([key, ids]) => ({ key, ids }));
+          };
           const at = <T>(list: T[], i: number) => (list.length ? list[i % list.length] : undefined);
 
           for (const step of ops) {
@@ -562,6 +920,10 @@ describe("queries match a from-scratch reference across three collections", () =
                 });
               else if (step.type === "removeTask" && tasks.length)
                 tasks.splice(step.index % tasks.length, 1);
+              else if (step.type === "moveTask" && tasks.length) {
+                const [moved] = tasks.splice(step.index % tasks.length, 1);
+                tasks.splice(step.to % (tasks.length + 1), 0, moved!);
+              } else if (step.type === "reverseTasks") tasks.reverse();
               else if (step.type === "userActive" && user) user.active = !user.active;
               else if (step.type === "userTeam" && user) user.teamId = `g${step.team}`;
               else if (step.type === "userId" && user) user.id = `u${step.id}`;
@@ -576,6 +938,8 @@ describe("queries match a from-scratch reference across three collections", () =
                 teams.push({ id: `g${step.id}`, name: `n${step.name}` });
             });
             expect(query().map((row) => ({ ...row }))).toEqual(expected());
+            expect(owned().map((row) => ({ ...row }))).toEqual(expectedOwned());
+            expect(grouped().map((row) => ({ ...row }))).toEqual(expectedGrouped());
           }
         },
       ),

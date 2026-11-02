@@ -64,17 +64,27 @@ export function tracked<P extends object>(Component: FC<P>) {
     // by whatever effect happens to be running.
     const outer = setActiveSub(undefined);
     tracker.node = undefined;
-    tracker.stop = effect(tracker.run);
+    const stop = effect(tracker.run);
+    tracker.stop = stop;
     setActiveSub(tracker.node);
+    let rendered = false;
     try {
-      return Component(props); // eslint-disable-line new-cap -- React function component call
+      const result = Component(props); // eslint-disable-line new-cap -- React function component call
+      rendered = true;
+      return result;
     } finally {
-      // try/finally guards against React Suspense, where Component(props) throws
-      // a Promise. Without this, activeSub would stay pointed at this component's
-      // effect node and every subsequent signal read in the app would subscribe
-      // to the wrong (now dead) effect.
+      // Restored even when Component(props) throws (Suspense throws a
+      // Promise): otherwise every later signal read in the app would
+      // subscribe to this render's effect.
       setActiveSub(outer);
-      previous?.();
+      if (rendered) {
+        previous?.();
+      } else {
+        // A render that threw never shows: React keeps what it showed
+        // before, so keep the effect that follows that, and drop this one.
+        stop();
+        tracker.stop = previous;
+      }
     }
   };
 
