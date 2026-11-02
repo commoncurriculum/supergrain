@@ -77,8 +77,7 @@ async function timeClick(
   }
 
   await client.send("Tracing.start", {
-    categories:
-      "blink.user_timing,devtools.timeline,disabled-by-default-devtools.timeline,v8,blink.gc,disabled-by-default-v8.gc",
+    categories: "blink.user_timing,devtools.timeline,disabled-by-default-devtools.timeline",
   });
 
   // Match Krause's clickElement: page.$() + elem.click()
@@ -118,22 +117,25 @@ async function timeClick(
   const total = cpuResult.duration;
   const script = computeResultsJS(cpuResult, traceEvents);
   const paint = computeResultsPaint(cpuResult, traceEvents);
-  const gcs = traceEvents.filter(
-    (e: any) =>
-      /GC|Scavenge|Sweep|Mark/i.test(e.name) &&
-      e.ts >= cpuResult.tsStart &&
-      e.ts <= cpuResult.tsEnd,
-  );
-  // TEMPORARY diagnosis: GC work inside the measured window.
-  const gcSum = new Map<string, number>();
+  // TEMPORARY diagnosis: time per trace event name inside the measured window.
+  const byName = new Map<string, [number, number]>();
   for (const e of traceEvents) {
-    if (!/GC|Scavenge/i.test(e.name) || /BACKGROUND/.test(e.name)) continue;
-    if (e.ts < cpuResult.tsStart || e.ts > cpuResult.tsEnd || !(e.dur > 300)) continue;
-    gcSum.set(e.name, (gcSum.get(e.name) ?? 0) + e.dur / 1000);
+    if (!(e.dur > 0) || e.ts < cpuResult.tsStart || e.ts > cpuResult.tsEnd) continue;
+    if (
+      !/^(UpdateLayoutTree|Layout|Commit|Paint|Layerize|PrePaint|EventDispatch|FunctionCall|TimerFire|FireAnimationFrame|RunMicrotasks|V8.Execute|RunTask|ParseHTML|HitTest|ScheduleStyleRecalculation|InvalidateLayout|MinorGC|MajorGC|BlinkGC.*|V8.GC_SCAVENGER|CppGC.*)$/.test(
+        e.name,
+      )
+    )
+      continue;
+    const entry = byName.get(e.name) ?? [0, 0];
+    entry[0]++;
+    entry[1] += e.dur / 1000;
+    byName.set(e.name, entry);
   }
   gcLines.push(
-    `GC-IN-WINDOW ${opts.traceName ?? selector} script=${script.toFixed(1)} paint=${paint.toFixed(1)} ` +
-      JSON.stringify([...gcSum].map(([n, ms]) => [n, Math.round(ms * 10) / 10])),
+    `IN-WINDOW ${opts.traceName ?? selector} script=${script.toFixed(1)} paint=${paint.toFixed(1)} ` +
+      `commits=${cpuResult.numberCommits} layouts=${cpuResult.layouts} ` +
+      [...byName].map(([n, [c, ms]]) => `${n}:${c}/${ms.toFixed(1)}`).join(" "),
   );
 
   if (opts.cpuThrottle) {
