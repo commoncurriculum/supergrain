@@ -77,7 +77,8 @@ async function timeClick(
   }
 
   await client.send("Tracing.start", {
-    categories: "blink.user_timing,devtools.timeline,disabled-by-default-devtools.timeline",
+    categories:
+      "blink.user_timing,devtools.timeline,disabled-by-default-devtools.timeline,v8,blink.gc,disabled-by-default-v8.gc",
   });
 
   // Match Krause's clickElement: page.$() + elem.click()
@@ -117,6 +118,23 @@ async function timeClick(
   const total = cpuResult.duration;
   const script = computeResultsJS(cpuResult, traceEvents);
   const paint = computeResultsPaint(cpuResult, traceEvents);
+  const gcs = traceEvents.filter(
+    (e: any) =>
+      /GC|Scavenge|Sweep|Mark/i.test(e.name) &&
+      e.ts >= cpuResult.tsStart &&
+      e.ts <= cpuResult.tsEnd,
+  );
+  // TEMPORARY diagnosis: GC work inside the measured window.
+  const gcSum = new Map<string, number>();
+  for (const e of traceEvents) {
+    if (!/GC|Scavenge/i.test(e.name) || /BACKGROUND/.test(e.name)) continue;
+    if (e.ts < cpuResult.tsStart || e.ts > cpuResult.tsEnd || !(e.dur > 300)) continue;
+    gcSum.set(e.name, (gcSum.get(e.name) ?? 0) + e.dur / 1000);
+  }
+  gcLines.push(
+    `GC-IN-WINDOW ${opts.traceName ?? selector} script=${script.toFixed(1)} paint=${paint.toFixed(1)} ` +
+      JSON.stringify([...gcSum].map(([n, ms]) => [n, Math.round(ms * 10) / 10])),
+  );
 
   if (opts.cpuThrottle) {
     await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
@@ -145,6 +163,7 @@ async function timeClick(
 }
 
 const results: BenchmarkResult[] = [];
+const gcLines: string[] = [];
 
 interface MemoryResult {
   name: string;
@@ -175,6 +194,7 @@ afterAll(() => {
       : []),
   ].join("\n");
   console.log(`\n${output}`);
+  console.log(gcLines.join("\n"));
   writeFileSync(resolve(__dirname, "../perf-results.txt"), output + "\n");
 
   // Write JSON results with git metadata
