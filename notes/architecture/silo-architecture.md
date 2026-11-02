@@ -322,6 +322,16 @@ Returns `state.documents[type]?.[id]?.data`. Reactive — if the slot is
 empty, the read subscribes; a later `insertDocument` re-runs dependent
 scopes.
 
+### `findAllInMemory(type) → readonly T[]`
+
+The loaded documents of one type, in first-load order, as one reactive
+array per type (`loaded-lists.ts`). Built from the bucket on the first
+call, then kept up to date by `insertDocument` (a first value is pushed; a
+"replace" refetch's new object is written at the doc's index) and
+`clearMemory` (length set to 0). The array keeps its identity, so a
+`computedList` over it follows its splice log instead of rescanning.
+Writes run untracked, so a scope that inserts isn't subscribed to the list.
+
 ### `insertDocument(type, doc) → void`
 
 Keyed by `(type, doc.id)`. Last-write-wins. Creates the handle if none

@@ -7,6 +7,7 @@ import { batch, createReactive, unwrap } from "@supergrain/kernel";
 import { attachSiloDevtools } from "./devtools";
 import { type AdapterError, ProcessorError, type SiloError } from "./errors";
 import { Finder } from "./finder";
+import { createLoadedLists } from "./loaded-lists";
 import {
   type AdapterErrorSink,
   type AdapterOptionOverrides,
@@ -420,6 +421,14 @@ export interface DocumentStore<
     ids: string[] | null | undefined,
   ): DocumentsTogetherHandle<M[K]>;
   findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined;
+  /**
+   * The loaded documents of one type, in the order they first loaded. Never
+   * fetches. The same reactive array every call: it grows as documents load,
+   * swaps an entry when a "replace" refetch gives a doc a new object, and
+   * empties on `clearMemory`. Pass it to `computedList` to filter, sort or
+   * group what's loaded; the list follows each change without rescanning.
+   */
+  findAllInMemory<K extends keyof M & string>(type: K): ReadonlyArray<M[K]>;
   insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void;
   findQuery<K extends keyof Q & string>(
     type: K,
@@ -530,6 +539,7 @@ export function createDocumentStore<
     queries: new Map(),
   }) as InternalState;
   const finder = new Finder<M, Q>(config, state);
+  const loaded = createLoadedLists((type) => unwrap(state.documents).get(type));
 
   const store: DocumentStore<M, Q> = {
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
@@ -579,6 +589,10 @@ export function createDocumentStore<
       return state.documents.get(type)?.get(id)?.value as M[K] | undefined;
     },
 
+    findAllInMemory<K extends keyof M & string>(type: K): ReadonlyArray<M[K]> {
+      return loaded.get(type) as ReadonlyArray<M[K]>;
+    },
+
     insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
       // Stored docs are LIVE and reactive at field granularity — not frozen
       // snapshots. The kernel wraps the inserted object in a reactive proxy
@@ -611,12 +625,14 @@ export function createDocumentStore<
         if (result === null) return; // explicit veto — write nothing
         prepared = result ?? doc; // undefined / no return = keep `doc` as-is
       }
-      const handle = batch(() => {
-        const inserted = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
-        applyEvent(inserted, HandleEvent.insert(prepared, config.models[type]?.onRefetch));
-        return inserted;
+      const stored = batch(() => {
+        const handle = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
+        const before = unwrap(handle).value;
+        applyEvent(handle, HandleEvent.insert(prepared, config.models[type]?.onRefetch));
+        const after = unwrap(handle).value;
+        loaded.changed(type, prepared.id, before, after);
+        return after as M[K];
       });
-      const stored = unwrap(handle).value as M[K];
       // `afterInsert` tails the pipeline. The value is committed (findInMemory
       // returns it); within an enclosing batch — a fetch commit, or a caller's
       // own batch() — subscriber notifications are still pending and flush when
@@ -696,6 +712,7 @@ export function createDocumentStore<
         for (const bucket of state.documents.values()) {
           for (const handle of bucket.values()) applyEvent(handle, HandleEvent.reset());
         }
+        loaded.clear();
         for (const bucket of state.queries.values()) {
           for (const handle of bucket.values()) applyEvent(handle, HandleEvent.reset());
         }

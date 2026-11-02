@@ -233,12 +233,31 @@ Methods:
 - `findDocumentsIndividually(type, ids)` → `DocumentHandle<T>[]` — one independent handle per id (each settles on its own)
 - `findDocumentsTogether(type, ids)` → `DocumentsTogetherHandle<T>` — an all-or-nothing batch handle (settles once every id has loaded, or as soon as one fails)
 - `findInMemory(type, id)` → `T | undefined`
+- `findAllInMemory(type)` → `readonly T[]` — every loaded document of a type, in first-load order; the same reactive array every call (see [Listing what's loaded](#listing-whats-loaded))
 - `insertDocument(type, doc)` → `void`
 - `clearMemory()` → `void`
 - `findQuery(type, params)` → `QueryHandle<T>`
 - `findQueryInMemory(type, params)` → `T | undefined`
 - `insertQueryResult(type, params, result)` → `void`
 - `resolveAdapterOptions(perCall?)` → `{ retry, retryIsDefault, timeout, deadline, retryable, onError }` — merge per-call overrides over the store-wide defaults, with the store's `onError` sink passed through so layered helpers can report failures that happen outside the engine (in-engine failures are reported automatically by `store.runAdapter`); `retryIsDefault` is true when `retry` is the built-in fallback rather than anything configured
+
+### Listing what's loaded
+
+`store.findAllInMemory(type)` returns every loaded document of a type, in the order they first loaded. It never fetches. It's the same reactive array on every call: it grows as documents load, swaps an entry when a `"replace"` refetch gives a document a new object, and empties on `clearMemory()`. A patched document keeps its object, so its place in the list doesn't change.
+
+Pass it to `computedList` to filter, sort or look things up across what's loaded. The list follows each change to the array instead of rescanning it, and each row reruns only when a field it reads changes:
+
+```ts
+import { computedList } from "@supergrain/kernel";
+
+const openTasks = computedList(() => store.findAllInMemory("task"))
+  .filter((task) => !task.attributes.done)
+  .orderBy((task) => task.attributes.dueAt);
+
+openTasks(); // readonly Task[], up to date with every insert
+```
+
+A type's list is built the first time it's asked for, so types you never list cost nothing.
 
 ### Hooks
 
@@ -603,6 +622,7 @@ Object key identity is **deep-equal**: `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` hit
 | --------------------------------- | ----------------------------------------------- |
 | `store.find(type, id)`            | `store.findQuery(type, params)`                 |
 | `store.findInMemory(type, id)`    | `store.findQueryInMemory(type, params)`         |
+| `store.findAllInMemory(type)`     | —                                               |
 | `store.insertDocument(type, doc)` | `store.insertQueryResult(type, params, result)` |
 | `useDocument(type, id)`           | `useQuery(type, params)`                        |
 
