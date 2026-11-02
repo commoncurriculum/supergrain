@@ -1,8 +1,11 @@
+import { setActiveSub } from "alien-signals";
+
 import { unwrap } from "../core";
 import { readWholeObject } from "../read";
 import { defaultCompare } from "./compare";
 import { createList } from "./list";
 import { createLookup, type Lookup, type SyncedLookup } from "./lookup";
+import { OUTSIDE, type RowResult } from "./row-blocks";
 
 /** Sort direction for {@link Sorted.orderBy}. `null`, `undefined` and `NaN` sort last ascending. */
 export type Direction = "asc" | "desc";
@@ -155,19 +158,43 @@ function build({ source, lookups, steps, order, offset, limit }: Spec) {
   const mapped = steps.some((step) => step.kind === "map");
   // The list syncs every named lookup before each read.
   const used = Object.values(lookups);
-  function runSteps(item: object, previous?: unknown) {
+
+  /**
+   * Run the steps on `item`. `previous` (the row's last result) comes back
+   * as is when nothing it holds changed, so a rerun that moves nothing
+   * allocates nothing.
+   */
+  function runSteps(item: object, previous: Result | undefined): Result {
     let row: unknown = item;
     for (const { kind, fn } of steps) {
       if (kind === "map") row = fn(row, lookups);
-      else if (!fn(row, lookups)) return { member: false } as const;
+      else if (!fn(row, lookups)) return OUTSIDE;
     }
-    return {
-      member: true,
-      // Without a `map`, the row is the source item itself.
-      value: mapped ? sameIfEqual(previous, row) : row,
-      key: order.length === 0 ? NO_KEY : order.map(({ key }) => key(row, lookups)),
-    } as const;
+    const last = previous?.member ? previous : undefined;
+    // Without a `map`, the row is the source item itself.
+    const value = mapped ? sameIfEqual(last?.value, row) : row;
+    const key = order.length === 0 ? NO_KEY : keyOf(row, last?.key);
+    if (last !== undefined && last.value === value && last.key === key) return last;
+    return { member: true, value, key };
   }
+
+  /** The row's sort key: `previous` itself if every part orders the same. */
+  function keyOf(
+    row: unknown,
+    previous: ReadonlyArray<unknown> | undefined,
+  ): ReadonlyArray<unknown> {
+    let key: Array<unknown> | undefined = undefined; // eslint-disable-line unicorn/no-useless-undefined -- init-declarations wants a value
+    for (let i = 0; i < order.length; i++) {
+      const part = order[i]!.key(row, lookups);
+      if (key !== undefined) key.push(part);
+      else if (previous === undefined || !orderedSame(previous[i], part)) {
+        key = previous === undefined ? [] : previous.slice(0, i);
+        key.push(part);
+      }
+    }
+    return key ?? previous!;
+  }
+
   return createList<object, unknown, ReadonlyArray<unknown>>({
     source,
     prepare: () => {
@@ -176,7 +203,9 @@ function build({ source, lookups, steps, order, offset, limit }: Spec) {
     // Without a `map`, a row's value is the item itself, so a rerun that
     // changed nothing is invisible: track the item as a whole, which costs
     // far less memory than a signal per field.
-    run: mapped ? runSteps : (item) => readWholeObject(unwrap(item), () => runSteps(item)),
+    run: mapped
+      ? runSteps
+      : (item, previous) => readWholeObject(unwrap(item), runSteps, item, previous),
     compare:
       order.length === 0
         ? undefined
@@ -192,15 +221,44 @@ function build({ source, lookups, steps, order, offset, limit }: Spec) {
   });
 }
 
+type Result = RowResult<unknown, ReadonlyArray<unknown>>;
+
+/**
+ * Whether two key parts order the same. An object (say a store array) is
+ * compared untracked, since comparing reads it and the row must not depend
+ * on that; two primitives read nothing.
+ */
+function orderedSame(a: unknown, b: unknown): boolean {
+  if (!isObject(a) && !isObject(b)) return defaultCompare(a, b) === 0;
+  const outer = setActiveSub(undefined);
+  try {
+    return defaultCompare(a, b) === 0;
+  } finally {
+    setActiveSub(outer);
+  }
+}
+
+function isObject(value: unknown): value is object {
+  return typeof value === "object" && value !== null;
+}
+
 /**
  * `previous` when `next` is a new plain object with the same fields, so a
  * mapped row keeps its identity when it reruns without changing.
  */
 function sameIfEqual(previous: unknown, next: unknown): unknown {
   if (!isPlainObject(previous) || !isPlainObject(next)) return next;
-  const keys = Object.keys(next);
-  if (keys.length !== Object.keys(previous).length) return next;
-  return keys.every((k) => Object.is(previous[k], next[k])) ? previous : next;
+  // Without `Object.keys`, which would make two arrays per rerun. Plain
+  // objects inherit no enumerable fields, so `for…in` sees only their own.
+  let fields = 0;
+  for (const key in next) {
+    if (Object.hasOwn(next, key)) {
+      if (!Object.hasOwn(previous, key) || !Object.is(previous[key], next[key])) return next;
+      fields++;
+    }
+  }
+  for (const key in previous) if (Object.hasOwn(previous, key) && --fields < 0) return next;
+  return previous;
 }
 
 /** A plain object that isn't a store proxy (reading a proxy's fields here would subscribe the row to them). */

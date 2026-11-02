@@ -8,7 +8,9 @@ describe("readWholeObject", () => {
   it("reruns on a write to any field of the object, and on deletes", () => {
     const state = createReactive<{ a: number; b: number; c?: number }>({ a: 1, b: 2, c: 3 });
     let runs = 0;
-    const read = computed(() => readWholeObject(unwrap(state), () => (runs++, state.a)));
+    const read = computed(() =>
+      readWholeObject(unwrap(state), () => (runs++, state.a), undefined, undefined),
+    );
     expect(read()).toBe(1);
     state.b = 5; // never read, but the object changed
     expect(read()).toBe(1);
@@ -25,7 +27,12 @@ describe("readWholeObject", () => {
     const state = createReactive({ owner: { name: "a", age: 1 } });
     let runs = 0;
     const read = computed(() =>
-      readWholeObject(unwrap(state), () => (runs++, `${state.owner.name}:${shared.limit}`)),
+      readWholeObject(
+        unwrap(state),
+        () => (runs++, `${state.owner.name}:${shared.limit}`),
+        undefined,
+        undefined,
+      ),
     );
     expect(read()).toBe("a:1");
     shared.other = 1;
@@ -41,7 +48,7 @@ describe("readWholeObject", () => {
 
   it("tracks an array per index: replacing an element doesn't bump its version", () => {
     const tags = createReactive(["a", "b"]);
-    const read = computed(() => readWholeObject(unwrap(tags), () => tags[0]));
+    const read = computed(() => readWholeObject(unwrap(tags), () => tags[0], undefined, undefined));
     expect(read()).toBe("a");
     tags[0] = "z";
     expect(read()).toBe("z");
@@ -51,7 +58,9 @@ describe("readWholeObject", () => {
     const state = createReactive({ a: 1, b: 2 });
     let innerRuns = 0;
     const inner = computed(() => (innerRuns++, state.a));
-    const outer = computed(() => readWholeObject(unwrap(state), () => inner()));
+    const outer = computed(() =>
+      readWholeObject(unwrap(state), () => inner(), undefined, undefined),
+    );
     expect(outer()).toBe(1);
     state.b = 3;
     outer();
@@ -62,7 +71,9 @@ describe("readWholeObject", () => {
     const state = createReactive({ a: 1, b: 2 });
     effect(() => void state.a); // makes `a`'s signal
     let runs = 0;
-    const read = computed(() => readWholeObject(unwrap(state), () => (runs++, state.a)));
+    const read = computed(() =>
+      readWholeObject(unwrap(state), () => (runs++, state.a), undefined, undefined),
+    );
     read();
     state.b = 3;
     read();

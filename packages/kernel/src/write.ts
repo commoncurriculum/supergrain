@@ -102,16 +102,18 @@ export function deleteProperty(target: any, key: PropertyKey): void {
  */
 function writeArray(target: Array<unknown>, from: number, end: number, write: () => void): void {
   const oldLength = target.length;
-  const before = target.slice(from, Math.max(end, from));
+  const replaced = target.slice(from, Math.max(end, from));
   write();
-  notifyArrayMutation(target, from, before, oldLength);
+  notifyArrayMutation(target, from, replaced, oldLength);
 }
 
 /**
  * Every array write ends here: an index or `length` write, a delete, or a
- * mutator (`push`, `splice`, `sort`, …) that ran on the raw target. Given the
- * old items from `from` on (`before`, holes kept) and the old length, it logs
- * the change and fires each signal whose value changed:
+ * mutator (`push`, `splice`, `sort`, …) that ran on the raw target. Every
+ * such write is a splice: at `from`, the old items `replaced` (holes kept)
+ * gave way to new ones, and the items after them moved by the change in
+ * length. Given those and the old length, it logs the change and fires each
+ * signal whose value changed:
  *
  * - an index's signal, if the item there changed;
  * - `length`, if the length changed;
@@ -124,23 +126,28 @@ function writeArray(target: Array<unknown>, from: number, end: number, write: ()
 export function notifyArrayMutation(
   target: Array<unknown>,
   from: number,
-  before: ReadonlyArray<unknown>,
+  replaced: ReadonlyArray<unknown>,
   oldLength: number,
 ): void {
-  logMutation(target, from, before, oldLength);
+  logMutation(target, from, replaced, oldLength);
   const nodes = getNodesIfExist(target);
   const newLength = target.length;
-  const lengthChanged = newLength !== oldLength;
-  const end = lengthChanged ? Math.max(oldLength, newLength) : from + before.length;
+  const shift = newLength - oldLength;
+  const lengthChanged = shift !== 0;
+  const end = lengthChanged ? Math.max(oldLength, newLength) : from + replaced.length;
   let itemChanged = false;
   // A new length counts as new keys (an extra rerun is allowed, and it
   // saves two `in` checks per index on long splices). At the same length,
-  // only a hole made or filled changes the keys.
+  // only a hole made or filled changes the keys, and every index looked at
+  // is one of `replaced`.
   let keysChanged = lengthChanged;
   for (let i = from; i < end; i++) {
+    const k = i - from;
     const next = target[i];
-    if (!keysChanged && i - from in before !== i in target) keysChanged = true;
-    if (unwrap(before[i - from]) !== unwrap(next)) {
+    if (!keysChanged && k in replaced !== i in target) keysChanged = true;
+    // The old item at `i`: a replaced one, or one that has since moved.
+    const old = k < replaced.length ? replaced[k] : i < oldLength ? target[i + shift] : undefined;
+    if (unwrap(old) !== unwrap(next)) {
       itemChanged = true;
       const node = nodes?.[i];
       if (node) {

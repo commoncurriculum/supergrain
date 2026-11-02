@@ -270,6 +270,16 @@ describe("computedList", () => {
     expect(boxes()[0]).not.toBe(box);
   });
 
+  it("doesn't reuse a mapped object whose fields are other names with the same count", () => {
+    const { store } = setup();
+    const rows = computedList(() => store.tasks)
+      .filter((task) => task.id === 1)
+      .map((task): { a?: undefined; b?: number } => (task.done ? { a: undefined } : { b: 1 }));
+    expect(rows()[0]).toEqual({ b: 1 });
+    store.tasks[1]!.done = true;
+    expect(rows()[0]).toEqual({ a: undefined });
+  });
+
   it("follows a reverse of a very large array", () => {
     const count = 200_000;
     const store = createReactive({ items: Array.from({ length: count }, (_, id) => ({ id })) });

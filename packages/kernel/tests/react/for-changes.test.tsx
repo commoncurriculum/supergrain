@@ -262,6 +262,41 @@ describe("For with parent: edge cases", () => {
     expect(shown()).toBe("i2i9i3");
   });
 
+  it("shows a swap written one slot at a time, outside a batch", async () => {
+    const store = createReactive({ data: items(1, 2, 3) });
+    const shown = mountWithParent(store.data);
+
+    // The first write alone isn't a swap, so `For` re-renders; the second
+    // then looks like one, but `For` must not move nodes React is about to
+    // place itself.
+    await act(async () => {
+      const first = store.data[0]!;
+      store.data[0] = store.data[2]!;
+      store.data[2] = first;
+    });
+    expect(shown()).toBe("i3i2i1");
+  });
+
+  it("re-renders correctly after a swap it made by moving nodes", async () => {
+    const store = createReactive({ data: items(2, 3, 1) });
+    const shown = mountWithParent(store.data);
+
+    await act(async () => {
+      batch(() => {
+        const first = store.data[0]!;
+        store.data[0] = store.data[2]!;
+        store.data[2] = first;
+      });
+    });
+    expect(shown()).toBe("i1i3i2");
+    // React still has the rows in their old order. Its next render must
+    // place them from that order, not from the moved nodes.
+    await act(async () => {
+      store.data.sort((a, b) => b.id - a.id);
+    });
+    expect(shown()).toBe("i3i2i1");
+  });
+
   it("re-renders a swap when the parent element isn't mounted", async () => {
     const store = createReactive({ data: items(1, 2, 3) });
     const detached: React.RefObject<Element | null> = { current: null };

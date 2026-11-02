@@ -9,6 +9,7 @@ import {
   $RAW,
   $TRACK,
   $VERSION,
+  defineHidden,
   getNode,
   getNodes,
   isWrappable,
@@ -24,7 +25,7 @@ let wholeObject: object | null = null;
 let wholeObjectReader: ReturnType<typeof getActiveSub> | null = null;
 
 /**
- * Run `fn` so that the active subscriber tracks `target` (a raw, non-array
+ * Run `fn(a, b)` so that the active subscriber tracks `target` (a raw, non-array
  * object) as a whole: one subscription to its version, which every write to
  * it bumps, instead of one signal per field read. The subscriber reruns more
  * often (on writes to fields it never read), but costs far less memory.
@@ -37,15 +38,15 @@ let wholeObjectReader: ReturnType<typeof getActiveSub> | null = null;
  * Only for a reader whose result can't tell the extra reruns apart, such as
  * a list row that keeps its previous outcome when nothing moved.
  */
-export function readWholeObject<R>(target: object, fn: () => R): R {
+export function readWholeObject<A, B, R>(target: object, fn: (a: A, b: B) => R, a: A, b: B): R {
   // Replacing an array's element doesn't bump its version: track per index.
-  if (Array.isArray(target)) return fn();
+  if (Array.isArray(target)) return fn(a, b);
   const previous = wholeObject;
   const previousReader = wholeObjectReader;
   wholeObject = target;
   wholeObjectReader = getActiveSub();
   try {
-    return fn();
+    return fn(a, b);
   } finally {
     wholeObject = previous;
     wholeObjectReader = previousReader;
@@ -214,21 +215,7 @@ export function createReactiveProxy<T extends object>(target: T): T {
     proxy = new Proxy(target, handler);
     // The proxy lives on its target. Only a target that won't take a new
     // property keeps it in the WeakMap, which costs more to fill and collect.
-    if (!keepProxyOn(target, proxy)) proxyCache.set(target, proxy);
+    if (!defineHidden(target, $PROXY, proxy)) proxyCache.set(target, proxy);
   }
   return proxy as T;
-}
-
-/**
- * Store `proxy` on `target` as `$PROXY`. False if the target won't take it:
- * it isn't extensible, or it is itself a proxy that refuses (some libraries'
- * drafts do).
- */
-function keepProxyOn(target: object, proxy: object): boolean {
-  if (!Object.isExtensible(target)) return false;
-  try {
-    return Reflect.defineProperty(target, $PROXY, { value: proxy });
-  } catch {
-    return false;
-  }
 }

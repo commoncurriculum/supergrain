@@ -79,17 +79,28 @@ export function getNodes(target: object): DataNodes {
   let nodes = (target as ReactiveTagged)[$NODE];
   if (!nodes) {
     nodes = new (Nodes as unknown as new () => DataNodes)();
-    try {
-      Object.defineProperty(target, $NODE, {
-        value: nodes,
-        enumerable: false,
-        configurable: true,
-      });
-    } catch {
-      // Frozen objects can't be modified.
-    }
+    // A frozen object won't take it, and gets fresh (untracked) nodes per read.
+    defineHidden(target, $NODE, nodes);
   }
   return nodes;
+}
+
+// Refilled by each call, so tagging an object allocates no descriptor.
+const hiddenValue: PropertyDescriptor = { value: undefined, configurable: true };
+
+/**
+ * Define `key` on `target` as a non-enumerable value. False if the target
+ * won't take it: it isn't extensible, or it is a proxy that refuses or throws.
+ */
+export function defineHidden(target: object, key: PropertyKey, value: unknown): boolean {
+  hiddenValue.value = value;
+  try {
+    return Reflect.defineProperty(target, key, hiddenValue);
+  } catch {
+    return false;
+  } finally {
+    hiddenValue.value = undefined;
+  }
 }
 
 /**

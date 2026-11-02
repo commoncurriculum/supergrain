@@ -16,6 +16,7 @@ export interface Structure<T, O, K> {
    */
   readonly list: ReadonlyArray<Row<T, O, K>>;
   readonly removed: ReadonlyArray<Row<T, O, K>>;
+  /** Valid only until the next read, which may change it in place. */
   readonly groups: ReadonlyArray<Group<T, O, K>>;
 }
 

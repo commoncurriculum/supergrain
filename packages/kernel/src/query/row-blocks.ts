@@ -1,3 +1,8 @@
+/* eslint-disable typescript-eslint/prefer-for-of, prefer-destructuring --
+ * Index loops and indexed tuple reads on purpose: in this hot path `for…of`
+ * and `[a, b] = tuple` each allocated an iterator per loop (measured with a
+ * heap profile of the list bench).
+ */
 import { rethrowingComputed, settle, type Caught } from "../rethrowing-computed";
 
 /**
@@ -76,16 +81,20 @@ interface Block<T, O, K> {
   readonly changes: () => ReadonlyArray<Change<T, O, K>>;
 }
 
+/** No changes. Shared, so finding none allocates nothing. */
+const NO_CHANGES: ReadonlyArray<never> = Object.freeze([]);
+
 function createBlock<T, O, K>(rows: ReadonlyArray<Row<T, O, K>>): Block<T, O, K> {
   return {
     rows,
     changes: rethrowingComputed(() => {
-      const changes: Array<Change<T, O, K>> = [];
-      for (const row of rows) {
+      let changes: Array<Change<T, O, K>> | undefined = undefined; // eslint-disable-line unicorn/no-useless-undefined -- init-declarations wants a value
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]!;
         const result = settle(row.result);
-        if (result !== row.applied) changes.push([row, result]);
+        if (result !== row.applied) (changes ??= []).push([row, result]);
       }
-      return changes;
+      return changes ?? NO_CHANGES;
     }),
   };
 }
@@ -93,8 +102,31 @@ function createBlock<T, O, K>(rows: ReadonlyArray<Row<T, O, K>>): Block<T, O, K>
 function createGroup<T, O, K>(blocks: ReadonlyArray<Block<T, O, K>>): Group<T, O, K> {
   return {
     applied: undefined,
-    changes: rethrowingComputed(() => blocks.flatMap((block) => block.changes())),
+    // Its blocks' unfiled changes: one block's array as is when only it has
+    // any. A block keeps returning changes the list has since filed, until
+    // one of its rows changes again; those are left out.
+    changes: rethrowingComputed(() => {
+      let found: ReadonlyArray<Change<T, O, K>> = NO_CHANGES;
+      let joined: Array<Change<T, O, K>> | undefined = undefined; // eslint-disable-line unicorn/no-useless-undefined -- init-declarations wants a value
+      for (let b = 0; b < blocks.length; b++) {
+        const changes = blocks[b]!.changes();
+        if (!hasUnfiled(changes)) {
+          // Nothing to add.
+        } else if (found.length === 0) found = changes;
+        else {
+          joined ??= [...found];
+          for (let i = 0; i < changes.length; i++) joined.push(changes[i]!);
+        }
+      }
+      return joined ?? found;
+    }),
   };
+}
+
+function hasUnfiled<T, O, K>(changes: ReadonlyArray<Change<T, O, K>>): boolean {
+  for (let i = 0; i < changes.length; i++)
+    if (changes[i]![0].applied !== changes[i]![1]) return true;
+  return false;
 }
 
 /**
@@ -126,7 +158,8 @@ export function createRowBlocks<T, O, K>(isLive: (row: Row<T, O, K>) => boolean)
    * block, or new ones, then return the groups. Only the blocks that changed
    * are replaced. When removals have left too many sparse blocks, regroup
    * every row of `list`. Safe only once the read that found these rows
-   * succeeded.
+   * succeeded. The groups returned are valid until the next call, which may
+   * change them in place.
    */
   return function place(
     list: ReadonlyArray<Row<T, O, K>>,
@@ -135,7 +168,7 @@ export function createRowBlocks<T, O, K>(isLive: (row: Row<T, O, K>) => boolean)
   ): ReadonlyArray<Group<T, O, K>> {
     if (blocks.length + unplaced.length / BLOCK > 2 * Math.ceil(list.length / BLOCK) + 1) {
       regroupAll(list);
-      return [...groups];
+      return groups;
     }
     const edited = new Map<number, Array<Row<T, O, K>>>();
     const rowsOf = (b: number): Array<Row<T, O, K>> => {
@@ -161,6 +194,6 @@ export function createRowBlocks<T, O, K>(isLive: (row: Row<T, O, K>) => boolean)
     for (const g of regroup) {
       groups[g] = createGroup(blocks.slice(g * GROUP, (g + 1) * GROUP));
     }
-    return [...groups];
+    return groups;
   };
 }

@@ -1,16 +1,10 @@
 import type { ReactiveNode } from "alien-signals/system";
 
 import { effect } from "@supergrain/kernel";
-import { getActiveSub, setActiveSub, untracked } from "@supergrain/kernel/internal";
-import { type FC, memo, useReducer } from "react";
+import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
+import { type FC, memo, useEffect, useReducer } from "react";
 
-import { scheduleDisposal } from "./disposal-queue";
-import { useDisposeOnUnmount } from "./use-dispose-on-unmount";
-
-interface TrackedState {
-  cleanup: () => void;
-  effectNode: ReactiveNode;
-}
+import { type Disposer, scheduleDisposal } from "./disposal-queue";
 
 /**
  * Wraps a React component with per-component signal scoping.
@@ -54,36 +48,24 @@ interface TrackedState {
  */
 export function tracked<P extends object>(Component: FC<P>) {
   const Tracked: FC<P> = (props: P) => {
-    const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
-
-    // Store effect state on the dispatch function (stable per component instance).
-    // Eliminates useRef (1 fewer hook vs the original implementation).
-    const fu = forceUpdate as unknown as { __sg?: TrackedState };
-
-    // Defer the alien-effect teardown so React 18 StrictMode's
-    // mount→cleanup→remount cycle in dev doesn't kill the effect we still
-    // need post-cycle.
-    useDisposeOnUnmount(() => {
-      const fu = forceUpdate as unknown as { __sg?: TrackedState };
-      // Defer the signal-graph unlink past the next paint. Unlinking is pure
-      // bookkeeping with no observable output; running 1,000 of them inside
-      // React's unmount commit blocks presentation of the frame that removes
-      // the rows. A spurious effect firing before the deferred flush only
-      // calls forceUpdate on an unmounted component — a no-op in React.
-      scheduleDisposal(fu.__sg!.cleanup);
-      delete fu.__sg;
-    });
+    const [, update] = useReducer(increment, 0);
+    // The tracker lives on the dispatch function, which is stable per
+    // component instance, so it takes no extra hook.
+    const holder = update as unknown as { __sg?: Tracker };
+    const tracker = (holder.__sg ??= new Tracker(update));
+    useEffect(tracker.mount, NO_DEPS);
 
     // Each render tracks into a fresh effect, and the previous one is dropped
     // only after this render has subscribed. So a computed the component
     // reads always has a subscriber, and keeps its cached state, from one
     // render to the next.
-    const previous = fu.__sg;
-    const current = trackRender(forceUpdate);
-    fu.__sg = current;
-
-    const prev = getActiveSub();
-    setActiveSub(current.effectNode);
+    const previous = tracker.stop;
+    // Made outside any active subscriber, so it isn't owned (and disposed)
+    // by whatever effect happens to be running.
+    const outer = setActiveSub(undefined);
+    tracker.node = undefined;
+    tracker.stop = effect(tracker.run);
+    setActiveSub(tracker.node);
     try {
       return Component(props); // eslint-disable-line new-cap -- React function component call
     } finally {
@@ -91,41 +73,84 @@ export function tracked<P extends object>(Component: FC<P>) {
       // a Promise. Without this, activeSub would stay pointed at this component's
       // effect node and every subsequent signal read in the app would subscribe
       // to the wrong (now dead) effect.
-      setActiveSub(prev);
-      previous?.cleanup();
+      setActiveSub(outer);
+      previous?.();
     }
   };
 
   return memo(Tracked);
 }
 
+const increment = (n: number): number => n + 1;
+const NO_DEPS: ReadonlyArray<unknown> = [];
+
 /**
- * An effect that collects one render's reads, and calls `onChange` when one
- * of them changes.
- *
- * When it fires, it keeps its dependencies. An alien-signals effect normally
- * drops every dependency it didn't read during the run, and this one reads
- * nothing (it only schedules a re-render). Dropping them would leave the
- * computeds the render read with no subscribers, which tears down their
- * cached state, so the re-render would recompute them from scratch. The next
- * render's effect takes over the subscriptions instead.
+ * One component instance's tracking state. It makes three functions per
+ * instance and none per render, so a render allocates only its effect.
  */
-function trackRender(onChange: () => void): TrackedState {
-  // Set by the effect's first run, which `effect()` makes synchronously.
-  let effectNode: ReactiveNode | undefined = undefined;
-  // Created outside any active subscriber, so it isn't owned (and disposed)
-  // by whatever effect happens to be running.
-  const cleanup = untracked(() =>
-    effect(() => {
-      if (effectNode === undefined) {
-        effectNode = getActiveSub();
+class Tracker implements Disposer {
+  /** The effect node of the latest render. Undefined while it is being made. */
+  node: ReactiveNode | undefined = undefined;
+  /** Disposes the latest render's effect. Undefined before the first render. */
+  stop: (() => void) | undefined = undefined;
+  mounted = false;
+
+  /**
+   * The body of every render's effect. Its first run (which `effect()` makes
+   * synchronously) only records the node. After that it runs when a read
+   * changed: it keeps the dependencies and re-renders.
+   *
+   * It keeps them because an alien-signals effect drops every dependency it
+   * didn't read during a run, and this one reads nothing. Dropping them
+   * would leave the computeds the render read with no subscribers, which
+   * tears down their cached state, so the re-render would recompute them
+   * from scratch. The next render's effect takes over the subscriptions.
+   */
+  readonly run: () => void;
+  /** The mount effect. */
+  readonly mount: () => () => void;
+  /** The mount effect's cleanup. */
+  readonly unmount: () => void;
+
+  constructor(update: () => void) {
+    this.run = () => {
+      // Inside an effect's run, the active subscriber is that effect.
+      const node = getActiveSub()!;
+      if (this.node === undefined) {
+        this.node = node;
         return;
       }
-      keepDependencies(effectNode);
-      onChange();
-    }),
-  );
-  return { cleanup, effectNode: effectNode! };
+      keepDependencies(node);
+      update();
+    };
+    this.mount = () => {
+      this.mounted = true;
+      // Shown again after its effect was dropped (an <Activity> hid it):
+      // render again, to track into a new one.
+      if (this.stop === undefined) update();
+      return this.unmount;
+    };
+    // Disposal waits until after the next paint. Unlinking is pure
+    // bookkeeping with no observable output; running 1,000 of them inside
+    // React's unmount commit blocks presentation of the frame that removes
+    // the rows. An effect firing before then only calls `update` on an
+    // unmounted component, a no-op in React.
+    this.unmount = () => {
+      this.mounted = false;
+      scheduleDisposal(this);
+    };
+  }
+
+  /**
+   * Drop the latest effect, unless the component mounted again meanwhile:
+   * StrictMode in development unmounts and remounts every component once.
+   * Each unmount queues it, so it may run twice.
+   */
+  dispose(): void {
+    if (this.mounted || this.stop === undefined) return;
+    this.stop();
+    this.stop = undefined;
+  }
 }
 
 /**

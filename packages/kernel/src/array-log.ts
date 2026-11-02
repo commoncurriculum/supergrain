@@ -92,8 +92,9 @@ function record(log: ArrayLog, oldest: number, entry: Splice | null): void {
 }
 
 /**
- * Record a change to `target`, given the old items from `from` on (`before`,
- * holes kept) and the old length. Called by the kernel for every array write;
+ * Record a change to `target`: at `from`, the old items `before` (holes
+ * kept) gave way to new ones, and the items after them moved by the change
+ * in length. Called by the kernel for every array write;
  * does nothing unless a live reader of `target`'s log needs the entry.
  *
  * Leading and trailing items that are the same before and after are left

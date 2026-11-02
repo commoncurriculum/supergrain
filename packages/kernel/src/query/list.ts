@@ -1,9 +1,16 @@
-import { untracked } from "../core";
+/* eslint-disable typescript-eslint/prefer-for-of, prefer-destructuring --
+ * Index loops and indexed tuple reads on purpose: in this hot path `for…of`
+ * and `[a, b] = tuple` each allocated an iterator per loop (measured with a
+ * heap profile of the list bench).
+ */
+import { setActiveSub } from "alien-signals";
+
 import { catchingComputed, rethrowingComputed } from "../rethrowing-computed";
 import { createReactive } from "../store";
 import { syncArray } from "../sync-array";
 import { OUTSIDE, type Change, type Row, type RowResult } from "./row-blocks";
-import { createSortedRows } from "./sorted-rows";
+import { Scratch } from "./scratch";
+import { createSortedRows, type SortedRows } from "./sorted-rows";
 import { createSourceRows, type Structure } from "./source-rows";
 
 /** Options for {@link createList}, the engine under `computedList`. */
@@ -17,12 +24,12 @@ export interface ListOptions<S extends object, O, K> {
   prepare?: () => void;
   /**
    * Run a row's steps. Runs inside the row's own computed, so it reruns only
-   * when something it read changes. `previous` is the value it last returned,
-   * so it can hand back the same object when nothing changed. A member
-   * outcome must be a new object each time: the list keeps it as the row's
-   * result and tells changes apart by identity.
+   * when something it read changes. Return `previous` (the row's last
+   * result) when its value and key are the same, so the list isn't dirtied
+   * by edits that don't move the row; otherwise a new object, since the list
+   * tells changes apart by identity. Return `OUTSIDE` for a row not in the list.
    */
-  run: (item: S, previous: O | undefined) => RowResult<O, K>;
+  run: (item: S, previous: RowResult<O, K> | undefined) => RowResult<O, K>;
   /** Compare sort keys, or `undefined` to keep source order. */
   compare: ((a: K, b: K) => number) | undefined;
   /** Rows to skip from the start of the result: a whole count, at least 0. Read reactively. */
@@ -73,27 +80,20 @@ export function createList<T extends object, O, K>(
 
   /** A row's result, in its own computed. Its block reads it with `settle`. */
   function resultOf(item: T) {
-    return catchingComputed((previous: RowResult<O, K> | undefined): RowResult<O, K> => {
-      const outcome = run(item, previous?.value);
-      if (!outcome.member) return OUTSIDE;
-      // Hand back the previous object when nothing changed, so the list
-      // isn't dirtied by edits that don't move this row.
-      if (
-        previous?.member &&
-        previous.value === outcome.value &&
-        (!compare || untracked(() => compare(previous.key, outcome.key)) === 0)
-      ) {
-        return previous;
-      }
-      return outcome;
-    });
+    return catchingComputed((previous: RowResult<O, K> | undefined) => run(item, previous));
   }
 
   // Recomputed only when the source's structure changes.
   const structure = rethrowingComputed(readStructure);
   let current: Structure<T, O, K> | undefined = undefined;
+  // Kept between updates, so an update allocates no arrays of its own:
+  // each group's changes, the changes to apply, and the window's values.
+  const pending = new Scratch<ReadonlyArray<Change<T, O, K>>>();
+  const changes = new Scratch<Change<T, O, K>>();
+  const window = new Scratch<O>();
+  const addToWindow = { push: (row: Row<T, O, K>) => window.push(filed(row).value) };
   // Without a sort: the matching rows in source order.
-  let matching: ReadonlyArray<Row<T, O, K>> = [];
+  const matching = new Scratch<Row<T, O, K>>();
 
   return rethrowingComputed((): ReadonlyArray<O> => {
     try {
@@ -101,6 +101,10 @@ export function createList<T extends object, O, K>(
     } catch (error) {
       sortedIsStale = true;
       throw error;
+    } finally {
+      pending.clear();
+      changes.clear();
+      window.clear();
     }
   });
 
@@ -109,72 +113,85 @@ export function createList<T extends object, O, K>(
     // the window.
     prepare?.();
     const next = structure();
-    const pending = next.groups.map((group) => group.changes());
+    const { groups } = next;
+    for (let g = 0; g < groups.length; g++) pending.push(groups[g]!.changes());
     const offset = offsetOf();
     const limit = limitOf();
     // Untracked: `compare` may read reactive values, and the list must not
     // subscribe to them or to its own output.
-    untracked(() => {
-      const changes: Array<Change<T, O, K>> = [];
+    const outer = setActiveSub(undefined);
+    try {
       // Already OUTSIDE if an earlier update with this structure succeeded.
-      for (const row of next.removed) if (row.applied.member) changes.push([row, OUTSIDE]);
-      next.groups.forEach((group, g) => {
-        if (pending[g] === group.applied) return;
-        // A failed update may have filed some of these already.
-        for (const change of pending[g]!) if (change[0].applied !== change[1]) changes.push(change);
-      });
-      const ordered = compare ? applyChanges(next, changes) : filterChanges(next, changes);
-      syncArray(
-        out,
-        ordered.slice(offset, offset + limit).map((row) => filed(row).value),
-      );
-    });
+      const { removed } = next;
+      for (let i = 0; i < removed.length; i++) {
+        if (removed[i]!.applied.member) changes.push([removed[i]!, OUTSIDE]);
+      }
+      for (let g = 0; g < groups.length; g++) {
+        const groupChanges = pending.at(g);
+        if (groupChanges !== groups[g]!.applied) addUnfiled(groupChanges);
+      }
+      if (compare) applyChanges(next).copy(offset, offset + limit, addToWindow);
+      else addMatching(next, offset, offset + limit);
+      syncArray(out, window.items, window.size);
+    } finally {
+      setActiveSub(outer);
+    }
     // Nothing threw: record what the list now reflects.
-    next.groups.forEach((group, g) => (group.applied = pending[g]));
+    for (let g = 0; g < groups.length; g++) groups[g]!.applied = pending.at(g);
     current = next;
     return out;
   }
 
-  /** Without a sort: the matching rows in source order, refiltered only when something changed. */
-  function filterChanges(
-    next: Structure<T, O, K>,
-    changes: ReadonlyArray<Change<T, O, K>>,
-  ): Window<Row<T, O, K>> {
-    for (const [row, result] of changes) row.applied = result;
-    if (next !== current || changes.length > 0) {
-      matching = next.list.filter((row) => row.applied.member);
+  /** Add the changes not yet filed. A failed update may have filed some already. */
+  function addUnfiled(groupChanges: ReadonlyArray<Change<T, O, K>>): void {
+    for (let i = 0; i < groupChanges.length; i++) {
+      const change = groupChanges[i]!;
+      if (change[0].applied !== change[1]) changes.push(change);
     }
-    return matching;
   }
 
-  function applyChanges(
-    next: Structure<T, O, K>,
-    changes: ReadonlyArray<Change<T, O, K>>,
-  ): Window<Row<T, O, K>> {
+  /** File every change. */
+  function fileChanges(): void {
+    for (let i = 0; i < changes.size; i++) {
+      const change = changes.at(i);
+      change[0].applied = change[1];
+    }
+  }
+
+  /**
+   * Without a sort: add the window of the matching rows, in source order, to
+   * the window. They are refiltered only when something changed.
+   */
+  function addMatching(next: Structure<T, O, K>, start: number, end: number): void {
+    fileChanges();
+    if (next !== current || changes.size > 0) {
+      matching.clear();
+      const { list } = next;
+      for (let i = 0; i < list.length; i++) if (list[i]!.applied.member) matching.push(list[i]!);
+    }
+    const stop = Math.min(end, matching.size);
+    for (let i = start; i < stop; i++) addToWindow.push(matching.at(i));
+  }
+
+  function applyChanges(next: Structure<T, O, K>): SortedRows<Row<T, O, K>> {
     // When many rows moved at once (say a filter reads a shared value), sorting
     // from scratch is cheaper than moving each one.
-    if (sortedIsStale || changes.length > 16 + sorted.size / 4) {
-      for (const [row, result] of changes) row.applied = result;
+    if (sortedIsStale || changes.size > 16 + sorted.size / 4) {
+      fileChanges();
       sorted.reset(next.list.filter((row) => row.applied.member).sort(compareRows));
       sortedIsStale = false;
       return sorted;
     }
-    for (const [row, result] of changes) {
+    for (let i = 0; i < changes.size; i++) {
+      const change = changes.at(i);
+      const row = change[0];
+      const result = change[1];
       if (row.applied.member) sorted.remove(row);
       row.applied = result;
       if (result.member) sorted.insert(row);
     }
     return sorted;
   }
-}
-
-/**
- * The matching rows in result order; the list reads only its window. `start`
- * and `end` are whole counts: the sorted rows' `slice` is not
- * `Array.prototype.slice` and doesn't parse other numbers.
- */
-interface Window<R> {
-  slice(start: number, end: number): ReadonlyArray<R>;
 }
 
 /**

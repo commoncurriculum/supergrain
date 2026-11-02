@@ -44,7 +44,7 @@ type RawArrayMethod = (
 ) => unknown;
 
 // The first index a mutator can change, given its arguments and the old
-// length. Only the slice from there on is snapshotted and diffed.
+// length.
 type FirstChanged = (args: Array<unknown>, length: number) => number;
 
 const atStart: FirstChanged = () => 0;
@@ -57,6 +57,12 @@ const atArgument =
     const n = Math.trunc(Number(args[position])) || 0;
     return n < 0 ? Math.max(length + n, 0) : Math.min(n, length);
   };
+
+// How many items from the first changed index a mutator replaces, copied
+// before it runs; the items after them only move. `RETURNED`: the native
+// method returns them (`splice`), so nothing is copied.
+const RETURNED = -1;
+const ALL = Infinity;
 
 // Turns the native return value into what the same call through the proxy
 // returns: elements come back reactive, and `this` is the proxy.
@@ -71,15 +77,15 @@ const returnElements: Result = (value) => {
 };
 const returnArray: Result = (_value, receiver) => receiver;
 
-function mutator(firstChanged: FirstChanged, result: Result): RawArrayMethod {
+function mutator(firstChanged: FirstChanged, replaced: number, result: Result): RawArrayMethod {
   return (target, receiver, native, args) => {
     const oldLength = target.length;
     const from = firstChanged(args, oldLength);
-    const before = target.slice(from);
+    const copied = replaced === RETURNED ? undefined : target.slice(from, from + replaced);
     startBatch();
     try {
       const value = native.apply(target, args);
-      notifyArrayMutation(target, from, before, oldLength);
+      notifyArrayMutation(target, from, copied ?? (value as Array<unknown>), oldLength);
       return result(value, receiver);
     } finally {
       endBatch();
@@ -87,7 +93,7 @@ function mutator(firstChanged: FirstChanged, result: Result): RawArrayMethod {
   };
 }
 
-const reorder = mutator(atStart, returnArray);
+const reorder = mutator(atStart, ALL, returnArray);
 
 // A reorder whose comparator sees elements the way a read through the proxy
 // would.
@@ -146,14 +152,15 @@ const reduce: RawArrayMethod = (target, receiver, native, args) => {
 
 /** Every array method the proxy's `get` trap replaces, by name. */
 export const ARRAY_METHODS: ReadonlyMap<PropertyKey, RawArrayMethod> = new Map([
-  // Mutators: the first index each can change, and what it returns.
-  ["push", mutator(atEnd, returnAsIs)],
-  ["pop", mutator(atLast, returnElement)],
-  ["shift", mutator(atStart, returnElement)],
-  ["unshift", mutator(atStart, returnAsIs)],
-  ["splice", mutator(atArgument(0), returnElements)],
-  ["copyWithin", mutator(atArgument(0), returnArray)],
-  ["fill", mutator(atArgument(1), returnArray)],
+  // Mutators: the first index each can change, how many items from there it
+  // replaces, and what it returns.
+  ["push", mutator(atEnd, 0, returnAsIs)],
+  ["pop", mutator(atLast, 1, returnElement)],
+  ["shift", mutator(atStart, 1, returnElement)],
+  ["unshift", mutator(atStart, 0, returnAsIs)],
+  ["splice", mutator(atArgument(0), RETURNED, returnElements)],
+  ["copyWithin", mutator(atArgument(0), ALL, returnArray)],
+  ["fill", mutator(atArgument(1), ALL, returnArray)],
   ["reverse", reorder],
   ["sort", sort],
   // Whole-array iterators.

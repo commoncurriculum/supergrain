@@ -12,8 +12,8 @@ export interface SortedRows<R> {
   reset(rows: ReadonlyArray<R>): void;
   insert(row: R): void;
   remove(row: R): void;
-  /** The rows from `start` up to, not including, `end`. */
-  slice(start: number, end: number): Array<R>;
+  /** Push the rows from `start` up to, not including, `end` onto `into`. Whole counts. */
+  copy(start: number, end: number, into: { push(row: R): void }): void;
 }
 
 const LOAD = 64;
@@ -83,19 +83,17 @@ export function createSortedRows<R>(compare: (a: R, b: R) => number): SortedRows
       }
     },
 
-    slice(start, end) {
-      const out: Array<R> = [];
+    copy(start, end, into) {
       let skipped = 0;
       for (const chunk of chunks) {
         if (skipped + chunk.length > start) {
           for (let i = Math.max(0, start - skipped); i < chunk.length; i++) {
-            if (skipped + i >= end) return out;
-            out.push(chunk[i]!);
+            if (skipped + i >= end) return;
+            into.push(chunk[i]!);
           }
         }
         skipped += chunk.length;
       }
-      return out;
     },
   };
 }
