@@ -117,12 +117,15 @@ async function timeClick(
   const total = cpuResult.duration;
   const script = computeResultsJS(cpuResult, traceEvents);
   const paint = computeResultsPaint(cpuResult, traceEvents);
-  // TEMPORARY diagnosis: time per trace event name inside the measured window.
+  // TEMPORARY diagnosis: time per trace event name inside the measured window,
+  // on the main thread, including every GC slice however short.
+  const mainTid = traceEvents.find((e: any) => e.name === "EventDispatch")?.tid;
   const byName = new Map<string, [number, number]>();
   for (const e of traceEvents) {
-    if (!(e.dur > 0) || e.ts < cpuResult.tsStart || e.ts > cpuResult.tsEnd) continue;
+    if (!(e.dur > 0) || e.tid !== mainTid || e.ts < cpuResult.tsStart || e.ts > cpuResult.tsEnd)
+      continue;
     if (
-      !/^(UpdateLayoutTree|Layout|Commit|Paint|Layerize|PrePaint|EventDispatch|FunctionCall|TimerFire|FireAnimationFrame|RunMicrotasks|V8.Execute|RunTask|ParseHTML|HitTest|ScheduleStyleRecalculation|InvalidateLayout|MinorGC|MajorGC|BlinkGC.*|V8.GC_SCAVENGER|CppGC.*)$/.test(
+      !/^(UpdateLayoutTree|Layout|Paint|PrePaint|FunctionCall|RunTask)$|GC|Marking|Sweep|Scaveng/i.test(
         e.name,
       )
     )
@@ -135,7 +138,11 @@ async function timeClick(
   gcLines.push(
     `IN-WINDOW ${opts.traceName ?? selector} script=${script.toFixed(1)} paint=${paint.toFixed(1)} ` +
       `commits=${cpuResult.numberCommits} layouts=${cpuResult.layouts} ` +
-      [...byName].map(([n, [c, ms]]) => `${n}:${c}/${ms.toFixed(1)}`).join(" "),
+      [...byName]
+        .sort((a, b) => b[1][1] - a[1][1])
+        .slice(0, 14)
+        .map(([n, [c, ms]]) => `${n}:${c}/${ms.toFixed(1)}`)
+        .join(" "),
   );
 
   if (opts.cpuThrottle) {
