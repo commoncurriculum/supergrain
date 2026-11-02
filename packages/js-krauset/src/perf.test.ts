@@ -117,33 +117,6 @@ async function timeClick(
   const total = cpuResult.duration;
   const script = computeResultsJS(cpuResult, traceEvents);
   const paint = computeResultsPaint(cpuResult, traceEvents);
-  // TEMPORARY diagnosis: time per trace event name inside the measured window,
-  // on the main thread, including every GC slice however short.
-  const mainTid = traceEvents.find((e: any) => e.name === "EventDispatch")?.tid;
-  const byName = new Map<string, [number, number]>();
-  for (const e of traceEvents) {
-    if (!(e.dur > 0) || e.tid !== mainTid || e.ts < cpuResult.tsStart || e.ts > cpuResult.tsEnd)
-      continue;
-    if (
-      !/^(UpdateLayoutTree|Layout|Paint|PrePaint|FunctionCall|RunTask)$|GC|Marking|Sweep|Scaveng/i.test(
-        e.name,
-      )
-    )
-      continue;
-    const entry = byName.get(e.name) ?? [0, 0];
-    entry[0]++;
-    entry[1] += e.dur / 1000;
-    byName.set(e.name, entry);
-  }
-  gcLines.push(
-    `IN-WINDOW ${opts.traceName ?? selector} script=${script.toFixed(1)} paint=${paint.toFixed(1)} ` +
-      `commits=${cpuResult.numberCommits} layouts=${cpuResult.layouts} ` +
-      [...byName]
-        .sort((a, b) => b[1][1] - a[1][1])
-        .slice(0, 14)
-        .map(([n, [c, ms]]) => `${n}:${c}/${ms.toFixed(1)}`)
-        .join(" "),
-  );
 
   if (opts.cpuThrottle) {
     await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
@@ -172,7 +145,6 @@ async function timeClick(
 }
 
 const results: BenchmarkResult[] = [];
-const gcLines: string[] = [];
 
 interface MemoryResult {
   name: string;
@@ -203,7 +175,6 @@ afterAll(() => {
       : []),
   ].join("\n");
   console.log(`\n${output}`);
-  console.log(gcLines.join("\n"));
   writeFileSync(resolve(__dirname, "../perf-results.txt"), output + "\n");
 
   // Write JSON results with git metadata
