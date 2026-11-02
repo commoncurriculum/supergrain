@@ -280,6 +280,52 @@ describe("computedList", () => {
     expect(rows()[0]).toEqual({ a: undefined });
   });
 
+  it("keeps a row's key when array or missing key parts order the same", () => {
+    const { store } = setup();
+    const rows = computedList(() => store.tasks)
+      .filter((task) => task.id < 3)
+      .orderBy((task) => (task.id === 2 ? null : [task.rank, task.ownerId]));
+    const ids = () => rows().map((task) => task.id);
+    expect(ids()).toEqual([1, 0, 2]);
+    // A rerun that leaves every key part the same keeps the row in place.
+    store.tasks[0]!.title = "renamed";
+    store.tasks[2]!.title = "renamed";
+    expect(ids()).toEqual([1, 0, 2]);
+    store.tasks[0]!.rank = 0;
+    expect(ids()).toEqual([0, 1, 2]);
+  });
+
+  it("recovers when comparing keys throws after some rows were filed", () => {
+    let boom = false;
+    const key = (n: number) => ({
+      valueOf() {
+        if (boom) throw new Error("boom");
+        return n;
+      },
+    });
+    const store = createReactive({
+      items: [1, 2, 3, 4].map((id) => ({ id, show: id < 3, rank: key(id) })),
+      limit: 10,
+    });
+    const rows = computedList(() => store.items)
+      .filter((item) => item.show)
+      .orderBy((item) => item.rank as unknown as number)
+      .limit(() => store.limit);
+    const ids = () => rows().map((item) => item.id);
+    expect(ids()).toEqual([1, 2]);
+    boom = true;
+    batch(() => {
+      store.items[2]!.show = true;
+      store.items[3]!.show = true;
+    });
+    expect(() => rows()).toThrow("boom");
+    boom = false;
+    // Rerun the list without rerunning any row: the rows filed before the
+    // throw must not be filed twice.
+    store.limit = 9;
+    expect(ids()).toEqual([1, 2, 3, 4]);
+  });
+
   it("follows a reverse of a very large array", () => {
     const count = 200_000;
     const store = createReactive({ items: Array.from({ length: count }, (_, id) => ({ id })) });

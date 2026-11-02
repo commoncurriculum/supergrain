@@ -251,13 +251,12 @@ function sameIfEqual(previous: unknown, next: unknown): unknown {
   // Without `Object.keys`, which would make two arrays per rerun. Plain
   // objects inherit no enumerable fields, so `for…in` sees only their own.
   let fields = 0;
+  // eslint-disable-next-line guard-for-in -- a plain object's keys are all its own (above)
   for (const key in next) {
-    if (Object.hasOwn(next, key)) {
-      if (!Object.hasOwn(previous, key) || !Object.is(previous[key], next[key])) return next;
-      fields++;
-    }
+    if (!Object.hasOwn(previous, key) || !Object.is(previous[key], next[key])) return next;
+    fields++;
   }
-  for (const key in previous) if (Object.hasOwn(previous, key) && --fields < 0) return next;
+  for (const _key in previous) if (--fields < 0) return next;
   return previous;
 }
 

@@ -66,10 +66,15 @@ export const For = tracked((props: ForProps<unknown>) => {
   const { each, children, fallback, parent } = props;
   const [, rerender] = useReducer(increment, 0);
   const stateRef = useRef<ForState | null>(null);
-  const state: ForState = (stateRef.current ??= { elements: new Map(), shown: [], swaps: [] });
+  const state: ForState = (stateRef.current ??= {
+    elements: new Map(),
+    shown: [],
+    swaps: [],
+    swappedIn: null,
+  });
   // React still has the rows in the order of its last render: put back the
   // nodes the effect below swapped since, before React places them again.
-  if (state.swaps.length > 0) undoSwaps(state, parent?.current);
+  if (state.swaps.length > 0) undoSwaps(state);
 
   // Structure (push, splice, length, a new array) always re-renders `For`.
   void (each as ReactiveTagged)?.[$TRACK];
@@ -124,6 +129,7 @@ export const For = tracked((props: ForProps<unknown>) => {
       shown[a] = raw[a];
       shown[b] = raw[b];
       state.swaps.push(a, b);
+      state.swappedIn = container;
     });
   });
 
@@ -153,6 +159,8 @@ interface ForState {
   shown: Array<unknown>;
   /** Parent mode: the slots swapped by moving nodes since React last rendered, in pairs. */
   swaps: Array<number>;
+  /** The element those swaps moved nodes in. */
+  swappedIn: Element | null;
 }
 
 /** Swap the nodes at `a` and `b` (`a` before `b`). Its own inverse. */
@@ -165,17 +173,19 @@ function swapNodes(container: Element, a: number, b: number): void {
 }
 
 /** Undo the swaps, latest first, in the DOM and in `shown`. */
-function undoSwaps(state: ForState, container: Element | null | undefined): void {
+function undoSwaps(state: ForState): void {
   const { swaps, shown } = state;
+  const container = state.swappedIn!;
   for (let i = swaps.length - 2; i >= 0; i -= 2) {
     const a = swaps[i]!;
     const b = swaps[i + 1]!;
-    if (container) swapNodes(container, a, b);
+    swapNodes(container, a, b);
     const item = shown[a];
     shown[a] = shown[b];
     shown[b] = item;
   }
   swaps.length = 0;
+  state.swappedIn = null;
 }
 
 /**
