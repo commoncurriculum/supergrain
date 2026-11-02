@@ -11,7 +11,7 @@
  * Entries hold raw values, as the array's target does.
  */
 
-import { $ELEMENTS, $OWN_KEYS, getNode, getNodes, unwrap } from "./core";
+import { unwrap } from "./core";
 
 /** Items removed at `index`, then items added there. */
 export interface Splice {
@@ -56,64 +56,28 @@ function record(log: ArrayLog, entry: Splice | null): void {
   }
 }
 
-// The writers below are called by the kernel's write path for every array
-// write. Each does nothing for an array whose log no one asked for.
-
 /**
- * An index or `length` write to `target`, before it happens, as a splice
- * when it is one. Anything that leaves a hole is recorded as `null`.
- */
-export function logWrite(
-  target: ReadonlyArray<unknown>,
-  key: PropertyKey,
-  value: unknown,
-  prevLen: number,
-): void {
-  const log = logs.get(target);
-  if (log === undefined) return;
-  if (key === "length") {
-    if (value === prevLen) return;
-    record(
-      log,
-      (value as number) < prevLen
-        ? { index: value as number, removed: target.slice(value as number), added: [] }
-        : null,
-    );
-    return;
-  }
-  const index = arrayIndex(key);
-  if (index === -1) return;
-  if (index === prevLen) {
-    record(log, { index, removed: [], added: [value] });
-  } else if (index > prevLen || !Object.hasOwn(target, index)) {
-    record(log, null);
-  } else if (unwrap(target[index]) !== unwrap(value)) {
-    record(log, { index, removed: [target[index]], added: [value] });
-  }
-}
-
-/** A deleted index leaves a hole: readers of the log must walk the array. */
-export function logDelete(target: object): void {
-  const log = logs.get(target);
-  if (log !== undefined) record(log, null);
-}
-
-/**
- * Record what a mutator did, given the old values from `from` on. Leading and
- * trailing items that are the same before and after are left out, so a
- * `splice` that removes one item records just that item, not the tail behind it.
+ * Record a change to `target`, given the old items from `from` on (`before`,
+ * holes kept) and the old length. Called by the kernel for every array write;
+ * does nothing for an array whose log no one asked for.
+ *
+ * Leading and trailing items that are the same before and after are left
+ * out, so a `splice` that removes one item records just that item, not the
+ * tail behind it. A change that makes or fills a hole is recorded as `null`.
  */
 export function logMutation(
   target: ReadonlyArray<unknown>,
   from: number,
   before: ReadonlyArray<unknown>,
+  oldLength: number,
 ): void {
   const log = logs.get(target);
   if (log === undefined) return;
   const same = (a: unknown, b: unknown): boolean => unwrap(a) === unwrap(b);
+  // Past `before`, the items didn't change, only moved by the change in length.
   let start = 0;
   let removedEnd = before.length;
-  let addedEnd = target.length - from;
+  let addedEnd = before.length + target.length - oldLength;
   while (start < removedEnd && start < addedEnd && same(before[start], target[from + start])) {
     start++;
   }
@@ -126,29 +90,11 @@ export function logMutation(
     addedEnd--;
   }
   if (start === removedEnd && start === addedEnd) return;
+  for (let i = start; i < removedEnd; i++) if (!(i in before)) return record(log, null);
+  for (let i = start; i < addedEnd; i++) if (!(from + i in target)) return record(log, null);
   record(log, {
     index: from + start,
     removed: before.slice(start, removedEnd),
     added: target.slice(from + start, from + addedEnd),
   });
-}
-
-/**
- * Subscribe the active computed to every change in `target`'s items, without
- * reading them: the same three signals a whole-array `forEach` subscribes to
- * (`length`, `$ELEMENTS` for a replaced item, own keys for a filled hole).
- */
-export function trackArrayItems(target: ReadonlyArray<unknown>): void {
-  const nodes = getNodes(target);
-  getNode(nodes, $OWN_KEYS, 0)();
-  getNode(nodes, "length", target.length)();
-  getNode(nodes, $ELEMENTS, 0)();
-}
-
-/** The array index a property key names, or -1 if it names none. */
-function arrayIndex(key: PropertyKey): number {
-  if (typeof key === "number") return key;
-  if (typeof key !== "string") return -1;
-  const index = Number(key);
-  return Number.isInteger(index) && index >= 0 && String(index) === key ? index : -1;
 }

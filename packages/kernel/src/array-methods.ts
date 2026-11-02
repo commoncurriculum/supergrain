@@ -29,7 +29,7 @@
 
 import { getActiveSub, startBatch, endBatch } from "alien-signals";
 
-import { getNode, getNodes, trackArrayElements } from "./core";
+import { $OWN_KEYS, getNode, getNodes, trackArrayElements } from "./core";
 import { wrap } from "./read";
 import { notifyArrayMutation } from "./write";
 
@@ -105,7 +105,7 @@ const sort: RawArrayMethod = (target, receiver, native, args) => {
 // shrank), `$ELEMENTS` (an element was replaced in place), or own-keys (a hole
 // was filled). The get trap already subscribed to own-keys when the method was
 // read, so these two complete a pass's dependencies on the array itself.
-function trackWholeArray(target: Array<unknown>): void {
+function trackWholeArray(target: ReadonlyArray<unknown>): void {
   if (getActiveSub()) {
     getNode(getNodes(target), "length", target.length)();
     trackArrayElements(target);
@@ -164,3 +164,13 @@ export const ARRAY_METHODS: ReadonlyMap<PropertyKey, RawArrayMethod> = new Map([
   ["reduce", reduce],
   ["reduceRight", reduce],
 ]);
+
+/**
+ * Subscribe the active computed to every change in `target`'s items without
+ * reading them: what a whole-array `forEach` subscribes to, plus own keys
+ * (which the get trap adds when a method is read).
+ */
+export function trackArrayItems(target: ReadonlyArray<unknown>): void {
+  getNode(getNodes(target), $OWN_KEYS, 0)();
+  trackWholeArray(target);
+}

@@ -2,7 +2,7 @@ import { batch, createReactive, computedList } from "@supergrain/kernel";
 import { For, tracked } from "@supergrain/kernel/react";
 import { act, cleanup, render } from "@testing-library/react";
 import React from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
  * `<For>` must show every change to which items are where, in both modes:
@@ -141,6 +141,19 @@ for (const withParent of [false, true]) {
         store.data.push(store.data[0]!);
       });
       expect(container.textContent).toBe("i2i3i4i5i2");
+    });
+
+    it("shows a computedList losing its last row", async () => {
+      const store = createReactive({
+        data: items(1, 2, 3).map((item) => ({ ...item, on: true })),
+      });
+      const on = computedList(() => store.data).filter((item) => item.on);
+      const shown = mount(on, withParent);
+
+      await act(async () => {
+        store.data[2]!.on = false;
+      });
+      expect(shown()).toBe("i1i2");
     });
 
     it("keeps a computedList's top 3 in sync", async () => {
@@ -335,5 +348,27 @@ describe("For without parent: ids that can't be keys", () => {
     expect(container.textContent).toBe("cba");
     // Every row only moved, so none calls `children` again.
     expect(calls).toBe(0);
+  });
+});
+
+describe("For without parent: keys React would treat as equal", () => {
+  it('shows both items when one id is 1 and the other is "1"', () => {
+    const store = createReactive({
+      data: [
+        { id: 1 as number | string, label: "a" },
+        { id: "1" as number | string, label: "b" },
+      ],
+    });
+    const List = tracked(() => (
+      <ul>
+        <For each={store.data}>{(item) => <li>{item.label}</li>}</For>
+      </ul>
+    ));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { container } = render(<List />);
+    // No "two children with the same key" warning.
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+    expect(container.textContent).toBe("ab");
   });
 });

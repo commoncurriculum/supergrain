@@ -1,4 +1,4 @@
-import { deleteProperty, setProperty } from "@supergrain/kernel/internal";
+import { setProperty } from "@supergrain/kernel/internal";
 import { match } from "ts-pattern";
 
 import { getValueAtPath, type PathWriteOptions, resolveParentPath, splitPath } from "./path";
@@ -96,8 +96,7 @@ export function pushToArray(arr: Array<any>, itemsToAdd: Array<any>): void {
 
 // Remove the elements at the indices for which `shouldRemove` returns true,
 // shifting survivors down with `setProperty` (waking only the indices whose
-// value actually changed) and dropping the vacated tail with `deleteProperty` +
-// a `length` write.
+// value actually changed) and dropping the vacated tail with a `length` write.
 export function removeIndices(arr: Array<any>, shouldRemove: (index: number) => boolean): void {
   const originalLength = arr.length;
   let writeIndex = 0;
@@ -111,9 +110,7 @@ export function removeIndices(arr: Array<any>, shouldRemove: (index: number) => 
     }
   }
 
-  for (let i = originalLength - 1; i >= writeIndex; i--) {
-    deleteProperty(arr, i);
-  }
+  // A shorter length notifies readers of the cut-off indices too.
   setProperty(arr, "length", writeIndex);
 }
 

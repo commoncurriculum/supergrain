@@ -1,7 +1,15 @@
 import fc from "fast-check";
 import { describe, expect, it, vi } from "vitest";
 
-import { batch, createReactive, effect, signal, stableComputed, unwrap } from "../../src";
+import {
+  batch,
+  computedList,
+  createReactive,
+  effect,
+  signal,
+  stableComputed,
+  unwrap,
+} from "../../src";
 import { defaultCompare } from "../../src/query/compare";
 import { createList } from "../../src/query/list";
 
@@ -549,19 +557,6 @@ describe("query engine", () => {
     expect(sortKeyCalls).toBe(0);
   });
 
-  it("treats a negative offset or limit as zero", () => {
-    const store = createReactive({ tasks: makeTasks(5), offset: -2, limit: 2 });
-    const view = engine({
-      source: () => store.tasks,
-      sortKey: (task) => task.id,
-      offset: () => store.offset,
-      limit: () => store.limit,
-    });
-    expect(ids(view())).toEqual([0, 1]);
-    store.limit = -1;
-    expect(ids(view())).toEqual([]);
-  });
-
   it("does not subscribe the list to reactive reads inside compare", () => {
     const store = createReactive({ tasks: makeTasks(4), flag: false });
     let reads = 0;
@@ -674,6 +669,12 @@ describe("work per change", () => {
   });
 });
 
+/**
+ * The public chain against a from-scratch reference, with inputs drawn from
+ * the whole input type rather than the shapes the fast paths expect: any
+ * number as a window bound, a row held twice, holes, length writes, rows that
+ * throw, and rows that aren't objects.
+ */
 describe("query engine matches a from-scratch reference", () => {
   type Op =
     | { type: "toggle"; index: number }
@@ -682,8 +683,12 @@ describe("query engine matches a from-scratch reference", () => {
     | { type: "pushMany"; count: number }
     | { type: "remove"; index: number; count: number }
     | { type: "reinsert"; index: number }
+    | { type: "repeat"; index: number; count: number; from: number }
     | { type: "replace"; index: number; priority: number }
     | { type: "swap"; a: number; b: number }
+    | { type: "length"; delta: number }
+    | { type: "delete"; index: number }
+    | { type: "reverse" }
     | { type: "window"; offset: number; limit: number }
     | { type: "poison"; index: number }
     | { type: "cure" }
@@ -692,6 +697,12 @@ describe("query engine matches a from-scratch reference", () => {
 
   const index = fc.nat({ max: 1000 });
   const priority = fc.integer({ min: 0, max: 4 });
+  // Any number a caller could pass: whole, fractional, negative, NaN, Infinity.
+  const bound = fc.oneof(
+    fc.integer({ min: -3, max: 8 }),
+    fc.double({ min: -2, max: 8, noNaN: true }),
+    fc.constantFrom(Number.NaN, Infinity, -Infinity),
+  );
   const op: fc.Arbitrary<Op> = fc.oneof(
     fc.record({ type: fc.constant("toggle" as const), index }),
     fc.record({ type: fc.constant("priority" as const), index, value: priority }),
@@ -703,18 +714,27 @@ describe("query engine matches a from-scratch reference", () => {
       count: fc.integer({ min: 1, max: 30 }),
     }),
     fc.record({ type: fc.constant("reinsert" as const), index }),
+    // Splice in a row the source already holds, removing others.
+    fc.record({
+      type: fc.constant("repeat" as const),
+      index,
+      count: fc.integer({ min: 0, max: 3 }),
+      from: index,
+    }),
     fc.record({ type: fc.constant("replace" as const), index, priority }),
     fc.record({ type: fc.constant("swap" as const), a: index, b: index }),
-    fc.record({
-      type: fc.constant("window" as const),
-      offset: fc.nat({ max: 5 }),
-      limit: fc.integer({ min: 0, max: 8 }),
-    }),
+    fc.record({ type: fc.constant("length" as const), delta: fc.integer({ min: -4, max: 3 }) }),
+    fc.record({ type: fc.constant("delete" as const), index }),
+    fc.record({ type: fc.constant("reverse" as const) }),
+    fc.record({ type: fc.constant("window" as const), offset: bound, limit: bound }),
     fc.record({ type: fc.constant("poison" as const), index }),
     fc.record({ type: fc.constant("cure" as const) }),
     fc.record({ type: fc.constant("pushBadRow" as const) }),
     fc.record({ type: fc.constant("dropBadRows" as const) }),
   );
+
+  /** A window bound as `Array.prototype.slice` reads it. */
+  const count = (value: number) => Math.max(0, Math.trunc(value) || 0);
 
   // A row titled "boom" makes the filter throw, and a row that isn't an object
   // makes the source walk throw. The list must throw exactly while one is
@@ -745,19 +765,27 @@ describe("query engine matches a from-scratch reference", () => {
             return !t.completed;
           };
           // Keys are unique, so tie order doesn't matter to the reference.
-          const view = engine({
-            source: () => store.tasks,
-            filter,
-            ...(sortRows && { sortKey: (t: Task) => [t.priority, t.id] }),
-            offset: () => store.offset,
-            limit: () => store.limit,
-          });
+          const filtered = computedList(() => store.tasks).filter(filter);
+          const view = (
+            sortRows ? filtered.orderBy((t) => t.priority).orderBy((t) => t.id) : filtered
+          )
+            .offset(() => store.offset)
+            .limit(() => store.limit);
           const isTask = (t: unknown): t is Task => typeof t === "object" && t !== null;
+          // `some` skips holes, as the list does.
           const failing = () => unwrap(store.tasks).some((t) => !isTask(t) || t.title === "boom");
           const expected = () => {
-            const rows = unwrap(store.tasks).filter(filter);
+            // A row held twice counts once, at its first position. (The
+            // raw array may hold a row's proxy, so compare raw objects.)
+            const seen = new Set<unknown>();
+            const rows = unwrap(store.tasks).filter((t) => {
+              if (!filter(t) || seen.has(unwrap(t))) return false;
+              seen.add(unwrap(t));
+              return true;
+            });
             if (sortRows) rows.sort((a, b) => a.priority - b.priority || a.id - b.id);
-            return ids(rows.slice(store.offset, store.offset + store.limit));
+            const offset = count(store.offset);
+            return ids(rows.slice(offset, offset + count(store.limit)));
           };
           const at = (i: number) => (store.tasks.length ? i % store.tasks.length : -1);
           const taskAt = (i: number): Task | undefined => {
@@ -790,6 +818,11 @@ describe("query engine matches a from-scratch reference", () => {
                   if (back) tasks.splice(Math.max(0, at(step.index)), 0, back);
                   break;
                 }
+                case "repeat": {
+                  const again = taskAt(step.from);
+                  if (again) tasks.splice(at(step.index), step.count, again);
+                  break;
+                }
                 case "replace":
                   if (tasks.length) tasks[at(step.index)] = task(step.priority);
                   break;
@@ -802,6 +835,15 @@ describe("query engine matches a from-scratch reference", () => {
                     tasks[b] = first;
                   }
                   break;
+                case "length":
+                  tasks.length = Math.max(0, tasks.length + step.delta);
+                  break;
+                case "delete":
+                  if (tasks.length) delete tasks[at(step.index)];
+                  break;
+                case "reverse":
+                  tasks.reverse();
+                  break;
                 case "cure":
                   for (const t of tasks) if (isTask(t) && t.title === "boom") t.title = "";
                   break;
@@ -810,7 +852,7 @@ describe("query engine matches a from-scratch reference", () => {
                   break;
                 case "dropBadRows":
                   for (let i = tasks.length - 1; i >= 0; i--)
-                    if (!isTask(tasks[i])) tasks.splice(i, 1);
+                    if (i in tasks && !isTask(tasks[i])) tasks.splice(i, 1);
                   break;
                 default: {
                   const t = taskAt("index" in step ? step.index : 0);

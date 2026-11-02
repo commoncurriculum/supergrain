@@ -36,9 +36,9 @@ export interface Sorted<Row, L> {
    * bigints, or arrays of them.
    */
   orderBy(key: (row: Row, lookups: L) => unknown, direction?: Direction): Sorted<Row, L>;
-  /** Skip this many rows. A function is read reactively. */
+  /** Skip this many rows. A function is read reactively. Read like `Array.prototype.slice` reads it. */
   offset(count: number | (() => number)): Sorted<Row, L>;
-  /** Return at most this many rows. A function is read reactively. */
+  /** Return at most this many rows. A function is read reactively. Read like `Array.prototype.slice` reads it. */
   limit(count: number | (() => number)): Sorted<Row, L>;
 }
 
@@ -144,8 +144,8 @@ function makeQuery(spec: Spec): Query<unknown, unknown> {
     map: (fn: StepFn) => next({ steps: [...spec.steps, { kind: "map", fn }] }),
     orderBy: (key: StepFn, direction: Direction = "asc") =>
       next({ order: [...spec.order, { key, sign: direction === "desc" ? -1 : 1 }] }),
-    offset: (count: number | (() => number)) => next({ offset: toGetter(count) }),
-    limit: (count: number | (() => number)) => next({ limit: toGetter(count) }),
+    offset: (count: number | (() => number)) => next({ offset: toCountGetter(count) }),
+    limit: (count: number | (() => number)) => next({ limit: toCountGetter(count) }),
   }) as never;
 }
 
@@ -210,7 +210,18 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-/** A fixed or reactive count as a getter. */
-function toGetter(count: number | (() => number)): () => number {
-  return typeof count === "function" ? count : () => count;
+/**
+ * A fixed or reactive window bound as a getter of a whole count, read the
+ * way `Array.prototype.slice` reads it. Any number is accepted here, so the
+ * list below only ever sees whole counts of at least 0.
+ */
+function toCountGetter(count: number | (() => number)): () => number {
+  if (typeof count === "function") return () => toCount(count());
+  const fixed = toCount(count);
+  return () => fixed;
+}
+
+/** Whole, and at least 0. NaN reads as 0, and Infinity stays Infinity. */
+function toCount(value: number): number {
+  return Math.max(0, Math.trunc(value) || 0);
 }

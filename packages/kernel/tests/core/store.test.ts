@@ -364,4 +364,31 @@ describe("Store", () => {
     ]);
     expect(state[hasOwn]).toBe(3);
   });
+
+  it("wraps an object that refuses new properties, like another library's proxy", () => {
+    // Like an Immer draft: writes go through `set`, and defineProperty throws.
+    const inner = new Proxy(
+      { n: 1 },
+      {
+        set: (target, key, value) => Reflect.set(target, key, value),
+        defineProperty: () => {
+          throw new TypeError("defineProperty is not allowed");
+        },
+      },
+    );
+    const state = createReactive({ inner });
+    expect(state.inner.n).toBe(1);
+    // The same proxy every time, kept outside the object.
+    expect(state.inner).toBe(state.inner);
+  });
+
+  it("notifies readers of an array's keys when its length shrinks", () => {
+    const state = createReactive({ list: [1, 2, 3] });
+    const seen: Array<Array<string>> = [];
+    effect(() => {
+      seen.push(Object.keys(state.list));
+    });
+    state.list.length = 1;
+    expect(seen).toEqual([["0", "1", "2"], ["0"]]);
+  });
 });

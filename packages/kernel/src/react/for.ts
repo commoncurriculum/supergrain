@@ -151,11 +151,11 @@ function rowComponents(
   // index, `(item, i = 0) => …`, doesn't count as declared: write
   // `(item, i) => …`.)
   const passIndex = children.length !== 1;
-  const used = new Set<React.Key>();
+  const used = new Set<string>();
   return raw.map((item, i) => {
     let key = keyOf(unwrap(item), i);
-    // The same item twice: key the repeat by position.
-    if (used.has(key)) key = `\u0000${i}`;
+    // The same key twice: key the repeat by position.
+    if (used.has(key)) key = positionKey(i);
     used.add(key);
     return React.createElement(ForItem, {
       key,
@@ -196,15 +196,24 @@ function isSwap(
 const objectKeys = new WeakMap<object, string>();
 let nextObjectKey = 0;
 
-/** `item.id` (a string or number), else the object's identity, else (for a primitive) the index. */
-function keyOf(rawItem: unknown, index: number): React.Key {
-  if (!rawItem || typeof rawItem !== "object") return index;
+/**
+ * The item's key as React reads it, a string: `item.id` (a string or
+ * number), else the object's identity, else (for a primitive) the position.
+ * React compares keys as strings, so id 1 and id "1" are the same key.
+ */
+function keyOf(rawItem: unknown, index: number): string {
+  if (!rawItem || typeof rawItem !== "object") return positionKey(index);
   const { id } = rawItem as { id?: unknown };
-  if (typeof id === "string" || typeof id === "number") return id;
+  if (typeof id === "string" || typeof id === "number") return String(id);
   let key = objectKeys.get(rawItem);
   if (key === undefined) {
     key = `\u0000o${nextObjectKey++}`;
     objectKeys.set(rawItem, key);
   }
   return key;
+}
+
+/** A key by position, which no id can collide with. */
+function positionKey(index: number): string {
+  return `\u0000${index}`;
 }

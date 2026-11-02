@@ -1,6 +1,7 @@
 import type { Caught } from "../rethrowing-computed";
 
-import { arrayLog, logEnd, trackArrayItems, type ArrayLog, type Splice } from "../array-log";
+import { arrayLog, logEnd, type ArrayLog, type Splice } from "../array-log";
+import { trackArrayItems } from "../array-methods";
 import { unwrap } from "../core";
 import { wrap } from "../read";
 import { forEachItem } from "./for-each-item";
@@ -94,6 +95,10 @@ export function createSourceRows<T extends object, O, K>(
   /**
    * Apply `splices` to the mirror. Returns `undefined`, for the caller to
    * walk instead, if the source now holds a row twice.
+   *
+   * In two steps, so a give-up changes nothing the walk keeps: first replay
+   * the splices on the counts and the mirror (the walk rebuilds both), then,
+   * only once the splices are known to apply, take out the rows that left.
    */
   function applySplices(splices: ReadonlyArray<Splice>): Structure<T, O, K> | undefined {
     const touched: Array<Row<T, O, K>> = [];
@@ -117,11 +122,12 @@ export function createSourceRows<T extends object, O, K>(
         touched.push(row);
         return row;
       });
-      mirror.splice(index, out.length, ...rowsIn);
+      replaceRange(mirror, index, out.length, rowsIn);
     }
+    if (touched.some((row) => row.count > 1)) return undefined;
+
     const removed: Array<Row<T, O, K>> = [];
     for (const row of touched) {
-      if (row.count > 1) return undefined;
       if (row.count === 0 && isLive(row)) {
         rows.delete(row.raw);
         removed.push(row);
@@ -166,4 +172,24 @@ export function createSourceRows<T extends object, O, K>(
   }
 
   return read;
+}
+
+/**
+ * `array.splice(start, deleteCount, ...items)`, without passing `items` as
+ * arguments: a splice that adds a whole large array (a `reverse` or `sort`)
+ * would overflow the call stack.
+ */
+function replaceRange<R>(
+  array: Array<R>,
+  start: number,
+  deleteCount: number,
+  items: ReadonlyArray<R>,
+): void {
+  if (items.length <= 1024) {
+    array.splice(start, deleteCount, ...items);
+    return;
+  }
+  const tail = array.slice(start + deleteCount);
+  array.length = start;
+  for (const part of [items, tail]) for (const item of part) array.push(item);
 }

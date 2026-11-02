@@ -270,6 +270,50 @@ describe("computedList", () => {
     expect(boxes()[0]).not.toBe(box);
   });
 
+  it("follows a reverse of a very large array", () => {
+    const count = 200_000;
+    const store = createReactive({ items: Array.from({ length: count }, (_, id) => ({ id })) });
+    const firstThree = computedList(() => store.items).limit(3);
+    expect(firstThree().map((item) => item.id)).toEqual([0, 1, 2]);
+    store.items.reverse();
+    expect(firstThree().map((item) => item.id)).toEqual([count - 1, count - 2, count - 3]);
+  });
+
+  it("reads any window number the way Array.slice does, fixed or reactive", () => {
+    const store = createReactive({
+      items: [1, 2, 3, 4, 5].map((id) => ({ id })),
+      offset: 0,
+      limit: 0,
+    });
+    const count = (value: number) => Math.max(0, Math.trunc(value) || 0);
+    for (const [offset, limit] of [
+      [1.5, 2.5],
+      [-1, 2],
+      [0, -3],
+      [Number.NaN, 2],
+      [1, Number.NaN],
+      [-Infinity, Infinity],
+    ] as const) {
+      store.offset = offset;
+      store.limit = limit;
+      const expected = store.items
+        .slice(count(offset), count(offset) + count(limit))
+        .map((item) => item.id);
+      const sorted = computedList(() => store.items).orderBy((item) => item.id);
+      const unsorted = computedList(() => store.items);
+      for (const list of [sorted, unsorted]) {
+        expect(
+          list
+            .offset(offset)
+            .limit(limit)()
+            .map((item) => item.id),
+        ).toEqual(expected);
+        const reactive = list.offset(() => store.offset).limit(() => store.limit);
+        expect(reactive().map((item) => item.id)).toEqual(expected);
+      }
+    }
+  });
+
   it("windows with a reactive offset and limit", () => {
     const { tasks } = setup();
     const window = createReactive({ offset: 1, limit: 2 });

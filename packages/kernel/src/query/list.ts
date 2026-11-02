@@ -25,9 +25,9 @@ export interface ListOptions<S extends object, O, K> {
   run: (item: S, previous: O | undefined) => RowResult<O, K>;
   /** Compare sort keys, or `undefined` to keep source order. */
   compare: ((a: K, b: K) => number) | undefined;
-  /** Rows to skip from the start of the result. Read reactively. */
+  /** Rows to skip from the start of the result: a whole count, at least 0. Read reactively. */
   offset: () => number;
-  /** Most rows to return. Read reactively. */
+  /** Most rows to return: a whole count (or Infinity), at least 0. Read reactively. */
   limit: () => number;
 }
 
@@ -110,8 +110,8 @@ export function createList<T extends object, O, K>(
     prepare?.();
     const next = structure();
     const pending = next.groups.map((group) => group.changes());
-    const offset = Math.max(0, offsetOf());
-    const limit = Math.max(0, limitOf());
+    const offset = offsetOf();
+    const limit = limitOf();
     // Untracked: `compare` may read reactive values, and the list must not
     // subscribe to them or to its own output.
     untracked(() => {
@@ -168,7 +168,11 @@ export function createList<T extends object, O, K>(
   }
 }
 
-/** The matching rows in result order; the list reads only its window. */
+/**
+ * The matching rows in result order; the list reads only its window. `start`
+ * and `end` are whole counts: the sorted rows' `slice` is not
+ * `Array.prototype.slice` and doesn't parse other numbers.
+ */
 interface Window<R> {
   slice(start: number, end: number): ReadonlyArray<R>;
 }

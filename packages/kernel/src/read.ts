@@ -110,7 +110,11 @@ const readHandler: Pick<
       return receiver;
     }
     if (prop === $TRACK) {
+      // The structure: which keys it has and, for an array, its length.
       trackSelf(target);
+      if (Array.isArray(target) && getActiveSub()) {
+        getNode(getNodes(target), "length", target.length)();
+      }
       return receiver;
     }
     if (prop === $VERSION) {
@@ -202,20 +206,29 @@ export function createReactiveProxy<T extends object>(target: T): T {
   const cached = (target as ReactiveTagged)[$PROXY];
   if (cached) return cached as T;
 
-  // The proxy lives on its target. Only a target that can't take a new
-  // property keeps it in a WeakMap, which costs more to fill and to collect.
-  if (Object.isExtensible(target)) {
-    const proxy = new Proxy(target, handler);
-    Object.defineProperty(target, $PROXY, { value: proxy });
-    return proxy as T;
-  }
   if (Object.isFrozen(target)) {
     return target;
   }
   let proxy = proxyCache.get(target);
   if (proxy === undefined) {
     proxy = new Proxy(target, handler);
-    proxyCache.set(target, proxy);
+    // The proxy lives on its target. Only a target that won't take a new
+    // property keeps it in the WeakMap, which costs more to fill and collect.
+    if (!keepProxyOn(target, proxy)) proxyCache.set(target, proxy);
   }
   return proxy as T;
+}
+
+/**
+ * Store `proxy` on `target` as `$PROXY`. False if the target won't take it:
+ * it isn't extensible, or it is itself a proxy that refuses (some libraries'
+ * drafts do).
+ */
+function keepProxyOn(target: object, proxy: object): boolean {
+  if (!Object.isExtensible(target)) return false;
+  try {
+    return Reflect.defineProperty(target, $PROXY, { value: proxy });
+  } catch {
+    return false;
+  }
 }
