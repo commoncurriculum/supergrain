@@ -6,14 +6,6 @@ import { OUTSIDE, type Change, type Row, type RowResult } from "./row-blocks";
 import { createSortedRows } from "./sorted-rows";
 import { createSourceRows, type Structure } from "./source-rows";
 
-/**
- * What a row's steps produce: whether it's in the list, its output value, and
- * its sort key.
- */
-export type RowOutcome<O, K> =
-  | { readonly member: false }
-  | { readonly member: true; readonly value: O; readonly key: K };
-
 /** Options for {@link createList}, the engine under `computedList`. */
 export interface ListOptions<S extends object, O, K> {
   /** The source items. Read reactively; only its structure should be read here. */
@@ -30,7 +22,7 @@ export interface ListOptions<S extends object, O, K> {
    * outcome must be a new object each time: the list keeps it as the row's
    * result and tells changes apart by identity.
    */
-  run: (item: S, previous: O | undefined) => RowOutcome<O, K>;
+  run: (item: S, previous: O | undefined) => RowResult<O, K>;
   /** Compare sort keys, or `undefined` to keep source order. */
   compare: ((a: K, b: K) => number) | undefined;
   /** Rows to skip from the start of the result. Read reactively. */
@@ -71,7 +63,7 @@ export function createList<T extends object, O, K>(
   const out = createReactive<Array<O>>([]) as Array<O>;
 
   const compareRows = (a: Row<T, O, K>, b: Row<T, O, K>): number =>
-    compare!(a.applied.key as K, b.applied.key as K) || a.seq - b.seq;
+    compare!(filed(a).key, filed(b).key) || a.seq - b.seq;
   // The matching rows by `(key, seq)`. Stale after a read threw part-way (a
   // throwing step or `compare`), so the next read rebuilds it from the
   // source's rows instead of trusting it: rows that left the source during
@@ -89,7 +81,7 @@ export function createList<T extends object, O, K>(
       if (
         previous?.member &&
         previous.value === outcome.value &&
-        (!compare || untracked(() => compare(previous.key as K, outcome.key)) === 0)
+        (!compare || untracked(() => compare(previous.key, outcome.key)) === 0)
       ) {
         return previous;
       }
@@ -134,7 +126,7 @@ export function createList<T extends object, O, K>(
       const ordered = compare ? applyChanges(next, changes) : filterChanges(next, changes);
       syncArray(
         out,
-        ordered.slice(offset, offset + limit).map((row) => row.applied.value),
+        ordered.slice(offset, offset + limit).map((row) => filed(row).value),
       );
     });
     // Nothing threw: record what the list now reflects.
@@ -179,4 +171,12 @@ export function createList<T extends object, O, K>(
 /** The matching rows in result order; the list reads only its window. */
 interface Window<R> {
   slice(start: number, end: number): ReadonlyArray<R>;
+}
+
+/**
+ * A matching row's filed result. Only for rows in the result (the sorted
+ * rows, or the window), which are all members.
+ */
+function filed<T, O, K>(row: Row<T, O, K>): Extract<RowResult<O, K>, { member: true }> {
+  return row.applied as Extract<RowResult<O, K>, { member: true }>;
 }

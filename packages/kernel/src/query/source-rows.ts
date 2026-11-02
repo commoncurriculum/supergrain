@@ -33,7 +33,10 @@ export function createSourceRows<T extends object, O, K>(
   resultOf: (item: T) => () => Caught<RowResult<O, K>>,
 ) {
   const rows = new Map<object, Row<T, O, K>>();
-  const place = createRowBlocks<T, O, K>((row) => rows.get(row.raw) === row);
+  /** Whether `row` is still in the source (a row that left may come back as a new one). */
+  const isLive = (row: Row<T, O, K>): boolean => rows.get(row.raw) === row;
+  const place = createRowBlocks<T, O, K>(isLive);
+  let nextSeq = 0;
   let followed: ReadonlyArray<unknown> | null = null;
   let position = -1;
   let mirror: Array<Row<T, O, K>> = [];
@@ -106,7 +109,7 @@ export function createSourceRows<T extends object, O, K>(
         let row = rows.get(raw);
         if (row === undefined) {
           const wrapped = wrap(raw) as T;
-          row = createRow(wrapped, raw, resultOf(wrapped));
+          row = createRow(wrapped, raw, nextSeq++, resultOf(wrapped));
           rows.set(raw, row);
           unplaced.push(row);
         }
@@ -119,13 +122,13 @@ export function createSourceRows<T extends object, O, K>(
     const removed: Array<Row<T, O, K>> = [];
     for (const row of touched) {
       if (row.count > 1) return undefined;
-      if (row.count === 0 && rows.get(row.raw) === row) {
+      if (row.count === 0 && isLive(row)) {
         rows.delete(row.raw);
         removed.push(row);
       }
     }
     // A row added and removed again within these splices was never placed.
-    const placed = unplaced.filter((row) => rows.get(row.raw) === row);
+    const placed = unplaced.filter(isLive);
     return { list: mirror, removed, groups: place(mirror, placed, removed) };
   }
 
@@ -141,7 +144,7 @@ export function createSourceRows<T extends object, O, K>(
       const raw = unwrap(item);
       let row = rows.get(raw);
       if (row === undefined) {
-        row = createRow(item, raw, resultOf(item));
+        row = createRow(item, raw, nextSeq++, resultOf(item));
         rows.set(raw, row);
       } else if (row.count > 0) {
         return; // The same object twice counts once.

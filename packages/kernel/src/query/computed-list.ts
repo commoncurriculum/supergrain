@@ -2,7 +2,7 @@ import { unwrap } from "../core";
 import { readWholeObject } from "../read";
 import { defaultCompare } from "./compare";
 import { createList } from "./list";
-import { createLookup, type Lookup } from "./lookup";
+import { createLookup, type Lookup, type SyncedLookup } from "./lookup";
 
 /** Sort direction for {@link Sorted.orderBy}. `null`, `undefined` and `NaN` sort last ascending. */
 export type Direction = "asc" | "desc";
@@ -111,7 +111,7 @@ export function computedList<
   }) as never;
 }
 
-type AnyLookup = Lookup<unknown, object>;
+type AnyLookup = SyncedLookup<unknown, object>;
 
 function lookupOf(source: LookupSource): AnyLookup {
   if (typeof source === "function") {

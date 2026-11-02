@@ -13,6 +13,10 @@ export interface Lookup<K, V> {
    * when other keys do.
    */
   get(key: K | null | undefined): V | undefined;
+}
+
+/** A {@link Lookup} as the list that owns it sees it. */
+export interface SyncedLookup<K, V> extends Lookup<K, V> {
   /**
    * Bring every looked-up key up to date with the source, and subscribe the
    * caller to the source. A list calls this before reading its rows, so a
@@ -36,7 +40,7 @@ export interface Lookup<K, V> {
 export function createLookup<V extends object, K>(
   source: () => Iterable<V>,
   key: (doc: V) => K,
-): Lookup<K, V> {
+): SyncedLookup<K, V> {
   // One signal per key ever looked up. Never deleted: a reader may still
   // hold one. A lookup over keys that keep changing grows slowly.
   const slots = new Map<K, (value?: V) => V | undefined>();

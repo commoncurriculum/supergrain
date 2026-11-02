@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { batch, computedList, createReactive, effect, unwrap } from "../../src";
+import { batch, computedList, createReactive, effect, unwrap, type Lookup } from "../../src";
 
 interface User {
   id: string;
@@ -83,7 +83,12 @@ describe("computedList", () => {
     const { tasks } = setup();
     const query = tasks()
       .filter((task) => task.id < 4)
-      .map((task, { users }) => ({ task, owner: users.get(task.ownerId) }));
+      .map((task, { users }) => {
+        // A step sees only `get`: keeping a lookup in sync is the list's job.
+        expectTypeOf(users).toEqualTypeOf<Lookup<string, SUser>>();
+        expectTypeOf(users).not.toHaveProperty("sync");
+        return { task, owner: users.get(task.ownerId) };
+      });
     expectTypeOf(query()).toEqualTypeOf<ReadonlyArray<{ task: STask; owner: SUser | undefined }>>();
     expect(query().map(({ task, owner }) => [task.id, owner?.name])).toEqual([
       [0, "Ann"],

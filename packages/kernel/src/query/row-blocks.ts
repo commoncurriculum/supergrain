@@ -1,11 +1,12 @@
 import { rethrowingComputed, settle, type Caught } from "../rethrowing-computed";
 
-/** A row's latest outcome (member, value, sort key). A new object only when it changed. */
-export interface RowResult<O, K> {
-  readonly member: boolean;
-  readonly value: O | undefined;
-  readonly key: K | undefined;
-}
+/**
+ * What a row's steps produce: whether it's in the list, and if so its output
+ * value and sort key. A new object only when it changed.
+ */
+export type RowResult<O, K> =
+  | { readonly member: false; readonly value?: undefined; readonly key?: undefined }
+  | { readonly member: true; readonly value: O; readonly key: K };
 
 export interface Row<T, O, K> {
   readonly item: T;
@@ -38,22 +39,23 @@ export interface Group<T, O, K> {
 }
 
 /** The result of a row that isn't in the list. */
+// Same fields as a member result, so every result the list reads has one
+// shape. With `{ member: false }` alone, field edits ran about 15% slower in
+// two paired bench runs.
 export const OUTSIDE: RowResult<never, never> = Object.freeze({
   member: false,
   value: undefined,
   key: undefined,
 });
 
-// Shared by every list: only the order of first appearance matters.
-let nextSeq = 0;
-
 /** A row for `item`, not yet filed in the list or placed in a block. */
 export function createRow<T, O, K>(
   item: T,
   raw: object,
+  seq: number,
   result: () => Caught<RowResult<O, K>>,
 ): Row<T, O, K> {
-  return { item, raw, seq: nextSeq++, result, applied: OUTSIDE, count: 0, block: -1 };
+  return { item, raw, seq, result, applied: OUTSIDE, count: 0, block: -1 };
 }
 
 /** Rows per block. */
