@@ -60,7 +60,8 @@ export function endReads(log: RenderReads, outer: RenderReads | undefined, shows
   const { from } = log;
   const count = end - from;
   // Sized to fit when it must grow: growing by push leaves room for 16 more.
-  if (shows && log.reads.length < count) log.reads = Array.from({ length: count });
+  // eslint-disable-next-line unicorn/no-new-array -- a fixed size is the point
+  if (shows && log.reads.length < count) log.reads = new Array<Read | undefined>(count);
   const { reads } = log;
   for (let i = 0; i < count; i++) {
     if (shows) reads[i] = pending[from + i];
