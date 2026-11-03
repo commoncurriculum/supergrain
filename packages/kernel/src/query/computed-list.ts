@@ -1,16 +1,16 @@
-/* eslint-disable typescript-eslint/prefer-for-of --
- * Index loops on purpose: in this hot path `for…of` allocated an iterator
- * per loop (measured with a heap profile of the list bench).
- */
-import { setActiveSub } from "alien-signals";
-
-import { unwrap } from "../core";
-import { readWholeObject } from "../read";
 import { defaultCompare } from "./compare";
 import { createIndex, type Group } from "./index-rows";
 import { createList } from "./list";
 import { createLookup, type Lookup, type SyncedLookup } from "./lookup";
-import { OUTSIDE, type RowResult } from "./row-blocks";
+import {
+  groupKey,
+  rowRunner,
+  sortKey,
+  UNSORTED,
+  type SortKey,
+  type Step,
+  type StepFn,
+} from "./run-row";
 
 /** Sort direction for {@link Sorted.orderBy}. `null`, `undefined` and `NaN` sort last ascending. */
 export type Direction = "asc" | "desc";
@@ -133,10 +133,8 @@ export function computedList<
   // A lookup builds nothing until it's read, so making them all now is cheap.
   const named: Record<string, AnyLookup> = {};
   for (const [name, from] of Object.entries(lookups ?? {})) named[name] = lookupOf(from);
-  return makeQuery(start(source, named, NO_UPSTREAM)) as never;
+  return makeQuery(start(source, named, null)) as never;
 }
-
-const NO_UPSTREAM: ReadonlyArray<() => void> = [];
 
 /** A query over `source` with no steps yet. */
 function start(source: Source<object>, lookups: Spec["lookups"], upstream: Spec["upstream"]): Spec {
@@ -163,18 +161,12 @@ function lookupOf(source: LookupSource): AnyLookup {
 interface Spec {
   readonly source: Source<object>;
   readonly lookups: Readonly<Record<string, AnyLookup>>;
-  /** What to bring up to date before reading `source`: the groupings it reads. */
-  readonly upstream: ReadonlyArray<() => void>;
+  /** After a `groupBy`: brings the grouping `source` reads up to date. */
+  readonly upstream: (() => void) | null;
   readonly steps: ReadonlyArray<Step>;
   readonly order: ReadonlyArray<{ readonly key: StepFn; readonly sign: 1 | -1 }>;
   readonly offset: () => number;
   readonly limit: () => number;
-}
-
-type StepFn = (row: unknown, lookups: Spec["lookups"]) => unknown;
-interface Step {
-  readonly kind: "filter" | "map";
-  readonly fn: StepFn;
 }
 
 function makeQuery(spec: Spec): Query<unknown, unknown> {
@@ -185,8 +177,14 @@ function makeQuery(spec: Spec): Query<unknown, unknown> {
     filter: (fn: StepFn) => next({ steps: [...spec.steps, { kind: "filter", fn }] }),
     map: (fn: StepFn) => next({ steps: [...spec.steps, { kind: "map", fn }] }),
     groupBy: (key: StepFn) => {
-      const index = groupIndex(spec, key);
-      return makeQuery(start(index.groups, spec.lookups, [index.sync]));
+      // The rows the steps so far leave, filed by `key`; the query goes on
+      // over its groups.
+      const index = createIndex<object, unknown, unknown>(
+        spec.source,
+        rowRunner(spec.steps, spec.lookups, groupKey(key, spec.lookups)),
+        prepareOf(spec),
+      );
+      return makeQuery(start(index.groups, spec.lookups, index.sync));
     },
     orderBy: (key: StepFn, direction: Direction = "asc") =>
       next({ order: [...spec.order, { key, sign: direction === "desc" ? -1 : 1 }] }),
@@ -195,108 +193,34 @@ function makeQuery(spec: Spec): Query<unknown, unknown> {
   }) as never;
 }
 
-const NO_KEY: ReadonlyArray<unknown> = [];
-
-/** What `applySteps` returns for a row a filter dropped. */
-const DROPPED: unique symbol = Symbol("dropped");
-
-/** Run `steps` on `item`: the row they leave, or `DROPPED`. */
-function applySteps(steps: Spec["steps"], lookups: Spec["lookups"], item: object): unknown {
-  let row: unknown = item;
-  for (let i = 0; i < steps.length; i++) {
-    const { kind, fn } = steps[i]!;
-    if (kind === "map") row = fn(row, lookups);
-    else if (!fn(row, lookups)) return DROPPED;
-  }
-  return row;
-}
-
-/** Bring the upstream groupings, then the named lookups, up to date. Tracked. */
-function syncAll({ upstream, lookups }: Spec): () => void {
+/**
+ * What a query brings up to date before it reads its source, tracked: the
+ * grouping it reads (after a `groupBy`), then its named lookups.
+ */
+function prepareOf({ upstream, lookups }: Spec): () => void {
   const used = Object.values(lookups);
   return () => {
-    for (let i = 0; i < upstream.length; i++) upstream[i]!();
+    upstream?.();
+    // eslint-disable-next-line typescript-eslint/prefer-for-of -- runs on every list read: no iterator
     for (let i = 0; i < used.length; i++) used[i]!.sync();
   };
 }
 
-/**
- * The rows `spec`'s steps leave, filed by `key`: what `groupBy` reads its
- * groups from. Each row runs its steps and its key in its own computed.
- */
-function groupIndex(spec: Spec, key: StepFn) {
-  const { source, lookups, steps } = spec;
-  const mapped = steps.some((step) => step.kind === "map");
-  function runRow(item: object, previous: RowResult<unknown, unknown> | undefined) {
-    const row = applySteps(steps, lookups, item);
-    if (row === DROPPED) return OUTSIDE;
-    const last = previous?.member ? previous : undefined;
-    const value = mapped ? sameIfEqual(last?.value, row) : row;
-    const k = key(row, lookups);
-    if (last !== undefined && last.value === value && sameKey(last.key, k)) return last;
-    return { member: true as const, value, key: k };
-  }
-  return createIndex<object, unknown, unknown>(
-    source,
-    // As in `build`: without a `map`, track each item as a whole.
-    mapped ? runRow : (item, previous) => readWholeObject(unwrap(item), runRow, item, previous),
-    syncAll(spec),
-  );
-}
-
-/** Whether two keys are the same `Map` key. */
-function sameKey(a: unknown, b: unknown): boolean {
-  // eslint-disable-next-line no-self-compare -- NaN is the one value not equal to itself
-  return a === b || (a !== a && b !== b);
-}
-
 function build(spec: Spec) {
   const { source, lookups, steps, order, offset, limit } = spec;
-  const mapped = steps.some((step) => step.kind === "map");
-
-  /**
-   * Run the steps on `item`. `previous` (the row's last result) comes back
-   * as is when nothing it holds changed, so a rerun that moves nothing
-   * allocates nothing.
-   */
-  function runSteps(item: object, previous: Result | undefined): Result {
-    const row = applySteps(steps, lookups, item);
-    if (row === DROPPED) return OUTSIDE;
-    const last = previous?.member ? previous : undefined;
-    // Without a `map`, the row is the source item itself.
-    const value = mapped ? sameIfEqual(last?.value, row) : row;
-    const key = order.length === 0 ? NO_KEY : keyOf(row, last?.key);
-    if (last !== undefined && last.value === value && last.key === key) return last;
-    return { member: true, value, key };
-  }
-
-  /** The row's sort key: `previous` itself if every part orders the same. */
-  function keyOf(
-    row: unknown,
-    previous: ReadonlyArray<unknown> | undefined,
-  ): ReadonlyArray<unknown> {
-    let key: Array<unknown> | undefined = undefined; // eslint-disable-line unicorn/no-useless-undefined -- init-declarations wants a value
-    for (let i = 0; i < order.length; i++) {
-      const part = settled(order[i]!.key(row, lookups), previous?.[i]);
-      if (key !== undefined) key.push(part);
-      else if (previous === undefined || !orderedSame(previous[i], part)) {
-        key = previous === undefined ? [] : previous.slice(0, i);
-        key.push(part);
-      }
-    }
-    return key ?? previous!;
-  }
-
-  return createList<object, unknown, ReadonlyArray<unknown>>({
+  return createList<object, unknown, SortKey>({
     source,
-    // The list brings what its steps read up to date before each read.
-    prepare: syncAll(spec),
-    // Without a `map`, a row's value is the item itself, so a rerun that
-    // changed nothing is invisible: track the item as a whole, which costs
-    // far less memory than a signal per field.
-    run: mapped
-      ? runSteps
-      : (item, previous) => readWholeObject(unwrap(item), runSteps, item, previous),
+    prepare: prepareOf(spec),
+    run: rowRunner(
+      steps,
+      lookups,
+      order.length === 0
+        ? UNSORTED
+        : sortKey(
+            order.map((part) => part.key),
+            lookups,
+          ),
+    ),
     compare:
       order.length === 0
         ? undefined
@@ -310,80 +234,6 @@ function build(spec: Spec) {
     offset,
     limit,
   });
-}
-
-type Result = RowResult<unknown, ReadonlyArray<unknown>>;
-
-/**
- * A key part as it is now. An array (say a store array) is copied, reading
- * each item tracked, so the row reruns when an item changes and the sorted
- * rows keep the key they were filed under. `previous` comes back when it
- * holds the same items, so an unchanged key allocates nothing.
- */
-function settled(part: unknown, previous: unknown): unknown {
-  if (!Array.isArray(part)) return part;
-  const before = Array.isArray(previous) ? previous : undefined;
-  let same = before?.length === part.length;
-  for (let i = 0; same && i < part.length; i++) same = settled(part[i], before![i]) === before![i];
-  return same ? before : Array.from(part, (item: unknown, i) => settled(item, before?.[i]));
-}
-
-/**
- * Whether two key parts order the same. An object (say a store array) is
- * compared untracked, since comparing reads it and the row must not depend
- * on that; two primitives read nothing.
- */
-function orderedSame(a: unknown, b: unknown): boolean {
-  if (!isObject(a) && !isObject(b)) return defaultCompare(a, b) === 0;
-  const outer = setActiveSub(undefined);
-  try {
-    return defaultCompare(a, b) === 0;
-  } finally {
-    setActiveSub(outer);
-  }
-}
-
-function isObject(value: unknown): value is object {
-  return typeof value === "object" && value !== null;
-}
-
-/**
- * `previous` when `next` is a new plain object with the same fields, so a
- * mapped row keeps its identity when it reruns without changing. Fields are
- * an object literal's: its enumerable string keys (`for…in`), and no symbol
- * keys. A field made with `Object.defineProperty` as non-enumerable isn't
- * compared.
- */
-function sameIfEqual(previous: unknown, next: unknown): unknown {
-  if (!isPlainObject(previous) || !isPlainObject(next)) return next;
-  // Without `Object.keys`, which would make two arrays per rerun. Plain
-  // objects inherit no enumerable fields, so `for…in` sees only their own.
-  let fields = 0;
-  // eslint-disable-next-line guard-for-in -- a plain object's keys are all its own (above)
-  for (const key in next) {
-    if (!Object.hasOwn(previous, key) || !Object.is(previous[key], next[key])) return next;
-    fields++;
-  }
-  for (const _key in previous) if (--fields < 0) return next;
-  // `for…in` skips symbol keys: an object with any can't be compared here.
-  if (hasSymbolFields(next) || hasSymbolFields(previous)) return next;
-  return previous;
-}
-
-/** Whether `value` has an enumerable symbol key (the store's own are hidden). */
-function hasSymbolFields(value: object): boolean {
-  const symbols = Object.getOwnPropertySymbols(value);
-  for (let i = 0; i < symbols.length; i++) {
-    if (Object.prototype.propertyIsEnumerable.call(value, symbols[i]!)) return true;
-  }
-  return false;
-}
-
-/** A plain object that isn't a store proxy (reading a proxy's fields here would subscribe the row to them). */
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || unwrap(value) !== value) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
 }
 
 /**

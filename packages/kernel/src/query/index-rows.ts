@@ -1,15 +1,17 @@
-import type { Row, RowResult } from "./row-blocks";
+import type { Change, Row, RowResult } from "./row-blocks";
+import type { Structure } from "./source-rows";
 
-/* eslint-disable typescript-eslint/prefer-for-of --
- * Index loops on purpose: in this hot path `for…of` allocated an iterator
- * per loop (measured with a heap profile of the list bench).
+/* eslint-disable typescript-eslint/prefer-for-of, prefer-destructuring --
+ * Index loops and indexed tuple reads on purpose: in this hot path `for…of`
+ * and `[a, b] = tuple` each allocated an iterator per loop (measured with a
+ * heap profile of the list bench).
  */
-import { endBatch, setActiveSub, signal, startBatch } from "alien-signals";
+import { endBatch, signal, startBatch } from "alien-signals";
 
 import { untracked, unwrap } from "../core";
 import { createReactive } from "../store";
 import { spliceArray } from "../sync-array";
-import { createRowFeed } from "./row-feed";
+import { createRowFeed, fileAll } from "./row-feed";
 import { Scratch } from "./scratch";
 
 /** The rows that share one key, as `groupBy` hands them to the steps after it. */
@@ -84,39 +86,42 @@ export function createIndex<T extends object, O, K>(
 
   function sync(): void {
     prepare?.();
+    // Tracked: the caller subscribes to the source, not to the buckets.
     const next = feed.read();
-    // Untracked: the caller subscribes to the source, not to the buckets.
-    const outer = setActiveSub(undefined);
-    // Batched: an effect that reads a key runs once the index is whole, not
-    // part-way through (and once, however many of its keys changed). Past
-    // `feed.read()`, nothing here runs user code, so nothing throws.
+    // Batched: an effect that reads a key runs once the index is whole and
+    // the feed has recorded it, not part-way through (and once, however many
+    // of its keys changed). Past `feed.read()`, nothing runs user code, so
+    // nothing throws.
     startBatch();
     try {
-      const changes = feed.collect(next);
+      feed.apply(next, file);
+    } finally {
+      endBatch();
+    }
+  }
+
+  /** File every change under its key, then publish the buckets it touched. */
+  function file(changes: Scratch<Change<T, O, K>>, next: Structure<T, O, K>): void {
+    try {
       const refile = next.reordered;
       if (refile) {
-        // eslint-disable-next-line prefer-destructuring -- indexed: destructuring walks an iterator
-        for (let i = 0; i < changes.size; i++) changes.at(i)[0].applied = changes.at(i)[1];
+        fileAll(changes);
         refileAll(next.list);
       } else {
         for (let i = 0; i < changes.size; i++) {
           // Indexed, not destructured: destructuring walks an iterator.
           const change = changes.at(i);
-          const row = change[0]; // eslint-disable-line prefer-destructuring
-          const result = change[1]; // eslint-disable-line prefer-destructuring
+          const row = change[0];
+          const result = change[1];
           if (row.applied.member) unfile(row, row.applied.key);
           row.applied = result;
-          if (result.member) file(row, result.key);
+          if (result.member) fileRow(row, result.key);
         }
       }
       for (let i = 0; i < touched.size; i++) publish(touched.at(i));
       if (listed !== undefined && touched.size > 0) relist(refile);
-      feed.commit(next);
     } finally {
-      feed.clear();
       touched.clear();
-      setActiveSub(outer);
-      endBatch();
     }
   }
 
@@ -128,7 +133,7 @@ export function createIndex<T extends object, O, K>(
   }
 
   /** Put `row` in its key's bucket, in source order. */
-  function file(row: Row<T, O, K>, k: K): void {
+  function fileRow(row: Row<T, O, K>, k: K): void {
     const bucket = bucketOf(k);
     const { rows } = bucket;
     // Rows mostly arrive at the end, so check there first.
@@ -157,7 +162,7 @@ export function createIndex<T extends object, O, K>(
     }
     for (let i = 0; i < list.length; i++) {
       const row = list[i]!;
-      if (row.applied.member) file(row, row.applied.key);
+      if (row.applied.member) fileRow(row, row.applied.key);
     }
   }
 

@@ -644,6 +644,31 @@ describe("computedList", () => {
     expect(ids()).toEqual([1, 2, 3, 4]);
   });
 
+  it("recovers when the window bound throws after the rows were read", () => {
+    const store = createReactive({
+      items: Array.from({ length: 40 }, (_, id) => ({ id, rank: id })),
+      limit: 3 as number | null,
+    });
+    const rows = computedList(() => store.items)
+      .orderBy((item) => item.rank)
+      .limit(() => {
+        if (store.limit === null) throw new Error("limit");
+        return store.limit;
+      });
+    const ids = () => rows().map((item) => item.id);
+    expect(ids()).toEqual([0, 1, 2]);
+    // Rows in two block groups change, then the bound throws before they are filed.
+    batch(() => {
+      store.items[39]!.rank = -2;
+      store.items[1]!.rank = 100;
+      store.limit = null;
+    });
+    expect(() => rows()).toThrow("limit");
+    store.items[38]!.rank = -1;
+    store.limit = 4;
+    expect(ids()).toEqual([39, 38, 0, 2]);
+  });
+
   it("follows a reverse of a very large array", () => {
     const count = 200_000;
     const store = createReactive({ items: Array.from({ length: count }, (_, id) => ({ id })) });

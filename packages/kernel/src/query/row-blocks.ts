@@ -41,7 +41,7 @@ export type Change<T, O, K> = readonly [row: Row<T, O, K>, next: RowResult<O, K>
  * one of these per group, so a field edit costs a few dozen cached reads
  * (every group, then one group's blocks, then one block's rows), not N.
  */
-export interface Group<T, O, K> {
+export interface BlockGroup<T, O, K> {
   readonly changes: () => ReadonlyArray<Change<T, O, K>>;
   /** The changes last applied to the list. Set only after an update succeeds. */
   applied: ReadonlyArray<Change<T, O, K>> | undefined;
@@ -102,7 +102,7 @@ function createBlock<T, O, K>(rows: ReadonlyArray<Row<T, O, K>>): Block<T, O, K>
   };
 }
 
-function createGroup<T, O, K>(blocks: ReadonlyArray<Block<T, O, K>>): Group<T, O, K> {
+function createGroup<T, O, K>(blocks: ReadonlyArray<Block<T, O, K>>): BlockGroup<T, O, K> {
   return {
     applied: undefined,
     // Its blocks' unfiled changes: one block's array as is when only it has
@@ -138,7 +138,7 @@ function hasUnfiled<T, O, K>(changes: ReadonlyArray<Change<T, O, K>>): boolean {
  */
 export function createRowBlocks<T, O, K>(isLive: (row: Row<T, O, K>) => boolean) {
   let blocks: Array<Block<T, O, K>> = [];
-  let groups: Array<Group<T, O, K>> = [];
+  let groups: Array<BlockGroup<T, O, K>> = [];
 
   function placeIn(b: number, blockRows: ReadonlyArray<Row<T, O, K>>): Block<T, O, K> {
     for (const row of blockRows) row.block = b;
@@ -168,7 +168,7 @@ export function createRowBlocks<T, O, K>(isLive: (row: Row<T, O, K>) => boolean)
     list: ReadonlyArray<Row<T, O, K>>,
     unplaced: ReadonlyArray<Row<T, O, K>>,
     removed: ReadonlyArray<Row<T, O, K>>,
-  ): ReadonlyArray<Group<T, O, K>> {
+  ): ReadonlyArray<BlockGroup<T, O, K>> {
     if (blocks.length + unplaced.length / BLOCK > 2 * Math.ceil(list.length / BLOCK) + 1) {
       regroupAll(list);
       return groups;

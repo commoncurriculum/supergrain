@@ -5,9 +5,15 @@ import { trackArrayItems } from "../array-methods";
 import { unwrap } from "../core";
 import { wrap } from "../read";
 import { forEachItem } from "./for-each-item";
-import { createRow, createRowBlocks, type Group, type Row, type RowResult } from "./row-blocks";
+import {
+  createRow,
+  createRowBlocks,
+  type BlockGroup,
+  type Row,
+  type RowResult,
+} from "./row-blocks";
 
-/** The source's rows in order (once each), the rows that left it, and the groups to read. */
+/** The source's rows in order (once each), the rows that left it, and the block groups to read. */
 export interface Structure<T, O, K> {
   /**
    * Valid only until the next read: when following an array's log, this is
@@ -17,7 +23,7 @@ export interface Structure<T, O, K> {
   readonly list: ReadonlyArray<Row<T, O, K>>;
   readonly removed: ReadonlyArray<Row<T, O, K>>;
   /** Valid only until the next read, which may change it in place. */
-  readonly groups: ReadonlyArray<Group<T, O, K>>;
+  readonly blockGroups: ReadonlyArray<BlockGroup<T, O, K>>;
   /**
    * Whether rows that were already in the source changed order among
    * themselves (a sort, or a row moved). Anything kept in `row.order` order
@@ -157,7 +163,7 @@ export function createSourceRows<T extends object, O, K>(
     }
     // A row added and removed again within these splices was never placed.
     const placed = unplaced.filter(isLive);
-    return { list: mirror, removed, groups: place(mirror, placed, removed), reordered };
+    return { list: mirror, removed, blockGroups: place(mirror, placed, removed), reordered };
   }
 
   /** Walk the items: every row in order, once each. Rows not found have left. */
@@ -199,7 +205,7 @@ export function createSourceRows<T extends object, O, K>(
         }
       }
     }
-    return { list, removed, groups: place(list, unplaced, removed), reordered };
+    return { list, removed, blockGroups: place(list, unplaced, removed), reordered };
   }
 
   return read;
