@@ -1,5 +1,7 @@
 import { setActiveSub, signal } from "alien-signals";
 
+import { readSignal } from "./render-reads";
+
 // Phantom brand for compile-time store identification (no runtime property).
 // Exported as a real symbol so consumers can reference `typeof $BRAND` in type positions.
 export const $BRAND = Symbol.for("supergrain:brand");
@@ -118,7 +120,7 @@ export function defineHidden(target: object, key: PropertyKey, value: unknown): 
  * ownKeys signals instead.
  */
 export function trackArrayElements(target: object): void {
-  getNode(getNodes(target), $ELEMENTS, 0)();
+  readSignal(getNode(getNodes(target), $ELEMENTS, 0));
 }
 
 export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown): Signal<unknown> {

@@ -1,6 +1,7 @@
 import { computed, createReactive, computedList } from "@supergrain/kernel";
 import { tracked, For, useComputed } from "@supergrain/kernel/react";
 import { render, cleanup, act } from "@testing-library/react";
+import { Suspense, startTransition } from "react";
 import { describe, it, expect, afterEach } from "vitest";
 
 afterEach(() => cleanup());
@@ -475,6 +476,37 @@ describe("tracked()", () => {
       });
       expect(heavyRuns).toBe(runs);
       expect(container.textContent).toBe("none");
+    });
+  });
+
+  describe("a render that suspends", () => {
+    it("keeps following what the shown render read", async () => {
+      const store = createReactive({ waiting: false, count: 0 });
+      const never = new Promise<never>(() => {});
+      const Counter = tracked(() => {
+        // Throws before reading `count`, so this render's effect never sees it.
+        if (store.waiting) throw never;
+        return <span>{store.count}</span>;
+      });
+      const { container } = render(
+        <Suspense fallback={<i>loading</i>}>
+          <Counter />
+        </Suspense>,
+      );
+      expect(container.textContent).toBe("0");
+      // A transition keeps the shown screen while the new render suspends.
+      await act(async () => {
+        startTransition(() => {
+          store.waiting = true;
+        });
+      });
+      expect(container.textContent).toBe("0");
+      // The shown screen read `count`, so a change to it renders again
+      // (an urgent render, which suspends to the fallback).
+      await act(async () => {
+        store.count = 1;
+      });
+      expect(container.textContent).toContain("loading");
     });
   });
 });

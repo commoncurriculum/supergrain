@@ -35,6 +35,7 @@ import { profileSignalRead, profileSignalSkip, profileSignalWrite } from "./prof
 // accesses the imported binding at top-level evaluation time (they don't).
 // ---------------------------------------------------------------------------
 import { createReactiveProxy } from "./read";
+import { readSignal } from "./render-reads";
 
 function wrap<T>(value: T): T {
   if (!isWrappable(value)) {
@@ -84,7 +85,7 @@ const collectionProxyCache = new WeakMap<object, object>();
 function trackOwnKeys(target: object): void {
   if (getActiveSub()) {
     const nodes = getNodes(target);
-    getNode(nodes, $OWN_KEYS, 0)();
+    readSignal(getNode(nodes, $OWN_KEYS, 0));
   }
 }
 
@@ -157,7 +158,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
           const rawKey = unwrap(key);
           if (getActiveSub()) {
             profileSignalRead();
-            getOrCreateKeySignal(rawKey)();
+            readSignal(getOrCreateKeySignal(rawKey));
           } else {
             profileSignalSkip();
           }
@@ -275,7 +276,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
           for (const [k, v] of rawTarget.entries()) {
             if (getActiveSub()) {
               profileSignalRead();
-              getOrCreateKeySignal(k)();
+              readSignal(getOrCreateKeySignal(k));
             }
             callbackFn(wrap(v), wrap(k), receiver);
           }
@@ -289,7 +290,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
           for (const [k, v] of rawTarget.entries()) {
             if (getActiveSub()) {
               profileSignalRead();
-              getOrCreateKeySignal(k)();
+              readSignal(getOrCreateKeySignal(k));
             }
             yield [wrap(k), wrap(v)];
           }
@@ -316,7 +317,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
           for (const [k, v] of rawTarget.entries()) {
             if (getActiveSub()) {
               profileSignalRead();
-              getOrCreateKeySignal(k)();
+              readSignal(getOrCreateKeySignal(k));
             }
             yield wrap(v);
           }

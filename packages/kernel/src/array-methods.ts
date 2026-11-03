@@ -31,6 +31,7 @@ import { getActiveSub, startBatch, endBatch } from "alien-signals";
 
 import { $OWN_KEYS, getNode, getNodes, trackArrayElements } from "./core";
 import { wrap } from "./read";
+import { readSignal } from "./render-reads";
 import { notifyArrayMutation } from "./write";
 
 /** The method as the target holds it, e.g. `Array.prototype.push`. */
@@ -113,7 +114,7 @@ const sort: RawArrayMethod = (target, receiver, native, args) => {
 // read, so these two complete a pass's dependencies on the array itself.
 function trackWholeArray(target: ReadonlyArray<unknown>): void {
   if (getActiveSub()) {
-    getNode(getNodes(target), "length", target.length)();
+    readSignal(getNode(getNodes(target), "length", target.length));
     trackArrayElements(target);
   }
 }
@@ -178,6 +179,6 @@ export const ARRAY_METHODS: ReadonlyMap<PropertyKey, RawArrayMethod> = new Map([
  * (which the get trap adds when a method is read).
  */
 export function trackArrayItems(target: ReadonlyArray<unknown>): void {
-  getNode(getNodes(target), $OWN_KEYS, 0)();
+  readSignal(getNode(getNodes(target), $OWN_KEYS, 0));
   trackWholeArray(target);
 }

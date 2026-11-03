@@ -18,6 +18,7 @@ import {
   type ReactiveTagged,
 } from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
+import { readSignal } from "./render-reads";
 import { writeHandler } from "./write";
 
 const proxyCache = new WeakMap<object, object>();
@@ -66,7 +67,7 @@ function trackSelf(target: object): void {
   if (getActiveSub()) {
     const nodes = getNodes(target);
     const ownKeysSignal = getNode(nodes, $OWN_KEYS, 0);
-    ownKeysSignal();
+    readSignal(ownKeysSignal);
   }
 }
 
@@ -76,7 +77,7 @@ function trackSelf(target: object): void {
 // because alien-signals deduplicates dirty-marking.
 function trackArrayVersion(value: unknown): void {
   if (Array.isArray(value) && getActiveSub()) {
-    getNode(getNodes(value), $VERSION, 0)();
+    readSignal(getNode(getNodes(value), $VERSION, 0));
   }
 }
 
@@ -95,7 +96,7 @@ const readHandler: Pick<
             return wrap((target as Record<string, unknown>)[prop]);
           }
           profileSignalRead();
-          const value = tracked();
+          const value = readSignal(tracked);
           if (isWrappable(value)) {
             const proxy = createReactiveProxy(value);
             trackArrayVersion(value);
@@ -116,12 +117,12 @@ const readHandler: Pick<
       // The structure: which keys it has and, for an array, its length.
       trackSelf(target);
       if (Array.isArray(target) && getActiveSub()) {
-        getNode(getNodes(target), "length", target.length)();
+        readSignal(getNode(getNodes(target), "length", target.length));
       }
       return receiver;
     }
     if (prop === $VERSION) {
-      return getNode(getNodes(target), $VERSION, 0)();
+      return readSignal(getNode(getNodes(target), $VERSION, 0));
     }
 
     // Direct bracket access — Reflect.get is ~22x slower in this hot handler
@@ -155,11 +156,11 @@ const readHandler: Pick<
     // An object read as a whole: subscribe to its version, which every
     // write to it bumps, instead of making a signal for this field.
     if (target === wholeObject && wholeObjectReader === getActiveSub()) {
-      getNode(nodes, $VERSION, 0)();
+      readSignal(getNode(nodes, $VERSION, 0));
       return wrap(value);
     }
     const node = nodes[prop] ?? fieldNode(target, nodes, prop, value);
-    return wrap(node());
+    return wrap(readSignal(node));
   },
 
   ownKeys(target) {

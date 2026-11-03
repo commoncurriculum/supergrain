@@ -1,9 +1,10 @@
 import { effect } from "@supergrain/kernel";
 import {
+  endReads,
   getActiveSub,
-  noteReadsIn,
+  RenderReads,
   setActiveSub,
-  type RenderReads,
+  startReads,
 } from "@supergrain/kernel/internal";
 import { type FC, memo, useEffect, useReducer } from "react";
 
@@ -63,10 +64,6 @@ export function tracked<P extends object>(Component: FC<P>) {
     // reads always has a subscriber, and keeps its cached state, from one
     // render to the next.
     const previous = tracker.stop;
-    const kept = tracker.reads;
-    const fresh = tracker.spare;
-    fresh.length = 0;
-    tracker.reads = fresh;
     // Made outside any active subscriber, so it isn't owned (and disposed)
     // by whatever effect happens to be running.
     const outer = setActiveSub(undefined);
@@ -74,7 +71,7 @@ export function tracked<P extends object>(Component: FC<P>) {
     const stop = effect(tracker.run);
     tracker.stop = stop;
     setActiveSub(tracker.node);
-    const outerReads = noteReadsIn(tracker);
+    const outerReads = startReads(tracker);
     let rendered = false;
     try {
       const result = Component(props); // eslint-disable-line new-cap -- React function component call
@@ -85,16 +82,14 @@ export function tracked<P extends object>(Component: FC<P>) {
       // Promise): otherwise every later signal read in the app would
       // subscribe to this render's effect.
       setActiveSub(outer);
-      noteReadsIn(outerReads);
+      endReads(tracker, outerReads, rendered);
       if (rendered) {
         previous?.();
-        tracker.spare = kept;
       } else {
         // A render that threw never shows: React keeps what it showed
         // before, so keep the effect that follows that, and drop this one.
         stop();
         tracker.stop = previous;
-        tracker.reads = kept;
       }
     }
   };
@@ -109,13 +104,7 @@ const NO_DEPS: ReadonlyArray<unknown> = [];
  * One component instance's tracking state. It makes three functions per
  * instance and none per render, so a render allocates only its effect.
  */
-class Tracker implements Disposer, RenderReads {
-  /** The effect node of the latest render. Undefined while it is being made. */
-  node: ReturnType<typeof getActiveSub> = undefined;
-  /** The derived values the latest render read (see `noteRead`). */
-  reads: Array<() => unknown> = [];
-  /** The other array, which the next render fills, so a render allocates none. */
-  spare: Array<() => unknown> = [];
+class Tracker extends RenderReads implements Disposer {
   /** Disposes the latest render's effect. Undefined before the first render. */
   stop: (() => void) | undefined = undefined;
   mounted = false;
@@ -123,14 +112,9 @@ class Tracker implements Disposer, RenderReads {
   /**
    * The body of every render's effect. Its first run (which `effect()` makes
    * synchronously) only records the node. After that it runs when a read
-   * changed: it reads the render's derived values again and re-renders.
-   *
-   * It reads them again because an effect drops every dependency its run
-   * didn't read. Dropping them would leave a `computed` or `computedList` the
-   * render read with no subscribers, which tears down its cached state,
-   * so the re-render would rebuild it from scratch. The next render's effect
-   * takes over the subscriptions. Store fields need no keeping: a signal
-   * keeps its value without subscribers.
+   * changed: it reads what the shown render read again (see `RenderReads`),
+   * so the effect keeps following it, and re-renders. The next render's
+   * effect takes over the subscriptions.
    */
   readonly run: () => void;
   /** The mount effect. */
@@ -139,6 +123,7 @@ class Tracker implements Disposer, RenderReads {
   readonly unmount: () => void;
 
   constructor(update: () => void) {
+    super();
     this.run = () => {
       // Inside an effect's run, the active subscriber is that effect.
       const node = getActiveSub()!;
@@ -146,15 +131,7 @@ class Tracker implements Disposer, RenderReads {
         this.node = node;
         return;
       }
-      const { reads } = this;
-      // eslint-disable-next-line typescript-eslint/prefer-for-of -- no iterator
-      for (let i = 0; i < reads.length; i++) {
-        try {
-          reads[i]!();
-        } catch {
-          // The re-render reads it again, and throws there.
-        }
-      }
+      this.readAgain();
       update();
     };
     this.mount = () => {
