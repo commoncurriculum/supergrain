@@ -353,7 +353,7 @@ describe("For with parent: edge cases", () => {
     expect(container.textContent).toBe("i3i2i1i4");
   });
 
-  it("re-renders correctly after more swaps than it keeps one by one", async () => {
+  it("re-renders correctly after many swaps", async () => {
     const store = createReactive({ data: items(1, 2, 3, 4, 5) });
     const shown = mountWithParent(store.data);
     for (let i = 0; i < 41; i++) {
