@@ -366,6 +366,37 @@ describe("tracked()", () => {
       expect(heavyRuns).toBe(2);
     });
 
+    it("keep a plain computed's cached value across re-renders", async () => {
+      const store = createReactive({ shown: "a", heavy: 1 });
+      let heavyRuns = 0;
+      const heavy = computed(() => {
+        heavyRuns++;
+        return store.heavy * 2;
+      });
+
+      const View = tracked(() => (
+        <span>
+          {store.shown} {heavy()}
+        </span>
+      ));
+
+      const { container } = render(<View />);
+      expect(heavyRuns).toBe(1);
+
+      // Re-renders View, but `heavy` didn't change: it must not recompute.
+      await act(async () => {
+        store.shown = "b";
+      });
+      expect(container.textContent).toBe("b 2");
+      expect(heavyRuns).toBe(1);
+
+      await act(async () => {
+        store.heavy = 2;
+      });
+      expect(container.textContent).toBe("b 4");
+      expect(heavyRuns).toBe(2);
+    });
+
     it("let a computedList update one row per change", async () => {
       const store = createReactive({
         tasks: Array.from({ length: 100 }, (_, id) => ({ id, done: false })),

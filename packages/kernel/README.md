@@ -185,7 +185,7 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
 
   > Wraps a React component with per-component signal scoping. Only the signals read during render are tracked — when they change, only this component re-renders.
   >
-  > A `useComputed` or `computedList` the component reads keeps its cached value across re-renders. A plain `computed()` read directly in render runs its getter again after a re-render that something else caused, so read expensive derived values through `useComputed` or `computedList`. While a transition render is suspended, the screen React keeps showing stops following store changes; it catches up when the transition commits.
+  > A `computed`, `useComputed` or `computedList` the component reads keeps its cached value across re-renders.
 
 - `useComputed(() => expr, deps?)`
 

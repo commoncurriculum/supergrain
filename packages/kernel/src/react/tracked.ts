@@ -126,8 +126,8 @@ class Tracker implements Disposer, RenderReads {
    * changed: it reads the render's derived values again and re-renders.
    *
    * It reads them again because an effect drops every dependency its run
-   * didn't read. Dropping them would leave a `useComputed` or `computedList`
-   * the render read with no subscribers, which tears down its cached state,
+   * didn't read. Dropping them would leave a `computed` or `computedList` the
+   * render read with no subscribers, which tears down its cached state,
    * so the re-render would rebuild it from scratch. The next render's effect
    * takes over the subscriptions. Store fields need no keeping: a signal
    * keeps its value without subscribers.

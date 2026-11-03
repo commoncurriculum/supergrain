@@ -7,7 +7,8 @@ export { getNodesIfExist, $TRACK } from "./core";
 // re-exported — they mutate global counters and leak unsafely on exception. Use
 // `batch()` (below) instead. Internal consumers can still reach the raw
 // primitives via `@supergrain/kernel/internal`.
-export { signal, computed } from "alien-signals";
+export { signal } from "alien-signals";
+export { computed } from "./computed";
 export { effect } from "./effect";
 export type { Disposer, SymbolDisposable } from "./disposable";
 // `stableComputed` is a kernel-grown sibling of `computed` for derived arrays:

@@ -1,5 +1,4 @@
-import { computed } from "alien-signals";
-
+import { computed } from "./computed";
 import { createReactive } from "./store";
 import { syncArray } from "./sync-array";
 

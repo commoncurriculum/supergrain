@@ -24,8 +24,8 @@ export function noteReadsIn(log: RenderReads | undefined): RenderReads | undefin
 
 /**
  * Note that the render in progress read `read`, a derived value the kernel
- * made (a `useComputed` or `computedList`), so `tracked`
- * can read it again when the render's effect fires.
+ * made (a `computed` or `computedList`), so `tracked` can
+ * read it again when the render's effect fires.
  *
  * Why: an effect drops the dependencies its run didn't read, and a computed
  * left without subscribers drops its cached state. Reading these again in
