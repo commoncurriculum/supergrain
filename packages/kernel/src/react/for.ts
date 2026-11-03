@@ -226,17 +226,16 @@ function forgetSwaps(state: ForState): void {
   state.swappedIn = null;
 }
 
-/** Swap two sibling nodes. Its own inverse. */
+/** Swap two sibling nodes, `x` before `y`. Its own inverse. */
 function swapElements(x: Element, y: Element): void {
-  const afterX = x.nextSibling;
+  // `y` comes after `x`, so `x` has a next sibling.
+  const afterX = x.nextSibling!;
   if (afterX === y) {
     x.before(y);
     return;
   }
-  const parent = x.parentNode!;
   y.before(x);
-  if (afterX === null) parent.append(y);
-  else afterX.before(y);
+  afterX.before(y);
 }
 
 /**

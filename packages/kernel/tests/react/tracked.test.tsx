@@ -394,6 +394,32 @@ describe("tracked()", () => {
       expect(filterCalls).toBe(1);
     });
 
+    it("keep a computedList the render reads twice", async () => {
+      const store = createReactive({
+        shown: "a",
+        tasks: Array.from({ length: 10 }, (_, id) => ({ id })),
+      });
+      let filterCalls = 0;
+      const tasks = computedList(() => store.tasks).filter(() => (filterCalls++, true));
+
+      const List = tracked(() => (
+        <span>
+          {store.shown} {tasks().length} {tasks()[0]!.id}
+        </span>
+      ));
+
+      const { container } = render(<List />);
+      expect(container.textContent).toBe("a 10 0");
+
+      // Re-renders List, but the list didn't change: it must not run again.
+      filterCalls = 0;
+      await act(async () => {
+        store.shown = "b";
+      });
+      expect(container.textContent).toBe("b 10 0");
+      expect(filterCalls).toBe(0);
+    });
+
     it("are released when no render reads them any more", async () => {
       const store = createReactive({ useHeavy: true, heavy: 1 });
       let heavyRuns = 0;
