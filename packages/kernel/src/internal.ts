@@ -24,3 +24,7 @@ export { startBatch, endBatch, getActiveSub, setActiveSub } from "alien-signals"
 // Attaches a `[Symbol.dispose]` to an object so it works with `using`. Used by
 // husk to make resources `Disposable`.
 export { makeDisposable } from "./disposable";
+
+// How `tracked` keeps the derived values a render read alive between the
+// render's effect firing and the re-render.
+export { noteRead, noteReadsIn, type RenderReads } from "./render-reads";

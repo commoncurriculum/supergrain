@@ -1,4 +1,5 @@
 import { computed } from "@supergrain/kernel";
+import { noteRead } from "@supergrain/kernel/internal";
 import { useMemo } from "react";
 
 /**
@@ -29,5 +30,6 @@ import { useMemo } from "react";
  */
 export function useComputed<T>(factory: () => T, deps: ReadonlyArray<unknown> = []): T {
   const c = useMemo(() => computed(factory), deps); // eslint-disable-line react-hooks/exhaustive-deps
+  noteRead(c);
   return c();
 }

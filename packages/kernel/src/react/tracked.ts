@@ -1,7 +1,10 @@
-import type { ReactiveNode } from "alien-signals/system";
-
 import { effect } from "@supergrain/kernel";
-import { getActiveSub, setActiveSub } from "@supergrain/kernel/internal";
+import {
+  getActiveSub,
+  noteReadsIn,
+  setActiveSub,
+  type RenderReads,
+} from "@supergrain/kernel/internal";
 import { type FC, memo, useEffect, useReducer } from "react";
 
 import { type Disposer, scheduleDisposal } from "./disposal-queue";
@@ -60,6 +63,10 @@ export function tracked<P extends object>(Component: FC<P>) {
     // reads always has a subscriber, and keeps its cached state, from one
     // render to the next.
     const previous = tracker.stop;
+    const kept = tracker.reads;
+    const fresh = tracker.spare;
+    fresh.length = 0;
+    tracker.reads = fresh;
     // Made outside any active subscriber, so it isn't owned (and disposed)
     // by whatever effect happens to be running.
     const outer = setActiveSub(undefined);
@@ -67,6 +74,7 @@ export function tracked<P extends object>(Component: FC<P>) {
     const stop = effect(tracker.run);
     tracker.stop = stop;
     setActiveSub(tracker.node);
+    const outerReads = noteReadsIn(tracker);
     let rendered = false;
     try {
       const result = Component(props); // eslint-disable-line new-cap -- React function component call
@@ -77,13 +85,16 @@ export function tracked<P extends object>(Component: FC<P>) {
       // Promise): otherwise every later signal read in the app would
       // subscribe to this render's effect.
       setActiveSub(outer);
+      noteReadsIn(outerReads);
       if (rendered) {
         previous?.();
+        tracker.spare = kept;
       } else {
         // A render that threw never shows: React keeps what it showed
         // before, so keep the effect that follows that, and drop this one.
         stop();
         tracker.stop = previous;
+        tracker.reads = kept;
       }
     }
   };
@@ -98,9 +109,13 @@ const NO_DEPS: ReadonlyArray<unknown> = [];
  * One component instance's tracking state. It makes three functions per
  * instance and none per render, so a render allocates only its effect.
  */
-class Tracker implements Disposer {
+class Tracker implements Disposer, RenderReads {
   /** The effect node of the latest render. Undefined while it is being made. */
-  node: ReactiveNode | undefined = undefined;
+  node: ReturnType<typeof getActiveSub> = undefined;
+  /** The derived values the latest render read (see `noteRead`). */
+  reads: Array<() => unknown> = [];
+  /** The other array, which the next render fills, so a render allocates none. */
+  spare: Array<() => unknown> = [];
   /** Disposes the latest render's effect. Undefined before the first render. */
   stop: (() => void) | undefined = undefined;
   mounted = false;
@@ -108,13 +123,14 @@ class Tracker implements Disposer {
   /**
    * The body of every render's effect. Its first run (which `effect()` makes
    * synchronously) only records the node. After that it runs when a read
-   * changed: it keeps the dependencies and re-renders.
+   * changed: it reads the render's derived values again and re-renders.
    *
-   * It keeps them because an alien-signals effect drops every dependency it
-   * didn't read during a run, and this one reads nothing. Dropping them
-   * would leave the computeds the render read with no subscribers, which
-   * tears down their cached state, so the re-render would recompute them
-   * from scratch. The next render's effect takes over the subscriptions.
+   * It reads them again because an effect drops every dependency its run
+   * didn't read. Dropping them would leave a `useComputed` or `computedList`
+   * the render read with no subscribers, which tears down its cached state,
+   * so the re-render would rebuild it from scratch. The next render's effect
+   * takes over the subscriptions. Store fields need no keeping: a signal
+   * keeps its value without subscribers.
    */
   readonly run: () => void;
   /** The mount effect. */
@@ -130,7 +146,15 @@ class Tracker implements Disposer {
         this.node = node;
         return;
       }
-      keepDependencies(node);
+      const { reads } = this;
+      // eslint-disable-next-line typescript-eslint/prefer-for-of -- no iterator
+      for (let i = 0; i < reads.length; i++) {
+        try {
+          reads[i]!();
+        } catch {
+          // The re-render reads it again, and throws there.
+        }
+      }
       update();
     };
     this.mount = () => {
@@ -161,19 +185,4 @@ class Tracker implements Disposer {
     this.stop();
     this.stop = undefined;
   }
-}
-
-/**
- * Mark every current dependency as read in this run, so none are dropped.
- *
- * This sets `depsTail`, a field of alien-signals' node, not its public API:
- * after a run, the effect drops every link after `depsTail`. Checked against
- * alien-signals 3.2. Recheck it when upgrading: the test "keep their cached
- * state across re-renders" in tracked.test.tsx fails if it stops working.
- */
-function keepDependencies(node: ReactiveNode): void {
-  // An effect only fires through a dependency, so there is at least one.
-  let link = node.deps!;
-  while (link.nextDep) link = link.nextDep;
-  node.depsTail = link;
 }

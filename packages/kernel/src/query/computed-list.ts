@@ -1,3 +1,4 @@
+import { noteRead } from "../render-reads";
 import { defaultCompare } from "./compare";
 import { createIndex, type Group } from "./index-rows";
 import { createList } from "./list";
@@ -171,7 +172,11 @@ interface Spec {
 
 function makeQuery(spec: Spec): Query<unknown, unknown> {
   let list: (() => ReadonlyArray<unknown>) | undefined = undefined;
-  const query = () => (list ??= build(spec))();
+  const query = () => {
+    const read = (list ??= build(spec));
+    noteRead(read);
+    return read();
+  };
   const next = (change: Partial<Spec>) => makeQuery({ ...spec, ...change });
   return Object.assign(query, {
     filter: (fn: StepFn) => next({ steps: [...spec.steps, { kind: "filter", fn }] }),
