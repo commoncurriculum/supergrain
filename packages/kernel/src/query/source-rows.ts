@@ -1,3 +1,7 @@
+/* eslint-disable typescript-eslint/prefer-for-of --
+ * Index loops on purpose: `for…of` allocates an iterator per loop, as in
+ * the rest of the list engine.
+ */
 import type { Caught } from "../rethrowing-computed";
 
 import { catchUp, followArray, type ArrayLog, type LogReader, type Splice } from "../array-log";
@@ -105,11 +109,15 @@ export function createSourceRows<T extends object, O, K>(
   function splicesSince(log: ArrayLog, position: number): ReadonlyArray<Splice> | undefined {
     if (position < log.base) return undefined;
     const splices = log.entries.slice(position - log.base);
-    for (const splice of splices) {
+    for (let s = 0; s < splices.length; s++) {
+      const splice = splices[s]!;
       // A hole, or an item that isn't an object: the walk handles both.
       if (splice === null) return undefined;
-      for (const item of splice.added)
+      const { added } = splice;
+      for (let i = 0; i < added.length; i++) {
+        const item = added[i];
         if (typeof item !== "object" || item === null) return undefined;
+      }
     }
     return splices as ReadonlyArray<Splice>;
   }
@@ -127,14 +135,16 @@ export function createSourceRows<T extends object, O, K>(
     const unplaced: Array<Row<T, O, K>> = [];
     let reordered = labelsInDoubt;
     labelsInDoubt = true;
-    for (const { index, removed: out, added } of splices) {
-      for (const item of out) {
-        const row = rows.get(unwrap(item) as object)!;
+    for (let s = 0; s < splices.length; s++) {
+      const { index, removed: out, added } = splices[s]!;
+      for (let i = 0; i < out.length; i++) {
+        const row = rows.get(unwrap(out[i]) as object)!;
         row.count--;
         touched.push(row);
       }
-      const rowsIn = added.map((item) => {
-        const raw = unwrap(item) as object;
+      const rowsIn = new Array<Row<T, O, K>>(added.length); // eslint-disable-line unicorn/no-new-array -- every slot is filled below
+      for (let i = 0; i < added.length; i++) {
+        const raw = unwrap(added[i]) as object;
         let row = rows.get(raw);
         if (row === undefined) {
           const wrapped = wrap(raw) as T;
@@ -146,23 +156,27 @@ export function createSourceRows<T extends object, O, K>(
         }
         row.count++;
         touched.push(row);
-        return row;
-      });
+        rowsIn[i] = row;
+      }
       replaceRange(mirror, index, out.length, rowsIn);
       labelRange(mirror, index, rowsIn.length);
     }
-    if (touched.some((row) => row.count > 1)) return undefined;
+    // Checked once all are applied: a swap made of two writes holds a row
+    // twice in between.
+    for (let i = 0; i < touched.length; i++) if (touched[i]!.count > 1) return undefined;
     labelsInDoubt = false;
 
     const removed: Array<Row<T, O, K>> = [];
-    for (const row of touched) {
+    for (let i = 0; i < touched.length; i++) {
+      const row = touched[i]!;
       if (row.count === 0 && isLive(row)) {
         rows.delete(row.raw);
         removed.push(row);
       }
     }
     // A row added and removed again within these splices was never placed.
-    const placed = unplaced.filter(isLive);
+    const placed: Array<Row<T, O, K>> = [];
+    for (let i = 0; i < unplaced.length; i++) if (isLive(unplaced[i]!)) placed.push(unplaced[i]!);
     return { list: mirror, removed, blockGroups: place(mirror, placed, removed), reordered };
   }
 

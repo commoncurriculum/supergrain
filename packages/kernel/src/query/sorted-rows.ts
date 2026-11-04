@@ -1,3 +1,7 @@
+/* eslint-disable typescript-eslint/prefer-for-of --
+ * Index loops on purpose: `for…of` allocates an iterator per loop, as in
+ * the rest of the list engine.
+ */
 /**
  * Rows kept in sorted order, in chunks of up to `2 * LOAD`. Inserting or
  * removing a row splices one short chunk, not one long array, and reading a
@@ -96,7 +100,8 @@ export function createSortedRows<R>(compare: (a: R, b: R) => number): SortedRows
 
     copy(start, end, into) {
       let skipped = 0;
-      for (const chunk of chunks) {
+      for (let c = 0; c < chunks.length; c++) {
+        const chunk = chunks[c]!;
         if (skipped + chunk.length > start) {
           for (let i = Math.max(0, start - skipped); i < chunk.length; i++) {
             if (skipped + i >= end) return;

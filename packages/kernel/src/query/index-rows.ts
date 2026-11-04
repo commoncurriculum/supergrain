@@ -223,7 +223,9 @@ export function createIndex<T extends object, O, K>(
   function allOf(bucket: Bucket<T, O, K>): Array<O> {
     if (bucket.all === undefined) {
       const { rows } = bucket;
-      const raw = Array.from({ length: rows.length }, (_, i) => unwrap(valueOf(rows[i]!)));
+      // Sized up front: `Array.from({ length })` takes a slow generic path.
+      const raw = new Array<O>(rows.length); // eslint-disable-line unicorn/no-new-array -- every slot is filled below
+      for (let i = 0; i < rows.length; i++) raw[i] = unwrap(valueOf(rows[i]!));
       bucket.all = createReactive(raw) as Array<O>;
     }
     return bucket.all;
