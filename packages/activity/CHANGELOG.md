@@ -1,5 +1,15 @@
 # @supergrain/activity
 
+## 1.0.5
+
+### Patch Changes
+
+- Updated dependencies [d62170d]
+- Updated dependencies [c7bc342]
+- Updated dependencies [c7bc342]
+- Updated dependencies [c7bc342]
+  - @supergrain/kernel@7.6.0
+
 ## 1.0.4
 
 ### Patch Changes

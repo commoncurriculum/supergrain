@@ -1,5 +1,19 @@
 # @supergrain/silo
 
+## 7.6.0
+
+### Minor Changes
+
+- c7bc342: Add `store.findAllInMemory(type)`: every loaded document of a type, in first-load order, as one reactive array that grows as documents load and empties on `clearMemory()`. Pass it to `computedList` to filter, sort or look things up across what's loaded; the list follows each insert without rescanning.
+
+### Patch Changes
+
+- Updated dependencies [d62170d]
+- Updated dependencies [c7bc342]
+- Updated dependencies [c7bc342]
+- Updated dependencies [c7bc342]
+  - @supergrain/kernel@7.6.0
+
 ## 7.5.0
 
 ### Minor Changes

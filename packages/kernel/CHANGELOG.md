@@ -1,5 +1,23 @@
 # @supergrain/kernel
 
+## 7.6.0
+
+### Minor Changes
+
+- c7bc342: Add `computedList(source, lookups?)`: a chained, filtered, mapped, sorted, windowed view of a reactive list (`.filter`, `.map`, `.groupBy`, `.orderBy`, `.offset`, `.limit`). Each row runs its steps in its own computed, so changing a field reruns the steps for the rows that read it and moves only those rows with a binary search, instead of filtering and sorting every row again. Steps can read other docs from the store to join, or look docs up by key in lists named in `lookups`: `get(key)` for the first doc with a key, `getAll(key)` for all of them (one-to-many). `.groupBy(key)` puts rows that share a key in one group, and the steps after it run once per group; a change moves one row between groups instead of regrouping. Rows with equal sort keys, and unsorted lists, keep source order.
+
+### Patch Changes
+
+- d62170d: Reading an array method through the store (`store.items.push`, `map`, `forEach`, `splice`, ...) no longer makes a new function each time. Each method is now one shared function that finds the array from `this`, so it runs on the array it is called on, the same as a native array method. 100 `push` calls now allocate 24.6 KB instead of 36.7 KB.
+- c7bc342: `<For>` shows every change to which items are where, and keeps rows that only moved.
+
+  - With `parent`, replacing an item without changing the array's length (`store.data[1] = next`) now updates the DOM. Before, only an exact two-item swap was handled, and any other same-length change left the DOM stale. Two slots replaced by new items are no longer mistaken for a swap.
+  - Without `parent`, rows are keyed by item and given the item directly. When items shift up a slot (one leaves the top of a sorted list), the rows that only moved no longer re-render. A row whose `children` takes the index still re-renders when its index changes.
+  - `<For>` follows the array with one signal for in-place replacements instead of one subscription per index.
+  - `each` accepts a `ReadonlyArray`, so a `computedList` result can be passed without a cast: `<For each={openTasks()}>`.
+
+- c7bc342: `tracked` components no longer throw away the cached state of the computeds they read each time they re-render. Before, when a component was told to re-render, its effect dropped every subscription, so each computed it read had no subscribers left and was rebuilt from scratch on the next render. Now each render subscribes with a fresh effect, and the previous one is dropped only after that render. A `computedList` read in a `tracked` component now does one row's work per change instead of rechecking every row.
+
 ## 7.5.0
 
 ### Minor Changes
