@@ -3,6 +3,8 @@ import { JsonView } from "@supergrain/devtools/react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { defineThrowingGetter } from "../fixtures";
+
 afterEach(() => cleanup());
 
 describe("<JsonView />", () => {
@@ -25,6 +27,15 @@ describe("<JsonView />", () => {
     expect(screen.getByText("10n")).toBeTruthy();
     expect(screen.getByText("Symbol(z)")).toBeTruthy();
     expect(screen.getByText(/named/)).toBeTruthy();
+  });
+
+  it("renders an unreadable leaf with what was thrown", () => {
+    const target = defineThrowingGetter({ ok: 1 }, "boom", new TypeError("getter exploded"));
+
+    render(<JsonView node={serialize(target)} />);
+    expect(screen.getByText(/TypeError: getter exploded/)).toBeTruthy();
+    // The rest of the object still renders — the bad field costs only its row.
+    expect(screen.getByText("1")).toBeTruthy();
   });
 
   it("renders array, map, set, and error composites with their children", () => {

@@ -228,6 +228,14 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       break;
     }
     case "Retrying": {
+      // `Retrying` means "an attempt failed and the fetch is still in flight".
+      // If this cycle already ended (Settled/Failed/Aborted) there is no
+      // in-flight fetch for it to describe; applying it would bump
+      // `failureCount` on a dead cycle and leave `lastError` past the terminal
+      // `error`. The generation fence orders events across cycles; this orders
+      // them within one. No emitter produces this today — it keeps the
+      // reducer's invariants total rather than dependent on emitter discipline.
+      if (!wasFetching) break;
       // A retryable attempt failed; the fetch is still in flight. Surface what's
       // currently wrong without ending activity or setting the terminal `error`.
       lastError = event.error;
