@@ -404,3 +404,23 @@ describe("Store", () => {
     expect(seen.at(-1)).toEqual(["0", "1", "-1", "1.5"]);
   });
 });
+
+describe("array methods read through the proxy", () => {
+  it("are the same function on every read", () => {
+    const store = createReactive({ items: [1, 2, 3] });
+    expect(store.items.push).toBe(store.items.push);
+    expect(store.items.map).toBe(store.items.map);
+  });
+
+  it("run on the array they're called on", () => {
+    const store = createReactive({ a: [1], b: [2] });
+    const seen: Array<number> = [];
+    effect(() => {
+      seen.push(store.b.length);
+    });
+    store.a.push.call(store.b, 3);
+    expect(unwrap(store.b)).toEqual([2, 3]);
+    expect(unwrap(store.a)).toEqual([1]);
+    expect(seen).toEqual([1, 2]);
+  });
+});

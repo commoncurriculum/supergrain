@@ -29,7 +29,7 @@
 
 import { getActiveSub, startBatch, endBatch } from "alien-signals";
 
-import { $OWN_KEYS, getNode, getNodes, trackArrayElements } from "./core";
+import { $OWN_KEYS, getNode, getNodes, trackArrayElements, unwrap } from "./core";
 import { wrap } from "./read";
 import { readSignal } from "./render-reads";
 import { notifyArrayMutation } from "./write";
@@ -37,7 +37,7 @@ import { notifyArrayMutation } from "./write";
 /** The method as the target holds it, e.g. `Array.prototype.push`. */
 export type NativeArrayMethod = (...args: Array<unknown>) => unknown;
 
-export type RawArrayMethod = (
+type RawArrayMethod = (
   target: Array<unknown>,
   receiver: unknown,
   native: NativeArrayMethod,
@@ -151,27 +151,50 @@ const reduce: RawArrayMethod = (target, receiver, native, args) => {
   );
 };
 
+/** A method as a read through the proxy returns it: it runs on the array it's called on. */
+type ProxiedMethod = (this: unknown, ...args: Array<unknown>) => unknown;
+
+/**
+ * One function per method for every array: it finds the raw array and the
+ * native method from `this` (the proxy it was called on), so reading a
+ * method allocates nothing, and `array.push === array.push`.
+ */
+function proxied([name, run]: readonly [string, RawArrayMethod]): [string, ProxiedMethod] {
+  return [
+    name,
+    function arrayMethod(this: unknown, ...args: Array<unknown>): unknown {
+      const target = unwrap(this) as Array<unknown>;
+      // The array's own method if it has one, as a native call would find.
+      return run(target, this, target[name as keyof Array<unknown>] as NativeArrayMethod, args);
+    },
+  ];
+}
+
 /** Every array method the proxy's `get` trap replaces, by name. */
-export const ARRAY_METHODS: ReadonlyMap<PropertyKey, RawArrayMethod> = new Map([
-  // Mutators: the first index each can change, how many items from there it
-  // replaces, and what it returns.
-  ["push", mutator(atEnd, 0, returnAsIs)],
-  ["pop", mutator(atLast, 1, returnElement)],
-  ["shift", mutator(atStart, 1, returnElement)],
-  ["unshift", mutator(atStart, 0, returnAsIs)],
-  ["splice", mutator(atArgument(0), RETURNED, returnElements)],
-  ["copyWithin", mutator(atArgument(0), ALL, returnArray)],
-  ["fill", mutator(atArgument(1), ALL, returnArray)],
-  ["reverse", reorder],
-  ["sort", sort],
-  // Whole-array iterators.
-  ["map", iterator(returnAsIs)],
-  ["forEach", iterator(returnAsIs)],
-  ["flatMap", iterator(returnAsIs)],
-  ["filter", iterator(returnElements)],
-  ["reduce", reduce],
-  ["reduceRight", reduce],
-]);
+export const ARRAY_METHODS: ReadonlyMap<PropertyKey, ProxiedMethod> = new Map(
+  (
+    [
+      // Mutators: the first index each can change, how many items from there it
+      // replaces, and what it returns.
+      ["push", mutator(atEnd, 0, returnAsIs)],
+      ["pop", mutator(atLast, 1, returnElement)],
+      ["shift", mutator(atStart, 1, returnElement)],
+      ["unshift", mutator(atStart, 0, returnAsIs)],
+      ["splice", mutator(atArgument(0), RETURNED, returnElements)],
+      ["copyWithin", mutator(atArgument(0), ALL, returnArray)],
+      ["fill", mutator(atArgument(1), ALL, returnArray)],
+      ["reverse", reorder],
+      ["sort", sort],
+      // Whole-array iterators.
+      ["map", iterator(returnAsIs)],
+      ["forEach", iterator(returnAsIs)],
+      ["flatMap", iterator(returnAsIs)],
+      ["filter", iterator(returnElements)],
+      ["reduce", reduce],
+      ["reduceRight", reduce],
+    ] as const
+  ).map(proxied),
+);
 
 /**
  * Subscribe the active computed to every change in `target`'s items without
