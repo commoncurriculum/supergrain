@@ -1,23 +1,60 @@
 import { getActiveSub } from "alien-signals";
 
-import { ARRAY_METHODS, type NativeArrayMethod } from "./array-methods";
+import { ARRAY_METHODS, type NativeArrayMethod, type RawArrayMethod } from "./array-methods";
 import { createReactiveMap, createReactiveSet } from "./collections";
 import {
+  $HAS_FIELD_NODES,
   $NODE,
   $OWN_KEYS,
   $PROXY,
   $RAW,
   $TRACK,
   $VERSION,
+  defineHidden,
   getNode,
   getNodes,
   isWrappable,
+  type DataNodes,
   type ReactiveTagged,
 } from "./core";
 import { profileSignalRead, profileSignalSkip } from "./profiler";
+import { readSignal } from "./render-reads";
 import { writeHandler } from "./write";
 
 const proxyCache = new WeakMap<object, object>();
+
+// The object `readWholeObject` tracks as a whole, and for which subscriber.
+let wholeObject: object | null = null;
+let wholeObjectReader: ReturnType<typeof getActiveSub> | null = null;
+
+/**
+ * Run `fn(a, b)` so that the active subscriber tracks `target` (a raw, non-array
+ * object) as a whole: one subscription to its version, which every write to
+ * it bumps, instead of one signal per field read. The subscriber reruns more
+ * often (on writes to fields it never read), but costs far less memory.
+ *
+ * Only `target` itself: other objects `fn` reads, including ones nested in
+ * it, are tracked per field as usual, so a shared object never wakes every
+ * reader. Fields of `target` that already have a signal are still tracked
+ * per field, and computeds that `fn` reads track as usual.
+ *
+ * Only for a reader whose result can't tell the extra reruns apart, such as
+ * a list row that keeps its previous outcome when nothing moved.
+ */
+export function readWholeObject<A, B, R>(target: object, fn: (a: A, b: B) => R, a: A, b: B): R {
+  // Replacing an array's element doesn't bump its version: track per index.
+  if (Array.isArray(target)) return fn(a, b);
+  const previous = wholeObject;
+  const previousReader = wholeObjectReader;
+  wholeObject = target;
+  wholeObjectReader = getActiveSub();
+  try {
+    return fn(a, b);
+  } finally {
+    wholeObject = previous;
+    wholeObjectReader = previousReader;
+  }
+}
 
 export function wrap<T>(value: T): T {
   if (typeof value !== "object" || value === null) {
@@ -30,7 +67,7 @@ function trackSelf(target: object): void {
   if (getActiveSub()) {
     const nodes = getNodes(target);
     const ownKeysSignal = getNode(nodes, $OWN_KEYS, 0);
-    ownKeysSignal();
+    readSignal(ownKeysSignal);
   }
 }
 
@@ -40,12 +77,7 @@ function trackSelf(target: object): void {
 // because alien-signals deduplicates dirty-marking.
 function trackArrayVersion(value: unknown): void {
   if (Array.isArray(value) && getActiveSub()) {
-    const arrayNodes = getNodes(value);
-    /* c8 ignore start -- absence of an array version signal is a no-op fast path */
-    if (arrayNodes[$VERSION]) {
-      arrayNodes[$VERSION]();
-    }
-    /* c8 ignore stop */
+    readSignal(getNode(getNodes(value), $VERSION, 0));
   }
 }
 
@@ -64,7 +96,7 @@ const readHandler: Pick<
             return wrap((target as Record<string, unknown>)[prop]);
           }
           profileSignalRead();
-          const value = tracked();
+          const value = readSignal(tracked);
           if (isWrappable(value)) {
             const proxy = createReactiveProxy(value);
             trackArrayVersion(value);
@@ -82,12 +114,15 @@ const readHandler: Pick<
       return receiver;
     }
     if (prop === $TRACK) {
+      // The structure: which keys it has and, for an array, its length.
       trackSelf(target);
+      if (Array.isArray(target) && getActiveSub()) {
+        readSignal(getNode(getNodes(target), "length", target.length));
+      }
       return receiver;
     }
     if (prop === $VERSION) {
-      const nodes = (target as ReactiveTagged)[$NODE];
-      return nodes?.[$VERSION] ? nodes[$VERSION]() : 0;
+      return readSignal(getNode(getNodes(target), $VERSION, 0));
     }
 
     // Direct bracket access — Reflect.get is ~22x slower in this hot handler
@@ -100,13 +135,10 @@ const readHandler: Pick<
         if (getActiveSub()) {
           trackSelf(target);
         }
-        // Keep this branch to one lookup and one closure: the handler's shape
+        // Keep this branch to one lookup and one call: the handler's shape
         // is load-bearing (notes/failed-approaches/fast-push-bypass-proxy.md).
         const method = ARRAY_METHODS.get(prop);
-        if (method) {
-          return (...args: Array<unknown>) =>
-            method(target, receiver, value as NativeArrayMethod, args);
-        }
+        if (method) return boundMethod(method, target, receiver, value as NativeArrayMethod);
       }
       return value;
     }
@@ -118,8 +150,14 @@ const readHandler: Pick<
 
     profileSignalRead();
     const nodes = getNodes(target);
-    const node = getNode(nodes, prop, value);
-    return wrap(node());
+    // An object read as a whole: subscribe to its version, which every
+    // write to it bumps, instead of making a signal for this field.
+    if (target === wholeObject && wholeObjectReader === getActiveSub()) {
+      readSignal(getNode(nodes, $VERSION, 0));
+      return wrap(value);
+    }
+    const node = nodes[prop] ?? fieldNode(target, nodes, prop, value);
+    return wrap(readSignal(node));
   },
 
   ownKeys(target) {
@@ -145,6 +183,20 @@ const readHandler: Pick<
   },
 };
 
+/**
+ * The array method a read through the proxy returns. Made here, not in the
+ * `get` trap: a closure there would make V8 allocate a context for the
+ * trap's variables on every read, method or not.
+ */
+function boundMethod(
+  method: RawArrayMethod,
+  target: Array<unknown>,
+  receiver: unknown,
+  native: NativeArrayMethod,
+): (...args: Array<unknown>) => unknown {
+  return (...args) => method(target, receiver, native, args);
+}
+
 const handler: ProxyHandler<object> = {
   ...readHandler,
   ...writeHandler,
@@ -169,22 +221,22 @@ export function createReactiveProxy<T extends object>(target: T): T {
   const cached = (target as ReactiveTagged)[$PROXY];
   if (cached) return cached as T;
 
-  if (proxyCache.has(target)) {
-    return proxyCache.get(target) as T;
-  }
-
   if (Object.isFrozen(target)) {
     return target;
   }
-
-  const proxy = new Proxy(target, handler);
-  proxyCache.set(target, proxy);
-
-  try {
-    Object.defineProperty(target, $PROXY, { value: proxy, enumerable: false });
-  } catch {
-    // Fails for sealed or non-configurable objects.
+  let proxy = proxyCache.get(target);
+  if (proxy === undefined) {
+    proxy = new Proxy(target, handler);
+    // The proxy lives on its target. Only a target that won't take a new
+    // property keeps it in the WeakMap, which costs more to fill and collect.
+    if (!defineHidden(target, $PROXY, proxy)) proxyCache.set(target, proxy);
   }
-
   return proxy as T;
+}
+
+/** A new signal for `prop`, marking an array as having per-field signals (see `$HAS_FIELD_NODES`). */
+function fieldNode(target: object, nodes: DataNodes, prop: PropertyKey, value: unknown) {
+  const node = getNode(nodes, prop, value);
+  if (prop !== "length" && Array.isArray(target)) nodes[$HAS_FIELD_NODES] = node;
+  return node;
 }

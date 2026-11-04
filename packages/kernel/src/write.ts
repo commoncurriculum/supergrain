@@ -1,9 +1,10 @@
+import { logMutation } from "./array-log";
 import {
   $ELEMENTS,
+  $HAS_FIELD_NODES,
   $OWN_KEYS,
   $VERSION,
   unwrap,
-  getNodes,
   getNodesIfExist,
   type DataNodes,
 } from "./core";
@@ -18,18 +19,10 @@ import { profileSignalWrite } from "./profiler";
 // self-triggering loop.
 let BUMP = 0;
 
+// The version signal is made by its first reader, so a write before that
+// has no one to tell.
 export function bumpVersion(target: object): void {
-  let nodes = getNodesIfExist(target);
-  if (!nodes) {
-    // Lazily create nodes + version signal on first mutation
-    nodes = getNodes(target);
-  }
-  const v = nodes[$VERSION];
-  /* c8 ignore start -- callers that need notifications create the version signal before bumping */
-  if (v) {
-    v(++BUMP);
-  }
-  /* c8 ignore stop */
+  getNodesIfExist(target)?.[$VERSION]?.(++BUMP);
 }
 
 export function bumpOwnKeysSignal(target: object, nodes?: Record<PropertyKey, any>): void {
@@ -58,116 +51,114 @@ function bumpElementsSignal(nodes: DataNodes | undefined): void {
   }
 }
 
-function bumpSignals(target: any, key: PropertyKey, prevLen: number): void {
-  const nodes = getNodesIfExist(target);
-  if (!nodes) {
-    return;
-  }
-  if (Array.isArray(target) && key !== "length") {
-    const lengthNode = nodes["length"];
-    if (lengthNode && target.length !== prevLen) {
-      profileSignalWrite();
-      lengthNode(target.length);
-    }
-  }
-}
-
 export function setProperty(target: any, key: PropertyKey, value: any): void {
-  const hadKey = Object.hasOwn(target, key);
-  const prevLen = Array.isArray(target) ? target.length : -1;
-  const oldValue = target[key];
-
-  target[key] = value;
-
-  const didChange = unwrap(oldValue) !== unwrap(value);
-  if (didChange) {
-    // Skip version bump for array element replacement (same length).
-    // Per-index signals already notify element-specific subscribers.
-    // Version bump would unnecessarily notify parent components that
-    // only care about structural changes (length, add, remove).
-    const isArrayElementReplace = Array.isArray(target) && hadKey && target.length === prevLen;
-    if (isArrayElementReplace) {
-      bumpElementsSignal(getNodesIfExist(target));
-    } else {
-      bumpVersion(target);
-    }
+  if (Array.isArray(target)) {
+    if (key === "length") return writeLength(target, value);
+    const index = arrayIndex(key);
+    if (index !== -1) return writeIndex(target, index, value);
   }
-
-  const nodes = getNodesIfExist(target);
-  if (nodes) {
-    const node = nodes[key];
-    if (node && didChange) {
+  const hadKey = Object.hasOwn(target, key);
+  const oldValue = target[key];
+  target[key] = value;
+  if (unwrap(oldValue) !== unwrap(value)) {
+    bumpVersion(target);
+    const node = getNodesIfExist(target)?.[key];
+    if (node) {
       profileSignalWrite();
       node(value);
     }
   }
-  bumpSignals(target, key, prevLen);
-
-  if (!hadKey) {
-    bumpOwnKeysSignal(target, getNodesIfExist(target));
-  }
+  if (!hadKey) bumpOwnKeysSignal(target);
 }
 
 export function deleteProperty(target: any, key: PropertyKey): void {
-  const hadKey = Object.hasOwn(target, key);
-  const prevLen = Array.isArray(target) ? target.length : -1;
-
-  delete target[key];
-
-  if (hadKey) {
-    bumpVersion(target);
-
-    // Keep the `if (nodes)` guard. It looks like `bumpVersion` should
-    // guarantee nodes are attached, but `getNodes` wraps its
-    // `Object.defineProperty($NODE, …)` in `try/catch` — non-extensible
-    // targets (e.g. `Object.preventExtensions`) leave `$NODE` detached, and
-    // `getNodesIfExist` still returns `undefined` here. Removing this guard
-    // and using `!` will TypeError on `nodes[key]`. See store.test.ts
-    // "should not throw when deleting a key from a non-extensible target".
-    const nodes = getNodesIfExist(target);
-    if (nodes) {
-      const node = nodes[key];
-      if (node) {
-        profileSignalWrite();
-        node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- explicitly setting signal value to undefined
-      }
-    }
-    bumpSignals(target, key, prevLen);
-    bumpOwnKeysSignal(target, nodes);
+  if (!Object.hasOwn(target, key)) return;
+  if (Array.isArray(target)) {
+    const index = arrayIndex(key);
+    if (index !== -1) return writeIndex(target, index, HOLE);
   }
+  delete target[key];
+  bumpVersion(target);
+  // No `!`: a non-extensible target has no node table. See store.test.ts
+  // "should not throw when deleting a key from a non-extensible target".
+  const nodes = getNodesIfExist(target);
+  const node = nodes?.[key];
+  if (node) {
+    profileSignalWrite();
+    node(undefined); // eslint-disable-line unicorn/no-useless-undefined -- the key now reads undefined
+  }
+  bumpOwnKeysSignal(target, nodes);
+}
+
+/** What `writeIndex` writes to delete an item, leaving a hole. */
+const HOLE: unique symbol = Symbol("hole");
+
+/** Write `value` at `index` of array `target` (or delete it, for `HOLE`), then log and notify. */
+function writeIndex(target: Array<unknown>, index: number, value: unknown): void {
+  const oldLength = target.length;
+  // Past the end, the write also leaves holes from the old end on.
+  const from = Math.min(index, oldLength);
+  const replaced = target.slice(from, index + 1);
+  if (value === HOLE) delete target[index];
+  else target[index] = value;
+  notifyArrayMutation(target, from, replaced, oldLength);
+}
+
+/** Set array `target`'s `length`, then log and notify. */
+function writeLength(target: Array<unknown>, length: unknown): void {
+  const oldLength = target.length;
+  const from = Math.min(Number(length), oldLength);
+  const replaced = target.slice(from, oldLength);
+  (target as { length: unknown }).length = length;
+  notifyArrayMutation(target, from, replaced, oldLength);
 }
 
 /**
- * Notify subscribers of an array that a mutator (`push`, `splice`, `sort`, …)
- * changed in place on the raw target. Fires, once, the signals that routing the
- * same mutation through the proxy's per-element writes would have fired:
+ * Every array write ends here: an index or `length` write, a delete, or a
+ * mutator (`push`, `splice`, `sort`, …) that ran on the raw target. Every
+ * such write is a splice: at `from`, the old items `replaced` (holes kept)
+ * gave way to new ones, and the items after them moved by the change in
+ * length. Given those and the old length, it logs the change and fires each
+ * signal whose value changed:
  *
- * - every per-index signal whose value changed (including indices past a
- *   shrunken end, which now read `undefined`);
- * - if the length changed: the version, `length`, and own-keys signals;
- * - otherwise (an in-place reorder or overwrite): the `$ELEMENTS` signal,
- *   exactly like a same-length index assignment in `setProperty`.
+ * - an index's signal, if the item there changed;
+ * - `length`, if the length changed;
+ * - own keys and the version, if the length changed or an index gained or
+ *   lost an item;
+ * - otherwise `$ELEMENTS`, if an item changed.
  *
- * `from` is the first index the mutator could have changed, `before` holds the
- * old values from `from` on, and `oldLength` is the length before the call.
- * The caller batches, so subscribers run once.
+ * The notify contract test checks this against every kind of reader.
  */
 export function notifyArrayMutation(
   target: Array<unknown>,
   from: number,
-  before: ReadonlyArray<unknown>,
+  replaced: ReadonlyArray<unknown>,
   oldLength: number,
 ): void {
-  // `bumpVersion` below may create the node table, but a fresh table holds
-  // only the version signal, so `nodes` stays accurate for every other one.
+  logMutation(target, from, replaced, oldLength);
   const nodes = getNodesIfExist(target);
   const newLength = target.length;
-  const end = Math.max(oldLength, newLength);
-  let anyIndexChanged = false;
-  for (let i = from; i < end; i++) {
+  const shift = newLength - oldLength;
+  const lengthChanged = shift !== 0;
+  const end = lengthChanged ? Math.max(oldLength, newLength) : from + replaced.length;
+  let itemChanged = false;
+  // A new length counts as new keys (an extra rerun is allowed, and it
+  // saves two `in` checks per index on long splices). At the same length,
+  // only a hole made or filled changes the keys, and every index looked at
+  // is one of `replaced`.
+  let keysChanged = lengthChanged;
+  // With a new length, the loop below only looks for index signals to fire
+  // (the keys changed anyway): skip it when there are none, so a splice in a
+  // long array that nothing reads by index costs no walk of what it shifted.
+  const loopEnd = lengthChanged && nodes?.[$HAS_FIELD_NODES] === undefined ? from : end;
+  for (let i = from; i < loopEnd; i++) {
+    const k = i - from;
     const next = target[i];
-    if (unwrap(before[i - from]) !== unwrap(next)) {
-      anyIndexChanged = true;
+    if (!keysChanged && k in replaced !== i in target) keysChanged = true;
+    // The old item at `i`: a replaced one, or one that has since moved.
+    const old = k < replaced.length ? replaced[k] : i < oldLength ? target[i + shift] : undefined;
+    if (unwrap(old) !== unwrap(next)) {
+      itemChanged = true;
       const node = nodes?.[i];
       if (node) {
         profileSignalWrite();
@@ -175,17 +166,34 @@ export function notifyArrayMutation(
       }
     }
   }
-  if (newLength !== oldLength) {
-    bumpVersion(target);
+  if (lengthChanged) {
     const lengthNode = nodes?.["length"];
     if (lengthNode) {
       profileSignalWrite();
       lengthNode(newLength);
     }
+  }
+  if (keysChanged) {
+    bumpVersion(target);
     bumpOwnKeysSignal(target, nodes);
-  } else if (anyIndexChanged) {
+  } else if (itemChanged) {
     bumpElementsSignal(nodes);
   }
+}
+
+/** The largest array index: `2 ** 32 - 2`. A larger number is an ordinary property. */
+const MAX_INDEX = 4_294_967_294;
+
+/** The array index a property key names, or -1 if it names none. */
+export function arrayIndex(key: PropertyKey): number {
+  if (typeof key === "number") return isIndex(key) ? key : -1;
+  if (typeof key !== "string") return -1;
+  const index = Number(key);
+  return isIndex(index) && String(index) === key ? index : -1;
+}
+
+function isIndex(n: number): boolean {
+  return Number.isInteger(n) && n >= 0 && n <= MAX_INDEX;
 }
 
 // Local alias so the proxy trap (also named `deleteProperty`) can call the
@@ -199,19 +207,6 @@ export const writeHandler: Pick<ProxyHandler<object>, "set" | "deleteProperty"> 
   },
 
   deleteProperty(target: any, prop: PropertyKey): boolean {
-    if (Array.isArray(target)) {
-      // Silent delete for signal values: splice/pop/shift handle element
-      // moves via set(). Bump ownKeys so structural subscribers detect
-      // the change.
-      const hadKey = Object.hasOwn(target, prop);
-      // target is narrowed to Array<any> after isArray check; PropertyKey
-      // includes symbol which can't index an array — cast through unknown.
-      delete (target as unknown as Record<PropertyKey, unknown>)[prop];
-      if (hadKey) {
-        bumpOwnKeysSignal(target);
-      }
-      return true;
-    }
     deletePropertyAndBump(target, prop);
     return true;
   },

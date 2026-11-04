@@ -1,4 +1,4 @@
-import { batch, effect, unwrap } from "@supergrain/kernel";
+import { batch, computedList, effect, unwrap } from "@supergrain/kernel";
 import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -16,10 +16,14 @@ import {
   flushCoalescer,
   initStore,
   makeDashboard,
+  makePost,
+  makeStoreConfig,
   makeUser,
   requests,
   server,
   type DashboardParams,
+  type TypeToModel,
+  type TypeToQuery,
 } from "./example-app";
 import { effectFind } from "./setup/effect-find";
 import { setupFakeTimers } from "./setup/timers";
@@ -87,6 +91,118 @@ describe("Store memory operations", () => {
     store.clearMemory();
 
     expect(store.findInMemory("user", "1")).toBeUndefined();
+  });
+});
+
+// =============================================================================
+// findAllInMemory — the loaded documents of one type, as a list to follow
+// =============================================================================
+
+describe("Store.findAllInMemory", () => {
+  it("lists the loaded documents of a type in the order they first loaded", () => {
+    expect(store.findAllInMemory("user")).toEqual([]);
+    store.insertDocument("user", makeUser("2"));
+    store.insertDocument("user", makeUser("1"));
+    store.insertDocument("post", makePost("9"));
+
+    const users = store.findAllInMemory("user");
+    expect(users.map((user) => user.id)).toEqual(["2", "1"]);
+    // The same reactive docs findInMemory hands out, and the same list every call.
+    expect(users[0]).toBe(store.findInMemory("user", "2"));
+    expect(store.findAllInMemory("user")).toBe(users);
+  });
+
+  it("includes documents loaded before the first call, but not ones still loading", async () => {
+    store.insertDocument("user", makeUser("1"));
+    // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
+    store.find("user", "2"); // fetching, no value yet
+    expect(store.findAllInMemory("user").map((user) => user.id)).toEqual(["1"]);
+
+    await flushCoalescer();
+    expect(store.findAllInMemory("user").map((user) => user.id)).toEqual(["1", "2"]);
+  });
+
+  it("keeps a doc's place when a new version is patched in", () => {
+    store.insertDocument("user", makeUser("1"));
+    store.insertDocument("user", makeUser("2"));
+    const users = store.findAllInMemory("user");
+    const first = users[0];
+
+    store.insertDocument("user", makeUser("1", { firstName: "Ada" }));
+    expect(users.map((user) => user.id)).toEqual(["1", "2"]);
+    expect(users[0]).toBe(first);
+    expect(users[0]!.attributes.firstName).toBe("Ada");
+  });
+
+  it("swaps in the new object when the model replaces on refetch", () => {
+    const config = makeStoreConfig();
+    const replacing = createDocumentStore<TypeToModel, TypeToQuery>({
+      ...config,
+      models: { ...config.models, user: { ...config.models.user, onRefetch: "replace" } },
+    });
+    replacing.insertDocument("user", makeUser("1"));
+    replacing.insertDocument("user", makeUser("2"));
+    const users = replacing.findAllInMemory("user");
+
+    const next = makeUser("1", { firstName: "Ada" });
+    replacing.insertDocument("user", next);
+    expect(users.map((user) => user.id)).toEqual(["1", "2"]);
+    expect(unwrap(users[0])).toBe(next);
+    expect(users[0]).toBe(replacing.findInMemory("user", "1"));
+  });
+
+  it("leaves out a document prepareInsert vetoes", () => {
+    const vetoing = createDocumentStore<TypeToModel, TypeToQuery>({
+      ...makeStoreConfig(),
+      hooks: { prepareInsert: (_type, doc) => (doc.id === "2" ? null : doc) },
+    });
+    vetoing.insertDocument("user", makeUser("1"));
+    vetoing.insertDocument("user", makeUser("2"));
+    expect(vetoing.findAllInMemory("user").map((user) => user.id)).toEqual(["1"]);
+  });
+
+  it("empties on clearMemory and fills again after", () => {
+    store.insertDocument("user", makeUser("1"));
+    const users = store.findAllInMemory("user");
+
+    store.clearMemory();
+    expect(users).toEqual([]);
+
+    store.insertDocument("user", makeUser("3"));
+    expect(store.findAllInMemory("user")).toBe(users);
+    expect(users.map((user) => user.id)).toEqual(["3"]);
+  });
+
+  it("feeds a computedList that updates as documents load and change", () => {
+    store.insertDocument("user", makeUser("1", { firstName: "Bo" }));
+    const names = computedList(() => store.findAllInMemory("user"))
+      .map((user) => user.attributes.firstName)
+      .orderBy((name) => name);
+    const seen: string[][] = [];
+    const stop = effect(() => {
+      seen.push([...names()]);
+    });
+
+    store.insertDocument("user", makeUser("2", { firstName: "Al" }));
+    store.insertDocument("user", makeUser("1", { firstName: "Cy" }));
+    store.clearMemory();
+    stop();
+
+    expect(seen).toEqual([["Bo"], ["Al", "Bo"], ["Al", "Cy"], []]);
+  });
+
+  it("doesn't subscribe a scope that inserts to the list", () => {
+    store.findAllInMemory("user");
+    let runs = 0;
+    const stop = effect(() => {
+      runs++;
+      store.insertDocument("user", makeUser(String(runs)));
+    });
+    store.insertDocument("user", makeUser("other"));
+    stop();
+
+    expect(runs).toBe(1);
+    expect(store.findAllInMemory("user").map((user) => user.id)).toEqual(["1", "other"]);
   });
 });
 

@@ -35,6 +35,7 @@ import { profileSignalRead, profileSignalSkip, profileSignalWrite } from "./prof
 // accesses the imported binding at top-level evaluation time (they don't).
 // ---------------------------------------------------------------------------
 import { createReactiveProxy } from "./read";
+import { readSignal } from "./render-reads";
 
 function wrap<T>(value: T): T {
   if (!isWrappable(value)) {
@@ -84,14 +85,15 @@ const collectionProxyCache = new WeakMap<object, object>();
 function trackOwnKeys(target: object): void {
   if (getActiveSub()) {
     const nodes = getNodes(target);
-    getNode(nodes, $OWN_KEYS, 0)();
+    readSignal(getNode(nodes, $OWN_KEYS, 0));
   }
 }
 
 // Whenever this module creates `nodes` for a Map/Set, it also creates
-// $OWN_KEYS and $VERSION (see `reactiveSet`/`reactiveAdd`). So once `nodes`
-// exists for one of these targets, both signals are present — the `!`
-// asserts that invariant.
+// $OWN_KEYS (see `trackOwnKeys`, `reactiveSet`, `reactiveAdd`). So once
+// `nodes` exists for one of these targets, that signal is present — the `!`
+// asserts that invariant. $VERSION may not exist yet: it's made by its first
+// reader.
 function bumpOwnKeys(target: object): void {
   const nodes = getNodesIfExist(target);
   if (!nodes) return;
@@ -100,9 +102,7 @@ function bumpOwnKeys(target: object): void {
 }
 
 function bumpVersionSignal(target: object): void {
-  const nodes = getNodesIfExist(target);
-  if (!nodes) return;
-  nodes[$VERSION]!(++BUMP);
+  getNodesIfExist(target)?.[$VERSION]?.(++BUMP);
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +125,23 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
     return s;
   }
 
+  // Each method is made on first use and then reused: a function made in
+  // the `get` trap would allocate on every read, and its closure would
+  // make the trap allocate a context for its variables on every call.
+  /* eslint-disable unicorn/no-useless-undefined -- init-declarations wants a value */
+  let reactiveGet: ((key: K) => V | undefined) | undefined = undefined;
+  let reactiveHas: ((key: K) => boolean) | undefined = undefined;
+  let reactiveSet: ((key: K, value: V) => Map<K, V>) | undefined = undefined;
+  let reactiveDelete: ((key: K) => boolean) | undefined = undefined;
+  let reactiveClear: (() => void) | undefined = undefined;
+  let reactiveForEach:
+    | ((callbackFn: (value: V, key: K, map: Map<K, V>) => void) => void)
+    | undefined = undefined;
+  let reactiveEntries: (() => IterableIterator<[K, V]>) | undefined = undefined;
+  let reactiveKeys: (() => IterableIterator<K>) | undefined = undefined;
+  let reactiveValues: (() => IterableIterator<V>) | undefined = undefined;
+  /* eslint-enable unicorn/no-useless-undefined */
+
   const handler: ProxyHandler<Map<K, V>> = {
     get(target, prop, receiver) {
       // ── Internal symbols ─────────────────────────────────────────────────
@@ -139,7 +156,7 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
 
       // ── get ──────────────────────────────────────────────────────────────
       if (prop === "get") {
-        return function reactiveGet(key: K): V | undefined {
+        return (reactiveGet ??= function getMethod(key: K): V | undefined {
           const rawKey = unwrap(key);
           if (getActiveSub()) {
             profileSignalRead();
@@ -149,26 +166,26 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
           }
           profileSignalSkip();
           return wrap(rawTarget.get(rawKey));
-        };
+        });
       }
 
       // ── has ──────────────────────────────────────────────────────────────
       if (prop === "has") {
-        return function reactiveHas(key: K): boolean {
+        return (reactiveHas ??= function hasMethod(key: K): boolean {
           const rawKey = unwrap(key);
           if (getActiveSub()) {
             profileSignalRead();
-            getOrCreateKeySignal(rawKey)();
+            readSignal(getOrCreateKeySignal(rawKey));
           } else {
             profileSignalSkip();
           }
           return rawTarget.has(rawKey);
-        };
+        });
       }
 
       // ── set ──────────────────────────────────────────────────────────────
       if (prop === "set") {
-        return function reactiveSet(key: K, value: V): Map<K, V> {
+        return (reactiveSet ??= function setMethod(key: K, value: V): Map<K, V> {
           const rawKey = unwrap(key);
           const rawValue = unwrap(value);
           const isNew = !rawTarget.has(rawKey);
@@ -191,11 +208,11 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
                 s(rawValue);
               }
               // Ensure $VERSION and $OWN_KEYS signals exist before bumping.
-              const nodes = getNodes(target);
+              const nodes = getNodes(rawTarget);
               getNode(nodes, $VERSION, 0);
               getNode(nodes, $OWN_KEYS, 0);
-              bumpOwnKeys(target);
-              bumpVersionSignal(target);
+              bumpOwnKeys(rawTarget);
+              bumpVersionSignal(rawTarget);
             } finally {
               endBatch();
             }
@@ -208,13 +225,13 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
             }
           }
 
-          return receiver;
-        };
+          return proxy;
+        });
       }
 
       // ── delete ───────────────────────────────────────────────────────────
       if (prop === "delete") {
-        return function reactiveDelete(key: K): boolean {
+        return (reactiveDelete ??= function deleteMethod(key: K): boolean {
           const rawKey = unwrap(key);
           if (!rawTarget.has(rawKey)) return false;
 
@@ -229,18 +246,18 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
               profileSignalWrite();
               s(void 0 as V | undefined);
             }
-            bumpOwnKeys(target);
-            bumpVersionSignal(target);
+            bumpOwnKeys(rawTarget);
+            bumpVersionSignal(rawTarget);
           } finally {
             endBatch();
           }
           return true;
-        };
+        });
       }
 
       // ── clear ────────────────────────────────────────────────────────────
       if (prop === "clear") {
-        return function reactiveClear(): void {
+        return (reactiveClear ??= function clearMethod(): void {
           if (rawTarget.size === 0) return;
 
           const existingKeys = [...rawTarget.keys()];
@@ -259,42 +276,42 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
               }
             }
 
-            bumpOwnKeys(target);
-            bumpVersionSignal(target);
+            bumpOwnKeys(rawTarget);
+            bumpVersionSignal(rawTarget);
           } finally {
             endBatch();
           }
-        };
+        });
       }
 
       // ── forEach ──────────────────────────────────────────────────────────
       if (prop === "forEach") {
-        return function reactiveForEach(
+        return (reactiveForEach ??= function forEachMethod(
           callbackFn: (value: V, key: K, map: Map<K, V>) => void,
         ): void {
-          trackOwnKeys(target);
+          trackOwnKeys(rawTarget);
           for (const [k, v] of rawTarget.entries()) {
             if (getActiveSub()) {
               profileSignalRead();
-              getOrCreateKeySignal(k)();
+              readSignal(getOrCreateKeySignal(k));
             }
-            callbackFn(wrap(v), wrap(k), receiver);
+            callbackFn(wrap(v), wrap(k), proxy);
           }
-        };
+        });
       }
 
       // ── entries / Symbol.iterator ─────────────────────────────────────────
       if (prop === "entries" || prop === Symbol.iterator) {
-        return function* reactiveEntries(): IterableIterator<[K, V]> {
-          trackOwnKeys(target);
+        return (reactiveEntries ??= function* entriesMethod(): IterableIterator<[K, V]> {
+          trackOwnKeys(rawTarget);
           for (const [k, v] of rawTarget.entries()) {
             if (getActiveSub()) {
               profileSignalRead();
-              getOrCreateKeySignal(k)();
+              readSignal(getOrCreateKeySignal(k));
             }
             yield [wrap(k), wrap(v)];
           }
-        };
+        });
       }
 
       // ── keys ─────────────────────────────────────────────────────────────
@@ -302,26 +319,26 @@ export function createReactiveMap<K, V>(rawTarget: Map<K, V>): Map<K, V> {
       // subscribe to per-key value signals, or effects iterating only keys
       // would re-run on every value change.
       if (prop === "keys") {
-        return function* reactiveKeys(): IterableIterator<K> {
-          trackOwnKeys(target);
+        return (reactiveKeys ??= function* keysMethod(): IterableIterator<K> {
+          trackOwnKeys(rawTarget);
           for (const k of rawTarget.keys()) {
             yield wrap(k);
           }
-        };
+        });
       }
 
       // ── values ───────────────────────────────────────────────────────────
       if (prop === "values") {
-        return function* reactiveValues(): IterableIterator<V> {
-          trackOwnKeys(target);
+        return (reactiveValues ??= function* valuesMethod(): IterableIterator<V> {
+          trackOwnKeys(rawTarget);
           for (const [k, v] of rawTarget.entries()) {
             if (getActiveSub()) {
               profileSignalRead();
-              getOrCreateKeySignal(k)();
+              readSignal(getOrCreateKeySignal(k));
             }
             yield wrap(v);
           }
-        };
+        });
       }
 
       // ── Symbol.toStringTag ───────────────────────────────────────────────
@@ -352,6 +369,20 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
     return collectionProxyCache.get(rawTarget) as Set<T>;
   }
 
+  // Made on first use and reused, as for a Map.
+  /* eslint-disable unicorn/no-useless-undefined -- init-declarations wants a value */
+  let reactiveHas: ((value: T) => boolean) | undefined = undefined;
+  let reactiveAdd: ((value: T) => Set<T>) | undefined = undefined;
+  let reactiveDelete: ((value: T) => boolean) | undefined = undefined;
+  let reactiveClear: (() => void) | undefined = undefined;
+  let reactiveForEach:
+    | ((callbackFn: (value: T, value2: T, set: Set<T>) => void) => void)
+    | undefined = undefined;
+  let reactiveValues: (() => IterableIterator<T>) | undefined = undefined;
+  let reactiveKeys: (() => IterableIterator<T>) | undefined = undefined;
+  let reactiveEntries: (() => IterableIterator<[T, T]>) | undefined = undefined;
+  /* eslint-enable unicorn/no-useless-undefined */
+
   const handler: ProxyHandler<Set<T>> = {
     get(target, prop, receiver) {
       // ── Internal symbols ─────────────────────────────────────────────────
@@ -366,109 +397,109 @@ export function createReactiveSet<T>(rawTarget: Set<T>): Set<T> {
 
       // ── has ──────────────────────────────────────────────────────────────
       if (prop === "has") {
-        return function reactiveHas(value: T): boolean {
-          trackOwnKeys(target);
+        return (reactiveHas ??= function hasMethod(value: T): boolean {
+          trackOwnKeys(rawTarget);
           return rawTarget.has(unwrap(value));
-        };
+        });
       }
 
       // ── add ──────────────────────────────────────────────────────────────
       if (prop === "add") {
-        return function reactiveAdd(value: T): Set<T> {
+        return (reactiveAdd ??= function addMethod(value: T): Set<T> {
           const rawValue = unwrap(value);
-          if (rawTarget.has(rawValue)) return receiver;
+          if (rawTarget.has(rawValue)) return proxy;
 
           rawTarget.add(rawValue);
 
           startBatch();
           try {
-            const nodes = getNodes(target);
+            const nodes = getNodes(rawTarget);
             getNode(nodes, $VERSION, 0);
             getNode(nodes, $OWN_KEYS, 0);
-            bumpOwnKeys(target);
-            bumpVersionSignal(target);
+            bumpOwnKeys(rawTarget);
+            bumpVersionSignal(rawTarget);
           } finally {
             endBatch();
           }
 
-          return receiver;
-        };
+          return proxy;
+        });
       }
 
       // ── delete ───────────────────────────────────────────────────────────
       if (prop === "delete") {
-        return function reactiveDelete(value: T): boolean {
+        return (reactiveDelete ??= function deleteMethod(value: T): boolean {
           const rawValue = unwrap(value);
           if (!rawTarget.has(rawValue)) return false;
 
           rawTarget.delete(rawValue);
           startBatch();
           try {
-            bumpOwnKeys(target);
-            bumpVersionSignal(target);
+            bumpOwnKeys(rawTarget);
+            bumpVersionSignal(rawTarget);
           } finally {
             endBatch();
           }
           return true;
-        };
+        });
       }
 
       // ── clear ────────────────────────────────────────────────────────────
       if (prop === "clear") {
-        return function reactiveClear(): void {
+        return (reactiveClear ??= function clearMethod(): void {
           if (rawTarget.size === 0) return;
           rawTarget.clear();
           startBatch();
           try {
-            bumpOwnKeys(target);
-            bumpVersionSignal(target);
+            bumpOwnKeys(rawTarget);
+            bumpVersionSignal(rawTarget);
           } finally {
             endBatch();
           }
-        };
+        });
       }
 
       // ── forEach ──────────────────────────────────────────────────────────
       if (prop === "forEach") {
-        return function reactiveForEach(
+        return (reactiveForEach ??= function forEachMethod(
           callbackFn: (value: T, value2: T, set: Set<T>) => void,
         ): void {
-          trackOwnKeys(target);
+          trackOwnKeys(rawTarget);
           for (const v of rawTarget.values()) {
-            callbackFn(wrap(v), wrap(v), receiver);
+            callbackFn(wrap(v), wrap(v), proxy);
           }
-        };
+        });
       }
 
       // ── values / Symbol.iterator ──────────────────────────────────────────
       if (prop === "values" || prop === Symbol.iterator) {
-        return function* reactiveValues(): IterableIterator<T> {
-          trackOwnKeys(target);
+        return (reactiveValues ??= function* valuesMethod(): IterableIterator<T> {
+          trackOwnKeys(rawTarget);
           for (const v of rawTarget.values()) {
             yield wrap(v);
           }
-        };
+        });
       }
 
       // ── keys ─────────────────────────────────────────────────────────────
       // Set.prototype.keys() is identical to values() per spec.
       if (prop === "keys") {
-        return function* reactiveKeys(): IterableIterator<T> {
-          trackOwnKeys(target);
+        return (reactiveKeys ??= function* keysMethod(): IterableIterator<T> {
+          trackOwnKeys(rawTarget);
           for (const v of rawTarget.values()) {
             yield wrap(v);
           }
-        };
+        });
       }
 
       // ── entries ───────────────────────────────────────────────────────────
       if (prop === "entries") {
-        return function* reactiveEntries(): IterableIterator<[T, T]> {
-          trackOwnKeys(target);
+        return (reactiveEntries ??= function* entriesMethod(): IterableIterator<[T, T]> {
+          trackOwnKeys(rawTarget);
           for (const v of rawTarget.values()) {
             yield [wrap(v), wrap(v)];
           }
-        };
+        });
       }
 
       // ── Symbol.toStringTag ───────────────────────────────────────────────

@@ -151,6 +151,10 @@ From `@supergrain/kernel`. Framework-agnostic primitives.
 
   > Like `computed`, for a getter that derives an **array** (`xs.filter(...).map(...)`). A plain computed hands back a fresh array on every re-run; `stableComputed` keeps one persistent reactive array and reconciles it in place, so the returned reference never changes, only the slots that actually changed notify, and an equal re-run doesn't propagate. The getter's transform must preserve order (`map`/`filter` — not `sort`).
 
+- `computedList(source, lookups?)` `.filter(fn)` `.map(fn)` `.groupBy(key)` `.orderBy(key, "asc" | "desc")` `.offset(n)` `.limit(n)`
+
+  > A filtered, mapped, sorted, windowed view of a reactive list, for when `stableComputed(() => xs.filter(...).sort(...).slice(...))` gets expensive. Each source row runs its steps in its own computed, so a change reruns the steps for the rows that read what changed, and the list moves only those rows with a binary search instead of filtering and sorting everything again. Changes to fields no step reads cost nothing. A step can read other docs from the store, which is how you join: `.map((task) => ({ task, owner: store.usersById[task.ownerId] }))`. To look docs up in a list instead of a keyed object, name it in `lookups` and use it in any step: `computedList(() => store.tasks, { users: () => store.users }).map((task, { users }) => ({ task, owner: users.get(task.ownerId) }))` finds users by `id` (or pass `{ from, key }` for another key). `get` finds the first doc with a key; `getAll` finds every doc with it, in source order, for one-to-many: `{ tasks: { from: () => store.tasks, key: (t: Task) => t.ownerId } }` then `tasks.getAll(user.id)` (annotate `key`'s parameter: TypeScript can't infer it from `from` across several named lookups). A lookup list can be any function, including one that filters the store right there. `.groupBy(key)` puts rows that share a key in one group, `{ key, rows }`, and the steps after it run once per group: `.groupBy((task) => task.ownerId).map(({ key, rows }) => ({ ownerId: key, open: rows.length }))`. Groups come in the order of their first row. The result is one stable reactive array; call the list in every reader rather than keeping the array it returned. It is pull-based, with no effects and nothing to dispose. Rows with equal sort keys keep source order; without `orderBy`, rows keep source order.
+
 - `reconcile(previous, next)`
 
   > Updates `previous` in place to equal `next`, writing only the fields that changed, and returns `previous`. Subscribers re-run only for fields that changed, and objects keep their identity. It is Solid's `reconcile` with `key: "id"`. Fields missing from `next` are deleted, and array items with the same `id` keep their object wherever they move. A value that isn't a plain object or array, or whose `id` changed, is replaced; when that's true of `previous` and `next` themselves, it changes nothing and returns `next` for you to store. Silo uses it whenever a new version of a loaded document arrives.
@@ -180,6 +184,8 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
 - `tracked(Component)`
 
   > Wraps a React component with per-component signal scoping. Only the signals read during render are tracked — when they change, only this component re-renders.
+  >
+  > A `computed`, `useComputed` or `computedList` the component reads keeps its cached value across re-renders.
 
 - `useComputed(() => expr, deps?)`
 
@@ -190,7 +196,7 @@ From `@supergrain/kernel/react`. React-specific hooks and components.
   > Shorthand for `useEffect(() => effect(fn), [])`. Runs a signal-tracked side effect that re-runs when tracked signals change and cleans up on unmount. Does **not** cause the component to re-render.
 
 - `<For each={array} parent={ref?}>{item => ...}</For>`
-  > Optimized list rendering. Tracks which items actually changed and only re-renders those. When a `parent` ref is provided, swaps use O(1) direct DOM moves instead of O(n) React reconciliation.
+  > Optimized list rendering. Re-renders when items are added, removed, replaced or moved, never for a change inside an item (the row that reads that field re-renders instead). Rows are keyed by item, so rows that only moved keep their components. When a `parent` ref is provided, swapping two items moves their DOM nodes directly instead of rendering.
 
 > React hooks for side effects (`useResource`, `useReactivePromise`, `useReactiveTask`, `useModifier`) live in [`@supergrain/husk/react`](../husk/README.md).
 
@@ -341,9 +347,10 @@ const App = tracked(() => {
 });
 ```
 
-- Tracks which items changed and only re-renders those
-- Optional `parent` ref enables O(1) direct DOM moves for swaps
-- Without `parent`, falls back to standard React reconciliation
+- A change inside an item re-renders only the row that reads it; `For` itself re-renders only when items are added, removed, replaced or moved
+- Rows are keyed by item (`item.id`), so when items shift — one leaves the top of a sorted list — the rows that only moved don't re-render
+- Optional `parent` ref: swapping two items moves their two DOM nodes directly, with no render. Children must then be `tracked()` components
+- Pairs with `computedList` for filtered, sorted lists: `<For each={openTasks()}>`
 
 ### Synchronous Writes and Batching
 
