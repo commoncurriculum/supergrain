@@ -37,7 +37,7 @@ import { notifyArrayMutation } from "./write";
 /** The method as the target holds it, e.g. `Array.prototype.push`. */
 export type NativeArrayMethod = (...args: Array<unknown>) => unknown;
 
-type RawArrayMethod = (
+export type RawArrayMethod = (
   target: Array<unknown>,
   receiver: unknown,
   native: NativeArrayMethod,

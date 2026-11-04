@@ -2,6 +2,8 @@ import { getActiveSub } from "alien-signals";
 
 type Read = () => unknown;
 
+const NO_READS: Array<Read | undefined> = [];
+
 /**
  * What a component's shown render read, so its effect can read it all again
  * when it fires. `tracked` keeps one per component.
@@ -15,8 +17,12 @@ type Read = () => unknown;
 export class RenderReads {
   /** The node the render in progress tracks into. A read under another node isn't noted. */
   node: ReturnType<typeof getActiveSub> = undefined;
-  /** The shown render's reads: the first `count` entries. Reused, never emptied. */
-  reads: Array<Read | undefined> = [];
+  /**
+   * The shown render's reads: the first `count` entries. Reused, never
+   * emptied. Starts as the shared empty list, which is never written: the
+   * first render that reads anything gives the component its own.
+   */
+  reads: Array<Read | undefined> = NO_READS;
   count = 0;
   /** Where the render in progress starts in `pending`. */
   from = 0;

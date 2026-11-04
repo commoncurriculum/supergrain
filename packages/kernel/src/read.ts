@@ -1,6 +1,6 @@
 import { getActiveSub } from "alien-signals";
 
-import { ARRAY_METHODS, type NativeArrayMethod } from "./array-methods";
+import { ARRAY_METHODS, type NativeArrayMethod, type RawArrayMethod } from "./array-methods";
 import { createReactiveMap, createReactiveSet } from "./collections";
 import {
   $HAS_FIELD_NODES,
@@ -135,13 +135,10 @@ const readHandler: Pick<
         if (getActiveSub()) {
           trackSelf(target);
         }
-        // Keep this branch to one lookup and one closure: the handler's shape
+        // Keep this branch to one lookup and one call: the handler's shape
         // is load-bearing (notes/failed-approaches/fast-push-bypass-proxy.md).
         const method = ARRAY_METHODS.get(prop);
-        if (method) {
-          return (...args: Array<unknown>) =>
-            method(target, receiver, value as NativeArrayMethod, args);
-        }
+        if (method) return boundMethod(method, target, receiver, value as NativeArrayMethod);
       }
       return value;
     }
@@ -185,6 +182,20 @@ const readHandler: Pick<
     return desc;
   },
 };
+
+/**
+ * The array method a read through the proxy returns. Made here, not in the
+ * `get` trap: a closure there would make V8 allocate a context for the
+ * trap's variables on every read, method or not.
+ */
+function boundMethod(
+  method: RawArrayMethod,
+  target: Array<unknown>,
+  receiver: unknown,
+  native: NativeArrayMethod,
+): (...args: Array<unknown>) => unknown {
+  return (...args) => method(target, receiver, native, args);
+}
 
 const handler: ProxyHandler<object> = {
   ...readHandler,
