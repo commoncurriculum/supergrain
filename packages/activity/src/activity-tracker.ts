@@ -69,7 +69,8 @@ export class ActivityTracker {
 
   private actor: ActorRefFromLogic<typeof activityMachine>;
   private domDetach: (() => void) | null = null;
-  private detachers: Array<() => void> = [];
+  /** This tracker's three chart subscriptions; released in `destroy()`. */
+  private readonly actorSubs: ReadonlyArray<{ unsubscribe(): void }>;
   private inputThrottleMs: number;
   private listeners = new Map<ActivityStatus, Set<ActivityEventHandler>>();
   private enteredAt = Date.now();
@@ -96,14 +97,11 @@ export class ActivityTracker {
       this.enteredAt = at;
       this.dispatch({ fromState, toState, at, durationMs });
     };
-    const subs = [
+    this.actorSubs = [
       this.actor.on("active", () => advance("active")),
       this.actor.on("idle", () => advance("idle")),
       this.actor.on("hidden", () => advance("hidden")),
     ];
-    this.detachers.push(() => {
-      for (const s of subs) s.unsubscribe();
-    });
 
     this.actor.start();
   }
@@ -132,11 +130,10 @@ export class ActivityTracker {
     const set = this.listeners.get(toState) ?? new Set<ActivityEventHandler>();
     this.listeners.set(toState, set);
     set.add(handler);
-    const detach = () => {
+    // `listeners` is the only registry; `destroy()` clears it.
+    return () => {
       set.delete(handler);
     };
-    this.detachers.push(detach);
-    return detach;
   }
 
   /** Attach DOM listeners (focus / blur / visibilitychange / 10 user events)
@@ -161,8 +158,11 @@ export class ActivityTracker {
   destroy(): void {
     this.domDetach?.();
     this.domDetach = null;
-    for (const d of this.detachers) d();
-    this.detachers = [];
+    for (const sub of this.actorSubs) sub.unsubscribe();
+    // Drop every subscriber outright. A destroyed tracker emits nothing, so a
+    // retained handler is pure memory — and clearing beats unsubscribing them
+    // one at a time.
+    this.listeners.clear();
     this.actor.stop();
   }
 }
