@@ -140,16 +140,24 @@ const MemoizedRow = memo<{
   );
 });
 
-// For Component implementation
-const For: FC<{
-  each: RowData[];
-  children: (item: RowData, index: number) => React.ReactElement;
-}> = ({ each, children }) => {
-  // Track that For itself rendered
-  renderCount++;
+// For Component implementation. It calls `children` during its own render,
+// so store reads made there (e.g. `store.selected`) subscribe this component,
+// not the parent. It must be tracked() or those reads go unobserved and a
+// selection change never re-renders the rows.
+const For = tracked(
+  ({
+    each,
+    children,
+  }: {
+    each: RowData[];
+    children: (item: RowData, index: number) => React.ReactElement;
+  }) => {
+    // Track that For itself rendered
+    renderCount++;
 
-  return <>{each.map((item, index) => children(item, index))}</>;
-};
+    return <>{each.map((item, index) => children(item, index))}</>;
+  },
+);
 
 // For Component with internal memoization attempt
 const OptimizedFor: FC<{
@@ -190,8 +198,10 @@ const OptimizedFor: FC<{
 };
 
 // Test Components
-const RegularMapComponent = tracked(({ store, updateStore }: { store: any; updateStore: any }) => {
-  const selectRow = (id: number) => updateStore({ $set: { selected: id } });
+const RegularMapComponent = tracked(({ store }: { store: any }) => {
+  const selectRow = (id: number) => {
+    store.selected = id;
+  };
 
   return (
     <table>
@@ -204,8 +214,10 @@ const RegularMapComponent = tracked(({ store, updateStore }: { store: any; updat
   );
 });
 
-const MemoizedMapComponent = tracked(({ store, updateStore }: { store: any; updateStore: any }) => {
-  const selectRow = (id: number) => updateStore({ $set: { selected: id } });
+const MemoizedMapComponent = tracked(({ store }: { store: any }) => {
+  const selectRow = (id: number) => {
+    store.selected = id;
+  };
 
   return (
     <table>
@@ -223,8 +235,10 @@ const MemoizedMapComponent = tracked(({ store, updateStore }: { store: any; upda
   );
 });
 
-const ForComponent = tracked(({ store, updateStore }: { store: any; updateStore: any }) => {
-  const selectRow = (id: number) => updateStore({ $set: { selected: id } });
+const ForComponent = tracked(({ store }: { store: any }) => {
+  const selectRow = (id: number) => {
+    store.selected = id;
+  };
 
   return (
     <table>
@@ -244,23 +258,23 @@ const ForComponent = tracked(({ store, updateStore }: { store: any; updateStore:
   );
 });
 
-const OptimizedForComponent = tracked(
-  ({ store, updateStore }: { store: any; updateStore: any }) => {
-    const selectRow = (id: number) => updateStore({ $set: { selected: id } });
+const OptimizedForComponent = tracked(({ store }: { store: any }) => {
+  const selectRow = (id: number) => {
+    store.selected = id;
+  };
 
-    return (
-      <table>
-        <tbody>
-          <OptimizedFor each={store.data} selected={store.selected}>
-            {(row, index, isSelected) => (
-              <Row key={row.id} item={row} isSelected={isSelected} onClick={selectRow} />
-            )}
-          </OptimizedFor>
-        </tbody>
-      </table>
-    );
-  },
-);
+  return (
+    <table>
+      <tbody>
+        <OptimizedFor each={store.data} selected={store.selected}>
+          {(row, index, isSelected) => (
+            <Row key={row.id} item={row} isSelected={isSelected} onClick={selectRow} />
+          )}
+        </OptimizedFor>
+      </tbody>
+    </table>
+  );
+});
 
 // --- Benchmark Implementation ---
 describe("For Component Analysis", () => {
@@ -281,19 +295,19 @@ describe("For Component Analysis", () => {
       resetRenderTracking();
 
       const data = buildData(100);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      const { container } = render(<RegularMapComponent store={store} updateStore={updateStore} />);
+      const { container } = render(<RegularMapComponent store={store} />);
 
       // Reset render count after initial render
       resetRenderTracking();
 
       // Select row 50
       act(() => {
-        updateStore({ $set: { selected: data[50].id } });
+        store.selected = data[50].id;
       });
 
       // Verify the selection worked
@@ -323,19 +337,17 @@ describe("For Component Analysis", () => {
       resetRenderTracking();
 
       const data = buildData(100);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      const { container } = render(
-        <MemoizedMapComponent store={store} updateStore={updateStore} />,
-      );
+      const { container } = render(<MemoizedMapComponent store={store} />);
 
       resetRenderTracking();
 
       act(() => {
-        updateStore({ $set: { selected: data[50].id } });
+        store.selected = data[50].id;
       });
 
       const selectedRow = container.querySelector("tbody tr:nth-child(51)");
@@ -363,17 +375,17 @@ describe("For Component Analysis", () => {
       resetRenderTracking();
 
       const data = buildData(100);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      const { container } = render(<ForComponent store={store} updateStore={updateStore} />);
+      const { container } = render(<ForComponent store={store} />);
 
       resetRenderTracking();
 
       act(() => {
-        updateStore({ $set: { selected: data[50].id } });
+        store.selected = data[50].id;
       });
 
       const selectedRow = container.querySelector("tbody tr:nth-child(51)");
@@ -404,15 +416,15 @@ describe("For Component Analysis", () => {
     "perf: regular map - 1000 rows select",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      const { container } = render(<RegularMapComponent store={store} updateStore={updateStore} />);
+      const { container } = render(<RegularMapComponent store={store} />);
 
       act(() => {
-        updateStore({ $set: { selected: data[500].id } });
+        store.selected = data[500].id;
       });
 
       const selectedRow = container.querySelector("tbody tr:nth-child(501)");
@@ -430,17 +442,15 @@ describe("For Component Analysis", () => {
     "perf: memoized rows - 1000 rows select",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      const { container } = render(
-        <MemoizedMapComponent store={store} updateStore={updateStore} />,
-      );
+      const { container } = render(<MemoizedMapComponent store={store} />);
 
       act(() => {
-        updateStore({ $set: { selected: data[500].id } });
+        store.selected = data[500].id;
       });
 
       const selectedRow = container.querySelector("tbody tr:nth-child(501)");
@@ -458,15 +468,15 @@ describe("For Component Analysis", () => {
     "perf: For component - 1000 rows select",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      const { container } = render(<ForComponent store={store} updateStore={updateStore} />);
+      const { container } = render(<ForComponent store={store} />);
 
       act(() => {
-        updateStore({ $set: { selected: data[500].id } });
+        store.selected = data[500].id;
       });
 
       const selectedRow = container.querySelector("tbody tr:nth-child(501)");
@@ -489,17 +499,17 @@ describe("For Component Analysis", () => {
     "scenario: regular map - 10 sequential selections",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      const { container } = render(<RegularMapComponent store={store} updateStore={updateStore} />);
+      const { container } = render(<RegularMapComponent store={store} />);
 
       // Perform 10 different selections
       for (let i = 0; i < 10; i++) {
         act(() => {
-          updateStore({ $set: { selected: data[i * 100].id } });
+          store.selected = data[i * 100].id;
         });
       }
 
@@ -519,18 +529,16 @@ describe("For Component Analysis", () => {
     "scenario: memoized rows - 10 sequential selections",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      const { container } = render(
-        <MemoizedMapComponent store={store} updateStore={updateStore} />,
-      );
+      const { container } = render(<MemoizedMapComponent store={store} />);
 
       for (let i = 0; i < 10; i++) {
         act(() => {
-          updateStore({ $set: { selected: data[i * 100].id } });
+          store.selected = data[i * 100].id;
         });
       }
 
@@ -549,16 +557,16 @@ describe("For Component Analysis", () => {
     "scenario: For component - 10 sequential selections",
     () => {
       const data = buildData(1000);
-      const [store, updateStore] = createReactive<AppState>({
+      const store = createReactive<AppState>({
         data,
         selected: null,
       });
 
-      const { container } = render(<ForComponent store={store} updateStore={updateStore} />);
+      const { container } = render(<ForComponent store={store} />);
 
       for (let i = 0; i < 10; i++) {
         act(() => {
-          updateStore({ $set: { selected: data[i * 100].id } });
+          store.selected = data[i * 100].id;
         });
       }
 
