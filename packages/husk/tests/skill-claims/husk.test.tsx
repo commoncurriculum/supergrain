@@ -25,8 +25,9 @@ describe("SKILL: reactivity comes from reading reactive state", () => {
     const viaProp: string[] = [];
     const viaState: string[] = [];
 
-    // Reads the prop directly — a prop is not reactive state, so there is
-    // nothing for the resource to subscribe to.
+    // Reads a prop SCALAR — a copied-out value, not reactive state, so there
+    // is nothing for the resource to subscribe to. Contrast the store-object
+    // case below, which does stay reactive.
     const ByProp = tracked(({ projectId }: { projectId: string }) => {
       const tasks = useReactivePromise(async () => {
         viaProp.push(projectId);
@@ -69,6 +70,37 @@ describe("SKILL: reactivity comes from reading reactive state", () => {
     expect(screen.getByTestId("p").textContent).toBe("tasks-for-a");
     // The reactive-state one tracked the change.
     expect(viaState).toEqual(["a", "b"]);
+  });
+});
+
+describe('SKILL: "A store object prop stays reactive"', () => {
+  it("a field read THROUGH an object prop re-runs the captured callback", async () => {
+    // The counterpart to the prop-scalar test above, and the half that had no
+    // coverage: `useReactivePromise` captures its callback once, but the
+    // closure holds the store object, so reading a field on it subscribes
+    // normally and mutating that field re-runs the fetch.
+    const store = createReactive({ project: { id: "a" } });
+    const seen: string[] = [];
+
+    const Tasks = tracked(({ project }: { project: { id: string } }) => {
+      const tasks = useReactivePromise(async () => {
+        const id = project.id; // reactive read through the prop object
+        seen.push(id);
+        return `tasks-for-${id}`;
+      });
+      return <div data-testid="o">{tasks.data ?? "…"}</div>;
+    });
+
+    render(<Tasks project={store.project} />);
+    await waitFor(() => expect(screen.getByTestId("o").textContent).toBe("tasks-for-a"));
+
+    await act(async () => {
+      store.project.id = "b";
+    });
+
+    await waitFor(() => expect(screen.getByTestId("o").textContent).toBe("tasks-for-b"));
+    await settle();
+    expect(seen).toEqual(["a", "b"]);
   });
 });
 
