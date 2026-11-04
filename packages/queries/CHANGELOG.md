@@ -1,5 +1,17 @@
 # @supergrain/queries
 
+## 7.6.0
+
+### Patch Changes
+
+- Updated dependencies [d62170d]
+- Updated dependencies [c7bc342]
+- Updated dependencies [c7bc342]
+- Updated dependencies [c7bc342]
+- Updated dependencies [c7bc342]
+  - @supergrain/kernel@7.6.0
+  - @supergrain/silo@7.6.0
+
 ## 7.5.0
 
 ### Minor Changes
