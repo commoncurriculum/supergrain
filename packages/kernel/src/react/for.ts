@@ -3,7 +3,7 @@
  */
 import { effect, unwrap, $TRACK } from "@supergrain/kernel";
 import { setActiveSub, trackArrayElements, type ReactiveTagged } from "@supergrain/kernel/internal";
-import React, { useEffect, useLayoutEffect, useReducer, useRef } from "react";
+import React, { memo, useEffect, useLayoutEffect, useReducer, useRef } from "react";
 
 import { tracked } from "./tracked";
 
@@ -12,7 +12,7 @@ const useIsomorphicLayoutEffect = globalThis.document === undefined ? useEffect 
 /* c8 ignore stop */
 
 type Children = (item: unknown, index: number) => React.ReactNode;
-/** Parent mode: the element `children` returned for each raw item. */
+/** The element `children` returned for each raw item. */
 type Elements = Map<unknown, React.ReactNode>;
 
 interface ForProps<T> {
@@ -65,8 +65,37 @@ const ForItem = tracked(
  * </For>
  * ```
  */
-export const For = tracked((props: ForProps<unknown>) => {
-  const { each, children, fallback, parent } = props;
+export const For = memo((props: ForProps<unknown>) =>
+  props.parent
+    ? React.createElement(ForInParent, props as ParentProps)
+    : React.createElement(ForRows, props),
+) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;
+
+/** Without `parent`: one tracked row component per item. */
+const ForRows = tracked(({ each, children, fallback }: ForProps<unknown>) => {
+  // Structure (push, splice, length, a new array) and replacing an item in
+  // place both re-render the list.
+  void (each as ReactiveTagged)?.[$TRACK];
+  const raw = unwrap(each);
+  if (!raw || raw.length === 0) return fallback ?? null;
+  trackArrayElements(raw);
+  // Item reads below are untracked: the list already follows the array as a
+  // whole, and per-index subscriptions would only add N links.
+  const outer = setActiveSub(undefined);
+  try {
+    return rowComponents(raw, each, children);
+  } finally {
+    setActiveSub(outer);
+  }
+});
+
+type ParentProps = ForProps<unknown> & { parent: React.RefObject<Element | null> };
+
+/**
+ * With `parent`: the elements `children` returned, reused per item. A swap
+ * moves the two DOM nodes; any other change re-renders the list.
+ */
+const ForInParent = tracked(({ each, children, fallback, parent }: ParentProps) => {
   const [, rerender] = useReducer(increment, 0);
   const stateRef = useRef<ForState | null>(null);
   const state: ForState = (stateRef.current ??= {
@@ -76,20 +105,19 @@ export const For = tracked((props: ForProps<unknown>) => {
     swappedIn: null,
   });
 
-  // Structure (push, splice, length, a new array) always re-renders `For`.
+  // Structure (push, splice, length, a new array) re-renders the list. The
+  // effect below decides the rest: a swap moves DOM nodes, anything else
+  // re-renders.
   void (each as ReactiveTagged)?.[$TRACK];
   const raw = unwrap(each);
-  // Without `parent`, so does replacing an item in place. With `parent`, the
-  // effect below decides: a swap moves DOM nodes, anything else re-renders.
-  if (!parent && raw) trackArrayElements(raw);
 
   useIsomorphicLayoutEffect(() => {
     // The items in the order the DOM shows them. A swap updates it in place;
-    // any other change re-renders `For`, which runs this effect again.
+    // any other change re-renders the list, which runs this effect again.
     const { shown } = state;
     // React has placed the rows: any swaps before this were undone first.
     forgetSwaps(state);
-    if (!parent || !raw || raw.length === 0) {
+    if (!raw || raw.length === 0) {
       shown.length = 0;
       return;
     }
@@ -150,11 +178,10 @@ export const For = tracked((props: ForProps<unknown>) => {
     return fallback ?? null;
   }
 
-  // Item reads below are untracked: `For` already follows the array as a
+  // Item reads below are untracked: the list already follows the array as a
   // whole, and per-index subscriptions would only add N links.
   const outer = setActiveSub(undefined);
   try {
-    if (!parent) return rowComponents(raw, each, children);
     // The guard puts back swapped nodes when React commits this render.
     return React.createElement(
       React.Fragment,
@@ -165,24 +192,24 @@ export const For = tracked((props: ForProps<unknown>) => {
   } finally {
     setActiveSub(outer);
   }
-}) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;
+});
 
 const increment = (n: number): number => n + 1;
 
-/** What a `For` keeps between renders, so a render allocates no more than it must. */
+/** What a list with `parent` keeps between renders, so a render allocates no more than it must. */
 interface ForState {
-  /** Parent mode: the element `children` returned for each raw item. */
+  /** The element `children` returned for each raw item. */
   elements: Elements;
-  /** Parent mode: the items in the order the DOM shows them. */
+  /** The items in the order the DOM shows them. */
   shown: Array<unknown>;
-  /** Parent mode: the row nodes in the order React last placed them, once a swap moved one. */
+  /** The row nodes in the order React last placed them, once a swap moved one. */
   placed: Array<Element>;
   /** The element a swap moved rows in since React last placed them, or null if none did. */
   swappedIn: Element | null;
 }
 
 /**
- * Parent mode: React still has the rows in the order of its last render, and
+ * With `parent`: React still has the rows in the order of its last render, and
  * places them by that order. Before it changes the DOM, put back the nodes
  * swapped since. `getSnapshotBeforeUpdate` runs then, in the commit, and
  * never for a render React drops (one that suspended, say), which must leave
@@ -239,7 +266,7 @@ function swapElements(x: Element, y: Element): void {
 }
 
 /**
- * Parent mode: `children(item)` once per item, reused for as long as the item
+ * With `parent`: `children(item)` once per item, reused for as long as the item
  * stays in the list, so React skips rows whose element didn't change.
  */
 function reusedElements(
