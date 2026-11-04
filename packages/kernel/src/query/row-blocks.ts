@@ -1,7 +1,6 @@
-/* eslint-disable typescript-eslint/prefer-for-of, prefer-destructuring --
- * Index loops and indexed tuple reads on purpose: in this hot path `for…of`
- * and `[a, b] = tuple` each allocated an iterator per loop (measured with a
- * heap profile of the list bench).
+/* eslint-disable typescript-eslint/prefer-for-of --
+ * Index loops on purpose: in this hot path `for…of` allocated an iterator
+ * per loop (measured with a heap profile of the list bench).
  */
 import { rethrowingComputed, settle, type Caught } from "../rethrowing-computed";
 
@@ -34,7 +33,10 @@ export interface Row<T, O, K> {
 }
 
 /** A row whose result changed since it was last filed, and its new result. */
-export type Change<T, O, K> = readonly [row: Row<T, O, K>, next: RowResult<O, K>];
+export interface Change<T, O, K> {
+  readonly row: Row<T, O, K>;
+  readonly next: RowResult<O, K>;
+}
 
 /**
  * Up to `GROUP` blocks with one computed over their changes. The list reads
@@ -95,7 +97,7 @@ function createBlock<T, O, K>(rows: ReadonlyArray<Row<T, O, K>>): Block<T, O, K>
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i]!;
         const result = settle(row.result);
-        if (result !== row.applied) (changes ??= []).push([row, result]);
+        if (result !== row.applied) (changes ??= []).push({ row, next: result });
       }
       return changes ?? NO_CHANGES;
     }),
@@ -128,7 +130,7 @@ function createGroup<T, O, K>(blocks: ReadonlyArray<Block<T, O, K>>): BlockGroup
 
 function hasUnfiled<T, O, K>(changes: ReadonlyArray<Change<T, O, K>>): boolean {
   for (let i = 0; i < changes.length; i++)
-    if (changes[i]![0].applied !== changes[i]![1]) return true;
+    if (changes[i]!.row.applied !== changes[i]!.next) return true;
   return false;
 }
 

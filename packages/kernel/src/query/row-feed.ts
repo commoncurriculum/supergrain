@@ -41,14 +41,14 @@ export function createRowFeed<T extends object, O, K>(
   function collect(next: Structure<T, O, K>): void {
     const { removed, blockGroups } = next;
     for (let i = 0; i < removed.length; i++) {
-      if (removed[i]!.applied.member) changes.push([removed[i]!, OUTSIDE]);
+      if (removed[i]!.applied.member) changes.push({ row: removed[i]!, next: OUTSIDE });
     }
     for (let g = 0; g < blockGroups.length; g++) {
       const groupChanges = pending.at(g);
       if (groupChanges !== blockGroups[g]!.applied) {
         for (let i = 0; i < groupChanges.length; i++) {
           const change = groupChanges[i]!;
-          if (change[0].applied !== change[1]) changes.push(change);
+          if (change.row.applied !== change.next) changes.push(change);
         }
       }
     }
@@ -89,7 +89,7 @@ export function createRowFeed<T extends object, O, K>(
 /** File every change as is: for a caller that then rebuilds from the rows' filed results. */
 export function fileAll<T, O, K>(changes: Scratch<Change<T, O, K>>): void {
   for (let i = 0; i < changes.size; i++) {
-    const change = changes.at(i);
-    change[0].applied = change[1]; // eslint-disable-line prefer-destructuring -- destructuring walks an iterator
+    const { row, next } = changes.at(i);
+    row.applied = next;
   }
 }

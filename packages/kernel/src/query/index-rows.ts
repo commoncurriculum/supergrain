@@ -1,10 +1,9 @@
 import type { Change, Row, RowResult } from "./row-blocks";
 import type { Structure } from "./source-rows";
 
-/* eslint-disable typescript-eslint/prefer-for-of, prefer-destructuring --
- * Index loops and indexed tuple reads on purpose: in this hot path `for…of`
- * and `[a, b] = tuple` each allocated an iterator per loop (measured with a
- * heap profile of the list bench).
+/* eslint-disable typescript-eslint/prefer-for-of --
+ * Index loops on purpose: in this hot path `for…of` allocated an iterator
+ * per loop (measured with a heap profile of the list bench).
  */
 import { endBatch, signal, startBatch } from "alien-signals";
 
@@ -109,10 +108,7 @@ export function createIndex<T extends object, O, K>(
         refileAll(next.list);
       } else {
         for (let i = 0; i < changes.size; i++) {
-          // Indexed, not destructured: destructuring walks an iterator.
-          const change = changes.at(i);
-          const row = change[0];
-          const result = change[1];
+          const { row, next: result } = changes.at(i);
           if (row.applied.member) unfile(row, row.applied.key);
           row.applied = result;
           if (result.member) fileRow(row, result.key);
