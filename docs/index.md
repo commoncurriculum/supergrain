@@ -21,6 +21,7 @@ layout: page
         <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">Direct mutation&nbsp;—</span> <code>store.x = 1</code></span></li>
         <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">Deep reactivity&nbsp;—</span> <code>store.a.b[0].c</code>, or whatever nested shape you want</span></li>
         <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">TypeScript inference&nbsp;—</span> no generics, no casts</span></li>
+        <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">Live queries&nbsp;—</span> filter, join, sort, update per row</span></li>
         <li><span class="yep-check">✓</span><span class="yep-body"><span class="yep-label">Works with SSR&nbsp;—</span> Next.js, RSC, React 19</span></li>
         <li><span class="yep-check">✓</span><span class="yep-body">3.6 kB min+brotli (including core)</span></li>
       </ul>
@@ -129,6 +130,70 @@ const TodoList = tracked(() => {
   <p class="benchmark-footnote">
     Source: <a href="https://krausest.github.io/js-framework-benchmark/current.html" target="_blank" rel="noopener">js-framework-benchmark by Stefan Krause</a>. Weighted geometric mean across create, update, replace, swap, select, remove, and clear scenarios.
   </p>
+</section>
+
+<section class="lq-section">
+  <div class="benchmark-header">
+    <p class="benchmark-eyebrow">New in 7.6 · <code>computedList</code></p>
+    <h2 class="benchmark-title">Live queries that only touch what changed.</h2>
+    <p class="benchmark-sub">Filter, join, group, sort and page a list from your store. When one task changes, <code>computedList</code> reruns the steps for that one task and moves only its row. It doesn't filter and sort the whole list again.</p>
+  </div>
+  <div class="lq-grid">
+  <div class="hero-code lq-code">
+
+```tsx
+import { computedList } from "@supergrain/kernel";
+import { tracked, For } from "@supergrain/kernel/react";
+
+// Top 10 open tasks, each with its owner.
+const openTasks = computedList(() => store.tasks, { users: () => store.users })
+  .filter((task) => !task.done)
+  .map((task, { users }) => ({
+    task,
+    owner: users.get(task.ownerId),
+  }))
+  .orderBy((row) => row.task.priority)
+  .limit(10);
+
+const OpenTasks = tracked(() => (
+  <For each={openTasks()}>
+    {({ task, owner }) => (
+      <li>
+        {task.title} ({owner?.name})
+      </li>
+    )}
+  </For>
+));
+```
+
+  </div>
+  <div class="lq-results">
+    <div class="lq-headline">
+      <div class="lq-headline-row">
+        <span class="lq-headline-label"><code>stableComputed</code></span>
+        <span class="lq-headline-value lq-slow">~10 ms</span>
+      </div>
+      <div class="lq-headline-row">
+        <span class="lq-headline-label"><code>computedList</code></span>
+        <span class="lq-headline-value lq-fast">~0.014 ms</span>
+      </div>
+      <p class="lq-headline-note">Mark one task done, then read the list. 10,000 tasks.</p>
+    </div>
+    <table class="lq-table">
+      <thead>
+        <tr><th>Change (10,000 tasks)</th><th>vs <code>stableComputed</code></th><th>vs TanStack DB</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Complete a task outside the top 10</td><td>854x</td><td>310x</td></tr>
+        <tr><td>Move a task inside the sorted list</td><td>713x</td><td>636x</td></tr>
+        <tr><td>Add or remove a task</td><td>430x</td><td>165x</td></tr>
+        <tr><td>Join: add or remove a task</td><td>368x</td><td>7x</td></tr>
+        <tr><td>Join: deactivate a user who owns tasks</td><td>15x</td><td>1.3x</td></tr>
+      </tbody>
+    </table>
+    <p class="benchmark-footnote">How much faster <code>computedList</code> is, for one change followed by one read. Measured in Node with the kernel's <a href="https://github.com/commoncurriculum/supergrain/blob/main/packages/kernel/benchmarks/computed-list.bench.ts" target="_blank" rel="noopener"><code>computed-list.bench.ts</code></a>, one run on one machine, so read the ratios as rough.</p>
+  </div>
+  </div>
 </section>
 
 <div class="features-strip">

@@ -4,7 +4,7 @@
 
 Reactive state management for React — with an API query layer built on top.
 
-- **[@supergrain/kernel](./packages/kernel)** is the state library. Read and mutate plain objects; only the components that actually touched the changed property re-render.
+- **[@supergrain/kernel](./packages/kernel)** is the state library. Read and mutate plain objects; only the components that actually touched the changed property re-render. `computedList` adds live queries (filter, join, sort, page) that update per row instead of rerunning over the whole list.
 - **[@supergrain/husk](./packages/husk)** is the side-effects layer. `resource`, `reactivePromise`, `reactiveTask`, and `modifier` — reactive-function-with-cleanup primitives for async fetches, subscriptions, observers, and DOM behaviors.
 - **[@supergrain/silo](./packages/silo)** is an API query layer built on top. Request-batched by default, Suspense-compatible. Fetched documents live in the same reactive graph as the rest of your state.
 
@@ -44,6 +44,54 @@ Click a todo and only that one `<li>` re-renders. Not the list. Not the siblings
 `useReactive` is for component-scoped state; `createStoreContext` is for app-wide state with a Provider. Writes are synchronous (read your own writes immediately); deep mutations (`store.org.teams[0].active = true`) are tracked at any nesting depth.
 
 [Full kernel docs →](./packages/kernel/README.md)
+
+### Live queries: `computedList`
+
+Filter, join, group, sort and page a list from your store. The result stays up to date, and each change costs only the rows it touched, not the whole list.
+
+```tsx
+import { computedList } from "@supergrain/kernel";
+import { tracked, For } from "@supergrain/kernel/react";
+
+// Top 10 open tasks, each with its owner, sorted by priority.
+const openTasks = computedList(() => store.tasks, { users: () => store.users })
+  .filter((task) => !task.done)
+  .map((task, { users }) => ({ task, owner: users.get(task.ownerId) }))
+  .orderBy((row) => row.task.priority)
+  .limit(10);
+
+const OpenTasks = tracked(() => (
+  <For each={openTasks()}>
+    {({ task, owner }) => (
+      <li>
+        {task.title} ({owner?.name})
+      </li>
+    )}
+  </For>
+));
+```
+
+Mark one task done and `computedList` reruns the steps for that one task, then moves it out of the list. The usual way to write this, `stableComputed(() => tasks.filter(...).sort(...).slice(...))`, filters and sorts all of the tasks again on every change.
+
+With 10,000 tasks, one change followed by one read:
+
+| Change                                 | vs `stableComputed` | vs TanStack DB live query |
+| -------------------------------------- | ------------------: | ------------------------: |
+| Complete a task outside the top 10     |         854x faster |               310x faster |
+| Move a task inside the sorted list     |         713x faster |               636x faster |
+| Add or remove a task                   |         430x faster |               165x faster |
+| Join: add or remove a task             |         368x faster |                 7x faster |
+| Join: deactivate a user who owns tasks |          15x faster |               1.3x faster |
+
+Completing one task goes from about 10 ms to about 0.014 ms. Measured in Node with [`computed-list.bench.ts`](./packages/kernel/benchmarks/computed-list.bench.ts), one run on one machine, so read the ratios as rough.
+
+- `.filter`, `.map`, `.orderBy`, `.offset` and `.limit`, chained in any order.
+- Joins: a step can read other docs from the store, or look them up by key with `get(key)` (one doc) or `getAll(key)` (one-to-many).
+- `.groupBy(key)` groups rows, and a change moves one row between groups instead of regrouping everything.
+- Pass it to `<For>` and only the rows that changed re-render.
+- No effects and nothing to dispose. With silo, `computedList(() => store.findAllInMemory("task"))` queries every task you have loaded.
+
+[`computedList` API →](./packages/kernel/README.md#core)
 
 ## Queries: `@supergrain/silo`
 
@@ -200,6 +248,7 @@ The key win over hand-rolling with `useState` + `useEffect` + `useRef` + `AbortC
 | "Behavior attached to a specific DOM element."           | `modifier` / `useModifier`               | click-outside, focus trap, autofocus, ResizeObserver           |
 | "A reactive side effect, no element."                    | `useSignalEffect`                        | syncing a signal to `document.title`, logging                  |
 | "A derived value."                                       | `computed` / `useComputed`               | filtered list length, total cost                               |
+| "A filtered, joined or sorted list that stays current."  | `computedList`                           | top 10 open tasks with their owners                            |
 
 ## Suspense
 
