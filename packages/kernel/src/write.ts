@@ -53,17 +53,9 @@ function bumpElementsSignal(nodes: DataNodes | undefined): void {
 
 export function setProperty(target: any, key: PropertyKey, value: any): void {
   if (Array.isArray(target)) {
-    const index = key === "length" ? -1 : arrayIndex(key);
-    if (key === "length" || index !== -1) {
-      // A write can change the indices from the lower of the old length and
-      // the written index (or new length) on: past the end it leaves holes.
-      const oldLength = target.length;
-      const at = key === "length" ? Number(value) : index;
-      writeArray(target, Math.min(at, oldLength), key === "length" ? oldLength : at + 1, () => {
-        (target as unknown as Record<PropertyKey, unknown>)[key] = value;
-      });
-      return;
-    }
+    if (key === "length") return writeLength(target, value);
+    const index = arrayIndex(key);
+    if (index !== -1) return writeIndex(target, index, value);
   }
   const hadKey = Object.hasOwn(target, key);
   const oldValue = target[key];
@@ -83,12 +75,7 @@ export function deleteProperty(target: any, key: PropertyKey): void {
   if (!Object.hasOwn(target, key)) return;
   if (Array.isArray(target)) {
     const index = arrayIndex(key);
-    if (index !== -1) {
-      writeArray(target, index, index + 1, () => {
-        delete target[index];
-      });
-      return;
-    }
+    if (index !== -1) return writeIndex(target, index, HOLE);
   }
   delete target[key];
   bumpVersion(target);
@@ -103,15 +90,26 @@ export function deleteProperty(target: any, key: PropertyKey): void {
   bumpOwnKeysSignal(target, nodes);
 }
 
-/**
- * Run `write` on array `target`, then log and notify what it changed. The
- * write can only change indices from `from`, up to `end` or the larger of the
- * old and new lengths.
- */
-function writeArray(target: Array<unknown>, from: number, end: number, write: () => void): void {
+/** What `writeIndex` writes to delete an item, leaving a hole. */
+const HOLE: unique symbol = Symbol("hole");
+
+/** Write `value` at `index` of array `target` (or delete it, for `HOLE`), then log and notify. */
+function writeIndex(target: Array<unknown>, index: number, value: unknown): void {
   const oldLength = target.length;
-  const replaced = target.slice(from, Math.max(end, from));
-  write();
+  // Past the end, the write also leaves holes from the old end on.
+  const from = Math.min(index, oldLength);
+  const replaced = target.slice(from, index + 1);
+  if (value === HOLE) delete target[index];
+  else target[index] = value;
+  notifyArrayMutation(target, from, replaced, oldLength);
+}
+
+/** Set array `target`'s `length`, then log and notify. */
+function writeLength(target: Array<unknown>, length: unknown): void {
+  const oldLength = target.length;
+  const from = Math.min(Number(length), oldLength);
+  const replaced = target.slice(from, oldLength);
+  (target as { length: unknown }).length = length;
   notifyArrayMutation(target, from, replaced, oldLength);
 }
 
