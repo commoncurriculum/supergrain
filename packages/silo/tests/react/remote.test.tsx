@@ -188,9 +188,10 @@ describe("useRemoteQuery", () => {
     expect(server.count(1)).toBe(1);
 
     // Timers never fire early but can fire late on a loaded machine, so check
-    // a lower bound on when the result goes, not a window around it.
-    unmount();
+    // a lower bound on when the result goes, not a window around it. The
+    // timer starts inside unmount(), so the clock is read before it.
     const unmountedAt = performance.now();
+    unmount();
     await wait(0);
     expect(store.find(summaryQuery, body(1)).value?.groupId).toBe(1);
 
