@@ -89,10 +89,11 @@ export interface StoreHooks<M extends DocumentTypes> {
    * cache being settled, not on dependent effects/renders having run yet.
    *
    * Receives the `type` and the **doc that was actually stored**, the same
-   * reference as `unwrap(store.findInMemory(type, doc.id))`. This is the raw target, not
-   * the reactive proxy — treat it as read-only; mutating it bypasses
-   * reactivity. The return value is ignored. Use it to mirror the document into
-   * another store, update a derived index, or emit telemetry.
+   * reactive document `store.findInMemory(type, doc.id)` returns: a write to it
+   * notifies like any other write. The hook runs untracked, so its reads never
+   * subscribe the effect that called `insertDocument`. The return value is
+   * ignored. Use it to mirror the document into another store, update a
+   * derived index, or emit telemetry.
    *
    * A throw here is **isolated**: it is reported to the store's `onError` sink
    * and otherwise swallowed, so a failing observer never corrupts the commit or
