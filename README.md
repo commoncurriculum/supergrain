@@ -4,7 +4,7 @@
 
 Reactive state management for React — with an API query layer built on top.
 
-- **[@supergrain/kernel](./packages/kernel)** is the state library. Read and mutate plain objects; only the components that actually touched the changed property re-render.
+- **[@supergrain/kernel](./packages/kernel)** is the state library. Read and mutate plain objects; only the components that actually touched the changed property re-render. `computedList` adds live queries (filter, join, group, sort, page) that redo only the rows a change touched.
 - **[@supergrain/husk](./packages/husk)** is the side-effects layer. `resource`, `reactivePromise`, `reactiveTask`, and `modifier` — reactive-function-with-cleanup primitives for async fetches, subscriptions, observers, and DOM behaviors.
 - **[@supergrain/silo](./packages/silo)** is an API query layer built on top. Request-batched by default, Suspense-compatible. Fetched documents live in the same reactive graph as the rest of your state.
 
@@ -44,6 +44,84 @@ Click a todo and only that one `<li>` re-renders. Not the list. Not the siblings
 `useReactive` is for component-scoped state; `createStoreContext` is for app-wide state with a Provider. Writes are synchronous (read your own writes immediately); deep mutations (`store.org.teams[0].active = true`) are tracked at any nesting depth.
 
 [Full kernel docs →](./packages/kernel/README.md)
+
+### Live queries: `computedList`
+
+Filter, join, group, sort and page a list from your store. When one item changes, `computedList` checks that one item and moves its row. It does not filter and sort the rest of the list again.
+
+Here is the same query written both ways:
+
+```tsx
+// Before: any change to any task filters all 10,000 tasks, sorts, and slices.
+const openTasks = stableComputed(() =>
+  store.tasks
+    .filter((task) => !task.done)
+    .sort((a, b) => a.priority - b.priority)
+    .slice(0, 10),
+);
+
+// After: a change reruns the steps for the one task it touched.
+const openTasks = computedList(() => store.tasks)
+  .filter((task) => !task.done)
+  .orderBy((task) => task.priority)
+  .limit(10);
+```
+
+Time for one change, then one read, with 10,000 tasks:
+
+| Change                             | `computedList` | `stableComputed` | TanStack DB |
+| ---------------------------------- | -------------: | ---------------: | ----------: |
+| Complete a task                    |       0.014 ms |          11.5 ms |      4.3 ms |
+| Move a task within the sorted list |       0.019 ms |          10.1 ms |      8.7 ms |
+| Add or remove a task               |       0.028 ms |          11.6 ms |      4.3 ms |
+| Change 100 tasks at once           |        0.67 ms |          12.0 ms |     10.6 ms |
+| Join to owners: complete a task    |       0.020 ms |          11.3 ms |    0.098 ms |
+| Join to owners: deactivate a user  |        0.65 ms |          10.4 ms |      1.3 ms |
+| Group by owner: complete a task    |       0.073 ms |           7.1 ms |     0.11 ms |
+| Build the list the first time      |          27 ms |            23 ms |       57 ms |
+
+A 60 fps frame is 16.7 ms. Completing one task with `stableComputed` uses two thirds of it; `computedList` uses less than a thousandth. Building the list the first time costs a little more, because `computedList` sets up one computed per task. Measured in Node with [`computed-list.bench.ts`](./packages/kernel/benchmarks/computed-list.bench.ts) (mean per change, one run on one machine). TanStack DB is 1.0 RC1 with B-tree indexes, writing as the server would.
+
+A full example, with a join and a component:
+
+```tsx
+import { createReactive, computedList } from "@supergrain/kernel";
+import { tracked, For } from "@supergrain/kernel/react";
+
+const store = createReactive({
+  users: [{ id: "u1", name: "Ada" }],
+  tasks: [{ id: 1, title: "Ship 7.6", done: false, priority: 1, ownerId: "u1" }],
+});
+
+// Top 10 open tasks, each with its owner.
+const openTasks = computedList(() => store.tasks, { users: () => store.users })
+  .filter((task) => !task.done)
+  .map((task, { users }) => ({ task, owner: users.get(task.ownerId) }))
+  .orderBy((row) => row.task.priority)
+  .limit(10);
+
+const OpenTasks = tracked(() => (
+  <For each={openTasks()}>
+    {({ task, owner }) => (
+      <li onClick={() => (task.done = true)}>
+        {task.title} ({owner?.name})
+      </li>
+    )}
+  </For>
+));
+```
+
+Click a task and it leaves the list. `computedList` reran the steps for that one task, and `<For>` removed its row.
+
+What else it does:
+
+- **Joins:** look up related docs by key in any step, with `users.get(task.ownerId)`, or all of them with `tasks.getAll(user.id)`.
+- **Groups:** `.groupBy((task) => task.ownerId)`. A change moves one row between groups instead of regrouping.
+- **Paging:** `.offset(20).limit(10)`. Pass a function instead of a number to make the page reactive.
+- **Silo:** `computedList(() => store.findAllInMemory("task"))` queries every task you have loaded.
+- **Nothing to clean up:** no effects and nothing to dispose. It is correct inside `batch()`.
+
+[`computedList` API →](./packages/kernel/README.md#core)
 
 ## Queries: `@supergrain/silo`
 
@@ -200,6 +278,7 @@ The key win over hand-rolling with `useState` + `useEffect` + `useRef` + `AbortC
 | "Behavior attached to a specific DOM element."           | `modifier` / `useModifier`               | click-outside, focus trap, autofocus, ResizeObserver           |
 | "A reactive side effect, no element."                    | `useSignalEffect`                        | syncing a signal to `document.title`, logging                  |
 | "A derived value."                                       | `computed` / `useComputed`               | filtered list length, total cost                               |
+| "A filtered, joined or sorted list that stays current."  | `computedList`                           | top 10 open tasks with their owners                            |
 
 ## Suspense
 
