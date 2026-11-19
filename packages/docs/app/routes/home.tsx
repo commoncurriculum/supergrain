@@ -3,7 +3,8 @@ import type { Route } from "./+types/home";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { CerealBowl, PIECE_COUNT } from "@/components/cereal-bowl";
+import { DemoControls } from "@/components/cereal-bowl";
+import { CerealBox } from "@/components/cereal-box";
 import { gitConfig } from "@/lib/shared";
 
 export function meta({}: Route.MetaArgs) {
@@ -31,11 +32,6 @@ const results = [
   { name: "valtio", score: 1.89 },
   { name: "redux", score: 1.98 },
 ];
-const baseline = 1.52;
-const axisMin = 1.4;
-const axisMax = 2.0;
-const pct = (score: number) => ((score - axisMin) / (axisMax - axisMin)) * 100;
-
 const ingredients = [
   {
     name: "kernel",
@@ -101,15 +97,11 @@ export default function Home() {
 
         <section className="sg-hero">
           <div className="sg-hero-text">
-            <h1>
-              <span>Super</span>
-              <span>grain</span>
-            </h1>
-            <p className="sg-ribbon">Reactive state for React</p>
-            <p className="sg-say">Change one value. One component re-renders.</p>
+            <h1>Change one value. One component re-renders.</h1>
             <p className="sg-sub">
-              Every piece in the bowl is its own component. One value changes every second or so.
-              Watch which pieces move, then switch to useState.
+              Supergrain is reactive state for React. Every piece in the bowl is its own component.
+              One value changes every second or so. Watch which piece moves, then switch to
+              useState.
             </p>
             <div className="sg-actions">
               <Link to="/docs" className="sg-button">
@@ -119,51 +111,12 @@ export default function Home() {
             </div>
           </div>
 
-          <CerealBowl />
+          <CerealBox />
 
-          <aside className="sg-facts" aria-label="Render facts">
-            <h2>Render Facts</h2>
-            <p>
-              Serving size: 1 changed value
-              <br />
-              Pieces in this bowl: {PIECE_COUNT}
-            </p>
-            <dl>
-              <div className="sg-facts-main">
-                <dt>Re-renders per serving</dt>
-                <dd>1</dd>
-              </div>
-              <div>
-                <dt>Reducers</dt>
-                <dd>0</dd>
-              </div>
-              <div>
-                <dt>Selectors</dt>
-                <dd>0</dd>
-              </div>
-              <div>
-                <dt>Generics to write</dt>
-                <dd>0</dd>
-              </div>
-              <div className="sg-facts-rule">
-                <dt>Benchmark score</dt>
-                <dd>1.52</dd>
-              </div>
-              <div className="sg-facts-sub">
-                <dt>plain useState</dt>
-                <dd>1.52</dd>
-              </div>
-              <div className="sg-facts-sub">
-                <dt>zustand</dt>
-                <dd>1.63</dd>
-              </div>
-              <div className="sg-facts-sub">
-                <dt>redux</dt>
-                <dd>1.98</dd>
-              </div>
-            </dl>
-            <p className="sg-facts-foot">Ingredients: kernel, husk, silo, queries, mill.</p>
-          </aside>
+          <div className="sg-table">
+            <p>Drag the box to turn it. The numbers are on the side.</p>
+            <DemoControls />
+          </div>
         </section>
       </div>
 
@@ -217,29 +170,24 @@ const TodoList = tracked(() => {
             better.
           </p>
         </div>
-        <div className="sg-chart" role="table" aria-label="js-framework-benchmark weighted scores">
-          <div
-            className="sg-chart-baseline"
-            style={{ "--p": pct(baseline) / 100 } as React.CSSProperties}
-          >
-            <span>React with no library, 1.52</span>
-          </div>
-          {results.map((r) => (
-            <div key={r.name} className={r.us ? "sg-bar sg-bar-us" : "sg-bar"} role="row">
-              <span className="sg-bar-name" role="cell">
-                {r.name}
-              </span>
-              <span className="sg-bar-track" role="cell">
-                <span className="sg-bar-fill" style={{ width: `${pct(r.score)}%` }} />
-              </span>
-              <span className="sg-bar-score" role="cell">
-                {r.score.toFixed(2)}
-              </span>
-            </div>
-          ))}
+        <div className="sg-shelf-wrap">
+          <ul className="sg-shelf">
+            {results.map((r) => (
+              <li key={r.name} className={r.us ? "sg-shelf-us" : undefined}>
+                <span className="sg-shelf-box">
+                  <span className="sg-shelf-name">{r.us ? "Supergrain" : r.name}</span>
+                  <span className="sg-shelf-bowl" />
+                </span>
+                <span className="sg-shelf-tag">
+                  <span>{r.us ? "same as no library" : "score"}</span>
+                  <b>{r.score.toFixed(2)}</b>
+                </span>
+              </li>
+            ))}
+          </ul>
           <p className="sg-chart-source">
             Weighted geometric mean across create, update, replace, swap, select, remove and clear.
-            The axis starts at 1.40. Source:{" "}
+            React with no state library scores 1.52. Source:{" "}
             <a href="https://krausest.github.io/js-framework-benchmark/current.html">
               js-framework-benchmark
             </a>

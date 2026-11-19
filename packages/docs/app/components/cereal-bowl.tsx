@@ -40,6 +40,8 @@ const store = createReactive({
   turns: SPOTS.map((_, i) => Math.imul(i + 1, 2654435761) >>> 29),
   // How many pieces rendered because of the last change.
   lastRenders: 1,
+  mode: "supergrain" as "supergrain" | "usestate",
+  running: true,
 });
 
 let renders = 0;
@@ -112,7 +114,7 @@ const UseStatePieces = memo(function UseStatePieces({ running }: { running: bool
 });
 
 // The sticker on the bowl. It shows how many pieces rendered on the last change.
-const Burst = tracked(() => {
+export const Burst = tracked(() => {
   const count = store.lastRenders;
   return (
     <div className="sg-burst" aria-live="off">
@@ -134,63 +136,62 @@ const BURST_POINTS = Array.from({ length: 36 }, (_, i) => {
   return `${Math.round(Math.cos(angle) * radius)},${Math.round(Math.sin(angle) * radius)}`;
 }).join(" ");
 
-export function CerealBowl() {
-  const [mode, setMode] = useState<"supergrain" | "usestate">("supergrain");
-  const [running, setRunning] = useState(true);
+// The bowl itself. It reads the mode and whether the demo is running, and
+// nothing else, so a change to one piece never renders it.
+export const Bowl = tracked(() => {
+  const { mode, running } = store;
 
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setRunning(false);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) store.running = false;
   }, []);
 
-  const pick = (next: "supergrain" | "usestate") => {
-    renders = 0;
-    store.lastRenders = next === "supergrain" ? 1 : PIECE_COUNT;
-    setMode(next);
-  };
-
   return (
-    <figure className="sg-demo">
-      <div className="sg-bowl">
-        <svg
-          viewBox="0 0 500 500"
-          role="img"
-          aria-label="A bowl of cereal. Each piece is a component."
-        >
-          <circle cx="262" cy="266" r="234" className="sg-bowl-shadow" />
-          <circle cx="250" cy="250" r="244" className="sg-bowl-edge" />
-          <circle cx="250" cy="250" r="238" className="sg-bowl-rim" />
-          <circle cx="250" cy="250" r="212" className="sg-bowl-milk" />
-          {mode === "supergrain" ? (
-            <SupergrainPieces running={running} />
-          ) : (
-            <UseStatePieces running={running} />
-          )}
-        </svg>
-        <Burst />
-      </div>
-      <figcaption className="sg-demo-bar">
-        <div className="sg-switch" role="radiogroup" aria-label="How the bowl keeps its state">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={mode === "supergrain"}
-            onClick={() => pick("supergrain")}
-          >
-            Supergrain
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={mode === "usestate"}
-            onClick={() => pick("usestate")}
-          >
-            One useState
-          </button>
-        </div>
-        <button type="button" className="sg-pause" onClick={() => setRunning((r) => !r)}>
-          {running ? "Pause" : "Play"}
-        </button>
-      </figcaption>
-    </figure>
+    <svg
+      className="sg-bowl"
+      viewBox="0 0 500 500"
+      role="img"
+      aria-label="A bowl of cereal. Each piece is a component."
+    >
+      <circle cx="250" cy="250" r="244" className="sg-bowl-edge" />
+      <circle cx="250" cy="250" r="238" className="sg-bowl-rim" />
+      <circle cx="250" cy="250" r="212" className="sg-bowl-milk" />
+      {mode === "supergrain" ? (
+        <SupergrainPieces running={running} />
+      ) : (
+        <UseStatePieces running={running} />
+      )}
+    </svg>
   );
+});
+
+function pick(next: "supergrain" | "usestate") {
+  renders = 0;
+  store.lastRenders = next === "supergrain" ? 1 : PIECE_COUNT;
+  store.mode = next;
 }
+
+export const DemoControls = tracked(() => (
+  <div className="sg-demo-bar">
+    <div className="sg-switch" role="radiogroup" aria-label="How the bowl keeps its state">
+      <button
+        type="button"
+        role="radio"
+        aria-checked={store.mode === "supergrain"}
+        onClick={() => pick("supergrain")}
+      >
+        Supergrain
+      </button>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={store.mode === "usestate"}
+        onClick={() => pick("usestate")}
+      >
+        One useState
+      </button>
+    </div>
+    <button type="button" className="sg-pause" onClick={() => (store.running = !store.running)}>
+      {store.running ? "Pause" : "Play"}
+    </button>
+  </div>
+));
