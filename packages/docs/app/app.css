@@ -1097,13 +1097,14 @@ kbd {
   cursor: pointer;
 }
 
-.sg-editor button[aria-pressed="true"] {
+.sg-editor button[aria-selected="true"] {
   background: var(--sg-yolk);
   border-color: var(--sg-yolk);
   color: var(--sg-cocoa);
 }
 
-.sg-editor textarea {
+.sg-editor textarea,
+.sg-editor pre {
   display: block;
   width: 100%;
   padding: 16px 18px;
@@ -1128,7 +1129,7 @@ kbd {
 .sg-editor-error {
   margin: 0;
   padding: 10px 18px 12px;
-  border-top: 2px solid #5a2f10;
+  border-bottom: 2px solid #5a2f10;
   font-size: 0.95rem;
   font-weight: 600;
 }
@@ -1144,6 +1145,44 @@ kbd {
   color: #ff9d87;
   font-family: var(--font-mono);
   font-size: 0.85rem;
+}
+
+.sg-editor pre {
+  margin: 0;
+  font-size: 0.85rem;
+  resize: none;
+}
+
+.sg-editor-hint {
+  margin: 0;
+  padding: 12px 18px 0;
+  font-weight: 600;
+}
+
+.sg-editor-word {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px 0;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.sg-editor-word input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  font-family: var(--sg-display);
+  font-size: 1.4rem;
+  color: var(--sg-cocoa);
+  background: var(--sg-yolk);
+  border: 0;
+  border-radius: 10px;
+}
+
+.sg-editor-word input:focus-visible {
+  outline: 3px solid var(--sg-cream);
+  outline-offset: 2px;
 }
 
 @media (max-width: 719px) {

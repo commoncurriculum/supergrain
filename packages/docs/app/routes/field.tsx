@@ -30,7 +30,7 @@ export default function Field() {
           <h1>Change one value. One component re-renders.</h1>
           <p className="sg-sub">
             Supergrain is reactive state for React. Every grain above is its own component, and the
-            code in the box is what changes them. Edit it and watch the count.
+            examples in the box change them. Try one and watch the count.
           </p>
           <div className="sg-actions">
             <Link to="/docs" className="sg-button">
