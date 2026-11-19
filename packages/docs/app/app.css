@@ -5,7 +5,7 @@
 
 /*
   "Supergrain" sounds like a breakfast cereal, so the site is the box.
-  The homepage is the box front: a fat italic wordmark, a bowl where every
+  The homepage is the box front: a fat rounded wordmark, a bowl where every
   piece is a component, and a nutrition label that holds the numbers.
   The docs pages use the same colors and stay quiet.
 */
@@ -18,9 +18,9 @@
   --sg-cocoa: #3a1608;
   --sg-rim: #2848c4;
 
-  --font-sans: "Jost", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Albert Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Fragment Mono", ui-monospace, monospace;
-  --sg-display: "Shrikhand", "Jost", serif;
+  --sg-display: "Rammetto One", "Albert Sans", sans-serif;
   --sg-label: "Archivo", "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -100,8 +100,8 @@ kbd {
 #nd-page h1 {
   font-family: var(--sg-display);
   font-weight: 400;
-  font-size: 3.25rem;
-  line-height: 1.05;
+  font-size: 2.9rem;
+  line-height: 1.1;
   color: var(--color-fd-primary);
 }
 
@@ -191,8 +191,8 @@ kbd {
 .sg-hero h1 {
   font-family: var(--sg-display);
   font-weight: 400;
-  font-size: clamp(4.75rem, 9.4vw, 8.5rem);
-  line-height: 0.86;
+  font-size: clamp(4.2rem, 8.4vw, 7.6rem);
+  line-height: 0.98;
   letter-spacing: -0.01em;
   color: var(--sg-cream);
   text-shadow: 0.037em 0.037em 0 var(--sg-cocoa);
@@ -523,8 +523,8 @@ kbd {
 .sg-section h2 {
   font-family: var(--sg-display);
   font-weight: 400;
-  font-size: clamp(2.3rem, 4vw, 3.5rem);
-  line-height: 1;
+  font-size: clamp(2rem, 3.5vw, 3.1rem);
+  line-height: 1.1;
   color: var(--sg-red);
   margin: 0 0 22px;
   text-wrap: balance;
@@ -667,7 +667,7 @@ kbd {
 
 .sg-ingredient-name {
   font-family: var(--sg-display);
-  font-size: 2.3rem;
+  font-size: 2rem;
   line-height: 1;
   color: var(--sg-red);
 }
@@ -736,7 +736,7 @@ kbd {
   }
 
   .sg-hero h1 {
-    font-size: clamp(3.9rem, 24vw, 6rem);
+    font-size: clamp(3.4rem, 21vw, 5.4rem);
   }
 
   .sg-ingredient-list a {
