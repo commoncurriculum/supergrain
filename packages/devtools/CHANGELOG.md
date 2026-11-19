@@ -1,5 +1,13 @@
 # @supergrain/devtools
 
+## 7.5.0
+
+### Patch Changes
+
+- Updated dependencies [cace4d3]
+  - @supergrain/kernel@7.5.0
+  - @supergrain/silo@7.5.0
+
 ## 7.4.0
 
 ### Patch Changes

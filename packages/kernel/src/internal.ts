@@ -8,6 +8,7 @@ export {
   $RAW,
   $VERSION,
   trackArrayElements,
+  untracked,
   type ReactiveTagged,
 } from "./core";
 export { setProperty, deleteProperty, bumpOwnKeysSignal, bumpVersion } from "./write";
@@ -23,3 +24,7 @@ export { startBatch, endBatch, getActiveSub, setActiveSub } from "alien-signals"
 // Attaches a `[Symbol.dispose]` to an object so it works with `using`. Used by
 // husk to make resources `Disposable`.
 export { makeDisposable } from "./disposable";
+
+// How `tracked` keeps what a render read subscribed between the render's
+// effect firing and the re-render.
+export { endReads, noteRead, RenderReads, startReads } from "./render-reads";

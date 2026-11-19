@@ -1,4 +1,6 @@
-import { signal } from "alien-signals";
+import { setActiveSub, signal } from "alien-signals";
+
+import { readSignal } from "./render-reads";
 
 // Phantom brand for compile-time store identification (no runtime property).
 // Exported as a real symbol so consumers can reference `typeof $BRAND` in type positions.
@@ -29,6 +31,11 @@ export const $RAW = Symbol.for("supergrain:raw");
 export const $VERSION = Symbol.for("supergrain:version");
 export const $ELEMENTS = Symbol.for("supergrain:elements");
 export const $OWN_KEYS = Symbol.for("ownKeys");
+/**
+ * Set in an array's nodes once it has a signal per index (or any other
+ * field): a write that shifts items can skip looking for them otherwise.
+ */
+export const $HAS_FIELD_NODES = Symbol("supergrain:has-field-nodes");
 
 // Well-known symbol properties attached to reactive proxy targets and proxies.
 // Typed as optional so structural subtype checks pass for plain objects.
@@ -65,30 +72,42 @@ export function getNodesIfExist(target: object): DataNodes | undefined {
   return (target as ReactiveTagged)[$NODE];
 }
 
+// A node map's prototype chain ends without Object.prototype, so inherited
+// methods (toString, valueOf, hasOwnProperty, …) are never mistaken for
+// per-key signal nodes during writes. With a plain `{}`, `setProperty` writing
+// key="valueOf" would resolve `nodes[key]` to `Object.prototype.valueOf` and
+// call it as a signal setter, throwing. Made with `new` rather than
+// `Object.create(null)`: a null-prototype object starts in V8's slow
+// dictionary mode and takes three times the memory.
+function Nodes(): void {}
+Nodes.prototype = Object.create(null);
+
 export function getNodes(target: object): DataNodes {
   let nodes = (target as ReactiveTagged)[$NODE];
   if (!nodes) {
-    // Null-prototype: avoid inherited methods (toString, valueOf, hasOwnProperty,
-    // …) being mistaken for per-key signal nodes during writes. With a plain
-    // `{}` here, `setProperty` writing key="valueOf" would resolve `nodes[key]`
-    // to `Object.prototype.valueOf` (truthy function) and call it as a signal
-    // setter, throwing.
-    nodes = Object.create(null) as DataNodes;
-    try {
-      Object.defineProperty(target, $NODE, {
-        value: nodes,
-        enumerable: false,
-        configurable: true,
-      });
-    } catch {
-      // Frozen objects can't be modified.
-    }
-  }
-  // Ensure version signal exists (lazy creation)
-  if (!nodes[$VERSION]) {
-    nodes[$VERSION] = signal(0) as Signal<unknown>;
+    nodes = new (Nodes as unknown as new () => DataNodes)();
+    // A frozen object won't take it, and gets fresh (untracked) nodes per read.
+    defineHidden(target, $NODE, nodes);
   }
   return nodes;
+}
+
+// Refilled by each call, so tagging an object allocates no descriptor.
+const hiddenValue: PropertyDescriptor = { value: undefined, configurable: true };
+
+/**
+ * Define `key` on `target` as a non-enumerable value. False if the target
+ * won't take it: it isn't extensible, or it is a proxy that refuses or throws.
+ */
+export function defineHidden(target: object, key: PropertyKey, value: unknown): boolean {
+  hiddenValue.value = value;
+  try {
+    return Reflect.defineProperty(target, key, hiddenValue);
+  } catch {
+    return false;
+  } finally {
+    hiddenValue.value = undefined;
+  }
 }
 
 /**
@@ -101,7 +120,7 @@ export function getNodes(target: object): DataNodes {
  * ownKeys signals instead.
  */
 export function trackArrayElements(target: object): void {
-  getNode(getNodes(target), $ELEMENTS, 0)();
+  readSignal(getNode(getNodes(target), $ELEMENTS, 0));
 }
 
 export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown): Signal<unknown> {
@@ -111,4 +130,14 @@ export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown
   const newSignal = signal(value) as Signal<unknown>;
   nodes[property] = newSignal;
   return newSignal;
+}
+
+/** Run `fn` without subscribing the active subscriber to what it reads. */
+export function untracked<R>(fn: () => R): R {
+  const prevSub = setActiveSub(undefined);
+  try {
+    return fn();
+  } finally {
+    setActiveSub(prevSub);
+  }
 }

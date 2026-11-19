@@ -7,6 +7,7 @@ import { batch, createReactive, unwrap } from "@supergrain/kernel";
 import { attachSiloDevtools } from "./devtools";
 import { type AdapterError, ProcessorError, type SiloError } from "./errors";
 import { Finder } from "./finder";
+import { createLoadedLists } from "./loaded-lists";
 import {
   type AdapterErrorSink,
   type AdapterOptionOverrides,
@@ -22,6 +23,7 @@ import {
   IDLE_DOCUMENTS_TOGETHER_HANDLE,
 } from "./together";
 import { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./transitions";
+import { stableStringify } from "./util";
 
 interface InternalState {
   documents: Map<string, Map<string, InternalHandle>>;
@@ -313,6 +315,12 @@ export interface ModelConfig<M extends DocumentTypes> extends ResilienceOptions 
    * with `processor`.
    */
   processors?: ReadonlyArray<ResponseProcessor<M>>;
+  /**
+   * What a new version of a stored document does: `"patch"` (default) writes
+   * only the changed fields into the stored document; `"replace"` swaps in the
+   * new object.
+   */
+  onRefetch?: "patch" | "replace";
 }
 
 // =============================================================================
@@ -413,6 +421,14 @@ export interface DocumentStore<
     ids: string[] | null | undefined,
   ): DocumentsTogetherHandle<M[K]>;
   findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined;
+  /**
+   * The loaded documents of one type, in the order they first loaded. Never
+   * fetches. The same reactive array every call: it grows as documents load,
+   * swaps an entry when a "replace" refetch gives a doc a new object, and
+   * empties on `clearMemory`. Pass it to `computedList` to filter, sort or
+   * group what's loaded; the list follows each change without rescanning.
+   */
+  findAllInMemory<K extends keyof M & string>(type: K): ReadonlyArray<M[K]>;
   insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void;
   findQuery<K extends keyof Q & string>(
     type: K,
@@ -471,7 +487,7 @@ export interface StoreAdapterRunOptions extends AdapterOptionOverrides {
 
 // The never-fetching handle for a `null` / `undefined` key. Serves both `find`
 // and `findQuery` (a QueryHandle is field-compatible), hence the neutral name.
-const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
+export const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   value: undefined,
   error: undefined,
   isFetching: false,
@@ -481,62 +497,6 @@ const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   status: "pending" as const,
   promise: undefined,
 });
-
-/**
- * Stable, total string key for a query params object. Object keys are sorted so
- * declaration order doesn't matter. `Date`s are encoded by their timestamp — a
- * bare `Date` has no own-enumerable keys and would otherwise serialize to `{}`,
- * collapsing every date-valued param onto one cache slot. `bigint` is encoded
- * explicitly (it isn't valid JSON and would throw). Non-finite numbers
- * (`NaN` / `±Infinity`) are encoded distinctly — `JSON.stringify` turns them
- * into `null`, which would collide with each other and with a literal `null`.
- * A cyclic params object throws a clear error rather than overflowing the
- * stack. Params are expected to be JSON-ish (primitives, plain objects, arrays,
- * `Date`s); other exotic objects (`Map`/`Set`/class instances) are only
- * distinguished by their own-enumerable keys, so prefer plain params.
- */
-function stableStringify(value: unknown): string {
-  return stableStringifyInner(value, new WeakSet<object>());
-}
-
-function stableStringifyInner(value: unknown, seen: WeakSet<object>): string {
-  if (value === undefined) return "undefined";
-  if (value === null) return "null";
-  if (value instanceof Date) return `Date(${value.getTime()})`;
-  if (typeof value === "bigint") return `${value}n`;
-  if (typeof value === "number" && !Number.isFinite(value)) {
-    // NaN / Infinity / -Infinity all serialize to "null" via JSON.stringify;
-    // encode them distinctly so they don't collapse onto one cache slot.
-    if (Number.isNaN(value)) return "NaN";
-    return value > 0 ? "Infinity" : "-Infinity";
-  }
-  if (typeof value !== "object") {
-    // string / number / boolean serialize stably; symbol / function are not
-    // valid JSON (JSON.stringify → undefined), so fall back to String() to
-    // keep this function total rather than returning a non-string.
-    return JSON.stringify(value) ?? String(value);
-  }
-  if (seen.has(value)) {
-    throw new Error(
-      "@supergrain/silo: query params must be acyclic — a cycle was found while building the cache key",
-    );
-  }
-  seen.add(value);
-  try {
-    if (Array.isArray(value)) {
-      return `[${value.map((v) => stableStringifyInner(v, seen)).join(",")}]`;
-    }
-    const obj = value as Record<string, unknown>;
-    const keys = Object.keys(obj).sort();
-    return `{${keys
-      .map((k) => `${JSON.stringify(k)}:${stableStringifyInner(obj[k], seen)}`)
-      .join(",")}}`;
-  } finally {
-    // Drop after fully serializing this node so sibling references to the same
-    // object (a DAG, not a cycle) aren't falsely flagged.
-    seen.delete(value);
-  }
-}
 
 /**
  * Get the stable handle for `key`, creating an idle one on first access. The
@@ -579,6 +539,7 @@ export function createDocumentStore<
     queries: new Map(),
   }) as InternalState;
   const finder = new Finder<M, Q>(config, state);
+  const loaded = createLoadedLists((type) => unwrap(state.documents).get(type));
 
   const store: DocumentStore<M, Q> = {
     find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]> {
@@ -628,6 +589,10 @@ export function createDocumentStore<
       return state.documents.get(type)?.get(id)?.value as M[K] | undefined;
     },
 
+    findAllInMemory<K extends keyof M & string>(type: K): ReadonlyArray<M[K]> {
+      return loaded.get(type) as ReadonlyArray<M[K]>;
+    },
+
     insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
       // Stored docs are LIVE and reactive at field granularity — not frozen
       // snapshots. The kernel wraps the inserted object in a reactive proxy
@@ -636,13 +601,13 @@ export function createDocumentStore<
       //   1. Mutate a field in place (`handle.value.attributes.name = "Ada"`).
       //      Fine-grained: only readers of that field re-render. The write goes
       //      through the proxy's signal, so no reinsert is needed.
-      //   2. Insert a NEW object. Wholesale replace; readers of the whole doc
-      //      re-render. `applyEvent` writes `handle.value` only when the
-      //      reference actually changes (`raw.value !== value` in
-      //      transitions.ts), so swapping in a fresh object always notifies.
-      // No copy is made — the inserted (or `prepareInsert`-returned) object IS
-      // the stored target (unwrap the handle's value to recover the exact
-      // reference). We deliberately do NOT freeze: a frozen target is handed
+      //   2. Insert a new version. `applyEvent` diffs it into the stored
+      //      object with the kernel's `reconcile`, so only readers of the
+      //      fields that changed re-render and the stored object keeps its
+      //      identity.
+      // The first insert stores the inserted (or `prepareInsert`-returned)
+      // object itself; later inserts copy their changes into it. We
+      // deliberately do NOT freeze: a frozen target is handed
       // back unwrapped by the kernel (`createReactiveProxy` bails on
       // `Object.isFrozen`), which would kill per-field reactivity and the
       // in-place update path above.
@@ -660,9 +625,13 @@ export function createDocumentStore<
         if (result === null) return; // explicit veto — write nothing
         prepared = result ?? doc; // undefined / no return = keep `doc` as-is
       }
-      batch(() => {
+      const stored = batch(() => {
         const handle = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
-        applyEvent(handle, HandleEvent.insert(prepared));
+        const before = unwrap(handle).value;
+        applyEvent(handle, HandleEvent.insert(prepared, config.models[type]?.onRefetch));
+        const after = unwrap(handle).value;
+        loaded.changed(type, prepared.id, before, after);
+        return after as M[K];
       });
       // `afterInsert` tails the pipeline. The value is committed (findInMemory
       // returns it); within an enclosing batch — a fetch commit, or a caller's
@@ -673,7 +642,7 @@ export function createDocumentStore<
       const afterInsert = config.hooks?.afterInsert;
       if (afterInsert) {
         try {
-          afterInsert(type, prepared);
+          afterInsert(type, stored);
         } catch (error) {
           emitToSink(config.onError, new ProcessorError({ type, cause: error }), {
             type,
@@ -729,11 +698,12 @@ export function createDocumentStore<
       // Like insertDocument: query results are live and reactive — not frozen.
       // An object result is wrapped in a reactive proxy by the kernel, so reads
       // track the fields they touch and an in-place mutation re-renders just
-      // those subscribers. Update in place or insert a fresh result; both work.
+      // those subscribers. Update in place or insert a new result; a new result is
+      // diffed into the stored one, so only the fields that changed notify.
       const paramsKey = stableStringify(params);
       batch(() => {
         const handle = getOrCreateHandle(ensureBucket(state.queries, type), paramsKey);
-        applyEvent(handle, HandleEvent.insert(result));
+        applyEvent(handle, HandleEvent.insert(result, config.queries?.[type]?.onRefetch));
       });
     },
 
@@ -742,6 +712,7 @@ export function createDocumentStore<
         for (const bucket of state.documents.values()) {
           for (const handle of bucket.values()) applyEvent(handle, HandleEvent.reset());
         }
+        loaded.clear();
         for (const bucket of state.queries.values()) {
           for (const handle of bucket.values()) applyEvent(handle, HandleEvent.reset());
         }

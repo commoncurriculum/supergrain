@@ -1,17 +1,17 @@
 import type { CreateQueryParams, Query, QueryEnvelope, QueryModel } from "./types";
 
-import { batch, createReactive, unwrap } from "@supergrain/kernel";
-import { type DocumentTypes, ProcessorError, type SiloError } from "@supergrain/silo";
+import { batch, createReactive } from "@supergrain/kernel";
+import { type DocumentTypes, type SiloError } from "@supergrain/silo";
 import {
   applyEvent,
-  defectToAdapterError,
   emitToSink,
+  type Flight,
   HandleEvent,
   type InternalHandle,
   makeIdleHandle,
   runProcessor,
+  runSingleFlight,
 } from "@supergrain/silo/internal";
-import { Effect } from "effect";
 
 /**
  * Create a reactive query handle for a paginated resource.
@@ -80,11 +80,8 @@ export function createQuery<
   // not a reimplementation that can drift. The handle's `value` / `promise`
   // are unused here: results live in the store under `(type, id)`.
   const handle = createReactive(makeIdleHandle()) as InternalHandle;
+  const flight: Flight = { handle };
   let destroyed = false;
-  // The controller for the currently-owned fetch; aborting it interrupts the
-  // run (and the adapter's `signal`). A superseded fetch is no longer the
-  // active one, so its settle/teardown is ignored.
-  let activeController: AbortController | undefined = undefined;
 
   function readSlot(): QueryModel<K, T> | undefined {
     return store.findInMemory(type, id) as QueryModel<K, T> | undefined;
@@ -121,105 +118,30 @@ export function createQuery<
     store.insertDocument(type, doc as unknown as M[K]);
   }
 
-  // The active run's settlement; cleared when it settles un-superseded. A
-  // superseded run's returned promise follows this chain, and `fetchNextPage`
-  // waits on it instead of aborting the run.
-  let inFlight: Promise<void> | undefined = undefined;
-
   function fetchPage(offset: number): Promise<void> {
     if (destroyed) return Promise.resolve();
-
-    // Single-flight: interrupt whatever was in flight before starting anew.
-    activeController?.abort();
-    const controller = new AbortController();
-    activeController = controller;
-    // Mark activity and reset the failure tally for the fresh cycle. The Fetch
-    // event bumps the handle's generation; every event this run emits below is
-    // stamped with it, so the statechart itself fences out anything a
-    // superseded run might land late — state correctness doesn't depend on
-    // interruption timing.
-    batch(() => applyEvent(handle, HandleEvent.fetch()));
-    const { generation } = unwrap(handle);
-
-    const program = store
-      .runAdapter<QueryEnvelope<T>>(
-        (ctx) => adapter.fetch(id, { offset, limit, signal: ctx.signal }),
-        {
-          type,
-          keys: [id],
-          retry: params.retry,
-          timeout: params.timeout,
-          deadline: params.deadline,
-          retryable: params.retryable,
-          // Surface each failed attempt (and a deadline breach) while retrying,
-          // so a still-fetching query isn't silent — the same transition as a
-          // silo handle mid-retry. `store.runAdapter` already reported it to the
-          // store's telemetry sink.
-          onFailure: (error) =>
-            batch(() => applyEvent(handle, HandleEvent.retrying(error, generation))),
-        },
-      )
-      .pipe(
-        Effect.flatMap((res) =>
-          // A throw while committing (malformed envelope, a frozen-doc insert
-          // failing) joins the typed channel as a ProcessorError — the finder's
-          // own coercion rule — instead of escaping as a defect that the
-          // Aborted safety net would silently swallow.
-          Effect.suspend(() => {
-            const processorError = runProcessor(type, () =>
-              batch(() => {
-                commitPage(res, offset);
-                applyEvent(handle, HandleEvent.settled(generation));
-              }),
-            );
-            return processorError === undefined ? Effect.void : Effect.fail(processorError);
-          }),
+    return runSingleFlight(flight, {
+      type,
+      keys: [id],
+      run: (retrying) =>
+        store.runAdapter<QueryEnvelope<T>>(
+          (ctx) => adapter.fetch(id, { offset, limit, signal: ctx.signal }),
+          {
+            type,
+            keys: [id],
+            retry: params.retry,
+            timeout: params.timeout,
+            deadline: params.deadline,
+            retryable: params.retryable,
+            // `store.runAdapter` already reported the failure to the store's sink.
+            onFailure: retrying,
+          },
         ),
-        Effect.catchAll((error: SiloError) =>
-          Effect.sync(() => {
-            // Adapter failures were already reported per attempt by
-            // `store.runAdapter` (including the terminal one and a deadline
-            // breach); a commit failure is a single post-success observation,
-            // reported here.
-            if (error instanceof ProcessorError) {
-              reportError(error, { attempt: 1, retryable: false });
-            }
-            batch(() => applyEvent(handle, HandleEvent.failed(error, generation)));
-          }),
-        ),
-        // Nothing above may escape as a defect — it would bypass Failed and be
-        // discarded by runPromiseExit, making the failure invisible. Adapter
-        // defects are already coerced by the engine; this net catches what's
-        // left with the same shared rule.
-        Effect.catchAllDefect((defect) =>
-          Effect.sync(() => {
-            const error = defectToAdapterError(type, [id], defect);
-            reportError(error, { attempt: 1, retryable: false });
-            batch(() => applyEvent(handle, HandleEvent.failed(error, generation)));
-          }),
-        ),
-        // Settled/Failed already ended activity on every live path; this is the
-        // safety net for a run interrupted without settling. Stamped with this
-        // run's generation, so when a newer fetch has taken over (its Fetch
-        // bumped the generation) the statechart drops it instead of clobbering
-        // the fresh cycle's activity.
-        Effect.ensuring(
-          Effect.sync(() => batch(() => applyEvent(handle, HandleEvent.aborted(generation)))),
-        ),
-      );
-
-    // `runPromiseExit` resolves (never rejects) on interruption — but a
-    // superseded run settled nothing itself, so its promise follows the
-    // replacement instead of fulfilling silently: `await refetch()` always
-    // reflects the state the query actually settled into.
-    const run: Promise<void> = Effect.runPromiseExit(program, {
-      signal: controller.signal,
-    }).then(() => {
-      if (inFlight === run) inFlight = undefined;
-      if (activeController !== controller && inFlight !== undefined) return inFlight;
+      // A throw while committing (a malformed envelope) fails the query with a
+      // ProcessorError, the finder's own rule.
+      commit: (res) => runProcessor(type, () => commitPage(res, offset)),
+      report: (error) => reportError(error, { attempt: 1, retryable: false }),
     });
-    inFlight = run;
-    return run;
   }
 
   const unsub = params.subscribe?.(type, id, () => {
@@ -251,7 +173,7 @@ export function createQuery<
       // page 0 and merge this page onto stale results. Re-check after each
       // wait: the run we waited on may itself have been superseded. The
       // offset is read after the wait so it reflects what actually landed.
-      while (inFlight !== undefined) await inFlight;
+      while (flight.inFlight !== undefined) await flight.inFlight;
       if (destroyed) return;
       const next = readSlot()?.nextOffset ?? 0;
       return fetchPage(next);
@@ -261,8 +183,8 @@ export function createQuery<
     },
     destroy(): void {
       destroyed = true;
-      activeController?.abort();
-      activeController = undefined;
+      flight.controller?.abort();
+      flight.controller = undefined;
       batch(() => applyEvent(handle, HandleEvent.aborted()));
       unsub?.();
     },

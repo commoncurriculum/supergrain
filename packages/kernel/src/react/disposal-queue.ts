@@ -20,29 +20,39 @@
 // never fires (hidden document) or doesn't exist — see scheduleFlush.
 const BACKSTOP_MS = 100;
 
-let queue: Array<() => void> = [];
+/** Something to dispose later. An object, so a caller can queue itself without making a closure. */
+export interface Disposer {
+  dispose(): void;
+}
+
+// One array for the life of the page, so queueing allocates nothing once it
+// has grown to the largest batch. Slots past `size` are always empty, so it
+// holds no disposer after a flush.
+const queue: Array<Disposer | undefined> = [];
+let size = 0;
 let scheduled = false;
 
 function flush(): void {
   // A round arms two timers (see scheduleFlush); whichever fires second finds
-  // the queue already drained. Skip the no-op. (`scheduled` is always false by
-  // then — the draining timer cleared it — so there is nothing to reset.)
-  if (queue.length === 0) {
+  // the queue already drained. Skip the no-op.
+  if (size === 0) {
     return;
   }
-  scheduled = false;
-  const disposers = queue;
-  queue = [];
   let firstError: Error | undefined = undefined;
-  for (const dispose of disposers) {
+  // A disposer queued while draining runs in this same pass.
+  for (let i = 0; i < size; i++) {
+    const disposer = queue[i]!;
+    queue[i] = undefined;
     try {
-      dispose();
+      disposer.dispose();
     } catch (error) {
       // Keep draining — "every queued disposer runs" must hold even when one
       // throws, or the remaining effects would leak their subscriptions.
       firstError ??= error instanceof Error ? error : new Error(String(error));
     }
   }
+  size = 0;
+  scheduled = false;
   if (firstError) {
     // Surface the first failure after the queue is drained (as an uncaught
     // error in the scheduling macrotask) instead of swallowing it.
@@ -71,8 +81,8 @@ function scheduleFlush(): void {
  * documents, environments without rAF) may fire without any paint occurring.
  * The guarantee is "deferred, always runs", not "a paint happened first".
  */
-export function scheduleDisposal(dispose: () => void): void {
-  queue.push(dispose);
+export function scheduleDisposal(disposer: Disposer): void {
+  queue[size++] = disposer;
   if (!scheduled) {
     scheduled = true;
     scheduleFlush();

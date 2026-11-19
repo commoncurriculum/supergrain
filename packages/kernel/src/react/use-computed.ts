@@ -1,4 +1,5 @@
-import { computed } from "@supergrain/kernel";
+import { noteRead } from "@supergrain/kernel/internal";
+import { computed } from "alien-signals";
 import { useMemo } from "react";
 
 /**
@@ -28,6 +29,9 @@ import { useMemo } from "react";
  * ```
  */
 export function useComputed<T>(factory: () => T, deps: ReadonlyArray<unknown> = []): T {
+  // alien-signals' computed, noted here, rather than the kernel's wrapper:
+  // one function fewer per component, which a list of rows makes many of.
   const c = useMemo(() => computed(factory), deps); // eslint-disable-line react-hooks/exhaustive-deps
+  noteRead(c);
   return c();
 }

@@ -1,3 +1,4 @@
+/// <reference types="react/canary" />
 // Browser-environment tests for the deferred disposal queue.
 //
 // The node suite (tests/core/disposal-queue.test.ts) drives the plain-setTimeout
@@ -7,13 +8,16 @@
 // `scheduleFlush` needs no coverage ignore.
 import type { ReactiveNode } from "alien-signals/system";
 
-import { createReactive } from "@supergrain/kernel";
+import { createReactive, signal } from "@supergrain/kernel";
 import { getActiveSub } from "@supergrain/kernel/internal";
 import { tracked } from "@supergrain/kernel/react";
-import { render, cleanup } from "@testing-library/react";
+import { render, cleanup, act } from "@testing-library/react";
+import { Activity, StrictMode } from "react";
 import { describe, it, expect, afterEach } from "vitest";
 
 import { scheduleDisposal } from "../../src/react/disposal-queue";
+
+const queue = (dispose: () => void) => scheduleDisposal({ dispose });
 
 afterEach(() => cleanup());
 
@@ -45,8 +49,8 @@ describe("scheduleDisposal (browser / requestAnimationFrame path)", () => {
   it("does not run the disposer synchronously, then flushes after the next frame", async () => {
     const ran: Array<string> = [];
 
-    scheduleDisposal(() => ran.push("a"));
-    scheduleDisposal(() => ran.push("b"));
+    queue(() => ran.push("a"));
+    queue(() => ran.push("b"));
     expect(ran).toEqual([]);
 
     await afterNextFrame();
@@ -56,7 +60,7 @@ describe("scheduleDisposal (browser / requestAnimationFrame path)", () => {
   it("ignores the backstop timer left over from an already-drained round", async () => {
     const ran: Array<string> = [];
 
-    scheduleDisposal(() => ran.push("first"));
+    queue(() => ran.push("first"));
     await afterNextFrame();
     expect(ran).toEqual(["first"]);
 
@@ -67,7 +71,7 @@ describe("scheduleDisposal (browser / requestAnimationFrame path)", () => {
     expect(ran).toEqual(["first"]);
 
     // A disposer queued after that stale timer still flushes exactly once.
-    scheduleDisposal(() => ran.push("second"));
+    queue(() => ran.push("second"));
     await afterNextFrame();
     expect(ran).toEqual(["first", "second"]);
   });
@@ -95,14 +99,55 @@ describe("tracked() teardown", () => {
     expect(effectNode?.deps).toBeTruthy();
 
     unmount();
-    // Teardown is deferred — by useDisposeOnUnmount's StrictMode timer in dev
-    // and by the disposal queue in every build — so the graph link outlives the
-    // unmount commit.
+    // Teardown is deferred by the disposal queue, so the graph link outlives
+    // the unmount commit.
     expect(effectNode?.deps).toBeTruthy();
 
     // ...but it always runs. "Deferred, never skipped" is what keeps subscriber
     // lists from leaking.
     await waitUntil(() => !effectNode?.deps);
     expect(effectNode?.deps).toBeFalsy();
+  });
+
+  it("unlinks the effect after a real unmount under StrictMode", async () => {
+    const store = createReactive({ value: 0 });
+    let effectNode: ReactiveNode | undefined;
+    const Probe = tracked(() => {
+      effectNode = getActiveSub();
+      return <span>{store.value}</span>;
+    });
+
+    const { unmount } = render(
+      <StrictMode>
+        <Probe />
+      </StrictMode>,
+    );
+    // StrictMode's extra unmount and remount must not have disposed it.
+    await afterNextFrame();
+    expect(effectNode?.deps).toBeTruthy();
+
+    unmount();
+    await waitUntil(() => !effectNode?.deps);
+  });
+
+  it("stays reactive when <Activity> hides it long enough to dispose, then shows it", async () => {
+    const count = signal(0);
+    const Probe = tracked(() => <span data-testid="v">{count()}</span>);
+    const app = (mode: "visible" | "hidden") => (
+      <Activity mode={mode}>
+        <Probe />
+      </Activity>
+    );
+
+    const { rerender, getByTestId } = render(app("visible"));
+    rerender(app("hidden"));
+    // Past the disposal queue's flush (and its backstop).
+    await sleep(200);
+    rerender(app("visible"));
+
+    await act(async () => {
+      count(1);
+    });
+    expect(getByTestId("v").textContent).toBe("1");
   });
 });

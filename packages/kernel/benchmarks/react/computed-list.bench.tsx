@@ -1,0 +1,390 @@
+import { For, tracked } from "@supergrain/kernel/react";
+import { useLiveQuery } from "@tanstack/react-db";
+import { act, render } from "@testing-library/react";
+import React, { memo, useRef, type FC } from "react";
+import { bench, describe } from "vitest";
+
+import {
+  computedListTopTen,
+  joinScenarios,
+  joinValidationChanges,
+  makeOwnedTasks,
+  makeUsers,
+  supergrainJoined,
+  supergrainJoinStore,
+  tanstackJoin,
+  tanstackJoinedTopTen,
+  type JoinChange,
+  type Owned,
+  type User,
+  makeTasks,
+  scenarios,
+  stableComputedTopTen,
+  supergrainStore,
+  tanstackOptimisticUpdate,
+  tanstackSyncWrite,
+  tanstackTopTen,
+  validationEdits,
+  type Edit,
+  type SupergrainList,
+  type Task,
+  type TanstackTasks,
+} from "../computed-list-fixtures";
+
+/**
+ * The `computed-list.bench.ts` comparison, rendered by React 19 in Chromium.
+ *
+ * Each app renders the top 10 tasks as a list, one row component per task,
+ * the way each library recommends:
+ * - supergrain: `tracked` list and rows. The list reads the computed list, with a
+ *   plain `.map()`, `<For>` or `<For parent>`; each row reads its own task's
+ *   fields, so a field edit re-renders only that row.
+ * - TanStack DB: `useLiveQuery` in the list, `memo` rows. A changed task is a
+ *   new object, so the list and that row re-render.
+ *
+ * Each benchmark is one change, wrapped in `act()` so React commits it to the
+ * DOM before the iteration ends. Before timing, every app runs the same edits
+ * and must show the same DOM, and the renders each change causes are printed.
+ */
+
+const renders = { list: 0, row: 0 };
+
+const RowView: FC<{ task: Task }> = ({ task }) => {
+  renders.row++;
+  return (
+    <li>
+      {task.title} · p{task.priority}
+    </li>
+  );
+};
+
+// --- supergrain ---
+
+const SupergrainRow = tracked(RowView);
+
+type ListProps = { rows: () => ReadonlyArray<Task> };
+
+/** Plain `.map()`: the list re-renders whenever a slot of the result changes. */
+const MapList = tracked(({ rows }: ListProps) => {
+  renders.list++;
+  return (
+    <ul>
+      {rows().map((task) => (
+        <SupergrainRow key={task.id} task={task} />
+      ))}
+    </ul>
+  );
+});
+
+/** `<For>`: rows keyed by task, so a task that only moved keeps its row. */
+const ForList = tracked(({ rows }: ListProps) => {
+  renders.list++;
+  return (
+    <ul>
+      <For each={rows()}>{(task) => <SupergrainRow key={task.id} task={task} />}</For>
+    </ul>
+  );
+});
+
+/** `<For parent>`: the krauset fast path, which moves DOM nodes on a swap. */
+const ForParentList = tracked(({ rows }: ListProps) => {
+  renders.list++;
+  const ul = useRef<HTMLUListElement>(null);
+  return (
+    <ul ref={ul}>
+      <For each={rows()} parent={ul}>
+        {(task) => <SupergrainRow key={task.id} task={task} />}
+      </For>
+    </ul>
+  );
+});
+
+// --- TanStack DB ---
+
+const TanstackRow = memo(RowView);
+
+function TanstackList({ collection }: { collection: TanstackTasks["collection"] }) {
+  renders.list++;
+  // An explicit `queryKey` skips rebuilding and hashing the query on every
+  // render, as TanStack DB recommends for hot render paths.
+  const { data } = useLiveQuery({
+    queryKey: ["top-ten", collection.id],
+    query: (q) => tanstackTopTen(q, collection),
+  });
+  return (
+    <ul>
+      {(data as Task[]).map((task) => (
+        <TanstackRow key={task.id} task={task} />
+      ))}
+    </ul>
+  );
+}
+
+// --- harness ---
+
+/**
+ * A mounted app: edit tasks, read the rows shown. An edit resolves once React
+ * has committed it and any work it queued has run: TanStack DB finishes some
+ * updates in microtasks, and the async `act` waits for them.
+ */
+interface App {
+  edit(changes: Edit): Promise<void>;
+  shown(): string[];
+  unmount(): void;
+}
+
+type Mount = (tasks: Task[]) => App;
+
+function mount(element: React.ReactElement, edit: (changes: Edit) => void): App {
+  let view!: ReturnType<typeof render>;
+  act(() => {
+    view = render(element);
+  });
+  return {
+    edit: (changes) =>
+      act(async () => {
+        edit(changes);
+      }),
+    shown: () => Array.from(view.container.querySelectorAll("li"), (li) => li.textContent ?? ""),
+    unmount: () => view.unmount(),
+  };
+}
+
+const supergrain =
+  (makeList: SupergrainList, List: FC<ListProps> = MapList): Mount =>
+  (tasks) => {
+    const { store, edit } = supergrainStore(tasks);
+    return mount(<List rows={makeList(store)} />, edit);
+  };
+
+const tanstack =
+  (setup: (tasks: Task[]) => TanstackTasks): Mount =>
+  (tasks) => {
+    // No collection cleanup: `useLiveQuery` owns a live query over it, and
+    // TanStack DB garbage-collects both once the list unmounts.
+    const { collection, edit } = setup(tasks);
+    return mount(<TanstackList collection={collection} />, edit);
+  };
+
+const APPS: ReadonlyArray<[string, Mount]> = [
+  ["supergrain computedList", supergrain(computedListTopTen)],
+  ["supergrain computedList + <For>", supergrain(computedListTopTen, ForList)],
+  ["supergrain computedList + <For parent>", supergrain(computedListTopTen, ForParentList)],
+  ["supergrain stableComputed", supergrain(stableComputedTopTen)],
+  ["TanStack DB (sync write)", tanstack(tanstackSyncWrite)],
+  ["TanStack DB (optimistic update)", tanstack(tanstackOptimisticUpdate)],
+];
+
+/** Run the same edits in every app; throw if any shows different rows. */
+async function validate(size: number): Promise<void> {
+  const results: Array<readonly [string, string]> = [];
+  for (const [name, mountApp] of APPS) {
+    const app = mountApp(makeTasks(size));
+    const seen = [app.shown()];
+    for (const edit of validationEdits(size)) {
+      await app.edit(edit);
+      seen.push(app.shown());
+    }
+    app.unmount();
+    results.push([name, JSON.stringify(seen)]);
+  }
+  for (const [name, seen] of results) {
+    if (seen !== results[0]![1]) {
+      throw new Error(
+        `react computed-list bench: ${name} disagrees with ${results[0]![0]} at ${size} rows`,
+      );
+    }
+  }
+}
+
+/** Print how many list and row renders one change causes in each app. */
+async function reportRenders(size: number): Promise<void> {
+  const lines = [`React renders per change (${size.toLocaleString("en-US")} rows):`];
+  for (const [title, edit] of scenarios(size)) {
+    lines.push(`  ${title}`);
+    for (const [name, mountApp] of APPS) {
+      const app = mountApp(makeTasks(size));
+      await app.edit(edit(0));
+      renders.list = 0;
+      renders.row = 0;
+      await app.edit(edit(1));
+      lines.push(`    ${name}: list ${renders.list}, rows ${renders.row}`);
+      app.unmount();
+    }
+  }
+  console.log(lines.join("\n"));
+}
+
+for (const size of [1_000, 10_000]) {
+  await validate(size);
+  await reportRenders(size);
+  const rows = `${size.toLocaleString("en-US")} rows`;
+
+  describe(`Mount the list (${rows})`, () => {
+    for (const [name, mountApp] of APPS) {
+      const tasks = makeTasks(size);
+      bench(name, () => {
+        mountApp(tasks.map((task) => ({ ...task }))).unmount();
+      });
+    }
+  });
+
+  for (const [title, edit] of scenarios(size)) {
+    describe(`${title} (${rows})`, () => {
+      for (const [name, mountApp] of APPS) {
+        let app: App | undefined;
+        let i = 0;
+        bench(
+          name,
+          async () => {
+            await app!.edit(edit(i++));
+          },
+          {
+            setup: () => {
+              app ??= mountApp(makeTasks(size));
+            },
+          },
+        );
+      }
+    });
+  }
+}
+
+// --- Joins: tasks joined to their owners (see `joinScenarios`) ---
+
+type JoinedRow = { task: Owned; owner: User };
+
+const JoinedRowView: FC<JoinedRow> = ({ task, owner }) => {
+  renders.row++;
+  return (
+    <li>
+      {task.title} · {owner.name}
+    </li>
+  );
+};
+
+const SupergrainJoinedRow = tracked(JoinedRowView);
+
+const SupergrainJoinedList = tracked(({ rows }: { rows: () => ReadonlyArray<JoinedRow> }) => {
+  renders.list++;
+  return (
+    <ul>
+      <For each={rows()}>
+        {(row) => <SupergrainJoinedRow key={row.task.id} task={row.task} owner={row.owner} />}
+      </For>
+    </ul>
+  );
+});
+
+const TanstackJoinedRow = memo(JoinedRowView);
+
+function TanstackJoinedList({ setup }: { setup: ReturnType<typeof tanstackJoin> }) {
+  renders.list++;
+  const { data } = useLiveQuery({
+    queryKey: ["joined-top-ten", setup.tasks.id],
+    query: (q) => tanstackJoinedTopTen(q, setup.tasks, setup.users),
+  });
+  return (
+    <ul>
+      {(data as JoinedRow[]).map((row) => (
+        <TanstackJoinedRow key={row.task.id} task={row.task} owner={row.owner} />
+      ))}
+    </ul>
+  );
+}
+
+interface JoinApp {
+  change(change: JoinChange): Promise<void>;
+  shown(): string[];
+  unmount(): void;
+}
+
+type MountJoin = (tasks: Owned[], users: User[]) => JoinApp;
+
+function mountJoin(element: React.ReactElement, change: (change: JoinChange) => void): JoinApp {
+  const app = mount(element, () => {});
+  return {
+    change: (next) =>
+      act(async () => {
+        change(next);
+      }),
+    shown: app.shown,
+    unmount: app.unmount,
+  };
+}
+
+const JOIN_APPS: ReadonlyArray<[string, MountJoin]> = [
+  [
+    "supergrain computedList + <For>",
+    (tasks, users) => {
+      const { store, change } = supergrainJoinStore(tasks, users);
+      const rows = supergrainJoined(store) as () => ReadonlyArray<JoinedRow>;
+      return mountJoin(<SupergrainJoinedList rows={rows} />, change);
+    },
+  ],
+  [
+    "TanStack DB join (sync write)",
+    (tasks, users) => {
+      const setup = tanstackJoin(tasks, users);
+      return mountJoin(<TanstackJoinedList setup={setup} />, setup.change);
+    },
+  ],
+];
+
+async function validateJoin(size: number): Promise<void> {
+  const results: Array<readonly [string, string]> = [];
+  for (const [name, mountApp] of JOIN_APPS) {
+    const app = mountApp(makeOwnedTasks(size), makeUsers());
+    const seen = [app.shown()];
+    for (const change of joinValidationChanges(size)) {
+      await app.change(change);
+      seen.push(app.shown());
+    }
+    app.unmount();
+    results.push([name, JSON.stringify(seen)]);
+  }
+  for (const [name, seen] of results) {
+    if (seen !== results[0]![1]) {
+      throw new Error(
+        `react computed-list bench: ${name} disagrees with ${results[0]![0]} at ${size} rows`,
+      );
+    }
+  }
+}
+
+for (const size of [1_000, 10_000]) {
+  await validateJoin(size);
+  const rows = `${size.toLocaleString("en-US")} tasks, 100 users`;
+
+  describe(`Join: mount the list (${rows})`, () => {
+    for (const [name, mountApp] of JOIN_APPS) {
+      const tasks = makeOwnedTasks(size);
+      bench(name, () => {
+        mountApp(
+          tasks.map((task) => ({ ...task })),
+          makeUsers(),
+        ).unmount();
+      });
+    }
+  });
+
+  for (const [title, change] of joinScenarios(size)) {
+    describe(`Join: ${title} (${rows})`, () => {
+      for (const [name, mountApp] of JOIN_APPS) {
+        let app: JoinApp | undefined;
+        let i = 0;
+        bench(
+          name,
+          async () => {
+            await app!.change(change(i++));
+          },
+          {
+            setup: () => {
+              app ??= mountApp(makeOwnedTasks(size), makeUsers());
+            },
+          },
+        );
+      }
+    });
+  }
+}

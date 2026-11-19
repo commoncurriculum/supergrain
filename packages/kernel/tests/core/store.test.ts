@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 import { createReactive, effect, unwrap, batch } from "../../src";
+import { setProperty } from "../../src/internal";
 
 describe("Store", () => {
   describe("createReactive", () => {
@@ -341,5 +342,85 @@ describe("Store", () => {
       expect(sum).toBe(30);
       expect(callCount).toBe(2);
     });
+  });
+
+  it("tracks and writes keys named like Object.prototype methods", () => {
+    // Typed as plain strings, so TypeScript doesn't take them for the methods.
+    const valueOf: string = "valueOf";
+    const toString: string = "toString";
+    const hasOwn: string = "hasOwnProperty";
+    const state = createReactive<Record<string, number>>({ [valueOf]: 0, [toString]: 0 });
+    const seen: Array<unknown> = [];
+    effect(() => {
+      seen.push([state[valueOf], state[toString]]);
+    });
+    state[valueOf] = 1;
+    state[toString] = 2;
+    // A key no one read: no node, and nothing inherited taken for one.
+    state[hasOwn] = 3;
+    expect(seen).toEqual([
+      [0, 0],
+      [1, 0],
+      [1, 2],
+    ]);
+    expect(state[hasOwn]).toBe(3);
+  });
+
+  it("wraps an object that refuses new properties, like another library's proxy", () => {
+    // Like an Immer draft: writes go through `set`, and defineProperty throws.
+    const inner = new Proxy(
+      { n: 1 },
+      {
+        set: (target, key, value) => Reflect.set(target, key, value),
+        defineProperty: () => {
+          throw new TypeError("defineProperty is not allowed");
+        },
+      },
+    );
+    const state = createReactive({ inner });
+    expect(state.inner.n).toBe(1);
+    // The same proxy every time, kept outside the object.
+    expect(state.inner).toBe(state.inner);
+  });
+
+  it("notifies readers of an array's keys when its length shrinks", () => {
+    const state = createReactive({ list: [1, 2, 3] });
+    const seen: Array<Array<string>> = [];
+    effect(() => {
+      seen.push(Object.keys(state.list));
+    });
+    state.list.length = 1;
+    expect(seen).toEqual([["0", "1", "2"], ["0"]]);
+  });
+
+  it("treats a number key that isn't an index as a plain property of an array", () => {
+    const state = createReactive({ list: [1, 2] });
+    const seen: Array<Array<string>> = [];
+    effect(() => {
+      seen.push(Object.keys(state.list));
+    });
+    for (const key of [-1, 1.5]) setProperty(unwrap(state.list), key, "x");
+    expect(unwrap(state.list)).toEqual(Object.assign([1, 2], { "-1": "x", "1.5": "x" }));
+    expect(seen.at(-1)).toEqual(["0", "1", "-1", "1.5"]);
+  });
+});
+
+describe("array methods read through the proxy", () => {
+  it("are the same function on every read", () => {
+    const store = createReactive({ items: [1, 2, 3] });
+    expect(store.items.push).toBe(store.items.push);
+    expect(store.items.map).toBe(store.items.map);
+  });
+
+  it("run on the array they're called on", () => {
+    const store = createReactive({ a: [1], b: [2] });
+    const seen: Array<number> = [];
+    effect(() => {
+      seen.push(store.b.length);
+    });
+    store.a.push.call(store.b, 3);
+    expect(unwrap(store.b)).toEqual([2, 3]);
+    expect(unwrap(store.a)).toEqual([1]);
+    expect(seen).toEqual([1, 2]);
   });
 });

@@ -5,34 +5,20 @@ import { useEffect, useRef } from "react";
 // `process.env.NODE_ENV` based on their build, which is what we want.
 declare const process: { env: { NODE_ENV?: string } };
 
+const NO_DEPS: ReadonlyArray<unknown> = [];
+
 /**
  * Run `cleanup` when the component truly unmounts.
  *
- * In production this is a plain useEffect cleanup — no extra hooks,
- * no extra refs, no `setTimeout`, no `clearTimeout`. After the
- * consumer's bundler replaces `process.env.NODE_ENV` and DCEs the
- * dev branch, the runtime cost is identical to a single
- * `useEffect(() => () => cleanup(), [])`. In development the dev
- * branch defers cleanup via `setTimeout(0)` so it survives React 18
- * StrictMode's mount→cleanup→remount cycle: the remount fires the
- * effect again, which clears the pending timer; on a real unmount
- * the timer survives and runs the cleanup.
+ * Its functions are made once per component instance, so a render allocates
+ * nothing here. Pass a stable `cleanup` to allocate nothing per render at
+ * all; a new one each render also works, and the latest is the one called.
  *
- * **Why the early return + ESLint suppressions:** branching the hook
- * list on `process.env.NODE_ENV` is intentional — that constant is
- * folded at the consumer's build time, so within a single build the
- * branch taken is fixed and Rules of Hooks holds. Moving the branch
- * inside the effect cleanup (or guarding with `typeof process` /
- * try-catch) would force the dev-only `timerRef` to be allocated in
- * production too — terser keeps `useRef(null)` because it's a hook
- * call with potential side effects, defeating the dev/prod split.
- *
- * This pattern matches React's own dev/prod conventions (`if
- * (process.env.NODE_ENV !== "production") ...`). Bundlers all
- * replace the literal: Vite, webpack, esbuild, Rollup with terser,
- * Parcel, Next.js, Bun. Node has `process` as a real global.
- * Unbundled browser ESM is not a supported scenario for this hook
- * (or for React itself).
+ * In development the cleanup is deferred with `setTimeout(0)`, so it survives
+ * React 18 StrictMode's mount→cleanup→remount cycle: the remount clears the
+ * pending timer, and on a real unmount the timer survives and runs the
+ * cleanup. In production it runs straight away. Bundlers replace
+ * `process.env.NODE_ENV` at build time and drop the development branch.
  *
  * @example
  * ```ts
@@ -40,30 +26,40 @@ declare const process: { env: { NODE_ENV?: string } };
  * ```
  */
 export function useDisposeOnUnmount(cleanup: () => void): void {
-  const cleanupRef = useRef(cleanup);
-  cleanupRef.current = cleanup;
+  const ref = useRef<Unmount | null>(null);
+  const unmount = (ref.current ??= createUnmount(cleanup));
+  unmount.cleanup = cleanup;
+  useEffect(unmount.mount, NO_DEPS);
+}
 
-  /* c8 ignore start -- production-only branch is selected by consumer build-time env replacement */
-  if (process.env.NODE_ENV === "production") {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- branch is constant per build; bundler DCEs the dev path. See JSDoc.
-    useEffect(() => () => cleanupRef.current(), []);
-    return;
-  }
-  /* c8 ignore stop */
+interface Unmount {
+  cleanup: () => void;
+  /** The effect: clears a pending development timer, and returns `destroy`. */
+  readonly mount: () => () => void;
+}
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  useEffect(() => {
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
+function createUnmount(cleanup: () => void): Unmount {
+  let timer: ReturnType<typeof setTimeout> | undefined = undefined;
+  const unmount: Unmount = { cleanup, mount };
+  function mount() {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
     }
-    return () => {
-      timerRef.current = setTimeout(() => {
-        timerRef.current = null;
-        cleanupRef.current();
-      }, 0);
-    };
-  }, []);
+    return destroy;
+  }
+  function destroy() {
+    /* c8 ignore start -- production-only branch is selected by consumer build-time env replacement */
+    if (process.env.NODE_ENV === "production") {
+      unmount.cleanup();
+      return;
+    }
+    /* c8 ignore stop */
+    timer = setTimeout(run, 0);
+  }
+  function run() {
+    timer = undefined;
+    unmount.cleanup();
+  }
+  return unmount;
 }

@@ -140,6 +140,12 @@ describe("DocumentStore.find / findInMemory — `type` narrows doc shape", () =>
     expectTypeOf(store.findInMemory("post", "1")).toEqualTypeOf<Post | undefined>();
   });
 
+  it("findAllInMemory inferred as ReadonlyArray<M[K]>", () => {
+    expectTypeOf(store.findAllInMemory("user")).toEqualTypeOf<ReadonlyArray<User>>();
+    // @ts-expect-error -- "ghost" is not a key of Models
+    store.findAllInMemory("ghost");
+  });
+
   it("rejects an unknown type literal", () => {
     // @ts-expect-error -- "ghost" is not a key of Models
     store.find("ghost", "1");

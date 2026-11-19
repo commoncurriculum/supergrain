@@ -18,6 +18,8 @@ import {
 import { arrayEqual } from "../util";
 import { DocumentStoreContext } from "./context";
 
+export { createRemoteQueryStoreContext } from "./remote";
+
 /**
  * Extract the document-types map `M` from a `DocumentStore<M, Q>` type.
  */

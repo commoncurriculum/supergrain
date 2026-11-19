@@ -871,3 +871,39 @@ describe("wrap() discrimination — non-plain values pass through", () => {
     expect(unwrap(out)).toBe(obj);
   });
 });
+
+describe("collection methods are made once per collection", () => {
+  it("returns the same Map method on every read", () => {
+    const map = createReactive(new Map<string, number>([["a", 1]]));
+    for (const name of [
+      "get",
+      "has",
+      "set",
+      "delete",
+      "clear",
+      "forEach",
+      "entries",
+      "keys",
+      "values",
+    ] as const) {
+      expect(map[name]).toBe(map[name]);
+    }
+    expect(map[Symbol.iterator]).toBe(map.entries);
+  });
+
+  it("returns the same Set method on every read", () => {
+    const set = createReactive(new Set<number>([1]));
+    for (const name of [
+      "has",
+      "add",
+      "delete",
+      "clear",
+      "forEach",
+      "values",
+      "keys",
+      "entries",
+    ] as const) {
+      expect(set[name]).toBe(set[name]);
+    }
+  });
+});

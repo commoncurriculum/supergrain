@@ -1,5 +1,12 @@
 # js-framework-benchmark-react-supergrain-main
 
+## 1.0.10
+
+### Patch Changes
+
+- Updated dependencies [cace4d3]
+  - @supergrain/kernel@7.5.0
+
 ## 1.0.9
 
 ### Patch Changes
