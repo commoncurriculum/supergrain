@@ -3,6 +3,70 @@
 @import "fumadocs-ui/css/preset.css";
 @import "fumadocs-twoslash/twoslash.css";
 
+/*
+  Supergrain's look comes from its package names: kernel, husk, silo, mill.
+  A grain line. Feed-sack ultramarine, a signal yellow for "this rendered",
+  stencil lettering like the side of an elevator, and a sturdy grotesk for
+  reading.
+*/
+:root {
+  --sg-ink: #141a52;
+  --sg-blue: #1f2fb8;
+  --sg-blue-deep: #16228a;
+  --sg-paper: #f4f5f0;
+  --sg-signal: #ffcf1f;
+  --sg-dust: #c9cde0;
+
+  --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Fragment Mono", ui-monospace, monospace;
+  --sg-display: "Big Shoulders", "Schibsted Grotesk", sans-serif;
+  --sg-stencil: "Big Shoulders Stencil", "Big Shoulders", sans-serif;
+}
+
+@theme {
+  --color-fd-background: #f4f5f0;
+  --color-fd-foreground: #141a52;
+  --color-fd-muted: #e9eae3;
+  --color-fd-muted-foreground: #4d537a;
+  --color-fd-popover: #fbfbf8;
+  --color-fd-popover-foreground: #141a52;
+  --color-fd-card: #ecede6;
+  --color-fd-card-foreground: #141a52;
+  --color-fd-border: rgba(20, 26, 82, 0.14);
+  --color-fd-primary: #1f2fb8;
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-secondary: #e6e8ef;
+  --color-fd-secondary-foreground: #141a52;
+  --color-fd-accent: rgba(31, 47, 184, 0.09);
+  --color-fd-accent-foreground: #1f2fb8;
+  --color-fd-ring: #1f2fb8;
+}
+
+.dark {
+  --color-fd-background: #0d1240;
+  --color-fd-foreground: #e8eaf6;
+  --color-fd-muted: #151b55;
+  --color-fd-muted-foreground: #a6abd0;
+  --color-fd-popover: #121850;
+  --color-fd-popover-foreground: #e8eaf6;
+  --color-fd-card: #121850;
+  --color-fd-card-foreground: #e8eaf6;
+  --color-fd-border: rgba(201, 205, 224, 0.14);
+  --color-fd-primary: #ffcf1f;
+  --color-fd-primary-foreground: #141a52;
+  --color-fd-secondary: #1a2160;
+  --color-fd-secondary-foreground: #e8eaf6;
+  --color-fd-accent: rgba(255, 207, 31, 0.12);
+  --color-fd-accent-foreground: #ffcf1f;
+  --color-fd-ring: #ffcf1f;
+}
+
+.dark #nd-sidebar {
+  --color-fd-muted: #151b55;
+  --color-fd-secondary: #1a2160;
+  --color-fd-muted-foreground: #a6abd0;
+}
+
 html {
   scrollbar-gutter: stable;
 }
@@ -10,4 +74,498 @@ html {
 html > body[data-scroll-locked] {
   margin-right: 0px !important;
   --removed-body-scroll-bar-size: 0px !important;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+.sg-nowrap {
+  white-space: nowrap;
+}
+
+.sg-wordmark {
+  font-family: var(--sg-stencil);
+  font-weight: 900;
+  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+/* Docs pages: page titles in the display face. */
+#nd-page h1 {
+  font-family: var(--sg-display);
+  font-weight: 800;
+  font-size: 3rem;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+#nd-page .prose h2 {
+  font-family: var(--sg-display);
+  font-weight: 800;
+  font-size: 2rem;
+  line-height: 1.1;
+}
+
+/* ---------- Homepage ---------- */
+
+.sg-home {
+  --gutter: clamp(16px, 4vw, 56px);
+  background: var(--sg-paper);
+  color: var(--sg-ink);
+  min-height: 100vh;
+}
+
+.sg-home a:focus-visible,
+.sg-home button:focus-visible,
+.sg-home pre:focus-visible {
+  outline: 3px solid var(--sg-signal);
+  outline-offset: 3px;
+}
+
+.sg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px var(--gutter);
+  background: var(--sg-blue);
+  color: #fff;
+}
+
+.sg-header .sg-wordmark {
+  font-size: 1.6rem;
+}
+
+.sg-nav {
+  display: flex;
+  gap: clamp(14px, 3vw, 32px);
+  font-weight: 600;
+}
+
+.sg-nav a {
+  color: #fff;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+
+.sg-nav a:hover {
+  border-bottom-color: var(--sg-signal);
+}
+
+/* Hero */
+.sg-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 13fr) minmax(0, 11fr);
+  gap: clamp(32px, 5vw, 72px);
+  align-items: center;
+  padding: clamp(40px, 7vw, 96px) var(--gutter) clamp(48px, 8vw, 112px);
+  background: var(--sg-blue);
+  color: #fff;
+}
+
+.sg-hero h1 {
+  font-family: var(--sg-stencil);
+  font-weight: 900;
+  font-size: clamp(3.2rem, 5.9vw, 5.75rem);
+  line-height: 0.88;
+  letter-spacing: -0.005em;
+  margin: 0 0 28px;
+}
+
+.sg-h1-line {
+  display: block;
+}
+
+.sg-hero p {
+  font-size: 1.2rem;
+  line-height: 1.55;
+  max-width: 32em;
+  margin: 0 0 32px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.sg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.sg-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 14px 22px;
+  background: var(--sg-signal);
+  color: var(--sg-ink);
+  font-weight: 700;
+  text-decoration: none;
+  border-radius: 3px;
+}
+
+.sg-button:hover {
+  background: #fff;
+}
+
+.sg-install {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  background: transparent;
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.sg-install code {
+  font-size: 0.92rem;
+}
+
+.sg-install-hint {
+  font-size: 0.85rem;
+  color: var(--sg-signal);
+  min-width: 3.6em;
+  text-align: right;
+}
+
+.sg-install:hover {
+  border-color: #fff;
+}
+
+/* The grain field */
+.sg-demo {
+  margin: 0;
+  min-width: 0;
+}
+
+.sg-demo-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sg-switch {
+  display: inline-flex;
+  background: var(--sg-blue-deep);
+  border-radius: 3px;
+  padding: 3px;
+}
+
+.sg-switch button,
+.sg-pause {
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.92rem;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+}
+
+.sg-switch button[aria-checked="true"] {
+  background: #fff;
+  color: var(--sg-ink);
+}
+
+.sg-pause {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.sg-field {
+  display: grid;
+  grid-template-columns: repeat(48, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.sg-grain {
+  display: block;
+  aspect-ratio: 2 / 3;
+  border-radius: 50% / 42%;
+  background: rgba(255, 255, 255, 0.16);
+  transform-origin: center;
+}
+
+.sg-grain[data-v="1"] {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.sg-grain[data-v="2"] {
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.sg-grain[data-v="3"] {
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.sg-demo-caption {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 18px;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.sg-count {
+  font-family: var(--sg-display);
+  font-weight: 800;
+  font-size: 3.2rem;
+  line-height: 0.9;
+  color: var(--sg-signal);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sections */
+.sg-section {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: clamp(28px, 5vw, 72px);
+  padding: clamp(56px, 8vw, 112px) var(--gutter);
+  border-top: 1px solid rgba(20, 26, 82, 0.12);
+}
+
+.sg-section h2 {
+  font-family: var(--sg-display);
+  font-weight: 800;
+  font-size: clamp(2.2rem, 4vw, 3.4rem);
+  line-height: 0.95;
+  margin: 0 0 20px;
+  text-wrap: balance;
+}
+
+.sg-section p {
+  font-size: 1.08rem;
+  line-height: 1.6;
+  max-width: 34em;
+  margin: 0 0 16px;
+  color: #3a4070;
+}
+
+.sg-snippet mark {
+  background: var(--sg-signal);
+  color: var(--sg-ink);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+
+.sg-snippet {
+  margin: 0;
+  padding: 28px 30px;
+  background: var(--sg-ink);
+  color: #e8eaf6;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  line-height: 1.65;
+  overflow-x: auto;
+  border-left: 6px solid var(--sg-signal);
+}
+
+/* Benchmark */
+.sg-chart {
+  --ts: 132px;
+  --te: 68px;
+  position: relative;
+  padding-top: 34px;
+}
+
+.sg-chart-baseline {
+  position: absolute;
+  top: 0;
+  bottom: 62px;
+  left: calc(var(--ts) + (100% - var(--ts) - var(--te)) * var(--p));
+  width: 0;
+  border-left: 2px dashed var(--sg-blue);
+  pointer-events: none;
+}
+
+.sg-chart-baseline span {
+  position: absolute;
+  top: 0;
+  left: 8px;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--sg-blue);
+}
+
+.sg-bar {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 56px;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.sg-bar-name {
+  font-size: 0.95rem;
+  color: #3a4070;
+}
+
+.sg-bar-track {
+  height: 18px;
+}
+
+.sg-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--sg-dust);
+  border-radius: 0 2px 2px 0;
+}
+
+.sg-bar-score {
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #3a4070;
+}
+
+.sg-bar-us .sg-bar-fill {
+  background: var(--sg-blue);
+}
+
+.sg-bar-us .sg-bar-name,
+.sg-bar-us .sg-bar-score {
+  font-weight: 700;
+  color: var(--sg-ink);
+}
+
+.sg-chart-source {
+  margin-top: 18px !important;
+  font-size: 0.88rem !important;
+}
+
+.sg-chart-source a,
+.sg-section p a {
+  color: var(--sg-blue);
+}
+
+/* The grain line */
+.sg-line-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 2px solid var(--sg-ink);
+}
+
+.sg-line-list li {
+  border-bottom: 1px solid rgba(20, 26, 82, 0.16);
+}
+
+.sg-line-list a {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: 20px;
+  align-items: baseline;
+  padding: 22px 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.sg-line-name {
+  font-family: var(--sg-stencil);
+  font-weight: 900;
+  font-size: 2.4rem;
+  line-height: 1;
+  color: var(--sg-blue);
+}
+
+.sg-line-does {
+  font-size: 1.05rem;
+  line-height: 1.5;
+  color: #3a4070;
+}
+
+.sg-line-list a:hover .sg-line-name {
+  color: var(--sg-ink);
+}
+
+.sg-line-list a:hover {
+  background: linear-gradient(to right, rgba(255, 207, 31, 0.28), transparent 70%);
+}
+
+.sg-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  align-items: center;
+  padding: 32px var(--gutter);
+  background: var(--sg-ink);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.95rem;
+}
+
+.sg-footer .sg-wordmark {
+  color: #fff;
+  margin-right: auto;
+}
+
+.sg-footer a {
+  color: #fff;
+}
+
+@media (max-width: 960px) {
+  .sg-hero,
+  .sg-section {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .sg-field {
+    grid-template-columns: repeat(32, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .sg-nav a:nth-child(2) {
+    display: none;
+  }
+
+  .sg-line-list a {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .sg-bar {
+    grid-template-columns: 96px minmax(0, 1fr) 44px;
+  }
+
+  .sg-chart {
+    --ts: 108px;
+    --te: 56px;
+  }
+
+  .sg-chart-baseline span {
+    font-size: 0.78rem;
+  }
+
+  .sg-demo-caption {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sg-grain {
+    transition: none;
+  }
 }
