@@ -259,7 +259,7 @@ React bindings ship at `@supergrain/<pkg>/react` subpaths and require `react >= 
 
 ## Comparison
 
-[Side-by-side with useState, Zustand, Redux, MobX →](./docs/comparison.md)
+[Side-by-side with useState, Zustand, Redux, MobX →](https://commoncurriculum.github.io/supergrain/docs/comparison)
 
 ## Contributing
 

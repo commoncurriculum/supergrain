@@ -1,4 +1,7 @@
-# Comparison
+---
+title: Comparison
+description: Supergrain compared with other fine-grained reactive libraries.
+---
 
 Supergrain isn't the only fine-grained reactive library for React. This page puts Supergrain side-by-side with the alternatives — showing both the **API** you write and the **internals** under the hood. Signal-based libraries are called out specifically so you can compare them as a group.
 
