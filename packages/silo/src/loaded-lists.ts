@@ -4,28 +4,18 @@ import { createReactive, unwrap } from "@supergrain/kernel";
 import { setActiveSub } from "@supergrain/kernel/internal";
 
 interface LoadedList {
-  /** The reactive list handed out: each loaded doc once, in first-load order. */
   readonly docs: Array<object>;
-  /** Each doc's place in `docs`, by id. */
   readonly at: Map<string, number>;
 }
 
-/**
- * The loaded documents of each type, as one reactive array per type. A type's
- * list is built the first time it's asked for and kept up to date from then
- * on, so types nobody lists cost nothing.
- *
- * The list only grows (a doc loads), swaps an entry (a "replace" refetch gives
- * the doc a new object) or empties (clearMemory). Each is one write to a store
- * array, so a `computedList` over it follows the change instead of rescanning.
- */
+// Every change is a single array write so a `computedList` over it follows the
+// change instead of rescanning.
 export function createLoadedLists(
   bucketOf: (type: string) => Map<string, InternalHandle> | undefined,
 ) {
   const lists = new Map<string, LoadedList>();
 
   return {
-    /** The list for `type`, built from what's already loaded on first call. */
     get(type: string): ReadonlyArray<object> {
       let list = lists.get(type);
       if (!list) {
@@ -44,10 +34,7 @@ export function createLoadedLists(
       return list.docs;
     },
 
-    /**
-     * Record that the doc under `id` went from `before` to `after` (raw
-     * values). Untracked: a scope that inserts doesn't subscribe to the list.
-     */
+    // Untracked so a scope that inserts doesn't subscribe to the list.
     changed(type: string, id: string, before: unknown, after: unknown): void {
       const list = lists.get(type);
       if (!list || before === after || after === undefined) return;
@@ -66,7 +53,7 @@ export function createLoadedLists(
       }
     },
 
-    /** Empty every list, keeping each array so its readers stay connected. */
+    // Keep each array so its readers stay connected.
     clear(): void {
       const outer = setActiveSub(undefined);
       try {

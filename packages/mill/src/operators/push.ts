@@ -11,7 +11,6 @@ export function $push(context: OperatorContext, operations: Record<string, any>)
     const { items, position, slice, sort } = parsePushSpec(spec);
 
     if (target.arr === undefined) {
-      // Absent field — Mongo creates the array (applying any modifiers).
       const created = applyPushModifiers([], items, { position, slice, sort });
       setValueAtPath(context.raw, path, created, pathWriteOptions(context));
       return;
@@ -25,17 +24,15 @@ export function $push(context: OperatorContext, operations: Record<string, any>)
 
     if (pureAppend) {
       if (items.length === 0) {
-        return; // no-op
+        return;
       }
       pushToArray(arr, items);
       return;
     }
 
-    // Hard case ($position into the middle, $sort, $slice): compute the result
-    // per Mongo semantics and replace the array wholesale.
     const next = applyPushModifiers(arr, items, { position, slice, sort });
     if (isEqual(next, arr)) {
-      return; // no-op
+      return;
     }
     setProperty(target.parent, target.key, next);
   });

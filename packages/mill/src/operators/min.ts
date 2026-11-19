@@ -9,7 +9,7 @@ export function $min(context: OperatorContext, operations: Record<string, number
         if (typeof previous === "number") {
           return (value as number) < previous ? (value as number) : undefined;
         }
-        // null sorts below every number, so $min keeps it; absent fields are created.
+        // null sorts below every number in Mongo, so $min keeps it.
         return previous === undefined ? (value as number) : undefined;
       },
     });

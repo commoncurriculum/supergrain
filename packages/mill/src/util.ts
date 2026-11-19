@@ -1,10 +1,3 @@
-/**
- * Shared, dependency-free helpers used across mill's path navigation, query
- * matching, and operator implementations. Kept in their own module so `path.ts`
- * and `query.ts` can both use them without an import cycle through
- * `operators.ts`.
- */
-
 export function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -23,12 +16,6 @@ export function describeValue(value: unknown): string {
   return typeof value;
 }
 
-/**
- * Deep structural equality. Mirrors MongoDB's value comparison closely enough
- * for the operators that need it (`$pull`, `$pullAll`, `$addToSet`, and the
- * query matcher): primitives compare by `===`, objects/arrays compare by their
- * own enumerable keys.
- */
 export function isEqual(a: unknown, b: unknown): boolean {
   if (a === b) {
     return true;
@@ -37,8 +24,7 @@ export function isEqual(a: unknown, b: unknown): boolean {
     return false;
   }
 
-  // Dates have no enumerable own keys, so compare by time rather than falling
-  // through to the structural key check (which would treat all Dates as equal).
+  // Dates have no enumerable keys; the key check would call all Dates equal.
   if (a instanceof Date || b instanceof Date) {
     return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
   }
@@ -62,8 +48,7 @@ export function isEqual(a: unknown, b: unknown): boolean {
     return false;
   }
 
-  // Use a Set for keysB to avoid quadratic time on large objects, but only when
-  // it actually pays off — benchmarking puts the crossover around 50 keys.
+  // Benchmarked: a Set beats `includes` only from about 50 keys.
   const keysBSet = keysB.length >= 50 ? new Set(keysB) : null;
 
   for (const key of keysA) {
@@ -78,22 +63,8 @@ export function isEqual(a: unknown, b: unknown): boolean {
   return true;
 }
 
-/**
- * Snapshot a value so a captured undo fragment can't be corrupted by later
- * in-place mutation of the live document. Primitives pass through untouched;
- * containers are deep-cloned.
- *
- * The clone is prototype-faithful: each object is recreated with its own
- * prototype, so a null-prototype object snapshots (and therefore restores) as
- * null-prototype and a plain object as plain. `structuredClone` is unsuitable
- * here — it silently normalizes every object to `Object.prototype`, so
- * replaying an undo would corrupt a null-prototype document's flavor. Shared
- * references (and cycles) within one snapshot are preserved via `seen`.
- *
- * The supported domain matches `isEqual`'s: primitives, `Date`s, arrays, and
- * structural objects. Exotic containers with internal slots (`Map`, `Set`) are
- * not valid mill document values and won't survive the clone.
- */
+// Not `structuredClone`: it resets every prototype to `Object.prototype`, so
+// undo would turn null-prototype objects into plain ones. Map/Set aren't supported.
 export function cloneValue<V>(value: V, seen = new WeakMap<object, unknown>()): V {
   if (value === null || typeof value !== "object") {
     return value;

@@ -1,21 +1,5 @@
-// Turns an arbitrary (possibly reactive) value into a plain, render-ready tree
-// for the devtools data explorer.
-//
-// Two jobs at once:
-//   1. Subscription. Values pulled out of a silo store are reactive proxies.
-//     Walking them by *reading through the proxy* (not unwrapping first) means
-//     that, when this runs inside a kernel `effect()` / `tracked()` scope, the
-//     explorer subscribes to exactly the fields it displays — so editing a
-//     document in place live-updates the open detail view.
-//   2. Safety. App data can be deep, cyclic, or huge. Cycles become a
-//     `circular` node (deduped by the *raw* target so a proxy and its raw form
-//     don't read as distinct), depth and breadth are capped, and exotic values
-//     (Date, bigint, Error, Map, Set, function, symbol) get their own node
-//     kinds instead of collapsing to `{}` or throwing.
-
 import { unwrap } from "@supergrain/kernel";
 
-/** Default ceilings — generous enough for real documents, bounded enough to stay cheap. */
 const DEFAULT_MAX_DEPTH = 6;
 const DEFAULT_MAX_ENTRIES = 100;
 
@@ -26,11 +10,7 @@ export interface SerializeOptions {
   readonly maxEntries?: number;
 }
 
-/**
- * A render-ready, plain (no proxies, no cycles) description of a value. The
- * devtools explorer walks this instead of the live object so rendering can't
- * loop forever or blow the stack.
- */
+/** A plain (no proxies, no cycles), render-ready description of a value. */
 export type JsonNode =
   | { readonly t: "null" }
   | { readonly t: "undefined" }
@@ -71,9 +51,6 @@ export type JsonNode =
 /**
  * Serialize `value` into a {@link JsonNode}. Reads through reactive proxies (so
  * it subscribes when run in a tracked scope) but produces a fully plain result.
- *
- * The walk uses a single closure capturing the caps + the `seen` set, so the
- * recursive helpers stay two-argument and the cycle guard is shared.
  */
 export function serialize(value: unknown, options: SerializeOptions = {}): JsonNode {
   const maxDepth = options.maxDepth ?? DEFAULT_MAX_DEPTH;
@@ -84,6 +61,8 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
     const leaf = walkLeaf(input);
     if (leaf) return leaf;
 
+    // Dedupe cycles by raw target, but walk `input` itself: reading through the
+    // proxy is what subscribes a tracked caller to the displayed fields.
     const raw = unwrap(input) as object;
     if (seen.has(raw)) return { t: "circular" };
     if (depth >= maxDepth) return { t: "max-depth" };
@@ -91,8 +70,7 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
     try {
       return walkComposite(input, depth);
     } finally {
-      // Drop after fully walking this node so sibling references to the same
-      // object (a DAG, not a cycle) aren't flagged as circular.
+      // Shared references (a DAG, not a cycle) must not read as circular.
       seen.delete(raw);
     }
   }
@@ -123,7 +101,6 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
         break;
       }
     }
-    // Date is a leaf too, but counts as an object to `typeof`.
     if (input instanceof Date) {
       const valid = !Number.isNaN(input.getTime());
       return { t: "date", text: valid ? input.toISOString() : "Invalid Date" };
@@ -181,21 +158,13 @@ export function serialize(value: unknown, options: SerializeOptions = {}): JsonN
   }
 
   function serializeError(error: Error, depth: number): JsonNode {
-    // Effect's tagged errors (AdapterError / NotFoundError / ProcessorError)
-    // carry a `_tag` and extra fields (`type`, `keys`, `cause`, …). Prefer the
-    // tag as the display name, and surface own-enumerable props so the cause is
-    // visible without expanding a raw object.
-    // Reached only from walkComposite, which `walk` guards with the depth/cycle
-    // checks — so `depth < maxDepth` already holds here.
+    // Effect's tagged errors carry a `_tag` and enumerable extra fields.
     const tagged = error as Error & { _tag?: string };
     const name = tagged._tag ?? error.name;
     const entries: Array<readonly [string, JsonNode]> = [];
     const own = error as unknown as Record<string, unknown>;
     const keys = Object.keys(error).filter((k) => k !== "message");
-    // `Error.cause` (and `stack`) are non-enumerable, so Object.keys misses them.
-    // Surface `cause` explicitly when present — it usually holds the real
-    // failure (e.g. `new Error(msg, { cause })`); Effect's tagged errors already
-    // expose it enumerably, so guard against listing it twice.
+    // Native `cause` is non-enumerable; Effect's tagged errors expose it enumerably.
     if (own["cause"] !== undefined && !keys.includes("cause")) keys.push("cause");
     for (const key of keys.slice(0, maxEntries)) {
       entries.push([key, walk(own[key], depth + 1)]);
@@ -215,14 +184,12 @@ function numberText(value: number): string {
 
 function keyLabel(key: unknown): string {
   if (typeof key === "string") return key;
-  // Match the bigint leaf's `10n` rendering rather than a bare `10`.
   if (typeof key === "bigint") return `${key}n`;
   try {
     if (typeof key === "object" && key !== null) return JSON.stringify(unwrap(key));
     return String(key);
   } catch {
-    // A cyclic key (JSON.stringify throws) or an object with a throwing
-    // toString must never crash the inspector — degrade to a placeholder.
+    // JSON.stringify throws on cyclic keys; toString may throw too.
     return "[unserializable key]";
   }
 }

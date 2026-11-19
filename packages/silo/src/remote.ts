@@ -15,16 +15,6 @@ import { type DocumentHandle, IDLE_HANDLE } from "./store";
 import { applyEvent, HandleEvent, type InternalHandle, makeIdleHandle } from "./transitions";
 import { stableStringify } from "./util";
 
-// =============================================================================
-// Remote queries — server-computed results, cached by (name, params)
-// =============================================================================
-//
-// A remote query is a request whose result the server computes (an analytics
-// report, a search). Unlike a document it isn't an entity: nothing to
-// normalize, and it has its own lifecycle — stale time, garbage collection,
-// refetch on focus / reconnect / interval, invalidation — modeled on React
-// Query's. It lives in its own store, apart from the document store.
-
 /**
  * A remote query definition: a `name` (the cache key's first half) and an
  * opaque `request` that the store's `fetch` turns into an HTTP call. `Params`
@@ -128,9 +118,9 @@ export interface RemoteQueryStore<Request = unknown> {
     options?: RemoteQueryOptions,
   ): () => void;
   /**
-   * The result for `(query, params)`: the cached one while younger than the
-   * store's `staleTime`, otherwise fetched. Rejects with the fetch's error. Like React Query's `fetchQuery`,
-   * for code outside React.
+   * The result for `(query, params)`: cached while younger than the store's
+   * `staleTime`, otherwise fetched. Rejects with the fetch's error. Like React
+   * Query's `fetchQuery`, for code outside React.
    */
   fetch<Params, Result>(
     query: RemoteQuery<Params, Result, Request>,
@@ -160,11 +150,9 @@ interface Entry extends Flight {
   readonly key: string;
   readonly params: unknown;
   readonly handle: InternalHandle & { refetch: () => Promise<void> };
-  /** One options object per mounted observer. */
   readonly observers: Set<RemoteQueryOptions>;
   /** The longest `gcTime` any observer asked for, as in React Query. */
   gcTime: number;
-  /** Set by `invalidate`: stale whatever its age, until the next result lands. */
   invalidated: boolean;
   gcTimer?: ReturnType<typeof setTimeout>;
   interval?: { readonly every: number; readonly timer: ReturnType<typeof setInterval> };
@@ -175,10 +163,7 @@ const IDLE_REMOTE_HANDLE: RemoteQueryHandle<unknown> = Object.freeze({
   refetch: () => Promise.resolve(),
 });
 
-/**
- * True when every field of `partial` is in `params`, at every depth. Arrays
- * compare by index, like React Query's `partialMatchKey`.
- */
+// Arrays compare by index, like React Query's `partialMatchKey`.
 function containsParams(params: unknown, partial: unknown): boolean {
   if (partial === null || typeof partial !== "object") return Object.is(params, partial);
   if (params === null || typeof params !== "object") return false;
@@ -202,7 +187,6 @@ export function createRemoteQueryStore<Request = unknown>(
 
   let observerCount = 0;
 
-  // One observer's setting: its own, else the store's, else React Query's default.
   function optionOf<K extends keyof RemoteQueryOptions>(
     options: RemoteQueryOptions,
     name: K,
@@ -210,8 +194,7 @@ export function createRemoteQueryStore<Request = unknown>(
     return (options[name] ?? config[name] ?? defaults[name]) as Required<RemoteQueryOptions>[K];
   }
 
-  // Staleness is decided per observer, from its own `staleTime`, at the moment
-  // it asks, as in React Query. No timer marks a result stale.
+  // As in React Query, staleness is checked per observer when it asks; no timer.
   function isStaleFor(entry: Entry, options: RemoteQueryOptions): boolean {
     const { fetchedAt } = unwrap(entry.handle);
     return (
@@ -315,8 +298,6 @@ export function createRemoteQueryStore<Request = unknown>(
     return entry;
   }
 
-  // A result refetches when any of its observers has the trigger on and finds
-  // it stale.
   function refetchObserved(trigger: "refetchOnWindowFocus" | "refetchOnReconnect"): void {
     for (const bucket of entries.values()) {
       for (const entry of bucket.values()) {
@@ -360,8 +341,6 @@ export function createRemoteQueryStore<Request = unknown>(
       // A fresh object per call, so two observers with equal options count twice.
       const observer = { ...options };
       entry.observers.add(observer);
-      // The page is listened to only while something is observed, so an unused
-      // store holds no listeners.
       if (observerCount++ === 0 && typeof document !== "undefined") {
         document.addEventListener("visibilitychange", onVisibilityChange);
         globalThis.addEventListener("online", onOnline);

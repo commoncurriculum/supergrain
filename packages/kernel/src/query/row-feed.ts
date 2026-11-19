@@ -9,35 +9,19 @@ import { OUTSIDE, type Change, type RowResult } from "./row-blocks";
 import { Scratch } from "./scratch";
 import { createSourceRows, type Structure } from "./source-rows";
 
-/**
- * The source's rows, each run in its own computed, and the rows whose
- * result changed since it was last filed. Both the list and the index under
- * lookups and `groupBy` are built on this. One update is two calls:
- *
- * 1. `read()`, tracked: the source's structure and each block group's changes.
- * 2. `apply(next, file)`: calls `file(changes, next)` untracked, with the
- *    changes not yet filed. Skip it if something between the two throws. `file` files each one (sets `row.applied`) as it
- *    moves the row. If `file` returns, the feed records what was filed; if
- *    it throws, the next update hands the unfiled changes over again.
- */
+// Protocol: `read()` tracked, then `apply(next, file)`. `file` must set
+// `row.applied` on each change it files; if it throws, the unfiled changes
+// come back on the next update.
 export function createRowFeed<T extends object, O, K>(
   source: () => Iterable<T>,
   run: (item: T, previous: RowResult<O, K> | undefined) => RowResult<O, K>,
 ) {
-  /** A row's result, in its own computed. Its block reads it with `settle`. */
   const resultOf = (item: T) =>
     catchingComputed((previous: RowResult<O, K> | undefined) => run(item, previous));
-  // Recomputed only when the source's structure changes.
   const structure = rethrowingComputed(createSourceRows<T, O, K>(source, resultOf));
-  // Kept between updates, so an update allocates no arrays of its own.
   const pending = new Scratch<ReadonlyArray<Change<T, O, K>>>();
   const changes = new Scratch<Change<T, O, K>>();
 
-  /**
-   * Put the changes not yet filed in `changes`: rows that left while filed
-   * as members, then each block group's unfiled changes. A failed update
-   * may have filed some already.
-   */
   function collect(next: Structure<T, O, K>): void {
     const { removed, blockGroups } = next;
     for (let i = 0; i < removed.length; i++) {
@@ -48,6 +32,7 @@ export function createRowFeed<T extends object, O, K>(
       if (groupChanges !== blockGroups[g]!.applied) {
         for (let i = 0; i < groupChanges.length; i++) {
           const change = groupChanges[i]!;
+          // A failed update may have filed some already.
           if (change.row.applied !== change.next) changes.push(change);
         }
       }
@@ -55,9 +40,8 @@ export function createRowFeed<T extends object, O, K>(
   }
 
   return {
-    /** Tracked: the source's structure, and each block group's changes. */
     read(): Structure<T, O, K> {
-      // Starts afresh: an update that threw before `apply` left its own.
+      // An update that threw before `apply` left entries here.
       pending.clear();
       const next = structure();
       const { blockGroups } = next;
@@ -65,7 +49,7 @@ export function createRowFeed<T extends object, O, K>(
       return next;
     },
 
-    /** File the changes `read` found (see above). Call after every `read`. */
+    // Call after every successful `read`.
     apply(
       next: Structure<T, O, K>,
       file: (changes: Scratch<Change<T, O, K>>, next: Structure<T, O, K>) => void,
@@ -74,7 +58,6 @@ export function createRowFeed<T extends object, O, K>(
       try {
         collect(next);
         file(changes, next);
-        // Nothing threw: record which changes each group's rows now reflect.
         const { blockGroups } = next;
         for (let g = 0; g < blockGroups.length; g++) blockGroups[g]!.applied = pending.at(g);
       } finally {
@@ -86,7 +69,6 @@ export function createRowFeed<T extends object, O, K>(
   };
 }
 
-/** File every change as is: for a caller that then rebuilds from the rows' filed results. */
 export function fileAll<T, O, K>(changes: Scratch<Change<T, O, K>>): void {
   for (let i = 0; i < changes.size; i++) {
     const { row, next } = changes.at(i);

@@ -4,43 +4,15 @@ import { createActor, type ActorRefFromLogic } from "xstate";
 import { attachActivityListeners } from "./dom-bridge";
 import { activityMachine } from "./machines/activity";
 
-/**
- * ActivityTracker — wraps the ActivityMachine state chart and exposes it two
- * orthogonal ways: `state` (reactive) and `on` (events).
- *
- * The chart stays fully internal: XState owns the verified transitions (the
- * debounce, focus/visibility, and double-fire edge cases live as chart
- * states, not hand-rolled timers). No actor is exposed.
- *
- *   state — a reactive @supergrain/kernel object; what's true *now*. Read
- *           `state.status` inside an `effect` / `computed`.
- *   on    — the same transitions as one-shot events, keyed by destination
- *           state; the push counterpart to `state`, for fire-and-forget
- *           consumers like analytics.
- *
- *   const activity = new ActivityTracker();
- *   activity.attachDOM();
- *   effect(() => console.log(activity.state.status)); // "active" | "idle" | "hidden"
- *   // "came back after a long absence" = returning to active from hidden:
- *   activity.on("active", (e) => {
- *     if (e.fromState === "hidden" && e.durationMs > 120_000) track("resumed");
- *   });
- */
-
 export type ActivityStatus = "active" | "idle" | "hidden";
 
-/** Reactive projection of the activity state chart. Read `status` inside an
- *  `effect` / `computed`; it updates as the chart transitions. */
+/** Reactive activity state. Read `status` inside an `effect` / `computed`. */
 export interface ActivityState {
   /** Coarse activity: the current chart state. */
   status: ActivityStatus;
 }
 
-/**
- * An activity transition, delivered to `on(toState, …)` listeners. The push
- * form of `state`: subscribe by destination state and read where the user
- * came from and how long they were there.
- */
+/** An activity transition, delivered to `on(toState, …)` listeners. */
 export interface ActivityEvent {
   /** The status the chart was in before this transition. */
   fromState: ActivityStatus;
@@ -62,9 +34,21 @@ export interface ActivityTrackerOptions {
   inputThrottleMs?: number | undefined;
 }
 
+/**
+ * Tracks whether the user is `active`, `idle`, or `hidden`.
+ *
+ * @example
+ * ```ts
+ * const activity = new ActivityTracker();
+ * activity.attachDOM();
+ * effect(() => console.log(activity.state.status));
+ * activity.on("active", (e) => {
+ *   if (e.fromState === "hidden" && e.durationMs > 120_000) track("resumed");
+ * });
+ * ```
+ */
 export class ActivityTracker {
-  /** The tracker's reactive read surface: a @supergrain/kernel object.
-   *  Observe `state.status` inside `effect` / `computed`. */
+  /** Reactive state; read `state.status` inside `effect` / `computed`. */
   readonly state: ActivityState;
 
   private actor: ActorRefFromLogic<typeof activityMachine>;
@@ -80,13 +64,11 @@ export class ActivityTracker {
       input: { idleAfterMs: opts.idleAfterMs },
     });
 
-    // The chart starts in `active` (see machine `initial`).
+    // Must match the machine's `initial` state.
     this.state = createReactive<ActivityState>({ status: "active" });
 
-    // A single dispatch per *genuine* transition: time the state we're
-    // leaving, update the reactive `status`, and fan it out as an event.
-    // The chart re-enters `active` on every input (to reset the idle timer);
-    // that is not a state change, so it must not reset the clock or emit.
+    // The chart re-enters `active` on every input to reset the idle timer;
+    // that is not a transition, so it must not reset the clock or emit.
     const advance = (toState: ActivityStatus) => {
       const fromState = this.state.status;
       if (toState === fromState) return;
@@ -111,23 +93,17 @@ export class ActivityTracker {
   private dispatch(event: ActivityEvent): void {
     const set = this.listeners.get(event.toState);
     if (!set) return;
-    // Deleting the current handler mid-iteration (self-unsubscribe) is safe
-    // per the Set iterator spec, so no snapshot is needed.
+    // Set iteration tolerates deleting the current entry (self-unsubscribe).
     for (const handler of set) handler(event);
   }
 
-  /** How long the chart has been in its current `status`, in ms — measured
-   *  from when that state was entered, computed on demand (no ticking timer).
-   *  Continued input keeps `active` alive without restarting this. The live
-   *  counterpart to the `durationMs` on events, which reports the state just
-   *  *left*. */
+  /** Ms spent in the current `status` so far. Continued input does not
+   *  restart it. */
   currentDurationMs(): number {
     return Date.now() - this.enteredAt;
   }
 
-  /** Subscribe to transitions *into* `toState` (see {@link ActivityEvent}) —
-   *  the push counterpart to `state`. Fires once per transition; use it for
-   *  fire-and-forget consumers like analytics. Returns an unsubscribe fn. */
+  /** Subscribe to transitions *into* `toState`. Returns an unsubscribe fn. */
   on(toState: ActivityStatus, handler: ActivityEventHandler): () => void {
     const set = this.listeners.get(toState) ?? new Set<ActivityEventHandler>();
     this.listeners.set(toState, set);
@@ -139,11 +115,9 @@ export class ActivityTracker {
     return detach;
   }
 
-  /** Attach DOM listeners (focus / blur / visibilitychange / 10 user events)
-   *  that feed the chart, and seed the state from the document: a hidden tab
-   *  or unfocused window starts `hidden`, not `active`. Idempotent; returns a
-   *  detach function. Pass a `target` in non-DOM environments — it throws
-   *  rather than dereferencing a missing global `document`. */
+  /** Attach DOM listeners that drive the tracker. A hidden tab or unfocused
+   *  window starts `hidden`. Idempotent; returns a detach function. Throws
+   *  if no `target` is passed and there is no global `document`. */
   attachDOM(target?: Document): () => void {
     if (this.domDetach) return this.domDetach;
     const doc: Document | undefined = target ?? globalThis.document;

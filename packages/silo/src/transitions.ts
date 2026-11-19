@@ -4,58 +4,18 @@ import type { Data } from "effect";
 
 import { reconcile, unwrap } from "@supergrain/kernel";
 
-// =============================================================================
-// Handle statechart — flat orthogonal fields, one event alphabet
-// =============================================================================
-//
-// A handle exposes orthogonal fields — `value`, `error`, `isFetching`,
-// `fetchedAt` — that vary independently (a stale `value` coexists with a
-// refetch `error`). Transitions are modeled as an exhaustive reduction over a
-// tagged event alphabet; `status` is derived from `value`/`error`. The promise
-// lifecycle (React `use()` / Suspense) is layered on top in `applyEvent`.
-
 export type HandleEvent<T = unknown, E = SiloError> = Data.TaggedEnum<{
-  /** A (re)fetch started. Bumps the handle's fetch `generation`. */
   Fetch: Record<never, never>;
-  /** A document/result was inserted (by a processor or `insertDocument`). */
   Insert: { readonly value: T; readonly onRefetch: "patch" | "replace" };
-  /** The in-flight fetch completed and the requested key is present. */
   Settled: { readonly generation: number };
-  /**
-   * A retryable attempt failed but the fetch is still in flight (more retries
-   * to come). Records what's currently wrong (`lastError`) and bumps
-   * `failureCount` without ending activity or settling the terminal `error` —
-   * an outage is observable while retrying instead of a silent spinner.
-   */
   Retrying: { readonly error: E; readonly generation: number };
-  /** The fetch (or processor) failed, or the key was missing after fetch. */
   Failed: { readonly error: E; readonly generation: number };
-  /**
-   * The in-flight fetch was abandoned without settling (interrupted,
-   * superseded, or its owner was destroyed). Ends activity but records no
-   * error — there is no outcome to record. The finder never emits this
-   * (document fetches always settle); `@supergrain/queries` does, for
-   * `destroy()` and as the safety net when a run ends without settling.
-   */
   Aborted: { readonly generation?: number };
-  /** Memory was cleared. */
   Reset: Record<never, never>;
 }>;
 
-// Settled / Retrying / Failed carry the fetch **generation** — the value of
-// `handle.generation` captured when their fetch cycle started (`Fetch` bumps
-// it). `applyEvent` drops a stamped event whose generation no longer matches,
-// so a superseded run's late events structurally cannot clobber a fresh
-// cycle's state — ordering is enforced by the statechart, not by interruption
-// timing. The stamp is *required* on cycle-settling events so an emitter
-// can't silently opt out of the fence; only `Aborted` may go unstamped
-// (`destroy()` ends activity unconditionally, whatever cycle is live).
-
-/**
- * Event constructors. Lowercase (vs. `Data.taggedEnum`'s capitalized
- * constructors) since events are built from plain tagged literals — the
- * exhaustive reducer below is the statechart; `$match`/`$is` aren't needed.
- */
+// `generation` is required on Settled/Retrying/Failed so no emitter can bypass
+// the stale-cycle fence in `applyEvent`.
 export const HandleEvent = {
   fetch: (): HandleEvent => ({ _tag: "Fetch" }),
   insert: <T>(value: T, onRefetch: "patch" | "replace" = "patch"): HandleEvent<T> => ({
@@ -78,36 +38,22 @@ export const HandleEvent = {
   reset: (): HandleEvent => ({ _tag: "Reset" }),
 };
 
-/** `status` is derived from the orthogonal fields, never stored as truth. */
 function deriveStatus(value: unknown, error: unknown): HandleStatus {
-  if (value !== undefined) return "success"; // a value exists, even if a refetch errored
-  if (error !== undefined) return "error"; // first-load failure, no value yet
+  if (value !== undefined) return "success";
+  if (error !== undefined) return "error";
   return "pending";
 }
 
-// ─── The mutable handle the store/finder operate on ──────────────────────────
-
-/**
- * Internal handle — the reactive object behind the public `DocumentHandle` /
- * `QueryHandle`. Carries the flat fields plus the resolver functions for the
- * in-flight promise. The public type hides `resolve` / `reject`.
- */
 export interface InternalHandle<T = unknown, E = SiloError> {
   value: T | undefined;
   error: E | undefined;
   isFetching: boolean;
   fetchedAt: Date | undefined;
-  /** Failed attempts in the current fetch cycle; reset to 0 on success. */
   failureCount: number;
-  /** The most recent attempt's error while retrying; cleared on success. */
   lastError: E | undefined;
   status: HandleStatus;
   promise: Promise<T> | undefined;
-  /**
-   * Fetch-cycle epoch, bumped by each `Fetch`. Events stamped with a stale
-   * generation are dropped by `applyEvent`. Internal bookkeeping (read/written
-   * untracked); hidden from the public handle types like `resolve`/`reject`.
-   */
+  /** Read and written untracked, via the raw target. */
   generation: number;
   resolve?: (v: T) => void;
   reject?: (e: unknown) => void;
@@ -129,15 +75,12 @@ export function makeIdleHandle<T = unknown, E = SiloError>(): InternalHandle<T, 
   };
 }
 
-// ─── Promise plumbing ────────────────────────────────────────────────────────
-
 export interface Resolvers<T> {
   promise: Promise<T>;
   resolve: (v: T) => void;
   reject: (e: unknown) => void;
 }
 
-/** Drop a handle's pending resolver pair (after settling, or on reset). */
 function clearResolvers<T>(handle: InternalHandle<T>): void {
   handle.resolve = undefined;
   handle.reject = undefined;
@@ -152,36 +95,26 @@ export function withResolvers<T>(): Resolvers<T> {
     resolve = res;
     reject = rej;
   });
-  // Suppress unhandled-rejection warnings at the source; consumers still
-  // observe the rejection by awaiting the returned promise.
+  // Avoids the browser's unhandled-rejection warning; awaiters still see it.
   promise.catch(() => {});
   return { promise, resolve, reject };
 }
 
 /**
- * Apply one event to a handle: compute the next flat field values, write only
- * the ones that changed, then settle the promise lifecycle.
- *
- * State is read UNTRACKED via the raw target, but written through the reactive
- * proxy. Reading the proxy here would subscribe any tracked scope that calls
- * (say) `insertDocument` during render to the very fields it mutates — a
- * self-triggering loop. Reading raw avoids that; per-field writes below still
- * notify genuine readers. Writing only changed fields preserves the kernel's
- * per-field reactivity (a `value` reader doesn't re-render when `isFetching`
- * toggles on a background refetch).
+ * Reads go through the raw target: reading the proxy would subscribe a tracked
+ * caller (e.g. `insertDocument` during render) to the fields it writes, a
+ * self-triggering loop. Only changed fields are written, to keep per-field
+ * reactivity.
  */
 export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, SiloError>): void {
   const raw = unwrap(handle);
   const hadValue = raw.value !== undefined;
   const wasFetching = raw.isFetching;
 
-  // An Insert of `undefined` carries no document — recording it would resolve
-  // the pending Suspense promise with `undefined` and consume the resolvers,
-  // leaving a later `Failed` (e.g. the finder's NotFoundError) unable to
-  // reject. Treat it as a no-op so the handle settles through Failed instead.
+  // Inserting `undefined` would resolve the pending promise and leave a later
+  // `Failed` (e.g. NotFoundError) unable to reject it.
   if (event._tag === "Insert" && event.value === undefined) return;
 
-  // Generation fencing: drop a stamped event from a superseded fetch cycle.
   if (
     "generation" in event &&
     event.generation !== undefined &&
@@ -194,10 +127,6 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
 
   switch (event._tag) {
     case "Fetch": {
-      // Stale-while-revalidate: keep value/error; just mark activity. A fresh
-      // cycle starts its failure tally clean and gets a new generation, so a
-      // superseded cycle's stamped events are fenced out. The bump is written
-      // raw — generation is internal bookkeeping, not a reactive field.
       raw.generation += 1;
       isFetching = true;
       failureCount = 0;
@@ -205,17 +134,11 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       break;
     }
     case "Insert": {
-      // "patch" diffs a new version into the stored object, so only readers of
-      // the fields that changed re-render. "replace" swaps in the new object.
       value = event.onRefetch === "replace" ? event.value : reconcile(value, event.value);
-      // Stamp `fetchedAt` only when this insert answers a fetch (the handle is
-      // mid-fetch) or first populates the handle. A local insert into an
-      // already-loaded idle handle (e.g. a websocket push) preserves it, so
-      // TTL-style staleness checks (`Date.now() - fetchedAt > TTL`) still see
-      // when the data was last *fetched* — and `fetchedAt` readers don't
-      // re-render on every push.
+      // A local insert into a loaded idle handle (e.g. a websocket push) keeps
+      // `fetchedAt`, so TTL checks still measure the last fetch.
       if (wasFetching || !hadValue) fetchedAt = new Date();
-      error = undefined; // fresh data supersedes any prior error
+      error = undefined;
       failureCount = 0;
       lastError = undefined;
       break;
@@ -228,22 +151,17 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       break;
     }
     case "Retrying": {
-      // A retryable attempt failed; the fetch is still in flight. Surface what's
-      // currently wrong without ending activity or setting the terminal `error`.
       lastError = event.error;
       failureCount += 1;
       break;
     }
     case "Failed": {
-      // Keep value (stale-while-revalidate); record the error, end activity.
-      // `lastError` tracks the terminal error too, so it never lags `error`.
       ({ error } = event);
       lastError = event.error;
       isFetching = false;
       break;
     }
     case "Aborted": {
-      // No outcome to record — just end activity.
       isFetching = false;
       break;
     }
@@ -253,8 +171,7 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       fetchedAt = undefined;
       failureCount = 0;
       lastError = undefined;
-      // An in-flight fetch survives a reset (isFetching unchanged) and will
-      // repopulate; otherwise everything clears.
+      // isFetching is left alone: an in-flight fetch survives a reset.
       break;
     }
     /* c8 ignore next 3 -- compile-time exhaustiveness guard; unreachable */
@@ -288,8 +205,7 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
         raw.resolve(event.value);
         clearResolvers(raw);
       } else if (!hadValue) {
-        // Insert into an errored/idle handle: hand out a fresh resolved promise
-        // so a Suspense boundary nested in an error boundary can recover.
+        // A fresh promise lets a Suspense boundary inside an error boundary recover.
         handle.promise = Promise.resolve(event.value);
       }
       break;
@@ -302,13 +218,9 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       break;
     }
     case "Retrying": {
-      // Still fetching — the pending promise stays pending; nothing to settle.
       break;
     }
     case "Failed": {
-      // Reject only a first-load failure (no value yet) with a pending
-      // resolver. A refetch error after a prior success leaves the already
-      // resolved promise alone.
       if (raw.reject && raw.value === undefined) {
         raw.reject(event.error);
         clearResolvers(raw);
@@ -316,8 +228,6 @@ export function applyEvent<T>(handle: InternalHandle<T>, event: HandleEvent<T, S
       break;
     }
     case "Aborted": {
-      // A pending first-load promise stays pending — there is no outcome to
-      // settle it with, and a later fetch can still resolve it.
       break;
     }
     case "Reset": {

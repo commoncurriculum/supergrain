@@ -4,40 +4,19 @@ import { OUTSIDE } from "./row-blocks";
 
 /** A collection's docs by key, for looking docs up inside query steps. */
 export interface Lookup<K, V> {
-  /**
-   * The first doc with this key, or `undefined`. Read reactively: a reader
-   * reruns only when the doc under this key changes (another object, or
-   * none), not when other keys do.
-   */
+  /** The first doc with this key, or `undefined`. Reruns only when this key's doc changes. */
   get(key: K | null | undefined): V | undefined;
-  /**
-   * Every doc with this key, in source order (one-to-many: all tasks for a
-   * user). The same reactive array for a key every time, updated in place,
-   * so a reader that reads its items reruns only when this key's docs change.
-   */
+  /** Every doc with this key, in source order: the same array per key, updated in place. */
   getAll(key: K | null | undefined): ReadonlyArray<V>;
 }
 
-/** A {@link Lookup} as the list that owns it sees it. */
 export interface SyncedLookup<K, V> extends Lookup<K, V> {
-  /**
-   * Bring every looked-up key up to date with the source, and subscribe the
-   * caller to the source. A list calls this before reading its rows, so a
-   * change to the source wakes only the rows whose key's docs changed.
-   */
+  // Must run before the owning list reads its rows.
   sync(): void;
 }
 
-/** `getAll` of a missing key: never changes, so shared. */
 const NONE: ReadonlyArray<never> = Object.freeze([]);
 
-/**
- * A reactive index from key to docs over a collection (see `index-rows.ts`).
- *
- * Keys are compared like `Map` keys. `null`, `undefined` and `NaN` never
- * match. When two docs share a key, `get` finds the first in the source, and
- * `getAll` lists them in source order.
- */
 export function createLookup<V extends object, K>(
   source: () => Iterable<V>,
   key: (doc: V) => K,

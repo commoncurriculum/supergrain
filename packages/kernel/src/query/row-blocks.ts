@@ -4,62 +4,41 @@
  */
 import { rethrowingComputed, settle, type Caught } from "../rethrowing-computed";
 
-/**
- * What a row's steps produce: whether it's in the list, and if so its output
- * value and sort key. A new object only when it changed.
- */
+// Must be a new object only when it changed: consumers compare by identity.
 export type RowResult<O, K> =
   | { readonly member: false; readonly value?: undefined; readonly key?: undefined }
   | { readonly member: true; readonly value: O; readonly key: K };
 
 export interface Row<T, O, K> {
   readonly item: T;
-  /** The raw object behind `item`: the row's identity. */
   readonly raw: object;
-  /**
-   * The row's place in the source: labels increase along the source, so
-   * ordering rows by it gives source order. Kept up to date by the source's
-   * rows; breaks ties between equal keys.
-   */
   order: number;
-  /** Its latest result. A `catchingComputed`: read it with `settle`. */
+  /** Read with `settle`, which rethrows a cached throw. */
   readonly result: () => Caught<RowResult<O, K>>;
-  /** The result this row is filed under in the list. */
   applied: RowResult<O, K>;
-  /** How many times the source holds this row. */
   count: number;
-  /** The block this row belongs to, or -1 before it is placed in one. */
   block: number;
 }
 
-/** A row whose result changed since it was last filed, and its new result. */
 export interface Change<T, O, K> {
   readonly row: Row<T, O, K>;
   readonly next: RowResult<O, K>;
 }
 
-/**
- * Up to `GROUP` blocks with one computed over their changes. The list reads
- * one of these per group, so a field edit costs a few dozen cached reads
- * (every group, then one group's blocks, then one block's rows), not N.
- */
 export interface BlockGroup<T, O, K> {
   readonly changes: () => ReadonlyArray<Change<T, O, K>>;
-  /** The changes last applied to the list. Set only after an update succeeds. */
+  /** Set only after an update succeeds. */
   applied: ReadonlyArray<Change<T, O, K>> | undefined;
 }
 
-/** The result of a row that isn't in the list. */
-// Same fields as a member result, so every result the list reads has one
-// shape. With `{ member: false }` alone, field edits ran about 15% slower in
-// two paired bench runs.
+// Same fields as a member result so V8 sees one shape; `{ member: false }`
+// alone made field edits ~15% slower.
 export const OUTSIDE: RowResult<never, never> = Object.freeze({
   member: false,
   value: undefined,
   key: undefined,
 });
 
-/** A row for `item`, not yet filed in the list or placed in a block. */
 export function createRow<T, O, K>(
   item: T,
   raw: object,
@@ -68,25 +47,14 @@ export function createRow<T, O, K>(
   return { item, raw, order: 0, result, applied: OUTSIDE, count: 0, block: -1 };
 }
 
-/** Rows per block. */
 const BLOCK = 16;
-/** Blocks per group. */
 const GROUP = 16;
 
-/**
- * Up to `BLOCK` rows with one computed over all their results. It reruns when
- * one of them changes, and returns the rows whose result differs from where
- * they are filed.
- *
- * Rows stay in their block when other rows come and go, so adding or removing
- * a row replaces only the blocks it touched.
- */
 interface Block<T, O, K> {
   readonly rows: ReadonlyArray<Row<T, O, K>>;
   readonly changes: () => ReadonlyArray<Change<T, O, K>>;
 }
 
-/** No changes. Shared, so finding none allocates nothing. */
 const NO_CHANGES: ReadonlyArray<never> = Object.freeze([]);
 
 function createBlock<T, O, K>(rows: ReadonlyArray<Row<T, O, K>>): Block<T, O, K> {
@@ -107,9 +75,8 @@ function createBlock<T, O, K>(rows: ReadonlyArray<Row<T, O, K>>): Block<T, O, K>
 function createGroup<T, O, K>(blocks: ReadonlyArray<Block<T, O, K>>): BlockGroup<T, O, K> {
   return {
     applied: undefined,
-    // Its blocks' unfiled changes: one block's array as is when only it has
-    // any. A block keeps returning changes the list has since filed, until
-    // one of its rows changes again; those are left out.
+    // A block keeps returning changes the list already filed until one of its
+    // rows changes again, so those must be filtered out here.
     changes: rethrowingComputed(() => {
       let found: ReadonlyArray<Change<T, O, K>> = NO_CHANGES;
       let joined: Array<Change<T, O, K>> | undefined = undefined; // eslint-disable-line unicorn/no-useless-undefined -- init-declarations wants a value
@@ -134,10 +101,6 @@ function hasUnfiled<T, O, K>(changes: ReadonlyArray<Change<T, O, K>>): boolean {
   return false;
 }
 
-/**
- * The list's rows in blocks, and blocks in groups. `isLive(row)` says whether
- * a row is still in the source.
- */
 export function createRowBlocks<T, O, K>(isLive: (row: Row<T, O, K>) => boolean) {
   let blocks: Array<Block<T, O, K>> = [];
   let groups: Array<BlockGroup<T, O, K>> = [];
@@ -158,14 +121,8 @@ export function createRowBlocks<T, O, K>(isLive: (row: Row<T, O, K>) => boolean)
     }
   }
 
-  /**
-   * Take removed rows out of their blocks and put new rows in the last
-   * block, or new ones, then return the groups. Only the blocks that changed
-   * are replaced. When removals have left too many sparse blocks, regroup
-   * every row of `list`. Safe only once the read that found these rows
-   * succeeded. The groups returned are valid until the next call, which may
-   * change them in place.
-   */
+  // Call only after the read that found these rows succeeded. The returned
+  // groups may be changed in place by the next call.
   return function place(
     list: ReadonlyArray<Row<T, O, K>>,
     unplaced: ReadonlyArray<Row<T, O, K>>,

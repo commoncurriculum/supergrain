@@ -2,24 +2,14 @@
  * Index loops on purpose: `for…of` allocates an iterator per loop, as in
  * the rest of the list engine.
  */
-/**
- * Rows kept in sorted order, in chunks of up to `2 * LOAD`. Inserting or
- * removing a row splices one short chunk, not one long array, and reading a
- * window skips whole chunks by their sizes.
- *
- * `compare` must be a total order (the list breaks key ties by place in the
- * source), and a
- * row must be removed with the key it was inserted with.
- */
+// `compare` must be a total order, and a row must be removed with the key it
+// was inserted with.
 export interface SortedRows<R> {
   readonly size: number;
-  /** Replace every row with `rows`, which must already be sorted. */
+  /** `rows` must already be sorted. */
   reset(rows: ReadonlyArray<R>): void;
-  /** Insert `row`; returns its place among the rows. */
   insert(row: R): number;
-  /** Remove `row`; returns the place it had. */
   remove(row: R): number;
-  /** Push the rows from `start` up to, not including, `end` onto `into`. Whole counts. */
   copy(start: number, end: number, into: { push(row: R): void }): void;
 }
 
@@ -29,7 +19,6 @@ export function createSortedRows<R>(compare: (a: R, b: R) => number): SortedRows
   let chunks: Array<Array<R>> = [];
   let size = 0;
 
-  // The first chunk whose last row orders at or after `row`, or the last chunk.
   const chunkFor = (row: R): number => {
     let low = 0;
     let high = chunks.length - 1;
@@ -41,7 +30,6 @@ export function createSortedRows<R>(compare: (a: R, b: R) => number): SortedRows
     return low;
   };
 
-  /** The place of row `i` of chunk `c` among all rows. */
   const placeOf = (c: number, i: number): number => {
     for (let before = 0; before < c; before++) i += chunks[before]!.length;
     return i;
@@ -87,9 +75,8 @@ export function createSortedRows<R>(compare: (a: R, b: R) => number): SortedRows
       const c = chunkFor(row);
       const i = insertionPoint(chunks[c]!, row, compare);
       if (chunks[c]![i] === row) return removeAt(c, i);
-      // A miss only happens with an inconsistent `compare`, a key that
-      // mutated, or a row that left the source with its last label: find
-      // the row by scanning.
+      // Misses on an inconsistent `compare`, a mutated key, or a row that left
+      // the source with a stale label.
       for (let c = 0; c < chunks.length; c++) {
         const i = chunks[c]!.indexOf(row);
         if (i !== -1) return removeAt(c, i);
@@ -114,7 +101,6 @@ export function createSortedRows<R>(compare: (a: R, b: R) => number): SortedRows
   };
 }
 
-/** The first index in `sorted` whose item orders at or after `item`. */
 function insertionPoint<R>(
   sorted: ReadonlyArray<R>,
   item: R,

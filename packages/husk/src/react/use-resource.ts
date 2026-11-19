@@ -8,8 +8,8 @@ type SetupResult = void | (() => void) | Promise<void>;
 /**
  * Component-scoped resource. Two shapes, same hook.
  *
- * **Inline** — `useResource(initial, setup)`: one-off, reactive reads
- * inside `setup` drive reruns. Use when the setup IS the work.
+ * **Inline** — `useResource(initial, setup)`: reactive reads inside
+ * `setup` drive reruns.
  *
  * ```tsx
  * const Editor = tracked(() => {
@@ -38,8 +38,7 @@ type SetupResult = void | (() => void) | Promise<void>;
  * });
  * ```
  *
- * Disposes on unmount (aborts in-flight work, runs cleanups, halts
- * the effect).
+ * Disposed on unmount.
  */
 export function useResource<T extends object>(
   initial: T,
@@ -60,8 +59,7 @@ export function useResource(first: unknown, second?: unknown): object {
       first as object,
       second as (state: object, ctx: ResourceContext) => SetupResult,
     );
-    // Deps are intentionally empty: the resource identity is stable,
-    // and the argsFn/setup closures provide the reactive surface.
+    // Created once; reactivity comes from argsFn/setup, not React deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useDisposeOnUnmount(() => dispose(instance));

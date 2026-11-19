@@ -7,32 +7,15 @@ import type {
 } from "@supergrain/silo";
 import type { Effect } from "effect";
 
-// =============================================================================
-// Query adapter
-// =============================================================================
-
 /**
- * Adapter shape for a paginated/queryable resource.
- *
- * Response envelope is fixed: `{ data: { results: Array<T> }, meta?, included? }`.
- * - `data.results` — the page's items. Each item is expected to carry its own
- *   `offset: number` (server-controlled positioning for stable ordering on
- *   later pages).
+ * Adapter for a paginated resource. `fetch` resolves with a {@link QueryEnvelope}:
+ * - `data.results` — the page's items, each carrying its own `offset: number`.
  * - `meta.nextOffset` — cursor for the next page, or `null` when exhausted.
- * - `included` — sideloaded documents written into the store. Each item
- *   must carry its own `type` and `id` (JSON-API convention) so the query
- *   helper can insert it under the correct type. This is a queries-specific
- *   requirement on top of the core library's minimal `{ id }` contract.
+ * - `included` — sideloaded documents; each must carry its own `type` and `id`.
  *
- * `fetch` returns the response envelope. **Return a `Promise`** for the common
- * case (a rejection becomes an `AdapterError`); power users can **return an
- * `Effect`** to control the failure channel — consistent with
- * `@supergrain/silo` adapters.
- *
- * `opts.signal` aborts when the run is interrupted (a per-query `timeout`
- * fires, a `retry` abandons the prior attempt, or the query is destroyed /
- * superseded by a newer fetch); thread it into your transport for a real
- * network abort, or ignore it — exactly like a silo `DocumentAdapter`.
+ * Return a `Promise` (a rejection becomes an `AdapterError`) or an `Effect` to
+ * control the failure channel. `opts.signal` aborts when the run is interrupted
+ * (timeout, retry, destroy, or a newer fetch); pass it to your transport or ignore it.
  */
 export interface QueryAdapter<T> {
   fetch(
@@ -48,17 +31,9 @@ export interface QueryEnvelope<T> {
   included?: Array<{ type: string; id: string }>;
 }
 
-// =============================================================================
-// Query model (the shape stored in the document store)
-// =============================================================================
-
 /**
- * Conventional shape for a query's "document" in the store.
- *
- * A query result is stored as a single (type, id) slot whose value is a
- * `QueryModel`: the accumulated results array plus the next-page cursor.
- * Consumers declare this in their `DocumentTypes` map so the store's
- * reactivity is keyed by (queryName, queryParamId).
+ * The document a query stores under its `(type, id)` slot. Declare it in your
+ * `DocumentTypes` map for each query type.
  */
 export interface QueryModel<K extends string, T> {
   id: string;
@@ -67,31 +42,19 @@ export interface QueryModel<K extends string, T> {
   nextOffset: number | null;
 }
 
-// =============================================================================
-// Reactive query handle
-// =============================================================================
-
 export interface Query<T> {
   readonly results: Array<T>;
   readonly nextOffset: number | null;
   readonly isFetching: boolean;
   /**
-   * The typed failure from the last settled fetch, or `undefined`. Same
-   * `SiloError` channel as a silo `DocumentHandle.error` — a rejected `Promise`
-   * adapter surfaces as an `AdapterError` (original rejection on `.cause`).
-   * Like a silo handle, a previous error stays visible while a refetch is in
-   * flight; it clears (or is replaced) when the fetch settles.
+   * The failure from the last settled fetch, or `undefined`. A rejected `Promise`
+   * adapter surfaces as an `AdapterError` (original rejection on `.cause`). A
+   * previous error stays visible while a refetch is in flight.
    */
   readonly error: SiloError | undefined;
-  /**
-   * Failed attempts in the current fetch cycle, reset to 0 on success. Mirrors
-   * a silo handle's `failureCount` so a retrying query is observable.
-   */
+  /** Failed attempts in the current fetch cycle, reset to 0 on success. */
   readonly failureCount: number;
-  /**
-   * The latest attempt's error while retrying — visible before the fetch gives
-   * up (when `error` settles). Mirrors a silo handle's `lastError`.
-   */
+  /** The latest attempt's error while retrying, before `error` settles. */
   readonly lastError: SiloError | undefined;
 
   /** Fetch the next page using the currently stored `nextOffset` (or 0 if none). */
@@ -104,17 +67,10 @@ export interface Query<T> {
   destroy(): void;
 }
 
-// =============================================================================
-// Params
-// =============================================================================
-
 /**
- * The inherited resilience knobs (`AdapterOptionOverrides`: `retry` /
- * `timeout` / `deadline` / `retryable`) are the same per-fetch overrides as
- * silo's `ModelConfig` / `QueryConfig`, resolved via
- * `store.resolveAdapterOptions` — per-query → store-wide → built-in fibonacci
- * `defaultRetry` — so a query fetch retries like a document `find`. Disable
- * retry with `Schedule.recurs(0)`.
+ * `retry` / `timeout` / `deadline` / `retryable` override the store's adapter
+ * defaults for this query, as in silo's `ModelConfig`. Disable retry with
+ * `Schedule.recurs(0)`.
  */
 export interface CreateQueryParams<
   M extends DocumentTypes,
@@ -130,11 +86,9 @@ export interface CreateQueryParams<
   limit?: number;
 
   /**
-   * Optional server-side subscription hook. If provided, called on init.
-   * Must return an unsubscribe function that `destroy()` will invoke.
-   *
-   * The callback should be invoked whenever the server signals the query's
-   * results are stale; the query will respond by refetching from offset 0.
+   * Called on init. Call `onInvalidate` when the server says results are stale
+   * (the query refetches from offset 0). Return an unsubscribe function, which
+   * `destroy()` calls.
    */
   subscribe?: (type: K, id: string, onInvalidate: () => void) => () => void;
 }

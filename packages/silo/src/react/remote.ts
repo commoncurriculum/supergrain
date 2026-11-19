@@ -61,8 +61,7 @@ export function createRemoteQueryStoreContext<Request = unknown>(): {
     const store = useRemoteQueryStore();
     // oxlint-disable-next-line no-array-method-this-argument -- RemoteQueryStore#find, not Array#find
     const handle = store.find(query, params);
-    // Keyed by value, so a body or options object rebuilt each render doesn't
-    // re-observe.
+    // Keyed by value so objects rebuilt each render don't re-run the effect.
     const paramsKey = params === null || params === undefined ? undefined : stableStringify(params);
     const optionsKey = stableStringify(options ?? {});
     useEffect(() => {

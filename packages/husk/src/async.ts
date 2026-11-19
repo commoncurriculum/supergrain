@@ -3,18 +3,12 @@ import { createReactive, type SymbolDisposable } from "@supergrain/kernel";
 import { registerDisposer, resource } from "./resource";
 
 /**
- * A reactive async value. The envelope fields (`data`, `error`,
- * `isPending`, etc.) live on a reactive object — read them inside a
- * `tracked()` component or an `effect()` and you subscribe per-field.
+ * A reactive async value. Envelope fields are reactive: read them inside a
+ * `tracked()` component or an `effect()` to subscribe per-field.
  *
- * Inline sugar over `resource` for the async-envelope case. Reactive
- * reads in the sync prefix of `asyncFn` (before the first `await`) are
- * tracked — when they change, the current run is aborted via
- * `abortSignal` and a fresh run starts.
- *
- * Field names match the ecosystem (SWR / TanStack Query / Apollo /
- * URQL) and `@supergrain/silo` exactly: `.data` for the resolved value,
- * `.promise` for the stable thenable handle.
+ * Only reactive reads before the first `await` in `asyncFn` are tracked.
+ * When they change, the current run is aborted via `abortSignal` and a
+ * fresh run starts.
  */
 export interface ReactivePromise<T> {
   readonly data: T | null;
@@ -80,9 +74,7 @@ function deferred<T>(): Deferred<T> {
     resolve = res;
     reject = rej;
   });
-  // Suppress unhandled-rejection warnings. Users observe rejections via
-  // `await rp.promise` / `rp.promise.catch(...)` — attaching a catch
-  // here creates a new branch, it doesn't swallow the rejection.
+  // Silences unhandled-rejection warnings; other awaiters still see the rejection.
   promise.catch(() => {});
   return { promise, resolve, reject };
 }
@@ -193,9 +185,7 @@ export function reactiveTask<Args extends unknown[], T>(
         const rejected = Promise.reject(
           new Error("@supergrain/husk: reactiveTask has been disposed"),
         );
-        // Attach a handler so fire-and-forget callers (e.g. an onClick that
-        // dispatches `run()` without awaiting) don't surface as unhandled
-        // rejections. Awaiters still observe the rejection.
+        // Silences unhandled-rejection for fire-and-forget callers; awaiters still see it.
         rejected.catch(() => {});
         return rejected;
       }

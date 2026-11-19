@@ -23,14 +23,13 @@ export function $addToSet(context: OperatorContext, operations: Record<string, a
       isObject(spec) && "$each" in spec && Array.isArray(spec["$each"]) ? spec["$each"] : [spec];
 
     if (target.arr === undefined) {
-      // Absent field — Mongo creates the array with the de-duplicated values.
       setValueAtPath(context.raw, path, uniqueAdditions([], candidates), pathWriteOptions(context));
       return;
     }
 
     const newItems = uniqueAdditions(target.arr, candidates);
     if (newItems.length === 0) {
-      return; // no-op
+      return;
     }
 
     pushToArray(target.arr, newItems);

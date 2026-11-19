@@ -2,27 +2,12 @@ import { createReactive, effect, type SymbolDisposable } from "@supergrain/kerne
 import { getActiveSub, makeDisposable, setActiveSub } from "@supergrain/kernel/internal";
 
 /**
- * A resource is a reactive function with cleanup logic — one of two
- * shapes, depending on how you instantiate it.
+ * Context passed to a resource's `setup`. Setup runs on create, reruns on
+ * tracked change (cleanup first), and tears down on `dispose` or `using`.
  *
- * - `resource(initial, setup)` — inline, one-off. Reactive reads inside
- *   `setup` drive reruns. Simplest shape; use when the work IS the
- *   reactive read (async fetches with tracked inputs, subscriptions).
- *
- * - `defineResource(initialFactory, setup)` — returns a reusable
- *   factory. Callers pass an `argsFn` thunk; the thunk's reactive reads
- *   drive reruns, `setup` reads are NOT tracked. Use when you want a
- *   primitive with a clear "what triggers reruns" surface at call
- *   sites.
- *
- * Both share the same lifecycle contract: setup runs on create, reruns
- * on tracked change (with cleanup first), and tears down on `dispose` —
- * or at the end of the block when bound with `using` (resources are
- * `Disposable`).
- *
- * Sync setups return cleanup (`return () => teardown()`). Async setups
- * register via `ctx.onCleanup(...)` — `return` would resolve a Promise.
- * `ctx.abortSignal` trips on every rerun and on `dispose`.
+ * Sync setups return their cleanup. Async setups must register cleanup via
+ * `ctx.onCleanup(...)`, since a returned function would only resolve the Promise.
+ * `abortSignal` aborts on every rerun and on `dispose`.
  */
 export interface ResourceContext {
   readonly abortSignal: AbortSignal;
@@ -39,15 +24,6 @@ export type ResourceFactory<Args, T extends object> = [Args] extends [void]
 
 const disposers = new WeakMap<object, () => void>();
 
-/**
- * Internal plumbing: register a teardown function for `target` that
- * `dispose(target)` will invoke, and make `target` `Disposable` so
- * `using` reaches the same teardown. Used by `husk` async primitives to
- * opt into the same dispose machinery as `resource()`. Not part of
- * husk's public API; deep-import only and may change without notice.
- *
- * @internal
- */
 export function registerDisposer<T extends object>(
   target: T,
   fn: () => void,
@@ -102,10 +78,8 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T & Symbol
     }
   }
 
-  // Create the effect outside any ambient subscriber. alien-signals' `effect`
-  // links the new effect as a dep of `activeSub` when one exists — so without
-  // this, a resource created inside a `tracked()` render (or another effect)
-  // becomes nested and doesn't propagate its own deps independently.
+  // alien-signals links a new effect to the active subscriber; create it
+  // untracked so a resource made inside a render or effect isn't nested.
   const stopEffect = withUntracked(() =>
     effect(() => {
       const gen = ++generation;
@@ -141,15 +115,7 @@ function runResource<Args, T extends object>(spec: RunSpec<Args, T>): T & Symbol
       if (typeof result === "function") {
         cleanups.push(result);
       } else if (isPromiseLike(result)) {
-        // Promise-resolved values are intentionally ignored — async setups
-        // register cleanup via `ctx.onCleanup(...)`, which is `disposed`-safe
-        // (runs immediately if the resource was torn down mid-await). Check
-        // `error.name` rather than `instanceof DOMException` so this works
-        // in runtimes where DOMException isn't a global.
-        //
-        // Wrap with `Promise.resolve` because `isPromiseLike` only guarantees
-        // `.then`; non-Promise thenables (Bluebird-style, hand-rolled) would
-        // crash on `.catch`.
+        // Thenables may lack `.catch`; DOMException isn't global in every runtime.
         Promise.resolve(result).catch((error: unknown) => {
           if (error instanceof Error && error.name === "AbortError") return;
           if (gen === generation) {
@@ -188,8 +154,7 @@ export function resource<T extends object>(
   setup: (state: T, ctx: ResourceContext) => SetupResult,
 ): T & SymbolDisposable {
   return runResource<void, T>({
-    // createReactive returns Branded<T>, which is structurally assignable to T.
-    // The cast is needed because TypeScript can't reduce the Branded<T> conditional type.
+    // TS can't reduce the Branded<T> conditional type.
     state: createReactive(initial) as T,
     getArgs: (): void => {},
     invokeSetup: (s, _args, ctx) => setup(s, ctx),
@@ -225,11 +190,9 @@ export function defineResource<Args, T extends object>(
 ): ResourceFactory<Args, T> {
   function instantiate(argsFn?: () => Args): T & SymbolDisposable {
     return runResource<Args, T>({
-      // createReactive returns Branded<T>, which is structurally assignable to T.
-      // The cast is needed because TypeScript can't reduce the Branded<T> conditional type.
+      // TS can't reduce the Branded<T> conditional type.
       state: createReactive(initial()) as T,
-      // When argsFn is absent the factory is called as ResourceFactory<void, T>
-      // (Args = void), so returning undefined satisfies the void constraint.
+      // argsFn is absent only when Args is void.
       getArgs: () => (argsFn ? argsFn() : (undefined as unknown as Args)),
       invokeSetup: setup,
       trackSetup: false,
