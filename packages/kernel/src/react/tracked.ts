@@ -11,17 +11,9 @@ import { type FC, memo, useEffect, useReducer } from "react";
 import { type Disposer, scheduleDisposal } from "./disposal-queue";
 
 /**
- * Wraps a React component with per-component signal scoping.
- *
- * All reactive proxy reads during the component's render are tracked to
- * that component's own alien-signals effect. When any tracked signal
- * changes, only this component re-renders — not the parent.
- *
- * Also wraps the component in React.memo for standard memoization.
- *
- * Safe on non-reactive components: if no reactive proxies are read,
- * the effect has zero dependencies and never fires. The component
- * behaves identically to memo().
+ * Wraps a React component (in `memo`) so the store reads in its render are
+ * tracked to that component alone: when one changes, only it re-renders.
+ * A component that reads nothing reactive behaves exactly like `memo()`.
  *
  * @example
  * ```tsx
@@ -41,7 +33,7 @@ import { type Disposer, scheduleDisposal } from "./disposal-queue";
  * })
  *
  * const App = tracked(() => {
- *   const store = Store.useStore()
+ *   const store = useStore()
  *   return (
  *     <For each={store.data}>
  *       {(item) => <Row key={item.id} item={item} />}
@@ -53,19 +45,16 @@ import { type Disposer, scheduleDisposal } from "./disposal-queue";
 export function tracked<P extends object>(Component: FC<P>) {
   const Tracked: FC<P> = (props: P) => {
     const [, update] = useReducer(increment, 0);
-    // The tracker lives on the dispatch function, which is stable per
-    // component instance, so it takes no extra hook.
+    // Stashed on React's dispatch function, which is stable per instance.
     const holder = update as unknown as { __sg?: Tracker };
     const tracker = (holder.__sg ??= new Tracker(update));
     useEffect(tracker.mount, NO_DEPS);
 
-    // Each render tracks into a fresh effect, and the previous one is dropped
-    // only after this render has subscribed. So a computed the component
-    // reads always has a subscriber, and keeps its cached state, from one
-    // render to the next.
+    // Drop the previous effect only after this render subscribed, so computeds
+    // never lose their last subscriber (and their cache) between renders.
     const previous = tracker.stop;
-    // Made outside any active subscriber, so it isn't owned (and disposed)
-    // by whatever effect happens to be running.
+    // alien-signals makes an effect created under an active subscriber its
+    // child, disposed with it.
     const outer = setActiveSub(undefined);
     tracker.node = undefined;
     const stop = effect(tracker.run);
@@ -78,16 +67,14 @@ export function tracked<P extends object>(Component: FC<P>) {
       rendered = true;
       return result;
     } finally {
-      // Restored even when Component(props) throws (Suspense throws a
-      // Promise): otherwise every later signal read in the app would
-      // subscribe to this render's effect.
+      // Must restore even on throw (Suspense throws a Promise), or every later
+      // read in the app subscribes to this effect.
       setActiveSub(outer);
       endReads(tracker, outerReads, rendered);
       if (rendered) {
         previous?.();
       } else {
-        // A render that threw never shows: React keeps what it showed
-        // before, so keep the effect that follows that, and drop this one.
+        // React keeps showing the previous render, so keep its effect.
         stop();
         tracker.stop = previous;
       }
@@ -100,32 +87,18 @@ export function tracked<P extends object>(Component: FC<P>) {
 const increment = (n: number): number => n + 1;
 const NO_DEPS: ReadonlyArray<unknown> = [];
 
-/**
- * One component instance's tracking state. It makes three functions per
- * instance and none per render, so a render allocates only its effect.
- */
 class Tracker extends RenderReads implements Disposer {
-  /** Disposes the latest render's effect. Undefined before the first render. */
   stop: (() => void) | undefined = undefined;
   mounted = false;
 
-  /**
-   * The body of every render's effect. Its first run (which `effect()` makes
-   * synchronously) only records the node. After that it runs when a read
-   * changed: it reads what the shown render read again (see `RenderReads`),
-   * so the effect keeps following it, and re-renders. The next render's
-   * effect takes over the subscriptions.
-   */
+  // effect() runs this synchronously once on creation: that run only records the node.
   readonly run: () => void;
-  /** The mount effect. */
   readonly mount: () => () => void;
-  /** The mount effect's cleanup. */
   readonly unmount: () => void;
 
   constructor(update: () => void) {
     super();
     this.run = () => {
-      // Inside an effect's run, the active subscriber is that effect.
       const node = getActiveSub()!;
       if (this.node === undefined) {
         this.node = node;
@@ -136,27 +109,19 @@ class Tracker extends RenderReads implements Disposer {
     };
     this.mount = () => {
       this.mounted = true;
-      // Shown again after its effect was dropped (an <Activity> hid it):
-      // render again, to track into a new one.
+      // Re-shown after an <Activity> hid it and its effect was dropped.
       if (this.stop === undefined) update();
       return this.unmount;
     };
-    // Disposal waits until after the next paint. Unlinking is pure
-    // bookkeeping with no observable output; running 1,000 of them inside
-    // React's unmount commit blocks presentation of the frame that removes
-    // the rows. An effect firing before then only calls `update` on an
-    // unmounted component, a no-op in React.
+    // Deferred: an effect firing before then only calls `update` on an
+    // unmounted component, which React ignores.
     this.unmount = () => {
       this.mounted = false;
       scheduleDisposal(this);
     };
   }
 
-  /**
-   * Drop the latest effect, unless the component mounted again meanwhile:
-   * StrictMode in development unmounts and remounts every component once.
-   * Each unmount queues it, so it may run twice.
-   */
+  // StrictMode unmounts and remounts once: skip if remounted. May run twice.
   dispose(): void {
     if (this.mounted || this.stop === undefined) return;
     this.stop();

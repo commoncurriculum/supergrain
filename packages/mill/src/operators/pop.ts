@@ -8,7 +8,7 @@ export function $pop(context: OperatorContext, operations: Record<string, 1 | -1
     }
     const { arr } = resolveArrayTarget("$pop", context.raw, path, pathWriteOptions(context));
     if (arr === undefined || arr.length === 0) {
-      return; // absent or empty — no-op
+      return;
     }
     const target = direction === -1 ? 0 : arr.length - 1;
     removeIndices(arr, (index) => index === target);

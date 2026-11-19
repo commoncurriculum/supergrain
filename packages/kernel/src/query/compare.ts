@@ -2,10 +2,7 @@ export function isMissing(value: unknown): boolean {
   return value === null || value === undefined || Number.isNaN(value);
 }
 
-/**
- * A total order over numbers, strings, bigints and arrays of them. Values of
- * different types order by type name; `null`, `undefined` and `NaN` sort last.
- */
+// Mixed types order by type name; null, undefined and NaN sort last.
 export function defaultCompare(a: unknown, b: unknown): number {
   const aMissing = isMissing(a);
   const bMissing = isMissing(b);

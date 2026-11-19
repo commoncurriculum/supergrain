@@ -1,8 +1,4 @@
-/**
- * Call `fn` with each item of `source`. A kernel array's `forEach` subscribes
- * to its structure with three signals; `for...of` would subscribe to every
- * index.
- */
+// Not for...of: on a store array that subscribes to every index.
 export function forEachItem<T>(source: Iterable<T>, fn: (item: T) => void): void {
   if (Array.isArray(source)) {
     (source as ReadonlyArray<T>).forEach((item) => fn(item));

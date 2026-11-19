@@ -1,25 +1,6 @@
 import { getValueAtPath, hasValueAtPath, isArrayIndex, pathCovers, splitPath } from "./path";
 import { cloneValue, isContainer, isEqual, isObject } from "./util";
 
-// ─── undo via plan, apply, settle ───────────────────────────────────────────
-//
-// Before anything runs, `planUndo` reads the update document and the pristine
-// document to decide, per path, the cheapest saved state that suffices to
-// restore it — a *spot*:
-//
-//   - `value`:  the original value at a path (what a write overwrites)
-//   - `absent`: the path didn't exist (a created branch undoes with $unset)
-//   - `length`: an array's original length (appends and past-the-end growth
-//               undo by truncating — no contents needed, so appending to a
-//               huge array plans O(1) work)
-//
-// After the update applies — the operators contain no undo code — `buildUndo`
-// compares each spot against the document and emits the edits that turn it
-// back. Every decision is made against the pristine document, so a spot's
-// saved state is exact by construction, and `addSpot` keeps spots pairwise
-// non-nested (a shallower spot widens to a full `value` and absorbs deeper
-// ones), so the emitted paths can never conflict.
-
 type Spot =
   | { kind: "value"; path: string; value: unknown }
   | { kind: "absent"; path: string }
@@ -27,14 +8,13 @@ type Spot =
 
 export type UndoPlan = Map<string, Spot>;
 
-/** Plan what to save. Must run before the update mutates the document. */
+/** Must run before the update mutates the document. */
 export function planUndo(raw: object, operations: Record<string, object>): UndoPlan {
   const plan: UndoPlan = new Map();
   for (const [operator, payload] of Object.entries(operations)) {
     for (const [path, operand] of Object.entries(payload as Record<string, unknown>)) {
       planPath(plan, raw, operator, path, operand);
       if (operator === "$rename") {
-        // The destination is written like a $set.
         planPath(plan, raw, "$set", operand as string);
       }
     }
@@ -42,14 +22,12 @@ export function planUndo(raw: object, operations: Record<string, object>): UndoP
   return plan;
 }
 
-// `$` / `$[]` / `$[id]` — which element these resolve to is decided mid-apply,
-// so the containing array is saved whole rather than guessed at.
+// Which element a positional token hits is decided mid-apply, so the
+// containing array is saved whole.
 function isPositionalSegment(segment: string): boolean {
   return segment === "$" || segment.startsWith("$[");
 }
 
-// A $push whose spec can only append at the tail (no reordering modifiers);
-// $addToSet always appends at the tail.
 function isTailAppend(operator: string, operand: unknown): boolean {
   if (operator === "$addToSet") {
     return true;
@@ -76,10 +54,8 @@ function planPath(
       if (i > 0) {
         addValueSpot(plan, raw, parts.slice(0, i).join("."), current);
       }
-      return; // a positional segment at the root is invalid — the op throws
+      return; // a root positional segment is invalid; the operator throws
     }
-    // Writing through an out-of-bounds index pads the array's tail; its
-    // original length is all an undo needs.
     if (Array.isArray(current) && isArrayIndex(segment) && Number(segment) >= current.length) {
       addSpot(plan, raw, {
         kind: "length",
@@ -95,8 +71,6 @@ function planPath(
     ) {
       const prefix = parts.slice(0, i + 1).join(".");
       if (isContainer(current) && Object.hasOwn(current, segment)) {
-        // A non-container value (e.g. null) about to be overwritten by a
-        // created branch — save it so undo restores it exactly.
         addValueSpot(plan, raw, prefix, (current as any)[segment]);
       } else {
         addSpot(plan, raw, { kind: "absent", path: prefix });
@@ -113,7 +87,6 @@ function planPath(
     }
     return;
   }
-  // Same past-the-end rule at the leaf.
   if (
     Array.isArray(current) &&
     isArrayIndex(leaf) &&
@@ -136,7 +109,6 @@ function planPath(
     return;
   }
   if (Array.isArray(leafValue) && operator === "$pop" && operand === 1) {
-    // Only the popped element is at stake.
     if (leafValue.length > 0) {
       const last = leafValue.length - 1;
       addValueSpot(plan, raw, `${path}.${last}`, leafValue[last]);
@@ -155,11 +127,7 @@ function addValueSpot(plan: UndoPlan, raw: object, path: string, value: unknown)
   addSpot(plan, raw, { kind: "value", path, value: cloneValue(value) });
 }
 
-// Insert a spot, keeping the plan pairwise non-nested: a spot covered by an
-// existing one is redundant (both were read from the pristine document), and
-// nesting between spots collapses to a full `value` at the shallower path —
-// the one case this arises is interior writes plus growth on the same array,
-// where the undo inherently needs the whole prior array.
+// Keeps spots pairwise non-nested; Mongo would reject an undo with conflicting paths.
 function addSpot(plan: UndoPlan, raw: object, spot: Spot): void {
   if (plan.has(spot.path)) {
     return;
@@ -195,7 +163,6 @@ function widenToValue(plan: UndoPlan, raw: object, spot: Spot): void {
 
 type UndoDocument = Record<string, Record<string, unknown>>;
 
-/** Compare each planned spot against the mutated document and emit the undo. */
 export function buildUndo(raw: object, plan: UndoPlan): UndoDocument {
   const undo: UndoDocument = {};
   for (const spot of plan.values()) {
@@ -219,9 +186,6 @@ export function buildUndo(raw: object, plan: UndoPlan): UndoDocument {
   return undo;
 }
 
-// A saved value whose path no longer exists. A removed tail element (its index
-// equals the array's current length) re-appends with $push; everything else is
-// $set back.
 function restoreRemoved(undo: UndoDocument, raw: object, path: string, value: unknown): void {
   const parts = splitPath(path);
   const leaf = parts[parts.length - 1]!;
@@ -243,18 +207,13 @@ function unset(undo: UndoDocument, path: string): void {
   (undo["$unset"] ??= {})[path] = "";
 }
 
-// Emit the edits that turn `after` (live) back into `before` (a pristine
-// clone). Descend while both sides stay structural so the restore lands on the
-// smallest spots that changed; anything else restores wholesale.
 function restore(undo: UndoDocument, path: string, before: unknown, after: unknown): void {
   if (Array.isArray(before) && Array.isArray(after)) {
     restoreArray(undo, path, before, after);
   } else if (
     isPlainObject(before) &&
     isPlainObject(after) &&
-    // A prototype-flavor change (null-prototype replaced by plain, or vice
-    // versa) can only be restored wholesale — patching inside the replacement
-    // would keep its flavor.
+    // A prototype change must restore wholesale; patching keeps the wrong prototype.
     Object.getPrototypeOf(before) === Object.getPrototypeOf(after) &&
     keysAddressable(before) &&
     keysAddressable(after)
@@ -265,8 +224,6 @@ function restore(undo: UndoDocument, path: string, before: unknown, after: unkno
   }
 }
 
-// Dates, class instances, and null/scalars restore wholesale — only plain
-// (or null-prototype) objects are walked into.
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
@@ -275,8 +232,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-// A key that is empty or contains a dot can't be named by a Mongo path, so an
-// object holding one restores wholesale.
+// A Mongo path can't name an empty or dotted key.
 function keysAddressable(value: Record<string, unknown>): boolean {
   return Object.keys(value).every((key) => /^[^.]+$/u.test(key));
 }
@@ -312,7 +268,6 @@ function restoreArray(
     return;
   }
 
-  // Elements were appended: truncate back — `$pop` for one, `$slice` for more.
   if (after.length > before.length && prefixEqual(after, before, before.length)) {
     if (after.length - before.length === 1) {
       (undo["$pop"] ??= {})[path] = 1;
@@ -322,8 +277,6 @@ function restoreArray(
     return;
   }
 
-  // A contiguous run was removed: push it back where it was. A single element
-  // taken from the end re-appends as a plain `$push`.
   if (before.length > after.length) {
     const count = before.length - after.length;
     let start = 0;

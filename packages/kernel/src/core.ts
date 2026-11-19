@@ -2,8 +2,7 @@ import { setActiveSub, signal } from "alien-signals";
 
 import { readSignal } from "./render-reads";
 
-// Phantom brand for compile-time store identification (no runtime property).
-// Exported as a real symbol so consumers can reference `typeof $BRAND` in type positions.
+// Type-only brand: no store carries this property at runtime.
 export const $BRAND = Symbol.for("supergrain:brand");
 
 export type Branded<T> =
@@ -31,14 +30,8 @@ export const $RAW = Symbol.for("supergrain:raw");
 export const $VERSION = Symbol.for("supergrain:version");
 export const $ELEMENTS = Symbol.for("supergrain:elements");
 export const $OWN_KEYS = Symbol.for("ownKeys");
-/**
- * Set in an array's nodes once it has a signal per index (or any other
- * field): a write that shifts items can skip looking for them otherwise.
- */
 export const $HAS_FIELD_NODES = Symbol("supergrain:has-field-nodes");
 
-// Well-known symbol properties attached to reactive proxy targets and proxies.
-// Typed as optional so structural subtype checks pass for plain objects.
 export interface ReactiveTagged {
   [$RAW]?: object;
   [$PROXY]?: object;
@@ -53,9 +46,6 @@ export function unwrap<T>(value: T): T {
   return ((value as ReactiveTagged)[$RAW] as T | undefined) ?? value;
 }
 
-// Single source of truth for what `createReactive` will proxy. Plain objects
-// (incl. null-prototype), arrays, Maps, and Sets only — everything else
-// (Date, RegExp, class instances, functions, primitives) passes through.
 export function isWrappable(value: unknown): value is object {
   if (value === null || typeof value !== "object") {
     return false;
@@ -67,18 +57,14 @@ export function isWrappable(value: unknown): value is object {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** Get nodes if they already exist (no creation). Fast path for hot loops. */
+/** The target's signal nodes, or undefined if none exist yet. Never creates them. */
 export function getNodesIfExist(target: object): DataNodes | undefined {
   return (target as ReactiveTagged)[$NODE];
 }
 
-// A node map's prototype chain ends without Object.prototype, so inherited
-// methods (toString, valueOf, hasOwnProperty, …) are never mistaken for
-// per-key signal nodes during writes. With a plain `{}`, `setProperty` writing
-// key="valueOf" would resolve `nodes[key]` to `Object.prototype.valueOf` and
-// call it as a signal setter, throwing. Made with `new` rather than
-// `Object.create(null)`: a null-prototype object starts in V8's slow
-// dictionary mode and takes three times the memory.
+// No Object.prototype in the chain, or nodes["valueOf"] would resolve to an
+// inherited method. Built with `new`, not Object.create(null): V8 puts
+// null-prototype objects in slow dictionary mode at ~3x the memory.
 function Nodes(): void {}
 Nodes.prototype = Object.create(null);
 
@@ -92,13 +78,10 @@ export function getNodes(target: object): DataNodes {
   return nodes;
 }
 
-// Refilled by each call, so tagging an object allocates no descriptor.
+// Reused so defineHidden allocates no descriptor per call.
 const hiddenValue: PropertyDescriptor = { value: undefined, configurable: true };
 
-/**
- * Define `key` on `target` as a non-enumerable value. False if the target
- * won't take it: it isn't extensible, or it is a proxy that refuses or throws.
- */
+// Returns false, not throws, for non-extensible targets and refusing proxies.
 export function defineHidden(target: object, key: PropertyKey, value: unknown): boolean {
   hiddenValue.value = value;
   try {
@@ -110,15 +93,8 @@ export function defineHidden(target: object, key: PropertyKey, value: unknown): 
   }
 }
 
-/**
- * Subscribe the active subscriber to the array's coarse `$ELEMENTS` signal —
- * "some element of this array was replaced in place" — creating the signal on
- * demand. One dependency link covers every index, present and future, so a
- * subscriber that diffs the whole array on wake (parent-mode `For`'s swap
- * effect) doesn't need N per-index subscriptions. Structural changes (push,
- * splice, length, new array) are NOT reported here; they bump the version /
- * ownKeys signals instead.
- */
+// Fires only on in-place element replacement. Structural changes (push,
+// splice, length) bump the version/ownKeys signals instead.
 export function trackArrayElements(target: object): void {
   readSignal(getNode(getNodes(target), $ELEMENTS, 0));
 }
@@ -132,7 +108,6 @@ export function getNode(nodes: DataNodes, property: PropertyKey, value?: unknown
   return newSignal;
 }
 
-/** Run `fn` without subscribing the active subscriber to what it reads. */
 export function untracked<R>(fn: () => R): R {
   const prevSub = setActiveSub(undefined);
   try {

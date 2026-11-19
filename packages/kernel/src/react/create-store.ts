@@ -3,17 +3,11 @@ import { createContext, createElement, useContext, type ReactNode } from "react"
 import { useReactive } from "./use-reactive";
 
 /**
- * Create a typed store binding — Context + Provider + hook, all tied to a
- * fresh React Context that doesn't collide with any other call to this
- * factory.
+ * Create a typed store binding: a Provider and a `useStore` hook on a fresh
+ * React Context. Call once at module scope and re-export the pieces.
  *
- * Call once at module scope, destructure `{ Provider, useStore }`, re-export;
- * components in your app import the pieces they need from your module.
- *
- * The Provider takes an `initial` prop with your plain state shape. The
- * Provider wraps it in `createReactive()` exactly once per mount, so every
- * SSR request, every test, every React tree gets an isolated store by
- * construction — there's no way to accidentally share state across requests.
+ * The Provider wraps its `initial` prop in `createReactive()` once per mount,
+ * so each React tree (each SSR request, each test) gets its own store.
  *
  * @example
  * ```tsx
@@ -39,8 +33,6 @@ import { useReactive } from "./use-reactive";
  * const state = useStore(); // : AppState
  * state.todos.push({ id: 1, text: "hi", completed: false });
  * ```
- *
- * For non-React use, import `createReactive` from `@supergrain/kernel` directly.
  */
 export function createStoreContext<T extends object>(): {
   Provider: (props: { initial: T; children: ReactNode }) => ReactNode;

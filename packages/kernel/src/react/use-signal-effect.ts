@@ -2,24 +2,13 @@ import { effect } from "@supergrain/kernel";
 import { useEffect } from "react";
 
 /**
- * Runs a signal-tracked side effect tied to the component lifecycle.
+ * Runs a side effect on mount and re-runs it synchronously whenever a signal
+ * it read changes; stopped on unmount. Re-runs don't re-render the component.
  *
- * The callback runs immediately on mount and re-runs synchronously
- * whenever any signal read inside it changes. The effect is automatically
- * cleaned up when the component unmounts.
+ * `fn` is captured on mount: values from later renders are not seen.
  *
- * Re-runs happen outside React's render cycle and do not, on their own,
- * schedule a re-render — only the callback itself runs. Use this for side
- * effects like updating `document.title`, logging, or syncing with external
- * systems. (Compare to `useEffect`, where you would normally call `setState`
- * inside the effect to surface changes back to the UI.)
- *
- * The callback may return a cleanup function (like `useEffect`). It runs before
- * each re-run and once more when the component unmounts — use it to tear down
- * subscriptions, timers, or listeners created in the effect body.
- *
- * @param fn - A function that reads reactive signals and performs side effects,
- *   optionally returning a cleanup function.
+ * @param fn - Reads reactive state; may return a cleanup, run before each
+ *   re-run and on unmount.
  *
  * @example
  * ```tsx
@@ -30,10 +19,9 @@ import { useEffect } from "react";
  *
  * const App = tracked(() => {
  *   const store = useStore()
- *   const remaining = useComputed(() => store.todos.filter(t => !t.completed).length)
  *
  *   useSignalEffect(() => {
- *     document.title = `${remaining} items left`
+ *     document.title = `${store.todos.filter(t => !t.completed).length} items left`
  *   })
  *
  *   return <TodoList />

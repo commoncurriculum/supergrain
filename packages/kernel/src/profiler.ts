@@ -1,20 +1,5 @@
-/**
- * Lightweight profiler for diagnosing signal subscription and render behavior.
- *
- * Zero cost when disabled — profiling functions are swapped to empty no-ops
- * that V8 inlines away. No boolean checks on the hot path.
- * Enable with `enableProfiling()`, read with `getProfile()`, reset with `resetProfiler()`.
- *
- * @example
- * ```ts
- * enableProfiling();
- * resetProfiler();
- * update();
- * const p = getProfile();
- * expect(p.signalWrites).toBe(100); // 100 label changes
- * disableProfiling();
- * ```
- */
+// Disabled hooks are empty functions V8 inlines away, so the hot path has no
+// flag check.
 
 export interface Profile {
   /** Signal reads that created a subscription (inside a tracked effect) */
@@ -42,7 +27,6 @@ function countSignalWrite(): void {
   _signalWrites++;
 }
 
-// Exported as mutable bindings — swapped between no-ops and counters
 export let profileSignalRead: () => void = noop;
 export let profileSignalSkip: () => void = noop;
 export let profileSignalWrite: () => void = noop;

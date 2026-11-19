@@ -2,9 +2,8 @@ import { effect } from "@supergrain/kernel";
 import { useCallback, useRef } from "react";
 
 /**
- * A modifier is a function that sets up behavior on a DOM element and
- * returns a cleanup. It's the supergrain counterpart of an Ember modifier:
- * an element-scoped, composable setup/teardown pair.
+ * A modifier sets up behavior on a DOM element and returns a cleanup,
+ * like an Ember modifier.
  *
  * Authored as a plain function:
  * ```ts
@@ -21,11 +20,6 @@ import { useCallback, useRef } from "react";
  * ```tsx
  * <input ref={useModifier(onKeydown, "Enter", () => submit())} />
  * ```
- *
- * Currently the identity function. Reusable modifiers should still be
- * authored through this factory so future versions can attach metadata
- * (e.g. `modifier.update`, `modifier.compose`) without requiring call-site
- * changes.
  */
 export type Modifier<E extends Element, A extends unknown[]> = (
   el: E,
@@ -41,25 +35,13 @@ export function modifier<E extends Element, A extends unknown[]>(
 /**
  * Apply a modifier to an element via a React ref callback.
  *
- * Returns a stable ref callback. On attach, runs the modifier with the
- * current args and tracks any signals read inside setup — the modifier
- * reruns (teardown → setup) when those signals change, without React
- * touching the element. On detach (unmount or element swap), cleanup runs.
+ * Returns a stable ref callback. On attach, runs the modifier and tracks
+ * signals read inside it; it reruns (cleanup, then setup) when they change.
+ * On detach (unmount or element swap), cleanup runs.
  *
- * **Args stability:** `args` are read from a ref on every rerun, so
- * passing a fresh closure each render (e.g. `() => setCount(c => c + 1)`)
- * does NOT re-attach. The modifier's setup sees the latest args when it
- * runs. If you want the modifier to re-attach on arg changes, read the
- * args inside `setup` and combine with a signal, or lift the arg to a
- * signal.
- *
- * **React 18 & 19** — a stable callback ref; detach is detected via
- * `el === null` rather than React 19's cleanup-returning ref.
- *
- * **Modifier identity** — `m` is read from a ref, matching `args`. Passing
- * a different modifier on a later render does NOT tear down and re-run;
- * the next rerun (via signal change or args change) picks up the latest.
- * In practice modifiers are module-scope constants, so identity is stable.
+ * `args` and `m` are read from refs: changing them does NOT re-run the
+ * modifier, but the next signal-triggered rerun sees the latest values.
+ * To re-run on an arg change, lift that arg into a signal.
  *
  * @example Click outside
  * ```tsx
@@ -123,9 +105,8 @@ export function useModifier<E extends Element, A extends unknown[]>(
     elementRef.current = null; // eslint-disable-line unicorn/no-null
   }, [runUserCleanup]);
 
-  // Stable callback ref. React 18 & 19 both call with an element on attach
-  // and `null` on detach. Stable identity avoids tearing down on every
-  // render; `m` and `args` flow through refs.
+  // React 18 and 19 call ref callbacks with `null` on detach. A new callback
+  // identity would make React detach/re-attach on every render.
   return useCallback(
     (el: E | null) => {
       if (el === null) {

@@ -1,10 +1,3 @@
-// A small collapsible explorer for a serialized {@link JsonNode}. Pure: it
-// renders an already-plain tree (no proxies, no cycles — see ../serialize), so
-// it can't loop and never touches the live store. Each composite node keeps its
-// own open/closed state, like the TanStack devtools data explorer. The
-// expand/collapse control is a react-aria `Button` (focusable, Enter/Space,
-// exposes `aria-expanded`); styling follows the Untitled UI design language.
-
 import type { JsonNode } from "../serialize";
 
 import { useState } from "react";
@@ -14,6 +7,7 @@ const TOGGLE =
   "cursor-pointer rounded text-left text-gray-700 outline-none hover:bg-gray-100 data-[focus-visible]:ring-2 data-[focus-visible]:ring-violet-500";
 const META = "text-gray-400 italic";
 
+/** Collapsible explorer for a {@link JsonNode} produced by `serialize`. */
 export function JsonView({ node, label }: { node: JsonNode; label?: string }) {
   return (
     <div className="font-mono text-xs leading-relaxed">
@@ -100,13 +94,12 @@ function Leaf({ node }: { node: JsonNode }) {
 }
 
 interface Child {
-  /** React key — stable across reorders for keyed collections (object/map/error). */
+  /** React key: names, not positions, so collapse state follows content. */
   key: string;
   label: string;
   node: JsonNode;
 }
 
-/** A node's expandable rendering, or `null` for a leaf. */
 interface Composite {
   summary: string;
   children: Array<Child>;
@@ -114,12 +107,6 @@ interface Composite {
 
 const plus = (truncated: number): string => (truncated ? ` +${truncated}` : "");
 
-// Single dispatch over composite node kinds: returns the summary line plus the
-// children, or `null` for a leaf. One switch to keep in sync (vs. three parallel
-// ones), and the leaf path falls through to `null` rather than an unreachable
-// default. Child keys use the field/index name so collapse state anchors to
-// content (stable across reorders for object/error; map adds the index to break
-// label ties; arrays/sets have no item identity, so index is the key).
 function describeComposite(node: JsonNode): Composite | null {
   switch (node.t) {
     case "array": {

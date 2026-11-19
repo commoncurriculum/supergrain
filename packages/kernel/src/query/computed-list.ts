@@ -19,11 +19,9 @@ export type Direction = "asc" | "desc";
 type Source<T> = () => Iterable<T>;
 
 /**
- * A list a {@link computedList} can look docs up in: a function that returns
- * its docs (looked up by `id`), or the docs and the key to look them up by.
- * Annotate `key`'s parameter (`key: (user: User) => user.email`): TypeScript
- * can't carry each lookup's doc type from `from` to `key` and also keep each
- * lookup's own key type.
+ * A list a {@link computedList} can look docs up in: a function returning its
+ * docs (looked up by `id`), or `{ from, key }`. Annotate `key`'s parameter
+ * (`key: (user: User) => user.email`): TypeScript can't infer it.
  */
 export type LookupSource<T extends object = object> =
   | Source<T>
@@ -43,14 +41,13 @@ export type Lookups<S> = { readonly [N in keyof S]: Lookup<KeyOf<S[N]>, DocOf<S[
 export interface Sorted<Row, L> {
   (): ReadonlyArray<Row>;
   /**
-   * Sort by this key. A second `orderBy` breaks ties of the first, and so on.
-   * Rows with equal keys keep source order. Keys are numbers, strings,
-   * bigints, or arrays of them.
+   * Sort by this key. A later `orderBy` breaks ties of earlier ones; equal
+   * keys keep source order. Keys are numbers, strings, bigints, or arrays of them.
    */
   orderBy(key: (row: Row, lookups: L) => unknown, direction?: Direction): Sorted<Row, L>;
-  /** Skip this many rows. A function is read reactively. Read like `Array.prototype.slice` reads it. */
+  /** Skip this many rows. A function is read reactively. */
   offset(count: number | (() => number)): Sorted<Row, L>;
-  /** Return at most this many rows. A function is read reactively. Read like `Array.prototype.slice` reads it. */
+  /** Return at most this many rows. A function is read reactively. */
   limit(count: number | (() => number)): Sorted<Row, L>;
 }
 
@@ -66,20 +63,16 @@ export interface Query<Row, L> extends Sorted<Row, L> {
   /** Replace each row with what this returns. Look other docs up here: read the store, or `lookups.name.get(key)`. */
   map<Next>(fn: (row: Row, lookups: L) => Next): Query<Next, L>;
   /**
-   * Put the rows that share a key in one group, `{ key, rows }`, with the
-   * rows in source order. Groups come in the order of their first row; the
-   * steps after this run once per group (count, sum, filter, sort, …). Keys
-   * compare like `Map` keys, and `null` and `undefined` are keys too.
-   *
-   * A group's `rows` is updated in place, so a step that reads it reruns
-   * only when that group's rows change.
+   * Group rows that share a key into `{ key, rows }`, rows in source order,
+   * groups in order of their first row. Later steps run once per group. Keys
+   * compare like `Map` keys; `null` and `undefined` are keys too.
    */
   groupBy<K>(key: (row: Row, lookups: L) => K): Query<Group<K, Row>, L>;
 }
 
 /**
  * A filtered, mapped, sorted, windowed view of a reactive list that updates
- * **one row at a time**:
+ * one row at a time:
  *
  * ```ts
  * const openTasks = computedList(() => store.tasks)
@@ -93,12 +86,10 @@ export interface Query<Row, L> extends Sorted<Row, L> {
  * ```
  *
  * Each source row runs its steps in its own computed, so a change reruns
- * only the rows that read what changed, and the list then moves only those
- * rows. A step can read anything reactive: reading another doc from the
- * store (a join) is tracked per row like any other field.
+ * only the rows that read what changed. Steps can read other store docs (joins).
  *
  * To look docs up in a list rather than a keyed object, name it in the
- * second argument. Each step then gets it by name, with `get(key)` and `getAll(key)`:
+ * second argument; each step gets it with `get(key)` and `getAll(key)`:
  *
  * ```ts
  * computedList(() => store.tasks, {
@@ -107,13 +98,7 @@ export interface Query<Row, L> extends Sorted<Row, L> {
  * }).map((task, { users, leads }) => ({ task, owner: users.get(task.ownerId), lead: leads.get(task.leadEmail) }));
  * ```
  *
- * `getAll(key)` gives every doc with that key, in source order (one-to-many:
- * all of a user's tasks). A lookup is built on first use and then updated one
- * doc at a time. Each key read has its own signal or array, written only when
- * that key's docs change, so a change reruns only the rows reading that key.
- *
- * `groupBy` puts the rows that share a key in one group, and the steps after
- * it run once per group:
+ * `groupBy` runs the later steps once per group:
  *
  * ```ts
  * computedList(() => store.tasks)
@@ -122,22 +107,18 @@ export interface Query<Row, L> extends Sorted<Row, L> {
  *   .map(({ key, rows }) => ({ ownerId: key, open: rows.length }));
  * ```
  *
- * A row's output object is reused while its fields are the same, so `<For>`
- * re-renders a row only when it changed. Nothing runs until the list is
- * called. Call it in every reader rather than holding on to the array it
- * returns: calling it brings the array up to date.
+ * Nothing runs until the list is called. Call it in every reader rather than
+ * holding on to the array it returns: calling it brings the array up to date.
  */
 export function computedList<
   T extends object,
   S extends Record<string, LookupSource> = Record<never, never>,
 >(source: () => Iterable<T>, lookups?: S): Query<T, Lookups<S>> {
-  // A lookup builds nothing until it's read, so making them all now is cheap.
   const named: Record<string, AnyLookup> = {};
   for (const [name, from] of Object.entries(lookups ?? {})) named[name] = lookupOf(from);
   return makeQuery(start(source, named, null)) as never;
 }
 
-/** A query over `source` with no steps yet. */
 function start(source: Source<object>, lookups: Spec["lookups"], upstream: Spec["upstream"]): Spec {
   return {
     source,
@@ -162,7 +143,6 @@ function lookupOf(source: LookupSource): AnyLookup {
 interface Spec {
   readonly source: Source<object>;
   readonly lookups: Readonly<Record<string, AnyLookup>>;
-  /** After a `groupBy`: brings the grouping `source` reads up to date. */
   readonly upstream: (() => void) | null;
   readonly steps: ReadonlyArray<Step>;
   readonly order: ReadonlyArray<{ readonly key: StepFn; readonly sign: 1 | -1 }>;
@@ -182,8 +162,6 @@ function makeQuery(spec: Spec): Query<unknown, unknown> {
     filter: (fn: StepFn) => next({ steps: [...spec.steps, { kind: "filter", fn }] }),
     map: (fn: StepFn) => next({ steps: [...spec.steps, { kind: "map", fn }] }),
     groupBy: (key: StepFn) => {
-      // The rows the steps so far leave, filed by `key`; the query goes on
-      // over its groups.
       const index = createIndex<object, unknown, unknown>(
         spec.source,
         rowRunner(spec.steps, spec.lookups, groupKey(key, spec.lookups)),
@@ -198,10 +176,6 @@ function makeQuery(spec: Spec): Query<unknown, unknown> {
   }) as never;
 }
 
-/**
- * What a query brings up to date before it reads its source, tracked: the
- * grouping it reads (after a `groupBy`), then its named lookups.
- */
 function prepareOf({ upstream, lookups }: Spec): () => void {
   const used = Object.values(lookups);
   return () => {
@@ -241,18 +215,12 @@ function build(spec: Spec) {
   });
 }
 
-/**
- * A fixed or reactive window bound as a getter of a whole count, read the
- * way `Array.prototype.slice` reads it. Any number is accepted here, so the
- * list below only ever sees whole counts of at least 0.
- */
 function toCountGetter(count: number | (() => number)): () => number {
   if (typeof count === "function") return () => toCount(count());
   const fixed = toCount(count);
   return () => fixed;
 }
 
-/** Whole, and at least 0. NaN reads as 0, and Infinity stays Infinity. */
 function toCount(value: number): number {
   return Math.max(0, Math.trunc(value) || 0);
 }

@@ -13,56 +13,33 @@ import { spliceArray } from "../sync-array";
 import { createRowFeed, fileAll } from "./row-feed";
 import { Scratch } from "./scratch";
 
-/** The rows that share one key, as `groupBy` hands them to the steps after it. */
+/** The rows that share one key, as `groupBy` passes them to later steps. */
 export interface Group<K, R> {
   readonly key: K;
   /** The group's rows, in source order. Updated in place. */
   readonly rows: ReadonlyArray<R>;
 }
 
-/** The rows under one key, and what readers of that key subscribe to. */
 interface Bucket<T, O, K> {
   readonly key: K;
-  /** The rows with this key, in source order. */
   readonly rows: Array<Row<T, O, K>>;
-  /** The first row's value. Made on first `first`. */
   first: ((value?: O) => O | undefined) | undefined;
-  /** Every row's value. Made on first `all` (or when it's listed as a group). */
   all: Array<O> | undefined;
-  /** The bucket as a group, made when it's first listed. Raw. */
   group: Group<K, O> | undefined;
-  /** Whether it's in the list of groups. */
   listed: boolean;
-  /** Whether a change this update touched it. */
   touched: boolean;
 }
 
-/**
- * A reactive index over a collection: each item's value and key come from
- * `run`, in the item's own computed (the way a list runs a row's steps), and
- * the index files each value under its key, in source order.
- *
- * A change costs the items it touched: an item added is filed under its key,
- * and an item whose key changed moves between two keys. Readers subscribe to
- * one key's signal or array, or to the list of groups, never to the index, so
- * a change wakes only the readers of what it touched.
- *
- * Under lookups (`lookup.ts`) and `groupBy` (`computed-list.ts`).
- */
 export function createIndex<T extends object, O, K>(
   source: () => Iterable<T>,
   run: (item: T, previous: RowResult<O, K> | undefined) => RowResult<O, K>,
-  /** Runs, tracked, at the start of each sync: brings what `run` reads up to date. */
   prepare?: () => void,
 ) {
   const feed = createRowFeed<T, O, K>(source, run);
-  // A bucket stays while a reader holds its signal or array, even when no
-  // row has its key. An index over keys that keep changing grows slowly.
+  // Buckets are never removed: an index over ever-changing keys grows.
   const buckets = new Map<K, Bucket<T, O, K>>();
-  // Kept between updates, so an update allocates no arrays of its own.
   const touched = new Scratch<Bucket<T, O, K>>();
   const values = new Scratch<unknown>();
-  /** The non-empty buckets in order of their first row, once groups were asked for. */
   let listed: Array<Bucket<T, O, K>> | undefined = undefined; // eslint-disable-line unicorn/no-useless-undefined -- init-declarations wants a value
   let groups: Array<Group<K, O>> | undefined = undefined; // eslint-disable-line unicorn/no-useless-undefined -- init-declarations wants a value
 
@@ -85,12 +62,10 @@ export function createIndex<T extends object, O, K>(
 
   function sync(): void {
     prepare?.();
-    // Tracked: the caller subscribes to the source, not to the buckets.
+    // Tracked, so the caller subscribes to the source.
     const next = feed.read();
-    // Batched: an effect that reads a key runs once the index is whole and
-    // the feed has recorded it, not part-way through (and once, however many
-    // of its keys changed). Past `feed.read()`, nothing runs user code, so
-    // nothing throws.
+    // Batched so effects never see a half-filed index. Nothing past
+    // `feed.read()` runs user code.
     startBatch();
     try {
       feed.apply(next, file);
@@ -99,7 +74,6 @@ export function createIndex<T extends object, O, K>(
     }
   }
 
-  /** File every change under its key, then publish the buckets it touched. */
   function file(changes: Scratch<Change<T, O, K>>, next: Structure<T, O, K>): void {
     try {
       const refile = next.reordered;
@@ -128,11 +102,9 @@ export function createIndex<T extends object, O, K>(
     }
   }
 
-  /** Put `row` in its key's bucket, in source order. */
   function fileRow(row: Row<T, O, K>, k: K): void {
     const bucket = bucketOf(k);
     const { rows } = bucket;
-    // Rows mostly arrive at the end, so check there first.
     let at = rows.length;
     if (at > 0 && rows[at - 1]!.order > row.order) at = indexOf(rows, row.order);
     rows.splice(at, 0, row);
@@ -143,14 +115,12 @@ export function createIndex<T extends object, O, K>(
     const bucket = buckets.get(k)!;
     const { rows } = bucket;
     let at = indexOf(rows, row.order);
-    // A row that left the source keeps its last label, which may no longer
-    // order among the others: find it by scanning.
+    // A row that left the source keeps a stale label, so the binary search can miss it.
     if (rows[at] !== row) at = rows.indexOf(row);
     rows.splice(at, 1);
     touch(bucket);
   }
 
-  /** After the source's rows changed order, the buckets are out of order: refile every row. */
   function refileAll(list: ReadonlyArray<Row<T, O, K>>): void {
     for (const bucket of buckets.values()) {
       bucket.rows.length = 0;
@@ -162,7 +132,6 @@ export function createIndex<T extends object, O, K>(
     }
   }
 
-  /** Write a touched bucket's signal and array, if anyone reads them. */
   function publish(bucket: Bucket<T, O, K>): void {
     bucket.touched = false;
     const { rows } = bucket;
@@ -178,11 +147,7 @@ export function createIndex<T extends object, O, K>(
     }
   }
 
-  /**
-   * Bring the list of groups up to date: take out the touched groups, put
-   * back the ones with rows, each by its first row's place in the source.
-   * Untouched groups' first rows didn't change, so they're still in order.
-   */
+  // The incremental path relies on untouched groups' first rows being unchanged.
   function relist(refile: boolean): void {
     const list = listed!;
     if (refile || touched.size > 16 + list.length / 8) {
@@ -212,18 +177,16 @@ export function createIndex<T extends object, O, K>(
     values.clear();
   }
 
-  /** Mark `bucket` listed (pushing it onto `list`, if given), making its group on first listing. */
   function listIn(list: Array<Bucket<T, O, K>> | undefined, bucket: Bucket<T, O, K>): void {
     bucket.listed = true;
     bucket.group ??= { key: bucket.key, rows: unwrap(allOf(bucket)) };
     list?.push(bucket);
   }
 
-  /** The bucket's array of values, made raw on first use (so making it writes nothing). */
   function allOf(bucket: Bucket<T, O, K>): Array<O> {
     if (bucket.all === undefined) {
       const { rows } = bucket;
-      // Sized up front: `Array.from({ length })` takes a slow generic path.
+      // `Array.from({ length })` takes V8's slow generic path.
       const raw = new Array<O>(rows.length); // eslint-disable-line unicorn/no-new-array -- every slot is filled below
       for (let i = 0; i < rows.length; i++) raw[i] = unwrap(valueOf(rows[i]!));
       bucket.all = createReactive(raw) as Array<O>;
@@ -231,7 +194,7 @@ export function createIndex<T extends object, O, K>(
     return bucket.all;
   }
 
-  /** The bucket for `k`, up to date. Untracked: the reader subscribes to the bucket alone. */
+  // Untracked, so the reader subscribes to the bucket, not the source.
   function synced(k: K): Bucket<T, O, K> {
     untracked(sync);
     return bucketOf(k);
@@ -240,10 +203,6 @@ export function createIndex<T extends object, O, K>(
   return {
     sync,
 
-    /**
-     * The first value with this key, or `undefined`. Read reactively: a
-     * reader reruns only when that value changes.
-     */
     first(k: K): O | undefined {
       const bucket = synced(k);
       bucket.first ??= signal<O | undefined>(
@@ -252,15 +211,11 @@ export function createIndex<T extends object, O, K>(
       return bucket.first!();
     },
 
-    /** Every value with this key, in source order: the same reactive array every time. */
     all(k: K): ReadonlyArray<O> {
       return allOf(synced(k));
     },
 
-    /**
-     * The groups, in order of their first row in the source: one reactive
-     * array, updated in place. Call `sync` first.
-     */
+    // Callers must `sync` first.
     groups(): ReadonlyArray<Group<K, O>> {
       if (groups === undefined) {
         listed = [];
@@ -276,7 +231,6 @@ function valueOf<T, O, K>(row: Row<T, O, K>): O {
   return row.applied.value as O;
 }
 
-/** Where the row labelled `order` is, or goes, in `rows` (in source order). */
 function indexOf<T, O, K>(rows: ReadonlyArray<Row<T, O, K>>, order: number): number {
   let low = 0;
   let high = rows.length;
@@ -288,7 +242,6 @@ function indexOf<T, O, K>(rows: ReadonlyArray<Row<T, O, K>>, order: number): num
   return low;
 }
 
-/** Where a group whose first row is labelled `order` goes in `list`. */
 function placeOf<B extends { rows: ReadonlyArray<{ order: number }> }>(
   list: ReadonlyArray<B>,
   order: number,

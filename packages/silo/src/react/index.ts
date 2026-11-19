@@ -20,21 +20,13 @@ import { DocumentStoreContext } from "./context";
 
 export { createRemoteQueryStoreContext } from "./remote";
 
-/**
- * Extract the document-types map `M` from a `DocumentStore<M, Q>` type.
- */
+/** The document-types map `M` of a `DocumentStore<M, Q>`. */
 export type ModelsOf<S> = S extends DocumentStore<infer M, QueryTypes> ? M : never;
 
-/**
- * Extract the query-types map `Q` from a `DocumentStore<M, Q>` type.
- */
+/** The query-types map `Q` of a `DocumentStore<M, Q>`. */
 export type QueriesOf<S> = S extends DocumentStore<DocumentTypes, infer Q> ? Q : never;
 
-/**
- * Optional declarative seed data for a Provider. `model` keys docs by id;
- * `query` keys results by their params object (a list since params aren't
- * natural dict keys).
- */
+/** Seed data for a Provider: documents by type and id, query results by params. */
 export interface InitialDocumentStoreData<M extends DocumentTypes, Q extends QueryTypes> {
   model?: { [K in keyof M]?: Record<string, M[K]> };
   query?: {
@@ -71,19 +63,6 @@ function seedQueries<M extends DocumentTypes, Q extends QueryTypes>(
   }
 }
 
-/**
- * Resolve the store a Provider binds to context. `config` and `store` are the
- * two ends of one pipeline — `config` is the recipe, `store` is the result of
- * `createDocumentStore(config)` — so exactly one is required: construct from
- * `config` (the common case — an isolated store per mount), or adopt a pre-built
- * `store`. With neither there's nothing to bind; with both the `config` would be
- * redundant (an adopted store already has its config baked in). Either violation
- * throws.
- *
- * `store` arrives as the caller's `S`, which by construction extends
- * `DocumentStore<DocumentTypes, QueryTypes>`; narrow it to the concrete
- * `DocumentStore<M, Q>` (the same upcast `useDocument`/`useQuery` use).
- */
 function resolveStore<M extends DocumentTypes, Q extends QueryTypes>(
   config: DocumentStoreConfig<M, Q> | undefined,
   store: DocumentStore<DocumentTypes, QueryTypes> | undefined,
@@ -101,31 +80,13 @@ function resolveStore<M extends DocumentTypes, Q extends QueryTypes>(
 }
 
 /**
- * Create an isolated document-store React binding — Context + Provider + hooks,
- * all tied to a fresh React Context that doesn't collide with any other call
- * to this factory.
+ * Create a document-store React binding: a Provider and hooks on their own
+ * Context. The Provider builds one store per mount from `config`, or binds a
+ * prebuilt `store`; pass exactly one.
  *
- * Mirrors `createStoreContext<T>()` from `@supergrain/kernel/react`: the type
- * parameter `S` is the full store type; the Provider takes the same `config`
- * you'd pass to `createDocumentStore` and constructs the store internally
- * exactly once per mount. Every SSR request, every test, every React tree
- * gets an isolated store by construction.
- *
- * Pass `store` instead of `config` to adopt a store instance you built outside
- * React — to share one store across multiple React roots, or to drive it from
- * non-React code — and the Provider binds that instance to context as-is rather
- * than constructing a new one. (For a Provider-owned store, `config` with
- * `initial`/`onMount` already covers seeding and imperative setup.) `config`
- * and `store` are the two ends of one pipeline (recipe vs. built store), so
- * provide exactly one — supplying neither, or both, throws.
- *
- * Optional `initial` seeds documents and query results before the first
- * render. Optional `onMount` runs synchronously after seeding for imperative
- * setup (preloads, subscriptions). Both run regardless of whether the store
- * was constructed from `config` or adopted via `store`, and both run inside
- * the `useState` initializer, so under React StrictMode in dev (and on an
- * adopted store that's shared across trees) they may run more than once —
- * keep them idempotent.
+ * `initial` seeds documents and query results before the first render, then
+ * `onMount` runs. Both run inside a `useState` initializer, so StrictMode may
+ * run them twice: keep them idempotent.
  *
  * @example
  * ```tsx
@@ -188,9 +149,6 @@ export function createDocumentStoreContext<
     children: ReactNode;
   }): ReactNode {
     const [store] = useState<S>(() => {
-      // Resolve which store to use (construct from config, or adopt the
-      // provided one), then seed + mount it the same way regardless of source —
-      // so `initial` and `onMount` stay orthogonal to how the store was got.
       const s = resolveStore<M, Q>(config, providedStore);
       if (initial?.model) seedModels(s, initial.model);
       if (initial?.query) seedQueries(s, initial.query);
@@ -203,7 +161,6 @@ export function createDocumentStoreContext<
       { value: store },
       createElement(
         DocumentStoreContext.Provider,
-        // S extends DocumentStore<DocumentTypes, QueryTypes>, so this upcast is safe.
         { value: store as DocumentStore<DocumentTypes, QueryTypes> },
         children,
       ),
@@ -224,13 +181,6 @@ export function createDocumentStoreContext<
     type: K,
     id: string | null | undefined,
   ): DocumentHandle<M[K]> {
-    // A pure reactive read: `find` returns a stable, reactive handle and the
-    // tracked component re-renders on the fields it reads. No effects — the
-    // hook never imperatively subscribes, and an in-flight fetch is not
-    // cancelled on unmount (it completes and caches).
-    //
-    // useDocumentStore() returns S which extends DocumentStore<M, Q>; the cast
-    // narrows back to the concrete DocumentStore<M, Q> so .find() is callable.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
     // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
     return store.find(type, id);
@@ -240,10 +190,8 @@ export function createDocumentStoreContext<
     type: K,
     ids: string[] | null | undefined,
   ): Array<DocumentHandle<M[K]>> {
-    // Pure reactive read: `findDocumentsIndividually` maps ids → stable per-id
-    // handles (re-triggering fetches each render) and returns a FRESH array each
-    // call. Hold the previous one and swap only when the handle set actually
-    // changes, so React sees a stable array identity while the ids are unchanged.
+    // `findDocumentsIndividually` returns a fresh array each call; keep the
+    // identity stable while the handles are unchanged.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
     const next = store.findDocumentsIndividually(type, ids);
     const ref = useRef(next);
@@ -255,12 +203,8 @@ export function createDocumentStoreContext<
     type: K,
     ids: string[] | null | undefined,
   ): DocumentsTogetherHandle<M[K]> {
-    // Built on the sibling hook: it fetches the per-id handles (re-triggering
-    // loads every render, like useDocument) AND keeps the array identity stable
-    // while the ids are unchanged — so the batch wrapper (whose promise computed
-    // must stay stable for use()/memoization) rebuilds on a plain identity
-    // check. `idle` distinguishes `null` ids (an idle handle) from empty ids
-    // (immediately success), which share the one stable empty handle array.
+    // The wrapper's promise must keep its identity for React's `use()`. `idle`
+    // is tracked because `null` ids and `[]` share the same empty handle array.
     const handles = useDocumentsIndividually(type, ids);
     const idle = ids === null || ids === undefined;
     const ref = useRef<{
@@ -282,7 +226,6 @@ export function createDocumentStoreContext<
     type: K,
     params: Q[K]["params"] | null | undefined,
   ): QueryHandle<Q[K]["result"]> {
-    // Pure reactive read, like useDocument. Same narrowing cast.
     const store = useDocumentStore() as unknown as DocumentStore<M, Q>;
     return store.findQuery(type, params);
   }

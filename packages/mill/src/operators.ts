@@ -27,24 +27,7 @@ import {
 import { type ArrayFilter, arrayFilterIdentifier, type Query } from "./query";
 import { buildUndo, planUndo } from "./undo";
 
-/**
- * MongoDB-style update engine for in-memory documents.
- *
- * `update(doc, query, operations, options)` applies a standard Mongo update
- * document to `doc`, in place, and returns both the (same) document reference
- * and an `undo` — itself a standard Mongo update document — that reverses the
- * exact changes made. There is no mill-specific syntax.
- *
- * The implementation is split by concern: `undo.ts` (undo via snapshot + compare),
- * `array-ops.ts` (in-place array primitives), `query.ts` (positional resolution
- * + matching), `path.ts` (path navigation + typing), and one file per operator
- * under `operators/` over a small shared `operators/shared.ts`. This module just
- * wires them into the dispatch table and the public `update()` entry point.
- */
-
-// Forward-application order. Mongo forbids two operators touching the same path
-// in one update, so across operators every path is disjoint and this order only
-// has to be internally consistent.
+// Mongo forbids two operators on the same path, so this order need only be consistent.
 const operatorList = [
   "$set",
   "$unset",
@@ -75,19 +58,15 @@ const operators: Record<string, (context: OperatorContext, operations: any) => v
   $addToSet,
 };
 
-// ─── public types ───────────────────────────────────────────────────────────
-
 /**
- * Strict, type-aware update operations for a target shape `T`.
- *
- * Each operator's value type is derived from `T`:
- *   - `$set` / `$unset` accept any path within `T` (see `Path<T>`), including
+ * Update operations typed against `T`:
+ *   - `$set` / `$unset` accept any path in `T` (up to 5 levels deep), including
  *     positional `cards.$.title` / `cards.$[].title` forms.
  *   - `$inc` / `$mul` / `$min` / `$max` accept numeric paths only.
  *   - `$push` / `$pop` / `$pull` / `$pullAll` / `$addToSet` accept array paths.
  *
- * Per-path value typing is enforced: `$set: { "user.name": 42 }` is rejected
- * when `user.name` is typed as `string`.
+ * Values are checked per path: `$set: { "user.name": 42 }` fails when
+ * `user.name` is a `string`.
  */
 export type StrictUpdateOperations<T extends object> = Partial<{
   $set: SetPathOperations<T>;
@@ -104,12 +83,7 @@ export type StrictUpdateOperations<T extends object> = Partial<{
   $addToSet: ArrayWriteOperations<T>;
 }>;
 
-/**
- * Default operations type for `update()`.
- *
- * Strict — callers must supply paths that match `Path<T>` and values that
- * match `PathValue<T, P>` per path.
- */
+/** The operations type `update()` accepts; same as `StrictUpdateOperations`. */
 export type UpdateOperations<T extends object = Record<string, any>> = StrictUpdateOperations<T>;
 
 /**
@@ -150,16 +124,12 @@ export interface UpdateOptions {
    *   - `$pull` / `$pullAll` / `$pop` no-op on a `null` target (exactly as they
    *     already do for a missing field).
    *
-   * The generated `undo` restores the prior `null` exactly. Off by default so
-   * mill stays faithful to MongoDB.
+   * The generated `undo` restores the prior `null`. Off by default.
    */
   allowNullIntermediates?: boolean;
 }
 
-// Collect the `$[<identifier>]` identifiers referenced in an update document's
-// paths, so we can flag supplied arrayFilters that go unused. Only path keys are
-// scanned — Mongo's positional operators aren't valid in `$rename` values, and
-// every operator's payload is a path-keyed object.
+// Only keys are scanned: Mongo doesn't allow positional operators in `$rename` values.
 function referencedArrayFilterIdentifiers(operations: UpdateOperations<any>): Set<string> {
   const used = new Set<string>();
   for (const payload of Object.values(operations)) {
@@ -174,16 +144,12 @@ function referencedArrayFilterIdentifiers(operations: UpdateOperations<any>): Se
   return used;
 }
 
-// Reject an update whose operators (or keys) write the same path, or a
-// parent/child of it — the conflict MongoDB refuses. $rename also occupies its
-// destination path, so that is checked too.
 function assertNoPathConflicts(operations: UpdateOperations<any>): void {
   const paths: Array<string> = [];
   for (const [operator, payload] of Object.entries(operations)) {
     for (const key of Object.keys(payload as Record<string, unknown>)) {
       paths.push(key);
-      // $rename also writes its destination path. A same-field rename
-      // (`{ a: "a" }`) is left to $rename's own "must differ" check.
+      // A same-field rename is left to $rename's own "must differ" error.
       if (operator === "$rename") {
         const destination = (payload as Record<string, string>)[key]!;
         if (destination !== key) {
@@ -228,10 +194,7 @@ export function update<T extends object>(
 
   assertNoPathConflicts(operations);
 
-  // When arrayFilters are supplied, enforce Mongo's two consistency rules (in
-  // its order): every referenced identifier must have a filter, then every
-  // supplied filter must be used. When none are supplied, a stray `$[id]` is
-  // still caught at resolution time, so the common path pays nothing here.
+  // Mongo checks in this order: every identifier has a filter, then every filter is used.
   if (arrayFilters.length > 0) {
     const referenced = referencedArrayFilterIdentifiers(operations);
     const provided = new Set(arrayFilters.map(arrayFilterIdentifier));
@@ -259,7 +222,6 @@ export function update<T extends object>(
     allowNullIntermediates: options?.allowNullIntermediates ?? false,
   };
 
-  // Coalesce every write in this call into a single notification.
   batch(() => {
     for (const operator of operatorList) {
       if (operator in operations) {

@@ -5,7 +5,7 @@ import { eachPath, type OperatorContext, pathWriteOptions } from "./shared";
 export function $set(context: OperatorContext, operations: Record<string, unknown>): void {
   eachPath(context, operations, (path, value) => {
     if (hasValueAtPath(context.raw, path) && isEqual(getValueAtPath(context.raw, path), value)) {
-      return; // no-op
+      return;
     }
     setValueAtPath(context.raw, path, value, pathWriteOptions(context));
   });

@@ -4,7 +4,6 @@ import { Effect } from "effect";
 import { defectToAdapterError, type SiloError } from "./errors";
 import { applyEvent, HandleEvent, type InternalHandle } from "./transitions";
 
-/** A handle plus the fetch that currently owns it. */
 export interface Flight {
   readonly handle: InternalHandle;
   controller?: AbortController;
@@ -57,9 +56,7 @@ export function runSingleFlight<T>(flight: Flight, options: SingleFlightOptions<
       Effect.catchAll((error: SiloError) =>
         Effect.sync(() => batch(() => applyEvent(handle, HandleEvent.failed(error, generation)))),
       ),
-      // Nothing may escape as a defect: `runPromiseExit` would discard it and
-      // leave the handle fetching. The engine already coerces adapter defects;
-      // this catches the rest, such as a subscriber throwing during the commit.
+      // `runPromiseExit` discards defects, which would leave the handle fetching.
       Effect.catchAllDefect((defect) =>
         Effect.sync(() => {
           const error = defectToAdapterError(options.type, options.keys, defect);

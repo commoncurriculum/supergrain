@@ -1,12 +1,5 @@
-// Framework-agnostic snapshot of a silo `DocumentStore`, built from the
-// devtools bridge it exposes (`@supergrain/silo/devtools`).
-//
-// Reading the bridge's reactive `state` here is what makes the inspector live:
-// when this runs inside a kernel `effect()` / `tracked()` scope, iterating the
-// document/query maps subscribes to structural changes and reading each
-// handle's fields subscribes to those fields — so a view re-renders exactly
-// when the store changes, with no manual wiring. Crucially it never calls the
-// store's `find` / `findQuery`, so inspecting can't enqueue a fetch.
+// Read only the bridge's state: calling the store's `find` / `findQuery` would
+// enqueue a fetch.
 
 import {
   getSiloDevtools,
@@ -19,7 +12,6 @@ import { type JsonNode, serialize, type SerializeOptions } from "./serialize";
 
 export { getSiloDevtools, type SiloDevtoolsBridge };
 
-/** Strip `readonly` so the snapshot builder can attach optional fields in place. */
 type Writable<T> = { -readonly [K in keyof T]: T[K] };
 
 /** Whether a snapshot entry describes a cached document or a query result. */
@@ -59,7 +51,7 @@ export interface SiloTypeSnapshot {
 export interface SiloStoreSnapshot {
   readonly documents: ReadonlyArray<SiloTypeSnapshot>;
   readonly queries: ReadonlyArray<SiloTypeSnapshot>;
-  /** Entry counts per surface — drives the tab labels. */
+  /** Entry counts per surface. */
   readonly totals: {
     readonly documents: number;
     readonly queries: number;
@@ -68,10 +60,8 @@ export interface SiloStoreSnapshot {
 
 export interface SnapshotOptions {
   /**
-   * Predicate deciding whether to serialize an entry's `value` / `error`.
-   * Returning `false` (the default for every entry) keeps a snapshot cheap —
-   * the list only needs scalar status. A devtools view passes a predicate that
-   * matches just the entry the user has expanded.
+   * Whether to serialize an entry's `value` / `error`. Defaults to `false` for
+   * every entry, which keeps a snapshot cheap.
    */
   readonly includeValue?: (kind: SiloEntryKind, type: string, key: string) => boolean;
   /** Forwarded to {@link serialize} for any entry whose value is included. */
@@ -114,10 +104,7 @@ interface EntryContext extends BaseContext {
   readonly type: string;
 }
 
-// Union of configured types and types that actually hold entries, so a
-// configured-but-empty type still shows up and a seeded type with no model
-// config (sideloads) isn't dropped. Kept module-scope (and flat) so the
-// document/query loops don't nest past the linter's depth ceiling.
+// Include configured-but-empty types and seeded types with no config (sideloads).
 function collectGroups(
   buckets: Map<string, Map<string, InternalHandle>>,
   configuredTypes: ReadonlyArray<string>,
@@ -147,8 +134,6 @@ function collectEntries(
 }
 
 function buildEntry(key: string, handle: InternalHandle, ctx: EntryContext): SiloEntrySnapshot {
-  // Mutable builder: `value` / `error` / `lastError` are attached only when
-  // present and requested, so a list snapshot stays scalar-cheap.
   const entry: Writable<SiloEntrySnapshot> = {
     key,
     status: handle.status,
@@ -159,9 +144,6 @@ function buildEntry(key: string, handle: InternalHandle, ctx: EntryContext): Sil
     fetchedAt: handle.fetchedAt ? handle.fetchedAt.getTime() : null,
   };
   if (ctx.includeValue(ctx.kind, ctx.type, key)) {
-    // Serialize only what's actually present — an empty handle has no value to
-    // show, so the detail view can fall back to "No value cached." rather than
-    // rendering a bare `undefined`.
     if (handle.value !== undefined) entry.value = serialize(handle.value, ctx.serializeOptions);
     if (handle.error !== undefined) entry.error = serialize(handle.error, ctx.serializeOptions);
     if (handle.lastError !== undefined && handle.lastError !== handle.error) {
@@ -175,23 +157,17 @@ function countEntries(groups: ReadonlyArray<SiloTypeSnapshot>): number {
   return groups.reduce((sum, group) => sum + group.entries.length, 0);
 }
 
-/** Live fetching/errored counts across a store's cache — cheap enough for an
- * always-mounted indicator. */
+/** Live fetching/errored counts across a store's cache. */
 export interface SiloActivity {
   readonly fetching: number;
   readonly errored: number;
 }
 
 /**
- * Tally in-flight and errored handles without building the full snapshot. The
- * collapsed status dot only needs these two numbers; routing it through
- * `snapshotSilo` would allocate the entire grouped-entry tree and subscribe a
- * tracked scope to every handle field on every cached entry. This reads only
- * `isFetching` / `status`, so the dot re-renders on far fewer signals.
- *
- * Counts a handle as errored only on a *terminal* error (`status: "error"`): a
- * stale-while-revalidate success whose refetch failed keeps serving a value and
- * shouldn't redden the dot.
+ * Tally in-flight and errored handles. Much cheaper than `snapshotSilo`: it
+ * reads only `isFetching` / `status`, so a tracked caller subscribes to far
+ * fewer signals. Only terminal errors (`status: "error"`) count; a failed
+ * background refetch that still serves a value does not.
  */
 export function siloActivity(bridge: SiloDevtoolsBridge): SiloActivity {
   const counts = { fetching: 0, errored: 0 };

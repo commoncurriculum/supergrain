@@ -12,7 +12,6 @@ const useIsomorphicLayoutEffect = globalThis.document === undefined ? useEffect 
 /* c8 ignore stop */
 
 type Children = (item: unknown, index: number) => React.ReactNode;
-/** The element `children` returned for each raw item. */
 type Elements = Map<unknown, React.ReactNode>;
 
 interface ForProps<T> {
@@ -22,32 +21,23 @@ interface ForProps<T> {
   parent?: React.RefObject<Element | null>;
 }
 
-/**
- * One row without `parent`: a tracked boundary around `children(item)`, so
- * inline children (`{(todo) => <li>{todo.text}</li>}`) re-render on their own
- * when a field they read changes. Keyed by the item, so a row that only moved
- * keeps its component; it re-renders only if `children` takes the index.
- */
 const ForItem = tracked(
   ({ item, index, children }: { item: unknown; index: number; children: Children }) =>
     children(item, index),
 );
 
 /**
- * List rendering component with fine-grained per-element reactivity.
+ * List rendering with per-row reactivity. `For` re-renders only when the list
+ * changes (items added, removed, replaced, moved); a change inside an item
+ * re-renders only the row that reads it. Rows are keyed by `item.id`, else by
+ * object identity, else by index.
  *
- * `For` re-renders when the list itself changes: an item added, removed,
- * replaced or moved. It never re-renders for a change inside an item; the
- * row that reads that field does. Rows are keyed by item (`item.id`, or the
- * object itself for items without one, or the index for primitives), so when
- * items shift — say one leaves the top of a sorted list — the rows that only
- * moved keep their components.
+ * Pass `children` an index parameter only if you use it: rows then re-render
+ * when they move. A defaulted `(item, i = 0)` counts as no index.
  *
- * With a `parent` ref, swapping two items moves their two DOM nodes directly,
- * with no React render at all. Any other change re-renders `For` as usual.
- * In this mode `children` is called once per item and its result is reused,
- * so children MUST be `tracked()` components (e.g. `<Row />`) to update when
- * an item's fields change.
+ * With a `parent` ref, a swap of two items moves their DOM nodes with no React
+ * render. `children` is then called once per item and reused, so children
+ * MUST be `tracked()` components to update when an item's fields change.
  *
  * @example
  * ```tsx
@@ -71,16 +61,12 @@ export const For = memo((props: ForProps<unknown>) =>
     : React.createElement(ForRows, props),
 ) as unknown as <T>(props: ForProps<T>) => React.JSX.Element | null;
 
-/** Without `parent`: one tracked row component per item. */
 const ForRows = tracked(({ each, children, fallback }: ForProps<unknown>) => {
-  // Structure (push, splice, length, a new array) and replacing an item in
-  // place both re-render the list.
   void (each as ReactiveTagged)?.[$TRACK];
   const raw = unwrap(each);
   if (!raw || raw.length === 0) return fallback ?? null;
   trackArrayElements(raw);
-  // Item reads below are untracked: the list already follows the array as a
-  // whole, and per-index subscriptions would only add N links.
+  // Untracked: the array is already followed as a whole.
   const outer = setActiveSub(undefined);
   try {
     return rowComponents(raw, each, children);
@@ -91,10 +77,6 @@ const ForRows = tracked(({ each, children, fallback }: ForProps<unknown>) => {
 
 type ParentProps = ForProps<unknown> & { parent: React.RefObject<Element | null> };
 
-/**
- * With `parent`: the elements `children` returned, reused per item. A swap
- * moves the two DOM nodes; any other change re-renders the list.
- */
 const ForInParent = tracked(({ each, children, fallback, parent }: ParentProps) => {
   const [, rerender] = useReducer(increment, 0);
   const stateRef = useRef<ForState | null>(null);
@@ -105,17 +87,12 @@ const ForInParent = tracked(({ each, children, fallback, parent }: ParentProps) 
     swappedIn: null,
   });
 
-  // Structure (push, splice, length, a new array) re-renders the list. The
-  // effect below decides the rest: a swap moves DOM nodes, anything else
-  // re-renders.
   void (each as ReactiveTagged)?.[$TRACK];
   const raw = unwrap(each);
 
   useIsomorphicLayoutEffect(() => {
-    // The items in the order the DOM shows them. A swap updates it in place;
-    // any other change re-renders the list, which runs this effect again.
     const { shown } = state;
-    // React has placed the rows: any swaps before this were undone first.
+    // UndoSwaps already restored React's order before this commit.
     forgetSwaps(state);
     if (!raw || raw.length === 0) {
       shown.length = 0;
@@ -125,10 +102,8 @@ const ForInParent = tracked(({ each, children, fallback, parent }: ParentProps) 
     for (let i = 0; i < raw.length; i++) shown[i] = raw[i];
     return effect(() => {
       trackArrayElements(raw);
-      // A length change already re-renders `For`.
       if (raw.length !== shown.length) return;
-      // The first two slots whose item changed, comparing raw objects (an
-      // assigned element may be stored as a proxy). A third means no swap.
+      // Compare raw: an assigned element may be stored as a proxy.
       let a = -1;
       let b = -1;
       for (let i = 0; i < raw.length; i++) {
@@ -143,8 +118,7 @@ const ForInParent = tracked(({ each, children, fallback, parent }: ParentProps) 
       }
       if (a === -1) return;
       const container = parent.current;
-      // DOM node i shows item i only when the array has no holes (a hole
-      // renders nothing), so only then can a swap move nodes by index.
+      // A hole renders no node, so with holes DOM index != array index.
       if (
         b === -1 ||
         !container ||
@@ -157,8 +131,6 @@ const ForInParent = tracked(({ each, children, fallback, parent }: ParentProps) 
       }
       const nodeA = container.children[a]!;
       const nodeB = container.children[b]!;
-      // The order React placed the rows in, to put them back in before it
-      // next changes the DOM. Taken once per run of swaps between renders.
       if (state.swappedIn === null) {
         const { placed } = state;
         const nodes = container.children;
@@ -173,16 +145,13 @@ const ForInParent = tracked(({ each, children, fallback, parent }: ParentProps) 
   });
 
   if (!raw || raw.length === 0) {
-    // Drop the last rows' elements, so a cleared list holds nothing.
     state.elements.clear();
     return fallback ?? null;
   }
 
-  // Item reads below are untracked: the list already follows the array as a
-  // whole, and per-index subscriptions would only add N links.
+  // Untracked: the array is already followed as a whole.
   const outer = setActiveSub(undefined);
   try {
-    // The guard puts back swapped nodes when React commits this render.
     return React.createElement(
       React.Fragment,
       null,
@@ -196,25 +165,16 @@ const ForInParent = tracked(({ each, children, fallback, parent }: ParentProps) 
 
 const increment = (n: number): number => n + 1;
 
-/** What a list with `parent` keeps between renders, so a render allocates no more than it must. */
 interface ForState {
-  /** The element `children` returned for each raw item. */
   elements: Elements;
-  /** The items in the order the DOM shows them. */
   shown: Array<unknown>;
-  /** The row nodes in the order React last placed them, once a swap moved one. */
   placed: Array<Element>;
-  /** The element a swap moved rows in since React last placed them, or null if none did. */
   swappedIn: Element | null;
 }
 
-/**
- * With `parent`: React still has the rows in the order of its last render, and
- * places them by that order. Before it changes the DOM, put back the nodes
- * swapped since. `getSnapshotBeforeUpdate` runs then, in the commit, and
- * never for a render React drops (one that suspended, say), which must leave
- * the screen as it is.
- */
+// React reconciles DOM nodes by the order of its last render, so swapped nodes
+// must be put back first. getSnapshotBeforeUpdate runs in the commit just
+// before DOM changes, and never for a render React drops (e.g. suspended).
 class UndoSwaps extends React.Component<{ state: ForState }> {
   override getSnapshotBeforeUpdate(): null {
     undoSwaps(this.props.state);
@@ -228,10 +188,6 @@ class UndoSwaps extends React.Component<{ state: ForState }> {
   }
 }
 
-/**
- * Put the swapped nodes back in the order React placed them. A node that
- * has left since (a row that now renders nothing) is skipped.
- */
 function undoSwaps(state: ForState): void {
   const { placed, swappedIn } = state;
   if (swappedIn === null) return;
@@ -240,7 +196,6 @@ function undoSwaps(state: ForState): void {
     const node = placed[i]!;
     if (node.parentNode === swappedIn) {
       // A node not yet put back is at or after `cursor`, so `cursor` is set.
-      // Swapping, not moving, puts back a far swap with one move.
       if (node !== cursor) swapElements(cursor!, node);
       cursor = node.nextElementSibling;
     }
@@ -253,9 +208,8 @@ function forgetSwaps(state: ForState): void {
   state.swappedIn = null;
 }
 
-/** Swap two sibling nodes, `x` before `y`. Its own inverse. */
+// `x` must precede `y`.
 function swapElements(x: Element, y: Element): void {
-  // `y` comes after `x`, so `x` has a next sibling.
   const afterX = x.nextSibling!;
   if (afterX === y) {
     x.before(y);
@@ -265,10 +219,6 @@ function swapElements(x: Element, y: Element): void {
   afterX.before(y);
 }
 
-/**
- * With `parent`: `children(item)` once per item, reused for as long as the item
- * stays in the list, so React skips rows whose element didn't change.
- */
 function reusedElements(
   raw: ReadonlyArray<unknown>,
   each: ReadonlyArray<unknown>,
@@ -276,8 +226,8 @@ function reusedElements(
   state: ForState,
 ): Array<React.ReactNode> {
   const previous = state.elements;
-  // A new map, not the old one cleared: clearing a map allocates a new table
-  // anyway, and the old one is read while this one fills.
+  // Not `previous.clear()`: it is read while this fills, and V8 reallocates
+  // the table on clear anyway.
   const next: Elements = new Map();
   const slots = new Array<React.ReactNode>(raw.length); // eslint-disable-line unicorn/no-new-array -- sized once, holes kept where `raw` has them
   for (let i = 0; i < raw.length; i++) {
@@ -292,27 +242,20 @@ function reusedElements(
   return slots;
 }
 
-// Keys `rowComponents` has given out. Reused across calls, since a call never
-// runs user code and so can't re-enter.
+// Shared across calls: safe only while rowComponents never runs user code.
 const usedKeys = new Set<string>();
 
-/** Without `parent`: one `ForItem` per item, keyed by item. */
 function rowComponents(
   raw: ReadonlyArray<unknown>,
   each: ReadonlyArray<unknown>,
   children: Children,
 ): Array<React.ReactNode> {
-  // A row's index changes whenever an item above it is added or removed.
-  // Pass it only when `children` declares an index parameter, so that
-  // `(item) => …` rows that merely moved skip re-rendering. (A defaulted
-  // index, `(item, i = 0) => …`, doesn't count as declared: write
-  // `(item, i) => …`.)
+  // Function.length excludes defaulted params: `(item, i = 0)` reads as 1.
   const passIndex = children.length !== 1;
   const slots = new Array<React.ReactNode>(raw.length); // eslint-disable-line unicorn/no-new-array -- sized once, holes kept where `raw` has them
   for (let i = 0; i < raw.length; i++) {
     if (!isHole(raw, i)) {
       let key = keyOf(unwrap(raw[i]), i);
-      // The same key twice: key the repeat by position.
       if (usedKeys.has(key)) key = positionKey(i);
       usedKeys.add(key);
       slots[i] = React.createElement(ForItem, {
@@ -327,21 +270,14 @@ function rowComponents(
   return slots;
 }
 
-/** A hole renders nothing, as with `Array.prototype.map`. */
 function isHole(raw: ReadonlyArray<unknown>, i: number): boolean {
   return raw[i] === undefined && !(i in raw);
 }
 
-// Keys for objects without an `id`, by identity, so a row keeps its
-// component when it moves (say a mapped row that keeps its object).
 const objectKeys = new WeakMap<object, string>();
 let nextObjectKey = 0;
 
-/**
- * The item's key as React reads it, a string: `item.id` (a string or
- * number), else the object's identity, else (for a primitive) the position.
- * React compares keys as strings, so id 1 and id "1" are the same key.
- */
+// React compares keys as strings: ids 1 and "1" collide.
 function keyOf(rawItem: unknown, index: number): string {
   if (!rawItem || typeof rawItem !== "object") return positionKey(index);
   const { id } = rawItem as { id?: unknown };
@@ -354,7 +290,7 @@ function keyOf(rawItem: unknown, index: number): string {
   return key;
 }
 
-/** A key by position, which no id can collide with. */
+// \u0000 prefix keeps position keys apart from ordinary ids.
 function positionKey(index: number): string {
   return `\u0000${index}`;
 }

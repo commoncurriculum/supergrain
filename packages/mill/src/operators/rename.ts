@@ -9,9 +9,6 @@ interface RenameMove {
   value: unknown;
 }
 
-// Whether `path` traverses an array on the way to its leaf. MongoDB forbids
-// $rename through array elements ("The source field cannot be an array element
-// ... has an array field called ...").
 function pathRunsThroughArray(raw: object, path: string): boolean {
   const parts = splitPath(path);
   let node: unknown = raw;
@@ -20,21 +17,18 @@ function pathRunsThroughArray(raw: object, path: string): boolean {
       return true;
     }
     if (!isContainer(node)) {
-      return false; // a scalar/missing ancestor can't contain an array
+      return false;
     }
     node = (node as Record<string, unknown>)[parts[i]!];
   }
   return Array.isArray(node);
 }
 
-// Returns the move to perform, or null when the rename is a no-op (source and
-// destination are the same path, or the source doesn't exist). Throws when the
-// destination already exists.
 function planRename(context: OperatorContext, rawFrom: string, rawTo: string): RenameMove | null {
   const from = resolvePaths(context.raw, rawFrom, context)[0]!;
   const to = resolvePaths(context.raw, rawTo, context)[0]!;
   if (from === to) {
-    // MongoDB rejects renaming a field to itself rather than no-op'ing.
+    // Mongo rejects, rather than no-ops, a rename to itself.
     throw new Error(`$rename source and destination must differ, but both are "${from}".`);
   }
   for (const path of [from, to]) {
@@ -46,24 +40,20 @@ function planRename(context: OperatorContext, rawFrom: string, rawTo: string): R
   }
   const source = resolveParentPath(context.raw, from);
   if (!source) {
-    // A non-object intermediate blocks traversal — Mongo rejects this ("cannot
-    // use the part ... to traverse the element ...") rather than treating it as
-    // a no-op. (A *missing leaf* under a real object, below, stays a no-op.)
+    // Mongo rejects a non-object intermediate; only a missing leaf is a no-op.
     throw new TypeError(
       `$rename cannot traverse source path "${from}": a segment runs through a non-object value.`,
     );
   }
   if (!Object.hasOwn(source.parent, source.key)) {
-    return null; // missing leaf under a real object — Mongo treats this as a no-op
+    return null;
   }
-  // An existing destination is overwritten (Mongo removes it and renames the
-  // source onto it).
+  // Mongo overwrites an existing destination.
   return { from, to, value: source.parent[source.key] };
 }
 
 export function $rename(context: OperatorContext, operations: Record<string, string>): void {
-  // Resolve all sources before any mutation so a chain of renames reads from the
-  // original document, not a partially-renamed one.
+  // Plan every move before mutating so chained renames read the original document.
   const moves: Array<RenameMove> = [];
   for (const rawFrom of Object.keys(operations)) {
     const move = planRename(context, rawFrom, operations[rawFrom]!);

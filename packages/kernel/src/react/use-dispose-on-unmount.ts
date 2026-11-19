@@ -1,24 +1,17 @@
 import { useEffect, useRef } from "react";
 
-// Minimal local declaration so this file doesn't require @types/node in
-// downstream packages. Consumer bundlers (and Vite library mode) replace
-// `process.env.NODE_ENV` based on their build, which is what we want.
+// Declared locally so consumers don't need @types/node; bundlers replace it.
 declare const process: { env: { NODE_ENV?: string } };
 
 const NO_DEPS: ReadonlyArray<unknown> = [];
 
 /**
- * Run `cleanup` when the component truly unmounts.
+ * Run `cleanup` when the component truly unmounts. The latest `cleanup`
+ * passed is the one called.
  *
- * Its functions are made once per component instance, so a render allocates
- * nothing here. Pass a stable `cleanup` to allocate nothing per render at
- * all; a new one each render also works, and the latest is the one called.
- *
- * In development the cleanup is deferred with `setTimeout(0)`, so it survives
- * React 18 StrictMode's mount→cleanup→remount cycle: the remount clears the
- * pending timer, and on a real unmount the timer survives and runs the
- * cleanup. In production it runs straight away. Bundlers replace
- * `process.env.NODE_ENV` at build time and drop the development branch.
+ * In development it is deferred with `setTimeout(0)` so StrictMode's
+ * mount-cleanup-remount cycle doesn't trigger it. In production it runs
+ * immediately.
  *
  * @example
  * ```ts
@@ -34,7 +27,6 @@ export function useDisposeOnUnmount(cleanup: () => void): void {
 
 interface Unmount {
   cleanup: () => void;
-  /** The effect: clears a pending development timer, and returns `destroy`. */
   readonly mount: () => () => void;
 }
 

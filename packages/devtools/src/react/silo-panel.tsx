@@ -1,14 +1,3 @@
-// The silo inspector: tabs (with live counts), a filter box, and a master/detail
-// view over a store's cached documents and query results. Controls are
-// react-aria-components styled with Tailwind in the Untitled UI design language.
-//
-// `SiloPanelContent` and `SiloStatusDot` are wrapped in `tracked()` so reading
-// the store's reactive state during render subscribes them to it — counts, the
-// list, and the open detail all update live as fetches settle and documents
-// change, with no polling. The serialized value for the *selected* entry is read
-// through the reactive proxy too, so editing that document in place updates the
-// explorer.
-
 import { tracked } from "@supergrain/kernel/react";
 import { useState } from "react";
 import {
@@ -56,6 +45,7 @@ export interface SiloPanelContentProps {
   readonly onSelect: (entry: SelectedEntry | null) => void;
 }
 
+/** The silo inspector body: tabs, filter, and master/detail. Updates live as the store changes. */
 export const SiloPanelContent = tracked(function SiloPanelContent({
   bridge,
   tab,
@@ -65,8 +55,6 @@ export const SiloPanelContent = tracked(function SiloPanelContent({
   onSearchChange,
   onSelect,
 }: SiloPanelContentProps) {
-  // Serialize the value/error for the selected entry only — the list needs
-  // scalar status alone, so a large cache stays cheap to render.
   const snapshot = snapshotSilo(bridge, {
     includeValue: (_kind, type, key) =>
       selected !== null && selected.tab === tab && selected.type === type && selected.key === key,
@@ -79,9 +67,7 @@ export const SiloPanelContent = tracked(function SiloPanelContent({
   const filtered = filterGroups(groups, needle);
   const selectedEntry = findSelected(filtered, selected, tab);
 
-  // The search box + master/detail for the active tab. Referenced from both
-  // TabPanels, but react-aria only mounts the selected panel's children, so it
-  // renders exactly once.
+  // Used in both TabPanels; react-aria mounts only the selected one.
   const surface = (
     <>
       <SearchField
@@ -162,8 +148,6 @@ export const SiloStatusDot = tracked(function SiloStatusDot({
   let fetching = 0;
   let errored = 0;
   for (const bridge of bridges) {
-    // Cheap totals-only scan — no group/entry allocation, and subscribes the
-    // (always-mounted) dot to just `isFetching` / `status` per handle.
     const activity = siloActivity(bridge);
     fetching += activity.fetching;
     errored += activity.errored;

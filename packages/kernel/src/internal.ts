@@ -1,5 +1,3 @@
-// Internal entrypoint consumed by sibling Supergrain packages.
-// Not re-exported from the package root.
 export {
   $ELEMENTS,
   $NODE,
@@ -14,17 +12,10 @@ export {
 export { setProperty, deleteProperty, bumpOwnKeysSignal, bumpVersion } from "./write";
 export { profileSignalWrite } from "./profiler";
 
-// Sharp signal primitives. Exposed here (not from the package root) because
-// they have footguns: startBatch/endBatch mutate a global counter that leaks
-// on exception, and setActiveSub mutates the global active-subscriber slot
-// that other code assumes is restored. Public users should reach for `batch()`
-// from `@supergrain/kernel` instead.
+// startBatch/endBatch mutate alien-signals' global batch counter and leak on
+// exception; setActiveSub must always be restored.
 export { startBatch, endBatch, getActiveSub, setActiveSub } from "alien-signals";
 
-// Attaches a `[Symbol.dispose]` to an object so it works with `using`. Used by
-// husk to make resources `Disposable`.
 export { makeDisposable } from "./disposable";
 
-// How `tracked` keeps what a render read subscribed between the render's
-// effect firing and the re-render.
 export { endReads, noteRead, RenderReads, startReads } from "./render-reads";

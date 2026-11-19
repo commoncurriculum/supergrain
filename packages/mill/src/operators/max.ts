@@ -9,8 +9,7 @@ export function $max(context: OperatorContext, operations: Record<string, number
         if (typeof previous === "number") {
           return (value as number) > previous ? (value as number) : undefined;
         }
-        // null sorts below every number and an absent field is created, so $max
-        // always takes the candidate value here.
+        // null sorts below every number in Mongo.
         return value as number;
       },
     });

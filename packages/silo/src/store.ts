@@ -39,16 +39,8 @@ function ensureBucket<T>(buckets: Map<string, Map<string, T>>, type: string): Ma
 
 export type { InternalState };
 
-// =============================================================================
-// Model types
-// =============================================================================
-
 /**
- * Consumer-defined map of type name → model shape.
- *
- * Each key is a type string (e.g. "user", "card-stack"), each value is the
- * full model type as defined by the consumer. The library doesn't impose
- * structure on the model beyond requiring an `id: string`.
+ * Map of type name → model shape. Models need only an `id: string`.
  *
  * @example
  * ```ts
@@ -60,19 +52,11 @@ export type { InternalState };
  */
 export type DocumentTypes = Record<string, { id: string }>;
 
-// Store-wide lifecycle hooks live in their own module; re-exported here so the
-// public surface (`import { StoreHooks } from "@supergrain/silo"`) is unchanged.
 export type { StoreHooks } from "./hooks";
 
-// =============================================================================
-// TypeRegistry — for module augmentation
-// =============================================================================
-
 /**
- * Module-augmentation registry. Consumers augment this once to tell the
- * library which `DocumentTypes` map (and, optionally, `QueryTypes` map) to use,
- * and every hook picks them up automatically without explicit generics at call
- * sites.
+ * Augment once to declare your `types` (and optional `queries`) map, so hooks
+ * need no explicit generics.
  *
  * @example
  * ```ts
@@ -87,49 +71,30 @@ export type { StoreHooks } from "./hooks";
 // oxlint-disable-next-line no-empty-interface
 export interface TypeRegistry {}
 
-/**
- * Resolved type map — reads from `TypeRegistry.types` if the consumer has
- * augmented it, falls back to the open `DocumentTypes` constraint otherwise.
- */
+/** `TypeRegistry.types` if declared, else `DocumentTypes`. */
 export type RegisteredTypes = TypeRegistry extends { types: infer T extends DocumentTypes }
   ? T
   : DocumentTypes;
 
-// =============================================================================
-// Handle — flat, orthogonal fields
-// =============================================================================
-
 /**
- * Coarse lifecycle convenience, derived from the orthogonal fields:
  * - `success` — a `value` has loaded (even if a later refetch errored).
  * - `error`   — the first load failed and there is still no `value`.
  * - `pending` — no `value` and no first-load error yet.
- *
- * `status` never contradicts the fields and does not narrow `value`; branch on
- * `value` / `error` / `isFetching` directly when you need the full picture.
  */
 export type HandleStatus = "pending" | "success" | "error";
 
 /**
- * Stable Promise for use with React 19's `use()`. Present once a fetch has
- * started. Resolves on first successful load (reused across refetches);
- * rejects once if the first fetch errors; an `insertDocument` after a
- * first-load error hands out a NEW resolved promise so a Suspense boundary
- * nested in an error boundary can recover.
+ * Stable promise for React's `use()`, present once a fetch has started.
+ * Resolves on the first load and is reused across refetches; rejects if the
+ * first fetch fails. An `insertDocument` after that failure hands out a new
+ * resolved promise so an error boundary can recover.
  */
 export type HandlePromise<T> = Promise<T> | undefined;
 
 /**
- * Reactive handle for a single document — a `status`-discriminated union over
- * flat, orthogonal fields. Narrowing on `status` (or on `value !== undefined`)
- * refines `value` to `T`; `error` and `value` coexist in `success` so a stale
- * value and a fresh refetch error don't clobber each other.
- *
- * Backed by a single stable reactive object: `store.find("user", "1")` returns
- * the same handle every call, and each field is tracked independently — a
- * component reading only `value` does not re-render when a background refetch
- * toggles `isFetching`. `status` stays `"success"` across a refetch, so
- * narrowing on it doesn't add re-renders.
+ * Reactive handle for one document. Narrowing on `status` (or
+ * `value !== undefined`) refines `value`. `find` returns the same handle every
+ * call, and each field is tracked separately.
  *
  * @example
  * ```tsx
@@ -146,9 +111,9 @@ export type DocumentHandle<T, E = SiloError> =
       readonly error: undefined;
       readonly isFetching: boolean;
       readonly fetchedAt: undefined;
-      /** Failed attempts in the current fetch cycle (0 until one fails). */
+      /** Failed attempts in the current fetch cycle. */
       readonly failureCount: number;
-      /** The latest attempt's error while retrying — visible before the fetch gives up. */
+      /** The latest attempt's error, set while still retrying. */
       readonly lastError: E | undefined;
       readonly promise: HandlePromise<T>;
     }
@@ -174,34 +139,12 @@ export type DocumentHandle<T, E = SiloError> =
       readonly promise: HandlePromise<T>;
     };
 
-// The all-or-nothing batch view over these handles — `DocumentsTogetherHandle`
-// and its aggregation machinery — lives in ./together.
-
-// =============================================================================
-// DocumentAdapter — consumer-owned transport (Effect-based)
-// =============================================================================
-
 /**
- * Talks to the API. Takes N ids and returns the raw response of whatever shape
- * the API emits. The adapter owns *how* the data is fetched — bulk GET, N
- * parallel GETs, a websocket cycle, anything.
- *
- * **Return a `Promise`** for the common case — the store runs it on its Effect
- * engine (batching, `retry`/`timeout`) for you, and a rejection becomes an
- * `AdapterError` automatically. Power users can **return an `Effect`** instead
- * to control the failure channel, compose their own retries, or manage
- * resources; it's used as-is. The library doesn't inspect the raw value — only
- * the model's configured `ResponseProcessor`(s) do.
- *
- * Contract:
- * - `find` receives a chunk of at most `DocumentStoreConfig.batchSize` ids,
- *   grouped by type and deduped (no duplicate ids in one call).
- * - A rejected Promise / failed Effect fails every deferred waiting on that
- *   chunk (as an `AdapterError`).
- * - `ctx.signal` aborts when the adapter Effect is interrupted — e.g. a
- *   per-model `timeout` fires (or a `retry` abandons the prior attempt). Thread
- *   it into `fetch(url, { signal })` for a real network abort; ignore it and
- *   interruption simply discards the result.
+ * Fetches documents by id. Gets a deduped chunk of at most `batchSize` ids of
+ * one type and returns the raw response for the model's processors. Return a
+ * `Promise` (a rejection becomes an `AdapterError`) or an `Effect`. A failure
+ * fails every request in the chunk. `ctx.signal` aborts when the attempt is
+ * interrupted (a `timeout`, or a retry abandoning it).
  *
  * @example
  * ```ts
@@ -228,40 +171,21 @@ export interface DocumentAdapter {
   ): Promise<unknown> | Effect.Effect<unknown, AdapterError>;
 }
 
-// =============================================================================
-// ResponseProcessor — ordered response pipeline step
-// =============================================================================
-
-/**
- * Context handed to every {@link ResponseProcessor} in a model's pipeline: the
- * `store` (to read cached docs and insert new ones), the `type` the caller
- * passed to `find(type, id)`, and the chunk's requested `ids`.
- */
+/** Context handed to every {@link ResponseProcessor}. */
 export interface ProcessorContext<M extends DocumentTypes> {
-  /** The store — read with `findInMemory`, write with `insertDocument`. */
   readonly store: DocumentStore<M>;
-  /** The type the caller passed to `find(type, id)` for this chunk. */
   readonly type: keyof M & string;
-  /** The document ids this chunk fetched. */
   readonly ids: ReadonlyArray<string>;
 }
 
 /**
- * One step in a model's ordered response pipeline.
+ * One step in a model's response pipeline. Returning a value replaces the
+ * response for the next step; `undefined` / `null` passes it on. Documents are
+ * cached only when a step calls `store.insertDocument`; each requested id is
+ * then looked up to settle its handle.
  *
- * The adapter returns a response. Silo passes that response through each
- * processor in order. A processor may **mutate** the response, **return a
- * replacement** response, perform **side effects**, or **insert documents**
- * into the store. If it returns `undefined` (or `null`), the current response
- * continues unchanged to the next processor. Most pipelines end with an
- * insertion processor that calls `store.insertDocument(type, doc)` for every
- * document worth caching; the library then looks up each requested
- * `(type, id)` via `store.findInMemory` to settle the handle.
- *
- * Contract:
- * - Synchronous. For async normalization, do it in the adapter Effect.
- * - If it throws, the remaining processors do not run and every deferred on
- *   the chunk fails with a `ProcessorError` (its `cause` is the thrown error).
+ * - Synchronous; do async work in the adapter.
+ * - A throw stops the pipeline and fails the chunk with a `ProcessorError`.
  *
  * @example
  * ```ts
@@ -280,40 +204,14 @@ export type ResponseProcessor<M extends DocumentTypes> = (
   context: ProcessorContext<M>,
 ) => unknown | void;
 
-// =============================================================================
-// Per-model config
-// =============================================================================
-
 /**
- * Per-model wiring: the adapter that talks to the API, the response
- * processor(s) that turn its response into store inserts, and optional
- * Effect-native resilience.
- *
- * Responses run through an **ordered pipeline**. Configure it either way:
- * - `processor` — a single {@link ResponseProcessor} (normalized to a
- *   one-element pipeline).
- * - `processors` — an ordered array of {@link ResponseProcessor}s, run in
- *   declared order.
- *
- * Supply at most one. Setting **both** is a configuration error and throws at
- * store creation — the intent is ambiguous. If neither is supplied, the
- * library uses `defaultProcessor` (so `{ adapter }`,
- * `{ adapter, processor: defaultProcessor }`, and
- * `{ adapter, processors: [defaultProcessor] }` are equivalent).
- *
- * The inherited resilience knobs ({@link ResilienceOptions}: `retry` /
- * `timeout` / `deadline` / `retryable` / `isolateFailures`) override the
- * store-wide defaults for this model — resolution precedence is per-model →
- * store-wide → built-in `defaultRetry`.
+ * Per-model adapter and response pipeline. Set `processor` or `processors`,
+ * not both (that throws at store creation); with neither, `defaultProcessor`
+ * is used. Resilience options override the store's.
  */
 export interface ModelConfig<M extends DocumentTypes> extends ResilienceOptions {
   adapter: DocumentAdapter;
-  /** A single response processor. Mutually exclusive with `processors`. */
   processor?: ResponseProcessor<M>;
-  /**
-   * An ordered response pipeline, run in declared order. Mutually exclusive
-   * with `processor`.
-   */
   processors?: ReadonlyArray<ResponseProcessor<M>>;
   /**
    * What a new version of a stored document does: `"patch"` (default) writes
@@ -323,98 +221,52 @@ export interface ModelConfig<M extends DocumentTypes> extends ResilienceOptions 
   onRefetch?: "patch" | "replace";
 }
 
-// =============================================================================
-// DocumentStore config
-// =============================================================================
-
 /**
- * Store-wide configuration. The inherited resilience knobs
- * ({@link ResilienceOptions}: `retry` / `timeout` / `deadline` / `retryable` /
- * `isolateFailures`) are **defaults for every document and query fetch** that
- * doesn't set its own (per-model / per-query). `retry` falls back to the
- * built-in {@link defaultRetry} (fibonacci 1s–60s) — disable with
- * `Schedule.recurs(0)` or bound it with e.g. `Schedule.recurs(3)`. `deadline`
- * falls back to the built-in `defaultDeadline` (2 minutes), so a fetch always
- * settles eventually — opt out with `Duration.infinity`. `timeout` /
- * `retryable` are off unless configured.
+ * Store-wide configuration. Resilience options here are defaults for every
+ * fetch that doesn't set its own; unset, `retry` is `defaultRetry` and
+ * `deadline` is `defaultDeadline`.
  */
 export interface DocumentStoreConfig<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
 > extends ResilienceOptions {
-  /** Per-type adapter + optional response-processor pipeline for documents. */
   models: { [K in keyof M]: ModelConfig<M> };
-  /** Per-type adapter + optional processor wiring for queries. Optional. */
   queries?: { [K in keyof Q & string]: QueryConfig<M, Q, K> };
-  /**
-   * Store-wide lifecycle hooks — `prepareInsert` / `afterInsert`, bracketing
-   * every `insertDocument`. Parallel to `models` / `queries`. See
-   * {@link StoreHooks}.
-   */
   hooks?: StoreHooks<M>;
-  /**
-   * Batch-window duration in ms. `find` / `findQuery` calls within this window
-   * collapse into their respective `adapter.find(...)` invocations. Default: 15.
-   */
+  /** Calls within this many ms share one `adapter.find` per type. Default: 15. */
   batchWindowMs?: number;
-  /**
-   * Max keys per `adapter.find` call (documents and queries). Larger batches
-   * are chunked. Default: 60.
-   */
+  /** Max keys per `adapter.find` call. Default: 60. */
   batchSize?: number;
   /**
-   * Max concurrent `adapter.find` **attempts** across the store. A large
-   * render (thousands of ids → many chunks) otherwise fires every chunk at
-   * once. `"unbounded"` (default) preserves that; set a positive integer to
-   * cap simultaneous adapter calls and avoid a self-inflicted thundering
-   * herd (anything below 1 is rejected at store creation — a zero-permit
-   * semaphore would block every fetch forever). The bound is a per-attempt
-   * semaphore: it composes across batch windows and `isolateFailures`
-   * bisection, and a chunk sleeping between retries releases its slot, so
-   * failing chunks never starve healthy ones.
+   * Max concurrent adapter attempts across the store, including
+   * `store.runAdapter` callers. A positive integer or `"unbounded"` (default).
+   * A slot is released during retry backoff.
    */
   maxConcurrency?: number | "unbounded";
   /**
-   * Optional error sink — called on **every failed attempt** (so a retrying
-   * fetch isn't silent) and on a terminal `NotFoundError` / `ProcessorError`,
-   * with the failing `type` / `keys`, the 1-based `attempt`, and whether the
-   * failure was `retryable`. Fires for document fetches, `findQuery` fetches,
-   * and `@supergrain/queries` fetches alike — plus an isolated `afterInsert`
-   * hook throw (reported as a `ProcessorError`). For logging / metrics; a
-   * throwing callback never affects the store.
+   * Called on every failed attempt, on terminal `NotFoundError` /
+   * `ProcessorError`, and when `afterInsert` throws (as a `ProcessorError`).
+   * Errors it throws are swallowed.
    */
   onError?: AdapterErrorSink;
 }
 
-// =============================================================================
-// DocumentStore — public store surface
-// =============================================================================
-
-/**
- * The public store surface. A plain object built by `createDocumentStore` and
- * mounted by the React Provider.
- */
 export interface DocumentStore<
   M extends DocumentTypes,
   Q extends QueryTypes = Record<string, never>,
 > {
   find<K extends keyof M & string>(type: K, id: string | null | undefined): DocumentHandle<M[K]>;
   /**
-   * Find many documents of one type by id, returning one **independent**
-   * {@link DocumentHandle} per id (each fetched via `find`), in id order — every
-   * handle settles on its own. A `null` / `undefined` `ids` yields an empty
-   * array. A fresh array each call; the handles inside are stable (`find` is
-   * idempotent), so `useDocumentsIndividually` layers render-stability on top.
+   * One independent handle per id, in id order. `null` / `undefined` ids give
+   * `[]`. Returns a new array each call.
    */
   findDocumentsIndividually<K extends keyof M & string>(
     type: K,
     ids: string[] | null | undefined,
   ): Array<DocumentHandle<M[K]>>;
   /**
-   * Find many documents of one type by id as an **all-or-nothing** batch,
-   * returning a single {@link DocumentsTogetherHandle} that settles once every
-   * document has loaded (or as soon as one fails). A `null` / `undefined` `ids`
-   * yields an idle handle; empty `ids` is immediately `success` with `value: []`.
+   * One all-or-nothing handle for the batch. `null` / `undefined` ids give an
+   * idle handle; `[]` is immediately `success`.
    */
   findDocumentsTogether<K extends keyof M & string>(
     type: K,
@@ -422,11 +274,9 @@ export interface DocumentStore<
   ): DocumentsTogetherHandle<M[K]>;
   findInMemory<K extends keyof M & string>(type: K, id: string): M[K] | undefined;
   /**
-   * The loaded documents of one type, in the order they first loaded. Never
-   * fetches. The same reactive array every call: it grows as documents load,
-   * swaps an entry when a "replace" refetch gives a doc a new object, and
-   * empties on `clearMemory`. Pass it to `computedList` to filter, sort or
-   * group what's loaded; the list follows each change without rescanning.
+   * The loaded documents of one type, in first-load order. Never fetches.
+   * Returns the same reactive array every call, so `computedList` over it
+   * updates without rescanning.
    */
   findAllInMemory<K extends keyof M & string>(type: K): ReadonlyArray<M[K]>;
   insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void;
@@ -444,24 +294,11 @@ export interface DocumentStore<
     result: Q[K]["result"],
   ): void;
   clearMemory(): void;
-  /**
-   * Resolve the resilience options for one adapter call: merge the given
-   * per-call overrides over the store-wide `retry` / `timeout` / `deadline`,
-   * falling back to the built-in {@link defaultRetry}. Layered helpers such as
-   * `@supergrain/queries` call this so a query fetch inherits the same resolved
-   * resilience as a document `find` unless it overrides them. Replaces the
-   * former `defaults` field — resolution lives in one place instead of leaking
-   * the store's raw defaults onto its surface.
-   */
+  /** Merge per-call overrides over the store's resilience options and built-in defaults. */
   resolveAdapterOptions(perCall?: AdapterOptionOverrides): ResolvedAdapterOptions;
   /**
-   * Run one adapter call on the store's engine — the boundary layered packages
-   * (e.g. `@supergrain/queries`) use so their fetches are correct by
-   * construction: per-call overrides resolve over the store's defaults, every
-   * failed attempt (and deadline breach) reports to the store's `onError`
-   * sink, and the call counts against the store's `maxConcurrency` cap. The
-   * optional `onFailure` observes the same failures for the caller's own
-   * handle bookkeeping; it runs even if the telemetry sink throws.
+   * Run one adapter call with the store's resilience options, `onError` sink,
+   * and `maxConcurrency` cap. For layered packages.
    */
   runAdapter<A>(
     invoke: (ctx: { signal: AbortSignal }) => Promise<A> | Effect.Effect<A, AdapterError>,
@@ -469,24 +306,17 @@ export interface DocumentStore<
   ): Effect.Effect<A, AdapterError>;
 }
 
-/**
- * Options for {@link DocumentStore.runAdapter}: the failing `type` / `keys`
- * for error construction and telemetry, per-call resilience overrides
- * ({@link AdapterOptionOverrides}), and an optional per-failure observer.
- */
+/** Options for {@link DocumentStore.runAdapter}. */
 export interface StoreAdapterRunOptions extends AdapterOptionOverrides {
   readonly type: string;
   readonly keys: ReadonlyArray<string>;
   /**
-   * Observe every failure of this call (each failed attempt and a `deadline`
-   * breach), after the store's `onError` sink was notified. For the caller's
-   * handle bookkeeping; a throw is swallowed by the engine.
+   * Called for each failed attempt and a `deadline` breach, after `onError`.
+   * Throws are swallowed.
    */
   readonly onFailure?: (error: AdapterError, info: AdapterFailureInfo) => void;
 }
 
-// The never-fetching handle for a `null` / `undefined` key. Serves both `find`
-// and `findQuery` (a QueryHandle is field-compatible), hence the neutral name.
 export const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   value: undefined,
   error: undefined,
@@ -498,12 +328,7 @@ export const IDLE_HANDLE: DocumentHandle<unknown> = Object.freeze({
   promise: undefined,
 });
 
-/**
- * Get the stable handle for `key`, creating an idle one on first access. The
- * re-read after `set` is deliberate: it returns the reactive proxy reference
- * (not the raw pre-set object), so `find`/`insert` hand out the same identity on
- * every call.
- */
+// Re-read after `set` to get the reactive proxy, not the raw object.
 function getOrCreateHandle(bucket: Map<string, InternalHandle>, key: string): InternalHandle {
   let handle = bucket.get(key);
   if (!handle) {
@@ -513,18 +338,7 @@ function getOrCreateHandle(bucket: Map<string, InternalHandle>, key: string): In
   return handle;
 }
 
-/**
- * True when the handle has never loaded (no value, no prior error) and no
- * fetch is in flight — i.e. `find`/`findQuery` must enqueue a request.
- * Errored handles don't auto-retry; loaded handles serve from cache.
- *
- * The gate is bookkeeping, not data the caller asked to observe — read it
- * UNTRACKED via the raw target (the same pattern `applyEvent` uses), so a
- * tracked render calling `find`/`findQuery` doesn't get subscribed to
- * `isFetching`/`error` it never reads. Otherwise a `value`-only reader would
- * re-render whenever a background refetch toggles `isFetching`, breaking the
- * per-field contract documented on `DocumentHandle`.
- */
+// Read raw so a tracked caller isn't subscribed to `isFetching` / `error`.
 function needsFetch(handle: InternalHandle): boolean {
   const raw = unwrap(handle);
   return !raw.isFetching && raw.value === undefined && raw.error === undefined;
@@ -546,11 +360,7 @@ export function createDocumentStore<
       if (id === null || id === undefined) return IDLE_HANDLE as DocumentHandle<M[K]>;
       const handle = getOrCreateHandle(ensureBucket(state.documents, type), id);
       if (needsFetch(handle)) {
-        // Validate only when a fetch must be enqueued — an unconfigured type
-        // would otherwise enqueue a request no drain can serve, killing the
-        // whole batch window and stranding every handle in it. A cached
-        // document (e.g. a sideload inserted under a type with no model
-        // config) stays readable: the cache path never needs an adapter.
+        // Checked only here so cached sideloads of unconfigured types stay readable.
         if (config.models[type] === undefined) {
           throw new Error(
             `@supergrain/silo: no model "${type}" is configured — add it to DocumentStoreConfig.models`,
@@ -567,10 +377,6 @@ export function createDocumentStore<
       ids: string[] | null | undefined,
     ): Array<DocumentHandle<M[K]>> {
       if (ids === null || ids === undefined) return [];
-      // `find` is stable + idempotent: same reactive handle per id, and it only
-      // enqueues a fetch when one is needed — so mapping over ids both triggers
-      // the loads and collects the handles in id order. Batch to combine find's
-      // internal batch calls.
       // oxlint-disable-next-line no-array-method-this-argument -- DocumentStore#find, not Array#find
       return batch(() => ids.map((id) => store.find(type, id)));
     },
@@ -594,36 +400,15 @@ export function createDocumentStore<
     },
 
     insertDocument<K extends keyof M & string>(type: K, doc: M[K]): void {
-      // Stored docs are LIVE and reactive at field granularity — not frozen
-      // snapshots. The kernel wraps the inserted object in a reactive proxy
-      // (read.ts), so a `handle.value.<field>` read subscribes to just that
-      // field, and there are two ways to update a document:
-      //   1. Mutate a field in place (`handle.value.attributes.name = "Ada"`).
-      //      Fine-grained: only readers of that field re-render. The write goes
-      //      through the proxy's signal, so no reinsert is needed.
-      //   2. Insert a new version. `applyEvent` diffs it into the stored
-      //      object with the kernel's `reconcile`, so only readers of the
-      //      fields that changed re-render and the stored object keeps its
-      //      identity.
-      // The first insert stores the inserted (or `prepareInsert`-returned)
-      // object itself; later inserts copy their changes into it. We
-      // deliberately do NOT freeze: a frozen target is handed
-      // back unwrapped by the kernel (`createReactiveProxy` bails on
-      // `Object.isFrozen`), which would kill per-field reactivity and the
-      // in-place update path above.
-      //
-      // `hooks.prepareInsert` is the one funnel every document passes through on
-      // its way in (direct inserts, processor/sideload inserts, Provider seeds).
-      // Pass-through follows the response-processor `?? response` convention:
-      // returning nothing keeps the (possibly mutated) `doc`; only an explicit
-      // `null` vetoes the insert. Run it before wrapping so in-place edits to a
-      // brand-new object touch the plain object, not the reactive proxy.
+      // Never freeze stored docs: the kernel returns a frozen object unwrapped,
+      // losing per-field reactivity. `prepareInsert` runs before wrapping so its
+      // in-place edits don't notify.
       const prepareInsert = config.hooks?.prepareInsert;
       let prepared: M[K] = doc;
       if (prepareInsert) {
         const result = prepareInsert(type, doc);
-        if (result === null) return; // explicit veto — write nothing
-        prepared = result ?? doc; // undefined / no return = keep `doc` as-is
+        if (result === null) return;
+        prepared = result ?? doc;
       }
       const stored = batch(() => {
         const handle = getOrCreateHandle(ensureBucket(state.documents, type), prepared.id);
@@ -633,12 +418,7 @@ export function createDocumentStore<
         loaded.changed(type, prepared.id, before, after);
         return after as M[K];
       });
-      // `afterInsert` tails the pipeline. The value is committed (findInMemory
-      // returns it); within an enclosing batch — a fetch commit, or a caller's
-      // own batch() — subscriber notifications are still pending and flush when
-      // that outermost batch ends. Skipped when `prepareInsert` vetoed. Isolated
-      // like the `onError` sink: a throwing observer is reported, never allowed
-      // to corrupt the commit or fail sibling docs in the same fetch.
+      // A throwing observer must not fail sibling docs in the same fetch.
       const afterInsert = config.hooks?.afterInsert;
       if (afterInsert) {
         try {
@@ -658,19 +438,15 @@ export function createDocumentStore<
       type: K,
       params: Q[K]["params"] | null | undefined,
     ): QueryHandle<Q[K]["result"]> {
-      // The null short-circuit comes first — it never fetches, so the
-      // conditional-read idiom `findQuery(type, ready ? params : null)` keeps
-      // working even while the type is absent from config (e.g. feature-flagged
-      // out).
+      // Before validation, so `findQuery(type, ready ? params : null)` works for
+      // an unconfigured type.
       if (params === null || params === undefined)
         return IDLE_HANDLE as QueryHandle<Q[K]["result"]>;
 
       const paramsKey = stableStringify(params);
       const handle = getOrCreateHandle(ensureBucket(state.queries, type), paramsKey);
       if (needsFetch(handle)) {
-        // Validate only when a fetch must be enqueued — an unconfigured type
-        // would otherwise enqueue a request no drain can serve, stranding the
-        // handle. A result seeded via `insertQueryResult` stays readable.
+        // Checked only here so seeded results of unconfigured types stay readable.
         if (config.queries?.[type] === undefined) {
           throw new Error(
             `@supergrain/silo: no query "${type}" is configured — add it to DocumentStoreConfig.queries`,
@@ -695,11 +471,6 @@ export function createDocumentStore<
       params: Q[K]["params"],
       result: Q[K]["result"],
     ): void {
-      // Like insertDocument: query results are live and reactive — not frozen.
-      // An object result is wrapped in a reactive proxy by the kernel, so reads
-      // track the fields they touch and an in-place mutation re-renders just
-      // those subscribers. Update in place or insert a new result; a new result is
-      // diffed into the stored one, so only the fields that changed notify.
       const paramsKey = stableStringify(params);
       batch(() => {
         const handle = getOrCreateHandle(ensureBucket(state.queries, type), paramsKey);
@@ -736,12 +507,8 @@ export function createDocumentStore<
         timeout: resolved.timeout,
         deadline: resolved.deadline,
         retryable: resolved.retryable,
-        // Layered fetches share the finder's semaphore, so `maxConcurrency`
-        // is one store-wide cap — not a per-surface one.
         permits: finder.permits,
         onFailure: (error, info) => {
-          // Telemetry first, isolated — a throwing sink must not skip the
-          // caller's own bookkeeping.
           emitToSink(config.onError, error, {
             type,
             keys,
@@ -756,10 +523,6 @@ export function createDocumentStore<
 
   finder.attach(store);
 
-  // Expose a non-enumerable introspection bridge for devtools. Purely
-  // observational — it hands out the live reactive `state` (so a client
-  // subscribes via the kernel) plus the configured type names; it never calls
-  // `find`, so inspecting a store can't trigger fetches. See `./devtools`.
   attachSiloDevtools(store, {
     state,
     documentTypes: Object.keys(config.models),
@@ -770,6 +533,4 @@ export function createDocumentStore<
   return store;
 }
 
-// Re-export query handle types so `store.findQuery(...)` call sites don't need
-// a second import path.
 export type { QueryHandle };

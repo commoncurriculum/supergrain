@@ -1,17 +1,3 @@
-// <SupergrainDevtools /> — the floating panel you drop next to your app, in the
-// spirit of the TanStack Query devtools: a corner toggle that opens an
-// inspector over your store(s). Pass the silo `DocumentStore` you got from
-// `createDocumentStore` (or from a Provider's `useDocumentStore()`); the panel
-// reads its non-enumerable devtools bridge and never calls `find`, so opening it
-// can't trigger fetches.
-//
-// Controls are react-aria-components, styled with Tailwind in the Untitled UI
-// design language. Import the stylesheet once: `@supergrain/devtools/style.css`.
-//
-// Built to grow: the shell (toggle, framing, store selector, clear) is generic,
-// and the body is one inspector among future ones (a raw kernel store, the
-// profiler) that can become additional tabs.
-
 import { type CSSProperties, useCallback, useState } from "react";
 import { Button, ListBox, ListBoxItem, Popover, Select, SelectValue } from "react-aria-components";
 
@@ -39,8 +25,7 @@ export interface SupergrainDevtoolsProps {
   position?: DevtoolsPosition;
   /**
    * Render nothing. Pass `process.env.NODE_ENV === "production"` to keep the
-   * panel out of production. (The store's silo-side devtools bridge is always
-   * present regardless — a tiny non-enumerable hook; see `@supergrain/silo/devtools`.)
+   * panel out of production.
    */
   disabled?: boolean;
 }
@@ -50,6 +35,10 @@ interface NamedStore {
   readonly bridge: SiloDevtoolsBridge;
 }
 
+/**
+ * Floating inspector for a silo `DocumentStore`. Opening it never triggers a
+ * fetch. Import the stylesheet once: `@supergrain/devtools/style.css`.
+ */
 export function SupergrainDevtools({
   store,
   stores,
@@ -63,17 +52,12 @@ export function SupergrainDevtools({
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<SelectedEntry | null>(null);
 
-  // Stable callback so the memoized (tracked) panel can skip re-rendering when
-  // only unrelated parent state changes.
+  // Stable identity lets the memoized panel skip re-renders.
   const onTabChange = useCallback((next: SiloTab) => {
     setTab(next);
     setSelected(null);
   }, []);
 
-  // Resolving stores is cheap (a symbol read per store); compute it each render
-  // rather than a useMemo that never hits when `stores` is an inline literal.
-  // The bridge objects within are stable, so the active bridge passed down is
-  // stable too.
   const named = resolveStores(store, stores);
 
   if (disabled || named.length === 0) return null;
@@ -174,9 +158,6 @@ function resolveStores(
 ): Array<NamedStore> {
   const named: Array<NamedStore> = [];
   const used = new Set<string>();
-  // Guarantee unique names so the selector never renders duplicate keys or hides
-  // a store behind a name collision (e.g. `store` plus a `stores` entry named
-  // "store").
   const add = (name: string, candidate: unknown): void => {
     const bridge = getSiloDevtools(candidate);
     if (!bridge) return;

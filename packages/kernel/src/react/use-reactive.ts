@@ -2,10 +2,7 @@ import { createReactive } from "@supergrain/kernel";
 import { useState } from "react";
 
 /**
- * Per-component reactive object, scoped to the component's lifetime.
- *
- * Wraps `createReactive` in a `useState` lazy initializer so the proxy is
- * created exactly once per mount and its identity stays stable across renders.
+ * A reactive object created once per mount, stable across renders.
  *
  * @example
  * ```tsx
@@ -17,8 +14,5 @@ import { useState } from "react";
  */
 export function useReactive<T extends object>(initialState: T): T {
   const [state] = useState(() => createReactive(initialState));
-  // createReactive returns Branded<T>, which is structurally identical to T
-  // (adds only the optional phantom [$BRAND] marker). Cast back to T so
-  // consumers can type their state as T without carrying the brand throughout.
   return state as T;
 }

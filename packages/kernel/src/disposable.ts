@@ -1,16 +1,12 @@
-// `SymbolConstructor["dispose"]` only exists when the consumer's TypeScript
-// `lib` includes `esnext.disposable` (or `@types/node` declares it). Resolve
-// to `never` otherwise so `SymbolDisposable` collapses to `{}` instead of
-// failing to compile — the package ships `.ts` sources as its types, so this
-// file is type-checked under the consumer's `lib`, not ours.
+// Checked under the consumer's TS `lib` (we ship .ts as types), which may not
+// declare Symbol.dispose: collapse to `{}` instead of failing to compile.
 type DisposeSymbol = SymbolConstructor extends { readonly dispose: infer S extends symbol }
   ? S
   : never;
 
 /**
- * The TC39 `Disposable` protocol — `{ [Symbol.dispose](): void }` — so the
- * value works with a `using` declaration. Resolves to `{}` when the
- * TypeScript `lib` in use doesn't declare `Symbol.dispose`.
+ * The TC39 `Disposable` protocol, for `using` declarations. Resolves to `{}`
+ * when your TypeScript `lib` doesn't declare `Symbol.dispose`.
  */
 export type SymbolDisposable = { readonly [K in DisposeSymbol]: () => void };
 
@@ -20,15 +16,7 @@ export type SymbolDisposable = { readonly [K in DisposeSymbol]: () => void };
  */
 export type Disposer = (() => void) & SymbolDisposable;
 
-/**
- * Attach `dispose` to `target` as its non-enumerable `[Symbol.dispose]`
- * method and return `target` typed as `Disposable`.
- *
- * Runtimes without `Symbol.dispose` (and frozen targets) are left untouched:
- * `using` can't work there anyway, and the disposer is still callable
- * directly. `Symbol.dispose` is looked up per call rather than cached at
- * module load so a polyfill installed after this module evaluates still takes.
- */
+// Symbol.dispose is looked up per call so a polyfill installed later still takes.
 export function makeDisposable<T extends object>(
   target: T,
   dispose: () => void,
@@ -44,25 +32,15 @@ export function makeDisposable<T extends object>(
       writable: true,
     });
   } catch {
-    // Frozen target — e.g. a husk resource built on a frozen `initial` object,
-    // which `createReactive` passes through unwrapped. No `using` support
-    // there; `dispose(x)` still works.
+    // Frozen target: no `using` support, but the disposer still works.
   }
   return target as T & SymbolDisposable;
 }
 
 let disposerPrototype: object | null = null;
 
-/**
- * Make a stop function `Disposable` by giving it a prototype that carries
- * `[Symbol.dispose]`, rather than a property of its own.
- *
- * `effect()` makes one stop function per effect — one per `tracked()`
- * component. An own property costs each function its own property store
- * (about 45 bytes, measured on a 1,000-row list); the shared prototype costs
- * nothing per function. The prototype extends `Function.prototype`, so `call`,
- * `bind` and `instanceof Function` work as before.
- */
+// A shared prototype, not an own property: an own property costs each
+// function its own property store (~45 bytes in V8).
 export function toDisposer(stop: () => void): Disposer {
   const key = (Symbol as { dispose?: symbol }).dispose;
   /* c8 ignore start -- every runtime the suite runs on (Node 22, Chromium) defines Symbol.dispose */
