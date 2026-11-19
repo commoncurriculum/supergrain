@@ -3,7 +3,7 @@ import type { Route } from "./+types/home";
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { GrainField } from "@/components/grain-field";
+import { CerealBowl, PIECE_COUNT } from "@/components/cereal-bowl";
 import { gitConfig } from "@/lib/shared";
 
 export function meta({}: Route.MetaArgs) {
@@ -36,11 +36,11 @@ const axisMin = 1.4;
 const axisMax = 2.0;
 const pct = (score: number) => ((score - axisMin) / (axisMax - axisMin)) * 100;
 
-const line = [
+const ingredients = [
   {
     name: "kernel",
     href: "/docs/kernel",
-    does: "The store. Plain objects, direct writes, React bindings, and computedList for live, sorted, filtered lists.",
+    does: "The store. Plain objects, direct writes, React bindings, and live sorted and filtered lists.",
   },
   {
     name: "husk",
@@ -51,6 +51,11 @@ const line = [
     name: "silo",
     href: "/docs/silo",
     does: "A document cache for your API. Requests are batched, reads suspend, and fetched documents are state you can change.",
+  },
+  {
+    name: "queries",
+    href: "/docs/queries",
+    does: "Paginated and live-updating queries for silo.",
   },
   {
     name: "mill",
@@ -82,39 +87,85 @@ function InstallCommand() {
 export default function Home() {
   return (
     <div className="sg-home">
-      <header className="sg-header">
-        <Link to="/" className="sg-wordmark" aria-label="Supergrain home">
-          SUPERGRAIN
-        </Link>
-        <nav className="sg-nav">
-          <Link to="/docs">Docs</Link>
-          <Link to="/docs/comparison">Comparison</Link>
-          <a href={github}>GitHub</a>
-        </nav>
-      </header>
+      <div className="sg-front">
+        <header className="sg-header">
+          <Link to="/" className="sg-wordmark" aria-label="Supergrain home">
+            Supergrain
+          </Link>
+          <nav className="sg-nav">
+            <Link to="/docs">Docs</Link>
+            <Link to="/docs/comparison">Comparison</Link>
+            <a href={github}>GitHub</a>
+          </nav>
+        </header>
 
-      <section className="sg-hero">
-        <div className="sg-hero-text">
-          <h1>
-            <span className="sg-h1-line">Change one value.</span>{" "}
-            <span className="sg-h1-line">
-              <span className="sg-nowrap">Re-render</span> one component.
-            </span>
-          </h1>
-          <p>
-            Supergrain is reactive state for React. You write plain objects and change them
-            directly. Only the components that read the value you changed render again. Not the
-            parent, not the siblings.
-          </p>
-          <div className="sg-actions">
-            <Link to="/docs" className="sg-button">
-              Read the docs
-            </Link>
-            <InstallCommand />
+        <section className="sg-hero">
+          <div className="sg-hero-text">
+            <h1>
+              <span>Super</span>
+              <span>grain</span>
+            </h1>
+            <p className="sg-ribbon">Reactive state for React</p>
+            <p className="sg-say">Change one value. One component re-renders.</p>
+            <p className="sg-sub">
+              Every piece in the bowl is its own component. One value changes every second or so.
+              Watch which pieces move, then switch to useState.
+            </p>
+            <div className="sg-actions">
+              <Link to="/docs" className="sg-button">
+                Read the docs
+              </Link>
+              <InstallCommand />
+            </div>
           </div>
-        </div>
-        <GrainField />
-      </section>
+
+          <CerealBowl />
+
+          <aside className="sg-facts" aria-label="Render facts">
+            <h2>Render Facts</h2>
+            <p>
+              Serving size: 1 changed value
+              <br />
+              Pieces in this bowl: {PIECE_COUNT}
+            </p>
+            <dl>
+              <div className="sg-facts-main">
+                <dt>Re-renders per serving</dt>
+                <dd>1</dd>
+              </div>
+              <div>
+                <dt>Reducers</dt>
+                <dd>0</dd>
+              </div>
+              <div>
+                <dt>Selectors</dt>
+                <dd>0</dd>
+              </div>
+              <div>
+                <dt>Generics to write</dt>
+                <dd>0</dd>
+              </div>
+              <div className="sg-facts-rule">
+                <dt>Benchmark score</dt>
+                <dd>1.52</dd>
+              </div>
+              <div className="sg-facts-sub">
+                <dt>plain useState</dt>
+                <dd>1.52</dd>
+              </div>
+              <div className="sg-facts-sub">
+                <dt>zustand</dt>
+                <dd>1.63</dd>
+              </div>
+              <div className="sg-facts-sub">
+                <dt>redux</dt>
+                <dd>1.98</dd>
+              </div>
+            </dl>
+            <p className="sg-facts-foot">Ingredients: kernel, husk, silo, queries, mill.</p>
+          </aside>
+        </section>
+      </div>
 
       <section className="sg-section sg-code">
         <div className="sg-section-text">
@@ -197,20 +248,20 @@ const TodoList = tracked(() => {
         </div>
       </section>
 
-      <section className="sg-section sg-line">
+      <section className="sg-section sg-ingredients">
         <div className="sg-section-text">
-          <h2>The rest of the grain line</h2>
+          <h2>Ingredients</h2>
           <p>
             Start with the kernel. Add the other packages when your app needs them. They share one
             reactive graph, so data from your API and your own state update the same way.
           </p>
         </div>
-        <ul className="sg-line-list">
-          {line.map((pkg) => (
+        <ul className="sg-ingredient-list">
+          {ingredients.map((pkg) => (
             <li key={pkg.name}>
               <Link to={pkg.href}>
-                <span className="sg-line-name">{pkg.name}</span>
-                <span className="sg-line-does">{pkg.does}</span>
+                <span className="sg-ingredient-name">{pkg.name}</span>
+                <span className="sg-ingredient-does">{pkg.does}</span>
               </Link>
             </li>
           ))}
@@ -218,7 +269,7 @@ const TodoList = tracked(() => {
       </section>
 
       <footer className="sg-footer">
-        <span className="sg-wordmark">SUPERGRAIN</span>
+        <span className="sg-wordmark">Supergrain</span>
         <span>MIT licensed.</span>
         <a href={github}>GitHub</a>
       </footer>

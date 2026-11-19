@@ -6,7 +6,7 @@ export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
       // JSX supported
-      title: <span className="sg-wordmark">SUPERGRAIN</span>,
+      title: <span className="sg-wordmark">Supergrain</span>,
     },
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
   };
