@@ -25,22 +25,22 @@
 }
 
 @theme {
-  --color-fd-background: #fffaf0;
+  --color-fd-background: #fffdf8;
   --color-fd-foreground: #3a1608;
-  --color-fd-muted: #f7edd6;
-  --color-fd-muted-foreground: #74513f;
-  --color-fd-popover: #fffdf7;
+  --color-fd-muted: #f8f1df;
+  --color-fd-muted-foreground: #6e4f3f;
+  --color-fd-popover: #fffdf8;
   --color-fd-popover-foreground: #3a1608;
-  --color-fd-card: #fbf2dc;
+  --color-fd-card: #fbf6e8;
   --color-fd-card-foreground: #3a1608;
   --color-fd-border: rgba(58, 22, 8, 0.16);
-  --color-fd-primary: #c93219;
-  --color-fd-primary-foreground: #fffaf0;
-  --color-fd-secondary: #f7edd6;
+  --color-fd-primary: #2443bd;
+  --color-fd-primary-foreground: #fffdf8;
+  --color-fd-secondary: #f8f1df;
   --color-fd-secondary-foreground: #3a1608;
-  --color-fd-accent: rgba(232, 67, 42, 0.1);
-  --color-fd-accent-foreground: #b92a16;
-  --color-fd-ring: #e8432a;
+  --color-fd-accent: #ffe08a;
+  --color-fd-accent-foreground: #3a1608;
+  --color-fd-ring: #2848c4;
 }
 
 .dark {
@@ -93,7 +93,11 @@ kbd {
   font-weight: 400;
   font-size: 1.5rem;
   line-height: 1;
-  color: var(--color-fd-primary);
+  color: var(--sg-red);
+}
+
+.dark .sg-wordmark {
+  color: var(--sg-yolk);
 }
 
 /* Docs pages: the page title is in the box lettering. Everything else is quiet. */
@@ -102,7 +106,16 @@ kbd {
   font-weight: 400;
   font-size: 2.9rem;
   line-height: 1.1;
-  color: var(--color-fd-primary);
+  color: var(--sg-red);
+}
+
+.dark #nd-page h1 {
+  color: var(--sg-yolk);
+}
+
+/* Keep lines of text short enough to read. Code blocks and tables stay wide. */
+#nd-page .prose :where(p, li, blockquote) {
+  max-width: 44rem;
 }
 
 #nd-page .prose {
@@ -297,6 +310,7 @@ kbd {
   position: relative;
   z-index: 1;
   justify-self: center;
+  align-self: end;
   width: var(--box-w);
   height: var(--box-h);
   margin: 12px 0 -58px;
@@ -329,6 +343,18 @@ kbd {
   inset: 0;
   transform-style: preserve-3d;
   transform: rotateX(-7deg) rotateY(var(--turn));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sg-box {
+    animation: sg-box-arrive 1.3s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+}
+
+@keyframes sg-box-arrive {
+  from {
+    transform: rotateX(-7deg) rotateY(-150deg);
+  }
 }
 
 .sg-box-face {
@@ -661,10 +687,14 @@ kbd {
   padding: clamp(56px, 8vw, 112px) var(--gutter);
 }
 
+.sg-section h2 span {
+  display: block;
+}
+
 .sg-section h2 {
   font-family: var(--sg-display);
   font-weight: 400;
-  font-size: clamp(2rem, 3.5vw, 3.1rem);
+  font-size: clamp(1.9rem, 3vw, 2.75rem);
   line-height: 1.1;
   color: var(--sg-red);
   margin: 0 0 22px;
@@ -830,42 +860,64 @@ kbd {
   color: var(--sg-cocoa);
 }
 
-/* Ingredients */
+/* Ingredients: set like the ingredients panel on a box. */
 .sg-ingredient-list {
   list-style: none;
   margin: 0;
-  padding: 0;
-  border-top: 2px solid var(--sg-cocoa);
+  padding: clamp(20px, 3vw, 36px);
+  background: #fff;
+  border: 3px solid #111;
+  color: #111;
+  font-family: var(--sg-label);
+  font-size: clamp(1.15rem, 1.7vw, 1.45rem);
+  line-height: 1.45;
+}
+
+.sg-ingredient-list::before {
+  content: "Ingredients: ";
+  font-weight: 900;
 }
 
 .sg-ingredient-list li {
-  border-bottom: 1px solid rgba(58, 22, 8, 0.2);
+  display: inline;
+}
+
+.sg-ingredient-list li:not(:last-child)::after {
+  content: ", ";
+}
+
+.sg-ingredient-list li:last-child::after {
+  content: ".";
 }
 
 .sg-ingredient-list a {
-  display: grid;
-  grid-template-columns: 10.5rem minmax(0, 1fr);
-  gap: 20px;
-  align-items: baseline;
-  padding: 20px 0;
   color: inherit;
   text-decoration: none;
 }
 
 .sg-ingredient-name {
-  font-family: var(--sg-display);
-  font-size: 2rem;
-  line-height: 1;
-  color: var(--sg-red);
-}
-
-.sg-ingredient-does {
-  font-size: 1.1rem;
-  line-height: 1.5;
+  font-weight: 900;
+  text-decoration: underline;
+  text-decoration-thickness: 0.12em;
+  text-underline-offset: 0.16em;
 }
 
 .sg-ingredient-list a:hover .sg-ingredient-name {
-  color: var(--sg-rim);
+  color: var(--sg-red);
+}
+
+.sg-shelf-bowl::after {
+  content: "";
+  position: absolute;
+  inset: 18%;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.25;
+}
+
+.sg-shelf-us .sg-shelf-bowl::after {
+  background: #e3a43a;
+  opacity: 1;
 }
 
 .sg-footer {
@@ -906,11 +958,6 @@ kbd {
 @media (max-width: 640px) {
   .sg-nav a:nth-child(2) {
     display: none;
-  }
-
-  .sg-ingredient-list a {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
   }
 
   .sg-snippet {

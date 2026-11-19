@@ -36,27 +36,27 @@ const ingredients = [
   {
     name: "kernel",
     href: "/docs/kernel",
-    does: "The store. Plain objects, direct writes, React bindings, and live sorted and filtered lists.",
+    does: "the store: plain objects, direct writes, React bindings, and live sorted and filtered lists",
   },
   {
     name: "husk",
     href: "/docs/husk",
-    does: "Side effects with cleanup: fetches, subscriptions, timers and DOM behaviors that rerun when what they read changes.",
+    does: "side effects with cleanup, such as fetches, subscriptions and timers",
   },
   {
     name: "silo",
     href: "/docs/silo",
-    does: "A document cache for your API. Requests are batched, reads suspend, and fetched documents are state you can change.",
+    does: "a document cache for your API, with batched requests and Suspense",
   },
   {
     name: "queries",
     href: "/docs/queries",
-    does: "Paginated and live-updating queries for silo.",
+    does: "paginated and live-updating queries for silo",
   },
   {
     name: "mill",
     href: "/docs/mill",
-    does: "MongoDB-style updates ($set, $push, $pull) applied to the store, with undo.",
+    does: "MongoDB-style updates like $set and $push, with undo",
   },
 ];
 
@@ -122,7 +122,9 @@ export default function Home() {
 
       <section className="sg-section sg-code">
         <div className="sg-section-text">
-          <h2>No reducers. No selectors. Just assignment.</h2>
+          <h2>
+            <span>No reducers.</span> <span>No selectors.</span> <span>Just assignment.</span>
+          </h2>
           <p>
             Read a property in a component and Supergrain remembers that this component needs it.
             Assign to it anywhere and that component renders. Nested objects and arrays work the
@@ -201,15 +203,15 @@ const TodoList = tracked(() => {
           <h2>Ingredients</h2>
           <p>
             Start with the kernel. Add the other packages when your app needs them. They share one
-            reactive graph, so data from your API and your own state update the same way.
+            reactive graph, so data from your API and your own state update the same way. Each name
+            links to its docs.
           </p>
         </div>
         <ul className="sg-ingredient-list">
           {ingredients.map((pkg) => (
             <li key={pkg.name}>
               <Link to={pkg.href}>
-                <span className="sg-ingredient-name">{pkg.name}</span>
-                <span className="sg-ingredient-does">{pkg.does}</span>
+                <span className="sg-ingredient-name">{pkg.name}</span> ({pkg.does})
               </Link>
             </li>
           ))}
