@@ -17,7 +17,7 @@ import { withBase } from "@/lib/base";
 import { baseOptions } from "@/lib/layout.shared";
 import { getPageImagePath } from "@/lib/og";
 import { gitConfig } from "@/lib/shared";
-import { getPageMarkdownUrl, source } from "@/lib/source";
+import { getPageMarkdownUrl, getSidebarTree, source } from "@/lib/source";
 
 import readmePages from "../../readme-pages.json";
 
@@ -36,7 +36,7 @@ export async function loader({ params }: Route.LoaderArgs) {
     path: page.path,
     // Base-prefixed so they resolve under the /supergrain/ Pages subpath.
     markdownUrl: withBase(getPageMarkdownUrl(page).url),
-    pageTree: await source.serializePageTree(source.getPageTree()),
+    pageTree: await source.serializePageTree(getSidebarTree()),
     imagePath: withBase(getPageImagePath(slugs)),
   };
 }
