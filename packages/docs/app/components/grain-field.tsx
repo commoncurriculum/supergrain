@@ -32,8 +32,8 @@ interface Layout {
   size: number;
 }
 
-const WIDE: Layout = { width: 1440, height: 500, size: 196 };
-const NARROW: Layout = { width: 720, height: 580, size: 196 };
+const WIDE: Layout = { width: 1440, height: 500, size: 270 };
+const NARROW: Layout = { width: 720, height: 580, size: 250 };
 const NAME = "Supergrain";
 
 const field = createReactive({
@@ -90,10 +90,10 @@ function spell(word: string) {
   // The name breaks over two lines on a narrow screen. Any other word is one line.
   const lines =
     layout === NARROW && word === NAME ? [word.slice(0, 5), word.slice(5)] : [word || " "];
-  context.font = `${layout.size}px "Rammetto One"`;
+  context.font = `900 ${layout.size}px Geist`;
   const widest = Math.max(...lines.map((line) => context.measureText(line).width));
   const size = Math.min(layout.size, (layout.size * layout.width * 0.94) / widest);
-  context.font = `${size}px "Rammetto One"`;
+  context.font = `900 ${size}px Geist`;
   lines.forEach((line, i) => {
     const y = layout.height / 2 + (i - (lines.length - 1) / 2) * size * 1.08 + size * 0.03;
     context.fillText(line, layout.width / 2, y);
@@ -161,7 +161,7 @@ export const GrainField = tracked(() => {
   useEffect(() => {
     const next = window.matchMedia("(max-width: 719px)").matches ? NARROW : WIDE;
     let cancelled = false;
-    void document.fonts.load(`${next.size}px "Rammetto One"`).then(() => {
+    void document.fonts.load(`900 ${next.size}px Geist`).then(() => {
       if (cancelled) return;
       field.layout = next;
       field.grains = plant(next);

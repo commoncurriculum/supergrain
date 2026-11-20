@@ -18,9 +18,9 @@
   --sg-cocoa: #3a1608;
   --sg-rim: #2848c4;
 
-  --font-sans: "Albert Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Fragment Mono", ui-monospace, monospace;
-  --sg-display: "Rammetto One", "Albert Sans", sans-serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --sg-display: "Geist", ui-sans-serif, system-ui, sans-serif;
   --sg-label: "Archivo", "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -90,7 +90,7 @@ kbd {
 
 .sg-wordmark {
   font-family: var(--sg-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: 1.5rem;
   line-height: 1;
   color: var(--sg-red);
@@ -103,7 +103,7 @@ kbd {
 /* Docs pages: the page title is in the box lettering. Everything else is quiet. */
 #nd-page h1 {
   font-family: var(--sg-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: 2.9rem;
   line-height: 1.1;
   color: var(--sg-red);
@@ -212,7 +212,7 @@ kbd {
 
 .sg-hero h1 {
   font-family: var(--sg-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: clamp(2.5rem, 4.5vw, 4rem);
   line-height: 1.04;
   letter-spacing: -0.01em;
@@ -397,6 +397,7 @@ kbd {
 
 .sg-box-left span {
   font-family: var(--sg-display);
+  font-weight: 800;
   font-size: 30cqw;
   writing-mode: vertical-rl;
 }
@@ -412,6 +413,7 @@ kbd {
 
 .sg-box-name {
   font-family: var(--sg-display);
+  font-weight: 800;
   font-size: 23cqw;
   line-height: 0.95;
   color: var(--sg-cream);
@@ -497,7 +499,7 @@ kbd {
 .sg-burst b {
   display: block;
   font-family: var(--sg-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: 13cqw;
   line-height: 0.9;
   font-variant-numeric: tabular-nums;
@@ -517,6 +519,7 @@ kbd {
 
 .sg-box-back-title {
   font-family: var(--sg-display);
+  font-weight: 800;
   font-size: 9.5cqw;
   line-height: 1;
   margin: 9cqw 8cqw 6cqw;
@@ -545,6 +548,7 @@ kbd {
   left: 0;
   top: -0.5cqw;
   font-family: var(--sg-display);
+  font-weight: 800;
   font-size: 7cqw;
   color: var(--sg-yolk);
 }
@@ -693,7 +697,7 @@ kbd {
 
 .sg-section h2 {
   font-family: var(--sg-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: clamp(1.9rem, 3vw, 2.75rem);
   line-height: 1.1;
   color: var(--sg-red);
@@ -833,7 +837,7 @@ kbd {
 
 .sg-shelf-us .sg-shelf-name {
   font-family: var(--sg-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: 10.5cqw;
   padding: 14cqw 5cqw 0;
   overflow-wrap: normal;
@@ -1039,7 +1043,7 @@ kbd {
 
 .sg-field-row h1 {
   font-family: var(--sg-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: clamp(2rem, 3.4vw, 3rem);
   line-height: 1.08;
   margin: 0;
@@ -1136,7 +1140,7 @@ kbd {
 
 .sg-editor-count b {
   font-family: var(--sg-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: 1.5rem;
   color: var(--sg-yolk);
 }
@@ -1173,6 +1177,7 @@ kbd {
   min-width: 0;
   padding: 10px 14px;
   font-family: var(--sg-display);
+  font-weight: 800;
   font-size: 1.4rem;
   color: var(--sg-cocoa);
   background: var(--sg-yolk);
