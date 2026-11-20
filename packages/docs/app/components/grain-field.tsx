@@ -1,154 +1,130 @@
 import { createReactive } from "@supergrain/kernel";
-import { tracked } from "@supergrain/kernel/react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { tracked, useComputed } from "@supergrain/kernel/react";
+import { useEffect } from "react";
 
-// A field of grains that fills the top of the page. Each grain is its own
-// component. The grains inside the name are lighter than the rest. A short
-// program, which the reader can edit, runs every tick and changes the store.
-// Only the grains whose values changed re-render.
+// The whole page sits on a field of grains. Each grain is one plain object in
+// one array, drawn by its own component. A loop nudges a few of them every
+// frame by writing to their objects, so the field moves like cells under a
+// microscope, and only the grains that were written to re-render. Click a
+// grain to open its object and change it.
 
-const TICK_MS = 700;
-const STEP = 13.5;
+const NAME = "Supergrain";
 const NAME_TONES = ["#ffc93c", "#ffd766", "#ffe59a", "#fff1c4", "#f4b62a"];
 const FIELD_TONES = ["#5a2f10", "#6b3a14", "#4d270d", "#744116"];
-const DRIFTS = 8;
+export const SWATCHES = ["#ffc93c", "#ff5a36", "#6fc3ee", "#8fd16a", "#fff4d8"];
+/** The most grains the field will plant. Bigger screens get bigger spacing. */
+const MOST = 4500;
+/** How far a grain wanders from its spot, in pixels. */
+const WANDER = 5;
+/** How close the pointer has to be to push a grain, and how hard it pushes. */
+const REACH = 90;
+const PUSH = 26;
+/** A grain takes this many frames to glide to its next spot. */
+const GLIDE = 24;
+/** The share of the field that is gliding at any moment, at speed 1. */
+const BUSY = 0.045;
+const DRIFTS = 12;
 
-interface Grain {
+export interface Grain {
+  /** Where the grain was planted. */
   x: number;
   y: number;
-  /** True for the grains that spell the word. */
-  inName: boolean;
-  /** True once the pointer has passed over the grain. */
-  picked: boolean;
-  /** Degrees this grain is turned. */
+  /** How far it has drifted from there. */
+  dx: number;
+  dy: number;
+  /** Degrees it is turned. */
   turn: number;
-  /** A color to paint over the grain's own, or null. */
-  color: string | null;
-}
-
-interface Layout {
-  width: number;
-  height: number;
+  color: string;
   size: number;
+  /** A pinned grain is left alone by the loop. */
+  pinned: boolean;
 }
-
-const WIDE: Layout = { width: 1440, height: 500, size: 270 };
-const NARROW: Layout = { width: 720, height: 580, size: 250 };
-const NAME = "Supergrain";
 
 const field = createReactive({
-  layout: WIDE,
-  word: NAME,
+  width: 0,
+  height: 0,
   grains: [] as Array<Grain>,
-  // How many grains rendered because of the last change.
-  lastRenders: 0,
-  error: "",
+  /** Index of the grain whose object is open, or -1. */
+  selected: -1,
+  /** 0 stops the loop. 1 is the normal pace. */
+  speed: 1,
+  /** Measured twice a second. */
+  rendersPerFrame: 0,
+  framesPerSecond: 0,
 });
 
 let renders = 0;
-let settle = 0;
-let quietUntil = 0;
 
-/** Run a change, then report how many grains React rendered because of it. */
-function measure(change: () => void) {
-  renders = 0;
-  change();
-  window.clearTimeout(settle);
-  settle = window.setTimeout(() => (field.lastRenders = renders), 120);
-}
-
-/** Small, fixed variation per grain, so the field looks the same on every visit. */
 const hash = (index: number) => Math.imul(index + 1, 2654435761) >>> 0;
+const round = (value: number) => Math.round(value * 10) / 10;
 
-/** One grain per point of a staggered grid. */
-function plant(layout: Layout): Array<Grain> {
+/** Plant one grain per point of a loose grid. Grains inside the name get the lighter colors. */
+function plant(width: number, height: number): Array<Grain> {
+  const step = Math.max(16, Math.sqrt((width * height) / MOST));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true })!;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  const lines = width < 720 ? [NAME.slice(0, 5), NAME.slice(5)] : [NAME];
+  context.font = "900 100px Geist";
+  const widest = Math.max(...lines.map((line) => context.measureText(line).width));
+  const size = Math.min((100 * width * 0.92) / widest, height * 0.3);
+  context.font = `900 ${size}px Geist`;
+  lines.forEach((line, i) => {
+    context.fillText(line, width / 2, height * 0.28 + (i - (lines.length - 1) / 2) * size * 0.95);
+  });
+  const pixels = context.getImageData(0, 0, width, height).data;
+
   const grains: Array<Grain> = [];
-  for (let row = 0, y = STEP / 2; y < layout.height; y += STEP * 0.92, row++) {
-    for (let x = (row % 2 ? STEP : STEP / 2) - STEP / 4; x < layout.width; x += STEP) {
+  for (let row = 0, y = step / 2; y < height; y += step * 0.9, row++) {
+    for (let x = row % 2 ? step : step / 2; x < width; x += step) {
+      const seed = hash(grains.length);
+      const inName = pixels[(Math.round(y) * width + Math.round(x)) * 4 + 3]! > 128;
+      const tones = inName ? NAME_TONES : FIELD_TONES;
       grains.push({
-        x,
-        y,
-        inName: false,
-        picked: false,
-        turn: hash(grains.length) % 360,
-        color: null,
+        x: round(x + ((seed % 7) - 3) * 0.5),
+        y: round(y + (((seed >>> 3) % 7) - 3) * 0.5),
+        dx: 0,
+        dy: 0,
+        turn: seed % 360,
+        color: tones[seed % tones.length]!,
+        size: round((step / 15) * (inName ? 1.25 : 1)),
+        pinned: false,
       });
     }
   }
   return grains;
 }
 
-/** Draw the word on a canvas, then mark each grain that sits inside a letter. */
-function spell(word: string) {
-  const { layout, grains } = field;
-  const canvas = document.createElement("canvas");
-  canvas.width = layout.width;
-  canvas.height = layout.height;
-  const context = canvas.getContext("2d", { willReadFrequently: true })!;
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  // The name breaks over two lines on a narrow screen. Any other word is one line.
-  const lines =
-    layout === NARROW && word === NAME ? [word.slice(0, 5), word.slice(5)] : [word || " "];
-  context.font = `900 ${layout.size}px Geist`;
-  const widest = Math.max(...lines.map((line) => context.measureText(line).width));
-  const size = Math.min(layout.size, (layout.size * layout.width * 0.94) / widest);
-  context.font = `900 ${size}px Geist`;
-  lines.forEach((line, i) => {
-    const y = layout.height / 2 + (i - (lines.length - 1) / 2) * size * 1.08 + size * 0.03;
-    context.fillText(line, layout.width / 2, y);
-  });
-  const pixels = context.getImageData(0, 0, layout.width, layout.height).data;
-  for (const grain of grains) {
-    const inName =
-      pixels[(Math.round(grain.y) * layout.width + Math.round(grain.x)) * 4 + 3]! > 128;
-    if (grain.inName !== inName) grain.inName = inName;
-  }
-}
-
 const GrainPiece = tracked(({ index }: { index: number }) => {
   const grain = field.grains[index]!;
-  const ref = useRef<SVGPathElement>(null);
-  const mounted = useRef(false);
+  // True for one grain. A new selection re-renders two grains, not all of them.
+  const open = useComputed(() => field.selected === index);
   renders++;
-  useLayoutEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    ref.current?.animate([{ scale: "3.2" }, { scale: "1" }], {
-      duration: 900,
-      easing: "cubic-bezier(.2,.7,.3,1)",
-    });
-  });
-  const tones = grain.inName ? NAME_TONES : FIELD_TONES;
   return (
-    <g transform={`translate(${grain.x} ${grain.y})`}>
-      <path
-        ref={ref}
-        className="sg-grain"
-        onPointerEnter={() => {
-          quietUntil = Date.now() + 2500;
-          measure(() => (grain.picked = true));
-        }}
-        d="M0,-7.5 C4.8,-4.3 4.8,4.3 0,7.5 C-4.8,4.3 -4.8,-4.3 0,-7.5Z"
-        style={{
-          fill: grain.color ?? (grain.picked ? "#ff5a36" : tones[hash(index) % tones.length]),
-          rotate: `${grain.turn}deg`,
-        }}
-      />
-    </g>
+    <path
+      className={open ? "sg-cell sg-cell-open" : "sg-cell"}
+      data-index={index}
+      d="M0,-8 C5.2,-4.6 5.2,4.6 0,8 C-5.2,4.6 -5.2,-4.6 0,-8Z"
+      style={{
+        translate: `${grain.x + grain.dx}px ${grain.y + grain.dy}px`,
+        rotate: `${grain.turn}deg`,
+        scale: grain.size,
+        fill: grain.color,
+      }}
+    />
   );
 });
 
-// Grains drift a little in a few interleaved groups, so the field is never
-// still. That motion is CSS only and renders nothing.
+// The whole field also sways a little, in a few interleaved groups. That part
+// is CSS and renders nothing.
 const Grains = tracked(() => {
-  const count = field.grains.length;
   const groups: Array<Array<number>> = Array.from({ length: DRIFTS }, () => []);
-  for (let i = 0; i < count; i++) groups[hash(i) % DRIFTS]!.push(i);
-  return groups.map((group, g) => (
-    <g key={g} className="sg-drift" style={{ "--drift": g } as React.CSSProperties}>
+  for (let i = 0; i < field.grains.length; i++) groups[hash(i) % DRIFTS]!.push(i);
+  return groups.map((group, drift) => (
+    <g key={drift} className="sg-drift" style={{ "--drift": drift } as React.CSSProperties}>
       {group.map((index) => (
         <GrainPiece key={index} index={index} />
       ))}
@@ -156,216 +132,255 @@ const Grains = tracked(() => {
   ));
 });
 
+/**
+ * The loop. A share of the grains is gliding at any moment. Each frame it
+ * moves those a step closer to where they are going, by assigning to their
+ * objects, and starts a few more. Nothing else on the page is touched.
+ */
+function live() {
+  const pointer = { x: -1000, y: -1000, moved: false };
+  const onMove = (event: PointerEvent) => {
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    pointer.moved = true;
+  };
+  window.addEventListener("pointermove", onMove);
+
+  // Where each gliding grain is going. These are the loop's own notes, not state.
+  let gliding: Array<number> = [];
+  let goal = { dx: new Float32Array(0), dy: new Float32Array(0), turn: new Float32Array(0) };
+  let left = new Uint8Array(0);
+  const start = (index: number, dx: number, dy: number, turn: number) => {
+    if (left[index] === 0) gliding.push(index);
+    left[index] = GLIDE;
+    goal.dx[index] = dx;
+    goal.dy[index] = dy;
+    goal.turn[index] = turn;
+  };
+
+  let cursor = 0;
+  let owed = 0;
+  let frames = 0;
+  let since = performance.now();
+  let frame = requestAnimationFrame(function tick(now) {
+    frame = requestAnimationFrame(tick);
+    const { grains, speed } = field;
+    frames++;
+    if (now - since >= 500) {
+      field.rendersPerFrame = Math.round(renders / frames);
+      field.framesPerSecond = Math.round((frames * 1000) / (now - since));
+      renders = 0;
+      frames = 0;
+      since = now;
+    }
+    if (left.length !== grains.length) {
+      gliding = [];
+      left = new Uint8Array(grains.length);
+      goal = {
+        dx: new Float32Array(grains.length),
+        dy: new Float32Array(grains.length),
+        turn: new Float32Array(grains.length),
+      };
+    }
+    if (grains.length === 0) return;
+
+    // Start a few more. The step is prime, so neighbors do not start together.
+    owed += ((grains.length * BUSY) / GLIDE) * speed;
+    for (; owed >= 1; owed--) {
+      cursor = (cursor + 7919) % grains.length;
+      const grain = grains[cursor]!;
+      if (grain.pinned || left[cursor] !== 0) continue;
+      start(
+        cursor,
+        (Math.random() * 2 - 1) * WANDER,
+        (Math.random() * 2 - 1) * WANDER,
+        grain.turn + (Math.random() * 2 - 1) * 30,
+      );
+    }
+
+    // Grains near the pointer head away from it.
+    if (pointer.moved) {
+      pointer.moved = false;
+      for (let i = 0; i < grains.length; i++) {
+        const grain = grains[i]!;
+        const awayX = grain.x - pointer.x;
+        const awayY = grain.y - pointer.y;
+        const distance = Math.hypot(awayX, awayY);
+        if (distance > REACH || distance === 0 || grain.pinned) continue;
+        const push = ((REACH - distance) / REACH) * PUSH;
+        start(i, (awayX / distance) * push, (awayY / distance) * push, grain.turn);
+      }
+    }
+
+    // Move every gliding grain one step closer.
+    let kept = 0;
+    for (const index of gliding) {
+      const grain = grains[index]!;
+      const share = 1 / left[index]!;
+      grain.dx = round(grain.dx + (goal.dx[index]! - grain.dx) * share);
+      grain.dy = round(grain.dy + (goal.dy[index]! - grain.dy) * share);
+      grain.turn = round(grain.turn + (goal.turn[index]! - grain.turn) * share);
+      if (--left[index]! > 0) gliding[kept++] = index;
+    }
+    gliding.length = kept;
+  });
+
+  return () => {
+    cancelAnimationFrame(frame);
+    window.removeEventListener("pointermove", onMove);
+  };
+}
+
 export const GrainField = tracked(() => {
-  const { layout } = field;
   useEffect(() => {
-    const next = window.matchMedia("(max-width: 719px)").matches ? NARROW : WIDE;
+    let stop = () => {};
     let cancelled = false;
-    void document.fonts.load(`900 ${next.size}px Geist`).then(() => {
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const sow = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      // A phone's address bar changes the height while scrolling. Keep the field.
+      if (width === field.width && Math.abs(height - field.height) < 160) return;
+      field.width = width;
+      field.height = height;
+      field.grains = plant(width, height);
+      // Open a grain in the name, so the panel has an object to show.
+      field.selected = field.grains.findIndex(
+        (grain) => grain.x > width * 0.3 && NAME_TONES.includes(grain.color),
+      );
+    };
+
+    void document.fonts.load("900 100px Geist").then(() => {
       if (cancelled) return;
-      field.layout = next;
-      field.grains = plant(next);
-      spell(field.word);
+      sow();
+      if (!still) stop = live();
     });
+    let timer = 0;
+    const onResize = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(sow, 250);
+    };
+    window.addEventListener("resize", onResize);
     return () => {
       cancelled = true;
+      stop();
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", onResize);
     };
   }, []);
+
   return (
     <svg
       className="sg-field"
-      viewBox={`0 0 ${layout.width} ${layout.height}`}
+      width={field.width}
+      height={field.height}
       role="img"
-      aria-label="A field of grains with a word spelled in lighter grains. Each grain is a component."
+      aria-label="A field of grains that drift slowly. The name Supergrain is spelled in lighter grains."
+      onClick={(event) => {
+        const index = (event.target as SVGElement).dataset.index;
+        if (index !== undefined) field.selected = Number(index);
+      }}
     >
       <Grains />
     </svg>
   );
 });
 
-type Program = (store: { grains: Array<Grain> }, pick: <T>(list: Array<T>) => T) => void;
+/** The open grain's own object, printed as it is. Three of its values can be changed here. */
+export const GrainInspector = tracked(() => {
+  const index = field.selected;
+  const grain = field.grains[index];
+  if (!grain) return <div className="sg-inspector" />;
+  return (
+    <div className="sg-inspector">
+      <p className="sg-inspector-title">
+        <code>store.grains[{index}]</code>
+        <span>Click any grain to open its object.</span>
+      </p>
+      <dl>
+        <dt>x</dt>
+        <dd>{grain.x}</dd>
+        <dt>y</dt>
+        <dd>{grain.y}</dd>
+        <dt>dx</dt>
+        <dd>{grain.dx}</dd>
+        <dt>dy</dt>
+        <dd>{grain.dy}</dd>
+        <dt>turn</dt>
+        <dd>{grain.turn}</dd>
+        <dt>color</dt>
+        <dd>
+          <span className="sg-swatches" role="radiogroup" aria-label="color">
+            {SWATCHES.map((color) => (
+              <button
+                key={color}
+                type="button"
+                role="radio"
+                aria-checked={grain.color === color}
+                aria-label={color}
+                style={{ background: color }}
+                onClick={() => (grain.color = color)}
+              />
+            ))}
+          </span>
+          <span className="sg-inspector-value">"{grain.color}"</span>
+        </dd>
+        <dt>size</dt>
+        <dd>
+          <input
+            type="range"
+            aria-label="size"
+            min={0.5}
+            max={6}
+            step={0.1}
+            value={grain.size}
+            onChange={(event) => (grain.size = Number(event.target.value))}
+          />
+          <span className="sg-inspector-value">{round(grain.size)}</span>
+        </dd>
+        <dt>pinned</dt>
+        <dd>
+          <label>
+            <input
+              type="checkbox"
+              checked={grain.pinned}
+              onChange={(event) => (grain.pinned = event.target.checked)}
+            />
+            <span className="sg-inspector-value">{String(grain.pinned)}</span>
+          </label>
+        </dd>
+      </dl>
+    </div>
+  );
+});
 
-const pick = <T,>(list: Array<T>): T => list[Math.floor(Math.random() * list.length)]!;
-
-const PROGRAM = `// Runs every ${TICK_MS} ms. Edit it.
-const grain = pick(store.grains);
-grain.turn += 200;
-grain.color = "#6fc3ee";`;
-
-const EVERY = `// Change every grain. This is the work that
-// one useState at the top does on each change.
-for (const grain of store.grains) {
-  grain.turn += 40;
-}`;
-
-const WORD_CODE = `const store = createReactive({ word: "Supergrain", grains });
-
-<input
-  value={store.word}
-  onChange={(event) => (store.word = event.target.value)}
-/>
-
-// When the word changes, each grain is told
-// whether it is now inside a letter.
-grain.inName = isInside(letters, grain);
-
-// A grain re-renders only if its own value changed.
-const Grain = tracked(({ grain }) => (
-  <path fill={grain.inName ? light : dark} />
-));`;
-
-const POINTER_CODE = `const Grain = tracked(({ grain }) => (
-  <path
-    fill={grain.picked ? "tomato" : grain.tone}
-    onPointerEnter={() => (grain.picked = true)}
-  />
-));
-
-// No reducer, no selector, no memo. The handler
-// writes to the object and that one grain re-renders.`;
-
-type Example = "word" | "pointer" | "program";
-const EXAMPLES: Array<{ id: Example; name: string }> = [
-  { id: "word", name: "Type a word" },
-  { id: "pointer", name: "Touch the field" },
-  { id: "program", name: "Write the change" },
-];
-
-function compile(code: string): Program | string {
-  try {
-    // The reader's own code, run in the reader's own browser.
-    // oxlint-disable-next-line no-new-func
-    return new Function("store", "pick", code) as Program;
-  } catch (error) {
-    return String(error);
-  }
-}
-
-const Count = tracked(() => (
-  <p className="sg-editor-count" aria-live="off">
-    <b>{field.lastRenders.toLocaleString("en-US")}</b> of{" "}
-    {field.grains.length.toLocaleString("en-US")} components re-rendered on the last change.
+/** What the page is doing right now, measured. */
+export const GrainStats = tracked(() => (
+  <p className="sg-stats" aria-live="off">
+    <span>
+      <b>{field.grains.length.toLocaleString("en-US")}</b> objects on this page
+    </span>
+    <span>
+      <b>{field.rendersPerFrame.toLocaleString("en-US")}</b> components re-render per frame
+    </span>
+    <span>
+      <b>{field.framesPerSecond}</b> frames a second
+    </span>
   </p>
 ));
 
-const Problem = tracked(() =>
-  field.error ? <p className="sg-editor-error">{field.error}</p> : null,
-);
-
-const WordInput = tracked(() => (
-  <label className="sg-editor-word">
-    <span>store.word</span>
+export const SpeedControl = tracked(() => (
+  <label className="sg-speed">
+    <code>store.speed = {field.speed}</code>
     <input
-      type="text"
-      maxLength={14}
-      spellCheck={false}
-      value={field.word}
-      onChange={(event) => {
-        quietUntil = Date.now() + 2500;
-        measure(() => {
-          field.word = event.target.value;
-          spell(field.word);
-        });
-      }}
+      type="range"
+      aria-label="speed"
+      min={0}
+      max={4}
+      step={0.5}
+      value={field.speed}
+      onChange={(event) => (field.speed = Number(event.target.value))}
     />
   </label>
 ));
-
-export function GrainEditor() {
-  const [example, setExample] = useState<Example>("word");
-  const [code, setCode] = useState(PROGRAM);
-  const [running, setRunning] = useState(true);
-  const program = useRef<Program | null>(null);
-
-  useEffect(() => {
-    const compiled = compile(code);
-    if (typeof compiled === "string") {
-      field.error = compiled;
-    } else {
-      field.error = "";
-      program.current = compiled;
-    }
-  }, [code]);
-
-  useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) setRunning(false);
-  }, []);
-
-  // Something changes every tick, so the field is never idle. In the last
-  // example it is the reader's program. In the others one grain turns, unless
-  // the reader has just changed something themselves.
-  useEffect(() => {
-    if (!running) return;
-    const id = window.setInterval(() => {
-      if (field.grains.length === 0 || Date.now() < quietUntil) return;
-      measure(() => {
-        if (example !== "program") {
-          pick(field.grains).turn += 200;
-          return;
-        }
-        try {
-          program.current?.(field, pick);
-        } catch (error) {
-          field.error = String(error);
-        }
-      });
-    }, TICK_MS);
-    return () => window.clearInterval(id);
-  }, [running, example]);
-
-  return (
-    <div className="sg-editor">
-      <div className="sg-editor-bar">
-        <div className="sg-editor-presets" role="tablist" aria-label="Examples">
-          {EXAMPLES.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={example === item.id}
-              onClick={() => setExample(item.id)}
-            >
-              {item.name}
-            </button>
-          ))}
-        </div>
-        <button type="button" onClick={() => setRunning(!running)}>
-          {running ? "Pause" : "Play"}
-        </button>
-      </div>
-      <Count />
-      {example === "word" && (
-        <>
-          <WordInput />
-          <pre>{WORD_CODE}</pre>
-        </>
-      )}
-      {example === "pointer" && (
-        <>
-          <p className="sg-editor-hint">Move your pointer across the grains above.</p>
-          <pre>{POINTER_CODE}</pre>
-        </>
-      )}
-      {example === "program" && (
-        <>
-          <textarea
-            aria-label="The code that changes the field. Edit it."
-            spellCheck={false}
-            rows={6}
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-          />
-          <p className="sg-editor-hint">
-            <button type="button" onClick={() => setCode(PROGRAM)}>
-              One grain
-            </button>{" "}
-            <button type="button" onClick={() => setCode(EVERY)}>
-              Every grain
-            </button>
-          </p>
-          <Problem />
-        </>
-      )}
-    </div>
-  );
-}
